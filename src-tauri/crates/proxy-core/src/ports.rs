@@ -1960,6 +1960,70 @@ pub enum GeminiSettingsValidationIssue {
     MissingApiKey,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeminiAuthType {
+    Packycode,
+    GoogleOfficial,
+    Generic,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GeminiAuthTypeInput<'a> {
+    pub name: &'a str,
+    pub website_url: Option<&'a str>,
+    pub partner_promotion_key: Option<&'a str>,
+    pub settings_config: &'a Value,
+}
+
+const GEMINI_PACKYCODE_PARTNER_KEY: &str = "packycode";
+const GEMINI_GOOGLE_OFFICIAL_PARTNER_KEY: &str = "google-official";
+const GEMINI_PACKYCODE_KEYWORDS: [&str; 3] = ["packycode", "packyapi", "packy"];
+
+pub fn gemini_contains_packycode_keyword(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    GEMINI_PACKYCODE_KEYWORDS
+        .iter()
+        .any(|keyword| lower.contains(keyword))
+}
+
+pub fn detect_gemini_auth_type(input: GeminiAuthTypeInput<'_>) -> GeminiAuthType {
+    if let Some(key) = input.partner_promotion_key {
+        if key.eq_ignore_ascii_case(GEMINI_GOOGLE_OFFICIAL_PARTNER_KEY) {
+            return GeminiAuthType::GoogleOfficial;
+        }
+        if key.eq_ignore_ascii_case(GEMINI_PACKYCODE_PARTNER_KEY) {
+            return GeminiAuthType::Packycode;
+        }
+    }
+
+    let name_lower = input.name.to_ascii_lowercase();
+    if name_lower == "google" || name_lower.starts_with("google ") {
+        return GeminiAuthType::GoogleOfficial;
+    }
+
+    if gemini_contains_packycode_keyword(input.name) {
+        return GeminiAuthType::Packycode;
+    }
+
+    if input
+        .website_url
+        .is_some_and(gemini_contains_packycode_keyword)
+    {
+        return GeminiAuthType::Packycode;
+    }
+
+    if input
+        .settings_config
+        .pointer("/env/GOOGLE_GEMINI_BASE_URL")
+        .and_then(Value::as_str)
+        .is_some_and(gemini_contains_packycode_keyword)
+    {
+        return GeminiAuthType::Packycode;
+    }
+
+    GeminiAuthType::Generic
+}
+
 pub fn gemini_env_json_from_map(env_map: &HashMap<String, String>) -> Value {
     let env = env_map
         .iter()
@@ -5051,8 +5115,10 @@ mod tests {
         claude_common_config_snippet_from_settings,
         claude_env_credentials_from_settings, claude_live_config_has_proxy_placeholder,
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
-        ensure_codex_takeover_auth_placeholder, gemini_env_json_from_map,
-        gemini_env_map_from_settings, gemini_env_string_map_from_settings,
+        detect_gemini_auth_type, ensure_codex_takeover_auth_placeholder,
+        gemini_contains_packycode_keyword, gemini_env_json_from_map,
+        gemini_env_map_from_settings, gemini_env_string_map_from_settings, GeminiAuthType,
+        GeminiAuthTypeInput,
         gemini_settings_validation_issue_spec, gemini_common_config_snippet_from_settings,
         gemini_live_config_has_proxy_placeholder, is_local_proxy_url,
         common_config_settings_mutation_issue_message,
@@ -7044,6 +7110,75 @@ mod tests {
         assert_eq!(
             missing_api_key_spec.en,
             "Gemini config missing required field: GEMINI_API_KEY"
+        );
+    }
+
+    #[test]
+    fn gemini_auth_type_detection_prioritizes_provider_facts() {
+        let generic_settings = json!({
+            "env": {
+                "GOOGLE_GEMINI_BASE_URL": "https://generativelanguage.googleapis.com"
+            }
+        });
+        let packy_base_url_settings = json!({
+            "env": {
+                "GOOGLE_GEMINI_BASE_URL": "https://gateway.packyapi.example/v1"
+            }
+        });
+
+        fn input<'a>(
+            name: &'a str,
+            website_url: Option<&'a str>,
+            partner_promotion_key: Option<&'a str>,
+            settings_config: &'a Value,
+        ) -> GeminiAuthTypeInput<'a> {
+            GeminiAuthTypeInput {
+                name,
+                website_url,
+                partner_promotion_key,
+                settings_config,
+            }
+        }
+
+        assert!(gemini_contains_packycode_keyword("https://packycode.example"));
+        assert_eq!(
+            detect_gemini_auth_type(input(
+                "Packy Gateway",
+                None,
+                Some("google-official"),
+                &packy_base_url_settings
+            )),
+            GeminiAuthType::GoogleOfficial
+        );
+        assert_eq!(
+            detect_gemini_auth_type(input(
+                "Google Gemini",
+                None,
+                Some("packycode"),
+                &generic_settings
+            )),
+            GeminiAuthType::Packycode
+        );
+        assert_eq!(
+            detect_gemini_auth_type(input("google", None, None, &generic_settings)),
+            GeminiAuthType::GoogleOfficial
+        );
+        assert_eq!(
+            detect_gemini_auth_type(input(
+                "Gemini",
+                Some("https://packycode.example"),
+                None,
+                &generic_settings
+            )),
+            GeminiAuthType::Packycode
+        );
+        assert_eq!(
+            detect_gemini_auth_type(input("Gemini", None, None, &packy_base_url_settings)),
+            GeminiAuthType::Packycode
+        );
+        assert_eq!(
+            detect_gemini_auth_type(input("Gemini Relay", None, None, &generic_settings)),
+            GeminiAuthType::Generic
         );
     }
 

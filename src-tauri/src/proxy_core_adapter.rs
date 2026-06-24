@@ -299,6 +299,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     apply_codex_takeover_auth_placeholder_if_present as core_apply_codex_takeover_auth_placeholder_if_present,
     apply_gemini_takeover_env_fields as core_apply_gemini_takeover_env_fields,
     claude_live_config_has_proxy_placeholder as core_claude_live_config_has_proxy_placeholder,
+    detect_gemini_auth_type as core_detect_gemini_auth_type,
     ensure_codex_takeover_auth_placeholder as core_ensure_codex_takeover_auth_placeholder,
     gemini_env_json_from_map as core_gemini_env_json_from_map,
     gemini_env_string_map_from_settings as core_gemini_env_string_map_from_settings,
@@ -344,8 +345,9 @@ pub(crate) use crate::proxy_core::api::ports::{
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
     validate_gemini_settings_basic as core_validate_gemini_settings_basic,
     validate_gemini_settings_strict as core_validate_gemini_settings_strict,
-    GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, LocalizedErrorSpec,
-    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
+    GeminiAuthType, GeminiAuthTypeInput, GeminiSettingsValidationIssue,
+    LiveTokenProviderSettingsIssue, LocalizedErrorSpec, ProviderAdditiveLiveWriteAction,
+    ProviderAdditiveUpdateRoute,
     ProviderCredentialIssue, ProviderCredentialValues as CoreProviderCredentialValues,
     ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
     ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
@@ -4368,6 +4370,18 @@ pub(crate) fn gemini_env_json_from_map(env_map: &HashMap<String, String>) -> Val
 
 pub(crate) fn gemini_env_string_map_from_settings(settings: &Value) -> HashMap<String, String> {
     core_gemini_env_string_map_from_settings(settings)
+}
+
+pub(crate) fn detect_gemini_auth_type(provider: &Provider) -> GeminiAuthType {
+    core_detect_gemini_auth_type(GeminiAuthTypeInput {
+        name: &provider.name,
+        website_url: provider.website_url.as_deref(),
+        partner_promotion_key: provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.partner_promotion_key.as_deref()),
+        settings_config: &provider.settings_config,
+    })
 }
 
 pub(crate) fn gemini_settings_validation_issue_to_app_error(
@@ -17929,6 +17943,31 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(
             required_gemini_provider_base_url(&provider).as_deref(),
             Ok("https://generativelanguage.googleapis.com/v1beta")
+        );
+        assert_eq!(detect_gemini_auth_type(&provider), GeminiAuthType::Generic);
+        let google_official_provider = Provider::with_id(
+            "google-official".to_string(),
+            "Google Gemini".to_string(),
+            json!({"env": {}}),
+            None,
+        );
+        assert_eq!(
+            detect_gemini_auth_type(&google_official_provider),
+            GeminiAuthType::GoogleOfficial
+        );
+        let mut packy_partner_provider = Provider::with_id(
+            "packy-partner".to_string(),
+            "Gemini Partner".to_string(),
+            json!({"env": {}}),
+            None,
+        );
+        packy_partner_provider.meta = Some(crate::provider::ProviderMeta {
+            partner_promotion_key: Some("packycode".to_string()),
+            ..crate::provider::ProviderMeta::default()
+        });
+        assert_eq!(
+            detect_gemini_auth_type(&packy_partner_provider),
+            GeminiAuthType::Packycode
         );
         let missing_gemini_base_url = Provider::with_id(
             "gemini-missing-base-url".to_string(),
