@@ -17,6 +17,13 @@ pub struct ForwardAttemptLimitLog {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForwarderRectifierRetryKind {
+    MediaFallback,
+    ThinkingSignature,
+    ThinkingBudget,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ForwardFailureKind {
     Upstream { status: u16, body: Option<String> },
@@ -137,6 +144,45 @@ pub fn build_forward_attempt_limit_reached_log(
     })
 }
 
+pub fn forwarder_rectifier_retry_failure_label(
+    kind: ForwarderRectifierRetryKind,
+) -> &'static str {
+    match kind {
+        ForwarderRectifierRetryKind::MediaFallback => "media 降级",
+        ForwarderRectifierRetryKind::ThinkingSignature => "整流",
+        ForwarderRectifierRetryKind::ThinkingBudget => "budget 整流",
+    }
+}
+
+pub fn forwarder_rectifier_retry_success_message(
+    kind: ForwarderRectifierRetryKind,
+) -> &'static str {
+    match kind {
+        ForwarderRectifierRetryKind::MediaFallback => {
+            "[Media] Unsupported-image retry succeeded"
+        }
+        ForwarderRectifierRetryKind::ThinkingSignature => "[RECT-002] 整流重试成功",
+        ForwarderRectifierRetryKind::ThinkingBudget => "[RECT-011] budget 整流重试成功",
+    }
+}
+
+pub fn forwarder_rectifier_retry_failure_message(
+    kind: ForwarderRectifierRetryKind,
+    error_message: &str,
+) -> String {
+    match kind {
+        ForwarderRectifierRetryKind::MediaFallback => {
+            format!("[Media] Unsupported-image retry still failed: {error_message}")
+        }
+        ForwarderRectifierRetryKind::ThinkingSignature => {
+            format!("[RECT-003] 整流重试仍失败: {error_message}")
+        }
+        ForwarderRectifierRetryKind::ThinkingBudget => {
+            format!("[RECT-012] budget 整流重试仍失败: {error_message}")
+        }
+    }
+}
+
 pub fn summarize_forward_failure(failure: &ForwardFailureKind) -> String {
     match failure {
         ForwardFailureKind::Upstream { status, body } => {
@@ -218,8 +264,11 @@ mod tests {
         build_forward_attempt_limit_reached_log,
         build_retryable_forward_failure_log, build_terminal_forward_failure_log,
         categorize_forward_failure, forward_failure_kind_from_proxy_status,
+        forwarder_rectifier_retry_failure_label, forwarder_rectifier_retry_failure_message,
+        forwarder_rectifier_retry_success_message,
         should_failover_after_rectifier_retry_failure, summarize_text_for_log,
         summarize_upstream_body_for_log, ForwardFailureCategory, ForwardFailureKind,
+        ForwarderRectifierRetryKind,
         ALL_PROVIDERS_FAILED, PROVIDER_FAILED_RETRY, SINGLE_PROVIDER_FAILED,
     };
     use crate::error::ProxyErrorStatusKind;
@@ -277,6 +326,39 @@ mod tests {
             build_forward_attempt_limit_reached_log(1, 1).expect("expected attempt limit log");
 
         assert_eq!(log.message, "已达最大尝试次数上限 (1/1), 停止故障转移");
+    }
+
+    #[test]
+    fn rectifier_retry_messages_preserve_forwarder_contract() {
+        assert_eq!(
+            forwarder_rectifier_retry_success_message(ForwarderRectifierRetryKind::MediaFallback),
+            "[Media] Unsupported-image retry succeeded"
+        );
+        assert_eq!(
+            forwarder_rectifier_retry_failure_message(
+                ForwarderRectifierRetryKind::ThinkingSignature,
+                "超时: upstream timed out",
+            ),
+            "[RECT-003] 整流重试仍失败: 超时: upstream timed out"
+        );
+        assert_eq!(
+            forwarder_rectifier_retry_success_message(ForwarderRectifierRetryKind::ThinkingBudget),
+            "[RECT-011] budget 整流重试成功"
+        );
+        assert_eq!(
+            forwarder_rectifier_retry_failure_label(ForwarderRectifierRetryKind::MediaFallback),
+            "media 降级"
+        );
+        assert_eq!(
+            forwarder_rectifier_retry_failure_label(
+                ForwarderRectifierRetryKind::ThinkingSignature
+            ),
+            "整流"
+        );
+        assert_eq!(
+            forwarder_rectifier_retry_failure_label(ForwarderRectifierRetryKind::ThinkingBudget),
+            "budget 整流"
+        );
     }
 
     #[test]

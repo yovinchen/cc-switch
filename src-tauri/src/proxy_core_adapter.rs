@@ -2924,39 +2924,8 @@ pub(crate) enum ForwarderRectifierRetryFailureDecision {
     ProviderFailure { error_message: String },
     ClientFailure,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ForwarderRectifierRetryKind {
-    MediaFallback,
-    ThinkingSignature,
-    ThinkingBudget,
-}
-impl ForwarderRectifierRetryKind {
-    fn failure_label(self) -> &'static str {
-        match self {
-            Self::MediaFallback => "media 降级",
-            Self::ThinkingSignature => "整流",
-            Self::ThinkingBudget => "budget 整流",
-        }
-    }
-
-    fn success_message(self) -> &'static str {
-        match self {
-            Self::MediaFallback => "[Media] Unsupported-image retry succeeded",
-            Self::ThinkingSignature => "[RECT-002] 整流重试成功",
-            Self::ThinkingBudget => "[RECT-011] budget 整流重试成功",
-        }
-    }
-
-    fn failure_message(self, error: &ProxyError) -> String {
-        match self {
-            Self::MediaFallback => {
-                format!("[Media] Unsupported-image retry still failed: {error}")
-            }
-            Self::ThinkingSignature => format!("[RECT-003] 整流重试仍失败: {error}"),
-            Self::ThinkingBudget => format!("[RECT-012] budget 整流重试仍失败: {error}"),
-        }
-    }
-}
+pub(crate) type ForwarderRectifierRetryKind =
+    crate::proxy_core::api::transport::ForwarderRectifierRetryKind;
 pub(crate) fn forwarder_no_available_provider_status_message() -> &'static str {
     "所有供应商暂时不可用（熔断器限制）"
 }
@@ -2973,7 +2942,10 @@ pub(crate) fn forwarder_rectifier_retry_success_log_line(
     app_type: &str,
     kind: ForwarderRectifierRetryKind,
 ) -> String {
-    format!("[{app_type}] {}", kind.success_message())
+    format!(
+        "[{app_type}] {}",
+        core_forwarder_rectifier_retry_success_message(kind)
+    )
 }
 
 pub(crate) fn forwarder_rectifier_retry_failure_log_line(
@@ -2981,13 +2953,16 @@ pub(crate) fn forwarder_rectifier_retry_failure_log_line(
     kind: ForwarderRectifierRetryKind,
     error: &ProxyError,
 ) -> String {
-    format!("[{app_type}] {}", kind.failure_message(error))
+    format!(
+        "[{app_type}] {}",
+        core_forwarder_rectifier_retry_failure_message(kind, &error.to_string())
+    )
 }
 
 pub(crate) fn forwarder_rectifier_retry_failure_label(
     kind: ForwarderRectifierRetryKind,
 ) -> &'static str {
-    kind.failure_label()
+    core_forwarder_rectifier_retry_failure_label(kind)
 }
 pub(crate) type ManagementAuthError = crate::proxy_core::api::auth::ManagementAuthError;
 pub(crate) type CircuitBreakerFailureDecision =
@@ -3109,6 +3084,9 @@ pub(crate) use crate::proxy_core::api::transport::{
     AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
     forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
     forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
+    forwarder_rectifier_retry_failure_label as core_forwarder_rectifier_retry_failure_label,
+    forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
+    forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
     forwarder_transform_plan_from_facts, ForwarderRequestBodyTransformAction,
     invalid_upstream_url_error_message,
     is_codex_chat_full_endpoint_base, is_openai_o_series, is_unsupported_image_error,
