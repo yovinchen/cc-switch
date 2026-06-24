@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::cache_injector::{CacheInjectionReport, inject_cache_control};
-use crate::ports::OptimizerConfig;
+use crate::ports::{CopilotOptimizerConfig, OptimizerConfig};
 use crate::request_headers::CopilotAuthHeaderOverrideFacts;
 use crate::thinking_optimizer::{ThinkingOptimizationReport, optimize_thinking};
 use http::HeaderMap;
@@ -22,6 +22,14 @@ pub struct CopilotAuthOptimizationPreparationInput<'a> {
     pub classification: CopilotClassification,
     pub request_classification_enabled: bool,
     pub deterministic_request_id_enabled: bool,
+    pub session_source_body: &'a Value,
+    pub request_body: &'a Value,
+    pub headers: &'a HeaderMap,
+}
+
+pub struct OptionalCopilotAuthOptimizationPreparationInput<'a> {
+    pub classification: Option<CopilotClassification>,
+    pub config: &'a CopilotOptimizerConfig,
     pub session_source_body: &'a Value,
     pub request_body: &'a Value,
     pub headers: &'a HeaderMap,
@@ -266,6 +274,27 @@ pub fn prepare_copilot_auth_optimization_for_forwarder(
         deterministic_request_id,
         interaction_id,
     }
+}
+
+pub fn prepare_optional_copilot_auth_optimization_for_forwarder(
+    input: OptionalCopilotAuthOptimizationPreparationInput<'_>,
+    fallback_request_id: impl FnOnce() -> String,
+) -> Option<PreparedCopilotAuthOptimization> {
+    input
+        .classification
+        .map(|classification| {
+            prepare_copilot_auth_optimization_for_forwarder(
+                CopilotAuthOptimizationPreparationInput {
+                    classification,
+                    request_classification_enabled: input.config.request_classification,
+                    deterministic_request_id_enabled: input.config.deterministic_request_id,
+                    session_source_body: input.session_source_body,
+                    request_body: input.request_body,
+                    headers: input.headers,
+                },
+                fallback_request_id,
+            )
+        })
 }
 
 /// Merge user tool_result and text blocks so Copilot treats tool continuations as agent turns.
@@ -636,16 +665,18 @@ fn uuid_v4_string_from_hash(hash: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::ports::OptimizerConfig;
+    use crate::ports::{CopilotOptimizerConfig, OptimizerConfig};
 
     use super::{
         apply_bedrock_pre_send_optimizers, apply_copilot_warmup_model_override,
         classify_copilot_request, merge_copilot_tool_results,
         bedrock_env_flag_from_provider_settings, parse_session_from_user_id,
         prepare_copilot_auth_optimization_for_forwarder,
+        prepare_optional_copilot_auth_optimization_for_forwarder,
         provider_declares_bedrock, resolve_copilot_optimizer_session_id,
         sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
         CopilotAuthOptimizationPreparationInput, CopilotClassification,
+        OptionalCopilotAuthOptimizationPreparationInput,
         resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
         resolve_copilot_request_id_with_fallback, resolve_copilot_warmup_model_override,
         strip_copilot_thinking_blocks,
@@ -1155,6 +1186,55 @@ mod tests {
             prepared.deterministic_request_id.as_deref()
         );
         assert_eq!(facts.interaction_id, prepared.interaction_id.as_deref());
+    }
+
+    #[test]
+    fn prepares_optional_copilot_auth_optimization_for_forwarder() {
+        let headers = HeaderMap::new();
+        let config = CopilotOptimizerConfig {
+            request_classification: false,
+            deterministic_request_id: false,
+            ..CopilotOptimizerConfig::default()
+        };
+
+        let skipped = prepare_optional_copilot_auth_optimization_for_forwarder(
+            OptionalCopilotAuthOptimizationPreparationInput {
+                classification: None,
+                config: &config,
+                session_source_body: &json!({}),
+                request_body: &json!({}),
+                headers: &headers,
+            },
+            || panic!("fallback request id should not be generated when classification is absent"),
+        );
+        assert_eq!(skipped, None);
+
+        let prepared = prepare_optional_copilot_auth_optimization_for_forwarder(
+            OptionalCopilotAuthOptimizationPreparationInput {
+                classification: Some(CopilotClassification {
+                    initiator: "user",
+                    is_warmup: false,
+                    is_compact: false,
+                    is_subagent: false,
+                }),
+                config: &config,
+                session_source_body: &json!({
+                    "metadata": { "session_id": "session-a" }
+                }),
+                request_body: &json!({
+                    "messages": [{"role": "user", "content": "Hello"}]
+                }),
+                headers: &headers,
+            },
+            || "fallback-id".to_string(),
+        )
+        .expect("prepared copilot auth optimization");
+
+        assert!(!prepared.request_classification_enabled);
+        assert_eq!(prepared.initiator, "user");
+        assert!(!prepared.is_subagent);
+        assert_eq!(prepared.deterministic_request_id, None);
+        assert!(prepared.interaction_id.is_some());
     }
 
     #[test]

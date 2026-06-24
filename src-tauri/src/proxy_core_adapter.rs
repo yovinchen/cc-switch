@@ -1024,6 +1024,8 @@ pub(crate) type ClaudeProviderAuthHeadersInput<'a> =
 pub(crate) type CopilotAuthHeadersInput<'a> =
     crate::proxy_core::api::transport::CopilotAuthHeadersInput<'a>;
 pub(crate) type CopilotClassification = crate::proxy_core::api::transport::CopilotClassification;
+pub(crate) type ForwarderMaybeCopilotAuthOptimizationInput<'a> =
+    crate::proxy_core::api::transport::OptionalCopilotAuthOptimizationPreparationInput<'a>;
 pub(crate) type ForwarderPreparedCopilotAuthOptimization =
     crate::proxy_core::api::transport::PreparedCopilotAuthOptimization;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
@@ -3092,10 +3094,9 @@ pub(crate) use crate::proxy_core::api::transport::{
     build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
-    contains_image_blocks, CopilotAuthOptimizationPreparationInput,
-    invalid_upstream_url_error_message, is_codex_chat_full_endpoint_base,
+    contains_image_blocks, invalid_upstream_url_error_message, is_codex_chat_full_endpoint_base,
     is_openai_o_series, is_unsupported_image_error, merge_copilot_tool_results,
-    prepare_copilot_auth_optimization_for_forwarder,
+    prepare_optional_copilot_auth_optimization_for_forwarder,
     parse_json_request_body, parse_json_request_body_or_null,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
@@ -8588,14 +8589,6 @@ pub(crate) fn forwarder_attempt_runtime_source_from_router(
 pub(crate) type ForwarderAuthSourceRef = Arc<dyn ForwarderAuthSource + Send + Sync>;
 pub(crate) type AuthProviderRef = Arc<dyn AuthProvider + Send + Sync>;
 
-pub(crate) struct ForwarderMaybeCopilotAuthOptimizationInput<'a> {
-    pub(crate) classification: Option<CopilotClassification>,
-    pub(crate) config: &'a CopilotOptimizerConfig,
-    pub(crate) session_source_body: &'a Value,
-    pub(crate) request_body: &'a Value,
-    pub(crate) headers: &'a HeaderMap,
-}
-
 pub(crate) struct ForwarderAuthHeadersInput<'a> {
     pub(crate) adapter: &'a ForwarderAdapterHandle,
     pub(crate) app_type: &'a AppType,
@@ -8641,15 +8634,6 @@ impl CcSwitchForwarderAuthSource {
             auth_provider,
         }
     }
-
-    fn prepare_copilot_auth_optimization(
-        &self,
-        input: CopilotAuthOptimizationPreparationInput<'_>,
-    ) -> ForwarderPreparedCopilotAuthOptimization {
-        prepare_copilot_auth_optimization_for_forwarder(input, || {
-            uuid::Uuid::new_v4().to_string()
-        })
-    }
 }
 
 fn forwarder_auth_channel_spec(app_type: &AppType, attempt: &ForwardAttempt) -> ChannelSpec {
@@ -8681,15 +8665,8 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
         &self,
         input: ForwarderMaybeCopilotAuthOptimizationInput<'_>,
     ) -> Option<ForwarderPreparedCopilotAuthOptimization> {
-        input.classification.map(|classification| {
-            self.prepare_copilot_auth_optimization(CopilotAuthOptimizationPreparationInput {
-                classification,
-                request_classification_enabled: input.config.request_classification,
-                deterministic_request_id_enabled: input.config.deterministic_request_id,
-                session_source_body: input.session_source_body,
-                request_body: input.request_body,
-                headers: input.headers,
-            })
+        prepare_optional_copilot_auth_optimization_for_forwarder(input, || {
+            uuid::Uuid::new_v4().to_string()
         })
     }
 
