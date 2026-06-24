@@ -6659,8 +6659,18 @@ fn production_forwarder_uses_response_source_resource() {
         "RequestForwarder must pass channel response status facts as a response-source input DTO"
     );
     assert!(
-        adapter_source.contains("upstream_error_response"),
-        "ForwarderResponseSource must expose upstream error response projection"
+        adapter_source.contains("fn upstream_error_response"),
+        "default ForwarderResponseSource implementation must retain upstream error response projection"
+    );
+    let response_trait_slice = function_slice(
+        &adapter_source,
+        "pub(crate) trait ForwarderResponseSource",
+        "struct CcSwitchForwarderResponseSource",
+    );
+    assert!(
+        !response_trait_slice.contains("upstream_error_body")
+            && !response_trait_slice.contains("upstream_error_response"),
+        "ForwarderResponseSource trait must not expose internal upstream error body projection helpers"
     );
     assert!(
         adapter_source.contains("finalize_upstream_response"),
