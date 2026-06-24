@@ -1081,7 +1081,7 @@ impl RequestForwarder {
                         .then_some(self.session_id.as_str()),
                 )
                 .map_err(ProxyError::TransformError)?
-        } else if needs_transform {
+        } else if transform_plan.use_provider_transform {
             self.request_source.transform_provider_request_body(
                 ForwarderProviderTransformInput {
                     adapter,

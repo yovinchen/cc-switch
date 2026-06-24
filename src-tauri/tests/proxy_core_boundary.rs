@@ -5752,9 +5752,13 @@ fn production_forwarder_delegates_claude_transform_gate_to_request_source() {
         adapter_source.contains("use_claude_transform"),
         "ForwarderTransformPlan must expose the Claude transform execution gate"
     );
+    assert!(
+        adapter_source.contains("use_provider_transform"),
+        "ForwarderTransformPlan must expose the provider transform execution gate"
+    );
 
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
-    let forbidden_markers = ["if is_claude_adapter {"];
+    let forbidden_markers = ["if is_claude_adapter {", "} else if needs_transform {"];
     let mut violations = Vec::new();
 
     for (line_index, line) in production_lines(impl_slice) {

@@ -8826,6 +8826,7 @@ pub(crate) struct ForwarderTransformPlanInput<'a> {
 pub(crate) struct ForwarderTransformPlan {
     pub(crate) needs_transform: bool,
     pub(crate) use_claude_transform: bool,
+    pub(crate) use_provider_transform: bool,
     pub(crate) claude_api_format_for_url: Option<String>,
     pub(crate) claude_api_format_for_transform: Option<String>,
 }
@@ -9209,6 +9210,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         ForwarderTransformPlan {
             needs_transform,
             use_claude_transform: needs_transform && input.is_claude_adapter,
+            use_provider_transform: needs_transform && !input.is_claude_adapter,
             claude_api_format_for_url: claude_api_format.map(str::to_string),
             claude_api_format_for_transform: input
                 .is_claude_adapter
@@ -15152,6 +15154,7 @@ base_url = "https://api.openai.com/v1"
         });
         assert!(resolved_plan.needs_transform);
         assert!(resolved_plan.use_claude_transform);
+        assert!(!resolved_plan.use_provider_transform);
         assert_eq!(
             resolved_plan.claude_api_format_for_url.as_deref(),
             Some("gemini_native")
@@ -15169,6 +15172,7 @@ base_url = "https://api.openai.com/v1"
         });
         assert!(fallback_plan.needs_transform);
         assert!(fallback_plan.use_claude_transform);
+        assert!(!fallback_plan.use_provider_transform);
         assert_eq!(
             fallback_plan.claude_api_format_for_url.as_deref(),
             Some("openai_chat")
@@ -15186,6 +15190,7 @@ base_url = "https://api.openai.com/v1"
         });
         assert!(!codex_plan.needs_transform);
         assert!(!codex_plan.use_claude_transform);
+        assert!(!codex_plan.use_provider_transform);
         assert!(codex_plan.claude_api_format_for_url.is_none());
         assert!(codex_plan.claude_api_format_for_transform.is_none());
     }
