@@ -426,7 +426,9 @@ impl RequestForwarder {
         // Legacy 单 Provider 场景下跳过熔断器检查（故障转移关闭时）。
         // Materialized channel attempts are already explicit route units and
         // should use channel-level breaker state.
-        let bypass_circuit_breaker = attempts.len() == 1 && !attempts[0].is_channel();
+        let bypass_circuit_breaker = self
+            .attempt_runtime_source
+            .should_bypass_circuit_breaker(&attempts);
 
         // 依次尝试每个供应商
         for attempt in attempts.iter() {

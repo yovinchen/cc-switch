@@ -8446,12 +8446,18 @@ pub(crate) fn forwarder_attempt_limit_reached(
     })
 }
 
+pub(crate) fn forwarder_should_bypass_circuit_breaker(attempts: &[ForwardAttempt]) -> bool {
+    attempts.len() == 1 && !attempts[0].is_channel()
+}
+
 pub(crate) trait ForwarderAttemptRuntimeSource {
     fn attempt_limit_reached(
         &self,
         attempted_providers: usize,
         max_attempts: usize,
     ) -> Option<ForwarderAttemptLimitReached>;
+
+    fn should_bypass_circuit_breaker(&self, attempts: &[ForwardAttempt]) -> bool;
 
     fn allow<'a>(
         &'a self,
@@ -8500,6 +8506,10 @@ impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
         max_attempts: usize,
     ) -> Option<ForwarderAttemptLimitReached> {
         forwarder_attempt_limit_reached(attempted_providers, max_attempts)
+    }
+
+    fn should_bypass_circuit_breaker(&self, attempts: &[ForwardAttempt]) -> bool {
+        forwarder_should_bypass_circuit_breaker(attempts)
     }
 
     fn allow<'a>(
@@ -15912,6 +15922,42 @@ base_url = "https://api.openai.com/v1"
             limit.message,
             "已达最大尝试次数上限 (1/1), 停止故障转移"
         );
+    }
+
+    #[test]
+    fn forwarder_attempt_runtime_source_projects_circuit_breaker_bypass() {
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+        let legacy_attempt = ForwardAttempt::from_provider(provider.clone());
+        assert!(forwarder_should_bypass_circuit_breaker(&[legacy_attempt.clone()]));
+        assert!(!forwarder_should_bypass_circuit_breaker(&[]));
+        assert!(!forwarder_should_bypass_circuit_breaker(&[
+            legacy_attempt.clone(),
+            legacy_attempt,
+        ]));
+
+        let channel_attempt = ForwardAttempt::from_channel(
+            &AppType::Claude,
+            &provider,
+            ChannelRouteCandidate {
+                channel_id: "channel-a".to_string(),
+                provider_id: provider.id.clone(),
+                channel_name: "Channel A".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "anthropic".to_string(),
+                public_model: None,
+                upstream_model: None,
+                route_group: "default".to_string(),
+                priority: 100,
+                weight: 1,
+                source_kind: "manual".to_string(),
+            },
+        );
+        assert!(!forwarder_should_bypass_circuit_breaker(&[channel_attempt]));
     }
 
     #[test]
