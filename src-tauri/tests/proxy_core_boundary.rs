@@ -6316,12 +6316,40 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
     assert!(
         struct_slice.contains("attempt_runtime_source"),
         "RequestForwarder must receive attempt runtime as one injected source"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) struct ForwarderAttemptAllowInput"),
+        "ForwarderAttemptRuntimeSource must receive allow facts through an input DTO"
+    );
+    assert!(
+        adapter_source.contains("attempts: &'a [ForwardAttempt]"),
+        "ForwarderAttemptAllowInput must carry all route attempts for default runtime compatibility decisions"
+    );
+    assert!(
+        impl_slice.contains("allow(ForwarderAttemptAllowInput {")
+            && impl_slice.contains("attempts: &attempts,"),
+        "RequestForwarder must pass attempt allow facts as an input DTO"
+    );
+    assert!(
+        adapter_source.contains("fn should_bypass_circuit_breaker"),
+        "default ForwarderAttemptRuntimeSource implementation must retain legacy circuit-breaker bypass projection"
+    );
+    let attempt_runtime_trait_slice = function_slice(
+        &adapter_source,
+        "pub(crate) trait ForwarderAttemptRuntimeSource",
+        "struct CcSwitchForwarderAttemptRuntimeSource",
+    );
+    assert!(
+        !attempt_runtime_trait_slice.contains("should_bypass_circuit_breaker"),
+        "ForwarderAttemptRuntimeSource trait must not expose the internal legacy circuit-breaker bypass helper"
     );
 
     let struct_forbidden_markers = ["router: Arc<ProviderRouter>"];
