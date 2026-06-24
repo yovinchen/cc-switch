@@ -10187,16 +10187,6 @@ pub(crate) trait ForwarderResponseSource {
         input: ForwarderResponseFinalizationInput,
     ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
 
-    fn upstream_error_body<'a>(
-        &'a self,
-        response: ProxyResponse,
-    ) -> BoxFuture<'a, Result<Option<String>, ProxyError>>;
-
-    fn upstream_error_response<'a>(
-        &'a self,
-        response: ProxyResponse,
-    ) -> BoxFuture<'a, Result<ProxyError, ProxyError>>;
-
     fn finalize_upstream_response<'a>(
         &'a self,
         input: ForwarderResponseFinalizationInput,
@@ -10204,6 +10194,27 @@ pub(crate) trait ForwarderResponseSource {
 }
 
 struct CcSwitchForwarderResponseSource;
+
+impl CcSwitchForwarderResponseSource {
+    fn upstream_error_body<'a>(
+        &'a self,
+        response: ProxyResponse,
+    ) -> BoxFuture<'a, Result<Option<String>, ProxyError>> {
+        Box::pin(async move { Ok(String::from_utf8(response.bytes().await?.to_vec()).ok()) })
+    }
+
+    fn upstream_error_response<'a>(
+        &'a self,
+        response: ProxyResponse,
+    ) -> BoxFuture<'a, Result<ProxyError, ProxyError>> {
+        Box::pin(async move {
+            let status = response.status().as_u16();
+            let body = self.upstream_error_body(response).await?;
+
+            Ok(ProxyError::UpstreamError { status, body })
+        })
+    }
+}
 
 impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
     fn apply_channel_response_status_mapping(
@@ -10265,25 +10276,6 @@ impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
                 })??;
 
             Ok(ProxyResponse::buffered(status, headers, body))
-        })
-    }
-
-    fn upstream_error_body<'a>(
-        &'a self,
-        response: ProxyResponse,
-    ) -> BoxFuture<'a, Result<Option<String>, ProxyError>> {
-        Box::pin(async move { Ok(String::from_utf8(response.bytes().await?.to_vec()).ok()) })
-    }
-
-    fn upstream_error_response<'a>(
-        &'a self,
-        response: ProxyResponse,
-    ) -> BoxFuture<'a, Result<ProxyError, ProxyError>> {
-        Box::pin(async move {
-            let status = response.status().as_u16();
-            let body = self.upstream_error_body(response).await?;
-
-            Ok(ProxyError::UpstreamError { status, body })
         })
     }
 
