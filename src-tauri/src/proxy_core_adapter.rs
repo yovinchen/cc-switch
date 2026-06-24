@@ -3040,6 +3040,7 @@ pub(crate) use crate::proxy_core::api::ports::{
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
 pub(crate) use crate::proxy_core::api::routing::{
     auth_channel_spec_from_attempt, failover_config_read_error_log_line,
+    provider_router_auto_failover_enabled_decision,
     route_policy_failover_provider_ids, RoutePolicy, RouteRequest,
 };
 pub(crate) use crate::proxy_core::api::transforms::{
@@ -5565,13 +5566,14 @@ pub(crate) fn auto_failover_enabled_from_router_config_result(
     app_type: &str,
     result: Result<AppProxyConfig, AppError>,
 ) -> bool {
-    match result {
-        Ok(config) => config.auto_failover_enabled,
-        Err(error) => {
-            log::error!("[{app_type}] 读取 proxy_config 失败: {error}，默认禁用故障转移");
-            false
-        }
+    let decision = provider_router_auto_failover_enabled_decision(
+        app_type,
+        result.map(|config| config.auto_failover_enabled),
+    );
+    if let Some(log_line) = decision.error_log_line {
+        log::error!("{log_line}");
     }
+    decision.enabled
 }
 
 pub(crate) async fn circuit_failure_threshold_from_router_config_source(

@@ -19,6 +19,30 @@ pub fn failover_config_read_error_log_line(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderRouterAutoFailoverEnabledDecision {
+    pub enabled: bool,
+    pub error_log_line: Option<String>,
+}
+
+pub fn provider_router_auto_failover_enabled_decision(
+    app_type: &str,
+    auto_failover_enabled: Result<bool, impl std::fmt::Display>,
+) -> ProviderRouterAutoFailoverEnabledDecision {
+    match auto_failover_enabled {
+        Ok(enabled) => ProviderRouterAutoFailoverEnabledDecision {
+            enabled,
+            error_log_line: None,
+        },
+        Err(error) => ProviderRouterAutoFailoverEnabledDecision {
+            enabled: false,
+            error_log_line: Some(format!(
+                "[{app_type}] 读取 proxy_config 失败: {error}，默认禁用故障转移"
+            )),
+        },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderSelectionCandidate {
     pub provider_id: String,
     pub configured: bool,
@@ -370,12 +394,14 @@ mod tests {
         current_provider_id_option_from_sources, failover_config_read_error_log_line,
         failover_switch_pending_key,
         plan_auto_failover_toggle, provider_failover_circuit_lookups,
+        provider_router_auto_failover_enabled_decision,
         provider_selection_candidate_from_failover_lookup, restored_provider_switchback_decision,
         route_candidate_provider_ids_from_selection_result, select_provider_ids,
         should_attempt_restored_provider_switchback, should_block_proxy_switch_to_provider_category,
         AutoFailoverToggleInput, AutoFailoverTogglePlan, FailoverQueuePosition,
-        ProviderFailoverCircuitLookup, ProviderSelectionCandidate, ProviderSelectionFailure,
-        ProviderSelectionInput, RestoredProviderSwitchbackDecision,
+        ProviderFailoverCircuitLookup, ProviderRouterAutoFailoverEnabledDecision,
+        ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput,
+        RestoredProviderSwitchbackDecision,
         AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE,
         AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE,
     };
@@ -385,6 +411,37 @@ mod tests {
         assert_eq!(
             failover_config_read_error_log_line("claude", "db locked"),
             "[FO-002] 无法读取 claude 配置: db locked，跳过切换"
+        );
+    }
+
+    #[test]
+    fn provider_router_auto_failover_enabled_decision_defaults_off_on_config_error() {
+        assert_eq!(
+            provider_router_auto_failover_enabled_decision("codex", Ok::<_, &str>(true)),
+            ProviderRouterAutoFailoverEnabledDecision {
+                enabled: true,
+                error_log_line: None,
+            }
+        );
+        assert_eq!(
+            provider_router_auto_failover_enabled_decision("codex", Ok::<_, &str>(false)),
+            ProviderRouterAutoFailoverEnabledDecision {
+                enabled: false,
+                error_log_line: None,
+            }
+        );
+        assert_eq!(
+            provider_router_auto_failover_enabled_decision(
+                "codex",
+                Err::<bool, _>("missing proxy_config")
+            ),
+            ProviderRouterAutoFailoverEnabledDecision {
+                enabled: false,
+                error_log_line: Some(
+                    "[codex] 读取 proxy_config 失败: missing proxy_config，默认禁用故障转移"
+                        .to_string()
+                ),
+            }
         );
     }
 
