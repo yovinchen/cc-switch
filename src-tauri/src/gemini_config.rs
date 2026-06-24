@@ -191,28 +191,12 @@ pub fn write_gemini_env_atomic(map: &HashMap<String, String>) -> Result<(), AppE
 
 /// 从 .env 格式转换为 Provider.settings_config (JSON Value)
 pub fn env_to_json(env_map: &HashMap<String, String>) -> Value {
-    let mut json_map = serde_json::Map::new();
-
-    for (key, value) in env_map {
-        json_map.insert(key.clone(), Value::String(value.clone()));
-    }
-
-    serde_json::json!({ "env": json_map })
+    crate::proxy_core_adapter::gemini_env_json_from_map(env_map)
 }
 
 /// 从 Provider.settings_config (JSON Value) 提取 .env 格式
 pub fn json_to_env(settings: &Value) -> Result<HashMap<String, String>, AppError> {
-    let mut env_map = HashMap::new();
-
-    if let Some(env_obj) = settings.get("env").and_then(|v| v.as_object()) {
-        for (key, value) in env_obj {
-            if let Some(val_str) = value.as_str() {
-                env_map.insert(key.clone(), val_str.to_string());
-            }
-        }
-    }
-
-    Ok(env_map)
+    Ok(crate::proxy_core_adapter::gemini_env_string_map_from_settings(settings))
 }
 
 /// 验证 Gemini 配置的基本结构

@@ -15,7 +15,7 @@ use super::thinking_rectifier::ThinkingSignatureRectifierConfig;
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 pub const DEFAULT_PROXY_LISTEN_ADDRESS: &str = "127.0.0.1";
 pub const DEFAULT_PROXY_LISTEN_PORT: u16 = 15721;
@@ -1957,6 +1957,33 @@ impl LocalizedErrorSpec {
 pub enum GeminiSettingsValidationIssue {
     EnvNotObject,
     ConfigInvalidType,
+}
+
+pub fn gemini_env_json_from_map(env_map: &HashMap<String, String>) -> Value {
+    let env = env_map
+        .iter()
+        .map(|(key, value)| (key.clone(), Value::String(value.clone())))
+        .collect::<Map<String, Value>>();
+
+    let mut settings = Map::new();
+    settings.insert("env".to_string(), Value::Object(env));
+    Value::Object(settings)
+}
+
+pub fn gemini_env_string_map_from_settings(settings: &Value) -> HashMap<String, String> {
+    settings
+        .get("env")
+        .and_then(Value::as_object)
+        .map(|env| {
+            env.iter()
+                .filter_map(|(key, value)| {
+                    value
+                        .as_str()
+                        .map(|value| (key.clone(), value.to_string()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 pub fn validate_gemini_settings_basic(
@@ -5001,7 +5028,8 @@ mod tests {
         claude_common_config_snippet_from_settings,
         claude_env_credentials_from_settings, claude_live_config_has_proxy_placeholder,
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
-        ensure_codex_takeover_auth_placeholder, gemini_env_map_from_settings,
+        ensure_codex_takeover_auth_placeholder, gemini_env_json_from_map,
+        gemini_env_map_from_settings, gemini_env_string_map_from_settings,
         gemini_settings_validation_issue_spec, gemini_common_config_snippet_from_settings,
         gemini_live_config_has_proxy_placeholder, is_local_proxy_url,
         common_config_settings_mutation_issue_message,
@@ -5107,6 +5135,7 @@ mod tests {
         ProviderMetadata, RetryPolicy, UpstreamEndpoint, DEFAULT_ROUTE_GROUP,
     };
     use serde_json::{json, Value};
+    use std::collections::HashMap;
 
     fn route_group_channel_spec(id: &str, app: AppKind, groups: Vec<String>) -> ChannelSpec {
         ChannelSpec {
@@ -6906,6 +6935,29 @@ mod tests {
 
     #[test]
     fn gemini_settings_basic_validation_rejects_invalid_shapes() {
+        let mut env_map = HashMap::new();
+        env_map.insert("GEMINI_API_KEY".to_string(), "secret".to_string());
+        env_map.insert("GEMINI_MODEL".to_string(), "gemini-3.5-flash".to_string());
+        assert_eq!(
+            gemini_env_string_map_from_settings(&gemini_env_json_from_map(&env_map)),
+            env_map
+        );
+        assert_eq!(
+            gemini_env_string_map_from_settings(&json!({
+                "env": {
+                    "GEMINI_API_KEY": "secret",
+                    "IGNORED": 42
+                }
+            }))
+            .get("GEMINI_API_KEY")
+            .map(String::as_str),
+            Some("secret")
+        );
+        assert!(
+            !gemini_env_string_map_from_settings(&json!({"env": {"IGNORED": 42}}))
+                .contains_key("IGNORED")
+        );
+
         assert!(validate_gemini_settings_basic(&json!({
             "env": {
                 "GEMINI_MODEL": "gemini-3.5-flash"

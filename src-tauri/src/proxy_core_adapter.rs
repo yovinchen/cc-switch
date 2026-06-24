@@ -300,6 +300,8 @@ pub(crate) use crate::proxy_core::api::ports::{
     apply_gemini_takeover_env_fields as core_apply_gemini_takeover_env_fields,
     claude_live_config_has_proxy_placeholder as core_claude_live_config_has_proxy_placeholder,
     ensure_codex_takeover_auth_placeholder as core_ensure_codex_takeover_auth_placeholder,
+    gemini_env_json_from_map as core_gemini_env_json_from_map,
+    gemini_env_string_map_from_settings as core_gemini_env_string_map_from_settings,
     gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
     gemini_live_config_has_proxy_placeholder as core_gemini_live_config_has_proxy_placeholder,
     is_local_proxy_url as core_is_local_proxy_url,
@@ -4354,7 +4356,17 @@ pub(crate) fn gemini_live_backup_from_effective_settings(settings: &Value) -> Va
 pub(crate) fn provider_gemini_env_map(
     provider: &Provider,
 ) -> Result<HashMap<String, String>, AppError> {
-    crate::gemini_config::json_to_env(&provider.settings_config)
+    Ok(gemini_env_string_map_from_settings(
+        &provider.settings_config,
+    ))
+}
+
+pub(crate) fn gemini_env_json_from_map(env_map: &HashMap<String, String>) -> Value {
+    core_gemini_env_json_from_map(env_map)
+}
+
+pub(crate) fn gemini_env_string_map_from_settings(settings: &Value) -> HashMap<String, String> {
+    core_gemini_env_string_map_from_settings(settings)
 }
 
 pub(crate) fn gemini_settings_validation_issue_to_app_error(
@@ -17959,6 +17971,10 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(
             live_env.get("GEMINI_API_KEY").map(String::as_str),
             Some(" ya29.access-token ")
+        );
+        assert_eq!(
+            gemini_env_string_map_from_settings(&gemini_env_json_from_map(&live_env)),
+            live_env
         );
         validate_provider_gemini_settings(&provider)
             .expect("provider Gemini settings should pass basic shape validation");
