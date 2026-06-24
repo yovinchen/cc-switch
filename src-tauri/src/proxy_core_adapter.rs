@@ -3028,13 +3028,11 @@ pub(crate) enum ForwarderFailureDecision {
         error_message: String,
         log: ForwardFailureLog,
     },
-    NonRetryable {
-        error_message: String,
-    },
+    NonRetryable,
 }
 pub(crate) enum ForwarderRectifierRetryFailureDecision {
     ProviderFailure { error_message: String },
-    ClientFailure { error_message: String },
+    ClientFailure,
 }
 pub(crate) fn forwarder_no_available_provider_status_message() -> &'static str {
     "所有供应商暂时不可用（熔断器限制）"
@@ -8109,7 +8107,6 @@ pub(crate) trait ForwarderRuntimeStateSource {
         current_provider_id_at_start: &'a str,
         provider: &'a Provider,
     ) -> BoxFuture<'a, Option<ForwarderFailoverSwitchTarget>>;
-    fn record_failure_status<'a>(&'a self, error_message: &'a str) -> BoxFuture<'a, ()>;
     fn record_current_provider<'a>(&'a self, provider: &'a Provider) -> BoxFuture<'a, ()>;
     fn record_provider_failure<'a>(
         &'a self,
@@ -8240,12 +8237,6 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         })
     }
 
-    fn record_failure_status<'a>(&'a self, error_message: &'a str) -> BoxFuture<'a, ()> {
-        Box::pin(async move {
-            record_forward_failure_runtime_source(self.status.as_ref(), error_message).await;
-        })
-    }
-
     fn record_current_provider<'a>(&'a self, provider: &'a Provider) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             record_forward_current_provider_runtime_source(
@@ -8308,9 +8299,7 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
                     &failure,
                 ),
             },
-            ForwardFailureCategory::NonRetryable => {
-                ForwarderFailureDecision::NonRetryable { error_message }
-            }
+            ForwardFailureCategory::NonRetryable => ForwarderFailureDecision::NonRetryable,
         }
     }
 
@@ -8337,7 +8326,7 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         if should_failover_after_rectifier_retry_failure(&failure) {
             ForwarderRectifierRetryFailureDecision::ProviderFailure { error_message }
         } else {
-            ForwarderRectifierRetryFailureDecision::ClientFailure { error_message }
+            ForwarderRectifierRetryFailureDecision::ClientFailure
         }
     }
 
@@ -16099,7 +16088,7 @@ base_url = "https://api.openai.com/v1"
             ForwarderRectifierRetryFailureDecision::ProviderFailure { error_message } => {
                 assert_eq!(error_message, "超时: upstream timed out");
             }
-            ForwarderRectifierRetryFailureDecision::ClientFailure { .. } => {
+            ForwarderRectifierRetryFailureDecision::ClientFailure => {
                 panic!("timeout should fail over to the next provider")
             }
         }
@@ -16111,7 +16100,7 @@ base_url = "https://api.openai.com/v1"
             ForwarderRectifierRetryFailureDecision::ProviderFailure { error_message } => {
                 assert!(error_message.contains("上游错误 (状态码 502)"));
             }
-            ForwarderRectifierRetryFailureDecision::ClientFailure { .. } => {
+            ForwarderRectifierRetryFailureDecision::ClientFailure => {
                 panic!("5xx upstream error should fail over to the next provider")
             }
         }
@@ -16123,9 +16112,7 @@ base_url = "https://api.openai.com/v1"
             ForwarderRectifierRetryFailureDecision::ProviderFailure { .. } => {
                 panic!("client 400 should not fail over after rectifier retry")
             }
-            ForwarderRectifierRetryFailureDecision::ClientFailure { error_message } => {
-                assert!(error_message.contains("上游错误 (状态码 400)"));
-            }
+            ForwarderRectifierRetryFailureDecision::ClientFailure => {}
         }
     }
 
@@ -16213,7 +16200,7 @@ base_url = "https://api.openai.com/v1"
                 assert_eq!(log.code, "FWD-001");
                 assert!(log.message.contains("Relay"));
             }
-            ForwarderFailureDecision::NonRetryable { .. } => {
+            ForwarderFailureDecision::NonRetryable => {
                 panic!("timeout should be retryable")
             }
         }
@@ -16222,9 +16209,7 @@ base_url = "https://api.openai.com/v1"
             ForwarderFailureDecision::Retryable { .. } => {
                 panic!("client 400 should be non-retryable")
             }
-            ForwarderFailureDecision::NonRetryable { error_message } => {
-                assert!(error_message.contains("上游错误 (状态码 400)"));
-            }
+            ForwarderFailureDecision::NonRetryable => {}
         }
 
         let terminal_log = source

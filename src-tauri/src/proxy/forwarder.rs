@@ -223,12 +223,6 @@ impl RequestForwarder {
         }
     }
 
-    async fn record_failure_status_message(&self, error_message: impl AsRef<str>) {
-        self.runtime_state_source
-            .record_failure_status(error_message.as_ref())
-            .await;
-    }
-
     fn schedule_failover_switch(
         &self,
         app_type: &str,
@@ -374,10 +368,12 @@ impl RequestForwarder {
                 *last_provider = Some(provider.clone());
                 None
             }
-            ForwarderRectifierRetryFailureDecision::ClientFailure { error_message } => {
+            ForwarderRectifierRetryFailureDecision::ClientFailure => {
                 self.release_attempt_permit_neutral(attempt, app_type_str, used_half_open_permit)
                     .await;
-                self.record_failure_status_message(error_message).await;
+                self.runtime_state_source
+                    .record_forward_error_status(&retry_err)
+                    .await;
                 Some(ForwardError {
                     error: retry_err,
                     provider: Some(provider.clone()),
@@ -838,7 +834,7 @@ impl RequestForwarder {
                             // 继续尝试下一个供应商
                             continue;
                         }
-                        ForwarderFailureDecision::NonRetryable { error_message } => {
+                        ForwarderFailureDecision::NonRetryable => {
                             // 不可重试：客户端层错误或客户端断连 → 不污染健康度，仅释放 HalfOpen permit
                             self.release_attempt_permit_neutral(
                                 attempt,
@@ -846,7 +842,7 @@ impl RequestForwarder {
                                 used_half_open_permit,
                             )
                             .await;
-                            self.record_failure_status_message(error_message).await;
+                            self.runtime_state_source.record_forward_error_status(&e).await;
                             return Err(ForwardError {
                                 error: e,
                                 provider: Some(provider.clone()),
