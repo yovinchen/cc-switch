@@ -8654,9 +8654,21 @@ pub(crate) struct ForwarderCopilotRequestOptimizationInput<'a> {
     pub(crate) config: &'a CopilotOptimizerConfig,
 }
 
+pub(crate) struct ForwarderCopilotRequestOptimizationGateInput<'a> {
+    pub(crate) body: Value,
+    pub(crate) headers: &'a HeaderMap,
+    pub(crate) config: &'a CopilotOptimizerConfig,
+    pub(crate) is_copilot: bool,
+}
+
 pub(crate) struct ForwarderCopilotRequestOptimization {
     pub(crate) body: Value,
     pub(crate) classification: CopilotClassification,
+}
+
+pub(crate) struct ForwarderMaybeCopilotRequestOptimization {
+    pub(crate) body: Value,
+    pub(crate) classification: Option<CopilotClassification>,
 }
 
 pub(crate) struct ForwarderAttemptBodyInput<'a> {
@@ -8867,6 +8879,11 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderCopilotRequestOptimizationInput<'_>,
     ) -> ForwarderCopilotRequestOptimization;
+
+    fn prepare_copilot_request_optimization(
+        &self,
+        input: ForwarderCopilotRequestOptimizationGateInput<'_>,
+    ) -> ForwarderMaybeCopilotRequestOptimization;
 
     fn apply_media_prevention(&self, input: ForwarderMediaPreventionInput<'_>) -> usize;
 
@@ -9150,6 +9167,29 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         ForwarderCopilotRequestOptimization {
             body: warmup_override.body,
             classification,
+        }
+    }
+
+    fn prepare_copilot_request_optimization(
+        &self,
+        input: ForwarderCopilotRequestOptimizationGateInput<'_>,
+    ) -> ForwarderMaybeCopilotRequestOptimization {
+        if !input.is_copilot || !input.config.enabled {
+            return ForwarderMaybeCopilotRequestOptimization {
+                body: input.body,
+                classification: None,
+            };
+        }
+
+        let optimized = self.optimize_copilot_request(ForwarderCopilotRequestOptimizationInput {
+            body: input.body,
+            headers: input.headers,
+            config: input.config,
+        });
+
+        ForwarderMaybeCopilotRequestOptimization {
+            body: optimized.body,
+            classification: Some(optimized.classification),
         }
     }
 
@@ -15055,6 +15095,56 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(optimized.classification.initiator, "user");
         assert!(optimized.classification.is_warmup);
         assert_eq!(optimized.body["model"], "gpt-5-mini");
+    }
+
+    #[test]
+    fn forwarder_request_source_gates_copilot_optimizer_sequence() {
+        let source = CcSwitchForwarderRequestSource;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "anthropic-beta",
+            "tools-2024-04-04".parse().expect("header value"),
+        );
+        let disabled_config = CopilotOptimizerConfig {
+            enabled: false,
+            ..Default::default()
+        };
+
+        let disabled = source.prepare_copilot_request_optimization(
+            ForwarderCopilotRequestOptimizationGateInput {
+                body: json!({ "model": "claude-sonnet-4" }),
+                headers: &headers,
+                config: &disabled_config,
+                is_copilot: true,
+            },
+        );
+        assert!(disabled.classification.is_none());
+        assert_eq!(disabled.body["model"], "claude-sonnet-4");
+
+        let non_copilot = source.prepare_copilot_request_optimization(
+            ForwarderCopilotRequestOptimizationGateInput {
+                body: json!({ "model": "claude-sonnet-4" }),
+                headers: &headers,
+                config: &CopilotOptimizerConfig::default(),
+                is_copilot: false,
+            },
+        );
+        assert!(non_copilot.classification.is_none());
+        assert_eq!(non_copilot.body["model"], "claude-sonnet-4");
+
+        let enabled = source.prepare_copilot_request_optimization(
+            ForwarderCopilotRequestOptimizationGateInput {
+                body: json!({
+                    "model": "claude-sonnet-4",
+                    "messages": [{"role": "user", "content": "Hello"}]
+                }),
+                headers: &headers,
+                config: &CopilotOptimizerConfig::default(),
+                is_copilot: true,
+            },
+        );
+        assert!(enabled.classification.is_some());
+        assert_eq!(enabled.body["model"], "gpt-5-mini");
     }
 
     #[test]

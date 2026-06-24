@@ -14,7 +14,7 @@ use crate::proxy_core_adapter::{
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCodexResponsesToChatInput, ForwarderCodexResponsesToChatPlanInput,
-    ForwarderCopilotRequestOptimizationInput,
+    ForwarderCopilotRequestOptimizationGateInput,
     ForwarderMediaPreventionInput,
     ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
     ForwarderProviderTransformInput, ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
@@ -968,19 +968,19 @@ impl RequestForwarder {
         //   1. 先在原始 body 上分类（保留 tool_result 语义，避免误判为 user）
         //   2. 再清洗孤立 tool_result（防止上游 API 报错）
         //   3. 再合并 tool_result + text（减少 premium 计费）
-        let copilot_optimization = if is_copilot && self.copilot_optimizer_config.enabled {
-            let optimized = self.request_source.optimize_copilot_request(
-                ForwarderCopilotRequestOptimizationInput {
-                    body: mapped_body,
-                    headers,
-                    config: &self.copilot_optimizer_config,
-                },
-            );
-            mapped_body = optimized.body;
-
-            Some(self.auth_source.prepare_copilot_auth_optimization(
+        let optimized = self.request_source.prepare_copilot_request_optimization(
+            ForwarderCopilotRequestOptimizationGateInput {
+                body: mapped_body,
+                headers,
+                config: &self.copilot_optimizer_config,
+                is_copilot,
+            },
+        );
+        mapped_body = optimized.body;
+        let copilot_optimization = optimized.classification.map(|classification| {
+            self.auth_source.prepare_copilot_auth_optimization(
                 ForwarderCopilotAuthOptimizationInput {
-                    classification: optimized.classification,
+                    classification,
                     request_classification_enabled: self
                         .copilot_optimizer_config
                         .request_classification,
@@ -991,10 +991,8 @@ impl RequestForwarder {
                     request_body: &mapped_body,
                     headers,
                 },
-            ))
-        } else {
-            None
-        };
+            )
+        });
 
         self.managed_account_runtime_source
             .apply_copilot_dynamic_base_url_for_provider(
