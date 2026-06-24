@@ -6652,6 +6652,21 @@ fn production_forwarder_uses_response_source_resource() {
         adapter_source.contains("finalize_upstream_response"),
         "ForwarderResponseSource must expose upstream response success/error finalization"
     );
+    assert!(
+        adapter_source.contains("pub(crate) struct ForwarderResponseFinalizationInput"),
+        "ForwarderResponseSource must receive response finalization facts through an input DTO"
+    );
+    assert!(
+        adapter_source.contains("response: ProxyResponse")
+            && adapter_source.contains("request_is_streaming: bool")
+            && adapter_source.contains("non_streaming_timeout: std::time::Duration")
+            && adapter_source.contains("streaming_first_byte_timeout: std::time::Duration"),
+        "ForwarderResponseFinalizationInput must carry response, streaming mode, and timeout facts"
+    );
+    assert!(
+        impl_slice.contains("finalize_upstream_response(ForwarderResponseFinalizationInput {"),
+        "RequestForwarder must pass response finalization facts as a response-source input DTO"
+    );
 
     let impl_forbidden_markers = [
         "response.bytes().await",
