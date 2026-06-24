@@ -5061,10 +5061,7 @@ pub(crate) fn forwarder_uses_anthropic_rectifiers(app_type: &AppType, provider: 
 }
 
 pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
-    if matches!(
-        provider_claude_kind(provider),
-        ProviderKind::GitHubCopilot | ProviderKind::CodexOAuth
-    ) {
+    if provider_claude_kind(provider).needs_transform() {
         return true;
     }
 
@@ -24379,6 +24376,7 @@ command = "latest-command"
         let usage_provider_is_codex_oauth = provider_is_codex_oauth(&provider);
         let usage_provider_is_github_copilot = provider_is_github_copilot(&provider);
         let usage_provider_uses_managed_account = provider_uses_managed_account_auth(&provider);
+        let usage_provider_needs_claude_transform = provider_needs_claude_transform(&provider);
         let usage_provider_is_copilot =
             provider_is_github_copilot_upstream(&provider, "https://example.com");
         let forwarder_provider_is_copilot =
@@ -24454,6 +24452,7 @@ command = "latest-command"
         assert!(!usage_provider_is_codex_oauth);
         assert!(usage_provider_is_github_copilot);
         assert!(usage_provider_uses_managed_account);
+        assert!(usage_provider_needs_claude_transform);
         assert!(usage_provider_is_copilot);
         assert!(forwarder_provider_is_copilot);
         assert!(stream_check_provider_is_copilot);
