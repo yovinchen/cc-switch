@@ -448,6 +448,7 @@
 437. response finalization 的 response、streaming mode 与 timeout facts 已收敛为 `ForwarderResponseFinalizationInput`；`RequestForwarder` 不再以散参形式把响应读取/首包预读策略转手传给 `ForwarderResponseSource`。
 438. host forward bridge 不再拆 `ForwarderRuntimeConfig` 的 timeout/retry/rectifier/optimizer 字段来构造 `RequestForwarder`；runtime config 作为整体进入 forwarder，由 forwarder 构造器在边界内完成 options 与三类 optimizer/rectifier config 投影。
 439. channel response status mapping 的 response 与 selected channel facts 已收敛为 `ForwarderChannelResponseStatusInput`；`RequestForwarder` 不再以散参形式把 statusCodeMapping 所需事实转手传给 `ForwarderResponseSource`。
+440. `ForwarderResponseSource` trait 不再暴露 `upstream_error_body` / `upstream_error_response` 内部 helper；非成功上游响应的 status/body 投影仍由默认 source 内部完成，并只通过 `finalize_upstream_response` 对 forwarder 暴露。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
@@ -1191,7 +1192,7 @@
 本轮继续把 forwarder 的上游发送执行包装为 `ForwarderTransportSource`：`RequestForwarder` 不再直接读取全局代理 URL、展开 reqwest/raw-hyper 发送分支或映射 reqwest 错误，CC Switch 默认 source 仍复用现有 pooled reqwest、raw hyper、SOCKS/HTTP proxy 和 header-case 策略，后续外部宿主可替换 transport 执行层。
 本轮继续把 forwarder 的响应读取与成功就绪判定包装为 `ForwarderResponseSource`：`RequestForwarder` 不再直接读取 response body、执行非流式 body timeout、流式首包 timeout/replay 或错误响应 body 文本提取，默认 source 保持“记录 provider 成功前先确认响应可读”的既有 failover 语义。
 本轮继续把 channel response status mapping 收敛到 `ForwarderResponseSource`：`RequestForwarder` 不再直接调用响应状态映射 helper，响应 source 负责根据当前 channel 的 statusCodeMapping 改写上游状态码并保留原有 debug 语义。
-本轮继续把非成功上游响应的 status/body 到 `ProxyError::UpstreamError` 投影收敛到 `ForwarderResponseSource::upstream_error_response`：`RequestForwarder` 不再直接读取 status code、读取错误 body 或构造 upstream error。
+本轮继续把非成功上游响应的 status/body 到 `ProxyError::UpstreamError` 投影收敛到 `ForwarderResponseSource::finalize_upstream_response`：`RequestForwarder` 不再直接读取 status code、读取错误 body 或构造 upstream error，默认 source 内部 helper 不作为 trait surface 暴露。
 本轮继续把 forwarder 的上游请求 body/headers/transport-policy 组装包装为 `ForwarderRequestSource`：`RequestForwarder` 不再直接调用请求体过滤、prompt cache trace、stream/identity 策略、ordered headers、body 序列化和 managed-account 上游占位 auth 校验 helper，默认 source 仍保持现有上游请求语义，后续外部宿主可替换请求组装层。
 本轮继续把 finalized upstream body 的 model/outbound logging label 收敛到 `ForwarderPreparedRequest`：`RequestForwarder` 不再在请求体定稿后再次投影 `filtered_body.model`，只消费 request source 随 prepared body 返回的最终模型事实。
 本轮继续把上游请求 URL/model 与 debug body 日志收敛到 `ForwarderRequestSource::log_upstream_request`：`RequestForwarder` 不再拼接请求日志文本或直接序列化 finalized body，只把 adapter tag、URL、model label 和 body 交给 request source。
