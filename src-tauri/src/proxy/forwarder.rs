@@ -472,9 +472,9 @@ impl RequestForwarder {
             // 放在熔断器 allow 检查之前，避免在已经超限时还占用 HalfOpen 探测名额。
             if let Some(limit) = self
                 .attempt_runtime_source
-                .attempt_limit_reached(attempted_providers, self.max_attempts)
+                .attempt_limit_reached(app_type_str, attempted_providers, self.max_attempts)
             {
-                log::warn!("[{app_type_str}] {}", limit.message);
+                log::warn!("{}", limit.log_line);
                 break;
             }
 

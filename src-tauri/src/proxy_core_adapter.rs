@@ -8578,17 +8578,21 @@ pub(crate) type ForwarderAttemptRuntimeSourceRef =
     Arc<dyn ForwarderAttemptRuntimeSource + Send + Sync>;
 
 pub(crate) struct ForwarderAttemptLimitReached {
-    pub(crate) message: String,
+    pub(crate) log_line: String,
 }
 
 pub(crate) fn forwarder_attempt_limit_reached(
+    app_type: &str,
     attempted_providers: usize,
     max_attempts: usize,
 ) -> Option<ForwarderAttemptLimitReached> {
-    (attempted_providers >= max_attempts).then(|| ForwarderAttemptLimitReached {
-        message: format!(
+    (attempted_providers >= max_attempts).then(|| {
+        let message = format!(
             "已达最大尝试次数上限 ({attempted_providers}/{max_attempts}), 停止故障转移"
-        ),
+        );
+        ForwarderAttemptLimitReached {
+            log_line: format!("[{app_type}] {message}"),
+        }
     })
 }
 
@@ -8599,6 +8603,7 @@ pub(crate) fn forwarder_should_bypass_circuit_breaker(attempts: &[ForwardAttempt
 pub(crate) trait ForwarderAttemptRuntimeSource {
     fn attempt_limit_reached(
         &self,
+        app_type: &str,
         attempted_providers: usize,
         max_attempts: usize,
     ) -> Option<ForwarderAttemptLimitReached>;
@@ -8648,10 +8653,11 @@ impl CcSwitchForwarderAttemptRuntimeSource {
 impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
     fn attempt_limit_reached(
         &self,
+        app_type: &str,
         attempted_providers: usize,
         max_attempts: usize,
     ) -> Option<ForwarderAttemptLimitReached> {
-        forwarder_attempt_limit_reached(attempted_providers, max_attempts)
+        forwarder_attempt_limit_reached(app_type, attempted_providers, max_attempts)
     }
 
     fn should_bypass_circuit_breaker(&self, attempts: &[ForwardAttempt]) -> bool {
@@ -16061,12 +16067,12 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_attempt_runtime_source_projects_attempt_limit() {
-        assert!(forwarder_attempt_limit_reached(0, 1).is_none());
-        let limit = forwarder_attempt_limit_reached(1, 1)
+        assert!(forwarder_attempt_limit_reached("claude", 0, 1).is_none());
+        let limit = forwarder_attempt_limit_reached("claude", 1, 1)
             .expect("attempt count at max should stop");
         assert_eq!(
-            limit.message,
-            "已达最大尝试次数上限 (1/1), 停止故障转移"
+            limit.log_line,
+            "[claude] 已达最大尝试次数上限 (1/1), 停止故障转移"
         );
     }
 
