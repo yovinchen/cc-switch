@@ -756,6 +756,11 @@ const FORBIDDEN_PROVIDER_ROUTER_PROVIDER_RECORD_MARKERS: &[&str] = &[
     "IndexMap<String, Provider>",
     "Result<Vec<Provider>",
 ];
+const FORBIDDEN_PROVIDER_ROUTER_LIVE_CIRCUIT_MAP_MARKERS: &[&str] = &[
+    "HashMap<String, Arc<CircuitBreaker>>",
+    "RwLock<HashMap",
+    "breakers:",
+];
 const PROVIDER_ROUTER_DATABASE_CONSTRUCTOR_MARKER: &str = "ProviderRouter::new(";
 const FORBIDDEN_HANDLER_PROXY_REQUEST_BRIDGE_MARKERS: &[&str] = &["ProxyRequest::new("];
 const FORBIDDEN_HANDLER_RAW_JSON_BODY_PARSE_MARKERS: &[&str] = &[
@@ -8736,6 +8741,43 @@ fn production_provider_router_uses_route_channel_inputs() {
     assert!(
         violations.is_empty(),
         "provider router must use core route channel inputs instead of database DAO records or router-local records:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_router_delegates_live_circuit_map_to_runtime() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/provider_router.rs");
+    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let struct_slice = function_slice(&source, "pub struct ProviderRouter", "impl ProviderRouter");
+
+    assert!(
+        struct_slice.contains("circuit_runtime"),
+        "ProviderRouter must hold live circuit state through a runtime object"
+    );
+    assert!(
+        source.contains("struct ProviderRoutingCircuitRuntime"),
+        "provider_router.rs must keep live circuit map in ProviderRoutingCircuitRuntime"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(struct_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_ROUTER_LIVE_CIRCUIT_MAP_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/provider_router.rs ProviderRouter:{} contains live circuit map marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider router must delegate live circuit map ownership to runtime:\n{}",
         violations.join("\n")
     );
 }

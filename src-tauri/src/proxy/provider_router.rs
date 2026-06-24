@@ -94,15 +94,16 @@ impl ProviderRouterSources {
 pub struct ProviderRouter {
     /// Host-provided provider/channel/config/health source.
     sources: ProviderRouterSources,
-    /// 熔断器管理器 - provider key: "app_type:provider_id", channel key: "channel:app_type:channel_id"
-    circuit_breakers: Arc<RwLock<HashMap<String, Arc<CircuitBreaker>>>>,
+    /// Runtime-owned live circuit state.
+    circuit_runtime: ProviderRoutingCircuitRuntime,
 }
 
 impl ProviderRouter {
     pub(crate) fn with_sources(sources: ProviderRouterSources) -> Self {
+        let circuit_runtime = ProviderRoutingCircuitRuntime::new(sources.config.clone());
         Self {
             sources,
-            circuit_breakers: Arc::new(RwLock::new(HashMap::new())),
+            circuit_runtime,
         }
     }
 
@@ -130,10 +131,7 @@ impl ProviderRouter {
         let mut lookup_availability = Vec::with_capacity(sources.lookups.len());
         for lookup in sources.lookups {
             let available = match lookup.circuit_key.as_ref() {
-                Some(circuit_key) => {
-                    let breaker = self.get_or_create_circuit_breaker(circuit_key).await;
-                    breaker.is_available().await
-                }
+                Some(circuit_key) => self.circuit_runtime.is_available(circuit_key).await,
                 None => true,
             };
             lookup_availability.push((lookup, available));
@@ -170,10 +168,10 @@ impl ProviderRouter {
         let mut availability = Vec::new();
 
         for lookup in lookups {
-            let is_available = match self.get_existing_circuit_breaker(&lookup.circuit_key).await {
-                Some(breaker) => breaker.is_available().await,
-                None => true,
-            };
+            let is_available = self
+                .circuit_runtime
+                .existing_is_available_or_default(&lookup.circuit_key)
+                .await;
             availability.push((lookup, is_available));
         }
 
@@ -190,15 +188,13 @@ impl ProviderRouter {
     /// 否则会导致该 Provider 长时间无法进入探测状态。
     pub async fn allow_provider_request(&self, provider_id: &str, app_type: &str) -> AllowResult {
         let circuit_key = provider_circuit_key(app_type, provider_id);
-        let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
-        breaker.allow_request().await
+        self.circuit_runtime.allow_request(&circuit_key).await
     }
 
     /// 请求执行前获取 Channel 熔断器“放行许可”
     pub async fn allow_channel_request(&self, channel_id: &str, app_type: &str) -> AllowResult {
         let circuit_key = channel_circuit_key(app_type, channel_id);
-        let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
-        breaker.allow_request().await
+        self.circuit_runtime.allow_request(&circuit_key).await
     }
 
     /// 记录供应商请求结果
@@ -215,13 +211,9 @@ impl ProviderRouter {
 
         // 2. 更新熔断器状态
         let circuit_key = provider_circuit_key(app_type, provider_id);
-        let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
-
-        if success {
-            breaker.record_success(used_half_open_permit).await;
-        } else {
-            breaker.record_failure(used_half_open_permit).await;
-        }
+        self.circuit_runtime
+            .record_result(&circuit_key, used_half_open_permit, success)
+            .await;
 
         // 3. 更新数据库健康状态（使用配置的阈值）
         self.sources
@@ -246,13 +238,9 @@ impl ProviderRouter {
             .failure_threshold_for_app(app_type, CircuitBreakerConfig::default().failure_threshold)
             .await;
         let circuit_key = channel_circuit_key(app_type, channel_id);
-        let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
-
-        if success {
-            breaker.record_success(used_half_open_permit).await;
-        } else {
-            breaker.record_failure(used_half_open_permit).await;
-        }
+        self.circuit_runtime
+            .record_result(&circuit_key, used_half_open_permit, success)
+            .await;
 
         self.sources.health.record_channel_health(
             channel_id,
@@ -267,10 +255,7 @@ impl ProviderRouter {
 
     /// 重置熔断器（手动恢复）
     pub async fn reset_circuit_breaker(&self, circuit_key: &str) {
-        let breakers = self.circuit_breakers.read().await;
-        if let Some(breaker) = breakers.get(circuit_key) {
-            breaker.reset().await;
-        }
+        self.circuit_runtime.reset(circuit_key).await;
     }
 
     /// 重置指定供应商的熔断器
@@ -304,8 +289,9 @@ impl ProviderRouter {
             return;
         }
         let circuit_key = provider_circuit_key(app_type, provider_id);
-        let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
-        breaker.release_half_open_permit();
+        self.circuit_runtime
+            .release_half_open_permit(&circuit_key)
+            .await;
     }
 
     /// 仅释放 Channel HalfOpen permit，不影响健康统计。
@@ -319,28 +305,21 @@ impl ProviderRouter {
             return;
         }
         let circuit_key = channel_circuit_key(app_type, channel_id);
-        let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
-        breaker.release_half_open_permit();
+        self.circuit_runtime
+            .release_half_open_permit(&circuit_key)
+            .await;
     }
 
     /// 更新所有熔断器的配置（热更新）
     pub async fn update_all_configs(&self, config: CircuitBreakerConfig) {
-        let breakers = self.circuit_breakers.read().await;
-        for breaker in breakers.values() {
-            breaker.update_config(config.clone()).await;
-        }
+        self.circuit_runtime.update_all_configs(config).await;
     }
 
     /// 更新指定应用已创建熔断器的配置（热更新）
     pub async fn update_app_configs(&self, app_type: &str, config: CircuitBreakerConfig) {
-        let provider_prefix = provider_circuit_key_prefix(app_type);
-        let channel_prefix = channel_circuit_key_prefix(app_type);
-        let breakers = self.circuit_breakers.read().await;
-        for (key, breaker) in breakers.iter() {
-            if key.starts_with(&provider_prefix) || key.starts_with(&channel_prefix) {
-                breaker.update_config(config.clone()).await;
-            }
-        }
+        self.circuit_runtime
+            .update_app_configs(app_type, config)
+            .await;
     }
 
     /// 获取熔断器状态
@@ -351,13 +330,7 @@ impl ProviderRouter {
         app_type: &str,
     ) -> Option<CircuitBreakerStats> {
         let circuit_key = provider_circuit_key(app_type, provider_id);
-        let breakers = self.circuit_breakers.read().await;
-
-        if let Some(breaker) = breakers.get(&circuit_key) {
-            Some(breaker.get_stats().await)
-        } else {
-            None
-        }
+        self.circuit_runtime.stats(&circuit_key).await
     }
 
     /// 获取 Channel 熔断器状态
@@ -368,12 +341,90 @@ impl ProviderRouter {
         app_type: &str,
     ) -> Option<CircuitBreakerStats> {
         let circuit_key = channel_circuit_key(app_type, channel_id);
-        let breakers = self.circuit_breakers.read().await;
+        self.circuit_runtime.stats(&circuit_key).await
+    }
 
-        if let Some(breaker) = breakers.get(&circuit_key) {
-            Some(breaker.get_stats().await)
+    async fn failure_threshold_for_app(&self, app_type: &str, fallback: u32) -> u32 {
+        self.sources
+            .config
+            .failure_threshold(app_type, fallback)
+            .await
+    }
+}
+
+struct ProviderRoutingCircuitRuntime {
+    config: Arc<dyn ProviderRouterConfigSource>,
+    breakers: Arc<RwLock<HashMap<String, Arc<CircuitBreaker>>>>,
+}
+
+impl ProviderRoutingCircuitRuntime {
+    fn new(config: Arc<dyn ProviderRouterConfigSource>) -> Self {
+        Self {
+            config,
+            breakers: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    async fn is_available(&self, key: &str) -> bool {
+        let breaker = self.get_or_create_circuit_breaker(key).await;
+        breaker.is_available().await
+    }
+
+    async fn existing_is_available_or_default(&self, key: &str) -> bool {
+        match self.get_existing_circuit_breaker(key).await {
+            Some(breaker) => breaker.is_available().await,
+            None => true,
+        }
+    }
+
+    async fn allow_request(&self, key: &str) -> AllowResult {
+        let breaker = self.get_or_create_circuit_breaker(key).await;
+        breaker.allow_request().await
+    }
+
+    async fn record_result(&self, key: &str, used_half_open_permit: bool, success: bool) {
+        let breaker = self.get_or_create_circuit_breaker(key).await;
+
+        if success {
+            breaker.record_success(used_half_open_permit).await;
         } else {
-            None
+            breaker.record_failure(used_half_open_permit).await;
+        }
+    }
+
+    async fn reset(&self, key: &str) {
+        if let Some(breaker) = self.get_existing_circuit_breaker(key).await {
+            breaker.reset().await;
+        }
+    }
+
+    async fn release_half_open_permit(&self, key: &str) {
+        let breaker = self.get_or_create_circuit_breaker(key).await;
+        breaker.release_half_open_permit();
+    }
+
+    async fn update_all_configs(&self, config: CircuitBreakerConfig) {
+        let breakers = self.breakers.read().await;
+        for breaker in breakers.values() {
+            breaker.update_config(config.clone()).await;
+        }
+    }
+
+    async fn update_app_configs(&self, app_type: &str, config: CircuitBreakerConfig) {
+        let provider_prefix = provider_circuit_key_prefix(app_type);
+        let channel_prefix = channel_circuit_key_prefix(app_type);
+        let breakers = self.breakers.read().await;
+        for (key, breaker) in breakers.iter() {
+            if key.starts_with(&provider_prefix) || key.starts_with(&channel_prefix) {
+                breaker.update_config(config.clone()).await;
+            }
+        }
+    }
+
+    async fn stats(&self, key: &str) -> Option<CircuitBreakerStats> {
+        match self.get_existing_circuit_breaker(key).await {
+            Some(breaker) => Some(breaker.get_stats().await),
+            None => None,
         }
     }
 
@@ -381,24 +432,22 @@ impl ProviderRouter {
     async fn get_or_create_circuit_breaker(&self, key: &str) -> Arc<CircuitBreaker> {
         // 先尝试读锁获取
         {
-            let breakers = self.circuit_breakers.read().await;
+            let breakers = self.breakers.read().await;
             if let Some(breaker) = breakers.get(key) {
                 return breaker.clone();
             }
         }
 
+        let app_type = app_type_from_circuit_key(key);
+        let config = self.config.circuit_breaker_config(app_type).await;
+
         // 如果不存在，获取写锁创建
-        let mut breakers = self.circuit_breakers.write().await;
+        let mut breakers = self.breakers.write().await;
 
         // 双重检查，防止竞争条件
         if let Some(breaker) = breakers.get(key) {
             return breaker.clone();
         }
-
-        let app_type = app_type_from_circuit_key(key);
-
-        // 按应用独立读取熔断器配置
-        let config = self.sources.config.circuit_breaker_config(app_type).await;
 
         let breaker = Arc::new(CircuitBreaker::new(config));
         breakers.insert(key.to_string(), breaker.clone());
@@ -407,15 +456,8 @@ impl ProviderRouter {
     }
 
     async fn get_existing_circuit_breaker(&self, key: &str) -> Option<Arc<CircuitBreaker>> {
-        let breakers = self.circuit_breakers.read().await;
+        let breakers = self.breakers.read().await;
         breakers.get(key).cloned()
-    }
-
-    async fn failure_threshold_for_app(&self, app_type: &str, fallback: u32) -> u32 {
-        self.sources
-            .config
-            .failure_threshold(app_type, fallback)
-            .await
     }
 }
 
@@ -490,8 +532,12 @@ mod tests {
         let db = Arc::new(Database::memory().unwrap());
         let router = provider_router_from_database(db);
 
-        let breaker = router.get_or_create_circuit_breaker("claude:test").await;
-        assert!(breaker.allow_request().await.allowed);
+        assert!(
+            router
+                .allow_provider_request("test", "claude")
+                .await
+                .allowed
+        );
     }
 
     #[tokio::test]

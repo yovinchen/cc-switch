@@ -2,12 +2,12 @@
 
 > 分支：`refactor-proxy-channel-migration-module`
 > 基线：`origin/main`
-> 日期：2026-06-23
+> 日期：2026-06-24
 > 状态：已进入分阶段实现
 
 ## 当前落地状态
 
-截至 2026-06-23，本分支已经完成以下迁移切片：
+截至 2026-06-24，本分支已经完成以下迁移切片：
 
 1. 新增 host-neutral `proxy_core` 领域模型和 `ProxyServices` 端口，主工程通过 `cc-switch-proxy-core` path crate 引用。
 2. 新增 `proxy_channels`、`proxy_channel_models`、`proxy_channel_health` 等 channel 存储，并提供 legacy provider/endpoints 到 channel 的兼容投影。
@@ -2022,7 +2022,7 @@ dry-run route 的 circuit-open 识别也继续收敛：`route_candidate_channel_
 
 provider failover 的 circuit lookup 也继续收敛：`provider_failover_circuit_lookups` 负责保留 failover queue 顺序、标记 missing provider 并生成已配置 provider 的 circuit key；`proxy_core_adapter::provider_failover_sources_from_router_db` 负责读取 DB provider id facts 与 failover queue 并投影为 lookup facts，`ProviderRouter` 只查询 live breaker 可用性，随后把 lookup availability facts 交给 `select_failover_provider_ids_from_router_lookup_availability` 投影为 selection candidates 并执行 core selection 策略，最终仍只返回 provider id 列表。
 
-`ProviderRouter` 的配置源、健康持久化和 management dry-run route resolution 也已进一步收口：auto failover gate、circuit breaker config 和 failure threshold 的 `proxy_config` 读取通过 `proxy_core_adapter::*_from_router_db` helper 完成；provider/channel health 写入和 channel health reset 持久化通过 `proxy_core_adapter::*_health_*_from_router_db` helper 完成；management route response 由 adapter 组合 core resolver 与 router circuit availability；DB-backed router 构造统一由 `provider_router_from_database` adapter factory 完成。`ProviderRouter` 当前保留的核心职责是 live circuit breaker map、permit/half-open 状态机、breaker availability 查询和已有公开方法的 `AppError` 兼容。
+`ProviderRouter` 的配置源、健康持久化和 management dry-run route resolution 也已进一步收口：auto failover gate、circuit breaker config 和 failure threshold 的 `proxy_config` 读取通过 `proxy_core_adapter::*_from_router_db` helper 完成；provider/channel health 写入和 channel health reset 持久化通过 `proxy_core_adapter::*_health_*_from_router_db` helper 完成；management route response 由 adapter 组合 core resolver 与 router circuit availability；DB-backed router 构造统一由 `provider_router_from_database` adapter factory 完成。live circuit breaker map、permit/half-open 状态机、breaker availability 查询和热更新已由 router 内的 `ProviderRoutingCircuitRuntime` 承接；`ProviderRouter` 保留现有公开方法与 `AppError` 兼容，但自身不再直接持有 breaker map。
 
 auto failover 开关启用的计划也已收敛：`plan_auto_failover_toggle` 负责“接管未开启则拒绝”、“队列非空则切 P1”、“队列为空则自动加入当前 provider 并切换”的纯决策；Tauri command 只读取 config/queue/current provider、执行 DB 队列写入、调用 proxy service 切换、写回 config 并 emit core 事件 contract。
 
@@ -2137,7 +2137,7 @@ ProxyRequest
 | `handlers.rs` | `transport/http/handlers.rs` + `engine` | HTTP 解析留 transport，业务处理移到 engine |
 | `handler_context.rs` | `engine/context.rs` | DB/settings 读取改为 service traits |
 | `forwarder.rs` | `engine/forward_pipeline.rs` | 切掉 Tauri/AppHandle/Database 依赖 |
-| `provider_router.rs` | `engine/routing.rs` | 当前已通过 router 端 provider/channel/config/health 四个 focused port 注入 source/store，channel route 输入已切到 core `RouteResolveChannelInput`，DB-backed 构造统一在 host adapter factory；下一步把这些端口对齐到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore`，并把 live breaker map 迁入 runtime-owned routing service |
+| `provider_router.rs` | `engine/routing.rs` | 当前已通过 router 端 provider/channel/config/health 四个 focused port 注入 source/store，channel route 输入已切到 core `RouteResolveChannelInput`，DB-backed 构造统一在 host adapter factory；live breaker map 已由 `ProviderRoutingCircuitRuntime` 承接，下一步把这些端口对齐到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore` |
 | `failover_switch.rs` | `host/cc_switch` | 核心只发 failover event |
 | `response_processor.rs` | `engine/response_pipeline.rs` | 用量落库改为 `UsageSink` |
 | `usage/logger.rs` | `host/cc_switch/database_usage_sink.rs` | 只保留 parser/calculator 在核心 |
