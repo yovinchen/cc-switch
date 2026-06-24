@@ -114,7 +114,7 @@ pub mod ports {
         GlobalProxyConfig, ModelCatalog, ModelCatalogProvider, OptimizerConfig,
         OptimizerConfigSpec,
         DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD, DEFAULT_PROXY_LISTEN_ADDRESS,
-        DEFAULT_PROXY_LISTEN_PORT, app_proxy_config_raw,
+        DEFAULT_PROXY_LISTEN_PORT, app_proxy_config_raw, app_proxy_config_with_enabled,
         apply_proxy_runtime_active_targets, channel_health_reset_from_parts,
         copilot_optimizer_config_spec_from_config, current_route_target_from_input,
         optimizer_config_spec_from_config,

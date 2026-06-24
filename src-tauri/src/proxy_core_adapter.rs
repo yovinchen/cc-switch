@@ -295,6 +295,7 @@ pub(crate) type ProxyConfig = crate::proxy_core::api::ports::ProxyConfig;
 pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntimeStatus;
 
 pub(crate) use crate::proxy_core::api::ports::{
+    app_proxy_config_with_enabled as proxy_app_config_with_enabled,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
 };
@@ -1121,14 +1122,6 @@ pub(crate) async fn proxy_app_config_from_db_source(
 
 pub(crate) fn app_summary_config_from_config_source(config: AppProxyConfig) -> AppSummaryConfig {
     AppSummaryConfig::new(config.enabled, config.auto_failover_enabled)
-}
-
-pub(crate) fn proxy_app_config_with_enabled(
-    mut config: AppProxyConfig,
-    enabled: bool,
-) -> AppProxyConfig {
-    config.enabled = enabled;
-    config
 }
 
 pub(crate) async fn proxy_app_enabled_from_db(

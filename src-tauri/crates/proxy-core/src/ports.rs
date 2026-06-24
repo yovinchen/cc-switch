@@ -973,6 +973,14 @@ pub fn app_proxy_config_defaults_for_app(app_type: &str) -> AppProxyConfig {
     }
 }
 
+pub fn app_proxy_config_with_enabled(
+    mut config: AppProxyConfig,
+    enabled: bool,
+) -> AppProxyConfig {
+    config.enabled = enabled;
+    config
+}
+
 pub fn app_proxy_config_raw(
     config: AppProxyConfig,
     current_provider_id: Option<String>,
@@ -3130,8 +3138,8 @@ impl ProxyCoreEvent {
 mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-        app_proxy_config_defaults_for_app, app_proxy_config_raw, auth_info_from_profile_ref,
-        auth_info_from_route_context, channel_health_reset_from_parts,
+        app_proxy_config_defaults_for_app, app_proxy_config_raw, app_proxy_config_with_enabled,
+        auth_info_from_profile_ref, auth_info_from_route_context, channel_health_reset_from_parts,
         channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
@@ -4214,6 +4222,34 @@ mod tests {
         assert_eq!(other.max_retries, 3);
         assert_eq!(other.streaming_idle_timeout, 120);
         assert_eq!(other.circuit_min_requests, 10);
+    }
+
+    #[test]
+    fn app_proxy_config_with_enabled_updates_only_enabled_flag() {
+        let config = AppProxyConfig {
+            app_type: "claude".to_string(),
+            enabled: false,
+            auto_failover_enabled: true,
+            max_retries: 6,
+            streaming_first_byte_timeout: 90,
+            streaming_idle_timeout: 180,
+            non_streaming_timeout: 600,
+            circuit_failure_threshold: 8,
+            circuit_success_threshold: 3,
+            circuit_timeout_seconds: 90,
+            circuit_error_rate_threshold: 0.7,
+            circuit_min_requests: 15,
+        };
+
+        let enabled = app_proxy_config_with_enabled(config.clone(), true);
+
+        assert!(enabled.enabled);
+        assert!(enabled.auto_failover_enabled);
+        assert_eq!(enabled.max_retries, config.max_retries);
+
+        let disabled = app_proxy_config_with_enabled(enabled, false);
+        assert!(!disabled.enabled);
+        assert_eq!(disabled.app_type, "claude");
     }
 
     #[test]
