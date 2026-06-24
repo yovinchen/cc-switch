@@ -6447,6 +6447,10 @@ fn production_forwarder_uses_request_source_resource() {
         source.contains("log_upstream_request"),
         "ForwarderRequestSource must own upstream request logging"
     );
+    assert!(
+        source.contains("transform_request_body"),
+        "ForwarderRequestSource must own transformed request body selection"
+    );
 
     let impl_forbidden_markers = [
         "prepare_upstream_request_body_with_report(",
@@ -6506,6 +6510,8 @@ fn production_forwarder_uses_request_source_resource() {
         "is_openai_o_series(",
         "supports_reasoning_effort(",
         "forwarder_provider_transform_request(",
+        "convert_codex_responses_to_chat_body(",
+        "transform_provider_request_body(",
         "forwarder_should_convert_codex_responses_to_chat(",
         "forward_upstream_url_plan(",
         "ForwardUpstreamUrlPlanInput",
@@ -6521,6 +6527,7 @@ fn production_forwarder_uses_request_source_resource() {
         "forwarder_uses_anthropic_rectifiers(",
         "forwarder_provider_adapter_for_app(",
         ".get(\"model\")",
+        "request_body_model(&mapped_body)",
         "request_body_model(&filtered_body)",
         ">>> 请求 URL",
         "请求体内容",

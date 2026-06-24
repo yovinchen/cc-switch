@@ -8823,6 +8823,20 @@ pub(crate) struct ForwarderProviderTransformInput<'a> {
     pub(crate) provider: &'a Provider,
 }
 
+pub(crate) struct ForwarderRequestBodyTransformInput<'a> {
+    pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) body: Value,
+    pub(crate) provider: &'a Provider,
+    pub(crate) transform_plan: &'a ForwarderTransformPlan,
+    pub(crate) codex_responses_to_chat: bool,
+    pub(crate) claude_transformed_body: Option<Value>,
+}
+
+pub(crate) struct ForwarderRequestBodyTransform {
+    pub(crate) body: Value,
+    pub(crate) outbound_model: Option<String>,
+}
+
 pub(crate) struct ForwarderTransformPlanInput<'a> {
     pub(crate) adapter: &'a ForwarderAdapterHandle,
     pub(crate) provider: &'a Provider,
@@ -8971,6 +8985,11 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderProviderTransformInput<'_>,
     ) -> Result<Value, ProxyError>;
+
+    fn transform_request_body(
+        &self,
+        input: ForwarderRequestBodyTransformInput<'_>,
+    ) -> Result<ForwarderRequestBodyTransform, ProxyError>;
 
     fn transform_plan(&self, input: ForwarderTransformPlanInput<'_>) -> ForwarderTransformPlan;
 
@@ -9200,6 +9219,34 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         input: ForwarderProviderTransformInput<'_>,
     ) -> Result<Value, ProxyError> {
         forwarder_provider_transform_request(input.adapter, input.body, input.provider)
+    }
+
+    fn transform_request_body(
+        &self,
+        input: ForwarderRequestBodyTransformInput<'_>,
+    ) -> Result<ForwarderRequestBodyTransform, ProxyError> {
+        let outbound_model = self.request_body_model(&input.body);
+        let body = if input.codex_responses_to_chat {
+            self.convert_codex_responses_to_chat_body(ForwarderCodexResponsesToChatInput {
+                body: input.body,
+                provider: input.provider,
+            })
+        } else if input.transform_plan.use_claude_transform {
+            input.claude_transformed_body.unwrap_or(input.body)
+        } else if input.transform_plan.use_provider_transform {
+            self.transform_provider_request_body(ForwarderProviderTransformInput {
+                adapter: input.adapter,
+                body: input.body,
+                provider: input.provider,
+            })?
+        } else {
+            input.body
+        };
+
+        Ok(ForwarderRequestBodyTransform {
+            body,
+            outbound_model,
+        })
     }
 
     fn transform_plan(&self, input: ForwarderTransformPlanInput<'_>) -> ForwarderTransformPlan {
@@ -15152,6 +15199,111 @@ base_url = "https://api.openai.com/v1"
             .expect("provider transform");
 
         assert_eq!(transformed, body);
+    }
+
+    #[test]
+    fn forwarder_request_source_transforms_request_body_and_tracks_outbound_model() {
+        let source = CcSwitchForwarderRequestSource;
+        let adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+        let no_transform_plan = ForwarderTransformPlan {
+            needs_transform: false,
+            use_claude_transform: false,
+            use_provider_transform: false,
+            claude_api_format_for_url: None,
+            claude_api_format_for_transform: None,
+        };
+
+        let passthrough = source
+            .transform_request_body(ForwarderRequestBodyTransformInput {
+                adapter: adapter.as_ref(),
+                body: json!({"model": "mapped-model", "messages": []}),
+                provider: &provider,
+                transform_plan: &no_transform_plan,
+                codex_responses_to_chat: false,
+                claude_transformed_body: None,
+            })
+            .expect("passthrough request body");
+        assert_eq!(passthrough.body["model"], "mapped-model");
+        assert_eq!(passthrough.outbound_model.as_deref(), Some("mapped-model"));
+
+        let claude_transform_plan = ForwarderTransformPlan {
+            needs_transform: true,
+            use_claude_transform: true,
+            use_provider_transform: false,
+            claude_api_format_for_url: Some("openai_chat".to_string()),
+            claude_api_format_for_transform: Some("openai_chat".to_string()),
+        };
+        let claude_transformed = source
+            .transform_request_body(ForwarderRequestBodyTransformInput {
+                adapter: adapter.as_ref(),
+                body: json!({"model": "mapped-model", "messages": []}),
+                provider: &provider,
+                transform_plan: &claude_transform_plan,
+                codex_responses_to_chat: false,
+                claude_transformed_body: Some(json!({
+                    "model": "chat-model",
+                    "messages": []
+                })),
+            })
+            .expect("Claude transformed request body");
+        assert_eq!(claude_transformed.body["model"], "chat-model");
+        assert_eq!(
+            claude_transformed.outbound_model.as_deref(),
+            Some("mapped-model")
+        );
+    }
+
+    #[test]
+    fn forwarder_request_source_prefers_codex_chat_bridge_over_claude_body() {
+        let source = CcSwitchForwarderRequestSource;
+        let adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let provider = Provider::with_id(
+            "codex-chat".to_string(),
+            "Codex Chat".to_string(),
+            json!({
+                "config": r#"model_provider = "openai"
+model = " upstream-model "
+
+[model_providers.openai]
+wire_api = "chat"
+base_url = "https://api.openai.com/v1"
+"#,
+            }),
+            None,
+        );
+        let transform_plan = ForwarderTransformPlan {
+            needs_transform: true,
+            use_claude_transform: true,
+            use_provider_transform: false,
+            claude_api_format_for_url: Some("openai_chat".to_string()),
+            claude_api_format_for_transform: Some("openai_chat".to_string()),
+        };
+
+        let transformed = source
+            .transform_request_body(ForwarderRequestBodyTransformInput {
+                adapter: adapter.as_ref(),
+                body: json!({
+                    "model": "client-model",
+                    "instructions": "Stay concise.",
+                    "input": "Hello"
+                }),
+                provider: &provider,
+                transform_plan: &transform_plan,
+                codex_responses_to_chat: true,
+                claude_transformed_body: Some(json!({"model": "should-not-win"})),
+            })
+            .expect("Codex chat bridge body");
+
+        assert_eq!(transformed.body["model"], "upstream-model");
+        assert_eq!(transformed.body["messages"][0]["role"], "system");
+        assert_eq!(transformed.body["messages"][1]["content"], "Hello");
+        assert_eq!(transformed.outbound_model.as_deref(), Some("client-model"));
     }
 
     #[test]

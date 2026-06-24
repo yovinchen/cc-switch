@@ -13,11 +13,11 @@ use crate::proxy_core_adapter::{
     ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderMaybeCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
-    ForwarderCodexResponsesToChatInput, ForwarderCodexResponsesToChatPlanInput,
+    ForwarderCodexResponsesToChatPlanInput,
     ForwarderCopilotRequestOptimizationGateInput,
     ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
-    ForwarderProviderTransformInput, ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
-    ForwarderRequestRectifierPlan,
+    ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
+    ForwarderRequestBodyTransformInput, ForwarderRequestRectifierPlan,
     ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
     ForwarderTransformPlanInput, OptimizerConfig,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef,
@@ -1051,44 +1051,41 @@ impl RequestForwarder {
         let effective_endpoint = url_plan.effective_endpoint;
         let url = url_plan.url;
 
-        // 记录映射后的出站模型名（此时 mapped_body 已完成接管映射 / [1m] 剥离 /
-        // Copilot 归一化）。格式转换后若 body 仍带 model 字段会在下方刷新覆盖；
-        // gemini_native 等模型在 URL 中的格式则保留此处的转换前真值。
-        let mut outbound_model = self.request_source.request_body_model(&mapped_body);
+        let claude_transformed_body = if transform_plan.use_claude_transform
+            && !codex_responses_to_chat
+        {
+            Some(
+                self.protocol_state_source
+                    .transform_claude_request(ForwarderClaudeProtocolTransformInput {
+                        body: mapped_body.clone(),
+                        provider,
+                        api_format: transform_plan.claude_api_format_for_transform.as_deref(),
+                        session_id: &self.session_id,
+                        session_client_provided: self.session_client_provided,
+                    })
+                    .map_err(ProxyError::TransformError)?,
+            )
+        } else {
+            None
+        };
 
-        // 转换请求体（如果需要）
-        let mut request_body = if codex_responses_to_chat {
-            let mut mapped_body = mapped_body;
+        if codex_responses_to_chat {
             self.protocol_state_source
                 .enrich_codex_chat_request(&mut mapped_body)
                 .await;
-            self.request_source.convert_codex_responses_to_chat_body(
-                ForwarderCodexResponsesToChatInput {
-                    body: mapped_body,
-                    provider,
-                },
-            )
-        } else if transform_plan.use_claude_transform {
-            self.protocol_state_source
-                .transform_claude_request(ForwarderClaudeProtocolTransformInput {
-                    body: mapped_body,
-                    provider,
-                    api_format: transform_plan.claude_api_format_for_transform.as_deref(),
-                    session_id: &self.session_id,
-                    session_client_provided: self.session_client_provided,
-                })
-                .map_err(ProxyError::TransformError)?
-        } else if transform_plan.use_provider_transform {
-            self.request_source.transform_provider_request_body(
-                ForwarderProviderTransformInput {
-                    adapter,
-                    body: mapped_body,
-                    provider,
-                },
-            )?
-        } else {
-            mapped_body
-        };
+        }
+        let transformed_request = self.request_source.transform_request_body(
+            ForwarderRequestBodyTransformInput {
+                adapter,
+                body: mapped_body,
+                provider,
+                transform_plan: &transform_plan,
+                codex_responses_to_chat,
+                claude_transformed_body,
+            },
+        )?;
+        let mut request_body = transformed_request.body;
+        let mut outbound_model = transformed_request.outbound_model;
 
         self.request_source
             .apply_app_media_prevention(ForwarderAppMediaPreventionInput {
