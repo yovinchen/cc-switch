@@ -5493,8 +5493,8 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
-        "pub(crate) async fn resolve_managed_account_auth",
-        "pub(crate) async fn resolve_copilot_api_endpoint",
+        "async fn resolve_managed_account_auth_with_runtime_source",
+        "#[cfg(test)]\npub(crate) async fn resolve_managed_account_auth_from_runtime_source",
     );
 
     let mut violations = Vec::new();
@@ -5527,6 +5527,24 @@ fn production_adapter_managed_auth_runtime_source_is_trait() {
     assert!(
         source.contains("trait ManagedAccountRuntimeSource"),
         "proxy_core_adapter must expose managed-account runtime reads behind a source trait"
+    );
+}
+
+#[test]
+fn production_adapter_managed_auth_tests_use_runtime_source_surface() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let test_surface = function_slice(
+        &source,
+        "#[cfg(test)]\npub(crate) async fn resolve_managed_account_auth_from_runtime_source",
+        "pub(crate) const SESSION_REQUEST_ID_PREFIX",
+    );
+
+    assert!(
+        !test_surface.contains("app_handle: Option<&tauri::AppHandle>")
+            && !test_surface.contains("managed_account_runtime_source_from_app_handle(app_handle.cloned())"),
+        "managed-auth adapter test helpers must use ManagedAccountRuntimeSource directly instead of AppHandle wrappers"
     );
 }
 

@@ -178,7 +178,10 @@ pub(crate) async fn resolve_codex_oauth(
 mod tests {
     use super::*;
     use crate::provider::Provider;
-    use crate::proxy_core_adapter::{resolve_managed_account_auth, ProviderAuthStrategy};
+    use crate::proxy_core_adapter::{
+        default_managed_account_runtime_source, resolve_managed_account_auth_from_runtime_source,
+        ProviderAuthStrategy,
+    };
 
     #[tokio::test]
     async fn non_managed_auth_passes_through_without_app_handle() {
@@ -190,7 +193,12 @@ mod tests {
             None,
         );
 
-        let resolved = resolve_managed_account_auth(None, &provider, auth.clone())
+        let runtime_source = default_managed_account_runtime_source();
+        let resolved = resolve_managed_account_auth_from_runtime_source(
+            runtime_source.as_ref(),
+            &provider,
+            auth.clone(),
+        )
             .await
             .expect("non managed auth");
 
@@ -208,8 +216,9 @@ mod tests {
             None,
         );
 
-        let copilot = resolve_managed_account_auth(
-            None,
+        let runtime_source = default_managed_account_runtime_source();
+        let copilot = resolve_managed_account_auth_from_runtime_source(
+            runtime_source.as_ref(),
             &provider,
             ProviderAuthInfo::new(
                 "PROXY_MANAGED".to_string(),
@@ -224,8 +233,8 @@ mod tests {
                 if message == "GitHub Copilot 认证不可用（无 AppHandle）"
         ));
 
-        let codex = resolve_managed_account_auth(
-            None,
+        let codex = resolve_managed_account_auth_from_runtime_source(
+            runtime_source.as_ref(),
             &provider,
             ProviderAuthInfo::new(
                 "PROXY_MANAGED".to_string(),

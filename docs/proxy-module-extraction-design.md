@@ -1197,6 +1197,7 @@
 本轮继续把 `CcSwitchManagedAccountRuntimeSource` 提升为 `ManagedAccountRuntimeSource` trait 实现：adapter 的 managed-auth plan/resolution 只依赖运行态 source trait，CC Switch 的 Tauri/Copilot/Codex OAuth 读取保留在默认 source 实现内，为后续外部宿主替换 source 留出稳定接点。
 本轮继续把 `ManagedAccountRuntimeSource` 接入 `CcSwitchProxyRuntime`、`ForwarderRuntimeHostResources` 和 `RequestForwarder`：forwarder 对 Copilot 动态 endpoint、live models、model vendor 和 managed token resolution 的读取都走 runtime 注入 source，不再通过 `app_handle` wrapper 临时构造运行态读取入口。
 本轮继续收窄 `ManagedAccountRuntimeSource` 的 forwarder 生产接口：provider account-id 投影、managed auth plan/resolution、Copilot dynamic endpoint、live models 与 model vendor 查询都改为 source 的 provider-aware 方法，`RequestForwarder` 不再调用 `*_from_runtime_source` helper。
+本轮继续收窄 managed-auth 的测试入口：`proxy_core_adapter` 不再保留 test-only `AppHandle` convenience wrapper，单测通过 `ManagedAccountRuntimeSource` 直接验证 plan/resolution 行为，避免后续测试重新依赖 Tauri runtime 入口。
 本轮继续把 Copilot dynamic endpoint 到上游 `base_url` 的选择、日志和写回收敛到 `ManagedAccountRuntimeSource::apply_copilot_dynamic_base_url_for_provider`：`RequestForwarder` 不再直接读取 runtime endpoint、调用 dynamic base URL 决策 helper 或维护 base URL mutation 细节，只触发 source 行为。
 本轮继续把 Claude adapter gate、Copilot model vendor 读取与 Claude API format 决策收敛到 `ManagedAccountRuntimeSource::resolve_claude_api_format_for_adapter`：`RequestForwarder` 不再直接读取 Copilot vendor、判断是否需要解析 Claude API format 或调用 Claude format 决策 helper，只消费 source 返回的可选 API format。
 本轮继续把 Claude body policy 的 adapter/API-format gate 收敛到 `ForwarderRequestSource::apply_claude_body_policies`：`RequestForwarder` 不再先行判断是否应用 Claude body policy，只把 adapter fact、可选 API format 与 rectifier 配置交给 request source。
@@ -2028,7 +2029,7 @@ auto failover 开关启用的计划也已收敛：`plan_auto_failover_toggle` �
 
 熔断 reset 后的恢复切回也已进一步收敛：`restored_provider_switchback_decision` 接收 failover queue position facts，返回是否切回以及日志所需的 restored/current sort_index；`reset_circuit_breaker` 只负责读取 DB 队列、查询 provider 名称并调用 `FailoverSwitchManager` 执行宿主副作用。
 
-管理 API 查询类入口已基本收敛到 `ProxyEngine`：`list_proxy_providers`、`list_proxy_channels` 的 route-aware 分支、`list_proxy_groups` 和 `test_proxy_channel` 都只保留 HTTP path/query/body 提取与错误映射；固定 app catalog 已从 `proxy-core` 的端口默认实现移出，改由 adapter-owned `CcSwitchConfigSource` 显式提供；RoutePolicy 的 failover provider id 读取也已由 domain/routing helper 维护，engine 不再直接读 raw JSON 字段；下一步应继续减少 host runtime 对 Tauri runtime smoke 覆盖和外部集成契约的隐性依赖。
+管理 API 查询类入口已基本收敛到 `ProxyEngine`：`list_proxy_providers`、`list_proxy_channels` 的 route-aware 分支、`list_proxy_groups` 和 `test_proxy_channel` 都只保留 HTTP path/query/body 提取与错误映射；固定 app catalog 已从 `proxy-core` 的端口默认实现移出，改由 adapter-owned `CcSwitchConfigSource` 显式提供；RoutePolicy 的 failover provider id 读取也已由 domain/routing helper 维护，engine 不再直接读 raw JSON 字段；managed-auth 的单测入口也已切到 runtime source surface；下一步应继续减少 host runtime 对 Tauri runtime smoke 覆盖和外部集成契约的隐性依赖。
 
 CC Switch 桌面宿主通过 adapter-owned `CcSwitchModelCatalogProvider::load_client_catalog` 实现 Codex `model_catalog_json` 文件读取和 stale guard；外部宿主可以返回自己的模型目录。后续如需让 Codex `/v1/models` 完全使用 route-visible 目录，应在 core 内生成 Codex 兼容 raw catalog，而不是让 handler 重新拼装。
 
