@@ -714,7 +714,6 @@ impl RequestForwarder {
                     match failure_decision {
                         ForwarderFailureDecision::Retryable {
                             error_message,
-                            log_line,
                         } => {
                             // 可重试：真正的 provider 故障 → 记录失败并更新熔断器/DB 健康度
                             self.record_failure_result(
@@ -730,7 +729,13 @@ impl RequestForwarder {
                                 .record_provider_failure(provider, &error_message)
                                 .await;
 
-                            log::warn!("{log_line}");
+                            self.runtime_state_source.log_retryable_forward_failure(
+                                app_type_str,
+                                &e,
+                                provider,
+                                attempted_providers,
+                                attempts.len(),
+                            );
 
                             last_error = Some(e);
                             last_provider = Some(provider.clone());

@@ -2982,7 +2982,6 @@ pub(crate) type ForwardFailureLog =
 pub(crate) enum ForwarderFailureDecision {
     Retryable {
         error_message: String,
-        log_line: String,
     },
     NonRetryable,
 }
@@ -8175,6 +8174,14 @@ pub(crate) trait ForwarderRuntimeStateSource {
         attempted_providers: usize,
         total_providers: usize,
     ) -> ForwarderFailureDecision;
+    fn log_retryable_forward_failure(
+        &self,
+        app_type: &str,
+        error: &ProxyError,
+        provider: &Provider,
+        attempted_providers: usize,
+        total_providers: usize,
+    );
     fn log_terminal_forward_failure(
         &self,
         app_type: &str,
@@ -8260,6 +8267,24 @@ impl CcSwitchForwarderRuntimeStateSource {
             last_failure.as_ref(),
         )
         .map(|log| forwarder_failure_log_line(app_type, &log))
+    }
+
+    fn retryable_forward_failure_log_line(
+        &self,
+        app_type: &str,
+        error: &ProxyError,
+        provider: &Provider,
+        attempted_providers: usize,
+        total_providers: usize,
+    ) -> String {
+        let failure = forward_failure_kind_from_proxy_error(error);
+        let log = build_retryable_forward_failure_log(
+            provider.name.as_str(),
+            attempted_providers,
+            total_providers,
+            &failure,
+        );
+        forwarder_failure_log_line(app_type, &log)
     }
 }
 
@@ -8393,29 +8418,40 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
 
     fn forward_failure_decision(
         &self,
-        app_type: &str,
+        _app_type: &str,
         error: &ProxyError,
-        provider: &Provider,
-        attempted_providers: usize,
-        total_providers: usize,
+        _provider: &Provider,
+        _attempted_providers: usize,
+        _total_providers: usize,
     ) -> ForwarderFailureDecision {
         let failure = forward_failure_kind_from_proxy_error(error);
         let error_message = error.to_string();
         match categorize_forward_failure(&failure) {
             ForwardFailureCategory::Retryable => {
-                let log = build_retryable_forward_failure_log(
-                    provider.name.as_str(),
-                    attempted_providers,
-                    total_providers,
-                    &failure,
-                );
-                ForwarderFailureDecision::Retryable {
-                    error_message,
-                    log_line: forwarder_failure_log_line(app_type, &log),
-                }
+                ForwarderFailureDecision::Retryable { error_message }
             }
             ForwardFailureCategory::NonRetryable => ForwarderFailureDecision::NonRetryable,
         }
+    }
+
+    fn log_retryable_forward_failure(
+        &self,
+        app_type: &str,
+        error: &ProxyError,
+        provider: &Provider,
+        attempted_providers: usize,
+        total_providers: usize,
+    ) {
+        log::warn!(
+            "{}",
+            self.retryable_forward_failure_log_line(
+                app_type,
+                error,
+                provider,
+                attempted_providers,
+                total_providers
+            )
+        );
     }
 
     fn log_terminal_forward_failure(
@@ -16506,20 +16542,23 @@ base_url = "https://api.openai.com/v1"
             source.forward_failure_decision("claude", &non_retryable_error, &provider, 1, 2);
 
         match retryable {
-            ForwarderFailureDecision::Retryable {
-                error_message,
-                log_line,
-            } => {
+            ForwarderFailureDecision::Retryable { error_message } => {
                 assert_eq!(error_message, "超时: upstream timed out");
-                assert_eq!(
-                    log_line,
-                    "[claude] [FWD-001] Provider Relay 失败，继续尝试下一个 (1/2): 请求超时: upstream timed out"
-                );
             }
             ForwarderFailureDecision::NonRetryable => {
                 panic!("timeout should be retryable")
             }
         }
+        assert_eq!(
+            source.retryable_forward_failure_log_line(
+                "claude",
+                &ProxyError::Timeout("upstream timed out".to_string()),
+                &provider,
+                1,
+                2,
+            ),
+            "[claude] [FWD-001] Provider Relay 失败，继续尝试下一个 (1/2): 请求超时: upstream timed out"
+        );
 
         match non_retryable {
             ForwarderFailureDecision::Retryable { .. } => {
