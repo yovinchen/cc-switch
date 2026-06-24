@@ -2867,9 +2867,10 @@ pub(crate) fn provider_from_opencode_live_config(
 }
 
 pub(crate) use crate::proxy_core::api::domain::{
-    channel_auth_profile_action, channel_auth_profile_missing_provider_warning,
-    ChannelAuthProfileAction,
+    channel_auth_profile_action, ChannelAuthProfileAction,
 };
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::domain::channel_auth_profile_missing_provider_warning;
 pub(crate) use crate::proxy_core::api::domain::{channel_spec_from_input, model_route_from_input};
 
 #[cfg(test)]
