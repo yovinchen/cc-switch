@@ -1031,6 +1031,12 @@ pub(crate) type ForwarderAuthHeaderFinalizationInput<'a> =
     crate::proxy_core::api::transport::ForwarderAuthHeaderFinalizationInput<'a>;
 pub(crate) type ForwarderPreparedCopilotAuthOptimization =
     crate::proxy_core::api::transport::PreparedCopilotAuthOptimization;
+pub(crate) type ForwarderProtocolPreparation =
+    crate::proxy_core::api::transport::ForwarderProtocolPreparation;
+pub(crate) type ForwarderProtocolPreparationInput<'a> =
+    crate::proxy_core::api::transport::ForwarderProtocolPreparationInput<'a>;
+pub(crate) type ForwarderTransformPlan =
+    crate::proxy_core::api::transport::ForwarderTransformPlan;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig;
 pub(crate) type StreamingTimeoutConfig = crate::proxy_core::api::config::StreamingTimeoutConfig;
@@ -3095,6 +3101,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     build_terminal_forward_failure_log, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
     contains_image_blocks, AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
+    forwarder_protocol_preparation_from_transform_plan,
     invalid_upstream_url_error_message,
     is_codex_chat_full_endpoint_base, is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results,
@@ -8901,25 +8908,6 @@ pub(crate) struct ForwarderTransformPlanInput<'a> {
     pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
 }
 
-pub(crate) struct ForwarderTransformPlan {
-    pub(crate) needs_transform: bool,
-    pub(crate) use_claude_transform: bool,
-    pub(crate) use_provider_transform: bool,
-    pub(crate) claude_api_format_for_url: Option<String>,
-    pub(crate) claude_api_format_for_transform: Option<String>,
-    pub(crate) codex_responses_to_chat: bool,
-}
-
-pub(crate) struct ForwarderProtocolPreparationInput<'a> {
-    pub(crate) transform_plan: &'a ForwarderTransformPlan,
-}
-
-pub(crate) struct ForwarderProtocolPreparation {
-    pub(crate) should_transform_claude_request: bool,
-    pub(crate) claude_api_format_for_transform: Option<String>,
-    pub(crate) codex_chat_enrichment_enabled: bool,
-}
-
 pub(crate) struct ForwarderUpstreamUrlInput<'a> {
     pub(crate) adapter: &'a ForwarderAdapterHandle,
     pub(crate) base_url: &'a str,
@@ -9399,15 +9387,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         &self,
         input: ForwarderProtocolPreparationInput<'_>,
     ) -> ForwarderProtocolPreparation {
-        let should_transform_claude_request =
-            input.transform_plan.use_claude_transform && !input.transform_plan.codex_responses_to_chat;
-        ForwarderProtocolPreparation {
-            should_transform_claude_request,
-            claude_api_format_for_transform: should_transform_claude_request
-                .then(|| input.transform_plan.claude_api_format_for_transform.clone())
-                .flatten(),
-            codex_chat_enrichment_enabled: input.transform_plan.codex_responses_to_chat,
-        }
+        forwarder_protocol_preparation_from_transform_plan(input)
     }
 
     fn plan_upstream_url(&self, input: ForwarderUpstreamUrlInput<'_>) -> ForwardUpstreamUrlPlan {

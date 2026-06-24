@@ -43,6 +43,42 @@ pub struct UpstreamSendPolicyInput {
     pub streaming_first_byte_timeout: Duration,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwarderTransformPlan {
+    pub needs_transform: bool,
+    pub use_claude_transform: bool,
+    pub use_provider_transform: bool,
+    pub claude_api_format_for_url: Option<String>,
+    pub claude_api_format_for_transform: Option<String>,
+    pub codex_responses_to_chat: bool,
+}
+
+pub struct ForwarderProtocolPreparationInput<'a> {
+    pub transform_plan: &'a ForwarderTransformPlan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwarderProtocolPreparation {
+    pub should_transform_claude_request: bool,
+    pub claude_api_format_for_transform: Option<String>,
+    pub codex_chat_enrichment_enabled: bool,
+}
+
+pub fn forwarder_protocol_preparation_from_transform_plan(
+    input: ForwarderProtocolPreparationInput<'_>,
+) -> ForwarderProtocolPreparation {
+    let should_transform_claude_request =
+        input.transform_plan.use_claude_transform && !input.transform_plan.codex_responses_to_chat;
+
+    ForwarderProtocolPreparation {
+        should_transform_claude_request,
+        claude_api_format_for_transform: should_transform_claude_request
+            .then(|| input.transform_plan.claude_api_format_for_transform.clone())
+            .flatten(),
+        codex_chat_enrichment_enabled: input.transform_plan.codex_responses_to_chat,
+    }
+}
+
 pub fn resolve_upstream_request_transport_policy(
     needs_transform: bool,
     codex_responses_to_chat: bool,
@@ -284,13 +320,50 @@ mod tests {
         is_streaming_upstream_request, mapped_channel_response_status,
         proxy_url_points_to_loopback_port, proxy_values_point_to_loopback_port,
         request_body_stream_flag, resolve_channel_response_status_mapping,
+        forwarder_protocol_preparation_from_transform_plan,
         resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-        UpstreamSendPolicyInput, UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT,
-        STREAMING_REQWEST_REQUEST_TIMEOUT,
+        ForwarderProtocolPreparationInput, ForwarderTransformPlan, UpstreamSendPolicyInput,
+        UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT, STREAMING_REQWEST_REQUEST_TIMEOUT,
     };
     use http::{header::ACCEPT, HeaderMap, HeaderValue};
     use serde_json::json;
     use std::time::Duration;
+
+    #[test]
+    fn forwarder_protocol_preparation_projects_transform_plan() {
+        let claude_plan = ForwarderTransformPlan {
+            needs_transform: true,
+            use_claude_transform: true,
+            use_provider_transform: false,
+            claude_api_format_for_url: Some("openai_chat".to_string()),
+            claude_api_format_for_transform: Some("openai_chat".to_string()),
+            codex_responses_to_chat: false,
+        };
+        let claude_preparation = forwarder_protocol_preparation_from_transform_plan(
+            ForwarderProtocolPreparationInput {
+                transform_plan: &claude_plan,
+            },
+        );
+        assert!(claude_preparation.should_transform_claude_request);
+        assert_eq!(
+            claude_preparation.claude_api_format_for_transform.as_deref(),
+            Some("openai_chat")
+        );
+        assert!(!claude_preparation.codex_chat_enrichment_enabled);
+
+        let codex_bridge_plan = ForwarderTransformPlan {
+            codex_responses_to_chat: true,
+            ..claude_plan
+        };
+        let codex_preparation = forwarder_protocol_preparation_from_transform_plan(
+            ForwarderProtocolPreparationInput {
+                transform_plan: &codex_bridge_plan,
+            },
+        );
+        assert!(!codex_preparation.should_transform_claude_request);
+        assert!(codex_preparation.claude_api_format_for_transform.is_none());
+        assert!(codex_preparation.codex_chat_enrichment_enabled);
+    }
 
     #[test]
     fn stream_flag_marks_request_as_streaming_and_forces_identity() {
