@@ -7438,6 +7438,74 @@ fn production_proxy_core_host_delegates_forward_runtime_config_source_to_adapter
 }
 
 #[test]
+fn production_forwarder_runtime_config_reaches_forwarder_as_single_input() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
+    let forwarder_source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+
+    let bridge_slice = function_slice(
+        &adapter_source,
+        "pub(crate) async fn forward_with_preplanned_host_runtime",
+        "pub(crate) async fn forward_proxy_request_with_host_runtime",
+    );
+    let constructor_slice = function_slice(
+        &forwarder_source,
+        "pub(crate) fn new_preplanned",
+        "async fn record_success_result",
+    );
+
+    assert!(
+        bridge_slice.contains("forwarder_config: ForwarderRuntimeConfig"),
+        "host forward bridge must receive grouped forwarder runtime config"
+    );
+    assert!(
+        bridge_slice.contains("        forwarder_config,"),
+        "host forward bridge must pass grouped forwarder runtime config into RequestForwarder"
+    );
+    assert!(
+        constructor_slice.contains("runtime_config: ForwarderRuntimeConfig"),
+        "RequestForwarder constructor must receive grouped forwarder runtime config"
+    );
+    assert!(
+        constructor_slice.contains("let ForwarderRuntimeConfig {"),
+        "RequestForwarder constructor must own runtime config destructuring"
+    );
+
+    let bridge_forbidden_markers = [
+        "let forwarder_options = forwarder_config.options",
+        "forwarder_options.non_streaming_timeout",
+        "forwarder_options.streaming_first_byte_timeout",
+        "forwarder_options.streaming_idle_timeout",
+        "forwarder_options.max_retries",
+        "forwarder_config.rectifier",
+        "forwarder_config.optimizer",
+        "forwarder_config.copilot_optimizer",
+    ];
+    let mut violations = Vec::new();
+
+    for (line_index, line) in production_lines(bridge_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in bridge_forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs forward bridge:{} splits runtime config marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "host forward bridge must not split forwarder runtime config before constructing RequestForwarder:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_proxy_core_host_delegates_forward_attempt_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
