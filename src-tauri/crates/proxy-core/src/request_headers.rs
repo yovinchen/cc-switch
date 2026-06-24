@@ -1,4 +1,5 @@
 use crate::error::{ProxyCoreError, ProxyCoreResult};
+use crate::provider_auth::ProviderAuthStrategy;
 use serde_json::Value;
 
 const REQUEST_HEADERS_STRIPPED_BEFORE_UPSTREAM: &[&str] = &[
@@ -94,6 +95,21 @@ pub enum ClaudeAuthHeaderKind {
     GoogleApiKey,
     GoogleOAuth,
     CodexOAuth,
+}
+
+pub fn claude_auth_header_kind_for_provider_strategy(
+    strategy: ProviderAuthStrategy,
+) -> Option<ClaudeAuthHeaderKind> {
+    match strategy {
+        ProviderAuthStrategy::Anthropic => Some(ClaudeAuthHeaderKind::AnthropicApiKey),
+        ProviderAuthStrategy::ClaudeAuth | ProviderAuthStrategy::Bearer => {
+            Some(ClaudeAuthHeaderKind::Bearer)
+        }
+        ProviderAuthStrategy::Google => Some(ClaudeAuthHeaderKind::GoogleApiKey),
+        ProviderAuthStrategy::GoogleOAuth => Some(ClaudeAuthHeaderKind::GoogleOAuth),
+        ProviderAuthStrategy::CodexOAuth => Some(ClaudeAuthHeaderKind::CodexOAuth),
+        ProviderAuthStrategy::GitHubCopilot => None,
+    }
 }
 
 pub fn should_send_anthropic_request_headers(
@@ -569,14 +585,15 @@ mod tests {
         anthropic_beta_header_value, auth_header_value, build_claude_auth_headers,
         build_codex_bearer_auth_headers, build_codex_oauth_session_headers,
         build_copilot_auth_headers, build_gemini_auth_headers, build_upstream_auth_headers,
-        build_upstream_request_headers, is_official_codex_client_user_agent,
-        should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-        should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
-        upstream_host_header_from_url, ClaudeAuthHeaderKind, CopilotAuthHeaderOverrides,
-        CopilotAuthHeadersInput, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
-        CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
+        build_upstream_request_headers, claude_auth_header_kind_for_provider_strategy,
+        is_official_codex_client_user_agent, should_preserve_exact_request_header_case,
+        should_send_anthropic_request_headers, should_skip_copilot_fingerprint_request_header,
+        should_strip_forwarded_request_header, upstream_host_header_from_url, ClaudeAuthHeaderKind,
+        CopilotAuthHeaderOverrides, CopilotAuthHeadersInput, UpstreamAuthHeadersInput,
+        UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
     };
     use crate::error::ProxyCoreError;
+    use crate::provider_auth::ProviderAuthStrategy;
     use http::{header, HeaderMap, HeaderName, HeaderValue};
     use serde_json::json;
 
@@ -752,6 +769,38 @@ mod tests {
         assert_eq!(codex[0].1, HeaderValue::from_static("Bearer chatgpt-token"));
         assert_eq!(codex[1].0.as_str(), "originator");
         assert_eq!(codex[1].1, HeaderValue::from_static("cc-switch"));
+    }
+
+    #[test]
+    fn maps_provider_auth_strategy_to_claude_static_header_kind() {
+        assert_eq!(
+            claude_auth_header_kind_for_provider_strategy(ProviderAuthStrategy::Anthropic),
+            Some(ClaudeAuthHeaderKind::AnthropicApiKey)
+        );
+        assert_eq!(
+            claude_auth_header_kind_for_provider_strategy(ProviderAuthStrategy::ClaudeAuth),
+            Some(ClaudeAuthHeaderKind::Bearer)
+        );
+        assert_eq!(
+            claude_auth_header_kind_for_provider_strategy(ProviderAuthStrategy::Bearer),
+            Some(ClaudeAuthHeaderKind::Bearer)
+        );
+        assert_eq!(
+            claude_auth_header_kind_for_provider_strategy(ProviderAuthStrategy::Google),
+            Some(ClaudeAuthHeaderKind::GoogleApiKey)
+        );
+        assert_eq!(
+            claude_auth_header_kind_for_provider_strategy(ProviderAuthStrategy::GoogleOAuth),
+            Some(ClaudeAuthHeaderKind::GoogleOAuth)
+        );
+        assert_eq!(
+            claude_auth_header_kind_for_provider_strategy(ProviderAuthStrategy::CodexOAuth),
+            Some(ClaudeAuthHeaderKind::CodexOAuth)
+        );
+        assert_eq!(
+            claude_auth_header_kind_for_provider_strategy(ProviderAuthStrategy::GitHubCopilot),
+            None
+        );
     }
 
     #[test]

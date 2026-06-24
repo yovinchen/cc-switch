@@ -1011,6 +1011,7 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
 
 pub(crate) type GeminiShadowStore = crate::proxy_core::api::transforms::GeminiShadowStore;
 pub(crate) type AuthProfileRef = crate::proxy_core::api::domain::AuthProfileRef;
+#[cfg(test)]
 pub(crate) type ClaudeAuthHeaderKind = crate::proxy_core::api::transport::ClaudeAuthHeaderKind;
 pub(crate) type ClaudeAuthKey = crate::proxy_core::api::auth::ClaudeAuthKey;
 pub(crate) type ClaudeAuthKeySource = crate::proxy_core::api::auth::ClaudeAuthKeySource;
@@ -3086,9 +3087,10 @@ pub(crate) use crate::proxy_core::api::transport::{
     build_codex_oauth_session_headers, build_codex_upstream_url, build_copilot_auth_headers,
     build_gemini_auth_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
-    classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
-    contains_image_blocks, invalid_upstream_url_error_message, is_codex_chat_full_endpoint_base,
-    is_openai_o_series, is_unsupported_image_error, merge_copilot_tool_results,
+    claude_auth_header_kind_for_provider_strategy, classify_copilot_request,
+    claude_transform_endpoint_rewrite_input_from_body, contains_image_blocks,
+    invalid_upstream_url_error_message, is_codex_chat_full_endpoint_base, is_openai_o_series,
+    is_unsupported_image_error, merge_copilot_tool_results,
     parse_json_request_body, parse_json_request_body_or_null,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
@@ -5329,23 +5331,10 @@ pub(crate) fn provider_claude_base_url(provider: &Provider) -> Option<String> {
     )
 }
 
-fn claude_auth_header_kind(strategy: ProviderAuthStrategy) -> Option<ClaudeAuthHeaderKind> {
-    match strategy {
-        ProviderAuthStrategy::Anthropic => Some(ClaudeAuthHeaderKind::AnthropicApiKey),
-        ProviderAuthStrategy::ClaudeAuth | ProviderAuthStrategy::Bearer => {
-            Some(ClaudeAuthHeaderKind::Bearer)
-        }
-        ProviderAuthStrategy::Google => Some(ClaudeAuthHeaderKind::GoogleApiKey),
-        ProviderAuthStrategy::GoogleOAuth => Some(ClaudeAuthHeaderKind::GoogleOAuth),
-        ProviderAuthStrategy::CodexOAuth => Some(ClaudeAuthHeaderKind::CodexOAuth),
-        ProviderAuthStrategy::GitHubCopilot => None,
-    }
-}
-
 pub(crate) fn provider_claude_auth_headers(
     auth: &ProviderAuthInfo,
 ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {
-    if let Some(kind) = claude_auth_header_kind(auth.strategy) {
+    if let Some(kind) = claude_auth_header_kind_for_provider_strategy(auth.strategy) {
         return build_claude_auth_headers(kind, &auth.api_key, auth.access_token.as_deref())
             .map_err(|error| error.to_string());
     }
