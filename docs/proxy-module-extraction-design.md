@@ -425,7 +425,7 @@
 414. thinking/media rectifier retry failure 的 provider/client 归因已进一步收敛为 `ForwarderRuntimeStateSource::rectifier_retry_failure_decision` 结构化决策；host forwarder 不再消费布尔 failover gate，只根据 source 返回的 provider failure 或 client failure 执行既有 permit、健康状态和错误返回流程。
 415. terminal forward failure 的 runtime status 文案已收敛到 `ForwarderRuntimeStateSource::{no_available_provider_status_message,terminal_failure_status_message}`；host forwarder 不再硬编码“所有供应商暂时不可用/都失败”的状态投影，只在终态分支记录 source 产出的 message。
 416. ordinary forward failure 的 retryable/non-retryable error message 投影已并入 `ForwarderRuntimeStateSource::forward_failure_decision`；host forwarder 不再对普通 forward 错误执行 `to_string()` 来填充熔断记录或 runtime status，只消费 source 决策中的 message。
-417. rectifier client-side failure 的 runtime status message 投影已收敛到 `ForwarderRuntimeStateSource::forward_error_status_message`；signature/budget rectifier 客户端失败分支不再直接对 `ProxyError` 执行 `to_string()`，只记录 runtime source 返回的状态文案。
+417. rectifier client-side failure 的 runtime status 记录已收敛到 `ForwarderRuntimeStateSource::record_forward_error_status`；signature/budget rectifier 客户端失败分支不再直接对 `ProxyError` 执行 `to_string()` 或处理中间状态文案，只把错误交给 runtime source 写入状态。
 418. success status 后的 failover switch target 已收敛到 `ForwarderRuntimeStateSource::record_success_status` 返回的 `ForwarderFailoverSwitchTarget`；host forwarder 不再把成功状态的 bool 决策重新投影为 provider id/name，只调度 source 返回的 target。
 419. forwarder 四条成功返回分支已收敛到 `complete_successful_attempt` 单入口；`forward()` 返回结构化 `ForwarderUpstreamSuccess`，成功副作用、active target 更新、status/switch 调度和 `ForwardResult` 投影不再在主成功/media/signature/budget retry 分支重复展开。
 420. per-attempt current provider 状态写入已收敛到 `ForwarderRuntimeStateSource::record_current_provider(&Provider)`；host forwarder 不再拆 `provider.id/name` 写 runtime status，只传递当前 provider 事实。
