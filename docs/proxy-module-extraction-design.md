@@ -427,6 +427,7 @@
 416. ordinary forward failure 的 retryable/non-retryable error message 投影已并入 `ForwarderRuntimeStateSource::forward_failure_decision`；host forwarder 不再对普通 forward 错误执行 `to_string()` 来填充熔断记录或 runtime status，只消费 source 决策中的 message。
 417. rectifier client-side failure 的 runtime status message 投影已收敛到 `ForwarderRuntimeStateSource::forward_error_status_message`；signature/budget rectifier 客户端失败分支不再直接对 `ProxyError` 执行 `to_string()`，只记录 runtime source 返回的状态文案。
 418. success status 后的 failover switch target 已收敛到 `ForwarderRuntimeStateSource::record_success_status` 返回的 `ForwarderFailoverSwitchTarget`；host forwarder 不再把成功状态的 bool 决策重新投影为 provider id/name，只调度 source 返回的 target。
+419. forwarder 四条成功返回分支已收敛到 `complete_successful_attempt` 单入口；`forward()` 返回结构化 `ForwarderUpstreamSuccess`，成功副作用、active target 更新、status/switch 调度和 `ForwardResult` 投影不再在主成功/media/signature/budget retry 分支重复展开。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
