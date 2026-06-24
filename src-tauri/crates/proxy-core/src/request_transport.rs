@@ -66,6 +66,14 @@ pub struct ForwarderProtocolPreparationInput<'a> {
     pub transform_plan: &'a ForwarderTransformPlan,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForwarderRequestBodyTransformAction {
+    ConvertCodexResponsesToChat,
+    UseClaudeTransformedBody,
+    ApplyProviderTransform,
+    Passthrough,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForwarderProtocolPreparation {
     pub should_transform_claude_request: bool,
@@ -113,6 +121,29 @@ pub fn forwarder_protocol_preparation_from_transform_plan(
             .flatten(),
         codex_chat_enrichment_enabled: input.transform_plan.codex_responses_to_chat,
     }
+}
+
+pub fn forwarder_request_body_transform_action_from_plan(
+    plan: &ForwarderTransformPlan,
+    claude_transformed_body_available: bool,
+) -> ForwarderRequestBodyTransformAction {
+    if plan.codex_responses_to_chat {
+        return ForwarderRequestBodyTransformAction::ConvertCodexResponsesToChat;
+    }
+
+    if plan.use_claude_transform {
+        return if claude_transformed_body_available {
+            ForwarderRequestBodyTransformAction::UseClaudeTransformedBody
+        } else {
+            ForwarderRequestBodyTransformAction::Passthrough
+        };
+    }
+
+    if plan.use_provider_transform {
+        return ForwarderRequestBodyTransformAction::ApplyProviderTransform;
+    }
+
+    ForwarderRequestBodyTransformAction::Passthrough
 }
 
 pub fn resolve_upstream_request_transport_policy(
@@ -352,15 +383,16 @@ fn valid_status_code(value: u64) -> Option<u16> {
 #[cfg(test)]
 mod tests {
     use super::{
+        forwarder_request_body_transform_action_from_plan,
         forwarder_protocol_preparation_from_transform_plan, forwarder_transform_plan_from_facts,
         invalid_mapped_channel_response_status_message, is_socks_proxy_url,
         is_streaming_upstream_request, mapped_channel_response_status,
         proxy_url_points_to_loopback_port, proxy_values_point_to_loopback_port,
         request_body_stream_flag, resolve_channel_response_status_mapping,
         resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-        ForwarderProtocolPreparationInput, ForwarderTransformPlan, ForwarderTransformPlanFacts,
-        UpstreamSendPolicyInput, UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT,
-        STREAMING_REQWEST_REQUEST_TIMEOUT,
+        ForwarderProtocolPreparationInput, ForwarderRequestBodyTransformAction,
+        ForwarderTransformPlan, ForwarderTransformPlanFacts, UpstreamSendPolicyInput,
+        UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT, STREAMING_REQWEST_REQUEST_TIMEOUT,
     };
     use http::{header::ACCEPT, HeaderMap, HeaderValue};
     use serde_json::json;
@@ -456,6 +488,57 @@ mod tests {
         assert!(!codex_preparation.should_transform_claude_request);
         assert!(codex_preparation.claude_api_format_for_transform.is_none());
         assert!(codex_preparation.codex_chat_enrichment_enabled);
+    }
+
+    #[test]
+    fn forwarder_request_body_transform_action_preserves_execution_precedence() {
+        let passthrough_plan = ForwarderTransformPlan {
+            needs_transform: false,
+            use_claude_transform: false,
+            use_provider_transform: false,
+            claude_api_format_for_url: None,
+            claude_api_format_for_transform: None,
+            codex_responses_to_chat: false,
+        };
+        assert_eq!(
+            forwarder_request_body_transform_action_from_plan(&passthrough_plan, false),
+            ForwarderRequestBodyTransformAction::Passthrough
+        );
+
+        let provider_plan = ForwarderTransformPlan {
+            needs_transform: true,
+            use_provider_transform: true,
+            ..passthrough_plan.clone()
+        };
+        assert_eq!(
+            forwarder_request_body_transform_action_from_plan(&provider_plan, false),
+            ForwarderRequestBodyTransformAction::ApplyProviderTransform
+        );
+
+        let claude_plan = ForwarderTransformPlan {
+            needs_transform: true,
+            use_claude_transform: true,
+            ..passthrough_plan.clone()
+        };
+        assert_eq!(
+            forwarder_request_body_transform_action_from_plan(&claude_plan, true),
+            ForwarderRequestBodyTransformAction::UseClaudeTransformedBody
+        );
+        assert_eq!(
+            forwarder_request_body_transform_action_from_plan(&claude_plan, false),
+            ForwarderRequestBodyTransformAction::Passthrough
+        );
+
+        let codex_bridge_plan = ForwarderTransformPlan {
+            codex_responses_to_chat: true,
+            use_claude_transform: true,
+            use_provider_transform: true,
+            ..passthrough_plan
+        };
+        assert_eq!(
+            forwarder_request_body_transform_action_from_plan(&codex_bridge_plan, true),
+            ForwarderRequestBodyTransformAction::ConvertCodexResponsesToChat
+        );
     }
 
     #[test]

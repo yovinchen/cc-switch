@@ -3107,7 +3107,8 @@ pub(crate) use crate::proxy_core::api::transport::{
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
     AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
     forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
-    forwarder_request_body_model, forwarder_transform_plan_from_facts,
+    forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
+    forwarder_transform_plan_from_facts, ForwarderRequestBodyTransformAction,
     invalid_upstream_url_error_message,
     is_codex_chat_full_endpoint_base, is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results,
@@ -9307,21 +9308,26 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         input: ForwarderRequestBodyTransformInput<'_>,
     ) -> Result<ForwarderRequestBodyTransform, ProxyError> {
         let outbound_model = forwarder_request_body_model(&input.body);
-        let body = if input.transform_plan.codex_responses_to_chat {
-            self.convert_codex_responses_to_chat_body(ForwarderCodexResponsesToChatInput {
-                body: input.body,
-                provider: input.provider,
-            })
-        } else if input.transform_plan.use_claude_transform {
-            input.claude_transformed_body.unwrap_or(input.body)
-        } else if input.transform_plan.use_provider_transform {
-            self.transform_provider_request_body(ForwarderProviderTransformInput {
-                adapter: input.adapter,
-                body: input.body,
-                provider: input.provider,
-            })?
-        } else {
-            input.body
+        let action = forwarder_request_body_transform_action_from_plan(
+            input.transform_plan,
+            input.claude_transformed_body.is_some(),
+        );
+        let body = match action {
+            ForwarderRequestBodyTransformAction::ConvertCodexResponsesToChat => self
+                .convert_codex_responses_to_chat_body(ForwarderCodexResponsesToChatInput {
+                    body: input.body,
+                    provider: input.provider,
+                }),
+            ForwarderRequestBodyTransformAction::UseClaudeTransformedBody => {
+                input.claude_transformed_body.unwrap_or(input.body)
+            }
+            ForwarderRequestBodyTransformAction::ApplyProviderTransform => self
+                .transform_provider_request_body(ForwarderProviderTransformInput {
+                    adapter: input.adapter,
+                    body: input.body,
+                    provider: input.provider,
+                })?,
+            ForwarderRequestBodyTransformAction::Passthrough => input.body,
         };
 
         Ok(ForwarderRequestBodyTransform {
