@@ -1724,7 +1724,7 @@ pub(crate) use crate::proxy_core::api::domain::{
     provider_account_ref, provider_metadata_from_input,
 };
 
-pub(crate) use crate::proxy_core::api::domain::extract_openclaw_stream_check_base_url;
+use crate::proxy_core::api::domain::additive_provider_stream_check_base_url_from_settings as core_additive_provider_stream_check_base_url_from_settings;
 use crate::proxy_core::api::ports::{
     apply_claude_common_config_to_settings as core_apply_claude_common_config_to_settings,
     apply_gemini_common_config_to_settings as core_apply_gemini_common_config_to_settings,
@@ -1759,10 +1759,6 @@ use crate::proxy_core::api::ports::{
 };
 pub(crate) use crate::proxy_core::api::ports::CommonConfigSnippetIssue;
 pub(crate) use crate::proxy_core::api::ports::CommonConfigSettingsMutationIssue;
-
-pub(crate) fn provider_openclaw_stream_check_base_url(provider: &Provider) -> Option<String> {
-    extract_openclaw_stream_check_base_url(&provider.settings_config)
-}
 
 pub(crate) fn provider_openclaw_has_live_provider_fields(provider: &Provider) -> bool {
     crate::proxy_core::api::domain::openclaw_settings_have_live_provider_fields(
@@ -1923,12 +1919,6 @@ pub(crate) fn openclaw_common_config_value_from_settings(settings: &Value) -> Va
     core_openclaw_common_config_value_from_settings(settings)
 }
 
-pub(crate) use crate::proxy_core::api::domain::extract_hermes_stream_check_base_url;
-
-pub(crate) fn provider_hermes_stream_check_base_url(provider: &Provider) -> Option<String> {
-    extract_hermes_stream_check_base_url(&provider.settings_config)
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HermesLiveImportIssue {
     EmptyName,
@@ -1949,21 +1939,6 @@ pub(crate) fn provider_from_hermes_live_config(
     });
 
     Ok(provider)
-}
-
-pub(crate) use crate::proxy_core::api::domain::extract_opencode_stream_check_npm;
-
-pub(crate) fn provider_opencode_stream_check_npm(provider: &Provider) -> Option<String> {
-    extract_opencode_stream_check_npm(&provider.settings_config)
-}
-
-pub(crate) use crate::proxy_core::api::domain::resolve_opencode_stream_check_base_url;
-
-pub(crate) fn provider_opencode_stream_check_base_url(
-    provider: &Provider,
-    npm: Option<&str>,
-) -> Option<String> {
-    resolve_opencode_stream_check_base_url(&provider.settings_config, npm)
 }
 
 #[cfg(test)]
@@ -4515,9 +4490,42 @@ pub(crate) fn forwarder_provider_base_url(
 pub(crate) fn stream_check_provider_base_url(
     app_type: &AppType,
     provider: &Provider,
-) -> Result<String, ProxyError> {
-    let adapter = forwarder_provider_adapter_for_app(app_type);
-    forwarder_provider_base_url(adapter.as_ref(), provider)
+) -> Result<String, AppError> {
+    match app_type {
+        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
+            core_additive_provider_stream_check_base_url_from_settings(
+                &AppKind::from(app_type),
+                &provider.settings_config,
+            )
+            .ok_or_else(|| missing_stream_check_base_url_error(app_type))
+        }
+        _ => {
+            let adapter = forwarder_provider_adapter_for_app(app_type);
+            forwarder_provider_base_url(adapter.as_ref(), provider)
+                .map_err(|e| AppError::Message(format!("Failed to extract base_url: {e}")))
+        }
+    }
+}
+
+fn missing_stream_check_base_url_error(app_type: &AppType) -> AppError {
+    match app_type {
+        AppType::OpenCode => AppError::localized(
+            "opencode_base_url_missing",
+            "OpenCode 供应商缺少 options.baseURL，且当前 SDK 包没有默认端点",
+            "OpenCode provider is missing `options.baseURL` and the SDK package has no default endpoint",
+        ),
+        AppType::OpenClaw => AppError::localized(
+            "openclaw_base_url_missing",
+            "OpenClaw 供应商缺少 baseUrl",
+            "OpenClaw provider is missing `baseUrl`",
+        ),
+        AppType::Hermes => AppError::localized(
+            "hermes_base_url_missing",
+            "Hermes 供应商缺少 base_url",
+            "Hermes provider is missing `base_url`",
+        ),
+        _ => AppError::Message("base_url 为空".to_string()),
+    }
 }
 
 pub(crate) fn stream_check_proxy_target_ids_from_sources(
@@ -22131,6 +22139,45 @@ command = "latest-command"
             stream_check_provider_base_url(&AppType::Codex, &codex_provider)
                 .expect("Codex base URL"),
             "https://codex-relay.example/v1"
+        );
+
+        let opencode_provider = Provider::with_id(
+            "opencode".to_string(),
+            "OpenCode".to_string(),
+            json!({
+                "npm": "@ai-sdk/anthropic",
+                "options": {}
+            }),
+            None,
+        );
+        assert_eq!(
+            stream_check_provider_base_url(&AppType::OpenCode, &opencode_provider)
+                .expect("OpenCode base URL"),
+            "https://api.anthropic.com"
+        );
+
+        let openclaw_provider = Provider::with_id(
+            "openclaw".to_string(),
+            "OpenClaw".to_string(),
+            json!({ "baseUrl": " https://openclaw.example/v1 " }),
+            None,
+        );
+        assert_eq!(
+            stream_check_provider_base_url(&AppType::OpenClaw, &openclaw_provider)
+                .expect("OpenClaw base URL"),
+            "https://openclaw.example/v1"
+        );
+
+        let hermes_provider = Provider::with_id(
+            "hermes".to_string(),
+            "Hermes".to_string(),
+            json!({ "base_url": " https://hermes.example " }),
+            None,
+        );
+        assert_eq!(
+            stream_check_provider_base_url(&AppType::Hermes, &hermes_provider)
+                .expect("Hermes base URL"),
+            "https://hermes.example"
         );
     }
 

@@ -231,6 +231,26 @@ pub fn resolve_opencode_stream_check_base_url(
         .or_else(|| opencode_default_base_url_for_npm(npm).map(ToString::to_string))
 }
 
+pub fn additive_provider_stream_check_base_url_from_settings(
+    app: &AppKind,
+    settings_config: &Value,
+) -> Option<String> {
+    match app {
+        AppKind::Custom(name) if name.eq_ignore_ascii_case("opencode") => {
+            let npm = extract_opencode_stream_check_npm(settings_config);
+            resolve_opencode_stream_check_base_url(settings_config, npm.as_deref())
+        }
+        AppKind::Custom(name) if name.eq_ignore_ascii_case("openclaw") => {
+            extract_openclaw_stream_check_base_url(settings_config)
+        }
+        AppKind::Custom(name) if name.eq_ignore_ascii_case("hermes") => {
+            extract_hermes_stream_check_base_url(settings_config)
+        }
+        AppKind::Claude | AppKind::ClaudeDesktop | AppKind::Codex | AppKind::Gemini => None,
+        AppKind::Custom(_) => None,
+    }
+}
+
 pub fn opencode_default_base_url_for_npm(npm: Option<&str>) -> Option<&'static str> {
     match npm {
         Some("@ai-sdk/openai") => Some("https://api.openai.com/v1"),
@@ -2754,6 +2774,40 @@ mod tests {
             resolve_opencode_stream_check_base_url(
                 &serde_json::json!({"npm": "@ai-sdk/openai-compatible", "options": {}}),
                 Some("@ai-sdk/openai-compatible"),
+            ),
+            None
+        );
+        assert_eq!(
+            additive_provider_stream_check_base_url_from_settings(
+                &AppKind::Custom("opencode".to_string()),
+                &serde_json::json!({
+                    "npm": "@ai-sdk/anthropic",
+                    "options": {}
+                }),
+            )
+            .as_deref(),
+            Some("https://api.anthropic.com")
+        );
+        assert_eq!(
+            additive_provider_stream_check_base_url_from_settings(
+                &AppKind::Custom("openclaw".to_string()),
+                &serde_json::json!({"baseUrl": " https://openclaw.example.com/v1 "}),
+            )
+            .as_deref(),
+            Some("https://openclaw.example.com/v1")
+        );
+        assert_eq!(
+            additive_provider_stream_check_base_url_from_settings(
+                &AppKind::Custom("hermes".to_string()),
+                &serde_json::json!({"base_url": " https://hermes.example.com "}),
+            )
+            .as_deref(),
+            Some("https://hermes.example.com")
+        );
+        assert_eq!(
+            additive_provider_stream_check_base_url_from_settings(
+                &AppKind::Claude,
+                &serde_json::json!({"baseUrl": "https://ignored.example.com"}),
             ),
             None
         );

@@ -1341,6 +1341,7 @@
 本轮继续把 OpenClaw live write 的 typed/raw/reject 决策收敛到 `proxy-core::ports`：core 维护 typed parse 成功、raw fallback 和 reject 文案策略；adapter 继续负责把 `Provider.settings_config` 反序列化为宿主 `OpenClawProviderConfig`，service 继续负责实际写入 live config。
 本轮继续把 OpenCode live provider fragment 提取和 live write typed/raw/reject 决策收敛到 `proxy-core::ports`：core 维护 full config 中 `provider.{id}` 片段选择、raw fallback 和 reject 文案策略；adapter 继续负责宿主 `OpenCodeProviderConfig` 反序列化，service 继续负责实际写入 live config。
 本轮继续把非 Codex provider credential value 组装收敛到 `proxy-core::ports`：core 维护 Claude/Gemini/OpenCode/OpenClaw/Hermes 的缺字段分类、Gemini 默认 base URL 和 additive app 空 base URL fallback；adapter 继续保留 Codex auth/config.toml 合并、base_url regex 兼容解析和宿主 `Provider` 投影。
+本轮继续把 additive app 的 stream-check base URL 分发收敛到 `proxy-core::domain` 与 `proxy_core_adapter::stream_check_provider_base_url`：core 维护 OpenCode npm fallback、OpenClaw `baseUrl` 与 Hermes `base_url` 纯解析，service 只调用统一入口并保留 reachability 探测职责。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
