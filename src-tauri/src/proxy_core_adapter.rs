@@ -3043,6 +3043,10 @@ pub(crate) fn forwarder_no_available_provider_status_message() -> &'static str {
 pub(crate) fn forwarder_terminal_failure_status_message() -> &'static str {
     "所有供应商都失败"
 }
+
+pub(crate) fn forwarder_error_status_message(error: &ProxyError) -> String {
+    error.to_string()
+}
 pub(crate) type ManagementAuthError =
     crate::proxy_core::api::auth::ManagementAuthError;
 pub(crate) type CircuitBreakerFailureDecision =
@@ -8137,6 +8141,7 @@ pub(crate) trait ForwarderRuntimeStateSource {
         &self,
         error: &ProxyError,
     ) -> ForwarderRectifierRetryFailureDecision;
+    fn forward_error_status_message(&self, error: &ProxyError) -> String;
     fn no_available_provider_status_message(&self) -> String;
     fn terminal_failure_status_message(&self) -> String;
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
@@ -8344,6 +8349,10 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
 
     fn terminal_failure_status_message(&self) -> String {
         forwarder_terminal_failure_status_message().to_string()
+    }
+
+    fn forward_error_status_message(&self, error: &ProxyError) -> String {
+        forwarder_error_status_message(error)
     }
 
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()> {
@@ -16060,6 +16069,12 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(
             source.terminal_failure_status_message(),
             "所有供应商都失败"
+        );
+        assert_eq!(
+            source.forward_error_status_message(&ProxyError::Timeout(
+                "upstream timed out".to_string()
+            )),
+            "超时: upstream timed out"
         );
     }
 
