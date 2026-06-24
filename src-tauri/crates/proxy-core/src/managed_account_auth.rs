@@ -189,6 +189,24 @@ where
     ))
 }
 
+pub async fn resolve_copilot_model_vendor_with_runtime_source<S>(
+    runtime_source: &S,
+    account_id: Option<&str>,
+    model_id: &str,
+    is_copilot: bool,
+) -> Option<String>
+where
+    S: ManagedAccountRuntimeSource + ?Sized,
+{
+    if !is_copilot {
+        return None;
+    }
+
+    runtime_source
+        .resolve_copilot_model_vendor(account_id, model_id)
+        .await
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ManagedAccountAuthError {
     #[error(
@@ -255,7 +273,8 @@ mod tests {
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
         managed_account_auth_plan, resolve_managed_account_auth_with_runtime_source,
         resolve_copilot_dynamic_base_url_with_runtime_source,
-        resolve_copilot_live_model_with_runtime_source, validate_managed_account_upstream_auth,
+        resolve_copilot_live_model_with_runtime_source,
+        resolve_copilot_model_vendor_with_runtime_source, validate_managed_account_upstream_auth,
         ManagedAccountAuthError, ManagedAccountAuthPlan, ManagedAccountAuthResolution,
         ManagedAccountAuthRuntime, ManagedAccountRuntimeSource, PROXY_AUTH_PLACEHOLDER,
     };
@@ -326,6 +345,7 @@ mod tests {
     struct StaticCopilotRuntimeSource {
         endpoint: Option<String>,
         models: Option<Vec<CopilotModel>>,
+        vendor: Option<String>,
     }
 
     impl ManagedAccountRuntimeSource for StaticCopilotRuntimeSource {
@@ -369,10 +389,14 @@ mod tests {
 
         fn resolve_copilot_model_vendor<'a>(
             &'a self,
-            _account_id: Option<&'a str>,
-            _model_id: &'a str,
+            account_id: Option<&'a str>,
+            model_id: &'a str,
         ) -> BoxFuture<'a, Option<String>> {
-            Box::pin(async move { None })
+            Box::pin(async move {
+                assert_eq!(account_id, Some("copilot-account"));
+                assert_eq!(model_id, "claude-sonnet-4");
+                self.vendor.clone()
+            })
         }
     }
 
@@ -518,6 +542,7 @@ mod tests {
         let source = StaticCopilotRuntimeSource {
             endpoint: Some("https://api.enterprise.githubcopilot.com".to_string()),
             models: None,
+            vendor: None,
         };
 
         let base_url = block_on(resolve_copilot_dynamic_base_url_with_runtime_source(
@@ -544,6 +569,7 @@ mod tests {
                 vendor: "Anthropic".to_string(),
                 model_picker_enabled: true,
             }]),
+            vendor: None,
         };
 
         let model = block_on(resolve_copilot_live_model_with_runtime_source(
@@ -554,6 +580,31 @@ mod tests {
         .expect("live model source");
 
         assert_eq!(model.as_deref(), Some("claude-sonnet-4.6"));
+    }
+
+    #[test]
+    fn managed_account_runtime_source_resolves_copilot_model_vendor_when_enabled() {
+        let source = StaticCopilotRuntimeSource {
+            endpoint: None,
+            models: None,
+            vendor: Some("Anthropic".to_string()),
+        };
+
+        let vendor = block_on(resolve_copilot_model_vendor_with_runtime_source(
+            &source,
+            Some("copilot-account"),
+            "claude-sonnet-4",
+            true,
+        ));
+        assert_eq!(vendor.as_deref(), Some("Anthropic"));
+
+        let skipped = block_on(resolve_copilot_model_vendor_with_runtime_source(
+            &source,
+            Some("copilot-account"),
+            "claude-sonnet-4",
+            false,
+        ));
+        assert_eq!(skipped, None);
     }
 
     #[test]

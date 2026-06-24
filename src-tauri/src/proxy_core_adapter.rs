@@ -2985,6 +2985,8 @@ pub(crate) use crate::proxy_core::api::auth::{
         as resolve_core_copilot_dynamic_base_url_with_runtime_source,
     resolve_copilot_live_model_with_runtime_source
         as resolve_core_copilot_live_model_with_runtime_source,
+    resolve_copilot_model_vendor_with_runtime_source
+        as resolve_core_copilot_model_vendor_with_runtime_source,
     resolve_managed_account_auth_with_runtime_source as resolve_core_managed_account_auth_with_runtime_source,
     ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
     ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
@@ -3263,18 +3265,6 @@ pub(crate) trait ManagedAccountRuntimeSource:
         })
     }
 
-    fn resolve_copilot_model_vendor_for_provider<'a>(
-        &'a self,
-        auth_provider: &'a Provider,
-        model_id: &'a str,
-    ) -> BoxFuture<'a, Option<String>> {
-        Box::pin(async move {
-            let account_id = provider_github_copilot_managed_account_id(auth_provider);
-            self.resolve_copilot_model_vendor(account_id.as_deref(), model_id)
-                .await
-        })
-    }
-
     fn resolve_claude_api_format_for_provider<'a>(
         &'a self,
         auth_provider: &'a Provider,
@@ -3283,14 +3273,15 @@ pub(crate) trait ManagedAccountRuntimeSource:
     ) -> BoxFuture<'a, String> {
         Box::pin(async move {
             let model = body.get("model").and_then(Value::as_str);
-            let copilot_model_vendor = if is_copilot {
-                match model {
-                    Some(model_id) => {
-                        self.resolve_copilot_model_vendor_for_provider(auth_provider, model_id)
-                            .await
-                    }
-                    None => None,
-                }
+            let copilot_model_vendor = if let Some(model_id) = model {
+                let account_id = provider_github_copilot_managed_account_id(auth_provider);
+                resolve_core_copilot_model_vendor_with_runtime_source(
+                    self,
+                    account_id.as_deref(),
+                    model_id,
+                    is_copilot,
+                )
+                .await
             } else {
                 None
             };

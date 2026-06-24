@@ -5742,6 +5742,10 @@ fn production_forwarder_delegates_claude_api_format_to_runtime_source() {
         adapter_source.contains("resolve_claude_api_format_for_adapter"),
         "ManagedAccountRuntimeSource must expose adapter-gated Claude API format resolution"
     );
+    assert!(
+        adapter_source.contains("resolve_core_copilot_model_vendor_with_runtime_source("),
+        "ManagedAccountRuntimeSource must delegate Copilot model vendor runtime gating to proxy-core"
+    );
 
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
     let forbidden_markers = [
