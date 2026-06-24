@@ -467,6 +467,7 @@
 456. `ForwarderRuntimeStateSource::forward_failure_decision` 不再接收 app/provider/attempt retry log context；普通 forward failure 的可重试分类只依赖 `ProxyError`，provider/attempt facts 只进入 `log_retryable_forward_failure` 日志行为入口。
 457. `ForwarderRequestSource` trait 不再暴露 `codex_responses_to_chat_enabled` gate helper；Codex Responses→Chat gate 事实并入 `ForwarderTransformPlan`，URL planning、protocol enrichment 与 body transform 共用同一个 plan 输出。
 458. `ForwarderUpstreamUrlInput` 不再暴露拆开的 `codex_responses_to_chat` / `use_claude_transform` / `claude_api_format` URL facts；URL planning 直接消费 `ForwarderTransformPlan`，host forwarder 不再转手拆解 transform plan 字段。
+459. `ForwarderRequestPreparationInput` 不再暴露拆开的 `needs_transform` / `codex_responses_to_chat` transport-policy facts；上游 body 定稿阶段直接消费 `ForwarderTransformPlan`，默认 source 内部再投影给 transport policy resolver。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
