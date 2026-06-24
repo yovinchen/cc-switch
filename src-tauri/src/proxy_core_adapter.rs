@@ -10891,6 +10891,20 @@ pub(crate) fn provider_usage_script(provider: Option<&Provider>) -> Option<&Usag
         .and_then(|meta| meta.usage_script.as_ref())
 }
 
+pub(crate) fn usage_script_credentials(
+    provider_api_key: String,
+    provider_base_url: String,
+    script_api_key: Option<&str>,
+    script_base_url: Option<&str>,
+) -> CoreProviderCredentialValues {
+    crate::proxy_core::api::ports::usage_script_credentials_from_parts(
+        provider_api_key,
+        provider_base_url,
+        script_api_key,
+        script_base_url,
+    )
+}
+
 pub(crate) fn provider_claude_env_settings(
     provider: &Provider,
 ) -> Option<&serde_json::Map<String, Value>> {

@@ -197,7 +197,7 @@ pub mod ports {
         LiveTokenProviderSettingsIssue, LocalizedErrorSpec,
         OpenClawLiveWriteActionDecision, OpenClawLiveWriteConfigDecision,
         OpenCodeLiveProviderFragmentDecision, OpenCodeLiveWriteActionDecision,
-        OpenCodeLiveWriteConfigDecision,
+        OpenCodeLiveWriteConfigDecision, usage_script_credentials_from_parts,
         CLAUDE_TAKEOVER_TOKEN_ENV_KEYS,
         ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderCredentialIssue,
         ProviderCredentialValues,

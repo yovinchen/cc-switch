@@ -5,7 +5,7 @@
 use crate::app_config::AppType;
 use crate::error::AppError;
 use crate::provider::{UsageData, UsageResult, UsageScript};
-use crate::proxy_core_adapter::provider_usage_script;
+use crate::proxy_core_adapter::{provider_usage_script, usage_script_credentials};
 use crate::settings;
 use crate::store::AppState;
 use crate::usage_script;
@@ -94,21 +94,10 @@ fn resolve_script_credentials(
     base_url: Option<&str>,
 ) -> (String, String) {
     let (provider_base_url, provider_api_key) = provider.resolve_usage_credentials(app_type);
+    let credentials =
+        usage_script_credentials(provider_api_key, provider_base_url, api_key, base_url);
 
-    let api_key = api_key
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned)
-        .unwrap_or(provider_api_key);
-
-    let base_url = base_url
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        // Trim like the provider path so `{{baseUrl}}/path` never doubles the slash.
-        .map(|value| value.trim_end_matches('/').to_owned())
-        .unwrap_or(provider_base_url);
-
-    (api_key, base_url)
+    (credentials.api_key, credentials.base_url)
 }
 
 /// Query provider usage (using saved script configuration)

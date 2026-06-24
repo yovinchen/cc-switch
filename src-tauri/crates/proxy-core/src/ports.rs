@@ -2111,6 +2111,27 @@ pub fn serialize_gemini_env_file(map: &HashMap<String, String>) -> String {
     lines.join("\n")
 }
 
+pub fn usage_script_credentials_from_parts(
+    provider_api_key: String,
+    provider_base_url: String,
+    script_api_key: Option<&str>,
+    script_base_url: Option<&str>,
+) -> ProviderCredentialValues {
+    let api_key = script_api_key
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .unwrap_or(provider_api_key);
+
+    let base_url = script_base_url
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.trim_end_matches('/').to_owned())
+        .unwrap_or(provider_base_url);
+
+    ProviderCredentialValues { api_key, base_url }
+}
+
 pub fn gemini_env_parse_issue_spec(issue: &GeminiEnvParseIssue) -> LocalizedErrorSpec {
     match issue {
         GeminiEnvParseIssue::MissingEquals { line_number, line } => LocalizedErrorSpec::new(
@@ -5321,8 +5342,8 @@ mod tests {
         remove_claude_takeover_env_fields_if_present,
         remove_codex_takeover_auth_placeholder_if_present,
         remove_gemini_takeover_env_fields_if_present,
-        sanitize_claude_settings_for_live, validate_gemini_settings_basic,
-        validate_gemini_settings_strict,
+        sanitize_claude_settings_for_live, usage_script_credentials_from_parts,
+        validate_gemini_settings_basic, validate_gemini_settings_strict,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
         StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
         DEFAULT_PROXY_LISTEN_PORT, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
@@ -7349,6 +7370,34 @@ GEMINI_API_KEY=sk-test123
         env.insert("B".to_string(), "2".to_string());
         env.insert("A".to_string(), "1".to_string());
         assert_eq!(serialize_gemini_env_file(&env), "A=1\nB=2");
+    }
+
+    #[test]
+    fn usage_script_credentials_prefer_non_empty_script_values() {
+        assert_eq!(
+            usage_script_credentials_from_parts(
+                "provider-key".to_string(),
+                "https://provider.example.com".to_string(),
+                Some(" script-key "),
+                Some(" https://script.example.com/ "),
+            ),
+            ProviderCredentialValues {
+                api_key: "script-key".to_string(),
+                base_url: "https://script.example.com".to_string(),
+            }
+        );
+        assert_eq!(
+            usage_script_credentials_from_parts(
+                "provider-key".to_string(),
+                "https://provider.example.com".to_string(),
+                Some("  "),
+                None,
+            ),
+            ProviderCredentialValues {
+                api_key: "provider-key".to_string(),
+                base_url: "https://provider.example.com".to_string(),
+            }
+        );
     }
 
     #[test]
