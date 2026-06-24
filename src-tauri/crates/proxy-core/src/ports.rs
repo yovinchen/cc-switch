@@ -1746,6 +1746,69 @@ pub enum ProviderCredentialIssue {
     OpenClawApiKeyMissing,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClaudeEnvCredentials<'a> {
+    pub api_key: Option<&'a str>,
+    pub base_url: Option<&'a str>,
+}
+
+pub fn claude_env_credentials_from_settings(
+    settings_config: &Value,
+) -> Option<ClaudeEnvCredentials<'_>> {
+    let env = settings_config.get("env").and_then(Value::as_object)?;
+    Some(ClaudeEnvCredentials {
+        api_key: env
+            .get("ANTHROPIC_AUTH_TOKEN")
+            .or_else(|| env.get("ANTHROPIC_API_KEY"))
+            .and_then(Value::as_str),
+        base_url: env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
+    })
+}
+
+pub fn gemini_env_map_from_settings(settings: &Value) -> Option<&Map<String, Value>> {
+    settings.get("env").and_then(Value::as_object)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpenCodeCredentialParts<'a> {
+    pub api_key: Option<&'a str>,
+    pub base_url: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenCodeCredentialIssue {
+    MissingOptions,
+}
+
+pub fn opencode_credential_parts_from_settings(
+    settings_config: &Value,
+) -> Result<OpenCodeCredentialParts<'_>, OpenCodeCredentialIssue> {
+    let options = settings_config
+        .get("options")
+        .and_then(Value::as_object)
+        .ok_or(OpenCodeCredentialIssue::MissingOptions)?;
+
+    Ok(OpenCodeCredentialParts {
+        api_key: options.get("apiKey").and_then(Value::as_str),
+        base_url: options.get("baseURL").and_then(Value::as_str),
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpenClawCredentialParts<'a> {
+    pub api_key: Option<&'a str>,
+    pub base_url: Option<&'a str>,
+}
+
+pub fn openclaw_credential_parts_from_settings(
+    settings_config: &Value,
+) -> OpenClawCredentialParts<'_> {
+    OpenClawCredentialParts {
+        api_key: settings_config.get("apiKey").and_then(Value::as_str),
+        base_url: settings_config.get("baseUrl").and_then(Value::as_str),
+    }
+}
+
 pub fn provider_credential_issue_spec(issue: ProviderCredentialIssue) -> LocalizedErrorSpec {
     match issue {
         ProviderCredentialIssue::ClaudeEnvMissing => LocalizedErrorSpec::new(
@@ -4139,12 +4202,14 @@ mod tests {
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
         apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
-        claude_live_config_has_proxy_placeholder, ensure_codex_takeover_auth_placeholder,
+        claude_env_credentials_from_settings, claude_live_config_has_proxy_placeholder,
+        ensure_codex_takeover_auth_placeholder, gemini_env_map_from_settings,
         gemini_live_config_has_proxy_placeholder, is_local_proxy_url,
         json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
         launch_env_vars_from_provider_settings, live_env_base_url_matches, live_takeover_app_kinds,
         live_token_sync_app_label, normalize_claude_models_in_value,
         normalize_provider_settings_for_storage, provider_default_live_import_settings,
+        openclaw_credential_parts_from_settings, opencode_credential_parts_from_settings,
         provider_settings_with_live_token_sync, proxy_urls_match,
         proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
@@ -4182,6 +4247,7 @@ mod tests {
         GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
         ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderHealthUpdateInput,
         LiveTokenProviderSettingsIssue, ProviderCredentialIssue, ProviderKeyChangePolicyIssue,
+        OpenCodeCredentialIssue,
         ProviderListResponse, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
         ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSpec,
         ProviderSummaryInput, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
@@ -5593,6 +5659,58 @@ mod tests {
             provider_live_config_presence_error_policy(Some(false)),
             ProviderLiveConfigPresenceErrorPolicy::TreatErrorAsMissing
         );
+    }
+
+    #[test]
+    fn provider_credential_shapes_extract_host_neutral_settings() {
+        let claude_settings = json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "claude-token",
+                "ANTHROPIC_API_KEY": "fallback-key",
+                "ANTHROPIC_BASE_URL": "https://claude.example"
+            }
+        });
+        let claude =
+            claude_env_credentials_from_settings(&claude_settings).expect("claude env credentials");
+        assert_eq!(claude.api_key, Some("claude-token"));
+        assert_eq!(claude.base_url, Some("https://claude.example"));
+        assert!(claude_env_credentials_from_settings(&json!({"env": "invalid"})).is_none());
+
+        let gemini_settings = json!({
+            "env": {
+                "GEMINI_API_KEY": "gemini-key",
+                "GOOGLE_GEMINI_BASE_URL": "https://gemini.example"
+            }
+        });
+        let gemini_env = gemini_env_map_from_settings(&gemini_settings).expect("gemini env map");
+        assert_eq!(
+            gemini_env.get("GEMINI_API_KEY").and_then(Value::as_str),
+            Some("gemini-key")
+        );
+        assert!(gemini_env_map_from_settings(&json!({"env": "invalid"})).is_none());
+
+        let opencode_settings = json!({
+            "options": {
+                "apiKey": "opencode-key",
+                "baseURL": "https://opencode.example"
+            }
+        });
+        let opencode = opencode_credential_parts_from_settings(&opencode_settings)
+            .expect("opencode credentials");
+        assert_eq!(opencode.api_key, Some("opencode-key"));
+        assert_eq!(opencode.base_url, Some("https://opencode.example"));
+        assert_eq!(
+            opencode_credential_parts_from_settings(&json!({})),
+            Err(OpenCodeCredentialIssue::MissingOptions)
+        );
+
+        let openclaw_settings = json!({
+            "apiKey": "openclaw-key",
+            "baseUrl": "https://openclaw.example"
+        });
+        let openclaw = openclaw_credential_parts_from_settings(&openclaw_settings);
+        assert_eq!(openclaw.api_key, Some("openclaw-key"));
+        assert_eq!(openclaw.base_url, Some("https://openclaw.example"));
     }
 
     #[test]

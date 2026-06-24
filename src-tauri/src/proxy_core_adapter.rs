@@ -331,6 +331,9 @@ pub(crate) use crate::proxy_core::api::ports::{
     proxy_urls_match as core_proxy_urls_match,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
+    claude_env_credentials_from_settings, gemini_env_map_from_settings,
+    openclaw_credential_parts_from_settings, opencode_credential_parts_from_settings,
+    OpenCodeCredentialIssue,
     remove_claude_takeover_env_fields_if_present as core_remove_claude_takeover_env_fields_if_present,
     remove_codex_takeover_auth_placeholder_if_present as core_remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present as core_remove_gemini_takeover_env_fields_if_present,
@@ -1836,26 +1839,6 @@ pub(crate) fn provider_from_openclaw_live_config(
     Ok(provider)
 }
 
-pub(crate) struct OpenClawCredentialParts<'a> {
-    pub(crate) api_key: Option<&'a str>,
-    pub(crate) base_url: Option<&'a str>,
-}
-
-pub(crate) fn provider_openclaw_credential_parts(
-    provider: &Provider,
-) -> OpenClawCredentialParts<'_> {
-    OpenClawCredentialParts {
-        api_key: provider
-            .settings_config
-            .get("apiKey")
-            .and_then(Value::as_str),
-        base_url: provider
-            .settings_config
-            .get("baseUrl")
-            .and_then(Value::as_str),
-    }
-}
-
 pub(crate) fn openclaw_common_config_value_from_settings(settings: &Value) -> Value {
     let mut config = settings.clone();
 
@@ -1908,31 +1891,6 @@ pub(crate) fn provider_opencode_stream_check_base_url(
     npm: Option<&str>,
 ) -> Option<String> {
     resolve_opencode_stream_check_base_url(&provider.settings_config, npm)
-}
-
-pub(crate) struct OpenCodeCredentialParts<'a> {
-    pub(crate) api_key: Option<&'a str>,
-    pub(crate) base_url: Option<&'a str>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OpenCodeCredentialIssue {
-    MissingOptions,
-}
-
-pub(crate) fn provider_opencode_credential_parts(
-    provider: &Provider,
-) -> Result<OpenCodeCredentialParts<'_>, OpenCodeCredentialIssue> {
-    let options = provider
-        .settings_config
-        .get("options")
-        .and_then(Value::as_object)
-        .ok_or(OpenCodeCredentialIssue::MissingOptions)?;
-
-    Ok(OpenCodeCredentialParts {
-        api_key: options.get("apiKey").and_then(Value::as_str),
-        base_url: options.get("baseURL").and_then(Value::as_str),
-    })
 }
 
 pub(crate) fn opencode_common_config_value_from_settings(settings: &Value) -> Value {
@@ -2355,8 +2313,8 @@ pub(crate) fn provider_credential_values(
             Ok(ProviderCredentialValues { api_key, base_url })
         }
         AppType::OpenCode => {
-            let parts =
-                provider_opencode_credential_parts(provider).map_err(|issue| match issue {
+            let parts = opencode_credential_parts_from_settings(&provider.settings_config)
+                .map_err(|issue| match issue {
                     OpenCodeCredentialIssue::MissingOptions => {
                         ProviderCredentialIssue::OpenCodeOptionsMissing
                     }
@@ -2370,7 +2328,7 @@ pub(crate) fn provider_credential_values(
             Ok(ProviderCredentialValues { api_key, base_url })
         }
         AppType::OpenClaw | AppType::Hermes => {
-            let parts = provider_openclaw_credential_parts(provider);
+            let parts = openclaw_credential_parts_from_settings(&provider.settings_config);
             let api_key = parts
                 .api_key
                 .ok_or(ProviderCredentialIssue::OpenClawApiKeyMissing)?
@@ -4472,10 +4430,6 @@ pub(crate) fn provider_gemini_base_url(provider: &Provider) -> Option<String> {
     extract_gemini_base_url_from_settings(&provider.settings_config)
 }
 
-pub(crate) fn gemini_env_map_from_settings(settings: &Value) -> Option<&Map<String, Value>> {
-    settings.get("env").and_then(Value::as_object)
-}
-
 pub(crate) fn gemini_env_value_from_env_json(env_json: &Value) -> Value {
     env_json.get("env").cloned().unwrap_or_else(|| json!({}))
 }
@@ -4885,24 +4839,6 @@ pub(crate) fn provider_codex_fast_mode_enabled(provider: &Provider) -> bool {
 
 pub(crate) fn provider_settings_config_is_object(provider: &Provider) -> bool {
     provider.settings_config.is_object()
-}
-
-pub(crate) struct ClaudeEnvCredentials<'a> {
-    pub(crate) api_key: Option<&'a str>,
-    pub(crate) base_url: Option<&'a str>,
-}
-
-pub(crate) fn claude_env_credentials_from_settings(
-    settings_config: &Value,
-) -> Option<ClaudeEnvCredentials<'_>> {
-    let env = settings_config.get("env").and_then(Value::as_object)?;
-    Some(ClaudeEnvCredentials {
-        api_key: env
-            .get("ANTHROPIC_AUTH_TOKEN")
-            .or_else(|| env.get("ANTHROPIC_API_KEY"))
-            .and_then(Value::as_str),
-        base_url: env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
-    })
 }
 
 pub(crate) fn provider_claude_auth_key(provider: &Provider) -> Option<ClaudeAuthKey> {
@@ -22507,7 +22443,8 @@ command = "latest-command"
             }),
             None,
         );
-        let credentials = provider_openclaw_credential_parts(&credential_provider);
+        let credentials =
+            openclaw_credential_parts_from_settings(&credential_provider.settings_config);
         assert_eq!(credentials.api_key, Some("sk-openclaw"));
         assert_eq!(credentials.base_url, Some("https://openclaw.example"));
         let common_config = openclaw_common_config_value_from_settings(&json!({
@@ -22664,8 +22601,8 @@ command = "latest-command"
             }),
             None,
         );
-        let credentials =
-            provider_opencode_credential_parts(&provider).expect("opencode credentials");
+        let credentials = opencode_credential_parts_from_settings(&provider.settings_config)
+            .expect("opencode credentials");
         assert_eq!(credentials.api_key, Some("sk-test"));
         assert_eq!(credentials.base_url, None);
         let common_config = opencode_common_config_value_from_settings(&json!({
@@ -22777,13 +22714,14 @@ command = "latest-command"
             }
             other => panic!("expected reject OpenCode write action, got {other:?}"),
         }
+        let missing_options_provider = Provider::with_id(
+            "missing-options".to_string(),
+            "Missing Options".to_string(),
+            json!({}),
+            None,
+        );
         assert!(matches!(
-            provider_opencode_credential_parts(&Provider::with_id(
-                "missing-options".to_string(),
-                "Missing Options".to_string(),
-                json!({}),
-                None,
-            )),
+            opencode_credential_parts_from_settings(&missing_options_provider.settings_config),
             Err(OpenCodeCredentialIssue::MissingOptions)
         ));
 
