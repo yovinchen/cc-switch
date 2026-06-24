@@ -187,6 +187,21 @@ pub fn build_auth_provider_headers(
     Ok(Some(headers))
 }
 
+#[derive(Debug)]
+pub enum AuthProviderHeaderResolution {
+    Explicit(Vec<(http::HeaderName, http::HeaderValue)>),
+    Fallback,
+}
+
+pub fn resolve_auth_provider_headers(
+    auth: &AuthInfo,
+) -> ProxyCoreResult<AuthProviderHeaderResolution> {
+    match build_auth_provider_headers(auth)? {
+        Some(headers) => Ok(AuthProviderHeaderResolution::Explicit(headers)),
+        None => Ok(AuthProviderHeaderResolution::Fallback),
+    }
+}
+
 pub fn build_codex_provider_auth_headers(
     auth: &ProviderAuthInfo,
 ) -> ProxyCoreResult<Vec<(http::HeaderName, http::HeaderValue)>> {
@@ -707,10 +722,11 @@ mod tests {
         is_official_codex_client_user_agent, should_log_copilot_subagent_auth_override,
         should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
         should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
-        upstream_host_header_from_url, ClaudeAuthHeaderKind, ClaudeProviderAuthHeadersInput,
-        CopilotAuthHeaderOverrideFacts, CopilotAuthHeaderOverrides, CopilotAuthHeadersInput,
-        UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, CLAUDE_CODE_BETA,
-        DEFAULT_ANTHROPIC_VERSION,
+        upstream_host_header_from_url, AuthProviderHeaderResolution, ClaudeAuthHeaderKind,
+        ClaudeProviderAuthHeadersInput, CopilotAuthHeaderOverrideFacts,
+        CopilotAuthHeaderOverrides, CopilotAuthHeadersInput, UpstreamAuthHeadersInput,
+        UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
+        resolve_auth_provider_headers,
     };
     use crate::error::ProxyCoreError;
     use crate::ports::AuthInfo;
@@ -835,6 +851,34 @@ mod tests {
             headers[0].1,
             HeaderValue::from_static("Bearer channel-token")
         );
+    }
+
+    #[test]
+    fn resolves_auth_provider_headers_as_explicit_or_fallback() {
+        let empty = AuthInfo::default();
+        assert!(matches!(
+            resolve_auth_provider_headers(&empty).unwrap(),
+            AuthProviderHeaderResolution::Fallback
+        ));
+
+        let auth = AuthInfo {
+            headers: vec![("authorization".to_string(), "Bearer relay-token".to_string())],
+            account_ref: None,
+            metadata: Default::default(),
+        };
+        match resolve_auth_provider_headers(&auth).unwrap() {
+            AuthProviderHeaderResolution::Explicit(headers) => {
+                assert_eq!(headers.len(), 1);
+                assert_eq!(headers[0].0.as_str(), "authorization");
+                assert_eq!(
+                    headers[0].1,
+                    HeaderValue::from_static("Bearer relay-token")
+                );
+            }
+            AuthProviderHeaderResolution::Fallback => {
+                panic!("expected explicit AuthProvider headers")
+            }
+        }
     }
 
     #[test]

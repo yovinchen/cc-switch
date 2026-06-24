@@ -3089,12 +3089,13 @@ pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, apply_bedrock_pre_send_optimizers,
     auth_provider_proxy_request_from_context,
     apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
-    build_auth_provider_headers, build_claude_provider_auth_headers, build_claude_upstream_url,
+    build_claude_provider_auth_headers, build_claude_upstream_url,
     build_codex_provider_auth_headers, build_codex_upstream_url,
     build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
-    contains_image_blocks, finalize_forwarder_auth_headers, invalid_upstream_url_error_message,
+    contains_image_blocks, AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
+    invalid_upstream_url_error_message,
     is_codex_chat_full_endpoint_base, is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results,
     prepare_optional_copilot_auth_optimization_for_forwarder,
@@ -3103,7 +3104,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
     request_body_filter_log_message, request_body_read_error_message,
     request_body_serialize_error_message, resolve_codex_provider_uses_chat_completions,
-    resolve_media_prevention_policy,
+    resolve_auth_provider_headers, resolve_media_prevention_policy,
     rewrite_claude_transform_endpoint, sanitize_copilot_orphan_tool_results,
     should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
     should_convert_codex_responses_endpoint_to_chat, should_failover_after_rectifier_retry_failure,
@@ -8682,25 +8683,28 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
 
             let mut codex_oauth_account_id: Option<String> = None;
             let mut should_send_codex_oauth_session_headers = false;
-            let auth_headers = if let Some(headers) =
-                build_auth_provider_headers(&core_auth).map_err(proxy_core_error_to_proxy_error)?
+            let auth_headers = match resolve_auth_provider_headers(&core_auth)
+                .map_err(proxy_core_error_to_proxy_error)?
             {
-                headers
-            } else {
-                let auth_provider = input.attempt.auth_provider();
-                if let Some(mut auth) = forwarder_provider_auth_info(input.adapter, auth_provider) {
-                    let managed_auth = self
-                        .managed_account_runtime_source
-                        .resolve_auth_for_provider(auth_provider, auth)
-                        .await?;
-                    auth = managed_auth.auth;
-                    should_send_codex_oauth_session_headers =
-                        managed_auth.should_send_codex_oauth_session_headers;
-                    codex_oauth_account_id = managed_auth.codex_oauth_account_id;
+                AuthProviderHeaderResolution::Explicit(headers) => headers,
+                AuthProviderHeaderResolution::Fallback => {
+                    let auth_provider = input.attempt.auth_provider();
+                    if let Some(mut auth) =
+                        forwarder_provider_auth_info(input.adapter, auth_provider)
+                    {
+                        let managed_auth = self
+                            .managed_account_runtime_source
+                            .resolve_auth_for_provider(auth_provider, auth)
+                            .await?;
+                        auth = managed_auth.auth;
+                        should_send_codex_oauth_session_headers =
+                            managed_auth.should_send_codex_oauth_session_headers;
+                        codex_oauth_account_id = managed_auth.codex_oauth_account_id;
 
-                    forwarder_provider_auth_headers(input.adapter, &auth)?
-                } else {
-                    Vec::new()
+                        forwarder_provider_auth_headers(input.adapter, &auth)?
+                    } else {
+                        Vec::new()
+                    }
                 }
             };
 
