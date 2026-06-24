@@ -1186,24 +1186,23 @@ impl RequestForwarder {
             .response_source
             .apply_channel_response_status_mapping(response, attempt.channel())?;
 
-        // 检查响应状态
-        let status = response.status();
-
-        if status.is_success() {
-            let response = self
-                .prepare_success_response_for_failover(response, request_is_streaming)
-                .await?;
-            Ok((response, resolved_claude_api_format, outbound_model))
-        } else {
-            let error = self.response_source.upstream_error_response(response).await?;
-            Err(error)
-        }
+        let response = self
+            .response_source
+            .finalize_upstream_response(
+                response,
+                request_is_streaming,
+                self.non_streaming_timeout,
+                self.streaming_first_byte_timeout,
+            )
+            .await?;
+        Ok((response, resolved_claude_api_format, outbound_model))
     }
 
     /// 故障转移开启时，成功不能只看上游响应头。
     ///
     /// - 非流式：先把完整 body 读到内存，读超时/连接中断会回到 retry loop 尝试下一家。
     /// - 流式：至少等首个 chunk 到达，避免上游返回 200 后一直不吐 SSE 时被误记成功。
+    #[cfg(test)]
     async fn prepare_success_response_for_failover(
         &self,
         response: ProxyResponse,

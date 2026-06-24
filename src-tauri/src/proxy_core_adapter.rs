@@ -9803,6 +9803,14 @@ pub(crate) trait ForwarderResponseSource {
         &'a self,
         response: ProxyResponse,
     ) -> BoxFuture<'a, Result<ProxyError, ProxyError>>;
+
+    fn finalize_upstream_response<'a>(
+        &'a self,
+        response: ProxyResponse,
+        request_is_streaming: bool,
+        non_streaming_timeout: std::time::Duration,
+        streaming_first_byte_timeout: std::time::Duration,
+    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
 }
 
 struct CcSwitchForwarderResponseSource;
@@ -9882,6 +9890,30 @@ impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
             let body = self.upstream_error_body(response).await?;
 
             Ok(ProxyError::UpstreamError { status, body })
+        })
+    }
+
+    fn finalize_upstream_response<'a>(
+        &'a self,
+        response: ProxyResponse,
+        request_is_streaming: bool,
+        non_streaming_timeout: std::time::Duration,
+        streaming_first_byte_timeout: std::time::Duration,
+    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>> {
+        Box::pin(async move {
+            if response.status().is_success() {
+                return self
+                    .prepare_success_response(
+                        response,
+                        request_is_streaming,
+                        non_streaming_timeout,
+                        streaming_first_byte_timeout,
+                    )
+                    .await;
+            }
+
+            let error = self.upstream_error_response(response).await?;
+            Err(error)
         })
     }
 }
@@ -15905,6 +15937,56 @@ base_url = "https://api.openai.com/v1"
             ProxyError::UpstreamError { status, body } => {
                 assert_eq!(status, 400);
                 assert_eq!(body.as_deref(), Some(r#"{"error":"bad request"}"#));
+            }
+            other => panic!("expected upstream error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn forwarder_response_source_finalizes_success_and_upstream_error() {
+        let source = CcSwitchForwarderResponseSource;
+        let success = ProxyResponse::buffered(
+            http::StatusCode::OK,
+            HeaderMap::new(),
+            Bytes::from_static(b"{\"ok\":true}"),
+        );
+        let success = source
+            .finalize_upstream_response(
+                success,
+                false,
+                std::time::Duration::from_secs(0),
+                std::time::Duration::from_secs(0),
+            )
+            .await
+            .expect("success response");
+        assert_eq!(success.status(), http::StatusCode::OK);
+        assert_eq!(
+            success.bytes().await.expect("success body"),
+            Bytes::from_static(b"{\"ok\":true}")
+        );
+
+        let failure = ProxyResponse::buffered(
+            http::StatusCode::BAD_REQUEST,
+            HeaderMap::new(),
+            Bytes::from_static(b"bad request"),
+        );
+        let error = match source
+            .finalize_upstream_response(
+                failure,
+                false,
+                std::time::Duration::from_secs(0),
+                std::time::Duration::from_secs(0),
+            )
+            .await
+        {
+            Ok(_) => panic!("expected upstream error"),
+            Err(error) => error,
+        };
+
+        match error {
+            ProxyError::UpstreamError { status, body } => {
+                assert_eq!(status, 400);
+                assert_eq!(body.as_deref(), Some("bad request"));
             }
             other => panic!("expected upstream error, got {other:?}"),
         }

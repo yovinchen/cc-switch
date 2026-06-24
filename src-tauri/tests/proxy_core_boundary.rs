@@ -6565,6 +6565,8 @@ fn production_forwarder_uses_response_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
@@ -6573,8 +6575,12 @@ fn production_forwarder_uses_response_source_resource() {
         "RequestForwarder must receive upstream response readiness/body reads as an injected source"
     );
     assert!(
-        source.contains("upstream_error_response"),
+        adapter_source.contains("upstream_error_response"),
         "ForwarderResponseSource must expose upstream error response projection"
+    );
+    assert!(
+        adapter_source.contains("finalize_upstream_response"),
+        "ForwarderResponseSource must expose upstream response success/error finalization"
     );
 
     let impl_forbidden_markers = [
@@ -6590,8 +6596,10 @@ fn production_forwarder_uses_response_source_resource() {
         "streaming_body_first_chunk_read_error_message(",
         "resolve_channel_response_status_mapping(",
         "status.as_u16()",
+        "status.is_success()",
         "ProxyError::UpstreamError {",
         "upstream_error_body(response)",
+        "upstream_error_response(response)",
     ];
     let mut violations = Vec::new();
 
