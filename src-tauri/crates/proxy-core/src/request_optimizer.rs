@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::cache_injector::{CacheInjectionReport, inject_cache_control};
 use crate::ports::OptimizerConfig;
+use crate::request_headers::CopilotAuthHeaderOverrideFacts;
 use crate::thinking_optimizer::{ThinkingOptimizationReport, optimize_thinking};
 use http::HeaderMap;
 use serde_json::Value;
@@ -15,6 +16,36 @@ pub struct CopilotClassification {
     pub is_warmup: bool,
     pub is_compact: bool,
     pub is_subagent: bool,
+}
+
+pub struct CopilotAuthOptimizationPreparationInput<'a> {
+    pub classification: CopilotClassification,
+    pub request_classification_enabled: bool,
+    pub deterministic_request_id_enabled: bool,
+    pub session_source_body: &'a Value,
+    pub request_body: &'a Value,
+    pub headers: &'a HeaderMap,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedCopilotAuthOptimization {
+    pub request_classification_enabled: bool,
+    pub initiator: &'static str,
+    pub is_subagent: bool,
+    pub deterministic_request_id: Option<String>,
+    pub interaction_id: Option<String>,
+}
+
+impl PreparedCopilotAuthOptimization {
+    pub fn as_header_override_facts(&self) -> CopilotAuthHeaderOverrideFacts<'_> {
+        CopilotAuthHeaderOverrideFacts {
+            request_classification_enabled: self.request_classification_enabled,
+            initiator: self.initiator,
+            is_subagent: self.is_subagent,
+            deterministic_request_id: self.deterministic_request_id.as_deref(),
+            interaction_id: self.interaction_id.as_deref(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -216,6 +247,25 @@ pub fn resolve_copilot_deterministic_interaction_id(session_id: &str) -> Option<
     hasher.update(b"interaction:");
     hasher.update(session_id.as_bytes());
     Some(uuid_v4_string_from_hash(&hasher.finalize()))
+}
+
+pub fn prepare_copilot_auth_optimization_for_forwarder(
+    input: CopilotAuthOptimizationPreparationInput<'_>,
+    fallback_request_id: impl FnOnce() -> String,
+) -> PreparedCopilotAuthOptimization {
+    let session_id = resolve_copilot_optimizer_session_id(input.session_source_body, input.headers);
+    let deterministic_request_id = input.deterministic_request_id_enabled.then(|| {
+        resolve_copilot_request_id_with_fallback(input.request_body, &session_id, fallback_request_id)
+    });
+    let interaction_id = resolve_copilot_deterministic_interaction_id(&session_id);
+
+    PreparedCopilotAuthOptimization {
+        request_classification_enabled: input.request_classification_enabled,
+        initiator: input.classification.initiator,
+        is_subagent: input.classification.is_subagent,
+        deterministic_request_id,
+        interaction_id,
+    }
 }
 
 /// Merge user tool_result and text blocks so Copilot treats tool continuations as agent turns.
@@ -592,8 +642,10 @@ mod tests {
         apply_bedrock_pre_send_optimizers, apply_copilot_warmup_model_override,
         classify_copilot_request, merge_copilot_tool_results,
         bedrock_env_flag_from_provider_settings, parse_session_from_user_id,
+        prepare_copilot_auth_optimization_for_forwarder,
         provider_declares_bedrock, resolve_copilot_optimizer_session_id,
         sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
+        CopilotAuthOptimizationPreparationInput, CopilotClassification,
         resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
         resolve_copilot_request_id_with_fallback, resolve_copilot_warmup_model_override,
         strip_copilot_thinking_blocks,
@@ -1055,6 +1107,54 @@ mod tests {
             resolve_copilot_deterministic_interaction_id("session_abc"),
             resolve_copilot_deterministic_request_id(&body, "session_abc")
         );
+    }
+
+    #[test]
+    fn prepares_copilot_auth_optimization_for_forwarder() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-session-id", HeaderValue::from_static("header-session"));
+        let session_source_body = json!({
+            "metadata": { "session_id": "body-session" }
+        });
+        let request_body = json!({
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let prepared = prepare_copilot_auth_optimization_for_forwarder(
+            CopilotAuthOptimizationPreparationInput {
+                classification: CopilotClassification {
+                    initiator: "agent",
+                    is_warmup: false,
+                    is_compact: false,
+                    is_subagent: true,
+                },
+                request_classification_enabled: true,
+                deterministic_request_id_enabled: true,
+                session_source_body: &session_source_body,
+                request_body: &request_body,
+                headers: &headers,
+            },
+            || "fallback-id".to_string(),
+        );
+
+        assert!(prepared.request_classification_enabled);
+        assert_eq!(prepared.initiator, "agent");
+        assert!(prepared.is_subagent);
+        assert_ne!(
+            prepared.deterministic_request_id.as_deref(),
+            Some("fallback-id")
+        );
+        assert!(prepared.interaction_id.is_some());
+
+        let facts = prepared.as_header_override_facts();
+        assert!(facts.request_classification_enabled);
+        assert_eq!(facts.initiator, "agent");
+        assert!(facts.is_subagent);
+        assert_eq!(
+            facts.deterministic_request_id,
+            prepared.deterministic_request_id.as_deref()
+        );
+        assert_eq!(facts.interaction_id, prepared.interaction_id.as_deref());
     }
 
     #[test]

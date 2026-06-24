@@ -1023,9 +1023,9 @@ pub(crate) type ClaudeProviderAuthHeadersInput<'a> =
 #[cfg(test)]
 pub(crate) type CopilotAuthHeadersInput<'a> =
     crate::proxy_core::api::transport::CopilotAuthHeadersInput<'a>;
-pub(crate) type CopilotAuthHeaderOverrideFacts<'a> =
-    crate::proxy_core::api::transport::CopilotAuthHeaderOverrideFacts<'a>;
 pub(crate) type CopilotClassification = crate::proxy_core::api::transport::CopilotClassification;
+pub(crate) type ForwarderPreparedCopilotAuthOptimization =
+    crate::proxy_core::api::transport::PreparedCopilotAuthOptimization;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig;
 pub(crate) type StreamingTimeoutConfig = crate::proxy_core::api::config::StreamingTimeoutConfig;
@@ -3092,15 +3092,16 @@ pub(crate) use crate::proxy_core::api::transport::{
     build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
-    contains_image_blocks, invalid_upstream_url_error_message, is_codex_chat_full_endpoint_base,
+    contains_image_blocks, CopilotAuthOptimizationPreparationInput,
+    invalid_upstream_url_error_message, is_codex_chat_full_endpoint_base,
     is_openai_o_series, is_unsupported_image_error, merge_copilot_tool_results,
+    prepare_copilot_auth_optimization_for_forwarder,
     parse_json_request_body, parse_json_request_body_or_null,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
     request_body_filter_log_message, request_body_read_error_message,
     request_body_serialize_error_message, resolve_codex_provider_uses_chat_completions,
-    resolve_copilot_deterministic_interaction_id, resolve_copilot_optimizer_session_id,
-    resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
+    resolve_media_prevention_policy,
     rewrite_claude_transform_endpoint, sanitize_copilot_orphan_tool_results,
     should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
     should_convert_codex_responses_endpoint_to_chat, should_failover_after_rectifier_retry_failure,
@@ -8587,29 +8588,12 @@ pub(crate) fn forwarder_attempt_runtime_source_from_router(
 pub(crate) type ForwarderAuthSourceRef = Arc<dyn ForwarderAuthSource + Send + Sync>;
 pub(crate) type AuthProviderRef = Arc<dyn AuthProvider + Send + Sync>;
 
-pub(crate) struct ForwarderCopilotAuthOptimizationInput<'a> {
-    pub(crate) classification: CopilotClassification,
-    pub(crate) request_classification_enabled: bool,
-    pub(crate) deterministic_request_id_enabled: bool,
-    pub(crate) session_source_body: &'a Value,
-    pub(crate) request_body: &'a Value,
-    pub(crate) headers: &'a HeaderMap,
-}
-
 pub(crate) struct ForwarderMaybeCopilotAuthOptimizationInput<'a> {
     pub(crate) classification: Option<CopilotClassification>,
     pub(crate) config: &'a CopilotOptimizerConfig,
     pub(crate) session_source_body: &'a Value,
     pub(crate) request_body: &'a Value,
     pub(crate) headers: &'a HeaderMap,
-}
-
-pub(crate) struct ForwarderPreparedCopilotAuthOptimization {
-    request_classification_enabled: bool,
-    initiator: &'static str,
-    is_subagent: bool,
-    deterministic_request_id: Option<String>,
-    interaction_id: Option<String>,
 }
 
 pub(crate) struct ForwarderAuthHeadersInput<'a> {
@@ -8660,24 +8644,11 @@ impl CcSwitchForwarderAuthSource {
 
     fn prepare_copilot_auth_optimization(
         &self,
-        input: ForwarderCopilotAuthOptimizationInput<'_>,
+        input: CopilotAuthOptimizationPreparationInput<'_>,
     ) -> ForwarderPreparedCopilotAuthOptimization {
-        let session_id =
-            resolve_copilot_optimizer_session_id(input.session_source_body, input.headers);
-        let deterministic_request_id = input.deterministic_request_id_enabled.then(|| {
-            resolve_copilot_request_id_with_fallback(input.request_body, &session_id, || {
-                uuid::Uuid::new_v4().to_string()
-            })
-        });
-        let interaction_id = resolve_copilot_deterministic_interaction_id(&session_id);
-
-        ForwarderPreparedCopilotAuthOptimization {
-            request_classification_enabled: input.request_classification_enabled,
-            initiator: input.classification.initiator,
-            is_subagent: input.classification.is_subagent,
-            deterministic_request_id,
-            interaction_id,
-        }
+        prepare_copilot_auth_optimization_for_forwarder(input, || {
+            uuid::Uuid::new_v4().to_string()
+        })
     }
 }
 
@@ -8711,7 +8682,7 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
         input: ForwarderMaybeCopilotAuthOptimizationInput<'_>,
     ) -> Option<ForwarderPreparedCopilotAuthOptimization> {
         input.classification.map(|classification| {
-            self.prepare_copilot_auth_optimization(ForwarderCopilotAuthOptimizationInput {
+            self.prepare_copilot_auth_optimization(CopilotAuthOptimizationPreparationInput {
                 classification,
                 request_classification_enabled: input.config.request_classification,
                 deterministic_request_id_enabled: input.config.deterministic_request_id,
@@ -8770,16 +8741,7 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
             let copilot_auth_header_overrides =
                 input.copilot_optimization.as_ref().map(|optimization| {
                     build_copilot_auth_header_overrides_for_forwarder(
-                        CopilotAuthHeaderOverrideFacts {
-                            request_classification_enabled: optimization
-                                .request_classification_enabled,
-                            initiator: optimization.initiator,
-                            is_subagent: optimization.is_subagent,
-                            deterministic_request_id: optimization
-                                .deterministic_request_id
-                                .as_deref(),
-                            interaction_id: optimization.interaction_id.as_deref(),
-                        },
+                        optimization.as_header_override_facts(),
                     )
                 });
 
