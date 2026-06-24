@@ -1529,6 +1529,7 @@ pub(crate) type ProviderAuthStrategy = crate::proxy_core::api::auth::ProviderAut
 pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 
 pub(crate) use crate::proxy_core::api::auth::gemini_auth_strategy_for_provider_kind as core_gemini_auth_strategy_for_provider_kind;
+pub(crate) use crate::proxy_core::api::auth::claude_anthropic_auth_strategy_for_key_source as core_claude_anthropic_auth_strategy_for_key_source;
 pub(crate) use crate::proxy_core::api::ports::auth_info_from_profile_ref;
 
 pub(crate) fn auth_info_from_cc_switch_provider_config(
@@ -5253,14 +5254,6 @@ fn log_claude_auth_key_source(auth_key: Option<&ClaudeAuthKey>) {
     }
 }
 
-fn claude_anthropic_auth_strategy(source: ClaudeAuthKeySource) -> Option<ProviderAuthStrategy> {
-    match source {
-        ClaudeAuthKeySource::AnthropicAuthToken => Some(ProviderAuthStrategy::ClaudeAuth),
-        ClaudeAuthKeySource::AnthropicApiKey => Some(ProviderAuthStrategy::Anthropic),
-        _ => None,
-    }
-}
-
 fn claude_gemini_cli_auth_info(provider: &Provider, key: String) -> ProviderAuthInfo {
     match parse_gemini_oauth_credentials(&key) {
         Some(credentials) if !credentials.access_token.is_empty() => {
@@ -5299,7 +5292,7 @@ pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderA
             Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::ClaudeAuth))
         }
         _ => {
-            let strategy = claude_anthropic_auth_strategy(auth_key.source)
+            let strategy = core_claude_anthropic_auth_strategy_for_key_source(auth_key.source)
                 .unwrap_or(ProviderAuthStrategy::Anthropic);
             Some(ProviderAuthInfo::new(key, strategy))
         }

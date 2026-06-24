@@ -61,6 +61,16 @@ pub fn gemini_auth_strategy_for_provider_kind(
     }
 }
 
+pub fn claude_anthropic_auth_strategy_for_key_source(
+    source: ClaudeAuthKeySource,
+) -> Option<ProviderAuthStrategy> {
+    match source {
+        ClaudeAuthKeySource::AnthropicAuthToken => Some(ProviderAuthStrategy::ClaudeAuth),
+        ClaudeAuthKeySource::AnthropicApiKey => Some(ProviderAuthStrategy::Anthropic),
+        _ => None,
+    }
+}
+
 pub fn settings_config_with_channel_auth_key(
     app_type: &str,
     settings_config: &Value,
@@ -223,6 +233,26 @@ mod tests {
         assert_eq!(
             gemini_auth_strategy_for_provider_kind(&ProviderKind::Claude),
             ProviderAuthStrategy::Google
+        );
+    }
+
+    #[test]
+    fn claude_anthropic_auth_strategy_follows_key_source() {
+        assert_eq!(
+            claude_anthropic_auth_strategy_for_key_source(ClaudeAuthKeySource::AnthropicAuthToken),
+            Some(ProviderAuthStrategy::ClaudeAuth)
+        );
+        assert_eq!(
+            claude_anthropic_auth_strategy_for_key_source(ClaudeAuthKeySource::AnthropicApiKey),
+            Some(ProviderAuthStrategy::Anthropic)
+        );
+        assert_eq!(
+            claude_anthropic_auth_strategy_for_key_source(ClaudeAuthKeySource::OpenRouterApiKey),
+            None
+        );
+        assert_eq!(
+            claude_anthropic_auth_strategy_for_key_source(ClaudeAuthKeySource::DirectApiKey),
+            None
         );
     }
 
