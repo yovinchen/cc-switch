@@ -297,6 +297,7 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntime
 pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled, live_takeover_app_kinds,
     live_token_sync_app_label as core_live_token_sync_app_label,
+    normalize_claude_models_in_value as core_normalize_claude_models_in_value,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_additive_update_route_for_app as core_provider_additive_update_route,
     provider_app_has_current_provider as core_provider_app_has_current_provider,
@@ -2267,74 +2268,7 @@ pub(crate) fn provider_switch_should_mark_live_config_managed(
 
 /// Reads old Claude model keys, writes DEFAULT_* keys, and deletes legacy SMALL_FAST.
 pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
-    let mut changed = false;
-    let env = match settings.get_mut("env").and_then(Value::as_object_mut) {
-        Some(obj) => obj,
-        None => return changed,
-    };
-
-    let model = env
-        .get("ANTHROPIC_MODEL")
-        .and_then(Value::as_str)
-        .map(ToString::to_string);
-    let small_fast = env
-        .get("ANTHROPIC_SMALL_FAST_MODEL")
-        .and_then(Value::as_str)
-        .map(ToString::to_string);
-
-    let current_haiku = env
-        .get("ANTHROPIC_DEFAULT_HAIKU_MODEL")
-        .and_then(Value::as_str)
-        .map(ToString::to_string);
-    let current_sonnet = env
-        .get("ANTHROPIC_DEFAULT_SONNET_MODEL")
-        .and_then(Value::as_str)
-        .map(ToString::to_string);
-    let current_opus = env
-        .get("ANTHROPIC_DEFAULT_OPUS_MODEL")
-        .and_then(Value::as_str)
-        .map(ToString::to_string);
-
-    let target_haiku = current_haiku
-        .or_else(|| small_fast.clone())
-        .or_else(|| model.clone());
-    let target_sonnet = current_sonnet
-        .or_else(|| model.clone())
-        .or_else(|| small_fast.clone());
-    let target_opus = current_opus
-        .or_else(|| model.clone())
-        .or_else(|| small_fast.clone());
-
-    if env.get("ANTHROPIC_DEFAULT_HAIKU_MODEL").is_none() {
-        if let Some(v) = target_haiku {
-            env.insert(
-                "ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string(),
-                Value::String(v),
-            );
-            changed = true;
-        }
-    }
-    if env.get("ANTHROPIC_DEFAULT_SONNET_MODEL").is_none() {
-        if let Some(v) = target_sonnet {
-            env.insert(
-                "ANTHROPIC_DEFAULT_SONNET_MODEL".to_string(),
-                Value::String(v),
-            );
-            changed = true;
-        }
-    }
-    if env.get("ANTHROPIC_DEFAULT_OPUS_MODEL").is_none() {
-        if let Some(v) = target_opus {
-            env.insert("ANTHROPIC_DEFAULT_OPUS_MODEL".to_string(), Value::String(v));
-            changed = true;
-        }
-    }
-
-    if env.remove("ANTHROPIC_SMALL_FAST_MODEL").is_some() {
-        changed = true;
-    }
-
-    changed
+    core_normalize_claude_models_in_value(settings)
 }
 
 fn json_object_or_null_common_config_snippet(

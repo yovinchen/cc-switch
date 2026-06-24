@@ -1139,6 +1139,77 @@ pub fn provider_live_config_presence_error_policy(
     }
 }
 
+pub fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
+    let mut changed = false;
+    let env = match settings.get_mut("env").and_then(Value::as_object_mut) {
+        Some(obj) => obj,
+        None => return changed,
+    };
+
+    let model = env
+        .get("ANTHROPIC_MODEL")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let small_fast = env
+        .get("ANTHROPIC_SMALL_FAST_MODEL")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+
+    let current_haiku = env
+        .get("ANTHROPIC_DEFAULT_HAIKU_MODEL")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let current_sonnet = env
+        .get("ANTHROPIC_DEFAULT_SONNET_MODEL")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let current_opus = env
+        .get("ANTHROPIC_DEFAULT_OPUS_MODEL")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+
+    let target_haiku = current_haiku
+        .or_else(|| small_fast.clone())
+        .or_else(|| model.clone());
+    let target_sonnet = current_sonnet
+        .or_else(|| model.clone())
+        .or_else(|| small_fast.clone());
+    let target_opus = current_opus
+        .or_else(|| model.clone())
+        .or_else(|| small_fast.clone());
+
+    if env.get("ANTHROPIC_DEFAULT_HAIKU_MODEL").is_none() {
+        if let Some(v) = target_haiku {
+            env.insert(
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string(),
+                Value::String(v),
+            );
+            changed = true;
+        }
+    }
+    if env.get("ANTHROPIC_DEFAULT_SONNET_MODEL").is_none() {
+        if let Some(v) = target_sonnet {
+            env.insert(
+                "ANTHROPIC_DEFAULT_SONNET_MODEL".to_string(),
+                Value::String(v),
+            );
+            changed = true;
+        }
+    }
+    if env.get("ANTHROPIC_DEFAULT_OPUS_MODEL").is_none() {
+        if let Some(v) = target_opus {
+            env.insert("ANTHROPIC_DEFAULT_OPUS_MODEL".to_string(), Value::String(v));
+            changed = true;
+        }
+    }
+
+    if env.remove("ANTHROPIC_SMALL_FAST_MODEL").is_some() {
+        changed = true;
+    }
+
+    changed
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalizedErrorSpec {
     pub key: &'static str,
@@ -3564,7 +3635,7 @@ mod tests {
         channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
-        live_takeover_app_kinds, live_token_sync_app_label,
+        live_takeover_app_kinds, live_token_sync_app_label, normalize_claude_models_in_value,
         proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
@@ -5045,6 +5116,42 @@ mod tests {
             claude_desktop.en,
             "Claude Desktop credentials must be resolved through gateway configuration"
         );
+    }
+
+    #[test]
+    fn claude_model_normalization_backfills_defaults_and_removes_legacy_key() {
+        let mut settings = json!({
+            "env": {
+                "ANTHROPIC_MODEL": "claude-sonnet",
+                "ANTHROPIC_SMALL_FAST_MODEL": "claude-haiku",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus"
+            }
+        });
+
+        assert!(normalize_claude_models_in_value(&mut settings));
+
+        let env = settings
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("env object");
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_HAIKU_MODEL")
+                .and_then(Value::as_str),
+            Some("claude-haiku")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
+                .and_then(Value::as_str),
+            Some("claude-sonnet")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
+                .and_then(Value::as_str),
+            Some("claude-opus")
+        );
+        assert!(env.get("ANTHROPIC_SMALL_FAST_MODEL").is_none());
+
+        assert!(!normalize_claude_models_in_value(&mut settings));
     }
 
     #[test]
