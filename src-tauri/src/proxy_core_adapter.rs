@@ -8345,8 +8345,16 @@ pub(crate) struct ForwarderClaudeProtocolTransformInput<'a> {
     pub(crate) session_client_provided: bool,
 }
 
+pub(crate) struct ForwarderCodexChatProtocolEnrichmentInput<'a> {
+    pub(crate) body: &'a mut Value,
+    pub(crate) enabled: bool,
+}
+
 pub(crate) trait ForwarderProtocolStateSource {
-    fn enrich_codex_chat_request<'a>(&'a self, body: &'a mut Value) -> BoxFuture<'a, ()>;
+    fn enrich_codex_chat_request<'a>(
+        &'a self,
+        input: ForwarderCodexChatProtocolEnrichmentInput<'a>,
+    ) -> BoxFuture<'a, ()>;
     fn transform_claude_request(
         &self,
         input: ForwarderClaudeProtocolTransformInput<'_>,
@@ -8371,9 +8379,16 @@ impl CcSwitchForwarderProtocolStateSource {
 }
 
 impl ForwarderProtocolStateSource for CcSwitchForwarderProtocolStateSource {
-    fn enrich_codex_chat_request<'a>(&'a self, body: &'a mut Value) -> BoxFuture<'a, ()> {
+    fn enrich_codex_chat_request<'a>(
+        &'a self,
+        input: ForwarderCodexChatProtocolEnrichmentInput<'a>,
+    ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            let restored = self.codex_chat_history.enrich_request(body).await;
+            if !input.enabled {
+                return;
+            }
+
+            let restored = self.codex_chat_history.enrich_request(input.body).await;
             if restored > 0 {
                 log::debug!(
                     "[Codex] Restored or enriched {restored} cached function call item(s) for Chat upstream"
@@ -14995,6 +15010,32 @@ mod tests {
 
         assert_eq!(forwarder_provider_adapter_name(claude_adapter.as_ref()), "Claude");
         assert_eq!(forwarder_provider_adapter_name(fallback_adapter.as_ref()), "Codex");
+    }
+
+    #[tokio::test]
+    async fn forwarder_protocol_state_source_skips_codex_chat_enrichment_when_disabled() {
+        let source = CcSwitchForwarderProtocolStateSource::new(
+            Arc::new(GeminiShadowStore::default()),
+            Arc::new(CodexChatHistoryStore::default()),
+        );
+        let mut body = json!({
+            "model": "gpt-5",
+            "input": [{
+                "type": "function_call_output",
+                "call_id": "call-1",
+                "output": "{}"
+            }]
+        });
+        let original = body.clone();
+
+        source
+            .enrich_codex_chat_request(ForwarderCodexChatProtocolEnrichmentInput {
+                body: &mut body,
+                enabled: false,
+            })
+            .await;
+
+        assert_eq!(body, original);
     }
 
     #[test]

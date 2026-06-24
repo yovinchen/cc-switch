@@ -21,7 +21,8 @@ use crate::proxy_core_adapter::{
     ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
     ForwarderTransformPlanInput, OptimizerConfig,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef,
-    ForwarderClaudeProtocolTransformInput, ForwarderProtocolStateSourceRef,
+    ForwarderClaudeProtocolTransformInput, ForwarderCodexChatProtocolEnrichmentInput,
+    ForwarderProtocolStateSourceRef,
     ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
     ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
     ForwarderUpstreamRequestLogInput, ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,
@@ -1069,11 +1070,12 @@ impl RequestForwarder {
             None
         };
 
-        if codex_responses_to_chat {
-            self.protocol_state_source
-                .enrich_codex_chat_request(&mut mapped_body)
-                .await;
-        }
+        self.protocol_state_source
+            .enrich_codex_chat_request(ForwarderCodexChatProtocolEnrichmentInput {
+                body: &mut mapped_body,
+                enabled: codex_responses_to_chat,
+            })
+            .await;
         let transformed_request = self.request_source.transform_request_body(
             ForwarderRequestBodyTransformInput {
                 adapter,

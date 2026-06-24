@@ -6155,6 +6155,10 @@ fn production_forwarder_uses_protocol_state_source_resource() {
         struct_slice.contains("protocol_state_source"),
         "RequestForwarder must receive Gemini/Codex protocol state as one injected source"
     );
+    assert!(
+        source.contains("ForwarderCodexChatProtocolEnrichmentInput"),
+        "ForwarderProtocolStateSource must receive Codex chat enrichment gates as input"
+    );
 
     let struct_forbidden_markers = [
         "gemini_shadow: Arc<GeminiShadowStore>",
@@ -6167,6 +6171,7 @@ fn production_forwarder_uses_protocol_state_source_resource() {
         "self.protocol_state_source.codex_chat_history()",
         "let restored = self",
         "Restored or enriched",
+        "if codex_responses_to_chat {",
         "unwrap_or(\"anthropic\")",
         "then_some(self.session_id.as_str())",
     ];
