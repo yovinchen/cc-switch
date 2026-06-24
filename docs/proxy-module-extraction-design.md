@@ -1167,7 +1167,7 @@
 本轮继续把 thinking signature/budget rectifier 的错误触发判断、Anthropic app/provider gate 与请求体整流收敛到 `ForwarderRequestSource`：`RequestForwarder` 不再直接抽取 rectifier 错误文本、调用 signature/budget 判定或 app/provider gate helper，只根据 request source 返回的 rectifier plan 编排同 provider 重试与失败归因。
 本轮继续把 forwarder 的上游 auth header 准备包装为 `ForwarderAuthSource`：`RequestForwarder` 不再直接提取 provider auth、解析 managed-account runtime token、构造 Codex OAuth session headers、注入 Copilot optimizer auth overrides 或调用 upstream auth finalization helper，默认 source 保持现有鉴权语义，后续外部宿主可替换鉴权头组装层。
 本轮继续把 Copilot auth override 的 deterministic request id 与 interaction id 计算收敛到 `ForwarderAuthSource`：`RequestForwarder` 不再直接调用 Copilot session/request/interaction helper，只把分类结果、原始 body、上游 body 和 headers 交给 auth source 生成鉴权 override 输入。
-本轮继续把 Copilot optimizer 的请求体分类与变形收敛到 `ForwarderRequestSource`：`RequestForwarder` 不再直接调用 Copilot 分类、孤立 tool_result 清理、tool_result 合并、thinking block 剥离或 warmup 模型降级 helper，只消费 request source 返回的优化后 body 与分类事实。
+本轮继续把 Copilot optimizer 的启用 gate、请求体分类与变形收敛到 `ForwarderRequestSource`：`RequestForwarder` 不再直接判断 Copilot optimizer 是否运行，也不再直接调用 Copilot 分类、孤立 tool_result 清理、tool_result 合并、thinking block 剥离或 warmup 模型降级 helper，只消费 request source 返回的优化后 body 与可选分类事实。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
