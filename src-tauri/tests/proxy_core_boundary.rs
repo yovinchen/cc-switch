@@ -6167,6 +6167,8 @@ fn production_forwarder_uses_protocol_state_source_resource() {
         "self.protocol_state_source.codex_chat_history()",
         "let restored = self",
         "Restored or enriched",
+        "unwrap_or(\"anthropic\")",
+        "then_some(self.session_id.as_str())",
     ];
     let mut violations = Vec::new();
 

@@ -20,7 +20,8 @@ use crate::proxy_core_adapter::{
     ForwarderRequestRectifierPlan,
     ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
     ForwarderTransformPlanInput, OptimizerConfig,
-    FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
+    FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef,
+    ForwarderClaudeProtocolTransformInput, ForwarderProtocolStateSourceRef,
     ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
     ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
     ForwarderUpstreamRequestLogInput, ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,
@@ -1068,18 +1069,14 @@ impl RequestForwarder {
                 },
             )
         } else if transform_plan.use_claude_transform {
-            let api_format = transform_plan
-                .claude_api_format_for_transform
-                .as_deref()
-                .unwrap_or("anthropic");
             self.protocol_state_source
-                .transform_claude_request_for_api_format(
-                    mapped_body,
+                .transform_claude_request(ForwarderClaudeProtocolTransformInput {
+                    body: mapped_body,
                     provider,
-                    api_format,
-                    self.session_client_provided
-                        .then_some(self.session_id.as_str()),
-                )
+                    api_format: transform_plan.claude_api_format_for_transform.as_deref(),
+                    session_id: &self.session_id,
+                    session_client_provided: self.session_client_provided,
+                })
                 .map_err(ProxyError::TransformError)?
         } else if transform_plan.use_provider_transform {
             self.request_source.transform_provider_request_body(

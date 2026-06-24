@@ -8337,14 +8337,19 @@ pub(crate) fn forwarder_runtime_state_source_from_runtime_parts(
 pub(crate) type ForwarderProtocolStateSourceRef =
     Arc<dyn ForwarderProtocolStateSource + Send + Sync>;
 
+pub(crate) struct ForwarderClaudeProtocolTransformInput<'a> {
+    pub(crate) body: Value,
+    pub(crate) provider: &'a Provider,
+    pub(crate) api_format: Option<&'a str>,
+    pub(crate) session_id: &'a str,
+    pub(crate) session_client_provided: bool,
+}
+
 pub(crate) trait ForwarderProtocolStateSource {
     fn enrich_codex_chat_request<'a>(&'a self, body: &'a mut Value) -> BoxFuture<'a, ()>;
-    fn transform_claude_request_for_api_format(
+    fn transform_claude_request(
         &self,
-        body: Value,
-        provider: &Provider,
-        api_format: &str,
-        session_id: Option<&str>,
+        input: ForwarderClaudeProtocolTransformInput<'_>,
     ) -> Result<Value, String>;
 }
 
@@ -8377,16 +8382,18 @@ impl ForwarderProtocolStateSource for CcSwitchForwarderProtocolStateSource {
         })
     }
 
-    fn transform_claude_request_for_api_format(
+    fn transform_claude_request(
         &self,
-        body: Value,
-        provider: &Provider,
-        api_format: &str,
-        session_id: Option<&str>,
+        input: ForwarderClaudeProtocolTransformInput<'_>,
     ) -> Result<Value, String> {
+        let api_format = input.api_format.unwrap_or("anthropic");
+        let session_id = input
+            .session_client_provided
+            .then_some(input.session_id);
+
         forwarder_claude_transform_request_for_api_format(
-            body,
-            provider,
+            input.body,
+            input.provider,
             api_format,
             session_id,
             Some(self.gemini_shadow.as_ref()),
