@@ -304,6 +304,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_initial_live_config_managed_marker as core_provider_initial_live_config_managed_marker,
     provider_key_change_policy_issue_for_app as core_provider_key_change_policy_issue,
     provider_key_change_policy_issue_message as core_provider_key_change_policy_issue_message,
+    provider_live_config_presence_error_policy as core_provider_live_config_presence_error_policy,
     provider_live_removal_target_for_app as core_provider_live_removal_target,
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
     provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
@@ -316,9 +317,13 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
+    provider_should_sync_to_live as core_provider_should_sync_to_live,
+    should_skip_manual_default_live_import as core_should_skip_manual_default_live_import,
+    should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
     ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
-    ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
-    ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+    ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
+    ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSwitchDispatch,
+    ProviderTakeoverLiveSyncTarget,
 };
 
 const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
@@ -2100,14 +2105,17 @@ pub(crate) fn should_skip_manual_default_live_import(
     app_type: &AppType,
     has_non_official_seed_provider: bool,
 ) -> bool {
-    app_type.is_additive_mode() || has_non_official_seed_provider
+    core_should_skip_manual_default_live_import(
+        &AppKind::from(app_type),
+        has_non_official_seed_provider,
+    )
 }
 
 pub(crate) fn should_skip_startup_default_live_import(
     app_type: &AppType,
     has_any_provider: bool,
 ) -> bool {
-    app_type.is_additive_mode() || has_any_provider
+    core_should_skip_startup_default_live_import(&AppKind::from(app_type), has_any_provider)
 }
 
 pub(crate) fn provider_live_sync_scope(app_type: &AppType) -> ProviderLiveSyncScope {
@@ -2119,11 +2127,11 @@ pub(crate) fn provider_app_has_current_provider(app_type: &AppType) -> bool {
 }
 
 pub(crate) fn provider_should_sync_to_live(provider: &Provider) -> bool {
-    provider
+    let live_config_managed = provider
         .meta
         .as_ref()
-        .and_then(|meta| meta.live_config_managed)
-        != Some(false)
+        .and_then(|meta| meta.live_config_managed);
+    core_provider_should_sync_to_live(live_config_managed)
 }
 
 pub(crate) fn provider_initial_live_config_managed_marker(
@@ -2144,20 +2152,10 @@ pub(crate) fn should_skip_provider_legacy_common_config_migration(
     !provider_supports_legacy_common_config_migration(app_type) || legacy_snippet.trim().is_empty()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProviderLiveConfigPresenceErrorPolicy {
-    Strict,
-    TreatErrorAsMissing,
-}
-
 pub(crate) fn provider_live_config_presence_error_policy(
     live_config_managed: Option<bool>,
 ) -> ProviderLiveConfigPresenceErrorPolicy {
-    if live_config_managed == Some(false) {
-        ProviderLiveConfigPresenceErrorPolicy::TreatErrorAsMissing
-    } else {
-        ProviderLiveConfigPresenceErrorPolicy::Strict
-    }
+    core_provider_live_config_presence_error_policy(live_config_managed)
 }
 
 pub(crate) fn provider_key_change_policy_issue(

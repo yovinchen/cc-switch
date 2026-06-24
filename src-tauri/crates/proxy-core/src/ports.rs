@@ -1108,6 +1108,37 @@ pub fn provider_app_has_current_provider(app: &AppKind) -> bool {
     !provider_app_is_additive(app)
 }
 
+pub fn should_skip_manual_default_live_import(
+    app: &AppKind,
+    has_non_official_seed_provider: bool,
+) -> bool {
+    provider_app_is_additive(app) || has_non_official_seed_provider
+}
+
+pub fn should_skip_startup_default_live_import(app: &AppKind, has_any_provider: bool) -> bool {
+    provider_app_is_additive(app) || has_any_provider
+}
+
+pub fn provider_should_sync_to_live(live_config_managed: Option<bool>) -> bool {
+    live_config_managed != Some(false)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderLiveConfigPresenceErrorPolicy {
+    Strict,
+    TreatErrorAsMissing,
+}
+
+pub fn provider_live_config_presence_error_policy(
+    live_config_managed: Option<bool>,
+) -> ProviderLiveConfigPresenceErrorPolicy {
+    if live_config_managed == Some(false) {
+        ProviderLiveConfigPresenceErrorPolicy::TreatErrorAsMissing
+    } else {
+        ProviderLiveConfigPresenceErrorPolicy::Strict
+    }
+}
+
 pub fn provider_initial_live_config_managed_marker(
     app: &AppKind,
     add_to_live: bool,
@@ -3444,12 +3475,15 @@ mod tests {
         provider_app_has_current_provider, provider_delete_is_current_provider,
         provider_initial_live_config_managed_marker, provider_key_change_policy_issue_for_app,
         provider_key_change_policy_issue_message,
-        provider_live_removal_target_for_app, provider_live_sync_scope_for_app,
+        provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
+        provider_live_sync_scope_for_app,
         provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
-        provider_supports_legacy_common_config_migration, provider_switch_backfill_source_id,
-        provider_switch_dispatch_for_app, provider_switch_requires_takeover_lock,
+        provider_should_sync_to_live, provider_supports_legacy_common_config_migration,
+        provider_switch_backfill_source_id, provider_switch_dispatch_for_app,
+        provider_switch_requires_takeover_lock,
         provider_switch_should_mark_live_config_managed,
         provider_takeover_live_sync_target_for_app,
+        should_skip_manual_default_live_import, should_skip_startup_default_live_import,
         should_skip_provider_legacy_common_config_migration,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
         channel_key_record_from_input,
@@ -3468,9 +3502,9 @@ mod tests {
         CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
         GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
         ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderHealthUpdateInput,
-        ProviderKeyChangePolicyIssue, ProviderListResponse, ProviderOmoSwitchPair,
-        ProviderOmoVariant, ProviderSpec, ProviderSummaryInput, ProviderLiveRemovalTarget,
-        ProviderLiveSyncScope, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+        ProviderKeyChangePolicyIssue, ProviderListResponse, ProviderLiveConfigPresenceErrorPolicy,
+        ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
+        ProviderSpec, ProviderSummaryInput, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
         ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
@@ -4814,6 +4848,35 @@ mod tests {
     }
 
     #[test]
+    fn provider_default_live_import_skips_additive_or_existing_seed_state() {
+        assert!(should_skip_manual_default_live_import(
+            &AppKind::Custom("opencode".to_string()),
+            false
+        ));
+        assert!(!should_skip_manual_default_live_import(
+            &AppKind::Claude,
+            false
+        ));
+        assert!(should_skip_manual_default_live_import(
+            &AppKind::Claude,
+            true
+        ));
+
+        assert!(should_skip_startup_default_live_import(
+            &AppKind::Custom("openclaw".to_string()),
+            false
+        ));
+        assert!(!should_skip_startup_default_live_import(
+            &AppKind::Claude,
+            false
+        ));
+        assert!(should_skip_startup_default_live_import(
+            &AppKind::Claude,
+            true
+        ));
+    }
+
+    #[test]
     fn provider_app_has_current_provider_is_disabled_for_additive_apps() {
         assert!(!provider_app_has_current_provider(&AppKind::Custom(
             "opencode".to_string()
@@ -4823,6 +4886,29 @@ mod tests {
         )));
         assert!(provider_app_has_current_provider(&AppKind::Claude));
         assert!(provider_app_has_current_provider(&AppKind::Codex));
+    }
+
+    #[test]
+    fn provider_live_sync_includes_unknown_and_managed_providers() {
+        assert!(provider_should_sync_to_live(None));
+        assert!(provider_should_sync_to_live(Some(true)));
+        assert!(!provider_should_sync_to_live(Some(false)));
+    }
+
+    #[test]
+    fn provider_live_config_presence_error_policy_tolerates_db_only_providers() {
+        assert_eq!(
+            provider_live_config_presence_error_policy(None),
+            ProviderLiveConfigPresenceErrorPolicy::Strict
+        );
+        assert_eq!(
+            provider_live_config_presence_error_policy(Some(true)),
+            ProviderLiveConfigPresenceErrorPolicy::Strict
+        );
+        assert_eq!(
+            provider_live_config_presence_error_policy(Some(false)),
+            ProviderLiveConfigPresenceErrorPolicy::TreatErrorAsMissing
+        );
     }
 
     #[test]
