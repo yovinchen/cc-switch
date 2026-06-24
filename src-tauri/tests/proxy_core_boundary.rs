@@ -5407,6 +5407,34 @@ fn proxy_core_adapter_delegates_live_placeholder_app_dispatch_to_core() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_live_backup_snapshot_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn live_backup_snapshot_from_live_config",
+        "pub(crate) fn provider_settings_with_live_token_sync",
+    );
+
+    assert!(
+        function.contains("core_live_backup_snapshot_from_live_config("),
+        "proxy_core_adapter must delegate live backup snapshot policy to proxy-core"
+    );
+    assert!(
+        function.contains("codex_config_has_proxy_placeholder(config, placeholder)"),
+        "proxy_core_adapter should only project the host TOML placeholder fact for Codex"
+    );
+
+    for marker in ["Some(config.clone())", "return Some", "return None"] {
+        assert!(
+            !function.contains(marker),
+            "proxy_core_adapter must not keep live backup snapshot policy marker `{marker}`"
+        );
+    }
+}
+
+#[test]
 fn proxy_core_adapter_delegates_live_takeover_match_app_dispatch_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

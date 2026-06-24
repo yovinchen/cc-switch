@@ -307,6 +307,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
     is_local_proxy_url as core_is_local_proxy_url,
     launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings,
+    live_backup_snapshot_from_live_config as core_live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
     live_takeover_config_matches_proxy_for_app as core_live_takeover_config_matches_proxy_for_app,
     live_token_sync_app_label as core_live_token_sync_app_label,
@@ -10955,11 +10956,14 @@ pub(crate) fn live_backup_snapshot_from_live_config(
     config: &Value,
     placeholder: &str,
 ) -> Option<Value> {
-    if live_config_has_proxy_placeholder_for_app(app_type, config, placeholder) {
-        None
-    } else {
-        Some(config.clone())
-    }
+    let codex_config_has_proxy_placeholder = matches!(app_type, AppType::Codex)
+        && codex_config_has_proxy_placeholder(config, placeholder);
+    core_live_backup_snapshot_from_live_config(
+        &AppKind::from(app_type),
+        config,
+        placeholder,
+        codex_config_has_proxy_placeholder,
+    )
 }
 
 pub(crate) fn provider_settings_with_live_token_sync(

@@ -162,6 +162,7 @@ pub mod ports {
         json_array_contains_subset, json_deep_merge, json_deep_remove,
         json_remove_array_items, json_value_is_subset,
         launch_env_vars_from_provider_settings,
+        live_backup_snapshot_from_live_config,
         live_env_base_url_matches,
         live_config_has_proxy_placeholder_for_app,
         live_takeover_config_matches_proxy_for_app,

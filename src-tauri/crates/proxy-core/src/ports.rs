@@ -1433,6 +1433,24 @@ pub fn live_config_has_proxy_placeholder_for_app(
     }
 }
 
+pub fn live_backup_snapshot_from_live_config(
+    app: &AppKind,
+    config: &Value,
+    placeholder: &str,
+    codex_config_has_proxy_placeholder: bool,
+) -> Option<Value> {
+    if live_config_has_proxy_placeholder_for_app(
+        app,
+        config,
+        placeholder,
+        codex_config_has_proxy_placeholder,
+    ) {
+        None
+    } else {
+        Some(config.clone())
+    }
+}
+
 pub fn is_local_proxy_url(url: &str) -> bool {
     let url = url.trim();
     if !url.starts_with("http://") {
@@ -5385,7 +5403,8 @@ mod tests {
         contains_claude_common_config_snippet, contains_gemini_common_config_snippet,
         json_common_config_snippet_from_value,
         json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
-        launch_env_vars_from_provider_settings, live_env_base_url_matches, live_takeover_app_kinds,
+        launch_env_vars_from_provider_settings, live_backup_snapshot_from_live_config,
+        live_env_base_url_matches, live_takeover_app_kinds,
         live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
         live_token_sync_app_label, normalize_claude_models_in_value,
         normalize_provider_settings_for_storage, provider_default_live_import_settings,
@@ -7832,6 +7851,24 @@ GEMINI_API_KEY=sk-test123
             placeholder,
             false
         ));
+        assert_eq!(
+            live_backup_snapshot_from_live_config(
+                &AppKind::Claude,
+                &json!({ "env": { "ANTHROPIC_AUTH_TOKEN": "real-token" } }),
+                placeholder,
+                false
+            ),
+            Some(json!({ "env": { "ANTHROPIC_AUTH_TOKEN": "real-token" } }))
+        );
+        assert_eq!(
+            live_backup_snapshot_from_live_config(
+                &AppKind::Codex,
+                &json!({ "auth": { "OPENAI_API_KEY": "real-key" } }),
+                placeholder,
+                true
+            ),
+            None
+        );
     }
 
     #[test]
