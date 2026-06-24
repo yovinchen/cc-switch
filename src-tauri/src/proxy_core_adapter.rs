@@ -8842,6 +8842,15 @@ pub(crate) struct ForwarderMediaPreventionInput<'a> {
     pub(crate) request_media_heuristic: bool,
 }
 
+pub(crate) struct ForwarderAppMediaPreventionInput<'a> {
+    pub(crate) app_type: &'a AppType,
+    pub(crate) body: &'a mut Value,
+    pub(crate) provider: &'a Provider,
+    pub(crate) rectifier_enabled: bool,
+    pub(crate) request_media_fallback: bool,
+    pub(crate) request_media_heuristic: bool,
+}
+
 pub(crate) struct ForwarderMediaRetryPlanInput<'a> {
     pub(crate) app: &'a str,
     pub(crate) adapter_name: &'a str,
@@ -8962,6 +8971,8 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderCopilotRequestOptimizationGateInput<'_>,
     ) -> ForwarderMaybeCopilotRequestOptimization;
+
+    fn apply_app_media_prevention(&self, input: ForwarderAppMediaPreventionInput<'_>) -> usize;
 
     fn apply_media_prevention(&self, input: ForwarderMediaPreventionInput<'_>) -> usize;
 
@@ -9283,6 +9294,20 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             body: optimized.body,
             classification: Some(optimized.classification),
         }
+    }
+
+    fn apply_app_media_prevention(&self, input: ForwarderAppMediaPreventionInput<'_>) -> usize {
+        if !matches!(input.app_type, AppType::Codex) {
+            return 0;
+        }
+
+        self.apply_media_prevention(ForwarderMediaPreventionInput {
+            body: input.body,
+            provider: input.provider,
+            rectifier_enabled: input.rectifier_enabled,
+            request_media_fallback: input.request_media_fallback,
+            request_media_heuristic: input.request_media_heuristic,
+        })
     }
 
     fn apply_media_prevention(&self, input: ForwarderMediaPreventionInput<'_>) -> usize {
@@ -15419,6 +15444,60 @@ base_url = "https://api.openai.com/v1"
         });
 
         assert!(skipped_body.get("output_config").is_some());
+    }
+
+    #[test]
+    fn forwarder_request_source_gates_app_media_prevention() {
+        let source = CcSwitchForwarderRequestSource;
+        let provider = Provider::with_id(
+            "media".to_string(),
+            "Media".to_string(),
+            json!({}),
+            None,
+        );
+        let mut non_codex_body = json!({
+            "model": "deepseek-v4-pro",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+        assert_eq!(
+            source.apply_app_media_prevention(ForwarderAppMediaPreventionInput {
+                app_type: &AppType::Claude,
+                body: &mut non_codex_body,
+                provider: &provider,
+                rectifier_enabled: true,
+                request_media_fallback: true,
+                request_media_heuristic: true,
+            }),
+            0
+        );
+        assert_eq!(non_codex_body["messages"][0]["content"][0]["type"], "image");
+
+        let mut codex_body = json!({
+            "model": "deepseek-v4-pro",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+        assert_eq!(
+            source.apply_app_media_prevention(ForwarderAppMediaPreventionInput {
+                app_type: &AppType::Codex,
+                body: &mut codex_body,
+                provider: &provider,
+                rectifier_enabled: true,
+                request_media_fallback: true,
+                request_media_heuristic: true,
+            }),
+            1
+        );
+        assert_eq!(codex_body["messages"][0]["content"][0]["type"], "text");
     }
 
     #[test]

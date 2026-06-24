@@ -5704,6 +5704,43 @@ fn production_forwarder_delegates_claude_body_policy_gate_to_request_source() {
 }
 
 #[test]
+fn production_forwarder_delegates_codex_media_prevention_gate_to_request_source() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
+    let forwarder_source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        adapter_source.contains("apply_app_media_prevention"),
+        "ForwarderRequestSource must expose app-gated media prevention"
+    );
+
+    let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
+    let forbidden_markers = ["matches!(app_type, AppType::Codex)"];
+    let mut violations = Vec::new();
+
+    for (line_index, line) in production_lines(impl_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct Codex media prevention gate marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must delegate Codex media prevention gating to the request source:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_delegates_copilot_live_model_resolution_to_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");

@@ -8,14 +8,13 @@ use super::{
     route_attempt::ForwardAttempt,
 };
 use crate::proxy_core_adapter::{
-    ForwarderAdapterHandle,
+    ForwarderAdapterHandle, ForwarderAppMediaPreventionInput,
     AttemptEventPhase, CopilotOptimizerConfig,
     ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderMaybeCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCodexResponsesToChatInput, ForwarderCodexResponsesToChatPlanInput,
     ForwarderCopilotRequestOptimizationGateInput,
-    ForwarderMediaPreventionInput,
     ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
     ForwarderProviderTransformInput, ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
     ForwarderRequestRectifierPlan,
@@ -31,7 +30,7 @@ use crate::proxy_core_adapter::{
 use crate::proxy_core_adapter::{
     build_codex_oauth_session_headers, prepare_upstream_request_body_with_report,
     forwarder_bedrock_env_flag, forwarder_is_codex_oauth_provider, provider_router_from_database,
-    should_preserve_exact_request_header_case,
+    should_preserve_exact_request_header_case, ForwarderMediaPreventionInput,
     validate_managed_account_upstream_auth,
 };
 use crate::{app_config::AppType, provider::Provider};
@@ -1096,16 +1095,15 @@ impl RequestForwarder {
             mapped_body
         };
 
-        if matches!(app_type, AppType::Codex) {
-            self.request_source
-                .apply_media_prevention(ForwarderMediaPreventionInput {
-                    body: &mut request_body,
-                    provider,
-                    rectifier_enabled: self.rectifier_config.enabled,
-                    request_media_fallback: self.rectifier_config.request_media_fallback,
-                    request_media_heuristic: self.rectifier_config.request_media_heuristic,
-                });
-        }
+        self.request_source
+            .apply_app_media_prevention(ForwarderAppMediaPreventionInput {
+                app_type,
+                body: &mut request_body,
+                provider,
+                rectifier_enabled: self.rectifier_config.enabled,
+                request_media_fallback: self.rectifier_config.request_media_fallback,
+                request_media_heuristic: self.rectifier_config.request_media_heuristic,
+            });
 
         let prepared_request =
             self.request_source
