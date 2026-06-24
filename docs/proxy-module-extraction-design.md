@@ -449,6 +449,7 @@
 438. host forward bridge 不再拆 `ForwarderRuntimeConfig` 的 timeout/retry/rectifier/optimizer 字段来构造 `RequestForwarder`；runtime config 作为整体进入 forwarder，由 forwarder 构造器在边界内完成 options 与三类 optimizer/rectifier config 投影。
 439. channel response status mapping 的 response 与 selected channel facts 已收敛为 `ForwarderChannelResponseStatusInput`；`RequestForwarder` 不再以散参形式把 statusCodeMapping 所需事实转手传给 `ForwarderResponseSource`。
 440. `ForwarderResponseSource` trait 不再暴露 `upstream_error_body` / `upstream_error_response` 内部 helper；非成功上游响应的 status/body 投影仍由默认 source 内部完成，并只通过 `finalize_upstream_response` 对 forwarder 暴露。
+441. channel authProfileRef 到 provider/channel-key/ignore 的 attempt action 判定已迁入 `proxy-core::channel_auth_profile_action` 与 `ChannelAuthProfileAction`；host adapter 不再维护本地 enum 或 resolution wrapper，只负责 provider/key 查询和 provider settings mutation。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
@@ -681,7 +682,7 @@
 636. host `AppError` 到 `ProxyCoreError::Config/Internal` 的上下文包装已移入 `proxy_core_adapter::app_error` / `usage_error`：`proxy_core_host` 不再直接调用 `error_message_with_context` 或选择 core error variant。
 637. current-provider 的 DB fallback 查询判定已新增 `proxy-core::current_provider_db_fallback_required` 并经 adapter 接入：forward runtime 不再手写 `settings_current_provider_id.is_none()`，空 settings 值仍按已存在来源处理而不回退 DB。
 638. forward pipeline 缺少 runtime 时的 Unsupported 错误包装已移入 `proxy_core_adapter::forwarding_runtime_unavailable_error`：`proxy_core_host` 不再直接选择 `ProxyCoreError::Unsupported` 或复制 runtime-required 文案。
-639. channel authProfileRef 到 attempt 处理动作的判定已移入 `proxy_core_adapter::channel_auth_profile_action`：`proxy_core_host` 不再直接展开 `ChannelAuthProfileResolution` 或构造 missing-provider warning，只保留 provider/key 查询与 attempt 写入。
+639. channel authProfileRef 到 attempt 处理动作的判定已进一步从 adapter 移入 `proxy-core::channel_auth_profile_action`：`proxy_core_adapter` 只 re-export core action，host runtime 继续只保留 provider/key 查询与 attempt 写入。
 640. route plan 无匹配 host provider attempts 时的 Unavailable 错误包装已移入 `proxy_core_adapter::route_plan_no_matching_host_providers_error`：forward runtime 不再直接选择 `ProxyCoreError::Unavailable` 或复制固定错误文案。
 641. provider config auth profile 的 metadata source label 已移入 `proxy_core_adapter::auth_info_from_cc_switch_provider_config`：`proxy_core_host` 不再硬编码 `cc_switch_provider_config` 字符串。
 642. Codex client model catalog 的 active config 路径解析、文件读取与 stale guard fallback 已移入 `proxy_core_adapter::codex_client_model_catalog_raw_from_active_config`：`proxy_core_host` 的 `ModelCatalogProvider` 只保留 app 分派和 catalog envelope 组装。
@@ -1193,6 +1194,7 @@
 本轮继续把 forwarder 的响应读取与成功就绪判定包装为 `ForwarderResponseSource`：`RequestForwarder` 不再直接读取 response body、执行非流式 body timeout、流式首包 timeout/replay 或错误响应 body 文本提取，默认 source 保持“记录 provider 成功前先确认响应可读”的既有 failover 语义。
 本轮继续把 channel response status mapping 收敛到 `ForwarderResponseSource`：`RequestForwarder` 不再直接调用响应状态映射 helper，响应 source 负责根据当前 channel 的 statusCodeMapping 改写上游状态码并保留原有 debug 语义。
 本轮继续把非成功上游响应的 status/body 到 `ProxyError::UpstreamError` 投影收敛到 `ForwarderResponseSource::finalize_upstream_response`：`RequestForwarder` 不再直接读取 status code、读取错误 body 或构造 upstream error，默认 source 内部 helper 不作为 trait surface 暴露。
+本轮还把 channel authProfileRef 的 provider/channel-key/ignore action 判定从 adapter 上移到 `proxy-core::domain`：core 现在同时持有 auth profile 解析、missing provider warning 和 attempt action contract，host adapter 只执行 provider/key 查询、key materialization 和 attempt 写入副作用。
 本轮继续把 forwarder 的上游请求 body/headers/transport-policy 组装包装为 `ForwarderRequestSource`：`RequestForwarder` 不再直接调用请求体过滤、prompt cache trace、stream/identity 策略、ordered headers、body 序列化和 managed-account 上游占位 auth 校验 helper，默认 source 仍保持现有上游请求语义，后续外部宿主可替换请求组装层。
 本轮继续把 finalized upstream body 的 model/outbound logging label 收敛到 `ForwarderPreparedRequest`：`RequestForwarder` 不再在请求体定稿后再次投影 `filtered_body.model`，只消费 request source 随 prepared body 返回的最终模型事实。
 本轮继续把上游请求 URL/model 与 debug body 日志收敛到 `ForwarderRequestSource::log_upstream_request`：`RequestForwarder` 不再拼接请求日志文本或直接序列化 finalized body，只把 adapter tag、URL、model label 和 body 交给 request source。
