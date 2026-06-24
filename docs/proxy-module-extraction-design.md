@@ -1350,6 +1350,7 @@
 本轮继续把 usage script 凭据覆盖策略收敛到 `proxy-core::ports::usage_script_credentials_from_parts`：core 维护脚本显式非空值优先、空值回退 provider 凭据和 `baseUrl` 去尾斜杠规则，host 继续负责按 app/provider settings 提取 fallback 与执行脚本。
 本轮继续把 Claude takeover 的 provider facts 决策收敛到 `proxy-core::ports::apply_claude_takeover_fields_for_provider_facts`：core 维护 managed-account/Copilot auth policy、provider-vs-live 模型字段来源和 env 写入，adapter 只投影宿主 provider facts。
 本轮继续把 Codex takeover TOML 字段计划收敛到 `proxy-core::ports::codex_takeover_toml_config_patch`：core 维护接管时强制 local proxy `base_url`、`wire_api = responses` 和可选 upstream model 写回规则，adapter 继续负责 `toml_edit` 语法保留写入。
+本轮继续把 live takeover 占位符检测的 app 分派收敛到 `proxy-core::ports::live_config_has_proxy_placeholder_for_app`：core 维护 Claude/Codex/Gemini 统一检测语义，adapter 只投影 Codex config.toml bearer-token 是否命中的宿主解析事实。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

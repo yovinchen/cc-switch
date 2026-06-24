@@ -5379,6 +5379,34 @@ fn proxy_core_adapter_delegates_route_candidate_empty_policy_to_core() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_live_placeholder_app_dispatch_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn live_config_has_proxy_placeholder_for_app",
+        "pub(crate) fn live_backup_snapshot_from_live_config",
+    );
+
+    assert!(
+        function.contains("core_live_config_has_proxy_placeholder_for_app("),
+        "proxy_core_adapter must delegate live placeholder app dispatch to proxy-core"
+    );
+    assert!(
+        function.contains("codex_config_has_proxy_placeholder(config, placeholder)"),
+        "proxy_core_adapter should only project the host TOML bearer-token fact for Codex"
+    );
+
+    for marker in ["AppType::Claude =>", "AppType::Codex =>", "AppType::Gemini =>"] {
+        assert!(
+            !function.contains(marker),
+            "proxy_core_adapter must not keep app-specific placeholder dispatch marker `{marker}`"
+        );
+    }
+}
+
+#[test]
 fn production_forwarder_delegates_managed_auth_resolution_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");

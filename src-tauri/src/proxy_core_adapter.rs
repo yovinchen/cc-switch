@@ -299,6 +299,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     apply_codex_takeover_auth_placeholder_if_present as core_apply_codex_takeover_auth_placeholder_if_present,
     apply_gemini_takeover_env_fields as core_apply_gemini_takeover_env_fields,
     claude_live_config_has_proxy_placeholder as core_claude_live_config_has_proxy_placeholder,
+    codex_live_auth_has_proxy_placeholder as core_codex_live_auth_has_proxy_placeholder,
     detect_gemini_auth_type as core_detect_gemini_auth_type,
     ensure_codex_takeover_auth_placeholder as core_ensure_codex_takeover_auth_placeholder,
     gemini_env_json_from_map as core_gemini_env_json_from_map,
@@ -308,6 +309,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     gemini_live_config_has_proxy_placeholder as core_gemini_live_config_has_proxy_placeholder,
     is_local_proxy_url as core_is_local_proxy_url,
     launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings,
+    live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
     live_env_base_url_matches as core_live_env_base_url_matches,
     live_token_sync_app_label as core_live_token_sync_app_label,
     normalize_provider_settings_for_storage as core_normalize_provider_settings_for_storage,
@@ -10940,12 +10942,14 @@ pub(crate) fn live_config_has_proxy_placeholder_for_app(
     config: &Value,
     placeholder: &str,
 ) -> bool {
-    match app_type {
-        AppType::Claude => claude_live_config_has_proxy_placeholder(config, placeholder),
-        AppType::Codex => codex_live_config_has_proxy_placeholder(config, placeholder),
-        AppType::Gemini => gemini_live_config_has_proxy_placeholder(config, placeholder),
-        _ => false,
-    }
+    let codex_config_has_proxy_placeholder = matches!(app_type, AppType::Codex)
+        && codex_config_has_proxy_placeholder(config, placeholder);
+    core_live_config_has_proxy_placeholder_for_app(
+        &AppKind::from(app_type),
+        config,
+        placeholder,
+        codex_config_has_proxy_placeholder,
+    )
 }
 
 pub(crate) fn live_backup_snapshot_from_live_config(
@@ -11014,16 +11018,11 @@ where
 }
 
 pub(crate) fn codex_live_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
-    if config
-        .get("auth")
-        .and_then(Value::as_object)
-        .and_then(|auth| auth.get("OPENAI_API_KEY"))
-        .and_then(Value::as_str)
-        == Some(placeholder)
-    {
-        return true;
-    }
+    core_codex_live_auth_has_proxy_placeholder(config, placeholder)
+        || codex_config_has_proxy_placeholder(config, placeholder)
+}
 
+fn codex_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
     config
         .get("config")
         .and_then(Value::as_str)

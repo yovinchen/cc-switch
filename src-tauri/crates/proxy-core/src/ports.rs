@@ -1407,6 +1407,32 @@ pub fn gemini_live_config_has_proxy_placeholder(config: &Value, placeholder: &st
         == Some(placeholder)
 }
 
+pub fn codex_live_auth_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
+    config
+        .get("auth")
+        .and_then(Value::as_object)
+        .and_then(|auth| auth.get("OPENAI_API_KEY"))
+        .and_then(Value::as_str)
+        == Some(placeholder)
+}
+
+pub fn live_config_has_proxy_placeholder_for_app(
+    app: &AppKind,
+    config: &Value,
+    placeholder: &str,
+    codex_config_has_proxy_placeholder: bool,
+) -> bool {
+    match app {
+        AppKind::Claude => claude_live_config_has_proxy_placeholder(config, placeholder),
+        AppKind::Codex => {
+            codex_live_auth_has_proxy_placeholder(config, placeholder)
+                || codex_config_has_proxy_placeholder
+        }
+        AppKind::Gemini => gemini_live_config_has_proxy_placeholder(config, placeholder),
+        _ => false,
+    }
+}
+
 pub fn is_local_proxy_url(url: &str) -> bool {
     let url = url.trim();
     if !url.starts_with("http://") {
@@ -5309,7 +5335,8 @@ mod tests {
         claude_takeover_auth_policy_from_provider_facts,
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
         ClaudeTakeoverProviderFacts,
-        codex_takeover_toml_config_patch, CodexTakeoverTomlConfigPatch,
+        codex_live_auth_has_proxy_placeholder, codex_takeover_toml_config_patch,
+        CodexTakeoverTomlConfigPatch,
         detect_gemini_auth_type, ensure_codex_takeover_auth_placeholder,
         gemini_contains_packycode_keyword, gemini_env_json_from_map,
         gemini_env_map_from_settings, gemini_env_parse_issue_spec,
@@ -5324,6 +5351,7 @@ mod tests {
         json_common_config_snippet_from_value,
         json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
         launch_env_vars_from_provider_settings, live_env_base_url_matches, live_takeover_app_kinds,
+        live_config_has_proxy_placeholder_for_app,
         live_token_sync_app_label, normalize_claude_models_in_value,
         normalize_provider_settings_for_storage, provider_default_live_import_settings,
         openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
@@ -7708,7 +7736,7 @@ GEMINI_API_KEY=sk-test123
     }
 
     #[test]
-    fn live_proxy_placeholder_probes_detect_claude_and_gemini_tokens() {
+    fn live_proxy_placeholder_probes_detect_app_specific_tokens() {
         let placeholder = "PROXY_MANAGED";
 
         assert!(claude_live_config_has_proxy_placeholder(
@@ -7730,6 +7758,44 @@ GEMINI_API_KEY=sk-test123
         assert!(!gemini_live_config_has_proxy_placeholder(
             &json!({ "env": { "GEMINI_API_KEY": "real-key" } }),
             placeholder
+        ));
+        assert!(codex_live_auth_has_proxy_placeholder(
+            &json!({ "auth": { "OPENAI_API_KEY": placeholder } }),
+            placeholder
+        ));
+        assert!(!codex_live_auth_has_proxy_placeholder(
+            &json!({ "auth": { "OPENAI_API_KEY": "real-key" } }),
+            placeholder
+        ));
+        assert!(live_config_has_proxy_placeholder_for_app(
+            &AppKind::Claude,
+            &json!({ "env": { "ANTHROPIC_AUTH_TOKEN": placeholder } }),
+            placeholder,
+            false
+        ));
+        assert!(live_config_has_proxy_placeholder_for_app(
+            &AppKind::Codex,
+            &json!({ "auth": { "OPENAI_API_KEY": placeholder } }),
+            placeholder,
+            false
+        ));
+        assert!(live_config_has_proxy_placeholder_for_app(
+            &AppKind::Codex,
+            &json!({ "auth": { "OPENAI_API_KEY": "real-key" } }),
+            placeholder,
+            true
+        ));
+        assert!(live_config_has_proxy_placeholder_for_app(
+            &AppKind::Gemini,
+            &json!({ "env": { "GEMINI_API_KEY": placeholder } }),
+            placeholder,
+            false
+        ));
+        assert!(!live_config_has_proxy_placeholder_for_app(
+            &AppKind::ClaudeDesktop,
+            &json!({ "env": { "ANTHROPIC_API_KEY": placeholder } }),
+            placeholder,
+            false
         ));
     }
 
