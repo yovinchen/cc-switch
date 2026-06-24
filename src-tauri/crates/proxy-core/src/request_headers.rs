@@ -88,6 +88,16 @@ pub struct CopilotAuthHeadersInput<'a> {
     pub github_api_version: &'a str,
 }
 
+pub struct ClaudeProviderAuthHeadersInput<'a> {
+    pub auth: &'a ProviderAuthInfo,
+    pub copilot_request_id: &'a str,
+    pub copilot_editor_version: &'a str,
+    pub copilot_editor_plugin_version: &'a str,
+    pub copilot_integration_id: &'a str,
+    pub copilot_user_agent: &'a str,
+    pub copilot_github_api_version: &'a str,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClaudeAuthHeaderKind {
     AnthropicApiKey,
@@ -210,6 +220,35 @@ pub fn build_claude_auth_headers(
             ));
             Ok(headers)
         }
+    }
+}
+
+pub fn build_claude_provider_auth_headers(
+    input: ClaudeProviderAuthHeadersInput<'_>,
+) -> ProxyCoreResult<Vec<(http::HeaderName, http::HeaderValue)>> {
+    if let Some(kind) = claude_auth_header_kind_for_provider_strategy(input.auth.strategy) {
+        return build_claude_auth_headers(
+            kind,
+            &input.auth.api_key,
+            input.auth.access_token.as_deref(),
+        );
+    }
+
+    match input.auth.strategy {
+        ProviderAuthStrategy::GitHubCopilot => {
+            build_copilot_auth_headers(CopilotAuthHeadersInput {
+                api_key: &input.auth.api_key,
+                request_id: input.copilot_request_id,
+                editor_version: input.copilot_editor_version,
+                editor_plugin_version: input.copilot_editor_plugin_version,
+                integration_id: input.copilot_integration_id,
+                user_agent: input.copilot_user_agent,
+                github_api_version: input.copilot_github_api_version,
+            })
+        }
+        unsupported => Err(ProxyCoreError::Auth(format!(
+            "unsupported Claude provider auth strategy: {unsupported:?}"
+        ))),
     }
 }
 
@@ -599,13 +638,14 @@ fn append_header_from_str(
 mod tests {
     use super::{
         anthropic_beta_header_value, auth_header_value, build_claude_auth_headers,
-        build_codex_bearer_auth_headers, build_codex_oauth_session_headers,
-        build_codex_provider_auth_headers, build_copilot_auth_headers, build_gemini_auth_headers,
-        build_gemini_provider_auth_headers, build_upstream_auth_headers,
-        build_upstream_request_headers, claude_auth_header_kind_for_provider_strategy,
-        is_official_codex_client_user_agent, should_preserve_exact_request_header_case,
-        should_send_anthropic_request_headers, should_skip_copilot_fingerprint_request_header,
-        should_strip_forwarded_request_header, upstream_host_header_from_url, ClaudeAuthHeaderKind,
+        build_claude_provider_auth_headers, build_codex_bearer_auth_headers,
+        build_codex_oauth_session_headers, build_codex_provider_auth_headers,
+        build_copilot_auth_headers, build_gemini_auth_headers, build_gemini_provider_auth_headers,
+        build_upstream_auth_headers, build_upstream_request_headers,
+        claude_auth_header_kind_for_provider_strategy, is_official_codex_client_user_agent,
+        should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
+        should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
+        upstream_host_header_from_url, ClaudeAuthHeaderKind, ClaudeProviderAuthHeadersInput,
         CopilotAuthHeaderOverrides, CopilotAuthHeadersInput, UpstreamAuthHeadersInput,
         UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
     };
@@ -815,6 +855,48 @@ mod tests {
         assert_eq!(codex[0].1, HeaderValue::from_static("Bearer chatgpt-token"));
         assert_eq!(codex[1].0.as_str(), "originator");
         assert_eq!(codex[1].1, HeaderValue::from_static("cc-switch"));
+    }
+
+    #[test]
+    fn builds_claude_provider_auth_headers_for_static_and_copilot() {
+        let static_auth =
+            ProviderAuthInfo::new("claude-token".to_string(), ProviderAuthStrategy::ClaudeAuth);
+        let static_headers = build_claude_provider_auth_headers(ClaudeProviderAuthHeadersInput {
+            auth: &static_auth,
+            copilot_request_id: "request-static",
+            copilot_editor_version: "vscode/1",
+            copilot_editor_plugin_version: "plugin/1",
+            copilot_integration_id: "integration-1",
+            copilot_user_agent: "copilot-test",
+            copilot_github_api_version: "2022-11-28",
+        })
+        .unwrap();
+        assert_eq!(static_headers[0].0.as_str(), "authorization");
+        assert_eq!(
+            static_headers[0].1,
+            HeaderValue::from_static("Bearer claude-token")
+        );
+
+        let copilot_auth = ProviderAuthInfo::new(
+            "copilot-token".to_string(),
+            ProviderAuthStrategy::GitHubCopilot,
+        );
+        let copilot_headers = build_claude_provider_auth_headers(ClaudeProviderAuthHeadersInput {
+            auth: &copilot_auth,
+            copilot_request_id: "request-copilot",
+            copilot_editor_version: "vscode/1",
+            copilot_editor_plugin_version: "plugin/1",
+            copilot_integration_id: "integration-1",
+            copilot_user_agent: "copilot-test",
+            copilot_github_api_version: "2022-11-28",
+        })
+        .unwrap();
+        assert!(copilot_headers.iter().any(|(name, value)| {
+            name.as_str() == "authorization" && value == "Bearer copilot-token"
+        }));
+        assert!(copilot_headers
+            .iter()
+            .any(|(name, value)| name.as_str() == "x-request-id" && value == "request-copilot"));
     }
 
     #[test]

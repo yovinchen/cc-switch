@@ -1017,6 +1017,9 @@ pub(crate) type ClaudeAuthKey = crate::proxy_core::api::auth::ClaudeAuthKey;
 pub(crate) type ClaudeAuthKeySource = crate::proxy_core::api::auth::ClaudeAuthKeySource;
 pub(crate) type ClaudePromptCacheKeyResolution =
     crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
+pub(crate) type ClaudeProviderAuthHeadersInput<'a> =
+    crate::proxy_core::api::transport::ClaudeProviderAuthHeadersInput<'a>;
+#[cfg(test)]
 pub(crate) type CopilotAuthHeadersInput<'a> =
     crate::proxy_core::api::transport::CopilotAuthHeadersInput<'a>;
 pub(crate) type CopilotAuthHeaderOverrides<'a> =
@@ -3085,12 +3088,12 @@ pub(crate) use crate::proxy_core::api::transport::{
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, apply_bedrock_pre_send_optimizers,
     apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
-    build_claude_auth_headers, build_claude_upstream_url, build_codex_oauth_session_headers,
-    build_codex_provider_auth_headers, build_codex_upstream_url, build_copilot_auth_headers,
+    build_claude_provider_auth_headers, build_claude_upstream_url,
+    build_codex_oauth_session_headers, build_codex_provider_auth_headers, build_codex_upstream_url,
     build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
-    claude_auth_header_kind_for_provider_strategy, classify_copilot_request,
-    claude_transform_endpoint_rewrite_input_from_body, contains_image_blocks,
+    classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
+    contains_image_blocks,
     invalid_upstream_url_error_message, is_codex_chat_full_endpoint_base, is_openai_o_series,
     is_unsupported_image_error, merge_copilot_tool_results,
     parse_json_request_body, parse_json_request_body_or_null,
@@ -3107,6 +3110,10 @@ pub(crate) use crate::proxy_core::api::transport::{
     should_trigger_media_retry, split_endpoint_and_query, strip_copilot_thinking_blocks,
     supports_reasoning_effort, UNSUPPORTED_IMAGE_MARKER,
 };
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transport::build_claude_auth_headers;
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transport::build_copilot_auth_headers;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::build_codex_bearer_auth_headers;
 #[cfg(test)]
@@ -5327,27 +5334,17 @@ pub(crate) fn provider_claude_base_url(provider: &Provider) -> Option<String> {
 pub(crate) fn provider_claude_auth_headers(
     auth: &ProviderAuthInfo,
 ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {
-    if let Some(kind) = claude_auth_header_kind_for_provider_strategy(auth.strategy) {
-        return build_claude_auth_headers(kind, &auth.api_key, auth.access_token.as_deref())
-            .map_err(|error| error.to_string());
-    }
-
-    match auth.strategy {
-        ProviderAuthStrategy::GitHubCopilot => {
-            let request_id = Uuid::new_v4().to_string();
-            build_copilot_auth_headers(CopilotAuthHeadersInput {
-                api_key: &auth.api_key,
-                request_id: &request_id,
-                editor_version: COPILOT_EDITOR_VERSION,
-                editor_plugin_version: COPILOT_PLUGIN_VERSION,
-                integration_id: COPILOT_INTEGRATION_ID,
-                user_agent: COPILOT_USER_AGENT,
-                github_api_version: COPILOT_API_VERSION,
-            })
-            .map_err(|error| error.to_string())
-        }
-        _ => unreachable!("static auth strategies are delegated to proxy-core"),
-    }
+    let request_id = Uuid::new_v4().to_string();
+    build_claude_provider_auth_headers(ClaudeProviderAuthHeadersInput {
+        auth,
+        copilot_request_id: &request_id,
+        copilot_editor_version: COPILOT_EDITOR_VERSION,
+        copilot_editor_plugin_version: COPILOT_PLUGIN_VERSION,
+        copilot_integration_id: COPILOT_INTEGRATION_ID,
+        copilot_user_agent: COPILOT_USER_AGENT,
+        copilot_github_api_version: COPILOT_API_VERSION,
+    })
+    .map_err(|error| error.to_string())
 }
 
 pub(crate) fn provider_claude_transform_request_for_api_format(
