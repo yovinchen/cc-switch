@@ -1073,6 +1073,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续把 `CcSwitchChannelSource` 的 channel spec list/get 读取与 `ChannelSpec` 投影收敛到 adapter-owned source wrapper。
 本轮继续把 `CcSwitchChannelSource` 的 channel record create/get/update/delete DB 操作与 `ChannelRecord` 投影收敛到 adapter-owned source wrapper。
 本轮继续把 `CcSwitchChannelSource` 的 channel key/model 子资源 DB 操作与 `ChannelKeyRecord`/`ChannelModelRecord` 投影收敛到 adapter-owned source wrapper。
+本轮补齐 `proxy-core::api::prelude` 的外部接入烟测所需 channel 构造 contract；独立 integration test 只经 public prelude 构造 `ProxyEngine`、实现 `ProxyServices` 并调用 `handle`，锁住外部 host 直接集成中转模块的最小可用路径。
 本轮继续把 `CcSwitchChannelSource` 的 route/materialized channel record list 读取与 `ChannelRecord` 投影收敛到 adapter-owned source wrapper。
 本轮继续把 `CcSwitchChannelSource` 的 legacy channel migration preview/materialize DB 操作与 response input 投影收敛到 adapter-owned source wrapper，host services 只装配 channel source。
 本轮继续把 `CcSwitchRoutePolicySource` 的 failover queue DB 读取与 `RoutePolicy` 投影迁入 adapter-owned source，host services 只装配 source。
@@ -1478,6 +1479,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1054. forwarder adapter facts 删除 `provider_adapter_name_is_claude` 单行 helper；`ForwarderAdapterFacts::from_adapter` 在 adapter context 边界内直接投影 Claude adapter fact，boundary forbidden marker 防止 helper 复活。
 1055. channel-key auth profile 删除 cfg(test) DB convenience helper 与 borrowed runtime source；host 测试改为构造 `CcSwitchChannelKeyRuntimeSource` 后调用 `apply_channel_auth_profile_providers_from_source`，boundary 反向禁止 DB helper 回流。
 1056. Codex media-prevention app gate 新增 core helper `should_apply_forwarder_media_prevention_for_app`；request source 只投影 `AppType -> AppKind` 后调用 core policy，boundary 禁止 adapter-local `AppType::Codex` gate 回流。
+1057. `proxy-core::api::prelude` 补齐外部 channel 构造 helper 与 `ChannelAttemptPlan` 导出；新增 `tests/public_prelude.rs` 作为 crate 外集成烟测，只通过 public prelude 构造 services/engine 并调用 `ProxyEngine::handle`，验证独立中转模块最小集成路径。
 
 ## 背景
 

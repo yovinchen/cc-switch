@@ -350,9 +350,10 @@ pub mod prelude {
         ResponseRuntimePolicy,
     };
     pub use super::domain::{
-        AppKind, AuthProfileRef, ChannelAttemptResult, InterfaceKind, ModelRoute, ProviderKind,
-        ProviderSpec, ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest,
-        RouteSelection, UsageTokens,
+        channel_spec_from_input, AppKind, AuthProfileRef, ChannelAttemptPlan,
+        ChannelAttemptResult, ChannelSpecInput, InterfaceKind, ModelRoute, ModelRouteInput,
+        ProviderKind, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan, RoutePolicy,
+        RouteRequest, RouteSelection, UsageTokens,
     };
     pub use super::engine::ProxyEngine;
     pub use super::errors::{ProxyCoreError, ProxyCoreResult};
