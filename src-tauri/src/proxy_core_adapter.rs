@@ -2622,6 +2622,8 @@ pub(crate) type ManagementAuthError = crate::proxy_core::api::auth::ManagementAu
 pub(crate) type CircuitBreakerFailureDecision =
     crate::proxy_core::api::config::CircuitBreakerFailureDecision;
 #[cfg(test)]
+pub(crate) use crate::proxy_core::api::auth::claude_desktop_model_id_is_profile_safe;
+#[cfg(test)]
 pub(crate) use crate::proxy_core::api::auth::validate_claude_desktop_gateway_bearer_header;
 pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
 #[cfg(test)]
@@ -2667,12 +2669,11 @@ pub(crate) use crate::proxy_core::api::auth::{
 };
 pub(crate) use crate::proxy_core::api::auth::{
     claude_desktop_default_proxy_routes, claude_desktop_direct_gateway_credentials,
-    claude_desktop_direct_inference_model_specs, claude_desktop_model_id_is_profile_safe,
-    claude_desktop_profile_has_unsafe_model_ids, claude_desktop_proxy_model_routes,
-    claude_desktop_proxy_request_upstream_model, ClaudeDesktopDirectGatewayCredentialIssue,
-    ClaudeDesktopDirectGatewayCredentials, ClaudeDesktopDirectInferenceModelSpec,
-    ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopProxyRouteInput,
-    ClaudeDesktopResolvedProxyRoute,
+    claude_desktop_direct_inference_model_specs, claude_desktop_profile_has_unsafe_model_ids,
+    claude_desktop_proxy_model_routes, claude_desktop_proxy_request_upstream_model,
+    ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectGatewayCredentials,
+    ClaudeDesktopDirectInferenceModelSpec, ClaudeDesktopDirectModelRouteIssue,
+    ClaudeDesktopProxyRouteInput, ClaudeDesktopResolvedProxyRoute,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
@@ -10393,15 +10394,6 @@ pub(crate) fn provider_usage_script(provider: Option<&Provider>) -> Option<&Usag
 
 pub(crate) use crate::proxy_core::api::ports::usage_script_credentials_from_parts as usage_script_credentials;
 
-pub(crate) fn provider_claude_env_settings(
-    provider: &Provider,
-) -> Option<&serde_json::Map<String, Value>> {
-    provider
-        .settings_config
-        .get("env")
-        .and_then(Value::as_object)
-}
-
 pub(crate) fn provider_launch_env_vars_for_app(
     provider: &Provider,
     app_type: &AppType,
@@ -10668,13 +10660,32 @@ pub(crate) fn provider_claude_models_are_claude_safe(provider: &Provider) -> boo
     )
 }
 
-pub(crate) fn provider_claude_desktop_routes_support_1m_by_default(provider: &Provider) -> bool {
-    crate::proxy_core::api::auth::claude_desktop_routes_support_1m_by_default(
+pub(crate) fn provider_claude_desktop_suggested_proxy_routes(
+    provider: &Provider,
+) -> Option<std::collections::HashMap<String, crate::provider::ClaudeDesktopModelRoute>> {
+    let routes = crate::proxy_core::api::auth::claude_desktop_suggested_proxy_routes(
+        &provider.settings_config,
         provider
             .meta
             .as_ref()
             .and_then(|meta| meta.provider_type.as_deref()),
-    )
+    );
+
+    (!routes.is_empty()).then(|| {
+        routes
+            .into_iter()
+            .map(|route| {
+                (
+                    route.route_id,
+                    crate::provider::ClaudeDesktopModelRoute {
+                        model: route.upstream_model,
+                        label_override: route.label_override,
+                        supports_1m: Some(route.supports_1m),
+                    },
+                )
+            })
+            .collect()
+    })
 }
 
 pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key(provider: &Provider) -> bool {
@@ -22657,10 +22668,7 @@ command = "latest-command"
         let stream_check_provider_is_copilot =
             provider_is_github_copilot_stream_check_target(&provider);
         let copilot_account_id = provider_github_copilot_managed_account_id(&provider);
-        let has_claude_env = provider_claude_env_settings(&provider).is_some();
         let models_are_claude_safe = provider_claude_models_are_claude_safe(&provider);
-        let supports_1m_by_default =
-            provider_claude_desktop_routes_support_1m_by_default(&provider);
         let stream_check_timeout_secs =
             provider_stream_check_test_config(&provider).and_then(|config| config.timeout_secs);
         assert_eq!(
@@ -22723,9 +22731,7 @@ command = "latest-command"
         assert!(usage_provider_is_copilot);
         assert!(stream_check_provider_is_copilot);
         assert_eq!(copilot_account_id.as_deref(), Some("acct-1"));
-        assert!(has_claude_env);
         assert!(models_are_claude_safe);
-        assert!(!supports_1m_by_default);
         assert_eq!(stream_check_timeout_secs, Some(20));
         assert!(usage_provider_is_full_url);
         assert_eq!(

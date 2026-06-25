@@ -4718,6 +4718,7 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
             && source.contains("claude_desktop_provider_models_are_profile_safe(")
             && source.contains("claude_desktop_direct_provider_validation_issue(")
             && source.contains("claude_desktop_proxy_provider_config_validation_issue(")
+            && source.contains("claude_desktop_suggested_proxy_routes(")
             && source.contains("claude_desktop_gateway_token_error")
             && source.contains("claude_desktop_provider_selection_error")
             && source.contains("claude_desktop_provider_unavailable_error"),
@@ -4733,11 +4734,11 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
         function_slice(
             &source,
             "pub(crate) fn provider_claude_models_are_claude_safe",
-            "pub(crate) fn provider_claude_desktop_routes_support_1m_by_default",
+            "pub(crate) fn provider_claude_desktop_suggested_proxy_routes",
         ),
         function_slice(
             &source,
-            "pub(crate) fn provider_claude_desktop_routes_support_1m_by_default",
+            "pub(crate) fn provider_claude_desktop_suggested_proxy_routes",
             "pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key",
         ),
         function_slice(
@@ -4800,6 +4801,56 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter must keep Claude Desktop provider key/api_format/provider_type policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn provider_command_delegates_claude_desktop_route_suggestions_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/commands/provider.rs");
+    let source = fs::read_to_string(&path).expect("read commands/provider.rs");
+    let suggestion_slice = function_slice(
+        &source,
+        "pub(crate) fn suggested_claude_desktop_routes(",
+        "#[allow(non_snake_case)]",
+    );
+
+    assert!(
+        suggestion_slice.contains("provider_claude_desktop_suggested_proxy_routes("),
+        "commands/provider should delegate Claude Desktop route suggestion policy through proxy_core_adapter"
+    );
+
+    let forbidden_markers = [
+        "provider_claude_env_settings",
+        "provider_claude_desktop_routes_support_1m_by_default",
+        "ONE_M_CONTEXT_MARKER",
+        "is_claude_safe_model_id(",
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "_NAME",
+        "values_mut()",
+        "supports_1m_default",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(suggestion_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/commands/provider.rs suggested_claude_desktop_routes:{} contains route suggestion policy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "commands/provider must keep Claude Desktop route suggestion policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }

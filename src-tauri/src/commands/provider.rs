@@ -6,9 +6,8 @@ use crate::commands::copilot::CopilotAuthState;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
 use crate::proxy_core_adapter::{
-    provider_claude_desktop_routes_support_1m_by_default, provider_claude_env_settings,
-    provider_claude_models_are_claude_safe, provider_github_copilot_managed_account_id,
-    provider_usage_script,
+    provider_claude_desktop_suggested_proxy_routes, provider_claude_models_are_claude_safe,
+    provider_github_copilot_managed_account_id, provider_usage_script,
 };
 use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, SpeedtestService, SwitchResult,
@@ -239,110 +238,7 @@ pub fn ensure_claude_desktop_official_provider(state: State<'_, AppState>) -> Re
 pub(crate) fn suggested_claude_desktop_routes(
     provider: &Provider,
 ) -> Option<std::collections::HashMap<String, crate::provider::ClaudeDesktopModelRoute>> {
-    let env = provider_claude_env_settings(provider)?;
-    let mut routes = std::collections::HashMap::new();
-    let supports_1m_default = provider_claude_desktop_routes_support_1m_by_default(provider);
-
-    fn add_route(
-        routes: &mut std::collections::HashMap<String, crate::provider::ClaudeDesktopModelRoute>,
-        env: &serde_json::Map<String, serde_json::Value>,
-        route_key: &str,
-        env_key: &str,
-        supports_1m_default: bool,
-    ) {
-        let Some(raw_model) = env
-            .get(env_key)
-            .and_then(|value| value.as_str())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        else {
-            return;
-        };
-
-        // Claude 端 env 值可能带 [1M] 后缀；Claude Desktop schema 不接受后缀，
-        // 改用 supports1m 字段表达 1M 能力。在 import 边界做单向翻译。
-        let marker = crate::claude_desktop_config::ONE_M_CONTEXT_MARKER.as_bytes();
-        let raw_bytes = raw_model.as_bytes();
-        let has_1m_marker = raw_bytes.len() >= marker.len()
-            && raw_bytes[raw_bytes.len() - marker.len()..].eq_ignore_ascii_case(marker);
-        let stripped_model: &str = if has_1m_marker {
-            raw_model[..raw_model.len() - marker.len()].trim_end()
-        } else {
-            raw_model
-        };
-        if stripped_model.is_empty() {
-            return;
-        }
-        let effective_supports_1m = supports_1m_default || has_1m_marker;
-        let explicit_label_override = env
-            .get(&format!("{env_key}_NAME"))
-            .and_then(|value| value.as_str())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string);
-        let label_override = explicit_label_override.clone().or_else(|| {
-            (!crate::claude_desktop_config::is_claude_safe_model_id(stripped_model))
-                .then(|| stripped_model.to_string())
-        });
-
-        // 何时覆盖既有 label_override：原本为空 / 这次来的是 explicit _NAME /
-        // 既有值只是 stripped_model 派生的占位（被 explicit 或更具体的值挤掉）。
-        let should_overwrite = |existing: Option<&str>| {
-            existing.is_none()
-                || explicit_label_override.is_some()
-                || existing == Some(stripped_model)
-        };
-
-        let merge_into = |existing: &mut crate::provider::ClaudeDesktopModelRoute| {
-            let merged = existing.supports_1m.unwrap_or(false) || effective_supports_1m;
-            existing.supports_1m = Some(merged);
-            if should_overwrite(existing.label_override.as_deref()) {
-                existing.label_override = label_override.clone();
-            }
-        };
-
-        if let Some(existing) = routes
-            .values_mut()
-            .find(|existing| existing.model == stripped_model)
-        {
-            merge_into(existing);
-            return;
-        }
-
-        routes
-            .entry(route_key.to_string())
-            .and_modify(merge_into)
-            .or_insert_with(|| crate::provider::ClaudeDesktopModelRoute {
-                model: stripped_model.to_string(),
-                label_override,
-                supports_1m: Some(effective_supports_1m),
-            });
-    }
-
-    let default_proxy_routes = crate::claude_desktop_config::default_proxy_routes();
-    for spec in &default_proxy_routes {
-        add_route(
-            &mut routes,
-            env,
-            spec.route_id,
-            spec.env_key,
-            supports_1m_default,
-        );
-    }
-
-    // 三个 default env_key 全空时用 ANTHROPIC_MODEL 派生兜底路由。
-    if routes.is_empty() {
-        let primary_route = default_proxy_routes[0].route_id;
-        add_route(
-            &mut routes,
-            env,
-            primary_route,
-            "ANTHROPIC_MODEL",
-            supports_1m_default,
-        );
-    }
-
-    (!routes.is_empty()).then_some(routes)
+    provider_claude_desktop_suggested_proxy_routes(provider)
 }
 
 #[allow(non_snake_case)]

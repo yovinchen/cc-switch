@@ -102,6 +102,14 @@ pub struct ClaudeDesktopDefaultProxyRouteSpec {
     pub supports_1m: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaudeDesktopSuggestedProxyRoute {
+    pub route_id: String,
+    pub upstream_model: String,
+    pub label_override: Option<String>,
+    pub supports_1m: bool,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ClaudeDesktopProxyRouteInput<'a> {
     pub route_id: &'a str,
@@ -170,6 +178,39 @@ pub fn claude_desktop_routes_support_1m_by_default(provider_type: Option<&str>) 
 
 pub fn claude_desktop_default_proxy_routes() -> &'static [ClaudeDesktopDefaultProxyRouteSpec] {
     DEFAULT_PROXY_ROUTE_SPECS
+}
+
+pub fn claude_desktop_suggested_proxy_routes(
+    settings_config: &Value,
+    provider_type: Option<&str>,
+) -> Vec<ClaudeDesktopSuggestedProxyRoute> {
+    let Some(env) = settings_config.get("env").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    let supports_1m_default = claude_desktop_routes_support_1m_by_default(provider_type);
+    let mut routes = Vec::new();
+
+    for spec in DEFAULT_PROXY_ROUTE_SPECS {
+        add_suggested_proxy_route(
+            &mut routes,
+            env,
+            spec.route_id,
+            spec.env_key,
+            supports_1m_default,
+        );
+    }
+
+    if routes.is_empty() {
+        add_suggested_proxy_route(
+            &mut routes,
+            env,
+            DEFAULT_PROXY_ROUTE_SPECS[0].route_id,
+            "ANTHROPIC_MODEL",
+            supports_1m_default,
+        );
+    }
+
+    routes
 }
 
 pub fn claude_desktop_model_id_is_profile_safe(model: &str) -> bool {
@@ -268,6 +309,73 @@ pub fn claude_desktop_proxy_model_routes<'a>(
     result.sort_by(|a, b| a.route_id.cmp(&b.route_id));
     result.dedup_by(|a, b| a.route_id == b.route_id);
     result
+}
+
+fn add_suggested_proxy_route(
+    routes: &mut Vec<ClaudeDesktopSuggestedProxyRoute>,
+    env: &serde_json::Map<String, Value>,
+    route_id: &str,
+    env_key: &str,
+    supports_1m_default: bool,
+) {
+    let Some(raw_model) = env
+        .get(env_key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return;
+    };
+
+    let (stripped_model, has_1m_marker) = strip_one_m_suffix(raw_model);
+    if stripped_model.is_empty() {
+        return;
+    }
+
+    let effective_supports_1m = supports_1m_default || has_1m_marker;
+    let explicit_label_override = env
+        .get(&format!("{env_key}_NAME"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let label_override = explicit_label_override.clone().or_else(|| {
+        (!claude_desktop_model_id_is_profile_safe(stripped_model))
+            .then(|| stripped_model.to_string())
+    });
+    let should_overwrite_label = |existing: Option<&str>| {
+        existing.is_none() || explicit_label_override.is_some() || existing == Some(stripped_model)
+    };
+
+    let merge_into = |existing: &mut ClaudeDesktopSuggestedProxyRoute| {
+        existing.supports_1m |= effective_supports_1m;
+        if should_overwrite_label(existing.label_override.as_deref()) {
+            existing.label_override = label_override.clone();
+        }
+    };
+
+    if let Some(existing) = routes
+        .iter_mut()
+        .find(|existing| existing.upstream_model == stripped_model)
+    {
+        merge_into(existing);
+        return;
+    }
+
+    if let Some(existing) = routes
+        .iter_mut()
+        .find(|existing| existing.route_id == route_id)
+    {
+        merge_into(existing);
+        return;
+    }
+
+    routes.push(ClaudeDesktopSuggestedProxyRoute {
+        route_id: route_id.to_string(),
+        upstream_model: stripped_model.to_string(),
+        label_override,
+        supports_1m: effective_supports_1m,
+    });
 }
 
 pub fn claude_desktop_direct_inference_model_specs<'a>(
@@ -385,14 +493,19 @@ fn next_catalog_safe_route_id(
 
 fn strip_one_m_suffix_for_route_lookup(model: &str) -> &str {
     let trimmed = model.trim();
+    strip_one_m_suffix(trimmed).0
+}
+
+fn strip_one_m_suffix(model: &str) -> (&str, bool) {
+    let trimmed = model.trim();
     let marker = ONE_M_CONTEXT_MARKER.as_bytes();
     let bytes = trimmed.as_bytes();
     if bytes.len() >= marker.len()
         && bytes[bytes.len() - marker.len()..].eq_ignore_ascii_case(marker)
     {
-        return trimmed[..trimmed.len() - marker.len()].trim_end();
+        return (trimmed[..trimmed.len() - marker.len()].trim_end(), true);
     }
-    trimmed
+    (trimmed, false)
 }
 
 fn legacy_raw_route_upstream_model<'a>(
@@ -638,7 +751,7 @@ mod tests {
         claude_desktop_proxy_has_base_url_and_key, claude_desktop_proxy_model_routes,
         claude_desktop_proxy_provider_config_validation_issue,
         claude_desktop_proxy_request_upstream_model, claude_desktop_routes_support_1m_by_default,
-        validate_claude_desktop_gateway_bearer_header,
+        claude_desktop_suggested_proxy_routes, validate_claude_desktop_gateway_bearer_header,
         validate_claude_desktop_gateway_bearer_value, ClaudeDesktopDirectGatewayCredentialIssue,
         ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopDirectProviderValidationIssue,
         ClaudeDesktopGatewayAuthError, ClaudeDesktopModelListResponse,
@@ -1223,6 +1336,53 @@ mod tests {
                 ("claude-fable-5", "ANTHROPIC_DEFAULT_FABLE_MODEL", true),
             ]
         );
+    }
+
+    #[test]
+    fn suggested_proxy_routes_translate_suffix_label_and_merge_policy() {
+        let settings = json!({
+            "env": {
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "MiniMax-M2[1M]",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "MiniMax-M2",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "GLM-4-Flash",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": "GLM Flash"
+            }
+        });
+
+        let routes = claude_desktop_suggested_proxy_routes(&settings, Some("github_copilot"));
+
+        assert_eq!(routes.len(), 2);
+        let sonnet = routes
+            .iter()
+            .find(|route| route.route_id == "claude-sonnet-4-6")
+            .expect("sonnet route");
+        assert_eq!(sonnet.upstream_model, "MiniMax-M2");
+        assert_eq!(sonnet.label_override.as_deref(), Some("MiniMax-M2"));
+        assert!(sonnet.supports_1m);
+        let haiku = routes
+            .iter()
+            .find(|route| route.route_id == "claude-haiku-4-5")
+            .expect("haiku route");
+        assert_eq!(haiku.upstream_model, "GLM-4-Flash");
+        assert_eq!(haiku.label_override.as_deref(), Some("GLM Flash"));
+        assert!(!haiku.supports_1m);
+    }
+
+    #[test]
+    fn suggested_proxy_routes_fall_back_to_anthropic_model_when_defaults_empty() {
+        let settings = json!({
+            "env": {
+                "ANTHROPIC_MODEL": "kimi-k2"
+            }
+        });
+
+        let routes = claude_desktop_suggested_proxy_routes(&settings, None);
+
+        assert_eq!(routes.len(), 1);
+        assert_eq!(routes[0].route_id, "claude-sonnet-4-6");
+        assert_eq!(routes[0].upstream_model, "kimi-k2");
+        assert_eq!(routes[0].label_override.as_deref(), Some("kimi-k2"));
+        assert!(routes[0].supports_1m);
     }
 
     #[test]
