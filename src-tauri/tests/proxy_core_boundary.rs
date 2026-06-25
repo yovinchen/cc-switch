@@ -1101,6 +1101,12 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_EXPLICIT_PROXY_URL_VALIDATION_MARKERS: &[&str
     "Invalid proxy scheme",
     "Invalid proxy URL '",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_RESPONSE_PARSE_LOG_MARKERS: &[&str] = &[
+    "enum UpstreamResponseParseFailureLogContext",
+    "let body = String::from_utf8_lossy(body)",
+    "解析/聚合上游响应失败",
+    "解析/聚合 Chat 上游响应失败",
+];
 const FORBIDDEN_PROVIDER_ENDPOINT_SERVICE_PROJECTION_MARKERS: &[&str] = &[
     ".custom_endpoints",
     "trim().trim_end_matches('/')",
@@ -2860,6 +2866,38 @@ fn proxy_core_adapter_delegates_explicit_proxy_url_validation_to_core() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter must delegate explicit proxy URL parsing, scheme allowlist, and error text to proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_response_parse_failure_log_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        source.contains("upstream_response_parse_failure_log_message"),
+        "proxy_core_adapter should expose the core response parse failure log helper"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_RESPONSE_PARSE_LOG_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains response parse log marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must delegate response parse failure log text and body projection to proxy-core:\n{}",
         violations.join("\n")
     );
 }

@@ -44,6 +44,28 @@ pub enum UnlabeledSseFallbackLogContext<'a> {
     CodexChat,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpstreamResponseParseFailureLogContext {
+    ClaudeTransform,
+    CodexChat,
+}
+
+pub fn upstream_response_parse_failure_log_message(
+    context: UpstreamResponseParseFailureLogContext,
+    error: &dyn std::fmt::Display,
+    body: &[u8],
+) -> String {
+    let body = String::from_utf8_lossy(body);
+    match context {
+        UpstreamResponseParseFailureLogContext::ClaudeTransform => {
+            format!("[Claude] 解析/聚合上游响应失败: {error}, body: {body}")
+        }
+        UpstreamResponseParseFailureLogContext::CodexChat => {
+            format!("[Codex] 解析/聚合 Chat 上游响应失败: {error}, body: {body}")
+        }
+    }
+}
+
 impl UpstreamJsonBodySource {
     pub fn unlabeled_sse_fallback_log_event(
         self,
@@ -285,6 +307,33 @@ data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\
         assert!(UpstreamJsonBodySource::Json
             .unlabeled_sse_fallback_log_event(UnlabeledSseFallbackLogContext::CodexChat)
             .is_none());
+    }
+
+    #[test]
+    fn upstream_response_parse_failure_log_messages_preserve_host_contracts() {
+        assert_eq!(
+            upstream_response_parse_failure_log_message(
+                UpstreamResponseParseFailureLogContext::ClaudeTransform,
+                &"bad json",
+                b"{broken"
+            ),
+            "[Claude] 解析/聚合上游响应失败: bad json, body: {broken"
+        );
+        assert_eq!(
+            upstream_response_parse_failure_log_message(
+                UpstreamResponseParseFailureLogContext::CodexChat,
+                &"missing id",
+                b"data: {}\n\n"
+            ),
+            "[Codex] 解析/聚合 Chat 上游响应失败: missing id, body: data: {}\n\n"
+        );
+
+        let lossy = upstream_response_parse_failure_log_message(
+            UpstreamResponseParseFailureLogContext::ClaudeTransform,
+            &"bad utf8",
+            &[0xff, b'o', b'k'],
+        );
+        assert!(lossy.contains("body: �ok"), "{lossy}");
     }
 
     #[test]

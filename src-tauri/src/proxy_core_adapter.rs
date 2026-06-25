@@ -698,26 +698,9 @@ impl AxumResponseBuildErrorContext<'_> {
     }
 }
 
-pub(crate) enum UpstreamResponseParseFailureLogContext {
-    ClaudeTransform,
-    CodexChat,
-}
-
-pub(crate) fn upstream_response_parse_failure_log_message(
-    context: UpstreamResponseParseFailureLogContext,
-    error: &dyn std::fmt::Display,
-    body: &[u8],
-) -> String {
-    let body = String::from_utf8_lossy(body);
-    match context {
-        UpstreamResponseParseFailureLogContext::ClaudeTransform => {
-            format!("[Claude] 解析/聚合上游响应失败: {error}, body: {body}")
-        }
-        UpstreamResponseParseFailureLogContext::CodexChat => {
-            format!("[Codex] 解析/聚合 Chat 上游响应失败: {error}, body: {body}")
-        }
-    }
-}
+pub(crate) use crate::proxy_core::api::transport::{
+    upstream_response_parse_failure_log_message, UpstreamResponseParseFailureLogContext,
+};
 
 pub(crate) fn log_unlabeled_sse_fallback_event(
     source: UpstreamJsonBodySource,
