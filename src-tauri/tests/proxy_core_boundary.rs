@@ -6460,6 +6460,35 @@ fn production_forwarder_uses_runtime_state_source_resource() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_rectifier_error_message_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "fn forwarder_rectifier_error_message",
+        "pub(crate) fn forwarder_request_source_from_managed_account_runtime_source",
+    );
+
+    assert!(
+        function.contains("core_forwarder_rectifier_error_message("),
+        "adapter must delegate rectifier error-message selection to proxy-core"
+    );
+    assert!(
+        function.contains("ForwarderRectifierErrorInput::Upstream"),
+        "adapter should project upstream error body facts into the core rectifier error input"
+    );
+    assert!(
+        function.contains("ForwarderRectifierErrorInput::Other"),
+        "adapter should project non-upstream error text into the core rectifier error input"
+    );
+    assert!(
+        !function.contains("body.clone()"),
+        "adapter must not own upstream-body rectifier message policy"
+    );
+}
+
+#[test]
 fn production_forwarder_active_connection_guard_uses_runtime_state_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

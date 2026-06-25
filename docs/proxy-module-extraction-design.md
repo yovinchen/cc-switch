@@ -372,7 +372,7 @@
 361. prompt cache trace 的 host wrapper 已删除；`RequestForwarder` 直接调用 `proxy-core::prompt_cache_trace_log_message` 并在 host 调用点保留 debug gate/输出。
 362. 托管账号 `PROXY_MANAGED` 上游泄漏保护的 host wrapper 已删除；`RequestForwarder` 直接调用 `proxy-core::validate_managed_account_upstream_auth` 并只在调用点映射为 `ProxyError::AuthError`。
 363. media reactive retry 的 unsupported-image 错误判断 host wrapper 已删除；`RequestForwarder` 在 `ProxyError::UpstreamError` 分支直接调用 `proxy-core::is_unsupported_image_error` 并把布尔事实传给 core retry policy。
-364. thinking signature/budget rectifier 的 `ProxyError` 错误消息提取 host helper 已删除；`RequestForwarder` 在两个 rectifier gate 调用点局部投影上游错误 body，并继续把文本事实交给 core 判定。
+364. thinking signature/budget rectifier 的错误消息选择策略已迁入 `proxy-core::forward_failure::forwarder_rectifier_error_message`；host adapter 只把 `ProxyError::UpstreamError` 的可选 body 或其它错误文本投影为 core input，`RequestForwarder` 继续只消费 request source 的 rectifier plan。
 365. Copilot GitHub 默认域名的 host wrapper 已删除；`copilot_auth` 直接使用 `proxy-core::COPILOT_PUBLIC_GITHUB_DOMAIN` 常量，并在 serde default 中直接引用 `proxy-core::default_copilot_github_domain`。
 366. Codex 官方客户端 User-Agent 检测的 adapter 静态 wrapper 已删除；provider 测试与调用方直接使用 `proxy-core::is_official_codex_client_user_agent`。
 367. Copilot OAuth/GHES 域名 normalize host wrapper 已删除；`copilot_auth` 在设备码和 token 轮询入口直接调用 `proxy-core::normalize_github_domain` 并只在调用点映射 host 错误。
@@ -1301,7 +1301,7 @@
 本轮继续把 max-attempt warning 的日志行 payload 从 `ForwarderAttemptAllowDecision::Stop` 中移出：默认 attempt runtime source 在 `allow` 内部记录上限 warning，`RequestForwarder` 只按 `Stop` 中断循环，外部中转实现不再需要返回 max-attempt 格式化日志字符串。
 本轮继续把 forwarder 请求体 transform 执行优先级收敛到 `proxy-core::request_transport::forwarder_request_body_transform_action_from_plan`：Codex Responses→Chat、Claude protocol transformed body、generic provider transform 与 passthrough 的分支选择由 core 纯规则维护，`ForwarderRequestSource` 只负责执行对应宿主 adapter/protocol 转换。
 本轮继续把 max-attempt 停止原因文案收敛到 `proxy-core::forward_failure::build_forward_attempt_limit_reached_log`：默认 attempt runtime source 只负责加 app 前缀和写日志，不再维护尝试上限的宿主侧中文 payload。
-本轮继续把 media/signature/budget rectifier retry 的 kind、成功/失败文案和 provider failure label 收敛到 `proxy-core::forward_failure`：adapter 只保留 app 前缀兼容壳和 `ProxyError` 到字符串的 host 映射，不再维护三类 retry payload。
+本轮继续把 media/signature/budget rectifier retry 的 kind、成功/失败文案、provider failure label 和 rectifier 错误消息选择策略收敛到 `proxy-core::forward_failure`：adapter 只保留 app 前缀兼容壳和 `ProxyError` 到 core input 的 host 映射，不再维护三类 retry payload 或上游 body/fallback 文本选择规则。
 本轮继续把 terminal/no-available forward failure 的 runtime status 文案收敛到 `proxy-core::forward_failure::{forwarder_no_available_provider_status_message,forwarder_terminal_failure_status_message}`：runtime state source 只负责写入状态，不再维护终态错误中文 payload。
 本轮继续把普通 forward failure 的 app/code 日志行格式收敛到 `proxy-core::forward_failure::forwarder_failure_log_line`：adapter 只保留调用兼容壳，不再维护 `[app] [FWD-*]` 拼接规则。
 本轮继续把 all-providers-circuit-open 的 FO-004 warning 日志行收敛到 `proxy-core::forward_failure::forwarder_all_providers_circuit_open_log_line`：provider selection failure adapter 只负责在 host 边界发出 warning，不再维护 `[FO-004] 所有供应商均已熔断` payload。

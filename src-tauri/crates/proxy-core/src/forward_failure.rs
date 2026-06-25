@@ -43,6 +43,21 @@ pub enum ForwardFailureCategory {
     NonRetryable,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForwarderRectifierErrorInput<'a> {
+    Upstream { body: Option<&'a str> },
+    Other { message: &'a str },
+}
+
+pub fn forwarder_rectifier_error_message(
+    input: ForwarderRectifierErrorInput<'_>,
+) -> Option<String> {
+    match input {
+        ForwarderRectifierErrorInput::Upstream { body } => body.map(ToString::to_string),
+        ForwarderRectifierErrorInput::Other { message } => Some(message.to_string()),
+    }
+}
+
 pub fn forward_failure_kind_from_proxy_status(
     kind: ProxyErrorStatusKind,
     message: impl Into<String>,
@@ -292,14 +307,14 @@ mod tests {
         build_retryable_forward_failure_log, build_terminal_forward_failure_log,
         categorize_forward_failure, forward_failure_kind_from_proxy_status,
         forwarder_all_providers_circuit_open_log_line, forwarder_failure_log_line,
-        forwarder_no_available_provider_status_message,
+        forwarder_no_available_provider_status_message, forwarder_rectifier_error_message,
         forwarder_no_providers_configured_log_line,
         forwarder_rectifier_retry_failure_label, forwarder_rectifier_retry_failure_message,
         forwarder_rectifier_retry_success_message,
         forwarder_terminal_failure_status_message,
         should_failover_after_rectifier_retry_failure, summarize_text_for_log,
         summarize_upstream_body_for_log, ForwardFailureCategory, ForwardFailureKind,
-        ForwarderRectifierRetryKind,
+        ForwarderRectifierErrorInput, ForwarderRectifierRetryKind,
         ALL_PROVIDERS_FAILED, PROVIDER_FAILED_RETRY, SINGLE_PROVIDER_FAILED,
     };
     use crate::error::ProxyErrorStatusKind;
@@ -565,6 +580,30 @@ mod tests {
             }
             other => panic!("expected upstream failure, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn rectifier_error_message_prefers_upstream_body_and_skips_empty_upstream() {
+        assert_eq!(
+            forwarder_rectifier_error_message(ForwarderRectifierErrorInput::Upstream {
+                body: Some("invalid thinking signature"),
+            })
+            .as_deref(),
+            Some("invalid thinking signature")
+        );
+        assert_eq!(
+            forwarder_rectifier_error_message(ForwarderRectifierErrorInput::Upstream {
+                body: None,
+            }),
+            None
+        );
+        assert_eq!(
+            forwarder_rectifier_error_message(ForwarderRectifierErrorInput::Other {
+                message: "超时: upstream timed out",
+            })
+            .as_deref(),
+            Some("超时: upstream timed out")
+        );
     }
 
     #[test]

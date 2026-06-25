@@ -2669,11 +2669,13 @@ pub(crate) use crate::proxy_core::api::transport::{
     forwarder_no_available_provider_status_message as core_forwarder_no_available_provider_status_message,
     forwarder_no_providers_configured_log_line,
     forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
+    forwarder_rectifier_error_message as core_forwarder_rectifier_error_message,
     forwarder_rectifier_retry_failure_label as core_forwarder_rectifier_retry_failure_label,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
     forwarder_terminal_failure_status_message as core_forwarder_terminal_failure_status_message,
-    forwarder_transform_plan_from_facts, ForwarderRequestBodyTransformAction,
+    forwarder_transform_plan_from_facts, ForwarderRectifierErrorInput,
+    ForwarderRequestBodyTransformAction,
     invalid_upstream_url_error_message,
     is_codex_chat_full_endpoint_base, is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results,
@@ -9153,8 +9155,17 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
 
 fn forwarder_rectifier_error_message(error: &ProxyError) -> Option<String> {
     match error {
-        ProxyError::UpstreamError { body, .. } => body.clone(),
-        _ => Some(error.to_string()),
+        ProxyError::UpstreamError { body, .. } => {
+            core_forwarder_rectifier_error_message(ForwarderRectifierErrorInput::Upstream {
+                body: body.as_deref(),
+            })
+        }
+        _ => {
+            let message = error.to_string();
+            core_forwarder_rectifier_error_message(ForwarderRectifierErrorInput::Other {
+                message: &message,
+            })
+        }
     }
 }
 
@@ -21317,6 +21328,26 @@ command = "latest-command"
             }
             other => panic!("expected upstream failure, got {other:?}"),
         }
+        assert_eq!(
+            forwarder_rectifier_error_message(&ProxyError::UpstreamError {
+                status: 400,
+                body: Some("invalid thinking signature".to_string()),
+            })
+            .as_deref(),
+            Some("invalid thinking signature")
+        );
+        assert_eq!(
+            forwarder_rectifier_error_message(&ProxyError::UpstreamError {
+                status: 400,
+                body: None,
+            }),
+            None
+        );
+        assert_eq!(
+            forwarder_rectifier_error_message(&ProxyError::Timeout("slow".to_string()))
+                .as_deref(),
+            Some("超时: slow")
+        );
         assert_eq!(
             ManagementAuthError::MissingBearerToken.message(),
             "Missing management bearer token"
