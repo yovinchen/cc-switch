@@ -1142,6 +1142,13 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_REQUIRED_BASE_URL_POLICY_MARKERS: &[&str] = &
     "Provider 缺少 base_url 配置",
     ".ok_or_else(",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_GEMINI_LIVE_JSON_POLICY_MARKERS: &[&str] = &[
+    "pub(crate) fn gemini_env_value_from_env_json",
+    "pub(crate) fn gemini_live_settings_from_env_json_and_config",
+    "pub(crate) fn gemini_live_backup_from_effective_settings",
+    "\"env\": gemini_env_value_from_env_json",
+    "\"env\": settings.get(\"env\")",
+];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
     "ProviderKind::CodexOAuth",
@@ -3093,6 +3100,40 @@ fn proxy_core_adapter_delegates_required_provider_base_url_policy_to_core() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter must keep required provider base URL error policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_gemini_live_json_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let production_source = production_lines(&source)
+        .map(|(_, line)| line)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        production_source.contains("pub(crate) use crate::proxy_core::api::ports::{")
+            && production_source.contains("gemini_live_settings_from_env_json_and_config")
+            && production_source.contains("gemini_live_backup_from_effective_settings"),
+        "proxy_core_adapter should expose Gemini live JSON helpers from core for live write/backup flows"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_GEMINI_LIVE_JSON_POLICY_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!("line {}: {}", line_index + 1, marker));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Gemini live env/config JSON shape policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }

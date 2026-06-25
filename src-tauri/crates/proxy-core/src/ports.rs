@@ -14,7 +14,7 @@ use super::thinking_optimizer::ThinkingOptimizerConfig;
 use super::thinking_rectifier::ThinkingSignatureRectifierConfig;
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 pub const DEFAULT_PROXY_LISTEN_ADDRESS: &str = "127.0.0.1";
@@ -1405,6 +1405,23 @@ pub fn gemini_live_config_has_proxy_placeholder(config: &Value, placeholder: &st
         .and_then(|env| env.get("GEMINI_API_KEY"))
         .and_then(Value::as_str)
         == Some(placeholder)
+}
+
+pub fn gemini_env_value_from_env_json(env_json: &Value) -> Value {
+    env_json.get("env").cloned().unwrap_or_else(|| json!({}))
+}
+
+pub fn gemini_live_settings_from_env_json_and_config(env_json: &Value, config: Value) -> Value {
+    json!({
+        "env": gemini_env_value_from_env_json(env_json),
+        "config": config
+    })
+}
+
+pub fn gemini_live_backup_from_effective_settings(settings: &Value) -> Value {
+    json!({
+        "env": settings.get("env").cloned().unwrap_or_else(|| json!({}))
+    })
 }
 
 pub fn codex_live_auth_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
@@ -5511,7 +5528,9 @@ mod tests {
         detect_gemini_auth_type, ensure_codex_takeover_auth_placeholder,
         gemini_contains_packycode_keyword, gemini_env_json_from_map,
         gemini_env_map_from_settings, gemini_env_parse_issue_spec,
-        gemini_env_string_map_from_settings, parse_gemini_env_file,
+        gemini_env_string_map_from_settings, gemini_env_value_from_env_json,
+        gemini_live_backup_from_effective_settings,
+        gemini_live_settings_from_env_json_and_config, parse_gemini_env_file,
         parse_gemini_env_file_strict, serialize_gemini_env_file, GeminiAuthType,
         GeminiAuthTypeInput, GeminiEnvParseIssue,
         gemini_settings_validation_issue_spec, gemini_common_config_snippet_from_settings,
@@ -8060,6 +8079,42 @@ GEMINI_API_KEY=sk-test123
                 true
             ),
             None
+        );
+    }
+
+    #[test]
+    fn gemini_live_settings_helpers_preserve_env_only_backup_contract() {
+        assert_eq!(
+            gemini_env_value_from_env_json(&json!({"env": {"A": "B"}})),
+            json!({"A": "B"})
+        );
+        assert_eq!(gemini_env_value_from_env_json(&json!({})), json!({}));
+        assert_eq!(
+            gemini_live_settings_from_env_json_and_config(
+                &json!({"env": {"GEMINI_API_KEY": "sk-test"}}),
+                json!({"mcpServers": {"server": {}}})
+            ),
+            json!({
+                "env": {"GEMINI_API_KEY": "sk-test"},
+                "config": {"mcpServers": {"server": {}}}
+            })
+        );
+        assert_eq!(
+            gemini_live_settings_from_env_json_and_config(&json!({}), json!({})),
+            json!({"env": {}, "config": {}})
+        );
+        assert_eq!(
+            gemini_live_backup_from_effective_settings(&json!({
+                "env": {"GEMINI_API_KEY": "key"},
+                "config": {"mcpServers": {"kept-out-of-env-backup": {}}}
+            })),
+            json!({"env": {"GEMINI_API_KEY": "key"}})
+        );
+        assert_eq!(
+            gemini_live_backup_from_effective_settings(&json!({
+                "config": {"mcpServers": {}}
+            })),
+            json!({"env": {}})
         );
     }
 

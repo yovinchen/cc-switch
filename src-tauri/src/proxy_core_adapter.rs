@@ -4269,25 +4269,11 @@ pub(crate) fn provider_gemini_base_url(provider: &Provider) -> Option<String> {
     extract_gemini_base_url_from_settings(&provider.settings_config)
 }
 
-pub(crate) fn gemini_env_value_from_env_json(env_json: &Value) -> Value {
-    env_json.get("env").cloned().unwrap_or_else(|| json!({}))
-}
-
-pub(crate) fn gemini_live_settings_from_env_json_and_config(
-    env_json: &Value,
-    config: Value,
-) -> Value {
-    json!({
-        "env": gemini_env_value_from_env_json(env_json),
-        "config": config
-    })
-}
-
-pub(crate) fn gemini_live_backup_from_effective_settings(settings: &Value) -> Value {
-    json!({
-        "env": settings.get("env").cloned().unwrap_or_else(|| json!({}))
-    })
-}
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::ports::gemini_env_value_from_env_json;
+pub(crate) use crate::proxy_core::api::ports::{
+    gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
+};
 
 pub(crate) fn provider_gemini_env_map(
     provider: &Provider,
