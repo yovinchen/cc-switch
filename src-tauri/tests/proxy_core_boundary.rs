@@ -4912,12 +4912,18 @@ fn claude_desktop_config_delegates_proxy_request_route_lookup_to_adapter() {
     );
 
     assert!(
-        request_mapping_slice.contains("claude_desktop_proxy_request_upstream_model(")
+        request_mapping_slice.contains("claude_desktop_proxy_request_body_with_upstream_model(")
             && request_mapping_slice.contains("ClaudeDesktopProxyRouteInput"),
-        "claude_desktop_config should delegate proxy request route lookup to proxy_core_adapter/core"
+        "claude_desktop_config should delegate proxy request body mapping to proxy_core_adapter/core"
     );
 
     let forbidden_markers = [
+        "claude_desktop_proxy_request_upstream_model(",
+        "provider_should_normalize_mimo_anthropic_thinking_history(",
+        "normalize_anthropic_tool_thinking_history(",
+        ".get(\"model\")",
+        "body[\"model\"]",
+        ".map(str::trim)",
         "strip_one_m_suffix_for_route_lookup",
         "legacy_raw_route_upstream_model",
         "is_compatible_opus_route_alias",
@@ -4932,7 +4938,7 @@ fn claude_desktop_config_delegates_proxy_request_route_lookup_to_adapter() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/claude_desktop_config.rs map_proxy_request_model:{} contains request route lookup policy marker `{}`",
+                    "src/claude_desktop_config.rs map_proxy_request_model:{} contains request body mapping policy marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -4942,7 +4948,7 @@ fn claude_desktop_config_delegates_proxy_request_route_lookup_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "claude_desktop_config must keep proxy request route lookup policy in proxy-core:\n{}",
+        "claude_desktop_config must keep proxy request body mapping policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }
@@ -4959,8 +4965,7 @@ fn claude_desktop_config_delegates_mimo_thinking_history_normalization_to_adapte
     );
 
     assert!(
-        request_mapping_slice.contains("provider_should_normalize_mimo_anthropic_thinking_history(")
-            && request_mapping_slice.contains("normalize_anthropic_tool_thinking_history("),
+        request_mapping_slice.contains("claude_desktop_proxy_request_body_with_upstream_model("),
         "claude_desktop_config should delegate MiMo thinking-history normalization to proxy_core_adapter/core"
     );
     assert!(

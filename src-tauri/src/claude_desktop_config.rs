@@ -13,10 +13,9 @@ use crate::provider::{ClaudeDesktopMode, Provider};
 use crate::proxy_core_adapter::{
     provider_claude_desktop_direct_validation_issue,
     provider_claude_desktop_proxy_config_validation_issue,
-    provider_claude_desktop_proxy_has_base_url_and_key,
-    provider_should_normalize_mimo_anthropic_thinking_history,
-    ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectModelRouteIssue,
-    ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
+    provider_claude_desktop_proxy_has_base_url_and_key, ClaudeDesktopDirectGatewayCredentialIssue,
+    ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopDirectProviderValidationIssue,
+    ClaudeDesktopProxyProviderConfigValidationIssue, ClaudeDesktopProxyRequestBodyIssue,
 };
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
@@ -447,20 +446,6 @@ pub fn proxy_model_routes(provider: &Provider) -> Result<Vec<ResolvedModelRoute>
 }
 
 pub fn map_proxy_request_model(mut body: Value, provider: &Provider) -> Result<Value, AppError> {
-    let requested_raw = body
-        .get("model")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .map(str::to_string)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            AppError::localized(
-                "claude_desktop.provider.model_missing",
-                "Claude Desktop 请求缺少 model 字段",
-                "Claude Desktop request is missing the model field",
-            )
-        })?;
-
     let routes = proxy_model_routes(provider)?;
     let raw_routes = provider
         .meta
@@ -486,23 +471,33 @@ pub fn map_proxy_request_model(mut body: Value, provider: &Provider) -> Result<V
             },
         )
         .collect::<Vec<_>>();
-    let upstream_model = crate::proxy_core_adapter::claude_desktop_proxy_request_upstream_model(
-        &requested_raw,
+
+    let api_format = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.api_format.as_deref());
+    body = crate::proxy_core_adapter::claude_desktop_proxy_request_body_with_upstream_model(
+        body,
+        &provider.settings_config,
+        api_format,
         &core_routes,
         raw_routes,
     )
-    .ok_or_else(|| {
-        AppError::localized(
-            "claude_desktop.provider.route_unknown",
-            format!("Claude Desktop 模型路由未配置: {requested_raw}"),
-            format!("Claude Desktop model route is not configured: {requested_raw}"),
-        )
+    .map_err(|issue| match issue {
+        ClaudeDesktopProxyRequestBodyIssue::MissingModel => AppError::localized(
+            "claude_desktop.provider.model_missing",
+            "Claude Desktop 请求缺少 model 字段",
+            "Claude Desktop request is missing the model field",
+        ),
+        ClaudeDesktopProxyRequestBodyIssue::UnknownRoute { requested_model } => {
+            AppError::localized(
+                "claude_desktop.provider.route_unknown",
+                format!("Claude Desktop 模型路由未配置: {requested_model}"),
+                format!("Claude Desktop model route is not configured: {requested_model}"),
+            )
+        }
     })?;
 
-    body["model"] = json!(upstream_model);
-    if provider_should_normalize_mimo_anthropic_thinking_history(provider, &upstream_model) {
-        crate::proxy_core_adapter::normalize_anthropic_tool_thinking_history(&mut body);
-    }
     Ok(body)
 }
 

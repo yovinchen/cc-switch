@@ -2674,10 +2674,11 @@ pub(crate) use crate::proxy_core::api::auth::{
     claude_desktop_gateway_profile, claude_desktop_meta_applied_id,
     claude_desktop_meta_has_profile_entry, claude_desktop_meta_with_profile_entry,
     claude_desktop_profile_has_unsafe_model_ids, claude_desktop_proxy_gateway_base_url,
-    claude_desktop_proxy_model_routes, claude_desktop_proxy_request_upstream_model,
+    claude_desktop_proxy_model_routes, claude_desktop_proxy_request_body_with_upstream_model,
     ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectGatewayCredentials,
     ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopGatewayProfileModelSpec,
-    ClaudeDesktopProxyRouteInput, ClaudeDesktopResolvedProxyRoute,
+    ClaudeDesktopProxyRequestBodyIssue, ClaudeDesktopProxyRouteInput,
+    ClaudeDesktopResolvedProxyRoute,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
@@ -10125,8 +10126,7 @@ pub(crate) fn apply_channel_provider_overrides(
 
 pub(crate) use crate::proxy_core::api::transforms::{
     build_codex_tool_context_from_request as codex_tool_context_from_request,
-    normalize_anthropic_tool_thinking_history, normalize_claude_anthropic_messages,
-    normalize_codex_chat_error_body,
+    normalize_claude_anthropic_messages, normalize_codex_chat_error_body,
 };
 
 pub(crate) fn provider_claude_normalize_anthropic_messages(
@@ -10139,7 +10139,7 @@ pub(crate) fn provider_claude_normalize_anthropic_messages(
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::{
-    normalize_deepseek_thinking_disabled_strip_effort,
+    normalize_anthropic_tool_thinking_history, normalize_deepseek_thinking_disabled_strip_effort,
     should_normalize_anthropic_tool_thinking_history,
 };
 
@@ -10733,6 +10733,7 @@ fn claude_desktop_provider_validation_input(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn provider_should_normalize_mimo_anthropic_thinking_history(
     provider: &Provider,
     upstream_model: &str,

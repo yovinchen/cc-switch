@@ -3,6 +3,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::error::ProxyCoreError;
+use crate::response_transform::{
+    normalize_anthropic_tool_thinking_history, should_normalize_mimo_anthropic_thinking_history,
+    MimoAnthropicThinkingNormalizationInput,
+};
 
 pub const CLAUDE_DESKTOP_MODEL_CREATED_AT: &str = "2024-01-01T00:00:00Z";
 const CLAUDE_ROUTE_PREFIX: &str = "claude-";
@@ -175,6 +179,12 @@ pub enum ClaudeDesktopDirectModelRouteIssue {
         route_id: String,
         upstream_model: String,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaudeDesktopProxyRequestBodyIssue {
+    MissingModel,
+    UnknownRoute { requested_model: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -631,6 +641,41 @@ pub fn claude_desktop_proxy_request_upstream_model<'a>(
         .or_else(|| proxy_route_role_fallback_upstream_model(routes, requested))
 }
 
+pub fn claude_desktop_proxy_request_body_with_upstream_model<'a>(
+    mut body: Value,
+    settings_config: &Value,
+    api_format: Option<&str>,
+    routes: &[ClaudeDesktopResolvedProxyRoute],
+    raw_routes: impl IntoIterator<Item = ClaudeDesktopProxyRouteInput<'a>>,
+) -> Result<Value, ClaudeDesktopProxyRequestBodyIssue> {
+    let requested_model = body
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .map(str::to_string)
+        .filter(|value| !value.is_empty())
+        .ok_or(ClaudeDesktopProxyRequestBodyIssue::MissingModel)?;
+
+    let upstream_model =
+        claude_desktop_proxy_request_upstream_model(&requested_model, routes, raw_routes)
+            .ok_or_else(|| ClaudeDesktopProxyRequestBodyIssue::UnknownRoute {
+                requested_model: requested_model.clone(),
+            })?;
+
+    let normalize_mimo =
+        should_normalize_mimo_anthropic_thinking_history(MimoAnthropicThinkingNormalizationInput {
+            settings_config,
+            api_format,
+            upstream_model: &upstream_model,
+        });
+
+    body["model"] = json!(upstream_model);
+    if normalize_mimo {
+        normalize_anthropic_tool_thinking_history(&mut body);
+    }
+    Ok(body)
+}
+
 fn next_catalog_safe_route_id(
     existing: &[ClaudeDesktopResolvedProxyRoute],
     reserved: &std::collections::HashSet<String>,
@@ -918,6 +963,7 @@ mod tests {
         claude_desktop_provider_unavailable_error_message, claude_desktop_proxy_gateway_base_url,
         claude_desktop_proxy_has_base_url_and_key, claude_desktop_proxy_model_routes,
         claude_desktop_proxy_provider_config_validation_issue,
+        claude_desktop_proxy_request_body_with_upstream_model,
         claude_desktop_proxy_request_upstream_model, claude_desktop_routes_support_1m_by_default,
         claude_desktop_suggested_proxy_routes, validate_claude_desktop_gateway_bearer_header,
         validate_claude_desktop_gateway_bearer_value, ClaudeDesktopDirectGatewayCredentialIssue,
@@ -925,7 +971,7 @@ mod tests {
         ClaudeDesktopGatewayAuthError, ClaudeDesktopGatewayProfileModelSpec,
         ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
         ClaudeDesktopProviderValidationInput, ClaudeDesktopProxyProviderConfigValidationIssue,
-        ClaudeDesktopProxyRouteInput,
+        ClaudeDesktopProxyRequestBodyIssue, ClaudeDesktopProxyRouteInput,
     };
     use crate::error::ProxyCoreError;
     use http::{HeaderMap, HeaderValue};
@@ -1344,6 +1390,77 @@ mod tests {
         assert_eq!(
             claude_desktop_proxy_request_upstream_model("gpt-5[1m]", &routes, raw_routes),
             None
+        );
+    }
+
+    #[test]
+    fn proxy_request_body_maps_model_and_normalizes_mimo_tool_history() {
+        let raw_routes = [ClaudeDesktopProxyRouteInput {
+            route_id: "claude-sonnet-4-6",
+            upstream_model: "mimo-v2.5-pro",
+            label_override: None,
+            supports_1m: true,
+        }];
+        let routes = claude_desktop_proxy_model_routes(raw_routes);
+        let body = json!({
+            "model": " claude-sonnet-4-6 ",
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    { "type": "tool_use", "id": "toolu_1", "name": "lookup", "input": {} }
+                ]
+            }]
+        });
+
+        let mapped = claude_desktop_proxy_request_body_with_upstream_model(
+            body,
+            &json!({}),
+            Some("anthropic"),
+            &routes,
+            raw_routes,
+        )
+        .expect("mapped request body");
+
+        assert_eq!(mapped["model"], json!("mimo-v2.5-pro"));
+        assert_eq!(
+            mapped["messages"][0]["content"][0]["thinking"],
+            json!("tool call")
+        );
+    }
+
+    #[test]
+    fn proxy_request_body_reports_missing_and_unknown_models() {
+        let raw_routes = [ClaudeDesktopProxyRouteInput {
+            route_id: "claude-sonnet-4-6",
+            upstream_model: "upstream-sonnet",
+            label_override: None,
+            supports_1m: true,
+        }];
+        let routes = claude_desktop_proxy_model_routes(raw_routes);
+
+        assert_eq!(
+            claude_desktop_proxy_request_body_with_upstream_model(
+                json!({}),
+                &json!({}),
+                Some("anthropic"),
+                &routes,
+                raw_routes,
+            )
+            .expect_err("missing model"),
+            ClaudeDesktopProxyRequestBodyIssue::MissingModel
+        );
+        assert_eq!(
+            claude_desktop_proxy_request_body_with_upstream_model(
+                json!({"model": "gpt-5"}),
+                &json!({}),
+                Some("anthropic"),
+                &routes,
+                raw_routes,
+            )
+            .expect_err("unknown route"),
+            ClaudeDesktopProxyRequestBodyIssue::UnknownRoute {
+                requested_model: "gpt-5".to_string()
+            }
         );
     }
 
