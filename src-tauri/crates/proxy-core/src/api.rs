@@ -106,7 +106,7 @@ pub mod ports {
         app_proxy_config_defaults_for_app, auth_info_from_profile_ref,
         auth_info_from_route_context, AppProxyConfig, AppSummaryConfig, AuthInfo, AuthProvider,
         ChannelHealthReset, ChannelHealthResetResponse, ChannelHealthStore,
-        ChannelReachabilityProbe, ChannelModelRecord, ChannelSource,
+        ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelModelRecord, ChannelSource,
         CopilotOptimizerConfig, CopilotOptimizerConfigSpec, CurrentRouteChannelTargetInput,
         CurrentRouteTarget, CurrentRouteTargetInput, ForwardCurrentProviderStatusInput,
         ForwardFailureStatusInput, ForwardPipeline, ForwardProviderFailureStatusInput,
@@ -368,8 +368,9 @@ pub mod prelude {
     };
     pub use super::ports::CurrentRouteTarget;
     pub use super::ports::{
-        AuthInfo, AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelReachabilityProbe,
-        ChannelSource, ForwardPipeline, ModelCatalogProvider, ProviderAttemptResult,
+        AuthInfo, AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelKeyRuntimeSource,
+        ChannelReachabilityProbe, ChannelSource, ForwardPipeline, ModelCatalogProvider,
+        ProviderAttemptResult,
         ProviderHealthStore, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
         RoutePolicySource, RouteResolver, UsageSink,
     };

@@ -323,6 +323,14 @@ pub trait AuthProvider: Send + Sync {
     ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>>;
 }
 
+pub trait ChannelKeyRuntimeSource {
+    fn load_channel_key_value(
+        &mut self,
+        channel_id: &str,
+        key_ref: &str,
+    ) -> ProxyCoreResult<Option<String>>;
+}
+
 pub trait ModelCatalogProvider: Send + Sync {
     fn load_catalog<'a>(
         &'a self,

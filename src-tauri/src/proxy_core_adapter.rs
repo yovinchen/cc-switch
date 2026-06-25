@@ -2593,7 +2593,8 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
 };
 pub(crate) use crate::proxy_core::api::ports::{
     channel_health_reset_from_parts, AppSummaryConfig, AuthProvider, ChannelHealthReset,
-    ChannelHealthStore, ChannelReachabilityProbe, ChannelSource, ForwardPipeline,
+    ChannelHealthStore, ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource,
+    ForwardPipeline,
     ModelCatalogProvider, ProviderHealthStore, ProviderSource, ProxyConfigSource, ProxyEventSink,
     ProxyServices, RoutePolicySource, RouteResolver, UsageSink,
 };
@@ -6795,14 +6796,6 @@ pub(crate) fn required_forward_attempts_from_plan(
         return Err(route_plan_no_matching_host_providers_error());
     }
     Ok(attempts)
-}
-
-pub(crate) trait ChannelKeyRuntimeSource {
-    fn load_channel_key_value(
-        &mut self,
-        channel_id: &str,
-        key_ref: &str,
-    ) -> ProxyCoreResult<Option<String>>;
 }
 
 pub(crate) struct CcSwitchChannelKeyRuntimeSource<'a> {

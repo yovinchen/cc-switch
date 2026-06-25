@@ -6520,6 +6520,8 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let core_ports_path = manifest_dir.join("crates/proxy-core/src/ports.rs");
+    let core_ports_source = fs::read_to_string(&core_ports_path).expect("read core ports.rs");
     let source_function = function_slice(
         &source,
         "pub(crate) fn apply_channel_auth_profile_providers_from_source",
@@ -6537,8 +6539,16 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     );
 
     assert!(
-        source.contains("pub(crate) trait ChannelKeyRuntimeSource"),
-        "proxy_core_adapter should expose channel key lookup behind a runtime source trait"
+        core_ports_source.contains("pub trait ChannelKeyRuntimeSource"),
+        "proxy-core ports should expose channel key lookup behind a runtime source trait"
+    );
+    assert!(
+        !source.contains("trait ChannelKeyRuntimeSource"),
+        "proxy_core_adapter should implement the core channel key runtime source, not define a host-local trait"
+    );
+    assert!(
+        source.contains("ChannelKeyRuntimeSource"),
+        "proxy_core_adapter should import the core channel key runtime source contract"
     );
     assert!(
         source_function.contains("impl ChannelKeyRuntimeSource")
