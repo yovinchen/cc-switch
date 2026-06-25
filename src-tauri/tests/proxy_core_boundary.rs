@@ -4908,7 +4908,7 @@ fn claude_desktop_config_delegates_proxy_request_route_lookup_to_adapter() {
     let request_mapping_slice = function_slice(
         &source,
         "pub fn map_proxy_request_model(",
-        "fn normalize_mimo_anthropic_thinking_history(",
+        "pub fn proxy_gateway_base_url_from_db(",
     );
 
     assert!(
@@ -4943,6 +4943,57 @@ fn claude_desktop_config_delegates_proxy_request_route_lookup_to_adapter() {
     assert!(
         violations.is_empty(),
         "claude_desktop_config must keep proxy request route lookup policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn claude_desktop_config_delegates_mimo_thinking_history_normalization_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let request_mapping_slice = function_slice(
+        &source,
+        "pub fn map_proxy_request_model(",
+        "pub fn proxy_gateway_base_url_from_db(",
+    );
+
+    assert!(
+        request_mapping_slice.contains("provider_should_normalize_mimo_anthropic_thinking_history(")
+            && request_mapping_slice.contains("normalize_anthropic_tool_thinking_history("),
+        "claude_desktop_config should delegate MiMo thinking-history normalization to proxy_core_adapter/core"
+    );
+    assert!(
+        !source.contains("fn normalize_mimo_anthropic_thinking_history("),
+        "claude_desktop_config should not keep a duplicate MiMo thinking-history normalizer"
+    );
+
+    let forbidden_markers = [
+        "MIMO_REDACTED_THINKING_PLACEHOLDER",
+        "MIMO_TOOL_CALL_THINKING_PLACEHOLDER",
+        "\"redacted_thinking\"",
+        "\"tool_use\"",
+        "\"signature\"",
+        "\"tool call\"",
+        "\"[redacted thinking]\"",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(request_mapping_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/claude_desktop_config.rs map_proxy_request_model:{} contains MiMo thinking-history policy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "claude_desktop_config must keep MiMo thinking-history mutation policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }

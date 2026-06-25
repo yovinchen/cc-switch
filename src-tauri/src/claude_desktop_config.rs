@@ -27,8 +27,6 @@ const CONFIG_FILE: &str = "claude_desktop_config.json";
 #[cfg(any(target_os = "macos", windows, test))]
 const CONFIG_LIBRARY_DIR: &str = "configLibrary";
 const GATEWAY_TOKEN_SETTING_KEY: &str = "claude_desktop_gateway_token";
-const MIMO_REDACTED_THINKING_PLACEHOLDER: &str = "[redacted thinking]";
-const MIMO_TOOL_CALL_THINKING_PLACEHOLDER: &str = "tool call";
 
 /// Claude Code env 中通过 `[1M]` 后缀声明 1M 上下文能力（匹配用 `eq_ignore_ascii_case`）。
 /// Claude Desktop schema 不接受此后缀，import 边界翻译为 `supports1m` 字段。
@@ -503,73 +501,9 @@ pub fn map_proxy_request_model(mut body: Value, provider: &Provider) -> Result<V
 
     body["model"] = json!(upstream_model);
     if provider_should_normalize_mimo_anthropic_thinking_history(provider, &upstream_model) {
-        normalize_mimo_anthropic_thinking_history(&mut body);
+        crate::proxy_core_adapter::normalize_anthropic_tool_thinking_history(&mut body);
     }
     Ok(body)
-}
-
-fn normalize_mimo_anthropic_thinking_history(body: &mut Value) {
-    let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) else {
-        return;
-    };
-
-    for message in messages {
-        if message.get("role").and_then(Value::as_str) != Some("assistant") {
-            continue;
-        }
-
-        let Some(content) = message.get_mut("content").and_then(Value::as_array_mut) else {
-            continue;
-        };
-        if !content
-            .iter()
-            .any(|block| block.get("type").and_then(Value::as_str) == Some("tool_use"))
-        {
-            continue;
-        }
-
-        let mut has_thinking = false;
-        for block in content.iter_mut() {
-            match block.get("type").and_then(Value::as_str) {
-                Some("thinking") => {
-                    let has_non_empty_thinking = block
-                        .get("thinking")
-                        .and_then(Value::as_str)
-                        .is_some_and(|value| !value.trim().is_empty());
-                    if let Some(obj) = block.as_object_mut() {
-                        obj.remove("signature");
-                    }
-                    if has_non_empty_thinking {
-                        has_thinking = true;
-                    } else if let Some(obj) = block.as_object_mut() {
-                        obj.insert(
-                            "thinking".to_string(),
-                            json!(MIMO_TOOL_CALL_THINKING_PLACEHOLDER),
-                        );
-                        has_thinking = true;
-                    }
-                }
-                Some("redacted_thinking") => {
-                    *block = json!({
-                        "type": "thinking",
-                        "thinking": MIMO_REDACTED_THINKING_PLACEHOLDER
-                    });
-                    has_thinking = true;
-                }
-                _ => {}
-            }
-        }
-
-        if !has_thinking {
-            content.insert(
-                0,
-                json!({
-                    "type": "thinking",
-                    "thinking": MIMO_TOOL_CALL_THINKING_PLACEHOLDER
-                }),
-            );
-        }
-    }
 }
 
 pub fn proxy_gateway_base_url_from_db(db: &Database) -> Result<String, AppError> {
