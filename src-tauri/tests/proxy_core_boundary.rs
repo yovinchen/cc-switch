@@ -4943,6 +4943,51 @@ fn claude_desktop_config_delegates_direct_model_specs_to_adapter() {
 }
 
 #[test]
+fn claude_desktop_config_delegates_direct_gateway_credentials_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let credentials_slice = function_slice(
+        &source,
+        "pub fn direct_gateway_credentials(",
+        "pub fn validate_direct_provider(",
+    );
+
+    assert!(
+        credentials_slice.contains("claude_desktop_direct_gateway_credentials("),
+        "claude_desktop_config should delegate direct gateway credential extraction to proxy_core_adapter/core"
+    );
+
+    let forbidden_markers = [
+        ".get(\"env\")",
+        "\"ANTHROPIC_BASE_URL\"",
+        "\"ANTHROPIC_AUTH_TOKEN\"",
+        "base_url_missing",
+        "auth_token_missing",
+        "env_missing",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(credentials_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/claude_desktop_config.rs direct_gateway_credentials:{} contains direct gateway credential policy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "claude_desktop_config must keep direct gateway credential extraction in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

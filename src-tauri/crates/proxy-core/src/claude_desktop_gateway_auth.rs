@@ -126,6 +126,19 @@ pub enum ClaudeDesktopDirectModelRouteIssue {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaudeDesktopDirectGatewayCredentials {
+    pub base_url: String,
+    pub api_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaudeDesktopDirectGatewayCredentialIssue {
+    EnvMissing,
+    BaseUrlMissing,
+    AuthTokenMissing,
+}
+
 pub fn claude_desktop_routes_support_1m_by_default(provider_type: Option<&str>) -> bool {
     !is_managed_oauth_provider_type(provider_type)
 }
@@ -256,6 +269,33 @@ pub fn claude_desktop_direct_inference_model_specs<'a>(
     });
     result.dedup_by(|a, b| a.name == b.name);
     Ok(result)
+}
+
+pub fn claude_desktop_direct_gateway_credentials(
+    settings_config: &Value,
+) -> Result<ClaudeDesktopDirectGatewayCredentials, ClaudeDesktopDirectGatewayCredentialIssue> {
+    let env = settings_config
+        .get("env")
+        .and_then(Value::as_object)
+        .ok_or(ClaudeDesktopDirectGatewayCredentialIssue::EnvMissing)?;
+
+    let base_url = env
+        .get("ANTHROPIC_BASE_URL")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or(ClaudeDesktopDirectGatewayCredentialIssue::BaseUrlMissing)?
+        .to_string();
+
+    let api_key = env
+        .get("ANTHROPIC_AUTH_TOKEN")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or(ClaudeDesktopDirectGatewayCredentialIssue::AuthTokenMissing)?
+        .to_string();
+
+    Ok(ClaudeDesktopDirectGatewayCredentials { base_url, api_key })
 }
 
 pub fn claude_desktop_proxy_request_upstream_model<'a>(
@@ -543,7 +583,7 @@ fn is_false(value: &bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        claude_desktop_direct_inference_model_specs,
+        claude_desktop_direct_gateway_credentials, claude_desktop_direct_inference_model_specs,
         claude_desktop_direct_provider_validation_issue, claude_desktop_gateway_token_error,
         claude_desktop_model_id_is_profile_safe, claude_desktop_provider_models_are_profile_safe,
         claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
@@ -552,11 +592,11 @@ mod tests {
         claude_desktop_proxy_provider_config_validation_issue,
         claude_desktop_proxy_request_upstream_model, claude_desktop_routes_support_1m_by_default,
         validate_claude_desktop_gateway_bearer_header,
-        validate_claude_desktop_gateway_bearer_value, ClaudeDesktopDirectModelRouteIssue,
-        ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopGatewayAuthError,
-        ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
-        ClaudeDesktopProviderValidationInput, ClaudeDesktopProxyProviderConfigValidationIssue,
-        ClaudeDesktopProxyRouteInput,
+        validate_claude_desktop_gateway_bearer_value, ClaudeDesktopDirectGatewayCredentialIssue,
+        ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopDirectProviderValidationIssue,
+        ClaudeDesktopGatewayAuthError, ClaudeDesktopModelListResponse,
+        ClaudeDesktopModelRouteInput, ClaudeDesktopProviderValidationInput,
+        ClaudeDesktopProxyProviderConfigValidationIssue, ClaudeDesktopProxyRouteInput,
     };
     use crate::error::ProxyCoreError;
     use http::{HeaderMap, HeaderValue};
@@ -816,6 +856,46 @@ mod tests {
                 route_id: "claude-sonnet-4-6".to_string(),
                 upstream_model: "mimo-v2.5-pro".to_string()
             }
+        );
+    }
+
+    #[test]
+    fn direct_gateway_credentials_trim_env_values() {
+        let credentials = claude_desktop_direct_gateway_credentials(&json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": " https://gateway.example.com ",
+                "ANTHROPIC_AUTH_TOKEN": " test-token "
+            }
+        }))
+        .expect("credentials");
+
+        assert_eq!(credentials.base_url, "https://gateway.example.com");
+        assert_eq!(credentials.api_key, "test-token");
+    }
+
+    #[test]
+    fn direct_gateway_credentials_report_missing_parts() {
+        assert_eq!(
+            claude_desktop_direct_gateway_credentials(&json!({})).expect_err("missing env"),
+            ClaudeDesktopDirectGatewayCredentialIssue::EnvMissing
+        );
+        assert_eq!(
+            claude_desktop_direct_gateway_credentials(&json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": "test-token"
+                }
+            }))
+            .expect_err("missing base url"),
+            ClaudeDesktopDirectGatewayCredentialIssue::BaseUrlMissing
+        );
+        assert_eq!(
+            claude_desktop_direct_gateway_credentials(&json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://gateway.example.com"
+                }
+            }))
+            .expect_err("missing auth token"),
+            ClaudeDesktopDirectGatewayCredentialIssue::AuthTokenMissing
         );
     }
 

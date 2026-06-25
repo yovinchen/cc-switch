@@ -14,7 +14,8 @@ use crate::proxy_core_adapter::{
     provider_claude_desktop_direct_validation_issue,
     provider_claude_desktop_proxy_config_validation_issue,
     provider_claude_desktop_proxy_has_base_url_and_key,
-    provider_should_normalize_mimo_anthropic_thinking_history, ClaudeDesktopDirectModelRouteIssue,
+    provider_should_normalize_mimo_anthropic_thinking_history,
+    ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectModelRouteIssue,
     ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
 };
 
@@ -86,6 +87,17 @@ struct ClaudeDesktopPaths {
 pub struct DirectGatewayCredentials {
     pub base_url: String,
     pub api_key: String,
+}
+
+impl From<crate::proxy_core_adapter::ClaudeDesktopDirectGatewayCredentials>
+    for DirectGatewayCredentials
+{
+    fn from(credentials: crate::proxy_core_adapter::ClaudeDesktopDirectGatewayCredentials) -> Self {
+        Self {
+            base_url: credentials.base_url,
+            api_key: credentials.api_key,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -287,50 +299,34 @@ pub fn get_or_create_gateway_token(db: &Database) -> Result<String, AppError> {
     Ok(token)
 }
 
+fn direct_gateway_credential_issue_to_error(
+    issue: ClaudeDesktopDirectGatewayCredentialIssue,
+) -> AppError {
+    match issue {
+        ClaudeDesktopDirectGatewayCredentialIssue::EnvMissing => AppError::localized(
+            "claude_desktop.provider.env_missing",
+            "Claude Desktop 直连供应商缺少 env 配置",
+            "Claude Desktop direct provider is missing env configuration",
+        ),
+        ClaudeDesktopDirectGatewayCredentialIssue::BaseUrlMissing => AppError::localized(
+            "claude_desktop.provider.base_url_missing",
+            "Claude Desktop 直连供应商缺少 ANTHROPIC_BASE_URL",
+            "Claude Desktop direct provider is missing ANTHROPIC_BASE_URL",
+        ),
+        ClaudeDesktopDirectGatewayCredentialIssue::AuthTokenMissing => AppError::localized(
+            "claude_desktop.provider.auth_token_missing",
+            "Claude Desktop 直连供应商缺少 ANTHROPIC_AUTH_TOKEN（Bearer Token）",
+            "Claude Desktop direct provider is missing ANTHROPIC_AUTH_TOKEN (Bearer Token)",
+        ),
+    }
+}
+
 pub fn direct_gateway_credentials(
     provider: &Provider,
 ) -> Result<DirectGatewayCredentials, AppError> {
-    let env = provider
-        .settings_config
-        .get("env")
-        .and_then(Value::as_object)
-        .ok_or_else(|| {
-            AppError::localized(
-                "claude_desktop.provider.env_missing",
-                "Claude Desktop 直连供应商缺少 env 配置",
-                "Claude Desktop direct provider is missing env configuration",
-            )
-        })?;
-
-    let base_url = env
-        .get("ANTHROPIC_BASE_URL")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            AppError::localized(
-                "claude_desktop.provider.base_url_missing",
-                "Claude Desktop 直连供应商缺少 ANTHROPIC_BASE_URL",
-                "Claude Desktop direct provider is missing ANTHROPIC_BASE_URL",
-            )
-        })?
-        .to_string();
-
-    let api_key = env
-        .get("ANTHROPIC_AUTH_TOKEN")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            AppError::localized(
-                "claude_desktop.provider.auth_token_missing",
-                "Claude Desktop 直连供应商缺少 ANTHROPIC_AUTH_TOKEN（Bearer Token）",
-                "Claude Desktop direct provider is missing ANTHROPIC_AUTH_TOKEN (Bearer Token)",
-            )
-        })?
-        .to_string();
-
-    Ok(DirectGatewayCredentials { base_url, api_key })
+    crate::proxy_core_adapter::claude_desktop_direct_gateway_credentials(&provider.settings_config)
+        .map(DirectGatewayCredentials::from)
+        .map_err(direct_gateway_credential_issue_to_error)
 }
 
 pub fn validate_direct_provider(provider: &Provider) -> Result<(), AppError> {
