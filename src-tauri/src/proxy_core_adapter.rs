@@ -227,35 +227,10 @@ pub(crate) use crate::proxy_core::api::security::mask_url_for_log;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::proxy_url_points_to_loopback_port;
 
-pub(crate) use crate::proxy_core::api::transport::proxy_values_point_to_loopback_port;
-
-const SUPPORTED_EXPLICIT_PROXY_SCHEMES: &[&str] = &["http", "https", "socks5", "socks5h"];
-
-pub(crate) fn invalid_explicit_proxy_url_message(
-    proxy_url: &str,
-    error: impl std::fmt::Display,
-) -> String {
-    format!(
-        "Invalid proxy URL '{}': {}",
-        mask_url_for_log(proxy_url),
-        error
-    )
-}
-
-pub(crate) fn validate_explicit_proxy_url(proxy_url: &str) -> Result<(), String> {
-    let parsed = url::Url::parse(proxy_url)
-        .map_err(|error| invalid_explicit_proxy_url_message(proxy_url, error))?;
-    let scheme = parsed.scheme();
-    if !SUPPORTED_EXPLICIT_PROXY_SCHEMES.contains(&scheme) {
-        return Err(format!(
-            "Invalid proxy scheme '{}' in URL '{}'. Supported: {}",
-            scheme,
-            mask_url_for_log(proxy_url),
-            SUPPORTED_EXPLICIT_PROXY_SCHEMES.join(", ")
-        ));
-    }
-    Ok(())
-}
+pub(crate) use crate::proxy_core::api::transport::{
+    invalid_explicit_proxy_url_message, proxy_values_point_to_loopback_port,
+    validate_explicit_proxy_url,
+};
 
 pub(crate) fn provider_custom_endpoint_list(provider: Option<&Provider>) -> Vec<CustomEndpoint> {
     let Some(meta) = provider.and_then(|provider| provider.meta.as_ref()) else {

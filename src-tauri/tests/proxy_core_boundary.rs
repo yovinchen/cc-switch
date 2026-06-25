@@ -1095,6 +1095,12 @@ const FORBIDDEN_HTTP_CLIENT_PROXY_URL_VALIDATION_MARKERS: &[&str] = &[
     "Invalid proxy scheme",
     "Invalid proxy URL '",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_EXPLICIT_PROXY_URL_VALIDATION_MARKERS: &[&str] = &[
+    "url::Url::parse(",
+    "SUPPORTED_EXPLICIT_PROXY_SCHEMES",
+    "Invalid proxy scheme",
+    "Invalid proxy URL '",
+];
 const FORBIDDEN_PROVIDER_ENDPOINT_SERVICE_PROJECTION_MARKERS: &[&str] = &[
     ".custom_endpoints",
     "trim().trim_end_matches('/')",
@@ -2827,6 +2833,33 @@ fn production_http_client_delegates_explicit_proxy_url_validation_to_adapter() {
     assert!(
         violations.is_empty(),
         "production HTTP client must delegate explicit proxy URL parsing, scheme allowlist, and error projection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_explicit_proxy_url_validation_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_EXPLICIT_PROXY_URL_VALIDATION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains explicit proxy URL validation marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must delegate explicit proxy URL parsing, scheme allowlist, and error text to proxy-core:\n{}",
         violations.join("\n")
     );
 }

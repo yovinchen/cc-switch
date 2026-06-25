@@ -1357,6 +1357,7 @@
 本轮继续把 takeover hot-switch 的 live 持有、Codex backup refresh、Codex/Claude live sync gate 收敛到 `proxy-core::ports`：core 维护纯布尔策略，adapter 只把 `AppType` 投影为 `AppKind`。
 本轮继续把 channel-key 覆盖 provider settings 的 app 选择入口从字符串推进到 `proxy-core::auth::settings_config_with_channel_auth_key_for_app`：core 接收 `AppKind` 维护 Claude/Gemini/Codex/自定义 app 的 key 注入字段规则，adapter 只负责克隆宿主 `Provider` 并投影 `AppType`。
 本轮继续把 `ProxyError` 的用户展示文案策略收敛到 `proxy-core::errors::proxy_error_display_message_from_status`：core 维护上游错误、超时、转发失败、不可用 provider、数据库和转换错误的稳定中文 contract，adapter 只把 host `ProxyError` 投影为状态 kind、原始 message、上游 body 与 fallback display message，`error_mapper` 保留兼容 wrapper。
+本轮继续把显式上游代理 URL 的解析失败文案和 scheme allowlist 收敛到 `proxy-core::transport::{validate_explicit_proxy_url,invalid_explicit_proxy_url_message}`：core 维护 `http/https/socks5/socks5h` 支持矩阵、URL 脱敏和错误文本，host `http_client` 仍负责实际构造 `reqwest::Proxy`。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

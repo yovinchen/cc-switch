@@ -14,6 +14,7 @@ pub const SYSTEM_PROXY_ENV_KEYS: [&str; 6] = [
     "ALL_PROXY",
     "all_proxy",
 ];
+pub const SUPPORTED_EXPLICIT_PROXY_SCHEMES: [&str; 4] = ["http", "https", "socks5", "socks5h"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UpstreamRequestTransportPolicy {
@@ -210,6 +211,48 @@ where
     })
 }
 
+pub fn invalid_explicit_proxy_url_message(
+    proxy_url: &str,
+    error: impl std::fmt::Display,
+) -> String {
+    format!(
+        "Invalid proxy URL '{}': {}",
+        crate::secret::mask_url_for_log(proxy_url),
+        error
+    )
+}
+
+pub fn invalid_explicit_proxy_scheme_message(proxy_url: &str, scheme: &str) -> String {
+    format!(
+        "Invalid proxy scheme '{}' in URL '{}'. Supported: {}",
+        scheme,
+        crate::secret::mask_url_for_log(proxy_url),
+        SUPPORTED_EXPLICIT_PROXY_SCHEMES.join(", ")
+    )
+}
+
+pub fn validate_explicit_proxy_url(proxy_url: &str) -> Result<(), String> {
+    let parsed = proxy_url
+        .parse::<http::Uri>()
+        .map_err(|error| invalid_explicit_proxy_url_message(proxy_url, error))?;
+    let scheme = parsed
+        .scheme_str()
+        .ok_or_else(|| invalid_explicit_proxy_url_message(proxy_url, "missing scheme"))?;
+
+    if !SUPPORTED_EXPLICIT_PROXY_SCHEMES.contains(&scheme) {
+        return Err(invalid_explicit_proxy_scheme_message(proxy_url, scheme));
+    }
+
+    if parsed.authority().is_none() {
+        return Err(invalid_explicit_proxy_url_message(
+            proxy_url,
+            "missing authority",
+        ));
+    }
+
+    Ok(())
+}
+
 fn proxy_host_is_loopback(host: &str) -> bool {
     if host.eq_ignore_ascii_case("localhost") {
         return true;
@@ -385,14 +428,15 @@ mod tests {
     use super::{
         forwarder_request_body_transform_action_from_plan,
         forwarder_protocol_preparation_from_transform_plan, forwarder_transform_plan_from_facts,
-        invalid_mapped_channel_response_status_message, is_socks_proxy_url,
-        is_streaming_upstream_request, mapped_channel_response_status,
+        invalid_explicit_proxy_url_message, invalid_mapped_channel_response_status_message,
+        is_socks_proxy_url, is_streaming_upstream_request, mapped_channel_response_status,
         proxy_url_points_to_loopback_port, proxy_values_point_to_loopback_port,
         request_body_stream_flag, resolve_channel_response_status_mapping,
         resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-        ForwarderProtocolPreparationInput, ForwarderRequestBodyTransformAction,
-        ForwarderTransformPlan, ForwarderTransformPlanFacts, UpstreamSendPolicyInput,
-        UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT, STREAMING_REQWEST_REQUEST_TIMEOUT,
+        validate_explicit_proxy_url, ForwarderProtocolPreparationInput,
+        ForwarderRequestBodyTransformAction, ForwarderTransformPlan, ForwarderTransformPlanFacts,
+        UpstreamSendPolicyInput, UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT,
+        STREAMING_REQWEST_REQUEST_TIMEOUT,
     };
     use http::{header::ACCEPT, HeaderMap, HeaderValue};
     use serde_json::json;
@@ -677,6 +721,37 @@ mod tests {
             ["", "http://127.0.0.1:7890", "http://10.0.0.2:15721"],
             15721
         ));
+    }
+
+    #[test]
+    fn explicit_proxy_url_validation_preserves_host_contract() {
+        assert!(validate_explicit_proxy_url("http://127.0.0.1:7890").is_ok());
+        assert!(validate_explicit_proxy_url("https://proxy.example.com").is_ok());
+        assert!(validate_explicit_proxy_url("socks5://localhost:1080").is_ok());
+        assert!(validate_explicit_proxy_url("socks5h://localhost:1080").is_ok());
+
+        let invalid_scheme =
+            validate_explicit_proxy_url("ftp://127.0.0.1:7890").expect_err("invalid scheme");
+        assert_eq!(
+            invalid_scheme,
+            "Invalid proxy scheme 'ftp' in URL 'ftp://127.0.0.1:7890'. Supported: http, https, socks5, socks5h"
+        );
+
+        let invalid_url = validate_explicit_proxy_url("http://[::1")
+            .expect_err("invalid proxy URL should report parse error");
+        assert!(invalid_url.contains("Invalid proxy URL 'http://[::1':"));
+
+        assert_eq!(
+            validate_explicit_proxy_url("localhost:1080").expect_err("missing scheme"),
+            "Invalid proxy URL 'localhost:1080': missing scheme"
+        );
+        let missing_authority =
+            validate_explicit_proxy_url("http:///proxy").expect_err("missing authority");
+        assert!(missing_authority.contains("Invalid proxy URL 'http:///proxy':"));
+        assert_eq!(
+            invalid_explicit_proxy_url_message("http://user:pass@127.0.0.1:7890", "bad"),
+            "Invalid proxy URL 'http://127.0.0.1:7890': bad"
+        );
     }
 
     #[test]
