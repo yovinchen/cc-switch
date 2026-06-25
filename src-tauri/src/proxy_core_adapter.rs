@@ -4236,7 +4236,7 @@ impl ForwarderAdapterContext {
         forwarder_provider_auth_headers(self.adapter(), auth)
     }
 
-    fn provider_url_facts(
+    pub(crate) fn provider_url_facts(
         &self,
         provider: &Provider,
     ) -> Result<ForwarderProviderUrlFacts, ProxyError> {
@@ -7994,11 +7994,6 @@ pub(crate) struct ForwarderProviderRequestBodyInput<'a> {
     pub(crate) is_copilot: bool,
 }
 
-pub(crate) struct ForwarderProviderUrlFactsInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterContext,
-    pub(crate) provider: &'a Provider,
-}
-
 pub(crate) struct ForwarderProviderUrlFacts {
     pub(crate) base_url: String,
     pub(crate) is_full_url: bool,
@@ -8153,11 +8148,6 @@ pub(crate) trait ForwarderRequestSource {
     fn adapter_context_for_app(&self, app_type: &AppType) -> ForwarderAdapterContext;
 
     fn prepare_attempt_body(&self, input: ForwarderAttemptBodyInput<'_>) -> Value;
-
-    fn provider_url_facts(
-        &self,
-        input: ForwarderProviderUrlFactsInput<'_>,
-    ) -> Result<ForwarderProviderUrlFacts, ProxyError>;
 
     fn prepare_provider_request_body(
         &self,
@@ -8375,13 +8365,6 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             log::info!("{message}");
         }
         body
-    }
-
-    fn provider_url_facts(
-        &self,
-        input: ForwarderProviderUrlFactsInput<'_>,
-    ) -> Result<ForwarderProviderUrlFacts, ProxyError> {
-        input.adapter.provider_url_facts(input.provider)
     }
 
     fn prepare_provider_request_body(
@@ -13699,8 +13682,7 @@ mod tests {
     }
 
     #[test]
-    fn forwarder_request_source_projects_provider_url_facts() {
-        let source = default_forwarder_request_source();
+    fn forwarder_adapter_context_projects_provider_url_facts() {
         let adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
         let mut provider = Provider::with_id(
             "copilot-provider".to_string(),
@@ -13716,11 +13698,8 @@ mod tests {
             ..Default::default()
         });
 
-        let facts = source
-            .provider_url_facts(ForwarderProviderUrlFactsInput {
-                adapter: &adapter,
-                provider: &provider,
-            })
+        let facts = adapter
+            .provider_url_facts(&provider)
             .expect("provider URL facts");
 
         assert_eq!(facts.base_url, "https://api.githubcopilot.com");

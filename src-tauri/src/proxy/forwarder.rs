@@ -23,7 +23,7 @@ use crate::proxy_core_adapter::{
     ForwarderCopilotRequestOptimizationGateInput, ForwarderFailureDecision,
     ForwarderMaybeCopilotAuthOptimizationInput, ForwarderMediaRetryPlanInput,
     ForwarderProtocolPreparationInput, ForwarderProtocolStateSourceRef,
-    ForwarderProviderRequestBodyInput, ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
+    ForwarderProviderRequestBodyInput, ForwarderProviderUrlFacts,
     ForwarderRectifierRetryFailureDecision,
     ForwarderRectifierRetryKind, ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
     ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan, ForwarderRequestSourceRef,
@@ -797,9 +797,7 @@ impl RequestForwarder {
             mut base_url,
             is_full_url,
             is_copilot,
-        } = self
-            .request_source
-            .provider_url_facts(ForwarderProviderUrlFactsInput { adapter, provider })?;
+        } = adapter.provider_url_facts(provider)?;
 
         let mut mapped_body = self.request_source.prepare_provider_request_body(
             ForwarderProviderRequestBodyInput {

@@ -8599,9 +8599,10 @@ fn production_forwarder_uses_request_source_resource() {
         "default ForwarderRequestSource implementation should delegate media prevention to the adapter helper"
     );
     assert!(
-        request_impl_slice.contains("input.adapter.provider_url_facts(input.provider)")
+        impl_slice.contains("adapter.provider_url_facts(provider)")
+            && !request_impl_slice.contains("provider_url_facts(")
             && !request_impl_slice.contains("forwarder_provider_base_url("),
-        "default ForwarderRequestSource implementation must use ForwarderAdapterContext for provider URL facts"
+        "RequestForwarder must read provider URL facts from ForwarderAdapterContext instead of exposing them on ForwarderRequestSource"
     );
     assert!(
         request_private_impl_slice.contains(".adapter")
@@ -8631,8 +8632,9 @@ fn production_forwarder_uses_request_source_resource() {
             && !request_trait_slice.contains("codex_responses_to_chat_enabled")
             && !request_trait_slice.contains("optimize_copilot_request")
             && !request_trait_slice.contains("apply_media_prevention")
-            && !request_trait_slice.contains("adapter_facts"),
-        "ForwarderRequestSource trait must not expose internal request body model, provider transform, Codex bridge body/gate, Copilot optimizer, media prevention, or adapter facts helpers"
+            && !request_trait_slice.contains("adapter_facts")
+            && !request_trait_slice.contains("provider_url_facts"),
+        "ForwarderRequestSource trait must not expose internal request body model, provider transform, Codex bridge body/gate, Copilot optimizer, media prevention, adapter facts, or provider URL facts helpers"
     );
 
     let impl_forbidden_markers = [
