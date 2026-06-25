@@ -88,8 +88,12 @@ pub async fn get_status(
     State(state): State<ProxyState>,
 ) -> Result<Json<ProxyStatusResponse<ProxyRuntimeStatus>>, ProxyError> {
     let request = ProxyStatusRequest::new();
-    let status = state.status.read().await.clone();
-    Ok(Json(request.response(status)))
+    let response = state
+        .proxy_engine()
+        .proxy_status_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+    Ok(Json(response))
 }
 
 /// GET /proxy/v1/events

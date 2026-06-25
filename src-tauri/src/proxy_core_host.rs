@@ -506,6 +506,8 @@ mod tests {
         CcSwitchProxyRuntime {
             db: db.clone(),
             provider_router: provider_router.clone(),
+            status: status.clone(),
+            start_time: Arc::new(RwLock::new(None)),
             events: events.clone(),
             current_providers: current_providers.clone(),
             attempt_runtime_source:

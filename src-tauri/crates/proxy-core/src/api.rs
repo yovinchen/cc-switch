@@ -254,7 +254,7 @@ pub mod ports {
         ProxyConfig, ProxyConfigSource, ProxyCoreEvent, ProxyCoreEventType, ProxyEventSink,
         ProxyGlobalConfig, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServerInfo,
         ProxyServerStartedStatusInput, ProxyServices, ProxyTakeoverStatus, RectifierConfig,
-        RectifierConfigSpec, RoutePolicySource, RouteResolver, UsageSink,
+        RectifierConfigSpec, RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
     };
 }
 
@@ -373,7 +373,7 @@ pub mod prelude {
         ChannelReachabilityProbe, ChannelSource, ForwardPipeline, ModelCatalogProvider,
         ProviderAttemptResult,
         ProviderHealthStore, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
-        RoutePolicySource, RouteResolver, UsageSink,
+        ProxyRuntimeStatus, RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
     };
     pub use super::routing::{ChannelQuery, ChannelSpec, DEFAULT_ROUTE_GROUP};
     pub use super::transport::{
@@ -670,6 +670,12 @@ mod tests {
             }
         }
 
+        impl RuntimeStatusSource for StubServices {
+            fn load_status<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeStatus>> {
+                Box::pin(async { Ok(ProxyRuntimeStatus::default()) })
+            }
+        }
+
         impl UsageSink for StubServices {
             fn record_usage<'a>(
                 &'a self,
@@ -736,6 +742,10 @@ mod tests {
             }
 
             fn model_catalog(&self) -> &(dyn ModelCatalogProvider + Send + Sync) {
+                self
+            }
+
+            fn runtime_status_source(&self) -> &(dyn RuntimeStatusSource + Send + Sync) {
                 self
             }
 

@@ -66,6 +66,8 @@ pub(crate) const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
 pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) db: Arc<Database>,
     pub(crate) provider_router: Arc<ProviderRouter>,
+    pub(crate) status: Arc<RwLock<ProxyRuntimeStatus>>,
+    pub(crate) start_time: Arc<RwLock<Option<std::time::Instant>>>,
     pub(crate) events: Arc<ProxyEventBus>,
     pub(crate) current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
     pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
@@ -563,6 +565,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
     let events = Arc::new(ProxyEventBus::default());
     let failover_manager = Arc::new(FailoverSwitchManager::new(db.clone()));
     let status = Arc::new(RwLock::new(ProxyRuntimeStatus::default()));
+    let start_time = Arc::new(RwLock::new(None));
     let current_providers = Arc::new(RwLock::new(HashMap::new()));
     let gemini_shadow = Arc::new(GeminiShadowStore::default());
     let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
@@ -594,6 +597,8 @@ pub(crate) fn proxy_state_from_runtime_sources(
     let proxy_core_services = Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
         db: db.clone(),
         provider_router: provider_router.clone(),
+        status: status.clone(),
+        start_time: start_time.clone(),
         events: events.clone(),
         current_providers: current_providers.clone(),
         attempt_runtime_source,
@@ -610,7 +615,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
         db,
         config: Arc::new(RwLock::new(config)),
         status,
-        start_time: Arc::new(RwLock::new(None)),
+        start_time,
         current_providers,
         provider_router,
         proxy_core_services,
@@ -847,6 +852,49 @@ pub(crate) async fn proxy_runtime_status_from_runtime_sources(
     apply_proxy_runtime_active_targets(&mut status, current_providers.values().cloned());
 
     status
+}
+
+#[derive(Clone, Default)]
+struct DefaultRuntimeStatusSource;
+
+impl RuntimeStatusSource for DefaultRuntimeStatusSource {
+    fn load_status<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeStatus>> {
+        Box::pin(async { Ok(ProxyRuntimeStatus::default()) })
+    }
+}
+
+#[derive(Clone)]
+struct CcSwitchRuntimeStatusSource {
+    status: Arc<RwLock<ProxyRuntimeStatus>>,
+    start_time: Arc<RwLock<Option<std::time::Instant>>>,
+    current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
+}
+
+impl CcSwitchRuntimeStatusSource {
+    fn new(
+        status: Arc<RwLock<ProxyRuntimeStatus>>,
+        start_time: Arc<RwLock<Option<std::time::Instant>>>,
+        current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
+    ) -> Self {
+        Self {
+            status,
+            start_time,
+            current_providers,
+        }
+    }
+}
+
+impl RuntimeStatusSource for CcSwitchRuntimeStatusSource {
+    fn load_status<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeStatus>> {
+        Box::pin(async move {
+            Ok(proxy_runtime_status_from_runtime_sources(
+                &self.status,
+                &self.start_time,
+                &self.current_providers,
+            )
+            .await)
+        })
+    }
 }
 
 pub(crate) async fn set_active_route_target_runtime_source(
@@ -2629,7 +2677,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     ChannelHealthStore, ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource,
     ForwardPipeline,
     ModelCatalogProvider, ProviderHealthStore, ProviderSource, ProxyConfigSource, ProxyEventSink,
-    ProxyServices, RoutePolicySource, RouteResolver, UsageSink,
+    ProxyServices, RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
@@ -9518,6 +9566,8 @@ pub(crate) trait ProxyServiceRuntimeResources:
 {
     fn db(&self) -> Arc<Database>;
     fn provider_router(&self) -> Arc<ProviderRouter>;
+    fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>>;
+    fn start_time(&self) -> Arc<RwLock<Option<std::time::Instant>>>;
     fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>>;
     fn events(&self) -> Arc<ProxyEventBus>;
 }
@@ -9535,6 +9585,7 @@ pub(crate) struct CcSwitchProxyServices<R> {
     auth_provider: CcSwitchAuthProvider,
     channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource,
     model_catalog: CcSwitchModelCatalogProvider,
+    runtime_status_source: Arc<dyn RuntimeStatusSource + Send + Sync>,
     usage_sink: CcSwitchUsageSink,
     event_sink: CcSwitchEventSink,
     forward_pipeline: CcSwitchForwardPipeline<R>,
@@ -9568,6 +9619,7 @@ impl<R> CcSwitchProxyServices<R> {
             auth_provider: CcSwitchAuthProvider,
             channel_key_runtime_source: channel_key_runtime_source.clone(),
             model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), router.clone()),
+            runtime_status_source: Arc::new(DefaultRuntimeStatusSource),
             usage_sink: CcSwitchUsageSink::new(db.clone()),
             event_sink: CcSwitchEventSink::new(events),
             forward_pipeline: CcSwitchForwardPipeline::without_runtime(channel_key_runtime_source),
@@ -9598,6 +9650,11 @@ where
             auth_provider: CcSwitchAuthProvider,
             channel_key_runtime_source: channel_key_runtime_source.clone(),
             model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), provider_router.clone()),
+            runtime_status_source: Arc::new(CcSwitchRuntimeStatusSource::new(
+                runtime.status(),
+                runtime.start_time(),
+                runtime.current_providers(),
+            )),
             usage_sink: CcSwitchUsageSink::new(db),
             event_sink: CcSwitchEventSink::new(Some(runtime.events())),
             forward_pipeline: CcSwitchForwardPipeline::with_runtime(
@@ -9652,6 +9709,10 @@ where
         &self.model_catalog
     }
 
+    fn runtime_status_source(&self) -> &(dyn RuntimeStatusSource + Send + Sync) {
+        self.runtime_status_source.as_ref()
+    }
+
     fn usage_sink(&self) -> &(dyn UsageSink + Send + Sync) {
         &self.usage_sink
     }
@@ -9681,6 +9742,14 @@ impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime {
 
     fn provider_router(&self) -> Arc<ProviderRouter> {
         self.provider_router.clone()
+    }
+
+    fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>> {
+        self.status.clone()
+    }
+
+    fn start_time(&self) -> Arc<RwLock<Option<std::time::Instant>>> {
+        self.start_time.clone()
     }
 
     fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>> {

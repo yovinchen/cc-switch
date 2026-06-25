@@ -493,6 +493,7 @@
 482. host `proxy::http_client::mask_url` 兼容 wrapper 已删除；全局代理 command 与 HTTP client 日志现在直接调用 `proxy-core::mask_url_for_log`。
 483. host 顶层 `proxy::ProxyStatus` 兼容 alias 已删除；server、forwarder、services 与测试直接引用 `proxy-core::ProxyRuntimeStatus`。
 484. host `providers::ProviderType` 兼容 alias 已删除；Claude/Gemini adapter、forwarder 和 provider tests 直接引用 `proxy-core::ProviderKind`。
+485. `/proxy/v1/status` 的运行态快照读取已迁入 `proxy-core::RuntimeStatusSource` 与 `ProxyEngine::proxy_status_response`；host `handlers` 不再直接读取 `state.status` 或组装 status response envelope，只负责 HTTP JSON 适配。
 485. host `proxy::circuit_breaker` 与 `proxy` 顶层的熔断 DTO re-export 已删除；provider router、commands 和测试直接引用 `proxy-core::{CircuitState, AllowResult, CircuitBreakerStats}`。
 486. host `providers::{AuthInfo, AuthStrategy}` 兼容 alias 已删除；provider adapter trait、Claude/Codex/Gemini adapter 与 forwarder 直接引用 `proxy-core::{ProviderAuthInfo, ProviderAuthStrategy}`。
 487. host `providers::gemini::OAuthCredentials` 类型别名已删除；Gemini adapter 的 OAuth 解析直接返回 `proxy-core::GeminiOAuthCredentials`。

@@ -16,7 +16,7 @@ use super::management_api::{
     ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource, ChannelPathRequest,
     ChannelRecordSource, CurrentRouteSource, GroupListChannelRecordInput,
     GroupListChannelSource, GroupListRequest, ManagementAppPathRequest, ProviderListSource,
-    RouteResolveManagementRequest,
+    ProxyStatusRequest, ProxyStatusSource, RouteResolveManagementRequest,
 };
 use super::ports::{
     AppChannelResponse, AppListResponse, ChannelDeleteResponse, ChannelHealthReset,
@@ -29,7 +29,8 @@ use super::ports::{
     CurrentRouteTarget, ModelCatalog, ProviderListResponse, ProxyChannelKeyPatchRequest,
     ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelTestRequest, ProxyCoreEvent,
-    ProxyCoreEventType, ProxyServices, RouteGroupListResponse, RouteResolveResponse,
+    ProxyCoreEventType, ProxyRuntimeStatus, ProxyServices, ProxyStatusResponse,
+    RouteGroupListResponse, RouteResolveResponse,
 };
 use serde_json::{json, to_value};
 use std::collections::BTreeMap;
@@ -114,6 +115,14 @@ where
         }
 
         Ok(request.response_from_source(AppListSource::new(summaries)))
+    }
+
+    pub async fn proxy_status_response(
+        &self,
+        request: ProxyStatusRequest,
+    ) -> ProxyCoreResult<ProxyStatusResponse<ProxyRuntimeStatus>> {
+        let status = self.services.runtime_status_source().load_status().await?;
+        Ok(request.response_from_source(ProxyStatusSource::new(status)))
     }
 
     pub async fn plan_route(&self, request: &ProxyRequest) -> ProxyCoreResult<RoutePlan> {
@@ -690,8 +699,8 @@ mod tests {
         ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreEvent, ProxyEventSink,
-        ProxyGlobalConfig, ProxyRuntimeConfig, RoutePolicySource, RouteResolver,
-        RouteResolveRequest, UsageSink,
+        ProxyGlobalConfig, ProxyRuntimeConfig, ProxyRuntimeStatus, RuntimeStatusSource,
+        RoutePolicySource, RouteResolver, RouteResolveRequest, UsageSink,
     };
     use futures::future::BoxFuture;
     use http::{Method, StatusCode};
@@ -717,6 +726,7 @@ mod tests {
         queried_channel_apps: Mutex<Vec<String>>,
         queried_materialized_channel_apps: Mutex<Vec<Option<String>>>,
         queried_claude_desktop_model_apps: Mutex<Vec<String>>,
+        runtime_status: Mutex<ProxyRuntimeStatus>,
     }
 
     impl ProxyServices for TestServices {
@@ -760,6 +770,10 @@ mod tests {
             self
         }
 
+        fn runtime_status_source(&self) -> &(dyn RuntimeStatusSource + Send + Sync) {
+            self
+        }
+
         fn usage_sink(&self) -> &(dyn UsageSink + Send + Sync) {
             self
         }
@@ -792,6 +806,17 @@ mod tests {
 
         fn load_runtime<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeConfig>> {
             Box::pin(async { Ok(ProxyRuntimeConfig::default()) })
+        }
+    }
+
+    impl RuntimeStatusSource for TestServices {
+        fn load_status<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeStatus>> {
+            let status = self
+                .runtime_status
+                .lock()
+                .expect("runtime status mutex")
+                .clone();
+            Box::pin(async move { Ok(status) })
         }
     }
 
@@ -1616,6 +1641,31 @@ mod tests {
                 .expect("queried materialized channel apps mutex"),
             vec![Some("claude".to_string()), Some("codex".to_string())]
         );
+    }
+
+    #[test]
+    fn proxy_status_response_delegates_runtime_status_source() {
+        let services = Arc::new(TestServices::default());
+        *services
+            .runtime_status
+            .lock()
+            .expect("runtime status mutex") = ProxyRuntimeStatus {
+            running: true,
+            address: "127.0.0.1".to_string(),
+            port: 15721,
+            total_requests: 42,
+            ..ProxyRuntimeStatus::default()
+        };
+        let engine = ProxyEngine::new(services);
+
+        let response =
+            futures::executor::block_on(engine.proxy_status_response(ProxyStatusRequest::new()))
+                .expect("proxy status response");
+
+        assert!(response.status.running);
+        assert_eq!(response.status.address, "127.0.0.1");
+        assert_eq!(response.status.port, 15721);
+        assert_eq!(response.status.total_requests, 42);
     }
 
     #[test]
