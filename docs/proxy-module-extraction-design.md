@@ -1534,6 +1534,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1092. crate 外 public prelude smoke 已覆盖 `/proxy/v1/groups` 管理 contract：外部宿主只依赖 prelude 即可构造 `GroupListRequest`、`GroupListChannelSource`/`GroupListChannelRecordInput` 与 `RouteGroupSourceInput`，调用 `ProxyEngine::group_list_response`，并完整命名 `RouteGroupListResponse` 与 `RouteGroupSummary` 字段类型。
 1093. crate 外 public prelude smoke 已覆盖 `/proxy/v1/apps/{app}/channels` 管理 contract：外部宿主只依赖 prelude 即可构造 `AppChannelManagementRequest`/`AppChannelManagementPlan`/`AppChannelListSource`，调用 `ProxyEngine::app_channel_response`，并完整命名普通 channel list 与 route dry-run 两种 `AppChannelResponse` 分支。
 1094. crate 外 public prelude smoke 已覆盖 `/proxy/v1/apps/{app}/models` 管理 contract：外部宿主只依赖 prelude 即可构造 `AppModelCatalogRequest`/`AppModelCatalogSource`、调用 `ProxyEngine::list_model_catalog_for_request`，并完整命名 `RoutableModelList`、`RoutableModel` 与 `ModelCapabilities` 字段类型。
+1095. crate 外 public prelude smoke 已覆盖 `/proxy/v1/channels` 与 `/proxy/v1/channels/{channel_id}` 管理 CRUD contract：外部宿主只依赖 prelude 即可构造 `ChannelListRequest`/`ChannelCreateRequest`/`ChannelPathRequest` 与对应 source DTO，调用 `ProxyEngine` 的 list/create/get/patch/delete response 入口，并完整命名 `ChannelListResponse`、`ChannelRecordResponse` 与 `ChannelDeleteResponse`。
 
 ## 背景
 

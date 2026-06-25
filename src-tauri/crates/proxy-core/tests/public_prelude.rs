@@ -189,6 +189,81 @@ impl ChannelSource for ExternalRelayServices {
             ))
         })
     }
+
+    fn create_channel_record<'a>(
+        &'a self,
+        request: ProxyChannelWriteRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelRecord>> {
+        Box::pin(async move {
+            let mut channel = channel_record(request.groups);
+            channel.id = request.id.unwrap_or_else(|| "created-channel".to_string());
+            channel.provider_id = request.provider_id;
+            channel.app_type = request.app_type;
+            channel.name = request.name;
+            channel.status = request.status;
+            channel.base_url = request.base_url;
+            channel.interface_kind = request.interface_kind;
+            channel.auth_profile_ref = request.auth_profile_ref;
+            channel.priority = request.priority;
+            channel.weight = request.weight;
+            channel.retry_policy = request.retry_policy;
+            channel.health_policy = request.health_policy;
+            channel.header_overrides = request.header_overrides;
+            channel.param_overrides = request.param_overrides;
+            channel.status_code_mapping = request.status_code_mapping;
+            channel.tags = request.tags;
+            channel.metadata = request.metadata;
+            Ok(channel)
+        })
+    }
+
+    fn get_channel_record<'a>(
+        &'a self,
+        channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelRecord>>> {
+        let channel = (channel_id == "channel-a")
+            .then(|| channel_record(vec![DEFAULT_ROUTE_GROUP.to_string(), "premium".to_string()]));
+        Box::pin(async move { Ok(channel) })
+    }
+
+    fn update_channel_record<'a>(
+        &'a self,
+        channel_id: &'a str,
+        patch: ProxyChannelPatchRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelRecord>>> {
+        let mut channel = channel_record(vec![DEFAULT_ROUTE_GROUP.to_string()]);
+        channel.id = channel_id.to_string();
+        if let Some(name) = patch.name {
+            channel.name = name;
+        }
+        if let Some(status) = patch.status {
+            channel.status = status;
+        }
+        if let Some(base_url) = patch.base_url {
+            channel.base_url = base_url;
+        }
+        if let Some(interface_kind) = patch.interface_kind {
+            channel.interface_kind = interface_kind;
+        }
+        if let Some(groups) = patch.groups {
+            channel.groups = groups;
+        }
+        if let Some(priority) = patch.priority {
+            channel.priority = priority;
+        }
+        if let Some(weight) = patch.weight {
+            channel.weight = weight;
+        }
+        Box::pin(async move { Ok(Some(channel)) })
+    }
+
+    fn delete_channel_record<'a>(
+        &'a self,
+        channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<bool>> {
+        let deleted = channel_id == "channel-a";
+        Box::pin(async move { Ok(deleted) })
+    }
 }
 
 impl RoutePolicySource for ExternalRelayServices {
@@ -855,6 +930,102 @@ fn external_host_can_use_app_channel_contracts_from_prelude() {
         }
         AppChannelResponse::List(_) => panic!("expected route response"),
     }
+}
+
+#[test]
+fn external_host_can_use_channel_crud_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+    let list_request = ChannelListRequest::from_query(
+        serde_json::from_value(json!({ "appType": "claude" })).expect("channel list query"),
+    )
+    .expect("channel list request");
+    match list_request.plan() {
+        ChannelListPlan::App { app_type } => assert_eq!(app_type, "claude"),
+        ChannelListPlan::All => panic!("expected app-scoped list"),
+    }
+
+    let list_response: ChannelListResponse<ChannelRecord> =
+        futures::executor::block_on(engine.channel_list_response(list_request))
+            .expect("channel list response");
+    let helper_list: ChannelListResponse<ChannelRecord> =
+        ChannelListRequest::from_query(serde_json::from_value(json!({})).expect("all query"))
+            .expect("all request")
+            .response_from_source(ChannelListSource::new(vec![channel_record(vec![
+                "research".to_string(),
+            ])]));
+
+    assert_eq!(list_response.channels.len(), 1);
+    assert_eq!(list_response.channels[0].id, "channel-a");
+    assert_eq!(helper_list.channels[0].groups.as_slice(), ["research"]);
+
+    let create_body = ProxyChannelWriteRequest {
+        id: Some("channel-new".to_string()),
+        provider_id: "relay-a".to_string(),
+        app_type: "claude".to_string(),
+        name: "New Channel".to_string(),
+        base_url: "https://new.example/v1".to_string(),
+        interface_kind: "anthropic".to_string(),
+        groups: vec!["premium".to_string()],
+        priority: 10,
+        weight: 3,
+        ..ProxyChannelWriteRequest::default()
+    };
+    let create_response: ChannelRecordResponse<ChannelRecord> = futures::executor::block_on(
+        engine.create_channel_response(ChannelCreateRequest::from_body(create_body)),
+    )
+    .expect("create channel response");
+    let helper_create: ChannelRecordResponse<ChannelRecord> =
+        ChannelCreateRequest::from_body(ProxyChannelWriteRequest::default())
+            .record_response_from_source(ChannelCreateSource::new(channel_record(vec![
+                "helper".to_string(),
+            ])));
+
+    assert_eq!(create_response.channel.id, "channel-new");
+    assert_eq!(create_response.channel.name, "New Channel");
+    assert_eq!(create_response.channel.groups.as_slice(), ["premium"]);
+    assert_eq!(helper_create.channel.groups.as_slice(), ["helper"]);
+
+    let path = ChannelPathRequest::from_path(" channel-a ").expect("channel path");
+    let record_response: ChannelRecordResponse<ChannelRecord> =
+        futures::executor::block_on(engine.channel_record_response(path.clone()))
+            .expect("channel record response");
+    let helper_record: ChannelRecordResponse<ChannelRecord> = path
+        .record_response_from_source(ChannelRecordSource::new(Some(channel_record(vec![
+            "source".to_string(),
+        ]))))
+        .expect("helper record response");
+
+    assert_eq!(record_response.channel.id, "channel-a");
+    assert_eq!(record_response.channel.groups.as_slice(), ["default", "premium"]);
+    assert_eq!(helper_record.channel.groups.as_slice(), ["source"]);
+
+    let patch = ProxyChannelPatchRequest {
+        name: Some("Renamed Channel".to_string()),
+        groups: Some(vec!["gold".to_string()]),
+        priority: Some(42),
+        weight: Some(5),
+        ..ProxyChannelPatchRequest::default()
+    };
+    let update_response: ChannelRecordResponse<ChannelRecord> =
+        futures::executor::block_on(engine.update_channel_response(path.clone(), patch))
+            .expect("update channel response");
+
+    assert_eq!(update_response.channel.name, "Renamed Channel");
+    assert_eq!(update_response.channel.groups.as_slice(), ["gold"]);
+    assert_eq!(update_response.channel.priority, 42);
+    assert_eq!(update_response.channel.weight, 5);
+
+    let delete_response: ChannelDeleteResponse =
+        futures::executor::block_on(engine.delete_channel_response(path.clone()))
+            .expect("delete channel response");
+    let helper_delete: ChannelDeleteResponse =
+        path.delete_response_from_source(ChannelDeleteSource::new(false));
+
+    assert_eq!(delete_response.channel_id, "channel-a");
+    assert!(delete_response.deleted);
+    assert_eq!(helper_delete.channel_id, "channel-a");
+    assert!(!helper_delete.deleted);
 }
 
 #[test]
