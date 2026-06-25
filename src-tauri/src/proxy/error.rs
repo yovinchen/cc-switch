@@ -114,37 +114,6 @@ fn status_code_from_proxy_error(error: &ProxyError, fallback: StatusCode) -> Sta
         .unwrap_or(fallback)
 }
 
-/// 错误分类
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ErrorCategory {
-    /// 可重试错误（网络问题、5xx）
-    Retryable, // 网络超时、5xx 错误
-    /// 不可重试错误（4xx、认证失败）
-    NonRetryable, // 认证失败、参数错误、4xx 错误
-    #[allow(dead_code)]
-    ClientAbort, // 客户端主动中断
-}
-
-/// 判断错误是否可重试
-#[allow(dead_code)]
-pub fn categorize_error(error: &reqwest::Error) -> ErrorCategory {
-    if error.is_timeout() || error.is_connect() {
-        return ErrorCategory::Retryable;
-    }
-
-    if let Some(status) = error.status() {
-        if status.is_server_error() {
-            ErrorCategory::Retryable
-        } else if status.is_client_error() {
-            ErrorCategory::NonRetryable
-        } else {
-            ErrorCategory::Retryable
-        }
-    } else {
-        ErrorCategory::Retryable
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

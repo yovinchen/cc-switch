@@ -1084,6 +1084,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续删除 `proxy/error_mapper.rs` 中 `map_proxy_error_to_status` 与 `get_error_message` 两个纯策略 facade；错误状态码和展示文案测试直接调用 adapter 暴露的 core contract，error mapper 只保留桥接与响应构造职责。
 本轮继续删除 provider trait 上的 `transform_response` surface 和 Claude adapter 的对应实现；Claude 响应转换测试直接调用 test-only `proxy_core_adapter::provider_claude_transform_response`，响应转换分发不再挂在 provider adapter trait 上。
 本轮继续删除 `proxy/http_client.rs` 中未被调用的 `update_proxy` 与 `is_proxy_enabled` legacy facade；全局代理命令只保留 validate/apply/current-url 三个实际生命周期入口，避免迁移中继续复制重复热更新 surface。
+本轮继续删除 `proxy/error.rs` 中未被调用的 `ErrorCategory` 与 `categorize_error` reqwest 分类 helper；forward retry/non-retry 判定继续由 adapter/core runtime policy 维护，host error 类型只保留实际响应映射职责。
 本轮继续把 `CcSwitchChannelSource` 的 route/materialized channel record list 读取与 `ChannelRecord` 投影收敛到 adapter-owned source wrapper。
 本轮继续把 `CcSwitchChannelSource` 的 legacy channel migration preview/materialize DB 操作与 response input 投影收敛到 adapter-owned source wrapper，host services 只装配 channel source。
 本轮继续把 `CcSwitchRoutePolicySource` 的 failover queue DB 读取与 `RoutePolicy` 投影迁入 adapter-owned source，host services 只装配 source。
@@ -1500,6 +1501,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1065. 删除 `proxy/error_mapper.rs` 的 `map_proxy_error_to_status` 与 `get_error_message` dead-code facade；状态码和展示文案行为继续由 `proxy_core_adapter` 暴露的 core contract 测试覆盖，新增 boundary marker 防止纯错误策略 wrapper 回流。
 1066. 删除 `ProviderAdapter::transform_response` 及 ClaudeAdapter 上的响应转换实现；provider trait 不再暴露响应转换 surface，旧结构化响应格式自动探测 helper 收成 test-only，Claude 响应转换测试直接覆盖 adapter/core contract，并新增 boundary marker 防止 provider adapter 重新承载响应转换分发。
 1067. 删除 `proxy/http_client.rs` 的 `update_proxy` 与 `is_proxy_enabled` legacy facade；生产调用方已使用 `validate_proxy`、`apply_proxy` 和 `get_current_proxy_url`，新增 boundary marker 防止重复热更新/状态 helper 和 dead-code allowance 回流。
+1068. 删除 `proxy/error.rs` 的 `ErrorCategory` / `categorize_error` legacy reqwest 分类 helper；生产 retry/non-retry 控制流继续由 `proxy_core_adapter` 的 runtime failure policy 和 core status/failure 分类维护，新增 boundary marker 防止 host error module 重新承载请求错误分类策略。
 
 ## 背景
 

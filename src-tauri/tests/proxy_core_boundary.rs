@@ -1864,6 +1864,32 @@ fn proxy_error_status_projection_lives_in_proxy_core_adapter() {
 }
 
 #[test]
+fn production_proxy_error_excludes_legacy_reqwest_category_helper() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/error.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/error.rs");
+
+    let mut violations = Vec::new();
+    for marker in [
+        "pub enum ErrorCategory",
+        "pub fn categorize_error",
+        "ClientAbort",
+    ] {
+        if source.contains(marker) {
+            violations.push(format!(
+                "src/proxy/error.rs keeps legacy reqwest category helper marker `{marker}`"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production proxy error classification must stay in adapter/core runtime policy, not legacy reqwest helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn basic_health_status_handlers_use_management_contracts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");
