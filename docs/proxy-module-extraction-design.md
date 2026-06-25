@@ -1540,6 +1540,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1098. crate 外 public prelude smoke 已覆盖 `/proxy/v1/channels/{channel_id}/health/reset` 与 `/proxy/v1/channels/{channel_id}/breakers/stats` 管理 contract：外部宿主只依赖 prelude 即可构造 `ChannelHealthResetSource`、`ChannelBreakerStatsSource` 与 health/breaker runtime DTO，调用 `ProxyEngine` 的 channel health reset/stats response 入口，并完整命名健康重置和熔断统计响应字段类型。
 1099. crate 外 public prelude smoke 已覆盖 `/proxy/v1/channels/{channel_id}/test` 管理 contract：外部宿主只依赖 prelude 即可构造 `ProxyChannelTestRequest`、`ChannelReachabilityInput`、`ChannelTestInput` 与 `ChannelTestPlan`，调用 `ProxyEngine::channel_test_response` 验证指定模型/interface 的 channel 探测路径和模型未映射 fast-failure 响应。
 1100. crate 外 public prelude smoke 已覆盖 `/proxy/v1/apps/{app}/channels/migration/preview` 与 `/materialize` 管理 contract：外部宿主只依赖 prelude 即可构造 `ChannelMigrationPreviewInput`、`ChannelMigrationMaterializeInput` 与对应 source DTO，调用 `ProxyEngine` 的 legacy channel migration preview/materialize response 入口，并完整命名 preview channel、duplicate、needs-review 与 materialize 插入计数字段。
+1101. crate 外 public prelude smoke 已覆盖 `/proxy/v1/events` 事件流 contract：外部宿主只依赖 prelude 即可构造 `ProxyEventEnvelope`、`ProxyEventSseSpec`、connected/lagged 控制事件 payload，并验证 `ProxyCoreEvent` 到外部 payload 的 request/channel 字段投影。
 
 ## 背景
 

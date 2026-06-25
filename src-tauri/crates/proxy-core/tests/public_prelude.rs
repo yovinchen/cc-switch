@@ -942,6 +942,53 @@ fn external_host_can_use_runtime_status_contracts_from_prelude() {
 }
 
 #[test]
+fn external_host_can_use_event_stream_contracts_from_prelude() {
+    let payload = ProxyCoreEvent {
+        event_type: ProxyCoreEventType::RouteSelected,
+        request_id: Some("req-1".to_string()),
+        channel_id: Some("channel-a".to_string()),
+        payload: json!({ "appType": "claude" }),
+    }
+    .into_event_payload();
+    let connected = ProxyEventEnvelope::new(
+        1,
+        PROXY_EVENTS_CONNECTED_EVENT,
+        "2026-06-26T00:00:00Z",
+        build_proxy_events_connected_payload(16),
+    );
+    let lagged = ProxyEventEnvelope::new(
+        2,
+        PROXY_EVENTS_LAGGED_EVENT,
+        "2026-06-26T00:00:01Z",
+        build_proxy_events_lagged_payload(3),
+    );
+    let connected_spec: ProxyEventSseSpec = connected.to_sse_spec();
+    let lagged_spec: ProxyEventSseSpec = lagged.to_sse_spec();
+    let connected_data: serde_json::Value =
+        serde_json::from_str(&connected_spec.data).expect("connected data");
+    let lagged_data: serde_json::Value =
+        serde_json::from_str(&lagged_spec.data).expect("lagged data");
+
+    assert_eq!(ProxyCoreEventType::RouteSelected.event_name(), "route_selected");
+    assert_eq!(
+        ProxyCoreEventType::Custom("relay.updated".to_string()).event_name(),
+        "relay.updated"
+    );
+    assert_eq!(payload["requestId"], "req-1");
+    assert_eq!(payload["channelId"], "channel-a");
+    assert_eq!(payload["appType"], "claude");
+
+    assert_eq!(connected_spec.id, "1");
+    assert_eq!(connected_spec.event, PROXY_EVENTS_CONNECTED_EVENT);
+    assert_eq!(connected_data["id"], 1);
+    assert_eq!(connected_data["event"], PROXY_EVENTS_CONNECTED_EVENT);
+    assert_eq!(connected_data["payload"]["bufferSize"], 16);
+    assert_eq!(lagged_spec.id, "2");
+    assert_eq!(lagged_spec.event, PROXY_EVENTS_LAGGED_EVENT);
+    assert_eq!(lagged_data["payload"]["skipped"], 3);
+}
+
+#[test]
 fn external_host_can_use_app_list_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);

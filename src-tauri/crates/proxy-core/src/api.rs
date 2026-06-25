@@ -363,7 +363,11 @@ pub mod prelude {
     };
     pub use super::engine::ProxyEngine;
     pub use super::errors::{ProxyCoreError, ProxyCoreResult};
-    pub use super::events::{ProxyCoreEvent, ProxyCoreEventType};
+    pub use super::events::{
+        build_proxy_events_connected_payload, build_proxy_events_lagged_payload, ProxyCoreEvent,
+        ProxyCoreEventType, ProxyEventEnvelope, ProxyEventSseSpec, PROXY_EVENTS_CONNECTED_EVENT,
+        PROXY_EVENTS_LAGGED_EVENT,
+    };
     pub use super::management::{
         AppChannelListQuery, AppChannelListResponse, AppChannelListSource,
         AppChannelManagementPlan, AppChannelManagementRequest, AppChannelResponse,
