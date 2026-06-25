@@ -1814,7 +1814,6 @@ use crate::proxy_core::api::ports::{
     apply_claude_common_config_to_settings as core_apply_claude_common_config_to_settings,
     apply_gemini_common_config_to_settings as core_apply_gemini_common_config_to_settings,
     common_config_settings_mutation_issue_message as core_common_config_settings_mutation_issue_message,
-    common_config_snippet_issue_message as core_common_config_snippet_issue_message,
     contains_claude_common_config_snippet as core_contains_claude_common_config_snippet,
     contains_gemini_common_config_snippet as core_contains_gemini_common_config_snippet,
     openclaw_live_write_action_decision as core_openclaw_live_write_action_decision,
@@ -1838,10 +1837,10 @@ use crate::proxy_core::api::ports::{
 #[cfg(test)]
 use crate::proxy_core::api::ports::provider_category_is_official as core_provider_category_is_official;
 #[cfg(test)]
-use crate::proxy_core::api::ports::{
-    openclaw_common_config_value_from_settings as core_openclaw_common_config_value_from_settings,
-    opencode_common_config_value_from_settings as core_opencode_common_config_value_from_settings,
+pub(crate) use crate::proxy_core::api::ports::{
+    openclaw_common_config_value_from_settings, opencode_common_config_value_from_settings,
 };
+pub(crate) use crate::proxy_core::api::ports::common_config_snippet_issue_message;
 pub(crate) use crate::proxy_core::api::ports::CommonConfigSnippetIssue;
 pub(crate) use crate::proxy_core::api::ports::CommonConfigSettingsMutationIssue;
 
@@ -1999,11 +1998,6 @@ pub(crate) fn provider_from_openclaw_live_config(
     Ok(provider)
 }
 
-#[cfg(test)]
-pub(crate) fn openclaw_common_config_value_from_settings(settings: &Value) -> Value {
-    core_openclaw_common_config_value_from_settings(settings)
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HermesLiveImportIssue {
     EmptyName,
@@ -2024,15 +2018,6 @@ pub(crate) fn provider_from_hermes_live_config(
     });
 
     Ok(provider)
-}
-
-#[cfg(test)]
-pub(crate) fn opencode_common_config_value_from_settings(settings: &Value) -> Value {
-    core_opencode_common_config_value_from_settings(settings)
-}
-
-pub(crate) fn common_config_snippet_issue_message(issue: CommonConfigSnippetIssue) -> String {
-    core_common_config_snippet_issue_message(issue)
 }
 
 pub(crate) fn common_config_snippet_from_settings(

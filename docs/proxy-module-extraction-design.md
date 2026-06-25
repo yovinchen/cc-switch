@@ -1414,6 +1414,7 @@
 994. Codex 默认模型上下文窗口的函数 facade 已从 adapter 移除；生产 host 通过 adapter re-export 的 core 常量读取默认值，adapter 不再保留额外函数包装。
 995. materialized channel 数量到 route source 的一行 adapter helper 已移除；adapter 在唯一 source 选择点直接调用 `proxy-core::management` source 决策并保留 legacy fallback I/O。
 996. Gemini env 的解析、序列化、JSON/Map 转换纯函数 facade 已从 adapter 移除；生产 host 仍经 adapter re-export 接入 `proxy-core::ports`，adapter 不再保留额外函数包装。
+997. common-config snippet 错误文案和 OpenCode/OpenClaw common-config value 测试 helper 的纯函数 facade 已从 adapter 移除，改为直接 re-export core ports。
 
 ## 背景
 
