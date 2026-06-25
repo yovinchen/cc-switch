@@ -4392,6 +4392,33 @@ fn response_processor_delegates_response_log_projection_to_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_response_log_projection_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn decode_raw_proxy_response_body",
+        "#[derive(Clone)]\npub(crate) struct SseUsageCollector",
+    );
+
+    assert!(
+        function.contains("non_streaming_response_received_log_event(")
+            && function.contains("streaming_response_received_log_events(")
+            && function.contains("non_streaming_response_body_log_event(")
+            && function.contains("emit_response_log_event("),
+        "proxy_core_adapter must consume response log event specs from proxy-core"
+    );
+
+    for marker in FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_PROJECTION_MARKERS {
+        assert!(
+            !function.contains(marker),
+            "proxy_core_adapter must not locally format response log projection marker `{marker}`"
+        );
+    }
+}
+
+#[test]
 fn response_pipeline_delegates_axum_build_context_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let files = [

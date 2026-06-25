@@ -1555,6 +1555,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1110. managed-account token runtime 继续向可替换 source 收口：`CcSwitchManagedAccountRuntimeSource` 现在拥有无 AppHandle、token 请求/成功/失败日志与 `ProxyError` 包装契约，`proxy::managed_account_auth` 只保留 Tauri state 读取和原始 token/account fact 获取；边界测试同步禁止 runtime text contract 回流到薄 helper 文件，外部中转宿主可替换 runtime source 而无需复制 CC Switch 的 Tauri state 包装。
 1111. Codex 客户端模型目录生成能力已先行收进 `proxy-core::model_fetch`：`client_model_catalog_from_routable_models` 可把 route-visible `RoutableModel` 列表转换为 Codex 兼容 raw catalog，并复用 capabilities 中的 `contextWindow/context_window`；crate 外 public prelude smoke 证明外部宿主可直接从 app model catalog 结果生成客户端模型目录。生产 `/v1/models` handler 尚未切换，后续可用该 helper 避免 host 重新拼装 raw catalog。
 1112. reqwest 上游发送失败的 timeout/connect/other 分类与兼容中文文案已迁入 `proxy-core::request_transport::upstream_send_error_projection`；host `error_mapper` 只负责把 `reqwest::Error` 投影为 `is_timeout/is_connect/message` fact 并映射回现有 `ProxyError` variant，新增 boundary 防止发送错误文案重新回流到 host。
+1113. response pipeline 的已接收上游响应、流式 content-encoding warning 和非流式 body 内容日志 spec 已迁入 `proxy-core::response_diagnostics`；host adapter 只按 core 返回的 `ResponseLogEvent` 执行 debug/warn 输出，不再手写 header summary、content-encoding 或 body lossy 文案。
 
 ## 背景
 

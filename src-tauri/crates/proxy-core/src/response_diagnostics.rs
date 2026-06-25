@@ -1,4 +1,5 @@
-use http::HeaderMap;
+use crate::response_body::get_content_encoding;
+use http::{HeaderMap, StatusCode};
 use std::fmt;
 
 /// Detect whether a body looks like Server-Sent Events text.
@@ -37,6 +38,69 @@ pub fn response_headers_log_summary(headers: &HeaderMap) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResponseLogLevel {
+    Debug,
+    Warn,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResponseLogEvent {
+    pub level: ResponseLogLevel,
+    pub message: String,
+}
+
+pub fn non_streaming_response_received_log_event(
+    tag: &str,
+    status: StatusCode,
+    body_len: usize,
+    headers: &HeaderMap,
+) -> ResponseLogEvent {
+    ResponseLogEvent {
+        level: ResponseLogLevel::Debug,
+        message: format!(
+            "[{tag}] 已接收上游响应体: status={}, bytes={}, headers={}",
+            status.as_u16(),
+            body_len,
+            response_headers_log_summary(headers)
+        ),
+    }
+}
+
+pub fn streaming_response_received_log_events(
+    tag: &str,
+    status: StatusCode,
+    headers: &HeaderMap,
+) -> Vec<ResponseLogEvent> {
+    let mut events = vec![ResponseLogEvent {
+        level: ResponseLogLevel::Debug,
+        message: format!(
+            "[{tag}] 已接收上游流式响应: status={}, headers={}",
+            status.as_u16(),
+            response_headers_log_summary(headers)
+        ),
+    }];
+
+    if let Some(encoding) = get_content_encoding(headers) {
+        events.push(ResponseLogEvent {
+            level: ResponseLogLevel::Warn,
+            message: format!(
+                "[{tag}] 流式响应含 content-encoding={encoding}，SSE 解析可能失败。\
+                 上游在 accept-encoding 透传后压缩了 SSE 流。"
+            ),
+        });
+    }
+
+    events
+}
+
+pub fn non_streaming_response_body_log_event(tag: &str, body: &[u8]) -> ResponseLogEvent {
+    ResponseLogEvent {
+        level: ResponseLogLevel::Debug,
+        message: format!("[{tag}] 上游响应体内容: {}", String::from_utf8_lossy(body)),
+    }
 }
 
 /// Append body diagnostics to an upstream SSE aggregation fallback error message.
@@ -147,8 +211,47 @@ mod tests {
 
         let summary = response_headers_log_summary(&headers);
 
-        assert!(summary.contains("content-type=application/json"), "{summary}");
+        assert!(
+            summary.contains("content-type=application/json"),
+            "{summary}"
+        );
         assert!(summary.contains("x-binary=<non-utf8>"), "{summary}");
+    }
+
+    #[test]
+    fn response_log_events_preserve_host_contracts() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", "text/event-stream".parse().unwrap());
+        headers.insert("content-encoding", "gzip".parse().unwrap());
+
+        let received =
+            non_streaming_response_received_log_event("REQ", StatusCode::CREATED, 12, &headers);
+        assert_eq!(received.level, ResponseLogLevel::Debug);
+        assert!(received.message.contains("[REQ] 已接收上游响应体"));
+        assert!(received.message.contains("status=201"));
+        assert!(received.message.contains("bytes=12"));
+        assert!(
+            received.message.contains("content-encoding=gzip"),
+            "{}",
+            received.message
+        );
+
+        let streaming = streaming_response_received_log_events("REQ", StatusCode::OK, &headers);
+        assert_eq!(streaming.len(), 2);
+        assert_eq!(streaming[0].level, ResponseLogLevel::Debug);
+        assert_eq!(
+            streaming[0].message,
+            "[REQ] 已接收上游流式响应: status=200, headers=content-type=text/event-stream, content-encoding=gzip"
+        );
+        assert_eq!(streaming[1].level, ResponseLogLevel::Warn);
+        assert_eq!(
+            streaming[1].message,
+            "[REQ] 流式响应含 content-encoding=gzip，SSE 解析可能失败。上游在 accept-encoding 透传后压缩了 SSE 流。"
+        );
+
+        let body = non_streaming_response_body_log_event("REQ", b"hello");
+        assert_eq!(body.level, ResponseLogLevel::Debug);
+        assert_eq!(body.message, "[REQ] 上游响应体内容: hello");
     }
 
     #[test]
@@ -166,8 +269,14 @@ mod tests {
             message.starts_with("No chat completion choices in upstream SSE "),
             "{message}"
         );
-        assert!(message.contains("content-type: application/json"), "{message}");
-        assert!(message.contains("body[..120]: 'data: {}\\n\\n'"), "{message}");
+        assert!(
+            message.contains("content-type: application/json"),
+            "{message}"
+        );
+        assert!(
+            message.contains("body[..120]: 'data: {}\\n\\n'"),
+            "{message}"
+        );
     }
 
     #[test]
@@ -184,7 +293,10 @@ mod tests {
             "<html>\nblocked</html>",
         );
 
-        assert!(message.contains("Failed to parse upstream response"), "{message}");
+        assert!(
+            message.contains("Failed to parse upstream response"),
+            "{message}"
+        );
         assert!(message.contains("content-type: text/html"), "{message}");
         assert!(message.contains("content-encoding: gzip"), "{message}");
         assert!(message.contains("<html>\\nblocked</html>"), "{message}");

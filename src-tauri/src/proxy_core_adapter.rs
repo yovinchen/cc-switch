@@ -9080,18 +9080,25 @@ pub(crate) struct DecodedProxyResponseBody {
     pub(crate) body: Bytes,
 }
 
+fn emit_response_log_event(event: ResponseLogEvent) {
+    match event.level {
+        ResponseLogLevel::Debug => log::debug!("{}", event.message),
+        ResponseLogLevel::Warn => log::warn!("{}", event.message),
+    }
+}
+
 pub(crate) fn decode_raw_proxy_response_body(
     mut headers: HeaderMap,
     status: http::StatusCode,
     raw_bytes: Bytes,
     tag: &str,
 ) -> DecodedProxyResponseBody {
-    log::debug!(
-        "[{tag}] 已接收上游响应体: status={}, bytes={}, headers={}",
-        status.as_u16(),
+    emit_response_log_event(non_streaming_response_received_log_event(
+        tag,
+        status,
         raw_bytes.len(),
-        response_headers_log_summary(&headers)
-    );
+        &headers,
+    ));
 
     let decoded = decode_response_body(&mut headers, &raw_bytes);
     if let Some(event) = decoded.status.log_event() {
@@ -9113,22 +9120,13 @@ pub(crate) fn log_streaming_proxy_response_received(
     status: http::StatusCode,
     tag: &str,
 ) {
-    log::debug!(
-        "[{tag}] 已接收上游流式响应: status={}, headers={}",
-        status.as_u16(),
-        response_headers_log_summary(headers)
-    );
-
-    if let Some(encoding) = get_content_encoding(headers) {
-        log::warn!(
-            "[{tag}] 流式响应含 content-encoding={encoding}，SSE 解析可能失败。\
-             上游在 accept-encoding 透传后压缩了 SSE 流。"
-        );
+    for event in streaming_response_received_log_events(tag, status, headers) {
+        emit_response_log_event(event);
     }
 }
 
 pub(crate) fn log_non_streaming_proxy_response_body(body: &[u8], tag: &str) {
-    log::debug!("[{tag}] 上游响应体内容: {}", String::from_utf8_lossy(body));
+    emit_response_log_event(non_streaming_response_body_log_event(tag, body));
 }
 
 #[derive(Clone)]
@@ -10276,10 +10274,11 @@ pub(crate) use crate::proxy_core::api::transport::resolve_upstream_send_policy;
 pub(crate) use crate::proxy_core::api::transport::upstream_send_error_projection;
 
 pub(crate) use crate::proxy_core::api::transport::{
-    get_content_encoding, response_headers_indicate_sse, response_headers_log_summary,
+    non_streaming_response_body_log_event, non_streaming_response_received_log_event,
+    response_headers_indicate_sse, streaming_response_received_log_events,
 };
 
-use crate::proxy_core::api::transport::decode_response_body;
+use crate::proxy_core::api::transport::{decode_response_body, ResponseLogEvent, ResponseLogLevel};
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::decompress_body;
