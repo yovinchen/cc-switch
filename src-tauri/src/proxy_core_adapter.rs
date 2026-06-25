@@ -2724,14 +2724,14 @@ pub(crate) use crate::proxy_core::api::transport::{
     apply_forwarder_media_prevention_from_facts, auth_provider_proxy_request_from_context,
     bedrock_env_flag_from_provider_settings, build_claude_provider_auth_headers,
     build_claude_upstream_url, build_codex_provider_auth_headers, build_codex_upstream_url,
-    build_forward_attempt_limit_reached_log, build_gemini_provider_auth_headers,
-    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
-    categorize_forward_failure, classify_copilot_request, finalize_forwarder_auth_headers,
+    build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
+    build_terminal_forward_failure_log, categorize_forward_failure, classify_copilot_request,
+    finalize_forwarder_auth_headers,
     forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
     forward_upstream_url_plan, forwarder_all_providers_circuit_open_log_line,
-    forwarder_failure_log_line, forwarder_media_retry_plan_from_facts,
-    forwarder_no_available_provider_status_message, forwarder_no_providers_configured_log_line,
-    forwarder_protocol_preparation_from_transform_plan,
+    forwarder_attempt_runtime_decision, forwarder_failure_log_line,
+    forwarder_media_retry_plan_from_facts, forwarder_no_available_provider_status_message,
+    forwarder_no_providers_configured_log_line, forwarder_protocol_preparation_from_transform_plan,
     forwarder_rectifier_error_message as core_forwarder_rectifier_error_message,
     forwarder_rectifier_retry_failure_label,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
@@ -2749,8 +2749,8 @@ pub(crate) use crate::proxy_core::api::transport::{
     should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
     should_send_anthropic_request_headers, strip_copilot_thinking_blocks,
     supports_reasoning_effort, AuthProviderHeaderResolution, ForwardUpstreamUrlPlan,
-    ForwardUpstreamUrlPlanInput, ForwarderRectifierErrorInput, ForwarderRequestBodyTransformAction,
-    UNSUPPORTED_IMAGE_MARKER,
+    ForwardUpstreamUrlPlanInput, ForwarderAttemptRuntimeDecisionInput,
+    ForwarderRectifierErrorInput, ForwarderRequestBodyTransformAction, UNSUPPORTED_IMAGE_MARKER,
 };
 pub(crate) use crate::proxy_core::api::transport::{
     extract_gemini_model_from_path, request_model_for_forward,
@@ -7519,19 +7519,6 @@ pub(crate) fn forwarder_protocol_state_source_from_runtime_parts(
 pub(crate) type ForwarderAttemptRuntimeSourceRef =
     Arc<dyn ForwarderAttemptRuntimeSource + Send + Sync>;
 
-pub(crate) fn forwarder_attempt_limit_reached_log_line(
-    app_type: &str,
-    attempted_providers: usize,
-    max_attempts: usize,
-) -> Option<String> {
-    build_forward_attempt_limit_reached_log(attempted_providers, max_attempts)
-        .map(|log| format!("[{app_type}] {}", log.message))
-}
-
-pub(crate) fn forwarder_should_bypass_circuit_breaker(attempts: &[ForwardAttempt]) -> bool {
-    attempts.len() == 1 && !attempts[0].is_channel()
-}
-
 pub(crate) struct ForwarderAttemptAllowInput<'a> {
     pub(crate) attempt: &'a ForwardAttempt,
     pub(crate) app_type: &'a str,
@@ -7591,21 +7578,27 @@ impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
         input: ForwarderAttemptAllowInput<'a>,
     ) -> BoxFuture<'a, ForwarderAttemptAllowDecision> {
         Box::pin(async move {
-            if let Some(log_line) = forwarder_attempt_limit_reached_log_line(
-                input.app_type,
-                input.attempted_providers,
-                input.max_attempts,
-            ) {
+            let runtime_decision =
+                forwarder_attempt_runtime_decision(ForwarderAttemptRuntimeDecisionInput {
+                    app_type: input.app_type,
+                    attempted_providers: input.attempted_providers,
+                    max_attempts: input.max_attempts,
+                    attempts_len: input.attempts.len(),
+                    single_attempt_is_channel: input
+                        .attempts
+                        .first()
+                        .is_some_and(ForwardAttempt::is_channel),
+                });
+            if let Some(log_line) = runtime_decision.limit_log_line {
                 log::warn!("{log_line}");
                 return ForwarderAttemptAllowDecision::Stop;
             }
 
-            let bypass_circuit_breaker = forwarder_should_bypass_circuit_breaker(input.attempts);
             let permit = allow_forward_attempt_runtime_source(
                 self.router.as_ref(),
                 input.attempt,
                 input.app_type,
-                bypass_circuit_breaker,
+                runtime_decision.bypass_circuit_breaker,
             )
             .await;
             if permit.allowed {
@@ -14686,55 +14679,6 @@ base_url = "https://api.openai.com/v1"
                 provider: &default_claude_provider,
             },)
         );
-    }
-
-    #[test]
-    fn forwarder_attempt_runtime_source_projects_attempt_limit() {
-        assert!(forwarder_attempt_limit_reached_log_line("claude", 0, 1).is_none());
-        let log_line = forwarder_attempt_limit_reached_log_line("claude", 1, 1)
-            .expect("attempt count at max should stop");
-        assert_eq!(
-            log_line,
-            "[claude] 已达最大尝试次数上限 (1/1), 停止故障转移"
-        );
-    }
-
-    #[test]
-    fn forwarder_attempt_runtime_source_projects_circuit_breaker_bypass() {
-        let provider = Provider::with_id(
-            "provider-a".to_string(),
-            "Provider A".to_string(),
-            json!({}),
-            None,
-        );
-        let legacy_attempt = ForwardAttempt::from_provider(provider.clone());
-        assert!(forwarder_should_bypass_circuit_breaker(
-            std::slice::from_ref(&legacy_attempt)
-        ));
-        assert!(!forwarder_should_bypass_circuit_breaker(&[]));
-        assert!(!forwarder_should_bypass_circuit_breaker(&[
-            legacy_attempt.clone(),
-            legacy_attempt,
-        ]));
-
-        let channel_attempt = ForwardAttempt::from_channel(
-            &AppType::Claude,
-            &provider,
-            ChannelRouteCandidate {
-                channel_id: "channel-a".to_string(),
-                provider_id: provider.id.clone(),
-                channel_name: "Channel A".to_string(),
-                base_url: "https://relay.example.com/v1".to_string(),
-                interface_kind: "anthropic".to_string(),
-                public_model: None,
-                upstream_model: None,
-                route_group: "default".to_string(),
-                priority: 100,
-                weight: 1,
-                source_kind: "manual".to_string(),
-            },
-        );
-        assert!(!forwarder_should_bypass_circuit_breaker(&[channel_attempt]));
     }
 
     #[tokio::test]

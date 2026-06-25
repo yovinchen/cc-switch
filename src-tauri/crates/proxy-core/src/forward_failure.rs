@@ -193,6 +193,34 @@ pub fn build_forward_attempt_limit_reached_log(
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForwarderAttemptRuntimeDecisionInput<'a> {
+    pub app_type: &'a str,
+    pub attempted_providers: usize,
+    pub max_attempts: usize,
+    pub attempts_len: usize,
+    pub single_attempt_is_channel: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwarderAttemptRuntimeDecision {
+    pub limit_log_line: Option<String>,
+    pub bypass_circuit_breaker: bool,
+}
+
+pub fn forwarder_attempt_runtime_decision(
+    input: ForwarderAttemptRuntimeDecisionInput<'_>,
+) -> ForwarderAttemptRuntimeDecision {
+    let limit_log_line =
+        build_forward_attempt_limit_reached_log(input.attempted_providers, input.max_attempts)
+            .map(|log| format!("[{}] {}", input.app_type, log.message));
+
+    ForwarderAttemptRuntimeDecision {
+        limit_log_line,
+        bypass_circuit_breaker: input.attempts_len == 1 && !input.single_attempt_is_channel,
+    }
+}
+
 pub fn forwarder_no_available_provider_status_message() -> &'static str {
     "所有供应商暂时不可用（熔断器限制）"
 }
@@ -318,7 +346,7 @@ fn extract_json_error_message(body: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_forward_attempt_limit_reached_log,
+        build_forward_attempt_limit_reached_log, forwarder_attempt_runtime_decision,
         build_retryable_forward_failure_log, build_terminal_forward_failure_log,
         categorize_forward_failure, forward_failure_kind_from_proxy_status,
         forward_failure_message_from_proxy_status,
@@ -329,7 +357,8 @@ mod tests {
         forwarder_rectifier_retry_success_message,
         forwarder_terminal_failure_status_message,
         should_failover_after_rectifier_retry_failure, summarize_text_for_log,
-        summarize_upstream_body_for_log, ForwardFailureCategory, ForwardFailureKind,
+        summarize_upstream_body_for_log, ForwarderAttemptRuntimeDecisionInput,
+        ForwardFailureCategory, ForwardFailureKind,
         ForwarderRectifierErrorInput, ForwarderRectifierRetryKind,
         ALL_PROVIDERS_FAILED, PROVIDER_FAILED_RETRY, SINGLE_PROVIDER_FAILED,
     };
@@ -415,6 +444,43 @@ mod tests {
             build_forward_attempt_limit_reached_log(1, 1).expect("expected attempt limit log");
 
         assert_eq!(log.message, "已达最大尝试次数上限 (1/1), 停止故障转移");
+    }
+
+    #[test]
+    fn attempt_runtime_decision_projects_limit_and_circuit_bypass() {
+        let allowed = forwarder_attempt_runtime_decision(ForwarderAttemptRuntimeDecisionInput {
+            app_type: "claude",
+            attempted_providers: 0,
+            max_attempts: 1,
+            attempts_len: 1,
+            single_attempt_is_channel: false,
+        });
+        assert_eq!(allowed.limit_log_line, None);
+        assert!(allowed.bypass_circuit_breaker);
+
+        let stopped = forwarder_attempt_runtime_decision(ForwarderAttemptRuntimeDecisionInput {
+            app_type: "claude",
+            attempted_providers: 1,
+            max_attempts: 1,
+            attempts_len: 1,
+            single_attempt_is_channel: true,
+        });
+        assert_eq!(
+            stopped.limit_log_line.as_deref(),
+            Some("[claude] 已达最大尝试次数上限 (1/1), 停止故障转移")
+        );
+        assert!(!stopped.bypass_circuit_breaker);
+
+        let multiple_legacy = forwarder_attempt_runtime_decision(
+            ForwarderAttemptRuntimeDecisionInput {
+                app_type: "codex",
+                attempted_providers: 0,
+                max_attempts: 3,
+                attempts_len: 2,
+                single_attempt_is_channel: false,
+            },
+        );
+        assert!(!multiple_legacy.bypass_circuit_breaker);
     }
 
     #[test]

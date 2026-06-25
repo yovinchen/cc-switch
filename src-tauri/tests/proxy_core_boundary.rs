@@ -8284,9 +8284,15 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     );
     assert!(
         attempt_runtime_impl_slice
-            .contains("forwarder_should_bypass_circuit_breaker(input.attempts)")
-            && attempt_runtime_impl_slice.contains("forwarder_attempt_limit_reached_log_line("),
-        "default ForwarderAttemptRuntimeSource implementation should call the strategy helpers directly inside allow"
+            .contains("forwarder_attempt_runtime_decision(ForwarderAttemptRuntimeDecisionInput")
+            && attempt_runtime_impl_slice.contains("runtime_decision.bypass_circuit_breaker")
+            && attempt_runtime_impl_slice.contains("runtime_decision.limit_log_line"),
+        "default ForwarderAttemptRuntimeSource implementation should delegate attempt limit and circuit-bypass policy to core"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) fn forwarder_attempt_limit_reached_log_line")
+            && !adapter_source.contains("pub(crate) fn forwarder_should_bypass_circuit_breaker"),
+        "proxy_core_adapter must not retain host-owned forward attempt limit or circuit-bypass policy helpers"
     );
     assert!(
         !impl_slice.contains("limit.log_line"),
