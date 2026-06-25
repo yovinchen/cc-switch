@@ -2397,13 +2397,19 @@ pub type StreamCheckConfig = crate::proxy_core::api::management::StreamCheckConf
 pub type StreamCheckResult = crate::proxy_core::api::management::StreamCheckResult;
 pub(crate) type ChannelKeyRecord = crate::proxy_core::api::management::ChannelKeyRecord;
 pub(crate) type ChannelKeyRecordInput = crate::proxy_core::api::management::ChannelKeyRecordInput;
+pub(crate) type ChannelKeyRuntimeCandidate =
+    crate::proxy_core::api::management::ChannelKeyRuntimeCandidate;
+pub(crate) type ChannelKeyRuntimeCandidateInput =
+    crate::proxy_core::api::management::ChannelKeyRuntimeCandidateInput;
 pub(crate) type ChannelModelRecord = crate::proxy_core::api::management::ChannelModelRecord;
 pub(crate) type ChannelModelRecordInput =
     crate::proxy_core::api::management::ChannelModelRecordInput;
 pub(crate) type ChannelRecordInput = crate::proxy_core::api::management::ChannelRecordInput;
 
 pub(crate) use crate::proxy_core::api::management::{
-    channel_key_record_from_input, channel_model_record_from_input, channel_record_from_input,
+    channel_key_record_from_input, channel_key_runtime_candidate_from_input,
+    channel_model_record_from_input, channel_record_from_input,
+    select_enabled_channel_key_runtime_candidate as core_select_enabled_channel_key_runtime_candidate,
 };
 
 pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
@@ -4562,7 +4568,9 @@ pub(crate) fn channel_key_auth_error(channel_id: &str, key_ref: &str) -> ProxyCo
     ))
 }
 
-pub(crate) fn channel_key_value_from_record(key: Option<ProxyChannelKeyRecord>) -> Option<String> {
+pub(crate) fn channel_key_value_from_runtime_candidate(
+    key: Option<ChannelKeyRuntimeCandidate>,
+) -> Option<String> {
     key.map(|key| key.key_value)
 }
 
@@ -6853,7 +6861,7 @@ pub(crate) fn apply_channel_auth_profile_providers_from_db(
             let key = db
                 .get_enabled_proxy_channel_key(channel_id, key_ref)
                 .map_err(|error| app_error("load channel auth key", error))?;
-            Ok(channel_key_value_from_record(key))
+            Ok(channel_key_value_from_runtime_candidate(key))
         },
     )
 }
@@ -12263,6 +12271,32 @@ pub(crate) fn proxy_channel_key_record_to_core(key: ProxyChannelKeyRecord) -> Ch
         weight: key.weight,
         last_failure_at: key.last_failure_at,
     })
+}
+
+pub(crate) fn proxy_channel_key_record_to_runtime_candidate(
+    key: ProxyChannelKeyRecord,
+) -> ChannelKeyRuntimeCandidate {
+    channel_key_runtime_candidate_from_input(ChannelKeyRuntimeCandidateInput {
+        channel_id: key.channel_id,
+        key_ref: key.key_ref,
+        key_value: key.key_value,
+        status: key.status,
+        priority: key.priority,
+        weight: key.weight,
+        last_failure_at: key.last_failure_at,
+    })
+}
+
+pub(crate) fn select_enabled_proxy_channel_key_runtime_candidate<I>(
+    keys: I,
+) -> Option<ChannelKeyRuntimeCandidate>
+where
+    I: IntoIterator<Item = ProxyChannelKeyRecord>,
+{
+    core_select_enabled_channel_key_runtime_candidate(
+        keys.into_iter()
+            .map(proxy_channel_key_record_to_runtime_candidate),
+    )
 }
 
 pub(crate) fn proxy_channel_key_records_to_core(

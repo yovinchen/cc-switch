@@ -5696,6 +5696,60 @@ pub fn channel_key_record_from_input(input: ChannelKeyRecordInput) -> ChannelKey
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelKeyRuntimeCandidate {
+    pub channel_id: String,
+    pub key_ref: String,
+    pub key_value: String,
+    pub status: String,
+    pub priority: i64,
+    pub weight: u32,
+    pub last_failure_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChannelKeyRuntimeCandidateInput {
+    pub channel_id: String,
+    pub key_ref: String,
+    pub key_value: String,
+    pub status: String,
+    pub priority: i64,
+    pub weight: u32,
+    pub last_failure_at: Option<i64>,
+}
+
+pub fn channel_key_runtime_candidate_from_input(
+    input: ChannelKeyRuntimeCandidateInput,
+) -> ChannelKeyRuntimeCandidate {
+    ChannelKeyRuntimeCandidate {
+        channel_id: input.channel_id,
+        key_ref: input.key_ref,
+        key_value: input.key_value,
+        status: input.status,
+        priority: input.priority,
+        weight: input.weight,
+        last_failure_at: input.last_failure_at,
+    }
+}
+
+pub fn select_enabled_channel_key_runtime_candidate<I>(
+    candidates: I,
+) -> Option<ChannelKeyRuntimeCandidate>
+where
+    I: IntoIterator<Item = ChannelKeyRuntimeCandidate>,
+{
+    candidates
+        .into_iter()
+        .filter(|candidate| candidate.status == "enabled")
+        .min_by(|left, right| {
+            right
+                .priority
+                .cmp(&left.priority)
+                .then_with(|| right.weight.cmp(&left.weight))
+                .then_with(|| left.key_ref.cmp(&right.key_ref))
+        })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ChannelKeyRecordResponse<T> {
@@ -6099,17 +6153,18 @@ mod tests {
         should_skip_manual_default_live_import, should_skip_startup_default_live_import,
         should_skip_provider_legacy_common_config_migration,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
-        channel_key_record_from_input,
+        channel_key_record_from_input, channel_key_runtime_candidate_from_input,
         channel_reachability_status_from_latency, channel_record_from_input, ChannelDeleteResponse,
         ChannelHealthUpdateInput, CHANNEL_HEALTH_UNKNOWN_STATUS,
-        ChannelKeyRecordInput, ChannelListQuery, ChannelListResponse, ChannelReachabilityInput,
-        ChannelMigrationMaterializeInput,
+        ChannelKeyRecordInput, ChannelKeyRuntimeCandidateInput, ChannelListQuery,
+        ChannelListResponse, ChannelReachabilityInput, ChannelMigrationMaterializeInput,
         ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
         ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelRecordInput,
         ChannelModelsResponse, ChannelRecord, ChannelRecordInput, ChannelRecordResponse,
         ChannelRouteCandidate, ChannelReachabilityResult, ChannelReachabilityStatus,
         ChannelRouteRejected, ChannelRouteSource, ChannelTestInput, ChannelTestPlan,
         ChannelTestResponse, ClientModelCatalogResponse, should_retry_channel_reachability_failure,
+        select_enabled_channel_key_runtime_candidate,
         CopilotOptimizerConfig, CurrentRouteChannelTargetInput,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget,
         CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
@@ -10866,6 +10921,42 @@ GEMINI_API_KEY=sk-test123
         assert_eq!(record.priority, 5);
         assert_eq!(record.weight, 60);
         assert_eq!(record.last_failure_at, Some(1_771_000_003));
+    }
+
+    #[test]
+    fn channel_key_runtime_candidate_selection_prefers_enabled_priority_weight_and_key_ref() {
+        fn candidate(
+            key_ref: &str,
+            key_value: &str,
+            status: &str,
+            priority: i64,
+            weight: u32,
+        ) -> super::ChannelKeyRuntimeCandidate {
+            channel_key_runtime_candidate_from_input(ChannelKeyRuntimeCandidateInput {
+                channel_id: "ch-1".to_string(),
+                key_ref: key_ref.to_string(),
+                key_value: key_value.to_string(),
+                status: status.to_string(),
+                priority,
+                weight,
+                last_failure_at: Some(1_771_000_003),
+            })
+        }
+
+        let selected = select_enabled_channel_key_runtime_candidate(vec![
+            candidate("disabled-best", "sk-disabled", "disabled", 100, 100),
+            candidate("beta", "sk-beta", "enabled", 10, 80),
+            candidate("alpha", "sk-alpha", "enabled", 10, 80),
+            candidate("lower-weight", "sk-lower-weight", "enabled", 10, 20),
+            candidate("lower-priority", "sk-lower-priority", "enabled", 5, 100),
+        ])
+        .expect("selected enabled key candidate");
+
+        assert_eq!(selected.key_ref, "alpha");
+        assert_eq!(selected.key_value, "sk-alpha");
+        assert_eq!(selected.priority, 10);
+        assert_eq!(selected.weight, 80);
+        assert_eq!(selected.last_failure_at, Some(1_771_000_003));
     }
 
     #[test]

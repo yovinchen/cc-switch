@@ -652,6 +652,7 @@ const FORBIDDEN_PROXY_CORE_HOST_AUTH_PROFILE_DB_MARKERS: &[&str] = &[
     "fn apply_channel_auth_profile_providers(",
     "get_enabled_proxy_channel_key(",
     "channel_key_value_from_record(",
+    "channel_key_value_from_runtime_candidate(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_FORWARD_CURRENT_PROVIDER_MARKERS: &[&str] = &[
     "current_provider_id_from_settings_for_app_type(",
@@ -2069,6 +2070,44 @@ fn channel_key_and_model_handlers_delegate_sources_to_proxy_engine() {
     assert!(
         violations.is_empty(),
         "channel key/model HTTP handlers must delegate subresource sources to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_channel_dao_delegates_runtime_key_selection_to_core_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/database/dao/proxy_channels.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_channels.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn get_enabled_proxy_channel_key",
+        "pub(crate) fn get_proxy_channel_app_type",
+    );
+
+    assert!(
+        function.contains("select_enabled_proxy_channel_key_runtime_candidate("),
+        "get_enabled_proxy_channel_key must delegate runtime key selection to the core adapter"
+    );
+
+    let forbidden_markers = ["key.status == \"enabled\"", "key.status != \"enabled\""];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/database/dao/proxy_channels.rs get_enabled_proxy_channel_key:{} contains runtime key policy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "runtime channel key selection policy must stay in proxy-core:\n{}",
         violations.join("\n")
     );
 }

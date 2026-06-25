@@ -15,7 +15,8 @@ use crate::proxy_core_adapter::{
     normalize_proxy_channel_model_write_request_fields,
     normalize_proxy_channel_models_replace_request_fields,
     normalize_proxy_channel_patch_request_fields, normalize_proxy_channel_write_request_fields,
-    normalize_required_channel_string, stable_channel_id, ChannelHealthUpdateInput,
+    normalize_required_channel_string, select_enabled_proxy_channel_key_runtime_candidate,
+    stable_channel_id, ChannelHealthUpdateInput, ChannelKeyRuntimeCandidate,
     ChannelRequestValidationError, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
     ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelWriteRequest, CHANNEL_HEALTH_UNKNOWN_STATUS,
@@ -636,16 +637,11 @@ impl Database {
         &self,
         channel_id: &str,
         key_ref: &str,
-    ) -> Result<Option<ProxyChannelKeyRecord>, AppError> {
+    ) -> Result<Option<ChannelKeyRuntimeCandidate>, AppError> {
         let conn = lock_conn!(self.conn);
-        let Some(key) = get_proxy_channel_key_on_conn(&conn, channel_id, key_ref)? else {
-            return Ok(None);
-        };
-        if key.status == "enabled" {
-            Ok(Some(key))
-        } else {
-            Ok(None)
-        }
+        Ok(select_enabled_proxy_channel_key_runtime_candidate(
+            get_proxy_channel_key_on_conn(&conn, channel_id, key_ref)?,
+        ))
     }
 
     pub(crate) fn get_proxy_channel_app_type(
