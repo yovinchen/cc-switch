@@ -225,7 +225,6 @@ impl CircuitBreaker {
     }
 
     /// 获取统计信息
-    #[allow(dead_code)]
     pub async fn get_stats(&self) -> CircuitBreakerStats {
         CircuitBreakerStats {
             state: *self.state.read().await,
@@ -237,7 +236,6 @@ impl CircuitBreaker {
     }
 
     /// 重置熔断器（手动恢复）
-    #[allow(dead_code)]
     pub async fn reset(&self) {
         log::info!("[{}] 熔断器手动重置 → Closed", log_cb::MANUAL_RESET);
         self.transition_to_closed().await;

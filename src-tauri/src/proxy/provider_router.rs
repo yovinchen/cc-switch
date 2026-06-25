@@ -332,7 +332,6 @@ impl ProviderRouter {
     }
 
     /// 获取熔断器状态
-    #[allow(dead_code)]
     pub async fn get_circuit_breaker_stats(
         &self,
         provider_id: &str,
@@ -343,7 +342,7 @@ impl ProviderRouter {
     }
 
     /// 获取 Channel 熔断器状态
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub async fn get_channel_circuit_breaker_stats(
         &self,
         channel_id: &str,
@@ -861,6 +860,13 @@ mod tests {
             .record_result("b", "claude", false, false, Some("fail".to_string()))
             .await
             .unwrap();
+
+        let stats = router
+            .get_circuit_breaker_stats("b", "claude")
+            .await
+            .expect("provider stats");
+        assert_eq!(stats.state, CircuitState::Open);
+        assert_eq!(stats.failed_requests, 1);
 
         let provider_ids = router.select_provider_ids("claude").await.unwrap();
         assert_eq!(provider_ids.len(), 2);

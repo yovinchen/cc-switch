@@ -9157,6 +9157,24 @@ fn production_reset_circuit_breaker_command_delegates_switchback_sources_to_adap
 }
 
 #[test]
+fn production_get_circuit_breaker_stats_command_delegates_to_proxy_service() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/commands/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read commands/proxy.rs");
+    let start = source
+        .find("pub async fn get_circuit_breaker_stats")
+        .expect("find get_circuit_breaker_stats");
+    let function = &source[start..];
+
+    assert!(
+        function.contains(".get_provider_circuit_breaker_stats(")
+            && !function.contains("Ok(None)")
+            && !function.contains("let _ ="),
+        "get_circuit_breaker_stats command should expose runtime stats through ProxyService, not return a placeholder"
+    );
+}
+
+#[test]
 fn production_set_auto_failover_command_delegates_plan_sources_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/commands/failover.rs");

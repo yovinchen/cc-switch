@@ -14,12 +14,12 @@ use crate::database::Database;
 use crate::proxy_core_adapter::ProxyState;
 use crate::proxy_core_adapter::{
     emit_proxy_server_started_event_source, emit_proxy_server_stopped_event_source,
-    proxy_server_info_from_parts, record_proxy_server_listen_port_runtime_source,
-    record_proxy_server_started_runtime_source, record_proxy_server_stopped_runtime_source,
-    reset_provider_circuit_breaker_source, server_log_codes as log_srv,
-    set_active_route_target_runtime_source, update_all_circuit_breaker_configs_source,
-    update_app_circuit_breaker_config_source, CircuitBreakerConfig, ProxyConfig,
-    ProxyRuntimeStatus, ProxyServerInfo,
+    provider_circuit_breaker_stats_source, proxy_server_info_from_parts,
+    record_proxy_server_listen_port_runtime_source, record_proxy_server_started_runtime_source,
+    record_proxy_server_stopped_runtime_source, reset_provider_circuit_breaker_source,
+    server_log_codes as log_srv, set_active_route_target_runtime_source,
+    update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
+    CircuitBreakerConfig, CircuitBreakerStats, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
 };
 use axum::{
     extract::DefaultBodyLimit,
@@ -439,6 +439,20 @@ impl ProxyServer {
             app_type,
         )
         .await;
+    }
+
+    /// 获取指定 Provider 的熔断器统计信息
+    pub async fn get_provider_circuit_breaker_stats(
+        &self,
+        provider_id: &str,
+        app_type: &str,
+    ) -> Option<CircuitBreakerStats> {
+        provider_circuit_breaker_stats_source(
+            self.state.provider_router.as_ref(),
+            provider_id,
+            app_type,
+        )
+        .await
     }
 }
 

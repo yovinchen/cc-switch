@@ -9847,6 +9847,16 @@ pub(crate) async fn reset_provider_circuit_breaker_source(
     router.reset_provider_breaker(provider_id, app_type).await;
 }
 
+pub(crate) async fn provider_circuit_breaker_stats_source(
+    router: &ProviderRouter,
+    provider_id: &str,
+    app_type: &str,
+) -> Option<CircuitBreakerStats> {
+    router
+        .get_circuit_breaker_stats(provider_id, app_type)
+        .await
+}
+
 pub(crate) use crate::proxy_core::api::transport::forward_failure_kind_from_proxy_status;
 
 pub(crate) fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> ForwardFailureKind {
