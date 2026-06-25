@@ -46,6 +46,20 @@ pub struct ForwardUpstreamUrlPlan {
     pub url: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwarderProviderUrlFacts {
+    pub base_url: String,
+    pub is_full_url: bool,
+    pub is_copilot: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwarderProviderUrlFactsInput<'a> {
+    pub base_url: String,
+    pub is_full_url: bool,
+    pub provider_type: Option<&'a str>,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CodexProviderChatCompletionsFacts<'a> {
     pub api_format: Option<&'a str>,
@@ -279,6 +293,17 @@ pub fn build_codex_upstream_url(base_url: &str, endpoint: &str) -> String {
 pub fn is_github_copilot_upstream(provider_type: Option<&str>, base_url: &str) -> bool {
     provider_type.map(ProviderKind::from) == Some(ProviderKind::GitHubCopilot)
         || base_url.contains("githubcopilot.com")
+}
+
+pub fn forwarder_provider_url_facts(
+    input: ForwarderProviderUrlFactsInput<'_>,
+) -> ForwarderProviderUrlFacts {
+    let is_copilot = is_github_copilot_upstream(input.provider_type, &input.base_url);
+    ForwarderProviderUrlFacts {
+        base_url: input.base_url,
+        is_full_url: input.is_full_url,
+        is_copilot,
+    }
 }
 
 pub fn should_resolve_copilot_dynamic_endpoint(is_copilot: bool, is_full_url: bool) -> bool {
@@ -577,16 +602,17 @@ mod tests {
         apply_channel_param_overrides_to_url, build_claude_upstream_url, build_codex_upstream_url,
         claude_transform_endpoint_rewrite_input_from_body, codex_provider_uses_chat_completions,
         codex_responses_to_chat_conversion_required, extract_gemini_model_from_path,
-        forward_upstream_url_plan, interface_kind_for_forward, invalid_upstream_url_error_message,
-        is_codex_chat_completions_url, is_codex_chat_full_endpoint_base, is_codex_chat_wire_api,
-        is_codex_responses_endpoint, is_github_copilot_upstream, is_origin_only_url,
-        merge_query_params, request_model_for_forward,
-        resolve_codex_provider_uses_chat_completions, resolved_copilot_dynamic_base_url,
-        rewrite_claude_transform_endpoint, rewrite_codex_responses_endpoint_to_chat,
-        should_convert_codex_responses_endpoint_to_chat, should_resolve_copilot_dynamic_endpoint,
-        split_endpoint_and_query, strip_beta_query, strip_endpoint_prefix, AppKind,
-        ClaudeTransformEndpointRewriteInput, CodexProviderChatCompletionsFacts,
-        CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlanInput,
+        forward_upstream_url_plan, forwarder_provider_url_facts, interface_kind_for_forward,
+        invalid_upstream_url_error_message, is_codex_chat_completions_url,
+        is_codex_chat_full_endpoint_base, is_codex_chat_wire_api, is_codex_responses_endpoint,
+        is_github_copilot_upstream, is_origin_only_url, merge_query_params,
+        request_model_for_forward, resolve_codex_provider_uses_chat_completions,
+        resolved_copilot_dynamic_base_url, rewrite_claude_transform_endpoint,
+        rewrite_codex_responses_endpoint_to_chat, should_convert_codex_responses_endpoint_to_chat,
+        should_resolve_copilot_dynamic_endpoint, split_endpoint_and_query, strip_beta_query,
+        strip_endpoint_prefix, AppKind, ClaudeTransformEndpointRewriteInput,
+        CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts,
+        ForwardUpstreamUrlPlanInput, ForwarderProviderUrlFactsInput,
     };
     use crate::domain::CODEX_OAUTH_CLAUDE_BASE_URL;
     use serde_json::json;
@@ -767,6 +793,26 @@ mod tests {
             Some("anthropic"),
             "https://api.anthropic.com"
         ));
+    }
+
+    #[test]
+    fn projects_forwarder_provider_url_facts() {
+        let facts = forwarder_provider_url_facts(ForwarderProviderUrlFactsInput {
+            base_url: "https://relay.example/v1/chat/completions".to_string(),
+            is_full_url: true,
+            provider_type: Some("github_copilot"),
+        });
+
+        assert_eq!(facts.base_url, "https://relay.example/v1/chat/completions");
+        assert!(facts.is_full_url);
+        assert!(facts.is_copilot);
+
+        let base_url_copilot = forwarder_provider_url_facts(ForwarderProviderUrlFactsInput {
+            base_url: "https://api.githubcopilot.com".to_string(),
+            is_full_url: false,
+            provider_type: None,
+        });
+        assert!(base_url_copilot.is_copilot);
     }
 
     #[test]

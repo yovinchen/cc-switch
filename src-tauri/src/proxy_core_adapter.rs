@@ -2811,12 +2811,14 @@ pub(crate) use crate::proxy_core::api::transport::{
     should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
     strip_copilot_thinking_blocks, supports_reasoning_effort, AuthProviderHeaderResolution,
     CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan,
-    ForwardUpstreamUrlPlanInput, ForwarderAttemptRuntimeDecisionInput,
-    ForwarderRectifierErrorInput, ForwarderRequestBodyTransformAction, UNSUPPORTED_IMAGE_MARKER,
+    ForwardUpstreamUrlPlanInput, ForwarderAttemptRuntimeDecisionInput, ForwarderProviderUrlFacts,
+    ForwarderProviderUrlFactsInput, ForwarderRectifierErrorInput,
+    ForwarderRequestBodyTransformAction, UNSUPPORTED_IMAGE_MARKER,
 };
 pub(crate) use crate::proxy_core::api::transport::{
     codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
     codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required,
+    forwarder_provider_url_facts,
 };
 pub(crate) use crate::proxy_core::api::transport::{
     extract_gemini_model_from_path, request_model_for_forward,
@@ -4357,11 +4359,16 @@ impl ForwarderAdapterContext {
         provider: &Provider,
     ) -> Result<ForwarderProviderUrlFacts, ProxyError> {
         let base_url = self.adapter().extract_base_url(provider)?;
-        Ok(ForwarderProviderUrlFacts {
-            is_full_url: provider_is_full_url(provider),
-            is_copilot: provider_is_github_copilot_upstream(provider, &base_url),
-            base_url,
-        })
+        Ok(forwarder_provider_url_facts(
+            ForwarderProviderUrlFactsInput {
+                provider_type: provider
+                    .meta
+                    .as_ref()
+                    .and_then(|meta| meta.provider_type.as_deref()),
+                is_full_url: provider_is_full_url(provider),
+                base_url,
+            },
+        ))
     }
 
     fn provider_transform_required(&self, provider: &Provider) -> bool {
@@ -7755,12 +7762,6 @@ pub(crate) struct ForwarderProviderRequestBodyInput<'a> {
     pub(crate) body: Value,
     pub(crate) provider: &'a Provider,
     pub(crate) channel: Option<&'a ResolvedChannelAttempt>,
-    pub(crate) is_copilot: bool,
-}
-
-pub(crate) struct ForwarderProviderUrlFacts {
-    pub(crate) base_url: String,
-    pub(crate) is_full_url: bool,
     pub(crate) is_copilot: bool,
 }
 

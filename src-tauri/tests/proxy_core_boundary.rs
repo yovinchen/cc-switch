@@ -5551,6 +5551,48 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn provider_url_facts(",
+        "fn provider_transform_required",
+    );
+
+    assert!(
+        function.contains("forwarder_provider_url_facts("),
+        "ForwarderAdapterContext::provider_url_facts must delegate URL facts projection to proxy-core"
+    );
+
+    let forbidden_markers = [
+        "ForwarderProviderUrlFacts {",
+        "provider_is_github_copilot_upstream(",
+        "is_github_copilot_upstream(",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs provider_url_facts:{} contains host-local marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep provider URL facts projection in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_delegates_claude_provider_helpers_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
