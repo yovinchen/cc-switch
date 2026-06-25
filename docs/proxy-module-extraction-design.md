@@ -1453,6 +1453,7 @@
 1033. config source 删除 `app_summary_config_from_config_source` 与 `proxy_runtime_config_from_config_source` 两个 DTO wrapper；DB-backed source 直接调用 `AppSummaryConfig::new` 和 `proxy_runtime_config_from_proxy_config`，让 adapter 只保留实际 DB 读取与错误映射。
 1034. model catalog provider source 删除 `provider_model_catalog_from_provider` wrapper；DB source 直接把 host `Provider.settings_config` 投影给 `proxy-core::model_fetch::provider_model_catalog_from_settings`，避免为单字段投影保留额外 adapter API。
 1035. client model catalog source 删除 `client_model_catalog_raw_from_source` wrapper；adapter 仍按 core `ClientModelCatalogSource` 选择是否读取 Codex active catalog，但不再为一次 match 暴露额外 host API。
+1036. Codex takeover model catalog 注入删除 `attach_codex_model_catalog_from_provider` 单调用点 mutation wrapper；takeover field applicator 直接投影 provider `modelCatalog`，值级合并继续复用 `codex_live_settings_with_model_catalog`。
 
 ## 背景
 

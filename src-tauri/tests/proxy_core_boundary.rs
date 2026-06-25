@@ -1181,6 +1181,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn simplify_codex_model_catalog(",
     "fn provider_model_catalog_from_settings(",
     "fn provider_model_catalog_from_provider(",
+    "fn attach_codex_model_catalog_from_provider(",
     "fn empty_client_model_catalog_raw(",
     "fn client_model_catalog_raw_from_source(",
     "fn client_model_catalog_raw_from_text(",

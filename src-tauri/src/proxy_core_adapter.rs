@@ -3952,7 +3952,14 @@ pub(crate) fn apply_codex_takeover_fields_for_provider(
     let config_str = config.get("config").and_then(Value::as_str).unwrap_or("");
     let updated_config = codex_takeover_toml_config_for_provider(config_str, proxy_url, provider);
     config["config"] = json!(updated_config);
-    attach_codex_model_catalog_from_provider(config, provider);
+    if let Some(provider) = provider {
+        let model_catalog = provider_model_catalog_raw_value(provider)
+            .cloned()
+            .unwrap_or_else(|| json!({ "models": [] }));
+        if let Some(root) = config.as_object_mut() {
+            root.insert("modelCatalog".to_string(), model_catalog);
+        }
+    }
 }
 
 fn codex_chat_reasoning_profile_from_config(
@@ -6699,24 +6706,6 @@ pub(crate) fn codex_live_settings_with_model_catalog(
     }
 
     live_settings
-}
-
-pub(crate) fn attach_codex_model_catalog_from_provider(
-    live_config: &mut Value,
-    provider: Option<&Provider>,
-) {
-    let Some(root) = live_config.as_object_mut() else {
-        return;
-    };
-
-    let Some(provider) = provider else {
-        return;
-    };
-
-    let model_catalog = provider_model_catalog_raw_value(provider)
-        .cloned()
-        .unwrap_or_else(|| json!({ "models": [] }));
-    root.insert("modelCatalog".to_string(), model_catalog);
 }
 
 pub(crate) fn client_model_catalog_from_app_source(app: &AppKind) -> ProxyCoreResult<ModelCatalog> {
@@ -20232,8 +20221,10 @@ command = "latest-command"
             provider_model_catalog_raw_value(&provider),
             settings.get("modelCatalog")
         );
-        let mut live_config = json!({"auth": {}, "config": ""});
-        attach_codex_model_catalog_from_provider(&mut live_config, Some(&provider));
+        let mut live_config = codex_live_settings_with_model_catalog(
+            json!({"auth": {}, "config": ""}),
+            provider_model_catalog_raw_value(&provider).cloned(),
+        );
         assert_eq!(
             live_config.get("modelCatalog"),
             settings.get("modelCatalog")
@@ -20264,7 +20255,11 @@ command = "latest-command"
             json!({"config": ""}),
             None,
         );
-        attach_codex_model_catalog_from_provider(&mut live_config, Some(&provider_without_catalog));
+        let fallback_model_catalog = provider_model_catalog_raw_value(&provider_without_catalog)
+            .cloned()
+            .unwrap_or_else(|| json!({ "models": [] }));
+        live_config =
+            codex_live_settings_with_model_catalog(live_config, Some(fallback_model_catalog));
         assert_eq!(
             live_config.get("modelCatalog"),
             Some(&json!({ "models": [] }))
