@@ -69,7 +69,7 @@ pub mod management {
         provider_health_update_from_input, select_enabled_channel_key_runtime_candidate,
         should_retry_channel_reachability_failure, stream_check_failed_result,
         stream_check_failed_result_with_retry_count, stream_check_result_from_probe_result,
-        AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery,
+        AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery, AppSummary,
         AppSummaryInput, ChannelBreakerStatsResponse, ChannelDeleteResponse,
         CHANNEL_HEALTH_UNKNOWN_STATUS, ChannelHealthResetResponse, ChannelHealthUpdate,
         ChannelHealthUpdateInput, ChannelKeyDeleteResponse, ChannelKeyRecord,
@@ -364,9 +364,10 @@ pub mod prelude {
     pub use super::errors::{ProxyCoreError, ProxyCoreResult};
     pub use super::events::{ProxyCoreEvent, ProxyCoreEventType};
     pub use super::management::{
-        AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery,
-        AppModelCatalogRequest, AppModelCatalogSource, ChannelBreakerStatsResponse,
-        ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
+        AppChannelListQuery, AppChannelResponse, AppListRequest, AppListResponse, AppListSource,
+        AppModelListQuery, AppModelCatalogRequest, AppModelCatalogSource, AppSummary,
+        AppSummaryInput, ChannelBreakerStatsResponse, ChannelDeleteResponse,
+        ChannelHealthResetResponse, ChannelKeyDeleteResponse,
         ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery,
         ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
         ChannelModelRecord, ChannelModelsResponse, ChannelReachabilityResult, ChannelRecord,

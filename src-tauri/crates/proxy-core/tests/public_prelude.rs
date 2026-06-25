@@ -107,6 +107,39 @@ impl ChannelSource for ExternalRelayServices {
         let channel = (channel_id == "channel-a").then(channel_spec);
         Box::pin(async move { Ok(channel) })
     }
+
+    fn list_materialized_channel_records<'a>(
+        &'a self,
+        _app: Option<&'a AppKind>,
+    ) -> BoxFuture<'a, ProxyCoreResult<Vec<ChannelRecord>>> {
+        Box::pin(async {
+            Ok(vec![ChannelRecord {
+                id: "channel-a".to_string(),
+                provider_id: "relay-a".to_string(),
+                app_type: "claude".to_string(),
+                name: "Channel A".to_string(),
+                status: "enabled".to_string(),
+                base_url: "https://relay.example/v1".to_string(),
+                interface_kind: "anthropic".to_string(),
+                auth_profile_ref: None,
+                groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
+                priority: 100,
+                weight: 1,
+                retry_policy: json!({}),
+                health_policy: json!({}),
+                header_overrides: json!({}),
+                param_overrides: json!({}),
+                status_code_mapping: json!({}),
+                tags: Vec::new(),
+                metadata: json!({ "source": "public-prelude-smoke" }),
+                source_kind: "manual".to_string(),
+                source_endpoint_url: None,
+                models: Vec::new(),
+                needs_review: false,
+                review_reasons: Vec::new(),
+            }])
+        })
+    }
 }
 
 impl RoutePolicySource for ExternalRelayServices {
@@ -609,6 +642,33 @@ fn external_host_can_use_runtime_status_contracts_from_prelude() {
         Some("channel-a")
     );
     assert_eq!(passthrough.status, response.status);
+}
+
+#[test]
+fn external_host_can_use_app_list_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+
+    let response: AppListResponse =
+        futures::executor::block_on(engine.app_list_response(AppListRequest::new()))
+            .expect("app list response");
+    let apps: &[AppSummary] = response.apps.as_slice();
+    let from_source: AppListResponse =
+        AppListRequest::new().response_from_source(AppListSource::new(vec![
+            AppSummaryInput::new("codex", true, true, 2, 3),
+        ]));
+
+    assert_eq!(apps.len(), 1);
+    assert_eq!(apps[0].app_type, "claude");
+    assert!(apps[0].enabled);
+    assert!(!apps[0].auto_failover_enabled);
+    assert_eq!(apps[0].provider_count, 1);
+    assert_eq!(apps[0].channel_count, 1);
+    assert_eq!(from_source.apps.len(), 1);
+    assert_eq!(from_source.apps[0].app_type, "codex");
+    assert!(from_source.apps[0].auto_failover_enabled);
+    assert_eq!(from_source.apps[0].provider_count, 2);
+    assert_eq!(from_source.apps[0].channel_count, 3);
 }
 
 #[test]
