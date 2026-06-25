@@ -629,6 +629,16 @@ mod tests {
             }
         }
 
+        impl ChannelKeyRuntimeSource for StubServices {
+            fn load_channel_key_value(
+                &self,
+                _channel_id: &str,
+                _key_ref: &str,
+            ) -> ProxyCoreResult<Option<String>> {
+                Ok(None)
+            }
+        }
+
         impl ModelCatalogProvider for StubServices {
             fn load_catalog<'a>(
                 &'a self,
@@ -711,6 +721,10 @@ mod tests {
             }
 
             fn auth_provider(&self) -> &(dyn AuthProvider + Send + Sync) {
+                self
+            }
+
+            fn channel_key_runtime_source(&self) -> &(dyn ChannelKeyRuntimeSource + Send + Sync) {
                 self
             }
 

@@ -687,9 +687,10 @@ mod tests {
     use crate::ports::{
         auth_info_from_profile_ref, channel_key_record_from_input,
         channel_model_record_from_input, channel_record_from_input, AppChannelListResponse,
-        AuthInfo, AuthProvider, ChannelHealthStore, ChannelKeyRecordInput, ChannelModelRecordInput,
-        ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelReachabilityProbe,
-        ChannelReachabilityResult, ChannelRecordInput, ChannelRouteSource, ChannelSource,
+        AuthInfo, AuthProvider, ChannelHealthStore, ChannelKeyRecordInput,
+        ChannelKeyRuntimeSource, ChannelModelRecordInput, ChannelMigrationMaterializeInput,
+        ChannelMigrationPreviewInput, ChannelReachabilityProbe, ChannelReachabilityResult,
+        ChannelRecordInput, ChannelRouteSource, ChannelSource,
         ChannelTestProbeRequest, ForwardPipeline, ModelCatalog, ModelCatalogProvider,
         ProviderSource, ProxyAppConfig, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
         ProxyChannelModelWriteRequest,
@@ -754,6 +755,10 @@ mod tests {
         }
 
         fn auth_provider(&self) -> &(dyn AuthProvider + Send + Sync) {
+            self
+        }
+
+        fn channel_key_runtime_source(&self) -> &(dyn ChannelKeyRuntimeSource + Send + Sync) {
             self
         }
 
@@ -1297,6 +1302,16 @@ mod tests {
                     "test_services",
                 ))
             })
+        }
+    }
+
+    impl ChannelKeyRuntimeSource for TestServices {
+        fn load_channel_key_value(
+            &self,
+            _channel_id: &str,
+            _key_ref: &str,
+        ) -> ProxyCoreResult<Option<String>> {
+            Ok(None)
         }
     }
 

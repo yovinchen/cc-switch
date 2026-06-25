@@ -6798,27 +6798,55 @@ pub(crate) fn required_forward_attempts_from_plan(
     Ok(attempts)
 }
 
-pub(crate) struct CcSwitchChannelKeyRuntimeSource<'a> {
+pub(crate) struct CcSwitchBorrowedChannelKeyRuntimeSource<'a> {
     db: &'a Database,
+}
+
+#[derive(Clone)]
+pub(crate) struct CcSwitchChannelKeyRuntimeSource {
+    db: Arc<Database>,
 }
 
 pub(crate) fn channel_key_runtime_source_from_db(
     db: &Database,
-) -> CcSwitchChannelKeyRuntimeSource<'_> {
+) -> CcSwitchBorrowedChannelKeyRuntimeSource<'_> {
+    CcSwitchBorrowedChannelKeyRuntimeSource { db }
+}
+
+pub(crate) fn channel_key_runtime_source_from_database(
+    db: Arc<Database>,
+) -> CcSwitchChannelKeyRuntimeSource {
     CcSwitchChannelKeyRuntimeSource { db }
 }
 
-impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource<'_> {
+fn load_channel_key_value_from_database(
+    db: &Database,
+    channel_id: &str,
+    key_ref: &str,
+) -> ProxyCoreResult<Option<String>> {
+    let key = db
+        .get_enabled_proxy_channel_key(channel_id, key_ref)
+        .map_err(|error| app_error("load channel auth key", error))?;
+    Ok(channel_key_value_from_runtime_candidate(key))
+}
+
+impl ChannelKeyRuntimeSource for CcSwitchBorrowedChannelKeyRuntimeSource<'_> {
     fn load_channel_key_value(
-        &mut self,
+        &self,
         channel_id: &str,
         key_ref: &str,
     ) -> ProxyCoreResult<Option<String>> {
-        let key = self
-            .db
-            .get_enabled_proxy_channel_key(channel_id, key_ref)
-            .map_err(|error| app_error("load channel auth key", error))?;
-        Ok(channel_key_value_from_runtime_candidate(key))
+        load_channel_key_value_from_database(self.db, channel_id, key_ref)
+    }
+}
+
+impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource {
+    fn load_channel_key_value(
+        &self,
+        channel_id: &str,
+        key_ref: &str,
+    ) -> ProxyCoreResult<Option<String>> {
+        load_channel_key_value_from_database(self.db.as_ref(), channel_id, key_ref)
     }
 }
 
@@ -6826,7 +6854,7 @@ pub(crate) fn apply_channel_auth_profile_providers_from_source(
     app_type: &AppType,
     providers: &IndexMap<String, Provider>,
     attempts: &mut [ForwardAttempt],
-    mut channel_key_runtime_source: impl ChannelKeyRuntimeSource,
+    channel_key_runtime_source: impl ChannelKeyRuntimeSource,
 ) -> ProxyCoreResult<()> {
     for attempt in attempts {
         let auth_profile_ref = attempt
@@ -9478,6 +9506,7 @@ pub(crate) struct CcSwitchProxyServices<R> {
     health_store: CcSwitchChannelHealthStore,
     reachability_probe: CcSwitchChannelReachabilityProbe,
     auth_provider: CcSwitchAuthProvider,
+    channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource,
     model_catalog: CcSwitchModelCatalogProvider,
     usage_sink: CcSwitchUsageSink,
     event_sink: CcSwitchEventSink,
@@ -9509,6 +9538,7 @@ impl<R> CcSwitchProxyServices<R> {
             health_store: CcSwitchChannelHealthStore::new(db.clone(), router.clone()),
             reachability_probe: CcSwitchChannelReachabilityProbe::new(db.clone()),
             auth_provider: CcSwitchAuthProvider,
+            channel_key_runtime_source: channel_key_runtime_source_from_database(db.clone()),
             model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), router.clone()),
             usage_sink: CcSwitchUsageSink::new(db.clone()),
             event_sink: CcSwitchEventSink::new(events),
@@ -9537,6 +9567,7 @@ where
             health_store: CcSwitchChannelHealthStore::new(db.clone(), provider_router.clone()),
             reachability_probe: CcSwitchChannelReachabilityProbe::new(db.clone()),
             auth_provider: CcSwitchAuthProvider,
+            channel_key_runtime_source: channel_key_runtime_source_from_database(db.clone()),
             model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), provider_router.clone()),
             usage_sink: CcSwitchUsageSink::new(db),
             event_sink: CcSwitchEventSink::new(Some(runtime.events())),
@@ -9579,6 +9610,10 @@ where
 
     fn auth_provider(&self) -> &(dyn AuthProvider + Send + Sync) {
         &self.auth_provider
+    }
+
+    fn channel_key_runtime_source(&self) -> &(dyn ChannelKeyRuntimeSource + Send + Sync) {
+        &self.channel_key_runtime_source
     }
 
     fn model_catalog(&self) -> &(dyn ModelCatalogProvider + Send + Sync) {
@@ -13252,7 +13287,7 @@ mod tests {
 
         impl ChannelKeyRuntimeSource for TestChannelKeyRuntimeSource {
             fn load_channel_key_value(
-                &mut self,
+                &self,
                 channel_id: &str,
                 key_ref: &str,
             ) -> ProxyCoreResult<Option<String>> {

@@ -6522,17 +6522,42 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
     let core_ports_path = manifest_dir.join("crates/proxy-core/src/ports.rs");
     let core_ports_source = fs::read_to_string(&core_ports_path).expect("read core ports.rs");
+    let services_trait = function_slice(
+        &core_ports_source,
+        "pub trait ProxyServices",
+        "pub trait ProxyConfigSource",
+    );
     let source_function = function_slice(
         &source,
         "pub(crate) fn apply_channel_auth_profile_providers_from_source",
         "pub(crate) fn apply_channel_auth_profile_providers_from_db",
+    );
+    let services_struct = function_slice(
+        &source,
+        "pub(crate) struct CcSwitchProxyServices",
+        "#[allow(dead_code)]\nimpl<R> CcSwitchProxyServices",
+    );
+    let services_impl = function_slice(
+        &source,
+        "impl<R> ProxyServices for CcSwitchProxyServices",
+        "pub(crate) trait HostForwardRuntime",
     );
     let db_function = function_slice(
         &source,
         "pub(crate) fn apply_channel_auth_profile_providers_from_db",
         "pub(crate) fn required_forward_attempts_from_db_sources",
     );
-    let runtime_source_impl = function_slice(
+    let runtime_source_lookup = function_slice(
+        &source,
+        "fn load_channel_key_value_from_database",
+        "impl ChannelKeyRuntimeSource for CcSwitchBorrowedChannelKeyRuntimeSource",
+    );
+    let borrowed_runtime_source_impl = function_slice(
+        &source,
+        "impl ChannelKeyRuntimeSource for CcSwitchBorrowedChannelKeyRuntimeSource",
+        "impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource",
+    );
+    let owned_runtime_source_impl = function_slice(
         &source,
         "impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource",
         "pub(crate) fn apply_channel_auth_profile_providers_from_source",
@@ -6543,12 +6568,25 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "proxy-core ports should expose channel key lookup behind a runtime source trait"
     );
     assert!(
+        services_trait.contains("channel_key_runtime_source("),
+        "proxy-core ProxyServices should expose channel key runtime source as an injectable service"
+    );
+    assert!(
         !source.contains("trait ChannelKeyRuntimeSource"),
         "proxy_core_adapter should implement the core channel key runtime source, not define a host-local trait"
     );
     assert!(
         source.contains("ChannelKeyRuntimeSource"),
         "proxy_core_adapter should import the core channel key runtime source contract"
+    );
+    assert!(
+        services_struct.contains("channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource"),
+        "CC Switch service container should own the DB-backed channel key runtime source"
+    );
+    assert!(
+        services_impl.contains("fn channel_key_runtime_source(")
+            && services_impl.contains("&self.channel_key_runtime_source"),
+        "CC Switch ProxyServices implementation should return the channel key runtime source"
     );
     assert!(
         source_function.contains("impl ChannelKeyRuntimeSource")
@@ -6561,9 +6599,14 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "DB-backed auth profile application should inject the channel key runtime source instead of inline DB lookup"
     );
     assert!(
-        runtime_source_impl.contains(".get_enabled_proxy_channel_key(")
-            && runtime_source_impl.contains("channel_key_value_from_runtime_candidate("),
-        "CC Switch channel key runtime source should own DB lookup and key value projection"
+        runtime_source_lookup.contains(".get_enabled_proxy_channel_key(")
+            && runtime_source_lookup.contains("channel_key_value_from_runtime_candidate("),
+        "CC Switch channel key runtime lookup helper should own DB lookup and key value projection"
+    );
+    assert!(
+        borrowed_runtime_source_impl.contains("load_channel_key_value_from_database(")
+            && owned_runtime_source_impl.contains("load_channel_key_value_from_database("),
+        "borrowed and owned CC Switch channel key runtime sources should delegate through the shared lookup helper"
     );
 }
 

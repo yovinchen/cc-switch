@@ -29,6 +29,7 @@ pub trait ProxyServices: Send + Sync {
     fn health_store(&self) -> &(dyn ChannelHealthStore + Send + Sync);
     fn reachability_probe(&self) -> &(dyn ChannelReachabilityProbe + Send + Sync);
     fn auth_provider(&self) -> &(dyn AuthProvider + Send + Sync);
+    fn channel_key_runtime_source(&self) -> &(dyn ChannelKeyRuntimeSource + Send + Sync);
     fn model_catalog(&self) -> &(dyn ModelCatalogProvider + Send + Sync);
     fn usage_sink(&self) -> &(dyn UsageSink + Send + Sync);
     fn event_sink(&self) -> &(dyn ProxyEventSink + Send + Sync);
@@ -323,9 +324,9 @@ pub trait AuthProvider: Send + Sync {
     ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>>;
 }
 
-pub trait ChannelKeyRuntimeSource {
+pub trait ChannelKeyRuntimeSource: Send + Sync {
     fn load_channel_key_value(
-        &mut self,
+        &self,
         channel_id: &str,
         key_ref: &str,
     ) -> ProxyCoreResult<Option<String>>;
