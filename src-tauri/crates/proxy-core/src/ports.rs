@@ -2484,6 +2484,26 @@ pub fn codex_base_url_from_config_toml(
     }
 }
 
+pub fn codex_base_url_from_settings(settings_config: &Value) -> Option<String> {
+    for key in ["base_url", "baseURL"] {
+        if let Some(url) = settings_config.get(key).and_then(Value::as_str) {
+            return Some(url.trim_end_matches('/').to_string());
+        }
+    }
+
+    let config = settings_config.get("config")?;
+    if let Some(url) = config.get("base_url").and_then(Value::as_str) {
+        return Some(url.trim_end_matches('/').to_string());
+    }
+    if let Some(config_toml) = config.as_str() {
+        return codex_base_url_from_config_toml(config_toml)
+            .ok()
+            .map(|url| url.trim_end_matches('/').to_string());
+    }
+
+    None
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClaudeEnvCredentials<'a> {
     pub api_key: Option<&'a str>,
@@ -5474,8 +5494,9 @@ mod tests {
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
         ClaudeTakeoverProviderFacts,
         CodexCredentialParts, CodexLiveTakeoverMatchFacts,
+        codex_base_url_from_config_toml, codex_base_url_from_settings,
         codex_live_auth_has_proxy_placeholder, codex_takeover_toml_config_patch,
-        CodexTakeoverTomlConfigPatch, codex_base_url_from_config_toml,
+        CodexTakeoverTomlConfigPatch,
         detect_gemini_auth_type, ensure_codex_takeover_auth_placeholder,
         gemini_contains_packycode_keyword, gemini_env_json_from_map,
         gemini_env_map_from_settings, gemini_env_parse_issue_spec,
@@ -7166,6 +7187,25 @@ mod tests {
         assert_eq!(
             codex_base_url_from_config_toml("base_url = https://codex.example/v1"),
             Err(ProviderCredentialIssue::CodexBaseUrlInvalid)
+        );
+
+        assert_eq!(
+            codex_base_url_from_settings(&json!({"base_url": "https://top.example/v1/"})),
+            Some("https://top.example/v1".to_string())
+        );
+        assert_eq!(
+            codex_base_url_from_settings(&json!({"baseURL": "https://camel.example/v1/"})),
+            Some("https://camel.example/v1".to_string())
+        );
+        assert_eq!(
+            codex_base_url_from_settings(&json!({"config": {"base_url": "https://object.example/v1/"}})),
+            Some("https://object.example/v1".to_string())
+        );
+        assert_eq!(
+            codex_base_url_from_settings(&json!({
+                "config": "base_url = \"https://config.example/v1/\""
+            })),
+            Some("https://config.example/v1".to_string())
         );
     }
 

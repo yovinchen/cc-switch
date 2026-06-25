@@ -309,6 +309,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     live_takeover_config_matches_proxy_for_app as core_live_takeover_config_matches_proxy_for_app,
     live_token_sync_app_label as core_live_token_sync_app_label,
     normalize_provider_settings_for_storage as core_normalize_provider_settings_for_storage,
+    codex_base_url_from_settings as core_codex_base_url_from_settings,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_additive_update_route_for_app as core_provider_additive_update_route,
     provider_app_has_current_provider as core_provider_app_has_current_provider,
@@ -3406,44 +3407,7 @@ pub(crate) fn codex_api_key_from_auth_and_config(
 }
 
 pub(crate) fn provider_codex_base_url(provider: &Provider) -> Option<String> {
-    if let Some(url) = provider
-        .settings_config
-        .get("base_url")
-        .and_then(Value::as_str)
-    {
-        return Some(url.trim_end_matches('/').to_string());
-    }
-
-    if let Some(url) = provider
-        .settings_config
-        .get("baseURL")
-        .and_then(Value::as_str)
-    {
-        return Some(url.trim_end_matches('/').to_string());
-    }
-
-    if let Some(config) = provider.settings_config.get("config") {
-        if let Some(url) = config.get("base_url").and_then(Value::as_str) {
-            return Some(url.trim_end_matches('/').to_string());
-        }
-
-        if let Some(config_str) = config.as_str() {
-            if let Some(start) = config_str.find("base_url = \"") {
-                let rest = &config_str[start + 12..];
-                if let Some(end) = rest.find('"') {
-                    return Some(rest[..end].trim_end_matches('/').to_string());
-                }
-            }
-            if let Some(start) = config_str.find("base_url = '") {
-                let rest = &config_str[start + 12..];
-                if let Some(end) = rest.find('\'') {
-                    return Some(rest[..end].trim_end_matches('/').to_string());
-                }
-            }
-        }
-    }
-
-    None
+    core_codex_base_url_from_settings(&provider.settings_config)
 }
 
 fn missing_provider_base_url_message(provider_name: &str) -> String {
