@@ -1186,6 +1186,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn empty_client_model_catalog_raw(",
     "fn client_model_catalog_raw_from_source(",
     "fn client_model_catalog_raw_from_text(",
+    "fn forwarder_apply_codex_chat_upstream_model(",
+    "fn forwarder_codex_chat_reasoning_options(",
     "fn apply_provider_model_mapping(",
     "fn claude_takeover_client_model_for_upstream(",
     "fn claude_takeover_default_display_name(",

@@ -1026,7 +1026,7 @@
 
 本轮继续把 Codex provider `config` 文本读取、config TOML `wire_api`/`model` 投影与 active provider `base_url` 匹配收敛到 `proxy-core::ports::{codex_config_text_from_settings,codex_wire_api_from_config_toml,codex_model_from_config_toml,codex_config_has_base_url_matching}`；host adapter 不再维护 TOML value 解析、live takeover base_url 匹配或 legacy projection duplicate extractor。
 本轮继续把 forwarder 的 Claude/ClaudeAuth rectifier gate 收敛到 `proxy_core_adapter::forwarder_uses_anthropic_rectifiers`；provider 级 rectifier 判定不再作为 forwarder 的生产直接依赖。
-本轮继续把 forwarder 的 Codex Responses→Chat 上游模型覆写与 reasoning options 解析收敛到 `proxy_core_adapter::{forwarder_apply_codex_chat_upstream_model, forwarder_codex_chat_reasoning_options}`；provider 级 Codex chat helper 不再作为 forwarder 的生产直接依赖。
+Codex Responses→Chat 上游模型覆写与 reasoning options 解析已由 forwarder request source 直接复用 provider 级 adapter API；此前的 `forwarder_apply_codex_chat_upstream_model` / `forwarder_codex_chat_reasoning_options` 一跳 wrapper 已删除。
 本轮继续把 forwarder 的 Codex OAuth header-casing fact 收敛到 `proxy_core_adapter::forwarder_is_codex_oauth_provider`；provider 级 Codex OAuth 判定不再作为 forwarder 的生产直接依赖。
 本轮继续把 forwarder 的 Bedrock pre-send optimizer provider env fact 收敛到 `proxy_core_adapter::forwarder_bedrock_env_flag`；request optimizer 不再直接消费 provider 级 env 投影 helper。
 本轮继续把 forwarder 的 custom User-Agent header provider fact 收敛到 `proxy_core_adapter::forwarder_custom_user_agent_header`；request header 组装不再直接消费 provider 级 UA 投影 helper。
@@ -1455,6 +1455,7 @@
 1035. client model catalog source 删除 `client_model_catalog_raw_from_source` wrapper；adapter 仍按 core `ClientModelCatalogSource` 选择是否读取 Codex active catalog，但不再为一次 match 暴露额外 host API。
 1036. Codex takeover model catalog 注入删除 `attach_codex_model_catalog_from_provider` 单调用点 mutation wrapper；takeover field applicator 直接投影 provider `modelCatalog`，值级合并继续复用 `codex_live_settings_with_model_catalog`。
 1037. provider model catalog 原始值删除 `provider_model_catalog_raw_value` 单字段 getter；backfill/takeover source 在已持有 host `Provider` 的位置直接读取 `settings_config["modelCatalog"]`，避免为中转宿主暴露一层无状态 getter。
+1038. Codex responses-to-chat forwarder source 删除 `forwarder_apply_codex_chat_upstream_model` / `forwarder_codex_chat_reasoning_options` 两个一跳 wrapper；request source 直接调用 provider 级 adapter API，避免在中转 forwarder 内部复制额外命名层。
 
 ## 背景
 
