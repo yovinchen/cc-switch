@@ -60,8 +60,6 @@ struct ForwarderUpstreamSuccess {
 
 pub struct ForwardError {
     pub error: ProxyError,
-    #[allow(dead_code)]
-    pub provider: Option<Provider>,
 }
 
 pub struct RequestForwarder {
@@ -98,7 +96,6 @@ pub struct RequestForwarder {
 }
 
 impl RequestForwarder {
-    #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_preplanned(
         attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
@@ -225,7 +222,7 @@ impl RequestForwarder {
 
     /// 整流（thinking signature 或 budget）重试失败后的统一收尾。
     ///
-    /// `None` 表示已记录熔断器、累积 `last_error`/`last_provider`，
+    /// `None` 表示已记录熔断器并累积 `last_error`，
     /// 调用方应 `continue` 让下一家 provider 继续故障转移；
     /// `Some(ForwardError)` 表示是客户端错误，没有 provider 能修复，
     /// 调用方应直接 `return` 把错误返回给客户端。
@@ -239,7 +236,6 @@ impl RequestForwarder {
         used_half_open_permit: bool,
         retry_kind: ForwarderRectifierRetryKind,
         last_error: &mut Option<ProxyError>,
-        last_provider: &mut Option<Provider>,
     ) -> Option<ForwardError> {
         let provider = attempt.provider();
         match self
@@ -259,7 +255,6 @@ impl RequestForwarder {
                     .record_provider_rectifier_retry_failure(provider, retry_kind, &retry_err)
                     .await;
                 *last_error = Some(retry_err);
-                *last_provider = Some(provider.clone());
                 None
             }
             ForwarderRectifierRetryFailureDecision::ClientFailure => {
@@ -268,10 +263,7 @@ impl RequestForwarder {
                 self.runtime_state_source
                     .record_forward_error_status(&retry_err)
                     .await;
-                Some(ForwardError {
-                    error: retry_err,
-                    provider: Some(provider.clone()),
-                })
+                Some(ForwardError { error: retry_err })
             }
         }
     }
@@ -280,7 +272,6 @@ impl RequestForwarder {
     ///
     /// This keeps request-scope accounting in one place while allowing the route
     /// planning step to move out of RequestForwarder incrementally.
-    #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn forward_with_preplanned_attempts(
         &self,
@@ -336,12 +327,10 @@ impl RequestForwarder {
         if attempts.is_empty() {
             return Err(ForwardError {
                 error: ProxyError::NoAvailableProvider,
-                provider: None,
             });
         }
 
         let mut last_error = None;
-        let mut last_provider = None;
         let mut attempted_providers = 0usize;
 
         // 依次尝试每个供应商
@@ -484,7 +473,6 @@ impl RequestForwarder {
                                         used_half_open_permit,
                                         retry_kind,
                                         &mut last_error,
-                                        &mut last_provider,
                                     )
                                     .await
                                 {
@@ -516,10 +504,7 @@ impl RequestForwarder {
                                 self.runtime_state_source
                                     .record_forward_error_status(&e)
                                     .await;
-                                return Err(ForwardError {
-                                    error: e,
-                                    provider: Some(provider.clone()),
-                                });
+                                return Err(ForwardError { error: e });
                             }
                             ForwarderRequestRectifierPlan::TriggeredUnchanged => {
                                 signature_rectifier_non_retryable_client_error = true;
@@ -569,7 +554,6 @@ impl RequestForwarder {
                                                 used_half_open_permit,
                                                 retry_kind,
                                                 &mut last_error,
-                                                &mut last_provider,
                                             )
                                             .await
                                         {
@@ -605,10 +589,7 @@ impl RequestForwarder {
                                 self.runtime_state_source
                                     .record_forward_error_status(&e)
                                     .await;
-                                return Err(ForwardError {
-                                    error: e,
-                                    provider: Some(provider.clone()),
-                                });
+                                return Err(ForwardError { error: e });
                             }
                             ForwarderRequestRectifierPlan::Retry => {
                                 let _ = std::mem::replace(&mut budget_rectifier_retried, true);
@@ -655,7 +636,6 @@ impl RequestForwarder {
                                                 used_half_open_permit,
                                                 retry_kind,
                                                 &mut last_error,
-                                                &mut last_provider,
                                             )
                                             .await
                                         {
@@ -678,10 +658,7 @@ impl RequestForwarder {
                         self.runtime_state_source
                             .record_forward_error_status(&e)
                             .await;
-                        return Err(ForwardError {
-                            error: e,
-                            provider: Some(provider.clone()),
-                        });
+                        return Err(ForwardError { error: e });
                     }
 
                     // 先分类错误，决定是否计入 provider 健康度
@@ -714,7 +691,6 @@ impl RequestForwarder {
                             );
 
                             last_error = Some(e);
-                            last_provider = Some(provider.clone());
                             // 继续尝试下一个供应商
                             continue;
                         }
@@ -729,10 +705,7 @@ impl RequestForwarder {
                             self.runtime_state_source
                                 .record_forward_error_status(&e)
                                 .await;
-                            return Err(ForwardError {
-                                error: e,
-                                provider: Some(provider.clone()),
-                            });
+                            return Err(ForwardError { error: e });
                         }
                     }
                 }
@@ -746,7 +719,6 @@ impl RequestForwarder {
                 .await;
             return Err(ForwardError {
                 error: ProxyError::NoAvailableProvider,
-                provider: None,
             });
         }
 
@@ -764,7 +736,6 @@ impl RequestForwarder {
 
         Err(ForwardError {
             error: last_error.unwrap_or(ProxyError::MaxRetriesExceeded),
-            provider: last_provider,
         })
     }
 

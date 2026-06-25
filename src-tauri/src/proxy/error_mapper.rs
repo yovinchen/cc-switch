@@ -376,7 +376,6 @@ mod tests {
     fn test_forward_error_bridge_uses_proxy_error_category() {
         let error = forward_error_to_core_error(ForwardError {
             error: ProxyError::ForwardFailed("connection refused".to_string()),
-            provider: None,
         });
 
         assert!(matches!(error, ProxyCoreError::Upstream(_)));

@@ -11678,6 +11678,39 @@ fn production_forward_attempt_excludes_provider_only_constructor() {
 }
 
 #[test]
+fn production_forward_error_excludes_host_provider_payload() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let forward_error = function_slice(
+        &source,
+        "pub struct ForwardError",
+        "pub struct RequestForwarder",
+    );
+
+    let forbidden_markers = ["Provider", "provider:"];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(forward_error) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs ForwardError:{} contains host provider payload marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production ForwardError should carry neutral error facts, not host Provider payloads:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_uses_grouped_api_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
