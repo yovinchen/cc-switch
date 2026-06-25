@@ -11,11 +11,10 @@ use crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
 use crate::proxy_core_adapter::{
-    provider_claude_desktop_proxy_config_validation_issue,
-    provider_claude_desktop_proxy_has_base_url_and_key, ClaudeDesktopDirectGatewayCredentialIssue,
-    ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopDirectProviderValidationIssue,
-    ClaudeDesktopProviderDirectGatewayProfileIssue, ClaudeDesktopProviderDirectValidationIssue,
-    ClaudeDesktopProviderProxyRequestBodyIssue, ClaudeDesktopProviderProxyRouteIssue,
+    ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectModelRouteIssue,
+    ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProviderDirectGatewayProfileIssue,
+    ClaudeDesktopProviderDirectValidationIssue, ClaudeDesktopProviderProxyRequestBodyIssue,
+    ClaudeDesktopProviderProxyRouteIssue, ClaudeDesktopProviderProxyValidationIssue,
     ClaudeDesktopProxyProviderConfigValidationIssue, ClaudeDesktopProxyRequestBodyIssue,
 };
 
@@ -241,21 +240,8 @@ pub fn validate_proxy_provider(provider: &Provider) -> Result<(), AppError> {
         return Ok(());
     }
 
-    if let Some(issue) = provider_claude_desktop_proxy_config_validation_issue(provider) {
-        return Err(proxy_config_validation_issue_to_error(issue));
-    }
-
-    proxy_model_routes(provider)?;
-
-    if !provider_claude_desktop_proxy_has_base_url_and_key(provider) {
-        return Err(AppError::localized(
-            "claude_desktop.provider.credentials_missing",
-            "Claude Desktop 本地路由供应商缺少 Base URL 或 API Key",
-            "Claude Desktop proxy provider is missing Base URL or API key",
-        ));
-    }
-
-    Ok(())
+    crate::proxy_core_adapter::provider_claude_desktop_proxy_provider_validation(provider)
+        .map_err(proxy_provider_validation_issue_to_error)
 }
 
 fn direct_validation_issue_to_error(issue: ClaudeDesktopDirectProviderValidationIssue) -> AppError {
@@ -323,6 +309,30 @@ fn proxy_config_validation_issue_to_error(
             )
         }
     }
+}
+
+fn proxy_provider_validation_issue_to_error(
+    issue: ClaudeDesktopProviderProxyValidationIssue,
+) -> AppError {
+    match issue {
+        ClaudeDesktopProviderProxyValidationIssue::Config(issue) => {
+            proxy_config_validation_issue_to_error(issue)
+        }
+        ClaudeDesktopProviderProxyValidationIssue::ModelRoutes(issue) => {
+            proxy_route_issue_to_error(issue)
+        }
+        ClaudeDesktopProviderProxyValidationIssue::CredentialsMissing => {
+            proxy_provider_credentials_missing_error()
+        }
+    }
+}
+
+fn proxy_provider_credentials_missing_error() -> AppError {
+    AppError::localized(
+        "claude_desktop.provider.credentials_missing",
+        "Claude Desktop 本地路由供应商缺少 Base URL 或 API Key",
+        "Claude Desktop proxy provider is missing Base URL or API key",
+    )
 }
 
 fn direct_model_route_issue_to_error(issue: ClaudeDesktopDirectModelRouteIssue) -> AppError {

@@ -10792,6 +10792,13 @@ pub(crate) enum ClaudeDesktopProviderProxyRouteIssue {
     Empty,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ClaudeDesktopProviderProxyValidationIssue {
+    Config(ClaudeDesktopProxyProviderConfigValidationIssue),
+    ModelRoutes(ClaudeDesktopProviderProxyRouteIssue),
+    CredentialsMissing,
+}
+
 pub(crate) fn provider_claude_desktop_proxy_model_routes(
     provider: &Provider,
 ) -> Result<Vec<ClaudeDesktopResolvedProxyRoute>, ClaudeDesktopProviderProxyRouteIssue> {
@@ -10815,6 +10822,23 @@ pub(crate) fn provider_claude_desktop_proxy_model_routes(
     }
 
     Ok(result)
+}
+
+pub(crate) fn provider_claude_desktop_proxy_provider_validation(
+    provider: &Provider,
+) -> Result<(), ClaudeDesktopProviderProxyValidationIssue> {
+    if let Some(issue) = provider_claude_desktop_proxy_config_validation_issue(provider) {
+        return Err(ClaudeDesktopProviderProxyValidationIssue::Config(issue));
+    }
+
+    provider_claude_desktop_proxy_model_routes(provider)
+        .map_err(ClaudeDesktopProviderProxyValidationIssue::ModelRoutes)?;
+
+    if !provider_claude_desktop_proxy_has_base_url_and_key(provider) {
+        return Err(ClaudeDesktopProviderProxyValidationIssue::CredentialsMissing);
+    }
+
+    Ok(())
 }
 
 pub(crate) fn provider_claude_desktop_proxy_gateway_profile_model_specs(
