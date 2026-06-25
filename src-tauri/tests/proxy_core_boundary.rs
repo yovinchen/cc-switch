@@ -6516,6 +6516,48 @@ fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
 }
 
 #[test]
+fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source_function = function_slice(
+        &source,
+        "pub(crate) fn apply_channel_auth_profile_providers_from_source",
+        "pub(crate) fn apply_channel_auth_profile_providers_from_db",
+    );
+    let db_function = function_slice(
+        &source,
+        "pub(crate) fn apply_channel_auth_profile_providers_from_db",
+        "pub(crate) fn required_forward_attempts_from_db_sources",
+    );
+    let runtime_source_impl = function_slice(
+        &source,
+        "impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource",
+        "pub(crate) fn apply_channel_auth_profile_providers_from_source",
+    );
+
+    assert!(
+        source.contains("pub(crate) trait ChannelKeyRuntimeSource"),
+        "proxy_core_adapter should expose channel key lookup behind a runtime source trait"
+    );
+    assert!(
+        source_function.contains("impl ChannelKeyRuntimeSource")
+            && source_function.contains(".load_channel_key_value("),
+        "auth profile application should consume the channel key runtime source contract"
+    );
+    assert!(
+        db_function.contains("channel_key_runtime_source_from_db(db)")
+            && !db_function.contains(".get_enabled_proxy_channel_key("),
+        "DB-backed auth profile application should inject the channel key runtime source instead of inline DB lookup"
+    );
+    assert!(
+        runtime_source_impl.contains(".get_enabled_proxy_channel_key(")
+            && runtime_source_impl.contains("channel_key_value_from_runtime_candidate("),
+        "CC Switch channel key runtime source should own DB lookup and key value projection"
+    );
+}
+
+#[test]
 fn production_forwarder_delegates_managed_auth_resolution_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");

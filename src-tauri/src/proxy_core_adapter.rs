@@ -6797,11 +6797,43 @@ pub(crate) fn required_forward_attempts_from_plan(
     Ok(attempts)
 }
 
+pub(crate) trait ChannelKeyRuntimeSource {
+    fn load_channel_key_value(
+        &mut self,
+        channel_id: &str,
+        key_ref: &str,
+    ) -> ProxyCoreResult<Option<String>>;
+}
+
+pub(crate) struct CcSwitchChannelKeyRuntimeSource<'a> {
+    db: &'a Database,
+}
+
+pub(crate) fn channel_key_runtime_source_from_db(
+    db: &Database,
+) -> CcSwitchChannelKeyRuntimeSource<'_> {
+    CcSwitchChannelKeyRuntimeSource { db }
+}
+
+impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource<'_> {
+    fn load_channel_key_value(
+        &mut self,
+        channel_id: &str,
+        key_ref: &str,
+    ) -> ProxyCoreResult<Option<String>> {
+        let key = self
+            .db
+            .get_enabled_proxy_channel_key(channel_id, key_ref)
+            .map_err(|error| app_error("load channel auth key", error))?;
+        Ok(channel_key_value_from_runtime_candidate(key))
+    }
+}
+
 pub(crate) fn apply_channel_auth_profile_providers_from_source(
     app_type: &AppType,
     providers: &IndexMap<String, Provider>,
     attempts: &mut [ForwardAttempt],
-    mut load_channel_key_value: impl FnMut(&str, &str) -> ProxyCoreResult<Option<String>>,
+    mut channel_key_runtime_source: impl ChannelKeyRuntimeSource,
 ) -> ProxyCoreResult<()> {
     for attempt in attempts {
         let auth_profile_ref = attempt
@@ -6830,7 +6862,9 @@ pub(crate) fn apply_channel_auth_profile_providers_from_source(
                 channel_id,
                 key_ref,
             } => {
-                let Some(key_value) = load_channel_key_value(&channel_id, &key_ref)? else {
+                let Some(key_value) = channel_key_runtime_source
+                    .load_channel_key_value(&channel_id, &key_ref)?
+                else {
                     return Err(channel_key_auth_error(&channel_id, &key_ref));
                 };
                 attempt.set_auth_provider(provider_with_channel_auth_key(
@@ -6857,12 +6891,7 @@ pub(crate) fn apply_channel_auth_profile_providers_from_db(
         app_type,
         providers,
         attempts,
-        |channel_id, key_ref| {
-            let key = db
-                .get_enabled_proxy_channel_key(channel_id, key_ref)
-                .map_err(|error| app_error("load channel auth key", error))?;
-            Ok(channel_key_value_from_runtime_candidate(key))
-        },
+        channel_key_runtime_source_from_db(db),
     )
 }
 
@@ -13223,6 +13252,26 @@ mod tests {
             ForwardAttempt::from_core_selection(&AppType::Claude, route_provider, &selection)
         }
 
+        struct TestChannelKeyRuntimeSource {
+            expected: Option<(&'static str, &'static str)>,
+            key_value: Option<String>,
+        }
+
+        impl ChannelKeyRuntimeSource for TestChannelKeyRuntimeSource {
+            fn load_channel_key_value(
+                &mut self,
+                channel_id: &str,
+                key_ref: &str,
+            ) -> ProxyCoreResult<Option<String>> {
+                let Some((expected_channel_id, expected_key_ref)) = self.expected else {
+                    panic!("provider auth should not load channel keys");
+                };
+                assert_eq!(channel_id, expected_channel_id);
+                assert_eq!(key_ref, expected_key_ref);
+                Ok(self.key_value.clone())
+            }
+        }
+
         let provider_auth = Provider::with_id(
             "provider-auth".to_string(),
             "Provider Auth".to_string(),
@@ -13241,7 +13290,10 @@ mod tests {
             &AppType::Claude,
             &providers,
             std::slice::from_mut(&mut provider_attempt),
-            |_, _| unreachable!("provider auth should not load channel keys"),
+            TestChannelKeyRuntimeSource {
+                expected: None,
+                key_value: None,
+            },
         )
         .expect("apply provider auth profile");
         assert_eq!(provider_attempt.auth_provider().id, "provider-auth");
@@ -13252,10 +13304,9 @@ mod tests {
             &AppType::Claude,
             &providers,
             std::slice::from_mut(&mut channel_key_attempt),
-            |channel_id, key_ref| {
-                assert_eq!(channel_id, "channel-key");
-                assert_eq!(key_ref, "primary");
-                Ok(Some("loaded-channel-key".to_string()))
+            TestChannelKeyRuntimeSource {
+                expected: Some(("channel-key", "primary")),
+                key_value: Some("loaded-channel-key".to_string()),
             },
         )
         .expect("apply channel key auth profile");

@@ -2099,6 +2099,8 @@ provider adapter 仍负责 CC Switch 默认 fallback 的 provider settings 到 h
 
 本轮继续把 channel-key runtime candidate 的启用状态和确定性选择规则收进 `proxy-core::ports`：运行时候选保留 `key_value` 供认证注入，选择规则按 enabled 状态、`priority DESC`、`weight DESC`、`key_ref ASC` 收敛；DAO 只读取指定 `channel_id + key_ref` 候选并交给 adapter 投影到 core runtime candidate。后续把单 key 扩展为多 key、轮询 key、随机 key 或失败回退时，应复用同一候选选择入口，而不是让 DAO/forwarder 重新理解 key 状态和排序策略。
 
+本轮还把 channel-key lookup 的闭包形态推进为 `proxy_core_adapter::ChannelKeyRuntimeSource`：`apply_channel_auth_profile_providers_from_source` 只消费 source contract，CC Switch 默认实现 `CcSwitchChannelKeyRuntimeSource` 负责 DB 查询、enabled candidate 选择和 key value 投影。后续外部中转宿主可以替换这个 source 来接 Vault/KMS/轮询 key 池或账号 runtime，而不需要改 auth profile 应用循环。
+
 本轮继续把 managed-account token runtime 的日志/错误文案 contract 收进 `proxy-core::managed_account_auth`：core 统一生成 Copilot/Codex OAuth 的无 AppHandle、指定/默认账号取 token、成功和失败文本；`src/proxy/managed_account_auth.rs` 只保留 Tauri state 读取和 token 获取调用。这让外部中转宿主可以复用相同 runtime 反馈 contract，而不复制 CC Switch 桌面 host 的中文文案分支。
 
 本轮继续把 Codex live/settings 的 JSON 形状契约收进 `proxy-core::ports`：auth 对象提取、live write parts、restore parts、live settings parts、snapshot parts 和 provider validation parts 都由 core 基于 `settings + category` 生成；`proxy_core_adapter` 只负责把 CC Switch `Provider` 拆成中立输入。这样后续中转迁移可以让不同地址绑定不同认证、接口和模型信息，同时不让宿主 adapter 重新承载 Codex 配置形状规则。
