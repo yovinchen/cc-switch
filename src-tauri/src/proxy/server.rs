@@ -574,6 +574,81 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn proxy_server_runtime_smoke_enforces_management_auth_on_public_listener() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let config = ProxyConfig {
+            listen_address: "0.0.0.0".to_string(),
+            listen_port: 0,
+            management_auth_token: Some("runtime-secret-token".to_string()),
+            ..ProxyConfig::default()
+        };
+        let server = ProxyServer::new(config, db, None);
+        let info = server.start().await.expect("start proxy server");
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("reqwest client");
+        let base_url = format!("http://127.0.0.1:{}", info.port);
+
+        let smoke = async {
+            let rejected = client
+                .get(format!("{base_url}/proxy/v1/apps"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if rejected.status() != StatusCode::UNAUTHORIZED {
+                return Err(format!(
+                    "unauthenticated management request was not rejected: {}",
+                    rejected.status()
+                ));
+            }
+
+            let wrong_token = client
+                .get(format!("{base_url}/proxy/v1/apps"))
+                .header(reqwest::header::AUTHORIZATION, "Bearer wrong-token")
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if wrong_token.status() != StatusCode::UNAUTHORIZED {
+                return Err(format!(
+                    "wrong-token management request was not rejected: {}",
+                    wrong_token.status()
+                ));
+            }
+
+            let accepted = client
+                .get(format!("{base_url}/proxy/v1/apps"))
+                .header(
+                    reqwest::header::AUTHORIZATION,
+                    "Bearer runtime-secret-token",
+                )
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if accepted.status() != StatusCode::OK {
+                return Err(format!(
+                    "authorized management request was not accepted: {}",
+                    accepted.status()
+                ));
+            }
+            let apps = accepted
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if apps["apps"].as_array().is_none() {
+                return Err(format!("unexpected authorized apps body: {apps}"));
+            }
+
+            Ok::<(), String>(())
+        }
+        .await;
+        let stop = server.stop().await;
+
+        assert!(stop.is_ok(), "stop proxy server: {stop:?}");
+        smoke.expect("runtime management auth smoke");
+    }
+
+    #[tokio::test]
     async fn claude_desktop_gateway_requires_bearer_token() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let server = ProxyServer::new(ProxyConfig::default(), db, None);
