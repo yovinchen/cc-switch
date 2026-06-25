@@ -151,19 +151,18 @@ pub fn get_status(db: &Database, proxy_running: bool) -> Result<ClaudeDesktopSta
     .ok()
     .flatten()
     .and_then(|id| db.get_provider_by_id(&id, "claude-desktop").ok().flatten());
-    let mode = current_provider.as_ref().map(provider_mode);
-    let expected_base_url = match mode {
-        Some(ClaudeDesktopMode::Proxy) => proxy_gateway_base_url_from_db(db).ok(),
-        Some(ClaudeDesktopMode::Direct) => current_provider
-            .as_ref()
-            .and_then(|provider| direct_gateway_credentials(provider).ok())
-            .map(|credentials| credentials.base_url),
-        None => None,
-    };
-    let missing_route_mappings = current_provider.as_ref().is_some_and(|provider| {
-        matches!(provider_mode(provider), ClaudeDesktopMode::Proxy)
-            && proxy_model_routes(provider).is_err()
+    let provider_status = current_provider.as_ref().map(|provider| {
+        crate::proxy_core_adapter::provider_claude_desktop_status_facts(provider, || {
+            proxy_gateway_base_url_from_db(db).ok()
+        })
     });
+    let mode = provider_status.as_ref().map(|status| status.mode.clone());
+    let expected_base_url = provider_status
+        .as_ref()
+        .and_then(|status| status.expected_base_url.clone());
+    let missing_route_mappings = provider_status
+        .as_ref()
+        .is_some_and(|status| status.missing_route_mappings);
 
     Ok(ClaudeDesktopStatus {
         supported: true,

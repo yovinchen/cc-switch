@@ -10736,6 +10736,64 @@ fn provider_claude_desktop_direct_importable(provider: &Provider) -> bool {
     claude_desktop_direct_inference_model_specs(route_inputs).is_ok()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ClaudeDesktopProviderStatusFacts {
+    pub mode: crate::provider::ClaudeDesktopMode,
+    pub expected_base_url: Option<String>,
+    pub missing_route_mappings: bool,
+}
+
+pub(crate) fn provider_claude_desktop_status_facts(
+    provider: &Provider,
+    proxy_gateway_base_url: impl FnOnce() -> Option<String>,
+) -> ClaudeDesktopProviderStatusFacts {
+    let mode = provider_claude_desktop_mode(provider);
+    let expected_base_url = match mode {
+        crate::provider::ClaudeDesktopMode::Proxy => proxy_gateway_base_url(),
+        crate::provider::ClaudeDesktopMode::Direct => {
+            claude_desktop_direct_gateway_credentials(&provider.settings_config)
+                .ok()
+                .map(|credentials| credentials.base_url)
+        }
+    };
+    let missing_route_mappings = matches!(mode, crate::provider::ClaudeDesktopMode::Proxy)
+        && provider_claude_desktop_proxy_routes_missing(provider);
+
+    ClaudeDesktopProviderStatusFacts {
+        mode,
+        expected_base_url,
+        missing_route_mappings,
+    }
+}
+
+fn provider_claude_desktop_mode(provider: &Provider) -> crate::provider::ClaudeDesktopMode {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.claude_desktop_mode.clone())
+        .unwrap_or(crate::provider::ClaudeDesktopMode::Direct)
+}
+
+fn provider_claude_desktop_proxy_routes_missing(provider: &Provider) -> bool {
+    let Some(routes) = provider
+        .meta
+        .as_ref()
+        .map(|meta| &meta.claude_desktop_model_routes)
+    else {
+        return true;
+    };
+
+    claude_desktop_proxy_model_routes(routes.iter().map(|(route_id, route)| {
+        ClaudeDesktopProxyRouteInput {
+            route_id,
+            upstream_model: &route.model,
+            label_override: route.label_override.as_deref(),
+            supports_1m: route.supports_1m.unwrap_or(false),
+        }
+    }))
+    .is_empty()
+}
+
 pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key(provider: &Provider) -> bool {
     crate::proxy_core::api::auth::claude_desktop_proxy_has_base_url_and_key(
         claude_desktop_provider_validation_input(provider),
@@ -19688,6 +19746,66 @@ command = "latest-command"
             provider_claude_desktop_import_decision(&skipped_provider),
             ClaudeDesktopProviderImportDecision::Skip
         );
+    }
+
+    #[test]
+    fn claude_desktop_status_facts_project_mode_url_and_missing_routes() {
+        let direct_provider = Provider::with_id(
+            "direct".to_string(),
+            "Direct".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
+                    "ANTHROPIC_AUTH_TOKEN": "sk-direct"
+                }
+            }),
+            None,
+        );
+        let direct = provider_claude_desktop_status_facts(&direct_provider, || {
+            Some("http://127.0.0.1:15721/claude-desktop".to_string())
+        });
+        assert_eq!(direct.mode, ClaudeDesktopMode::Direct);
+        assert_eq!(
+            direct.expected_base_url.as_deref(),
+            Some("https://api.anthropic.com")
+        );
+        assert!(!direct.missing_route_mappings);
+
+        let mut proxy_provider =
+            Provider::with_id("proxy".to_string(), "Proxy".to_string(), json!({}), None);
+        proxy_provider.meta = Some(ProviderMeta {
+            claude_desktop_mode: Some(ClaudeDesktopMode::Proxy),
+            claude_desktop_model_routes: HashMap::from([(
+                "claude-sonnet-4-6".to_string(),
+                ClaudeDesktopModelRoute {
+                    model: "kimi-k2".to_string(),
+                    label_override: None,
+                    supports_1m: Some(false),
+                },
+            )]),
+            ..Default::default()
+        });
+        let proxy = provider_claude_desktop_status_facts(&proxy_provider, || {
+            Some("http://127.0.0.1:15721/claude-desktop".to_string())
+        });
+        assert_eq!(proxy.mode, ClaudeDesktopMode::Proxy);
+        assert_eq!(
+            proxy.expected_base_url.as_deref(),
+            Some("http://127.0.0.1:15721/claude-desktop")
+        );
+        assert!(!proxy.missing_route_mappings);
+
+        let mut missing_routes = proxy_provider.clone();
+        missing_routes
+            .meta
+            .as_mut()
+            .expect("meta")
+            .claude_desktop_model_routes
+            .clear();
+        let missing = provider_claude_desktop_status_facts(&missing_routes, || None);
+        assert_eq!(missing.mode, ClaudeDesktopMode::Proxy);
+        assert!(missing.expected_base_url.is_none());
+        assert!(missing.missing_route_mappings);
     }
 
     #[test]

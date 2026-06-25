@@ -4952,6 +4952,51 @@ fn proxy_core_adapter_owns_claude_desktop_import_decision_policy() {
 }
 
 #[test]
+fn proxy_core_adapter_owns_claude_desktop_status_provider_facts() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let status_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_claude_desktop_status_facts(",
+        "pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key(",
+    );
+
+    assert!(
+        status_slice.contains("provider_claude_desktop_mode(")
+            && status_slice.contains("claude_desktop_direct_gateway_credentials(")
+            && status_slice.contains("provider_claude_desktop_proxy_routes_missing("),
+        "proxy_core_adapter should own Claude Desktop status provider-derived facts"
+    );
+
+    let forbidden_markers = [
+        "proxy_gateway_base_url_from_db",
+        "crate::claude_desktop_config",
+        "state.db",
+        "get_effective_current_provider",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(status_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs provider_claude_desktop_status_facts:{} contains host-owned status marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Claude Desktop status provider facts free of host side effects:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn claude_desktop_config_delegates_proxy_route_projection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/claude_desktop_config.rs");
@@ -5287,6 +5332,49 @@ fn claude_desktop_config_delegates_profile_stale_model_detection_to_adapter() {
     assert!(
         violations.is_empty(),
         "claude_desktop_config must keep profile stale-model detection in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn claude_desktop_config_delegates_status_provider_facts_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let status_slice = function_slice(
+        &source,
+        "pub fn get_status(",
+        "pub fn get_config_library_path(",
+    );
+
+    assert!(
+        status_slice.contains("provider_claude_desktop_status_facts("),
+        "claude_desktop_config should delegate current-provider status facts to proxy_core_adapter"
+    );
+
+    let forbidden_markers = [
+        "match mode",
+        "direct_gateway_credentials(provider).ok()",
+        "proxy_model_routes(provider).is_err()",
+        "matches!(provider_mode(provider), ClaudeDesktopMode::Proxy)",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(status_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/claude_desktop_config.rs get_status:{} contains provider status policy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "claude_desktop_config must keep current-provider status facts in proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
