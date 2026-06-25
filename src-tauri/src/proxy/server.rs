@@ -471,6 +471,7 @@ mod tests {
         body::{to_bytes, Body},
         http::{Method, Request, StatusCode},
     };
+    use futures::StreamExt;
     use serde_json::{json, Value};
     use tokio::io::AsyncWriteExt;
     use tower::Service;
@@ -835,6 +836,50 @@ mod tests {
             }
             if status["port"].as_u64() != Some(u64::from(info.port)) {
                 return Err(format!("status did not report actual port: {status}"));
+            }
+
+            let events_response = client
+                .get(format!("{base_url}/proxy/v1/events"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if events_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected events status: {}",
+                    events_response.status()
+                ));
+            }
+            let events_content_type = events_response
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default()
+                .to_string();
+            if !events_content_type.starts_with("text/event-stream") {
+                return Err(format!(
+                    "unexpected events content type: {events_content_type}"
+                ));
+            }
+            let mut events_stream = events_response.bytes_stream();
+            let first_event_chunk =
+                tokio::time::timeout(std::time::Duration::from_secs(2), events_stream.next())
+                    .await
+                    .map_err(|_| {
+                        "timed out waiting for proxy events connected event".to_string()
+                    })?
+                    .ok_or_else(|| {
+                        "proxy events stream ended before connected event".to_string()
+                    })?
+                    .map_err(|error| error.to_string())?;
+            let first_event = std::str::from_utf8(first_event_chunk.as_ref())
+                .map_err(|error| error.to_string())?;
+            if !first_event.contains("event: proxy_events_connected")
+                || !first_event.contains("\"event\":\"proxy_events_connected\"")
+                || !first_event.contains("\"bufferSize\":")
+            {
+                return Err(format!(
+                    "unexpected proxy events connected SSE: {first_event}"
+                ));
             }
 
             let apps_response = client

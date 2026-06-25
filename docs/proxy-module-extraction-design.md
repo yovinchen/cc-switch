@@ -609,7 +609,7 @@
 595. `/proxy/v1/channels` HTTP CRUD smoke 已扩展覆盖每个 channel 独立的 `authProfileRef`、base URL、interface、模型映射、weight、priority、health policy、header/param override、status mapping、tags 与 metadata；同一测试通过 `/proxy/v1/route/resolve` 验证候选 channel 继续携带独立 weight/priority 与模型映射。
 596. `proxy-core` 已新增独立 boundary integration test，自动扫描 crate `Cargo.toml` 与 `src/`，防止重新引入 `tauri`、SQLite client 或 `crate::database/settings/services` 等宿主依赖；`cargo test --manifest-path src-tauri/crates/proxy-core/Cargo.toml --target-dir /private/tmp/cc-switch-proxy-core-target --offline` 已验证 core crate 可独立测试。
 597. channel `paramOverrides` 已在最终上游 URL 构建后生效，同名 query 参数会被 channel 配置覆盖，scalar 值会做 query component encoding；channel `headerOverrides` 已接入上游请求 header 构建，并明确禁止覆盖 Host、认证 header 与 hop/tracing 类剥离 header。runtime `ForwardAttempt` 现在从完整 `RouteSelection` 保留 header/param overrides，管理 route candidate response 继续保持轻量且不暴露 override 内容。
-598. `ProxyServer::start` 级 runtime smoke 已覆盖真实本机随机端口启动、`/proxy/v1/health` 与 `/proxy/v1/status` HTTP 请求和 `stop()` 关闭路径；该测试使用 no-proxy reqwest client，补齐仅构建 Axum router 之外的版本化管理 API 运行时验证。
+598. `ProxyServer::start` 级 runtime smoke 已覆盖真实本机随机端口启动、`/proxy/v1/health`、`/proxy/v1/status` 与 `/proxy/v1/events` HTTP/SSE 请求和 `stop()` 关闭路径；该测试使用 no-proxy reqwest client，补齐仅构建 Axum router 之外的版本化管理 API 运行时验证。
 599. 管理 API dry-run route 与 runtime `ProxyEngine::plan_materialized_route` 已新增同源排序测试：同一组 materialized channels 下，`proxy_core_adapter::management_route_response_from_router_source` 和 engine materialized plan 对 priority/weight 排序、模型匹配和首选 channel 选择保持一致，防止调试接口与真实转发路径漂移。
 600. usage/request log 已保留 materialized channel 归因：core 新增 `UsageRouteContext` 与 route-context 投影 helper，host `RequestContext` 在 `ProxyEngine` 选路后保存 channel 上下文，普通透传、转换响应与错误 usage 均写入 `proxy_request_logs.channel_id/channel_name/route_group`；数据库 schema 已升级到 v13 并为旧 v12 明细表补列。
 601. runtime resolved channel contract 已保留 `authProfileRef`：`ResolvedChannelAttempt` 从完整 `RouteSelection` 继承 channel auth profile，host `ForwardAttempt` 不再丢失每个中转地址独立认证 profile 的选择事实；candidate 兼容路径保持 `None`，后续可在 auth resolver 切片中把该 profile 解析为具体 header/key。
@@ -1518,6 +1518,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1076. 删除代理相关测试 `TempHome.dir` 的 dead-code allowance；纯 RAII 临时目录字段改为 `_dir`，仍被测试读取路径的 provider service fixture 保留 `dir`，不再为迁移分支保留无语义 allow。
 1077. 删除 `RequestContext.app_type` 的 dead-code allowance，并修正文档注释说明它由 `apply_proxy_result` 用于按 app 加载 ProxyEngine 选中的 Provider；该字段不是预留 surface。
 1078. `/proxy/v1/channels/{channel_id}/breakers/stats` 已补充 `ProxyServer::start` 级 runtime smoke：真实本机监听端口在 materialize channel、制造熔断、dry-run 阻断后，通过 HTTP stats 端点验证 open 状态与失败计数，再执行 reset 恢复。
+1079. `/proxy/v1/events` 已补充 `ProxyServer::start` 级 runtime smoke：真实本机监听端口通过 no-proxy reqwest 读取首个 SSE connected 事件，验证事件名与 `bufferSize` payload，固定外部集成方依赖的事件流启动 contract。
 
 ## 背景
 
