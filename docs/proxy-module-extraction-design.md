@@ -1402,6 +1402,7 @@
 982. required provider base URL 的缺失错误文案与 `Option<String> -> Result<String, String>` 包装已迁入 `proxy-core::ports::required_provider_base_url`；host adapter 只提供 provider label 与各 provider base URL。
 983. 管理 API bearer 鉴权的 runtime config 读取与校验已下沉到 `proxy-core::ManagementAuthSource` 与 `ProxyEngine::validate_management_auth`；host middleware 不再直接读取 `state.config` 或组装 bearer decision，热更新后的 `ProxyState.config` 通过 runtime source 继续生效。
 984. 管理 API bearer 鉴权的 adapter 测试 facade 已删除；测试直接调用 `proxy-core::management_auth` 决策函数，避免 `proxy_core_adapter` 继续作为纯策略重导出层。
+985. forwarding runtime 缺失与 route plan provider mismatch 的 `ProxyCoreError` 构造已迁入 `proxy-core::routing`；host adapter 不再手写这些 core error variant，只负责转发 core constructor。
 
 ## 背景
 

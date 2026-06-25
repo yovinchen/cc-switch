@@ -905,8 +905,11 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn route_plan_provider_ids(",
     "fn route_plan_provider_match(",
     "fn forwarding_requires_runtime_error_message(",
+    "fn forwarding_requires_runtime_error(",
     "fn route_plan_no_matching_host_providers_error_message(",
+    "fn route_plan_no_matching_host_providers_error(",
     "fn route_plan_providers_unconfigured_error_message(",
+    "fn route_plan_providers_unconfigured_error(",
     "fn route_plan_selections(",
     "fn route_selection_for_forward_result(",
     "fn resolve_channel_route(",
@@ -6740,7 +6743,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let optional_runtime_function = function_slice(
         &source,
         "pub(crate) fn forward_with_optional_host_runtime",
-        "pub(crate) use crate::proxy_core::api::routing::forwarding_requires_runtime_error_message",
+        "#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::{\n    forwarding_requires_runtime_error_message",
     );
     let host_forward_function = function_slice(
         &source,

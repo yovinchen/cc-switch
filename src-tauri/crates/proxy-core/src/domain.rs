@@ -1163,12 +1163,24 @@ pub fn forwarding_requires_runtime_error_message() -> &'static str {
     "cc-switch forwarding requires a proxy server runtime"
 }
 
+pub fn forwarding_requires_runtime_error() -> ProxyCoreError {
+    ProxyCoreError::Unsupported(forwarding_requires_runtime_error_message().to_string())
+}
+
 pub fn route_plan_no_matching_host_providers_error_message() -> &'static str {
     "route plan has no matching host providers"
 }
 
+pub fn route_plan_no_matching_host_providers_error() -> ProxyCoreError {
+    ProxyCoreError::Unavailable(route_plan_no_matching_host_providers_error_message().to_string())
+}
+
 pub fn route_plan_providers_unconfigured_error_message() -> &'static str {
     "route plan providers are not configured in host database"
+}
+
+pub fn route_plan_providers_unconfigured_error() -> ProxyCoreError {
+    ProxyCoreError::Unavailable(route_plan_providers_unconfigured_error_message().to_string())
 }
 
 pub fn select_route_for_forward_result(
@@ -2427,14 +2439,29 @@ mod tests {
             forwarding_requires_runtime_error_message(),
             "cc-switch forwarding requires a proxy server runtime"
         );
+        assert!(matches!(
+            forwarding_requires_runtime_error(),
+            ProxyCoreError::Unsupported(message)
+                if message == "cc-switch forwarding requires a proxy server runtime"
+        ));
         assert_eq!(
             route_plan_no_matching_host_providers_error_message(),
             "route plan has no matching host providers"
         );
+        assert!(matches!(
+            route_plan_no_matching_host_providers_error(),
+            ProxyCoreError::Unavailable(message)
+                if message == "route plan has no matching host providers"
+        ));
         assert_eq!(
             route_plan_providers_unconfigured_error_message(),
             "route plan providers are not configured in host database"
         );
+        assert!(matches!(
+            route_plan_providers_unconfigured_error(),
+            ProxyCoreError::Unavailable(message)
+                if message == "route plan providers are not configured in host database"
+        ));
     }
 
     #[test]

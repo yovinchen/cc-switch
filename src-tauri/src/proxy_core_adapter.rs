@@ -6952,9 +6952,7 @@ pub(crate) fn host_providers_for_plan(
         .filter_map(|provider_id| providers.get(provider_id.as_str()).cloned())
         .collect();
     if !has_matches {
-        return Err(ProxyCoreError::Unavailable(
-            route_plan_providers_unconfigured_error_message().to_string(),
-        ));
+        return Err(route_plan_providers_unconfigured_error());
     }
     Ok(matching)
 }
@@ -9859,19 +9857,16 @@ where
     })
 }
 
-pub(crate) use crate::proxy_core::api::routing::forwarding_requires_runtime_error_message;
+pub(crate) use crate::proxy_core::api::routing::{
+    forwarding_requires_runtime_error as forwarding_runtime_unavailable_error,
+    route_plan_no_matching_host_providers_error, route_plan_providers_unconfigured_error,
+};
 
-pub(crate) fn forwarding_runtime_unavailable_error() -> ProxyCoreError {
-    ProxyCoreError::Unsupported(forwarding_requires_runtime_error_message().to_string())
-}
-
-pub(crate) use crate::proxy_core::api::routing::route_plan_no_matching_host_providers_error_message;
-
-pub(crate) fn route_plan_no_matching_host_providers_error() -> ProxyCoreError {
-    ProxyCoreError::Unavailable(route_plan_no_matching_host_providers_error_message().to_string())
-}
-
-pub(crate) use crate::proxy_core::api::routing::route_plan_providers_unconfigured_error_message;
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::routing::{
+    forwarding_requires_runtime_error_message, route_plan_no_matching_host_providers_error_message,
+    route_plan_providers_unconfigured_error_message,
+};
 
 pub(crate) use crate::proxy_core::api::routing::{
     route_plan_selections, select_route_for_forward_result as route_selection_for_forward_result,
