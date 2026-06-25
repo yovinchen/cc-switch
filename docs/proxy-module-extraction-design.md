@@ -1526,6 +1526,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1084. 稳定管理接口表已将 `/proxy/v1/groups` 修正为 GET-only：当前 route group 是 `proxy_channels.groups_json` 的聚合视图，创建和变更入口统一走 channel create/patch 的 `groups` 字段，不再误导外部中转宿主实现独立 group create API。
 1085. `proxy-core::api::prelude` 已导出 `ClaudeDesktopModelListResponse` / `ClaudeDesktopModelListItem`，并扩展 crate 外 public prelude smoke：外部中转宿主只依赖 prelude 即可验证 gateway bearer、调用 `claude_desktop_model_list_response` 并命名模型列表 response contract。
 1086. crate 外 public prelude smoke 已覆盖管理 API bearer contract：外部宿主只依赖 prelude 配置 `ManagementAuthRuntimeConfig`，即可通过 `ProxyEngine::validate_management_auth` 验证 public listener 缺 bearer 被拒绝、正确 bearer 被接受。
+1087. crate 外 public prelude smoke 已覆盖 route resolve 管理 contract：外部宿主只依赖 prelude 即可构造 `RouteResolveManagementRequest`、调用 `ProxyEngine::resolve_route_response`，并完整命名 `RouteResolveResponse`、候选/淘汰列表和 `ChannelRouteSource` 字段类型。
 
 ## 背景
 

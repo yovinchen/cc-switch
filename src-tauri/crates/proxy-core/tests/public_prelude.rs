@@ -155,6 +155,49 @@ impl RouteResolver for ExternalRelayServices {
             })
         })
     }
+
+    fn resolve_management_route<'a>(
+        &'a self,
+        request: RouteResolveRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<RouteResolveResponse>> {
+        let app_type = request.app_type;
+        let requested_model = request.requested_model;
+        let interface_kind = request.interface_kind;
+        let route_group = request
+            .route_group
+            .unwrap_or_else(|| DEFAULT_ROUTE_GROUP.to_string());
+
+        Box::pin(async move {
+            Ok(RouteResolveResponse {
+                app_type,
+                requested_model: requested_model.clone(),
+                interface_kind: interface_kind.clone(),
+                route_group: route_group.clone(),
+                source: ChannelRouteSource::MaterializedChannels,
+                candidates: vec![ChannelRouteCandidate {
+                    channel_id: "channel-a".to_string(),
+                    provider_id: "relay-a".to_string(),
+                    channel_name: "Channel A".to_string(),
+                    base_url: "https://relay.example/v1".to_string(),
+                    interface_kind: interface_kind
+                        .clone()
+                        .unwrap_or_else(|| InterfaceKind::AnthropicMessages.as_str().to_string()),
+                    public_model: requested_model.clone(),
+                    upstream_model: requested_model.as_ref().map(|_| "relay-sonnet".to_string()),
+                    route_group: route_group.clone(),
+                    priority: 100,
+                    weight: 1,
+                    source_kind: "manual".to_string(),
+                }],
+                rejected: vec![ChannelRouteRejected {
+                    channel_id: "channel-b".to_string(),
+                    provider_id: "relay-b".to_string(),
+                    channel_name: "Channel B".to_string(),
+                    reasons: vec!["interface_mismatch".to_string()],
+                }],
+            })
+        })
+    }
 }
 
 impl ChannelHealthStore for ExternalRelayServices {
@@ -514,4 +557,39 @@ fn external_host_can_use_management_auth_contracts_from_prelude() {
     );
     futures::executor::block_on(engine.validate_management_auth(&headers))
         .expect("management auth");
+}
+
+#[test]
+fn external_host_can_use_route_resolve_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+    let request = RouteResolveManagementRequest::from_body(RouteResolveRequest {
+        app_type: "claude".to_string(),
+        requested_model: Some("sonnet".to_string()),
+        interface_kind: Some("anthropic".to_string()),
+        route_group: Some("premium".to_string()),
+    })
+    .expect("route resolve request");
+
+    let response: RouteResolveResponse =
+        futures::executor::block_on(engine.resolve_route_response(request))
+            .expect("route resolve response");
+    let candidates: &[ChannelRouteCandidate] = response.candidates.as_slice();
+    let rejected: &[ChannelRouteRejected] = response.rejected.as_slice();
+    let source: ChannelRouteSource = response.source.clone();
+
+    assert_eq!(response.app_type, "claude");
+    assert_eq!(response.requested_model.as_deref(), Some("sonnet"));
+    assert_eq!(response.interface_kind.as_deref(), Some("anthropic"));
+    assert_eq!(response.route_group, "premium");
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].channel_id, "channel-a");
+    assert_eq!(candidates[0].public_model.as_deref(), Some("sonnet"));
+    assert_eq!(candidates[0].upstream_model.as_deref(), Some("relay-sonnet"));
+    assert_eq!(candidates[0].route_group, "premium");
+    assert_eq!(rejected.len(), 1);
+    assert_eq!(rejected[0].channel_id, "channel-b");
+    assert_eq!(rejected[0].reasons.as_slice(), ["interface_mismatch"]);
+    assert_eq!(source, ChannelRouteSource::MaterializedChannels);
+    assert_eq!(source.as_str(), "materialized_channels");
 }
