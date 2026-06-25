@@ -116,6 +116,10 @@ pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
     )
 }
 
+fn log_rectified_gemini_tool_args(name: &str) {
+    log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
+}
+
 #[cfg(test)]
 pub(crate) type ClaudeDesktopGatewayAuthError =
     crate::proxy_core::api::auth::ClaudeDesktopGatewayAuthError;
@@ -2728,21 +2732,20 @@ pub(crate) use crate::proxy_core::api::routing::{
 pub(crate) use crate::proxy_core::api::transforms::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
     anthropic_to_openai_responses_request, append_utf8_safe, build_gemini_upstream_url,
-    chat_completion_to_response_with_context, claude_stream_usage_event_filter,
+    chat_completion_to_response_with_context, claude_response_to_anthropic_message_for_api_format,
+    claude_stream_usage_event_filter,
     claude_transform_streaming_decision as core_claude_transform_streaming_decision,
     codex_chat_transform_streaming_decision as core_codex_chat_transform_streaming_decision,
-    codex_stream_usage_event_filter, create_codex_chat_to_responses_sse_stream_with_context,
-    create_gemini_to_anthropic_sse_stream_with_callbacks,
-    create_openai_chat_to_anthropic_sse_stream, create_openai_responses_to_anthropic_sse_stream,
-    extract_anthropic_tool_schema_hints, gemini_response_to_anthropic_message_with_shadow,
-    inspect_codex_chat_history_sse_block, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message, should_preserve_reasoning_content_for_openai_chat,
-    take_sse_block, AnthropicToolSchemaHints, ClaudeTransformStreamingDecision,
-    CodexChatTransformStreamingDecision,
+    codex_stream_usage_event_filter, create_claude_to_anthropic_sse_stream_for_api_format,
+    create_codex_chat_to_responses_sse_stream_with_context, extract_anthropic_tool_schema_hints,
+    inspect_codex_chat_history_sse_block, should_preserve_reasoning_content_for_openai_chat,
+    take_sse_block, AnthropicToolSchemaHints, ClaudeApiFormatSseTransformContext,
+    ClaudeTransformStreamingDecision, CodexChatTransformStreamingDecision,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::{
-    canonical_json_string, gemini_response_to_anthropic_message, short_value_hash,
+    canonical_json_string, gemini_response_to_anthropic_message, openai_chat_to_anthropic_message,
+    openai_responses_to_anthropic_message, short_value_hash,
 };
 pub(crate) use crate::proxy_core::api::transforms::{
     claude_api_format_from_metadata, CLAUDE_API_FORMAT_METADATA_KEY,
@@ -4740,26 +4743,19 @@ pub(crate) fn provider_claude_transform_response_for_api_format(
     session_id: Option<&str>,
     tool_schema_hints: Option<&AnthropicToolSchemaHints>,
 ) -> Result<Value, String> {
-    if api_format == "openai_responses" {
-        openai_responses_to_anthropic_message(body)
-    } else if api_format == "gemini_native" {
-        gemini_response_to_anthropic_message_with_shadow(
-            body,
-            shadow_store,
-            provider_id,
-            session_id,
-            tool_schema_hints,
-            synthesize_gemini_tool_call_id_with_uuid,
-        )
-        .map(|output| {
-            for name in &output.rectified_tool_names {
-                log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
-            }
-            output.response
-        })
-    } else {
-        openai_chat_to_anthropic_message(body)
+    let output = claude_response_to_anthropic_message_for_api_format(
+        body,
+        api_format,
+        shadow_store,
+        provider_id,
+        session_id,
+        tool_schema_hints,
+        synthesize_gemini_tool_call_id_with_uuid,
+    )?;
+    for name in &output.rectified_tool_names {
+        log_rectified_gemini_tool_args(name);
     }
+    Ok(output.response)
 }
 
 pub(crate) fn provider_claude_transform_sse_for_api_format(
@@ -4770,25 +4766,18 @@ pub(crate) fn provider_claude_transform_sse_for_api_format(
     session_id: Option<String>,
     tool_schema_hints: Option<AnthropicToolSchemaHints>,
 ) -> Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send + Unpin> {
-    if api_format == "openai_responses" {
-        Box::new(Box::pin(create_openai_responses_to_anthropic_sse_stream(
-            stream,
-        )))
-    } else if api_format == "gemini_native" {
-        Box::new(Box::pin(
-            create_gemini_to_anthropic_sse_stream_with_callbacks(
-                stream,
-                shadow_store,
-                provider_id,
-                session_id,
-                tool_schema_hints,
-                synthesize_gemini_tool_call_id_with_uuid,
-                |name| log::info!("[Claude/Gemini] Rectified tool args for `{name}`"),
-            ),
-        ))
-    } else {
-        Box::new(Box::pin(create_openai_chat_to_anthropic_sse_stream(stream)))
-    }
+    create_claude_to_anthropic_sse_stream_for_api_format(
+        stream,
+        api_format,
+        ClaudeApiFormatSseTransformContext {
+            shadow_store,
+            provider_id,
+            session_id,
+            tool_schema_hints,
+            synthesize_gemini_tool_call_id: synthesize_gemini_tool_call_id_with_uuid,
+            on_rectified_tool_name: log_rectified_gemini_tool_args,
+        },
+    )
 }
 
 pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat(

@@ -5208,6 +5208,64 @@ fn production_forwarder_delegates_upstream_url_planning_to_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let response_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_claude_transform_response_for_api_format",
+        "pub(crate) fn provider_claude_transform_sse_for_api_format",
+    );
+    let stream_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_claude_transform_sse_for_api_format",
+        "pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat",
+    );
+
+    assert!(
+        response_slice.contains("claude_response_to_anthropic_message_for_api_format("),
+        "Claude non-streaming response api_format dispatch must be delegated to proxy-core"
+    );
+    assert!(
+        stream_slice.contains("create_claude_to_anthropic_sse_stream_for_api_format("),
+        "Claude SSE response api_format dispatch must be delegated to proxy-core"
+    );
+
+    let forbidden_markers = [
+        "\"openai_responses\"",
+        "\"gemini_native\"",
+        "openai_responses_to_anthropic_message(",
+        "openai_chat_to_anthropic_message(",
+        "gemini_response_to_anthropic_message_with_shadow(",
+        "create_openai_responses_to_anthropic_sse_stream(",
+        "create_openai_chat_to_anthropic_sse_stream(",
+        "create_gemini_to_anthropic_sse_stream_with_callbacks(",
+    ];
+    let mut violations = Vec::new();
+    for slice in [response_slice, stream_slice] {
+        for (line_index, line) in production_lines(slice) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in forbidden_markers {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/proxy_core_adapter.rs Claude response api_format dispatch:{} contains host-local marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Claude response api_format dispatch in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

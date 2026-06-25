@@ -1,8 +1,14 @@
 use crate::{
+    gemini_response::gemini_response_to_anthropic_message_with_shadow,
+    gemini_shadow::GeminiShadowStore,
+    gemini_stream::create_gemini_to_anthropic_sse_stream_with_callbacks,
+    gemini_tool_args::AnthropicToolSchemaHints,
     json_canonical::{
         canonical_json_string, canonicalize_json_string_if_parseable, canonicalize_tool_arguments,
         canonicalize_tool_arguments_str, short_sha256_hex,
     },
+    openai_chat_stream::create_openai_chat_to_anthropic_sse_stream,
+    openai_responses_stream::create_openai_responses_to_anthropic_sse_stream,
     request_body::{
         clean_openai_tool_schema, codex_chat_reasoning_requested,
         inject_openai_stream_include_usage, is_openai_o_series,
@@ -11,11 +17,9 @@ use crate::{
         strip_leading_anthropic_billing_header, supports_reasoning_effort,
     },
     response_headers::response_headers_indicate_sse,
-    session::parse_session_from_user_id,
-    usage::{
-        build_anthropic_usage_from_openai_chat, build_anthropic_usage_from_openai_responses,
-    },
     response_parse::UpstreamSseAggregationKind,
+    session::parse_session_from_user_id,
+    usage::{build_anthropic_usage_from_openai_chat, build_anthropic_usage_from_openai_responses},
 };
 use bytes::Bytes;
 use futures::{stream as futures_stream, Stream, StreamExt};
@@ -26,6 +30,7 @@ use std::{
     error::Error,
     io,
     pin::Pin,
+    sync::Arc,
 };
 
 pub const CLAUDE_API_FORMAT_METADATA_KEY: &str = "claudeApiFormat";
@@ -1488,6 +1493,102 @@ pub fn claude_api_format_needs_transform(api_format: &str) -> bool {
         api_format,
         "openai_chat" | "openai_responses" | "gemini_native"
     )
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClaudeApiFormatResponseTransformOutput {
+    pub response: Value,
+    pub rectified_tool_names: Vec<String>,
+}
+
+pub fn claude_response_to_anthropic_message_for_api_format<F>(
+    body: &Value,
+    api_format: &str,
+    shadow_store: Option<&GeminiShadowStore>,
+    provider_id: Option<&str>,
+    session_id: Option<&str>,
+    tool_schema_hints: Option<&AnthropicToolSchemaHints>,
+    synthesize_gemini_tool_call_id: F,
+) -> Result<ClaudeApiFormatResponseTransformOutput, String>
+where
+    F: FnMut() -> String,
+{
+    match api_format {
+        "openai_responses" => openai_responses_to_anthropic_message(body).map(|response| {
+            ClaudeApiFormatResponseTransformOutput {
+                response,
+                rectified_tool_names: Vec::new(),
+            }
+        }),
+        "gemini_native" => {
+            let output = gemini_response_to_anthropic_message_with_shadow(
+                body,
+                shadow_store,
+                provider_id,
+                session_id,
+                tool_schema_hints,
+                synthesize_gemini_tool_call_id,
+            )?;
+            Ok(ClaudeApiFormatResponseTransformOutput {
+                response: output.response,
+                rectified_tool_names: output.rectified_tool_names,
+            })
+        }
+        _ => openai_chat_to_anthropic_message(body).map(|response| {
+            ClaudeApiFormatResponseTransformOutput {
+                response,
+                rectified_tool_names: Vec::new(),
+            }
+        }),
+    }
+}
+
+pub struct ClaudeApiFormatSseTransformContext<F, R> {
+    pub shadow_store: Option<Arc<GeminiShadowStore>>,
+    pub provider_id: Option<String>,
+    pub session_id: Option<String>,
+    pub tool_schema_hints: Option<AnthropicToolSchemaHints>,
+    pub synthesize_gemini_tool_call_id: F,
+    pub on_rectified_tool_name: R,
+}
+
+pub fn create_claude_to_anthropic_sse_stream_for_api_format<S, E, F, R>(
+    stream: S,
+    api_format: &str,
+    context: ClaudeApiFormatSseTransformContext<F, R>,
+) -> Box<dyn Stream<Item = Result<Bytes, io::Error>> + Send + Unpin>
+where
+    S: Stream<Item = Result<Bytes, E>> + Send + 'static,
+    E: Error + Send + 'static,
+    F: FnMut() -> String + Send + 'static,
+    R: for<'a> FnMut(&'a str) + Send + 'static,
+{
+    let ClaudeApiFormatSseTransformContext {
+        shadow_store,
+        provider_id,
+        session_id,
+        tool_schema_hints,
+        synthesize_gemini_tool_call_id,
+        on_rectified_tool_name,
+    } = context;
+
+    match api_format {
+        "openai_responses" => Box::new(Box::pin(create_openai_responses_to_anthropic_sse_stream(
+            stream,
+        ))),
+        "gemini_native" => Box::new(Box::pin(
+            create_gemini_to_anthropic_sse_stream_with_callbacks(
+                stream,
+                shadow_store,
+                provider_id,
+                session_id,
+                tool_schema_hints,
+                synthesize_gemini_tool_call_id,
+                on_rectified_tool_name,
+            ),
+        )),
+        _ => Box::new(Box::pin(create_openai_chat_to_anthropic_sse_stream(stream))),
+    }
 }
 
 pub fn resolve_claude_api_format(
@@ -5794,6 +5895,79 @@ mod tests {
         assert!(claude_api_format_needs_transform("openai_responses"));
         assert!(claude_api_format_needs_transform("gemini_native"));
         assert!(!claude_api_format_needs_transform("unknown"));
+    }
+
+    #[test]
+    fn claude_response_to_anthropic_message_for_api_format_dispatches_formats() {
+        let chat_output = claude_response_to_anthropic_message_for_api_format(
+            &json!({
+                "id": "chatcmpl_1",
+                "model": "chat-model",
+                "choices": [{
+                    "message": {"role": "assistant", "content": "Chat hi"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 2}
+            }),
+            "openai_chat",
+            None,
+            None,
+            None,
+            None,
+            || "toolu_unused".to_string(),
+        )
+        .expect("chat response");
+        assert_eq!(chat_output.response["content"][0]["text"], "Chat hi");
+        assert!(chat_output.rectified_tool_names.is_empty());
+
+        let responses_output = claude_response_to_anthropic_message_for_api_format(
+            &json!({
+                "id": "resp_1",
+                "model": "responses-model",
+                "status": "completed",
+                "output": [{
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "Responses hi"}]
+                }],
+                "usage": {"input_tokens": 1, "output_tokens": 2}
+            }),
+            "openai_responses",
+            None,
+            None,
+            None,
+            None,
+            || "toolu_unused".to_string(),
+        )
+        .expect("responses response");
+        assert_eq!(
+            responses_output.response["content"][0]["text"],
+            "Responses hi"
+        );
+        assert!(responses_output.rectified_tool_names.is_empty());
+
+        let gemini_output = claude_response_to_anthropic_message_for_api_format(
+            &json!({
+                "responseId": "gemini_1",
+                "modelVersion": "gemini-2.5-pro",
+                "candidates": [{
+                    "content": {
+                        "role": "model",
+                        "parts": [{"text": "Gemini hi"}]
+                    },
+                    "finishReason": "STOP"
+                }],
+                "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 2}
+            }),
+            "gemini_native",
+            None,
+            None,
+            None,
+            None,
+            || "toolu_core".to_string(),
+        )
+        .expect("gemini response");
+        assert_eq!(gemini_output.response["content"][0]["text"], "Gemini hi");
+        assert!(gemini_output.rectified_tool_names.is_empty());
     }
 
     #[test]
