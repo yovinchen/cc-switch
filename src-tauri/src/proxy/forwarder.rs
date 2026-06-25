@@ -874,7 +874,6 @@ impl RequestForwarder {
                 endpoint,
                 provider,
                 resolved_claude_api_format: resolved_claude_api_format.as_deref(),
-                adapter_facts: &adapter_facts,
             });
         let protocol_preparation =
             self.request_source

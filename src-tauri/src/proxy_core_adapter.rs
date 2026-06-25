@@ -8054,7 +8054,6 @@ pub(crate) struct ForwarderTransformPlanInput<'a> {
     pub(crate) endpoint: &'a str,
     pub(crate) provider: &'a Provider,
     pub(crate) resolved_claude_api_format: Option<&'a str>,
-    pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
 }
 
 pub(crate) struct ForwarderUpstreamUrlInput<'a> {
@@ -8478,8 +8477,8 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             input.provider,
             input.endpoint,
         );
-        let fallback_claude_api_format = input
-            .adapter_facts
+        let adapter_facts = input.adapter.facts();
+        let fallback_claude_api_format = adapter_facts
             .is_claude_adapter
             .then(|| forwarder_claude_api_format(input.provider));
         let provider_transform_required = input.resolved_claude_api_format.is_none()
@@ -8487,7 +8486,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
 
         forwarder_transform_plan_from_facts(ForwarderTransformPlanFacts {
             codex_responses_to_chat,
-            adapter_is_claude: input.adapter_facts.is_claude_adapter,
+            adapter_is_claude: adapter_facts.is_claude_adapter,
             resolved_claude_api_format: input.resolved_claude_api_format,
             fallback_claude_api_format,
             provider_transform_required,
@@ -13766,8 +13765,6 @@ base_url = "https://api.openai.com/v1"
         let source = default_forwarder_request_source();
         let codex_adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
         let claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
-        let codex_adapter_facts = *codex_adapter.facts();
-        let claude_adapter_facts = *claude_adapter.facts();
         let provider = Provider::with_id(
             "codex-chat".to_string(),
             "Codex Chat".to_string(),
@@ -13791,7 +13788,6 @@ base_url = "https://api.openai.com/v1"
                     endpoint: "/responses",
                     provider: &provider,
                     resolved_claude_api_format: None,
-                    adapter_facts: &codex_adapter_facts,
                 })
                 .codex_responses_to_chat
         );
@@ -13803,7 +13799,6 @@ base_url = "https://api.openai.com/v1"
                     endpoint: "/responses",
                     provider: &provider,
                     resolved_claude_api_format: None,
-                    adapter_facts: &claude_adapter_facts,
                 })
                 .codex_responses_to_chat
         );
@@ -13815,7 +13810,6 @@ base_url = "https://api.openai.com/v1"
                     endpoint: "/chat/completions",
                     provider: &provider,
                     resolved_claude_api_format: None,
-                    adapter_facts: &codex_adapter_facts,
                 })
                 .codex_responses_to_chat
         );
@@ -13954,8 +13948,6 @@ base_url = "https://api.openai.com/v1"
         let source = default_forwarder_request_source();
         let claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
         let codex_adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
-        let claude_adapter_facts = *claude_adapter.facts();
-        let codex_adapter_facts = *codex_adapter.facts();
         let mut claude_provider = Provider::with_id(
             "claude-provider".to_string(),
             "Claude Provider".to_string(),
@@ -13973,7 +13965,6 @@ base_url = "https://api.openai.com/v1"
             endpoint: "/v1/messages",
             provider: &claude_provider,
             resolved_claude_api_format: Some("gemini_native"),
-            adapter_facts: &claude_adapter_facts,
         });
         assert!(resolved_plan.needs_transform);
         assert!(resolved_plan.use_claude_transform);
@@ -13994,7 +13985,6 @@ base_url = "https://api.openai.com/v1"
             endpoint: "/v1/messages",
             provider: &claude_provider,
             resolved_claude_api_format: None,
-            adapter_facts: &claude_adapter_facts,
         });
         assert!(fallback_plan.needs_transform);
         assert!(fallback_plan.use_claude_transform);
@@ -14015,7 +14005,6 @@ base_url = "https://api.openai.com/v1"
             endpoint: "/v1/chat/completions",
             provider: &claude_provider,
             resolved_claude_api_format: None,
-            adapter_facts: &codex_adapter_facts,
         });
         assert!(!codex_plan.needs_transform);
         assert!(!codex_plan.use_claude_transform);

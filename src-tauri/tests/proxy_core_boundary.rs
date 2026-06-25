@@ -8416,14 +8416,6 @@ fn production_forwarder_uses_request_source_resource() {
             ),
         ),
         (
-            "ForwarderTransformPlanInput",
-            function_slice(
-                &adapter_source,
-                "pub(crate) struct ForwarderTransformPlanInput",
-                "pub(crate) struct ForwarderUpstreamUrlInput",
-            ),
-        ),
-        (
             "ForwarderMediaRetryPlanInput",
             function_slice(
                 &adapter_source,
@@ -8451,6 +8443,16 @@ fn production_forwarder_uses_request_source_resource() {
             "{input_name} must not expose split adapter name or Claude-adapter facts"
         );
     }
+    let transform_plan_input_slice = function_slice(
+        &adapter_source,
+        "pub(crate) struct ForwarderTransformPlanInput",
+        "pub(crate) struct ForwarderUpstreamUrlInput",
+    );
+    assert!(
+        transform_plan_input_slice.contains("adapter: &'a ForwarderAdapterContext")
+            && !transform_plan_input_slice.contains("adapter_facts: &'a ForwarderAdapterFacts"),
+        "ForwarderTransformPlanInput must use ForwarderAdapterContext instead of detached adapter facts"
+    );
     let prepared_request_inputs = [
         (
             "ForwarderUpstreamRequestLogInput",
