@@ -2545,7 +2545,7 @@ pub(crate) use crate::proxy_core::api::auth::ManagedAccountAuthError;
 pub(crate) use crate::proxy_core::api::auth::{
     channel_auth_profile_missing_key_error_message, extract_claude_auth_key_from_settings,
     is_gemini_oauth_key_shape, parse_gemini_oauth_credentials, resolve_management_auth_decision,
-    settings_config_with_channel_auth_key, validate_claude_desktop_gateway_bearer_header,
+    settings_config_with_channel_auth_key_for_app, validate_claude_desktop_gateway_bearer_header,
     validate_management_bearer_header, ManagementAuthDecision,
 };
 pub(crate) use crate::proxy_core::api::auth::{
@@ -4941,8 +4941,8 @@ pub(crate) fn provider_with_channel_auth_key(
     key_value: &str,
 ) -> Provider {
     let mut auth_provider = provider.clone();
-    auth_provider.settings_config = settings_config_with_channel_auth_key(
-        app_type.as_str(),
+    auth_provider.settings_config = settings_config_with_channel_auth_key_for_app(
+        &AppKind::from(app_type),
         &provider.settings_config,
         key_value,
     );

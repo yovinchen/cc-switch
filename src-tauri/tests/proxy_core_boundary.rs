@@ -5499,6 +5499,35 @@ fn proxy_core_adapter_delegates_hot_switch_takeover_policies_to_core() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_channel_key_settings_policy_to_typed_core_helper() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn provider_with_channel_auth_key",
+        "pub(crate) use crate::proxy_core::api::domain::extract_claude_base_url_from_settings",
+    );
+
+    assert!(
+        function.contains("settings_config_with_channel_auth_key_for_app("),
+        "provider_with_channel_auth_key must delegate app-typed channel key settings policy to proxy-core"
+    );
+    assert!(
+        function.contains("&AppKind::from(app_type)"),
+        "provider_with_channel_auth_key should project AppType into core AppKind before applying channel key policy"
+    );
+    assert!(
+        !function.contains("settings_config_with_channel_auth_key("),
+        "provider_with_channel_auth_key must not call the legacy string channel key settings helper"
+    );
+    assert!(
+        !function.contains("app_type.as_str()"),
+        "provider_with_channel_auth_key must not pass app strings for channel key settings policy"
+    );
+}
+
+#[test]
 fn production_forwarder_delegates_managed_auth_resolution_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
