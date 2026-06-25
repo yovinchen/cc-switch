@@ -3337,6 +3337,38 @@ fn production_http_client_delegates_explicit_proxy_url_validation_to_adapter() {
 }
 
 #[test]
+fn production_http_client_excludes_legacy_update_facades() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/http_client.rs");
+    let source = fs::read_to_string(&path).expect("read http_client.rs");
+
+    let mut violations = Vec::new();
+    for marker in ["pub fn update_proxy", "pub fn is_proxy_enabled"] {
+        if source.contains(marker) {
+            violations.push(format!(
+                "src/proxy/http_client.rs keeps legacy global proxy facade `{marker}`"
+            ));
+        }
+    }
+
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        if code.contains("#[allow(dead_code)]") {
+            violations.push(format!(
+                "src/proxy/http_client.rs:{} keeps dead-code allowance",
+                line_index + 1
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production HTTP client must expose only active global proxy lifecycle operations:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_explicit_proxy_url_validation_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
