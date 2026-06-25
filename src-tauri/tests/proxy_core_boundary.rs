@@ -5132,6 +5132,53 @@ fn proxy_core_adapter_owns_claude_desktop_proxy_model_routes_provider_projection
 }
 
 #[test]
+fn proxy_core_adapter_owns_claude_desktop_proxy_request_body_provider_projection() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let request_body_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_claude_desktop_proxy_request_body(",
+        "pub(crate) struct ClaudeDesktopProviderStatusFacts",
+    );
+
+    assert!(
+        request_body_slice.contains("provider_claude_desktop_proxy_model_routes(")
+            && request_body_slice
+                .contains("claude_desktop_proxy_request_body_with_upstream_model(")
+            && request_body_slice.contains("ClaudeDesktopProviderProxyRequestBodyIssue::Routes")
+            && request_body_slice.contains("ClaudeDesktopProviderProxyRequestBodyIssue::Body"),
+        "proxy_core_adapter should own Claude Desktop proxy request-body Provider projection"
+    );
+
+    let forbidden_markers = [
+        "crate::claude_desktop_config",
+        "state.db",
+        "get_effective_current_provider",
+        "proxy_gateway_base_url_from_db",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(request_body_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs provider_claude_desktop_proxy_request_body:{} contains host-owned request body marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Claude Desktop proxy request-body projection free of host side effects:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn claude_desktop_config_delegates_proxy_route_projection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/claude_desktop_config.rs");
@@ -5191,12 +5238,17 @@ fn claude_desktop_config_delegates_proxy_request_route_lookup_to_adapter() {
     );
 
     assert!(
-        request_mapping_slice.contains("claude_desktop_proxy_request_body_with_upstream_model(")
-            && request_mapping_slice.contains("ClaudeDesktopProxyRouteInput"),
-        "claude_desktop_config should delegate proxy request body mapping to proxy_core_adapter/core"
+        request_mapping_slice.contains("provider_claude_desktop_proxy_request_body("),
+        "claude_desktop_config should delegate provider proxy request body mapping to proxy_core_adapter"
     );
 
     let forbidden_markers = [
+        ".meta",
+        "claude_desktop_model_routes",
+        "ClaudeDesktopProxyRouteInput",
+        "ClaudeDesktopResolvedProxyRoute",
+        "provider.settings_config",
+        "api_format.as_deref",
         "claude_desktop_proxy_request_upstream_model(",
         "provider_should_normalize_mimo_anthropic_thinking_history(",
         "normalize_anthropic_tool_thinking_history(",
@@ -5244,7 +5296,7 @@ fn claude_desktop_config_delegates_mimo_thinking_history_normalization_to_adapte
     );
 
     assert!(
-        request_mapping_slice.contains("claude_desktop_proxy_request_body_with_upstream_model("),
+        request_mapping_slice.contains("provider_claude_desktop_proxy_request_body("),
         "claude_desktop_config should delegate MiMo thinking-history normalization to proxy_core_adapter/core"
     );
     assert!(

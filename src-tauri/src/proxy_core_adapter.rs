@@ -10779,6 +10779,44 @@ pub(crate) fn provider_claude_desktop_proxy_model_routes(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ClaudeDesktopProviderProxyRequestBodyIssue {
+    Routes(ClaudeDesktopProviderProxyRouteIssue),
+    Body(ClaudeDesktopProxyRequestBodyIssue),
+}
+
+pub(crate) fn provider_claude_desktop_proxy_request_body(
+    body: Value,
+    provider: &Provider,
+) -> Result<Value, ClaudeDesktopProviderProxyRequestBodyIssue> {
+    let routes = provider_claude_desktop_proxy_model_routes(provider)
+        .map_err(ClaudeDesktopProviderProxyRequestBodyIssue::Routes)?;
+    let raw_routes = provider
+        .meta
+        .as_ref()
+        .into_iter()
+        .flat_map(|meta| meta.claude_desktop_model_routes.iter())
+        .map(|(route_id, route)| ClaudeDesktopProxyRouteInput {
+            route_id,
+            upstream_model: &route.model,
+            label_override: route.label_override.as_deref(),
+            supports_1m: route.supports_1m.unwrap_or(false),
+        });
+    let api_format = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.api_format.as_deref());
+
+    claude_desktop_proxy_request_body_with_upstream_model(
+        body,
+        &provider.settings_config,
+        api_format,
+        &routes,
+        raw_routes,
+    )
+    .map_err(ClaudeDesktopProviderProxyRequestBodyIssue::Body)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClaudeDesktopProviderStatusFacts {
     pub mode: crate::provider::ClaudeDesktopMode,
     pub expected_base_url: Option<String>,

@@ -15,6 +15,7 @@ use crate::proxy_core_adapter::{
     provider_claude_desktop_proxy_config_validation_issue,
     provider_claude_desktop_proxy_has_base_url_and_key, ClaudeDesktopDirectGatewayCredentialIssue,
     ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopDirectProviderValidationIssue,
+    ClaudeDesktopProviderProxyRequestBodyIssue, ClaudeDesktopProviderProxyRouteIssue,
     ClaudeDesktopProxyProviderConfigValidationIssue, ClaudeDesktopProxyRequestBodyIssue,
 };
 
@@ -384,22 +385,7 @@ fn direct_inference_model_specs(
 
 pub fn proxy_model_routes(provider: &Provider) -> Result<Vec<ResolvedModelRoute>, AppError> {
     let result = crate::proxy_core_adapter::provider_claude_desktop_proxy_model_routes(provider)
-        .map_err(|issue| match issue {
-            crate::proxy_core_adapter::ClaudeDesktopProviderProxyRouteIssue::Missing => {
-                AppError::localized(
-                    "claude_desktop.provider.routes_missing",
-                    "Claude Desktop 本地路由模式缺少模型路由映射",
-                    "Claude Desktop proxy mode is missing model route mappings",
-                )
-            }
-            crate::proxy_core_adapter::ClaudeDesktopProviderProxyRouteIssue::Empty => {
-                AppError::localized(
-                    "claude_desktop.provider.routes_missing",
-                    "Claude Desktop 本地路由模式至少需要一个模型路由映射",
-                    "Claude Desktop proxy mode requires at least one model route mapping",
-                )
-            }
-        })?
+        .map_err(proxy_route_issue_to_error)?
         .into_iter()
         .map(ResolvedModelRoute::from)
         .collect::<Vec<_>>();
@@ -407,45 +393,36 @@ pub fn proxy_model_routes(provider: &Provider) -> Result<Vec<ResolvedModelRoute>
     Ok(result)
 }
 
-pub fn map_proxy_request_model(mut body: Value, provider: &Provider) -> Result<Value, AppError> {
-    let routes = proxy_model_routes(provider)?;
-    let raw_routes = provider
-        .meta
-        .as_ref()
-        .into_iter()
-        .flat_map(|meta| meta.claude_desktop_model_routes.iter())
-        .map(
-            |(route_id, route)| crate::proxy_core_adapter::ClaudeDesktopProxyRouteInput {
-                route_id,
-                upstream_model: &route.model,
-                label_override: route.label_override.as_deref(),
-                supports_1m: route.supports_1m.unwrap_or(false),
-            },
-        );
-    let core_routes = routes
-        .iter()
-        .map(
-            |route| crate::proxy_core_adapter::ClaudeDesktopResolvedProxyRoute {
-                route_id: route.route_id.clone(),
-                upstream_model: route.upstream_model.clone(),
-                label_override: route.label_override.clone(),
-                supports_1m: route.supports_1m,
-            },
-        )
-        .collect::<Vec<_>>();
+fn proxy_route_issue_to_error(issue: ClaudeDesktopProviderProxyRouteIssue) -> AppError {
+    match issue {
+        ClaudeDesktopProviderProxyRouteIssue::Missing => AppError::localized(
+            "claude_desktop.provider.routes_missing",
+            "Claude Desktop 本地路由模式缺少模型路由映射",
+            "Claude Desktop proxy mode is missing model route mappings",
+        ),
+        ClaudeDesktopProviderProxyRouteIssue::Empty => AppError::localized(
+            "claude_desktop.provider.routes_missing",
+            "Claude Desktop 本地路由模式至少需要一个模型路由映射",
+            "Claude Desktop proxy mode requires at least one model route mapping",
+        ),
+    }
+}
 
-    let api_format = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.api_format.as_deref());
-    body = crate::proxy_core_adapter::claude_desktop_proxy_request_body_with_upstream_model(
-        body,
-        &provider.settings_config,
-        api_format,
-        &core_routes,
-        raw_routes,
+pub fn map_proxy_request_model(body: Value, provider: &Provider) -> Result<Value, AppError> {
+    crate::proxy_core_adapter::provider_claude_desktop_proxy_request_body(body, provider).map_err(
+        |issue| match issue {
+            ClaudeDesktopProviderProxyRequestBodyIssue::Routes(route_issue) => {
+                proxy_route_issue_to_error(route_issue)
+            }
+            ClaudeDesktopProviderProxyRequestBodyIssue::Body(body_issue) => {
+                proxy_request_body_issue_to_error(body_issue)
+            }
+        },
     )
-    .map_err(|issue| match issue {
+}
+
+fn proxy_request_body_issue_to_error(issue: ClaudeDesktopProxyRequestBodyIssue) -> AppError {
+    match issue {
         ClaudeDesktopProxyRequestBodyIssue::MissingModel => AppError::localized(
             "claude_desktop.provider.model_missing",
             "Claude Desktop 请求缺少 model 字段",
@@ -458,9 +435,7 @@ pub fn map_proxy_request_model(mut body: Value, provider: &Provider) -> Result<V
                 format!("Claude Desktop model route is not configured: {requested_model}"),
             )
         }
-    })?;
-
-    Ok(body)
+    }
 }
 
 pub fn proxy_gateway_base_url_from_db(db: &Database) -> Result<String, AppError> {
