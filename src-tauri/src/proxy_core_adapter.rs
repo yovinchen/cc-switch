@@ -1254,10 +1254,6 @@ pub(crate) async fn proxy_app_config_from_db_source(
     ))
 }
 
-pub(crate) fn app_summary_config_from_config_source(config: AppProxyConfig) -> AppSummaryConfig {
-    AppSummaryConfig::new(config.enabled, config.auto_failover_enabled)
-}
-
 pub(crate) async fn proxy_app_enabled_from_db(
     db: &Database,
     app_type: &str,
@@ -1525,7 +1521,10 @@ pub(crate) async fn app_summary_config_from_db_source(
         .get_proxy_config_for_app(app.as_str())
         .await
         .map_err(|error| app_error("load app summary config", error))?;
-    Ok(app_summary_config_from_config_source(config))
+    Ok(AppSummaryConfig::new(
+        config.enabled,
+        config.auto_failover_enabled,
+    ))
 }
 
 pub(crate) fn forward_current_provider_id_from_source(
@@ -1583,10 +1582,6 @@ pub(crate) fn app_proxy_config_from_proxy_app_config(
 
 pub(crate) use crate::proxy_core::api::config::proxy_runtime_config_from_proxy_config as proxy_runtime_config_from_config;
 
-pub(crate) fn proxy_runtime_config_from_config_source(config: ProxyConfig) -> ProxyRuntimeConfig {
-    proxy_runtime_config_from_config(config, false)
-}
-
 pub(crate) async fn proxy_runtime_config_from_db_source(
     db: &Database,
 ) -> ProxyCoreResult<ProxyRuntimeConfig> {
@@ -1594,7 +1589,7 @@ pub(crate) async fn proxy_runtime_config_from_db_source(
         .get_proxy_config()
         .await
         .map_err(|error| app_error("load runtime proxy config", error))?;
-    Ok(proxy_runtime_config_from_config_source(config))
+    Ok(proxy_runtime_config_from_config(config, false))
 }
 
 #[derive(Clone)]
@@ -15798,7 +15793,8 @@ base_url = "https://api.openai.com/v1"
             projected_app.raw["currentProviderId"],
             json!("anthropic-main")
         );
-        let app_summary = app_summary_config_from_config_source(app_config.clone());
+        let app_summary =
+            AppSummaryConfig::new(app_config.enabled, app_config.auto_failover_enabled);
         assert!(app_summary.enabled);
         assert!(app_summary.auto_failover_enabled);
         assert_eq!(
@@ -15843,7 +15839,7 @@ base_url = "https://api.openai.com/v1"
             Some(true)
         );
         assert!(
-            !proxy_runtime_config_from_config_source(ProxyConfig::default()).privacy_filter_enabled
+            !proxy_runtime_config_from_config(ProxyConfig::default(), false).privacy_filter_enabled
         );
     }
 

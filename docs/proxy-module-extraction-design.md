@@ -1450,6 +1450,7 @@
 1030. channel reachability probe 删除 `channel_test_app_type_from_probe_request` / `channel_test_provider_from_probe_source` 两个 adapter-local wrapper；DB-backed probe source 直接 parse host app type 并调用 core error helper，把中转宿主需要复制的 surface 缩到实际 IO 边界。
 1031. channel health reset 删除 `channel_health_reset_from_plan` 一行 DTO wrapper；host health source 保留 DB lookup/router reset plan，但直接调用 `proxy-core::ports::channel_health_reset_from_parts` 构造对外响应。
 1032. provider-router config source 删除 `circuit_breaker_config_from_router_config_result`、`circuit_failure_threshold_from_router_config_result` 和 `proxy_takeover_status_from_config_results` 三个 Result-fallback facade；adapter source 只负责把 host `AppError` 投影为缺省事实，core helper 继续负责 circuit/takeover DTO 策略。
+1033. config source 删除 `app_summary_config_from_config_source` 与 `proxy_runtime_config_from_config_source` 两个 DTO wrapper；DB-backed source 直接调用 `AppSummaryConfig::new` 和 `proxy_runtime_config_from_proxy_config`，让 adapter 只保留实际 DB 读取与错误映射。
 
 ## 背景
 
