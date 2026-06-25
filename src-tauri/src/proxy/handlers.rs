@@ -376,7 +376,7 @@ pub async fn test_proxy_channel(
         ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let response = state
         .proxy_engine()
-        .channel_test_response(path_request, request, chrono::Utc::now().timestamp())
+        .channel_test_response(path_request, request)
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
 

@@ -1,6 +1,6 @@
 use super::cache_injector::CacheInjectionConfig;
-use super::claude_desktop_gateway_auth::ClaudeDesktopModelRouteInput;
 use super::circuit_breaker_config::CircuitBreakerStats;
+use super::claude_desktop_gateway_auth::ClaudeDesktopModelRouteInput;
 use super::domain::{
     AppKind, AuthProfileRef, ChannelAttemptResult, ChannelQuery, ChannelSpec, InterfaceKind,
     ModelRoute, ProviderAttemptResult, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan,
@@ -17,11 +17,16 @@ use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const DEFAULT_PROXY_LISTEN_ADDRESS: &str = "127.0.0.1";
 pub const DEFAULT_PROXY_LISTEN_PORT: u16 = 15721;
 
 pub trait ProxyServices: Send + Sync {
+    fn unix_timestamp(&self) -> i64 {
+        current_unix_timestamp()
+    }
+
     fn config(&self) -> &(dyn ProxyConfigSource + Send + Sync);
     fn providers(&self) -> &(dyn ProviderSource + Send + Sync);
     fn channels(&self) -> &(dyn ChannelSource + Send + Sync);
@@ -40,6 +45,14 @@ pub trait ProxyServices: Send + Sync {
     fn usage_sink(&self) -> &(dyn UsageSink + Send + Sync);
     fn event_sink(&self) -> &(dyn ProxyEventSink + Send + Sync);
     fn forward_pipeline(&self) -> &(dyn ForwardPipeline + Send + Sync);
+}
+
+pub fn current_unix_timestamp() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_secs()).ok())
+        .unwrap_or_default()
 }
 
 pub trait ProxyConfigSource: Send + Sync {
@@ -791,8 +804,7 @@ pub fn record_forward_success_status(
     status.success_requests += 1;
     status.last_error = None;
 
-    let should_switch_current_provider =
-        input.current_provider_id_at_start != input.provider_id;
+    let should_switch_current_provider = input.current_provider_id_at_start != input.provider_id;
     if should_switch_current_provider {
         status.failover_count += 1;
     }
@@ -1044,18 +1056,12 @@ pub fn app_proxy_config_defaults_for_app(app_type: &str) -> AppProxyConfig {
     }
 }
 
-pub fn app_proxy_config_with_enabled(
-    mut config: AppProxyConfig,
-    enabled: bool,
-) -> AppProxyConfig {
+pub fn app_proxy_config_with_enabled(mut config: AppProxyConfig, enabled: bool) -> AppProxyConfig {
     config.enabled = enabled;
     config
 }
 
-pub fn app_proxy_config_raw(
-    config: AppProxyConfig,
-    current_provider_id: Option<String>,
-) -> Value {
+pub fn app_proxy_config_raw(config: AppProxyConfig, current_provider_id: Option<String>) -> Value {
     let mut raw = serde_json::to_value(config).unwrap_or_else(|_| serde_json::json!({}));
     if let Value::Object(object) = &mut raw {
         object.insert(
@@ -1259,9 +1265,7 @@ pub fn claude_takeover_auth_policy_from_provider_facts(
     }
 }
 
-pub fn claude_takeover_model_fields_from_settings(
-    config: &Value,
-) -> Vec<(&'static str, String)> {
+pub fn claude_takeover_model_fields_from_settings(config: &Value) -> Vec<(&'static str, String)> {
     let Some(env) = config.get("env").and_then(Value::as_object) else {
         return Vec::new();
     };
@@ -2042,10 +2046,7 @@ pub fn proxy_takeover_should_restore_existing_backup_before_retakeover(
     has_live_backup && !live_matches_current_proxy
 }
 
-pub fn proxy_live_config_owned_by_takeover(
-    has_live_backup: bool,
-    live_taken_over: bool,
-) -> bool {
+pub fn proxy_live_config_owned_by_takeover(has_live_backup: bool, live_taken_over: bool) -> bool {
     has_live_backup || live_taken_over
 }
 
@@ -2468,9 +2469,7 @@ pub fn gemini_env_string_map_from_settings(settings: &Value) -> HashMap<String, 
         .map(|env| {
             env.iter()
                 .filter_map(|(key, value)| {
-                    value
-                        .as_str()
-                        .map(|value| (key.clone(), value.to_string()))
+                    value.as_str().map(|value| (key.clone(), value.to_string()))
                 })
                 .collect()
         })
@@ -2586,7 +2585,11 @@ pub fn codex_base_url_from_config_toml(
             continue;
         };
         let value = value.trim_start();
-        let Some(quote) = value.chars().next().filter(|quote| matches!(quote, '"' | '\'')) else {
+        let Some(quote) = value
+            .chars()
+            .next()
+            .filter(|quote| matches!(quote, '"' | '\''))
+        else {
             saw_invalid_base_url_assignment = true;
             search = after_key;
             continue;
@@ -3179,13 +3182,14 @@ pub fn provider_non_codex_credential_values_from_settings(
             Ok(Some(ProviderCredentialValues { api_key, base_url }))
         }
         AppKind::Custom(name) if name.eq_ignore_ascii_case("opencode") => {
-            let parts = opencode_credential_parts_from_settings(settings_config).map_err(
-                |issue| match issue {
-                    OpenCodeCredentialIssue::MissingOptions => {
-                        ProviderCredentialIssue::OpenCodeOptionsMissing
+            let parts =
+                opencode_credential_parts_from_settings(settings_config).map_err(|issue| {
+                    match issue {
+                        OpenCodeCredentialIssue::MissingOptions => {
+                            ProviderCredentialIssue::OpenCodeOptionsMissing
+                        }
                     }
-                },
-            )?;
+                })?;
             let api_key = parts
                 .api_key
                 .ok_or(ProviderCredentialIssue::OpenCodeApiKeyMissing)?
@@ -3664,9 +3668,7 @@ pub fn provider_common_config_storage_normalization_requires_snippet(
     explicit_enabled.unwrap_or(false)
 }
 
-fn parsed_common_config_json_object(
-    snippet: &str,
-) -> Result<Option<Map<String, Value>>, String> {
+fn parsed_common_config_json_object(snippet: &str) -> Result<Option<Map<String, Value>>, String> {
     let trimmed = snippet.trim();
     if trimmed.is_empty() {
         return Ok(None);
@@ -3939,9 +3941,7 @@ pub enum ProviderTakeoverLiveSyncTarget {
     LiveBackup,
 }
 
-pub fn provider_takeover_live_sync_target_for_app(
-    app: &AppKind,
-) -> ProviderTakeoverLiveSyncTarget {
+pub fn provider_takeover_live_sync_target_for_app(app: &AppKind) -> ProviderTakeoverLiveSyncTarget {
     if matches!(app, AppKind::ClaudeDesktop) {
         ProviderTakeoverLiveSyncTarget::LiveConfig
     } else {
@@ -4573,9 +4573,7 @@ impl ChannelTestProbeRequest {
     }
 }
 
-pub fn channel_test_provider_not_found_error(
-    request: &ChannelTestProbeRequest,
-) -> ProxyCoreError {
+pub fn channel_test_provider_not_found_error(request: &ChannelTestProbeRequest) -> ProxyCoreError {
     ProxyCoreError::Config(request.provider_not_found_message())
 }
 
@@ -4641,10 +4639,7 @@ impl ChannelTestContext {
         })
     }
 
-    pub fn reachability_response(
-        &self,
-        result: ChannelReachabilityResult,
-    ) -> ChannelTestResponse {
+    pub fn reachability_response(&self, result: ChannelReachabilityResult) -> ChannelTestResponse {
         let success = result.success && self.model_available != Some(false);
         let failure_reason = (!success).then(|| result.message.clone());
         ChannelTestResponse::from_input(ChannelTestInput {
@@ -4744,7 +4739,9 @@ pub fn merge_stream_check_config(
 ) -> StreamCheckConfig {
     match provider_override {
         Some(provider_override) => StreamCheckConfig {
-            timeout_secs: provider_override.timeout_secs.unwrap_or(global.timeout_secs),
+            timeout_secs: provider_override
+                .timeout_secs
+                .unwrap_or(global.timeout_secs),
             max_retries: provider_override.max_retries.unwrap_or(global.max_retries),
             degraded_threshold_ms: provider_override
                 .degraded_threshold_ms
@@ -5360,7 +5357,9 @@ pub fn current_route_target_from_input(input: CurrentRouteTargetInput<'_>) -> Cu
         provider_id: input.provider_id.to_string(),
         provider_name: input.provider_name.to_string(),
         channel_id: input.channel.map(|channel| channel.channel_id.to_string()),
-        channel_name: input.channel.map(|channel| channel.channel_name.to_string()),
+        channel_name: input
+            .channel
+            .map(|channel| channel.channel_name.to_string()),
         interface_kind: input
             .channel
             .map(|channel| channel.interface_kind.to_string()),
@@ -6302,169 +6301,145 @@ impl ProxyCoreEvent {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
         app_proxy_config_defaults_for_app, app_proxy_config_raw, app_proxy_config_with_enabled,
-        apply_claude_common_config_to_settings,
-        auth_info_from_profile_ref, auth_info_from_route_context, channel_health_reset_from_parts,
-        channel_health_update_from_input,
-        channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
-        channel_route_source_for_materialized_count,
-        apply_claude_takeover_fields_for_provider_facts,
+        apply_claude_common_config_to_settings, apply_claude_takeover_fields_for_provider_facts,
         apply_claude_takeover_fields_with_policy_and_models,
-        apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
-        apply_gemini_common_config_to_settings,
-        claude_common_config_snippet_from_settings,
+        apply_codex_takeover_auth_placeholder_if_present, apply_gemini_common_config_to_settings,
+        apply_gemini_takeover_env_fields, apply_proxy_runtime_active_targets,
+        apply_proxy_runtime_uptime, auth_info_from_profile_ref, auth_info_from_route_context,
+        channel_health_reset_from_parts, channel_health_update_from_input,
+        channel_key_record_from_input, channel_key_runtime_candidate_from_input,
+        channel_model_record_from_input, channel_reachability_probe_error,
+        channel_reachability_result_from_stream_check_result,
+        channel_reachability_status_from_latency, channel_record_from_input,
+        channel_route_source_for_materialized_count, channel_test_app_type_error,
+        channel_test_provider_not_found_error, claude_common_config_snippet_from_settings,
         claude_env_credentials_from_settings, claude_live_config_has_proxy_placeholder,
         claude_takeover_auth_policy_from_provider_facts,
-        claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
-        ClaudeTakeoverProviderFacts,
-        CodexCredentialParts, CodexLiveSettingsIssue, CodexLiveSnapshotIssue,
-        CodexLiveTakeoverMatchFacts, CodexProviderLiveWriteIssue,
-        CodexProviderValidationIssue,
-        codex_auth_has_api_key, codex_auth_has_login_material,
-        codex_auth_has_oauth_login_material,
-        codex_auth_object_value_from_settings,
-        codex_base_url_from_config_toml, codex_base_url_from_settings,
-        codex_config_has_base_url_matching, codex_config_text_from_settings,
-        codex_imported_live_category_from_parts,
+        claude_takeover_model_fields_from_settings, codex_auth_has_api_key,
+        codex_auth_has_login_material, codex_auth_has_oauth_login_material,
+        codex_auth_object_value_from_settings, codex_base_url_from_config_toml,
+        codex_base_url_from_settings, codex_config_has_base_url_matching,
+        codex_config_text_from_settings, codex_imported_live_category_from_parts,
         codex_live_auth_has_proxy_placeholder, codex_live_settings_parts_from_settings,
         codex_live_snapshot_parts_from_settings, codex_model_from_config_toml,
-        codex_provider_backfill_parts_from_settings,
-        codex_provider_live_write_parts_from_settings,
+        codex_provider_backfill_parts_from_settings, codex_provider_live_write_parts_from_settings,
         codex_provider_validation_parts_from_settings, codex_restored_live_settings_parts,
-        codex_takeover_toml_config_patch,
-        codex_wire_api_from_config_toml,
-        CodexTakeoverTomlConfigPatch,
-        detect_gemini_auth_type, ensure_codex_takeover_auth_placeholder,
-        gemini_contains_packycode_keyword, gemini_env_json_from_map,
-        gemini_env_map_from_settings, gemini_env_parse_issue_spec,
-        gemini_env_string_map_from_settings, gemini_env_value_from_env_json,
-        gemini_live_backup_from_effective_settings,
-        gemini_live_config_object_from_settings,
-        gemini_live_settings_from_env_json_and_config, gemini_live_settings_to_write,
-        parse_gemini_env_file, parse_gemini_env_file_strict, serialize_gemini_env_file,
-        GeminiAuthType, GeminiAuthTypeInput, GeminiEnvParseIssue,
-        GeminiLiveConfigIssue,
-        gemini_settings_validation_issue_spec, gemini_common_config_snippet_from_settings,
-        gemini_live_config_has_proxy_placeholder, is_local_proxy_url,
-        common_config_settings_mutation_issue_message,
-        common_config_snippet_issue_message,
+        codex_takeover_toml_config_patch, codex_wire_api_from_config_toml,
+        common_config_settings_mutation_issue_message, common_config_snippet_issue_message,
         contains_claude_common_config_snippet, contains_gemini_common_config_snippet,
-        json_common_config_snippet_from_value,
-        json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
-        launch_env_vars_from_provider_settings, live_backup_snapshot_from_live_config,
+        current_route_target_from_input, detect_gemini_auth_type,
+        ensure_codex_takeover_auth_placeholder, gemini_common_config_snippet_from_settings,
+        gemini_contains_packycode_keyword, gemini_env_json_from_map, gemini_env_map_from_settings,
+        gemini_env_parse_issue_spec, gemini_env_string_map_from_settings,
+        gemini_env_value_from_env_json, gemini_live_backup_from_effective_settings,
+        gemini_live_config_has_proxy_placeholder, gemini_live_config_object_from_settings,
+        gemini_live_settings_from_env_json_and_config, gemini_live_settings_to_write,
+        gemini_settings_validation_issue_spec, is_local_proxy_url,
+        json_common_config_snippet_from_value, json_deep_merge, json_deep_remove,
+        json_remove_array_items, json_value_is_subset, launch_env_vars_from_provider_settings,
+        live_backup_snapshot_from_live_config, live_config_has_proxy_placeholder_for_app,
         live_env_base_url_matches, live_takeover_app_kinds,
-        live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
-        live_token_sync_app_label, normalize_claude_models_in_value,
-        normalize_provider_settings_for_storage, provider_default_live_import_settings,
-        provider_default_live_import_category_from_parts,
+        live_takeover_config_matches_proxy_for_app, live_token_sync_app_label,
+        merge_stream_check_config, normalize_claude_models_in_value,
+        normalize_provider_settings_for_storage, openclaw_common_config_snippet_from_settings,
         openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
-        openclaw_common_config_snippet_from_settings, openclaw_live_write_action_decision,
-        openclaw_live_write_config_decision,
-        opencode_common_config_snippet_from_settings, opencode_live_provider_fragment_decision,
+        openclaw_live_write_action_decision, openclaw_live_write_config_decision,
+        opencode_common_config_snippet_from_settings, opencode_common_config_value_from_settings,
+        opencode_credential_parts_from_settings, opencode_live_provider_fragment_decision,
         opencode_live_write_action_decision, opencode_live_write_config_decision,
-        opencode_common_config_value_from_settings, opencode_credential_parts_from_settings,
-        provider_settings_with_live_token_sync, proxy_urls_match,
-        proxy_config_preserving_live_takeover_active,
-        proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
-        proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
-        proxy_runtime_config_from_proxy_config, provider_additive_live_write_action_for_app,
-        provider_additive_update_route_for_app,
+        parse_gemini_env_file, parse_gemini_env_file_strict, plan_channel_test,
+        provider_additive_live_write_action_for_app, provider_additive_update_route_for_app,
         provider_app_has_current_provider, provider_category_is_official,
-        provider_codex_credential_values_from_parts, provider_credential_issue_spec,
-        provider_non_codex_common_config_snippet_from_settings,
-        provider_non_codex_credential_values_from_settings,
-        provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
+        provider_codex_credential_values_from_parts,
+        provider_common_config_storage_normalization_requires_snippet,
+        provider_credential_issue_spec, provider_default_live_import_category_from_parts,
+        provider_default_live_import_settings, provider_delete_is_current_provider,
+        provider_health_update_from_input, provider_initial_live_config_managed_marker,
         provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
         provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
-        provider_live_sync_scope_for_app,
+        provider_live_sync_scope_for_app, provider_non_codex_common_config_snippet_from_settings,
+        provider_non_codex_credential_values_from_settings,
         provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
         provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
-        ProviderSettingsValidationIssue,
-        required_provider_base_url,
-        provider_should_sync_to_live, provider_supports_legacy_common_config_migration,
-        provider_switch_backfill_source_id, provider_switch_dispatch_for_app,
-        provider_switch_requires_takeover_lock,
+        provider_settings_with_live_token_sync, provider_should_sync_to_live,
+        provider_supports_legacy_common_config_migration, provider_switch_backfill_source_id,
+        provider_switch_dispatch_for_app, provider_switch_requires_takeover_lock,
         provider_switch_should_mark_live_config_managed,
-        provider_takeover_live_sync_target_for_app,
+        provider_takeover_live_sync_target_for_app, provider_uses_common_config_from_parts,
+        proxy_app_config_from_parts, proxy_config_preserving_live_takeover_active,
+        proxy_config_with_ephemeral_listen_port, proxy_config_with_live_takeover_active,
+        proxy_global_config_from_global_config,
         proxy_hot_switch_should_refresh_codex_live_from_backup,
         proxy_hot_switch_should_sync_claude_live_while_proxy_active,
         proxy_hot_switch_should_sync_codex_live_while_proxy_active,
-        proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
+        proxy_live_config_owned_by_takeover, proxy_live_urls_from_listen_parts,
+        proxy_runtime_config_from_proxy_config, proxy_runtime_status_stopped,
+        proxy_server_info_from_parts, proxy_switch_should_hot_switch,
         proxy_takeover_marked_state_is_reusable,
         proxy_takeover_should_restore_existing_backup_before_retakeover,
-        remove_claude_common_config_from_settings,
-        remove_gemini_common_config_from_settings,
-        should_emit_proxy_official_warning_for_provider_category,
-        should_reapply_codex_official_live_for_provider_category,
-        should_restore_codex_provider_token_for_backfill_from_parts,
-        should_skip_manual_default_live_import, should_skip_startup_default_live_import,
-        should_skip_provider_legacy_common_config_migration,
-        AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
-        channel_key_record_from_input, channel_key_runtime_candidate_from_input,
-        channel_reachability_probe_error, channel_reachability_status_from_latency,
-        channel_record_from_input, channel_test_app_type_error,
-        channel_test_provider_not_found_error, ChannelDeleteResponse, ChannelHealthUpdateInput,
-        CHANNEL_HEALTH_UNKNOWN_STATUS,
-        ChannelKeyRecordInput, ChannelKeyRuntimeCandidateInput, ChannelListQuery,
-        ChannelListResponse, ChannelReachabilityInput, ChannelMigrationMaterializeInput,
-        ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
-        ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelRecordInput,
-        ChannelModelsResponse, ChannelRecord, ChannelRecordInput, ChannelRecordResponse,
-        ChannelRouteCandidate, ChannelReachabilityResult, ChannelReachabilityStatus,
-        ChannelRouteRejected, ChannelRouteSource, ChannelTestInput, ChannelTestPlan,
-        ChannelTestResponse, ClientModelCatalogResponse, should_retry_channel_reachability_failure,
-        merge_stream_check_config, select_enabled_channel_key_runtime_candidate,
-        stream_check_failed_result, stream_check_failed_result_with_retry_count,
-        stream_check_result_from_probe_result,
-        CopilotOptimizerConfig, CurrentRouteChannelTargetInput,
-        CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget,
-        CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
-        GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
-        ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderHealthUpdateInput,
-        CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue,
-        GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue,
-        ProviderCredentialIssue, ProviderCredentialValues, ProviderKeyChangePolicyIssue,
-        OpenClawLiveWriteActionDecision, OpenClawLiveWriteConfigDecision, OpenCodeCredentialIssue,
-        OpenCodeLiveProviderFragmentDecision, OpenCodeLiveWriteActionDecision,
-        OpenCodeLiveWriteConfigDecision,
-        provider_common_config_storage_normalization_requires_snippet,
-        provider_uses_common_config_from_parts, ProviderListResponse,
-        ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
-        ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSpec,
-        ProviderSummaryInput, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
-        ProxyChannelModelWriteRequest,
-        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-        ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
-        ProxyCoreError, ProxyRuntimeStatus, ProxyStatusResponse, ProxyTakeoverStatus,
-        ForwardCurrentProviderStatusInput, ForwardFailureStatusInput,
-        ForwardProviderFailureStatusInput, ForwardProviderRectifierRetryFailureStatusInput,
-        ForwardRequestStartedStatusInput, ForwardSuccessStatusInput, ForwardSuccessStatusUpdate,
-        ProxyServerStartedStatusInput, proxy_live_urls_from_listen_parts,
-        proxy_server_info_from_parts,
-        proxy_runtime_status_stopped, proxy_takeover_status_from_enabled_options,
-        proxy_takeover_status_from_parts,
-        apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
-        record_active_connection_acquired_status, record_active_connection_released_status,
-        record_forward_current_provider_status, record_forward_failure_status,
-        record_forward_provider_failure_status,
+        proxy_takeover_status_from_enabled_options, proxy_takeover_status_from_parts,
+        proxy_urls_match, record_active_connection_acquired_status,
+        record_active_connection_released_status, record_forward_current_provider_status,
+        record_forward_failure_status, record_forward_provider_failure_status,
         record_forward_provider_rectifier_retry_failure_status,
         record_forward_request_started_status, record_forward_success_status,
         record_proxy_server_started_status, record_proxy_server_stopped_status,
-        remove_claude_takeover_env_fields_if_present,
+        remove_claude_common_config_from_settings, remove_claude_takeover_env_fields_if_present,
         remove_codex_takeover_auth_placeholder_if_present,
-        remove_gemini_takeover_env_fields_if_present,
-        sanitize_claude_settings_for_live, usage_script_credentials_from_parts,
-        validate_gemini_settings_basic, validate_gemini_settings_strict,
-        RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
-        StreamCheckConfig, StreamCheckConfigOverride, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
-        DEFAULT_PROXY_LISTEN_PORT, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
-        plan_channel_test, provider_health_update_from_input,
+        remove_gemini_common_config_from_settings, remove_gemini_takeover_env_fields_if_present,
+        required_provider_base_url, sanitize_claude_settings_for_live,
+        select_enabled_channel_key_runtime_candidate, serialize_gemini_env_file,
+        should_emit_proxy_official_warning_for_provider_category,
+        should_reapply_codex_official_live_for_provider_category,
+        should_restore_codex_provider_token_for_backfill_from_parts,
+        should_retry_channel_reachability_failure, should_skip_manual_default_live_import,
+        should_skip_provider_legacy_common_config_migration,
+        should_skip_startup_default_live_import, stream_check_failed_result,
+        stream_check_failed_result_with_retry_count, stream_check_result_from_probe_result,
+        usage_script_credentials_from_parts, validate_gemini_settings_basic,
+        validate_gemini_settings_strict, AppChannelListQuery, AppChannelListResponse,
+        AppChannelResponse, AppChannelRouteResponse, AppListResponse, AppModelListQuery,
+        AppProxyConfig, AppSummaryInput, ChannelDeleteResponse, ChannelHealthUpdateInput,
+        ChannelKeyRecordInput, ChannelKeyRuntimeCandidateInput, ChannelListQuery,
+        ChannelListResponse, ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
+        ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelRecord,
+        ChannelModelRecordInput, ChannelModelsResponse, ChannelReachabilityInput,
+        ChannelReachabilityResult, ChannelReachabilityStatus, ChannelRecord, ChannelRecordInput,
+        ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
+        ChannelTestInput, ChannelTestPlan, ChannelTestResponse, ClaudeTakeoverAuthPolicy,
+        ClaudeTakeoverProviderFacts, ClientModelCatalogResponse, CodexCredentialParts,
+        CodexLiveSettingsIssue, CodexLiveSnapshotIssue, CodexLiveTakeoverMatchFacts,
+        CodexProviderLiveWriteIssue, CodexProviderValidationIssue, CodexTakeoverTomlConfigPatch,
+        CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue, CopilotOptimizerConfig,
+        CurrentRouteChannelTargetInput, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
+        CurrentRouteTarget, CurrentRouteTargetInput, ForwardCurrentProviderStatusInput,
+        ForwardFailureStatusInput, ForwardProviderFailureStatusInput,
+        ForwardProviderRectifierRetryFailureStatusInput, ForwardRequestStartedStatusInput,
+        ForwardSuccessStatusInput, ForwardSuccessStatusUpdate, GeminiAuthType, GeminiAuthTypeInput,
+        GeminiEnvParseIssue, GeminiLiveConfigIssue, GeminiSettingsValidationIssue,
+        GlobalProxyConfig, GroupListQuery, HealthCheckResponse, LiveTokenProviderSettingsIssue,
+        ModelCatalog, OpenClawLiveWriteActionDecision, OpenClawLiveWriteConfigDecision,
+        OpenCodeCredentialIssue, OpenCodeLiveProviderFragmentDecision,
+        OpenCodeLiveWriteActionDecision, OpenCodeLiveWriteConfigDecision, OptimizerConfig,
+        ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderCredentialIssue,
+        ProviderCredentialValues, ProviderHealth, ProviderHealthUpdateInput,
+        ProviderKeyChangePolicyIssue, ProviderListResponse, ProviderLiveConfigPresenceErrorPolicy,
+        ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderOmoSwitchPair,
+        ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSpec, ProviderSummaryInput,
+        ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget, ProxyChannelModelWriteRequest,
+        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
+        ProxyChannelWriteRequest, ProxyConfig, ProxyCoreError, ProxyCoreEvent, ProxyCoreEventType,
+        ProxyRuntimeStatus, ProxyServerStartedStatusInput, ProxyStatusResponse,
+        ProxyTakeoverStatus, RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput,
+        RouteResolveResponse, StreamCheckConfig, StreamCheckConfigOverride, StreamCheckResult,
+        CHANNEL_HEALTH_UNKNOWN_STATUS, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
+        DEFAULT_PROXY_LISTEN_ADDRESS, DEFAULT_PROXY_LISTEN_PORT,
     };
     use crate::domain::{
-        AppKind, AuthProfileRef, ChannelHealthPolicy, ChannelOverrides, ChannelSpec,
-        ChannelStatus, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind,
-        ProviderMetadata, RetryPolicy, UpstreamEndpoint, DEFAULT_ROUTE_GROUP,
+        AppKind, AuthProfileRef, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus,
+        InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, RetryPolicy,
+        UpstreamEndpoint, DEFAULT_ROUTE_GROUP,
     };
     use serde_json::{json, Value};
     use std::collections::HashMap;
@@ -6500,11 +6475,8 @@ mod tests {
     }
 
     fn channel_test_channel_spec() -> ChannelSpec {
-        let mut channel = route_group_channel_spec(
-            "channel-a",
-            AppKind::Claude,
-            vec!["default".to_string()],
-        );
+        let mut channel =
+            route_group_channel_spec("channel-a", AppKind::Claude, vec!["default".to_string()]);
         channel.provider_id = "provider-a".to_string();
         channel.name = "Primary".to_string();
         channel.endpoint.base_url = "https://relay.example.com/v1".to_string();
@@ -6574,7 +6546,10 @@ mod tests {
 
         assert_eq!(request.app_type, "claude");
         assert_eq!(request.requested_model.as_deref(), Some("claude-sonnet-4"));
-        assert_eq!(request.interface_kind.as_deref(), Some("anthropic_messages"));
+        assert_eq!(
+            request.interface_kind.as_deref(),
+            Some("anthropic_messages")
+        );
         assert_eq!(request.route_group.as_deref(), Some("default"));
     }
 
@@ -6795,7 +6770,10 @@ mod tests {
         let context = match plan_channel_test(&channel, &request, 1_771_000_000) {
             ChannelTestPlan::Probe(context) => context,
             ChannelTestPlan::Failure(response) => {
-                panic!("unexpected preflight failure: {:?}", response.failure_reason)
+                panic!(
+                    "unexpected preflight failure: {:?}",
+                    response.failure_reason
+                )
             }
         };
         let response = context.reachability_response(ChannelReachabilityResult {
@@ -6826,7 +6804,10 @@ mod tests {
         let context = match plan_channel_test(&channel, &request, 1_771_000_000) {
             ChannelTestPlan::Probe(context) => context,
             ChannelTestPlan::Failure(response) => {
-                panic!("unexpected preflight failure: {:?}", response.failure_reason)
+                panic!(
+                    "unexpected preflight failure: {:?}",
+                    response.failure_reason
+                )
             }
         };
         let probe = context.probe_request();
@@ -6856,12 +6837,14 @@ mod tests {
 
     #[test]
     fn channel_reachability_result_status_contract_mapping() {
-        assert_eq!(ChannelReachabilityStatus::Operational.as_str(), "operational");
+        assert_eq!(
+            ChannelReachabilityStatus::Operational.as_str(),
+            "operational"
+        );
         assert_eq!(ChannelReachabilityStatus::Degraded.as_str(), "degraded");
         assert_eq!(ChannelReachabilityStatus::Failed.as_str(), "failed");
         assert_eq!(
-            serde_json::to_value(ChannelReachabilityStatus::Operational)
-                .expect("serialize status"),
+            serde_json::to_value(ChannelReachabilityStatus::Operational).expect("serialize status"),
             json!("operational")
         );
         assert_eq!(
@@ -6873,8 +6856,12 @@ mod tests {
             ChannelReachabilityStatus::Degraded
         );
         assert!(should_retry_channel_reachability_failure("Request timeout"));
-        assert!(should_retry_channel_reachability_failure("request timed out"));
-        assert!(should_retry_channel_reachability_failure("connection abort"));
+        assert!(should_retry_channel_reachability_failure(
+            "request timed out"
+        ));
+        assert!(should_retry_channel_reachability_failure(
+            "connection abort"
+        ));
         assert!(!should_retry_channel_reachability_failure(
             "Connection failed: dns error"
         ));
@@ -6928,8 +6915,7 @@ mod tests {
                 "retryCount": 1
             })
         );
-        let reachability =
-            channel_reachability_result_from_stream_check_result(stream_check);
+        let reachability = channel_reachability_result_from_stream_check_result(stream_check);
         assert_eq!(reachability.status, "degraded");
         assert_eq!(reachability.message, "Reachable");
         assert_eq!(reachability.latency_ms, Some(6100));
@@ -6977,7 +6963,10 @@ mod tests {
             stream_check_failed_result_with_retry_count("Check failed", 1_771_000_007, 3);
         assert_eq!(retry_failed_result.retry_count, 3);
         assert_eq!(retry_failed_result.response_time_ms, None);
-        assert_eq!(retry_failed_result.status, ChannelReachabilityStatus::Failed);
+        assert_eq!(
+            retry_failed_result.status,
+            ChannelReachabilityStatus::Failed
+        );
 
         let result = ChannelReachabilityResult::from_input(ChannelReachabilityInput {
             success: false,
@@ -7103,8 +7092,9 @@ mod tests {
 
     #[test]
     fn app_list_response_serializes_management_envelope() {
-        let response =
-            AppListResponse::from_app_inputs(vec![AppSummaryInput::new("claude", true, false, 2, 3)]);
+        let response = AppListResponse::from_app_inputs(vec![AppSummaryInput::new(
+            "claude", true, false, 2, 3,
+        )]);
 
         let value = serde_json::to_value(response).expect("serialize response");
 
@@ -7375,7 +7365,10 @@ mod tests {
 
         assert_eq!(status.active_targets[0].app_type, "claude");
         assert_eq!(status.active_targets[1].app_type, "codex");
-        assert_eq!(status.active_targets[0].channel_id.as_deref(), Some("channel-a"));
+        assert_eq!(
+            status.active_targets[0].channel_id.as_deref(),
+            Some("channel-a")
+        );
     }
 
     #[test]
@@ -7748,10 +7741,7 @@ mod tests {
     #[test]
     fn provider_switch_dispatch_keeps_host_side_effects_out_of_policy() {
         assert_eq!(
-            provider_switch_dispatch_for_app(
-                &AppKind::Custom("opencode".to_string()),
-                Some("omo")
-            ),
+            provider_switch_dispatch_for_app(&AppKind::Custom("opencode".to_string()), Some("omo")),
             ProviderSwitchDispatch::Normal
         );
         assert_eq!(
@@ -7780,7 +7770,9 @@ mod tests {
         assert!(provider_switch_requires_takeover_lock(&AppKind::Claude));
         assert!(provider_switch_requires_takeover_lock(&AppKind::Codex));
         assert!(provider_switch_requires_takeover_lock(&AppKind::Gemini));
-        assert!(!provider_switch_requires_takeover_lock(&AppKind::ClaudeDesktop));
+        assert!(!provider_switch_requires_takeover_lock(
+            &AppKind::ClaudeDesktop
+        ));
         assert!(!provider_switch_requires_takeover_lock(&AppKind::Custom(
             "opencode".to_string()
         )));
@@ -8122,7 +8114,9 @@ mod tests {
             Some("https://camel.example/v1".to_string())
         );
         assert_eq!(
-            codex_base_url_from_settings(&json!({"config": {"base_url": "https://object.example/v1/"}})),
+            codex_base_url_from_settings(
+                &json!({"config": {"base_url": "https://object.example/v1/"}})
+            ),
             Some("https://object.example/v1".to_string())
         );
         assert_eq!(
@@ -8336,10 +8330,12 @@ wire_api = "chat"
         assert!(codex_auth_has_oauth_login_material(
             oauth_template.get("auth").expect("oauth auth")
         ));
-        assert!(!should_restore_codex_provider_token_for_backfill_from_parts(
-            Some("custom"),
-            oauth_template.get("auth")
-        ));
+        assert!(
+            !should_restore_codex_provider_token_for_backfill_from_parts(
+                Some("custom"),
+                oauth_template.get("auth")
+            )
+        );
         assert!(should_restore_codex_provider_token_for_backfill_from_parts(
             Some("custom"),
             api_key_template.get("auth")
@@ -8348,10 +8344,12 @@ wire_api = "chat"
             Some("custom"),
             None
         ));
-        assert!(!should_restore_codex_provider_token_for_backfill_from_parts(
-            Some("official"),
-            api_key_template.get("auth")
-        ));
+        assert!(
+            !should_restore_codex_provider_token_for_backfill_from_parts(
+                Some("official"),
+                api_key_template.get("auth")
+            )
+        );
 
         let custom_parts =
             codex_provider_backfill_parts_from_settings(Some("custom"), &api_key_template);
@@ -8781,9 +8779,8 @@ wire_api = "chat"
             gemini_settings_validation_issue_spec(GeminiSettingsValidationIssue::EnvNotObject);
         assert_eq!(env_spec.key, "gemini.validation.invalid_env");
         assert_eq!(env_spec.zh, "Gemini 配置格式错误: env 必须是对象");
-        let config_spec = gemini_settings_validation_issue_spec(
-            GeminiSettingsValidationIssue::ConfigInvalidType,
-        );
+        let config_spec =
+            gemini_settings_validation_issue_spec(GeminiSettingsValidationIssue::ConfigInvalidType);
         assert_eq!(config_spec.key, "gemini.validation.invalid_config");
         assert_eq!(
             config_spec.en,
@@ -8828,7 +8825,9 @@ wire_api = "chat"
             }
         }
 
-        assert!(gemini_contains_packycode_keyword("https://packycode.example"));
+        assert!(gemini_contains_packycode_keyword(
+            "https://packycode.example"
+        ));
         assert_eq!(
             detect_gemini_auth_type(input(
                 "Packy Gateway",
@@ -8885,7 +8884,10 @@ GEMINI_API_KEY = sk-test123
             lax.get("GOOGLE_GEMINI_BASE_URL").map(String::as_str),
             Some("https://example.com")
         );
-        assert_eq!(lax.get("GEMINI_API_KEY").map(String::as_str), Some("sk-test123"));
+        assert_eq!(
+            lax.get("GEMINI_API_KEY").map(String::as_str),
+            Some("sk-test123")
+        );
 
         let strict = parse_gemini_env_file_strict(
             "
@@ -8895,7 +8897,10 @@ GEMINI_API_KEY=sk-test123
 ",
         )
         .expect("strict env parse");
-        assert_eq!(strict.get("GEMINI_API_KEY").map(String::as_str), Some("sk-test123"));
+        assert_eq!(
+            strict.get("GEMINI_API_KEY").map(String::as_str),
+            Some("sk-test123")
+        );
 
         assert_eq!(
             parse_gemini_env_file_strict("VALID=value\nINVALID LINE"),
@@ -8969,10 +8974,7 @@ GEMINI_API_KEY=sk-test123
             }
         );
         assert_eq!(
-            codex_takeover_toml_config_patch(
-                "http://127.0.0.1:15721/v1",
-                Some("upstream-model")
-            ),
+            codex_takeover_toml_config_patch("http://127.0.0.1:15721/v1", Some("upstream-model")),
             CodexTakeoverTomlConfigPatch {
                 base_url: "http://127.0.0.1:15721/v1",
                 wire_api: "responses",
@@ -9029,9 +9031,7 @@ GEMINI_API_KEY=sk-test123
 
         assert_eq!(
             common_config_settings_mutation_issue_message(
-                CommonConfigSettingsMutationIssue::GeminiCommonConfigJson(
-                    "bad json".to_string()
-                )
+                CommonConfigSettingsMutationIssue::GeminiCommonConfigJson("bad json".to_string())
             ),
             "Invalid Gemini common config: bad json"
         );
@@ -9066,12 +9066,8 @@ GEMINI_API_KEY=sk-test123
         ));
         assert!(!provider_uses_common_config_from_parts(None, None, true));
 
-        assert!(provider_common_config_storage_normalization_requires_snippet(Some(
-            true
-        )));
-        assert!(!provider_common_config_storage_normalization_requires_snippet(Some(
-            false
-        )));
+        assert!(provider_common_config_storage_normalization_requires_snippet(Some(true)));
+        assert!(!provider_common_config_storage_normalization_requires_snippet(Some(false)));
         assert!(!provider_common_config_storage_normalization_requires_snippet(None));
     }
 
@@ -9689,11 +9685,8 @@ GEMINI_API_KEY=sk-test123
             }
         });
         assert_eq!(
-            remove_claude_takeover_env_fields_if_present(
-                &mut claude_live,
-                placeholder,
-                |url| url.starts_with("http://localhost"),
-            ),
+            remove_claude_takeover_env_fields_if_present(&mut claude_live, placeholder, |url| url
+                .starts_with("http://localhost"),),
             Some(true)
         );
         let claude_env = claude_live
@@ -9706,7 +9699,10 @@ GEMINI_API_KEY=sk-test123
             claude_env.get("ANTHROPIC_API_KEY").and_then(Value::as_str),
             Some("real-key")
         );
-        assert_eq!(claude_env.get("OTHER").and_then(Value::as_str), Some("kept"));
+        assert_eq!(
+            claude_env.get("OTHER").and_then(Value::as_str),
+            Some("kept")
+        );
 
         let mut codex_live = json!({"auth": {"OPENAI_API_KEY": "real-key"}});
         assert!(apply_codex_takeover_auth_placeholder_if_present(
@@ -9753,11 +9749,7 @@ GEMINI_API_KEY=sk-test123
                 "OTHER": "kept"
             }
         });
-        apply_gemini_takeover_env_fields(
-            &mut gemini_config,
-            "http://127.0.0.1:15721",
-            placeholder,
-        );
+        apply_gemini_takeover_env_fields(&mut gemini_config, "http://127.0.0.1:15721", placeholder);
         let gemini_env = gemini_config
             .get("env")
             .and_then(Value::as_object)
@@ -9772,13 +9764,14 @@ GEMINI_API_KEY=sk-test123
             gemini_env.get("GEMINI_API_KEY").and_then(Value::as_str),
             Some(placeholder)
         );
-        assert_eq!(gemini_env.get("OTHER").and_then(Value::as_str), Some("kept"));
         assert_eq!(
-            remove_gemini_takeover_env_fields_if_present(
-                &mut gemini_config,
-                placeholder,
-                |url| url.starts_with("http://127.0.0.1"),
-            ),
+            gemini_env.get("OTHER").and_then(Value::as_str),
+            Some("kept")
+        );
+        assert_eq!(
+            remove_gemini_takeover_env_fields_if_present(&mut gemini_config, placeholder, |url| {
+                url.starts_with("http://127.0.0.1")
+            },),
             Some(true)
         );
         let gemini_env = gemini_config
@@ -9787,7 +9780,10 @@ GEMINI_API_KEY=sk-test123
             .expect("gemini env");
         assert!(gemini_env.get("GOOGLE_GEMINI_BASE_URL").is_none());
         assert!(gemini_env.get("GEMINI_API_KEY").is_none());
-        assert_eq!(gemini_env.get("OTHER").and_then(Value::as_str), Some("kept"));
+        assert_eq!(
+            gemini_env.get("OTHER").and_then(Value::as_str),
+            Some("kept")
+        );
     }
 
     #[test]
@@ -9916,18 +9912,10 @@ GEMINI_API_KEY=sk-test123
         assert!(!proxy_takeover_marked_state_is_reusable(false, true));
         assert!(proxy_takeover_marked_state_is_reusable(true, true));
 
-        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
-            false, false
-        ));
-        assert!(proxy_takeover_should_restore_existing_backup_before_retakeover(
-            true, false
-        ));
-        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
-            false, true
-        ));
-        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
-            true, true
-        ));
+        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(false, false));
+        assert!(proxy_takeover_should_restore_existing_backup_before_retakeover(true, false));
+        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(false, true));
+        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(true, true));
 
         assert!(!proxy_live_config_owned_by_takeover(false, false));
         assert!(proxy_live_config_owned_by_takeover(true, false));
@@ -9969,32 +9957,32 @@ GEMINI_API_KEY=sk-test123
             &AppKind::Claude,
             true
         ));
-        assert!(!proxy_hot_switch_should_sync_claude_live_while_proxy_active(
-            &AppKind::Claude,
-            false
-        ));
+        assert!(
+            !proxy_hot_switch_should_sync_claude_live_while_proxy_active(&AppKind::Claude, false)
+        );
         assert!(proxy_hot_switch_should_sync_claude_live_while_proxy_active(
             &AppKind::Claude,
             true
         ));
-        assert!(!proxy_hot_switch_should_sync_claude_live_while_proxy_active(
-            &AppKind::Codex,
-            true
-        ));
+        assert!(
+            !proxy_hot_switch_should_sync_claude_live_while_proxy_active(&AppKind::Codex, true)
+        );
 
         assert!(provider_category_is_official(Some("official")));
         assert!(!provider_category_is_official(Some("cn_official")));
         assert!(!provider_category_is_official(None));
-        assert!(should_emit_proxy_official_warning_for_provider_category(Some(
-            "official"
-        )));
-        assert!(!should_emit_proxy_official_warning_for_provider_category(Some(
-            "custom"
-        )));
-        assert!(should_reapply_codex_official_live_for_provider_category(Some(
-            "official"
-        )));
-        assert!(!should_reapply_codex_official_live_for_provider_category(None));
+        assert!(should_emit_proxy_official_warning_for_provider_category(
+            Some("official")
+        ));
+        assert!(!should_emit_proxy_official_warning_for_provider_category(
+            Some("custom")
+        ));
+        assert!(should_reapply_codex_official_live_for_provider_category(
+            Some("official")
+        ));
+        assert!(!should_reapply_codex_official_live_for_provider_category(
+            None
+        ));
     }
 
     #[test]
@@ -10110,7 +10098,11 @@ GEMINI_API_KEY=sk-test123
             Some("provider-b"),
             Some("provider-c")
         ));
-        assert!(!provider_delete_is_current_provider("provider-a", None, None));
+        assert!(!provider_delete_is_current_provider(
+            "provider-a",
+            None,
+            None
+        ));
     }
 
     #[test]
@@ -10443,7 +10435,10 @@ GEMINI_API_KEY=sk-test123
 
         let anonymous = auth_info_from_profile_ref(None, "cc_switch_provider_config");
         assert_eq!(anonymous.account_ref, None);
-        assert_eq!(anonymous.metadata["source"], json!("cc_switch_provider_config"));
+        assert_eq!(
+            anonymous.metadata["source"],
+            json!("cc_switch_provider_config")
+        );
     }
 
     #[test]
@@ -10498,7 +10493,10 @@ GEMINI_API_KEY=sk-test123
 
     #[test]
     fn proxy_core_event_builds_external_name_and_payload() {
-        assert_eq!(ProxyCoreEventType::RouteSelected.event_name(), "route_selected");
+        assert_eq!(
+            ProxyCoreEventType::RouteSelected.event_name(),
+            "route_selected"
+        );
         assert_eq!(
             ProxyCoreEventType::Custom("custom.event".to_string()).event_name(),
             "custom.event"
@@ -10584,28 +10582,34 @@ GEMINI_API_KEY=sk-test123
         let message = Some("messages.1.content.0: Invalid `signature` in `thinking` block");
 
         let config = RectifierConfig::default();
-        assert!(crate::thinking_rectifier::should_rectify_thinking_signature(
-            message,
-            &config.thinking_signature_core_config()
-        ));
+        assert!(
+            crate::thinking_rectifier::should_rectify_thinking_signature(
+                message,
+                &config.thinking_signature_core_config()
+            )
+        );
 
         let config = RectifierConfig {
             enabled: false,
             ..RectifierConfig::default()
         };
-        assert!(!crate::thinking_rectifier::should_rectify_thinking_signature(
-            message,
-            &config.thinking_signature_core_config()
-        ));
+        assert!(
+            !crate::thinking_rectifier::should_rectify_thinking_signature(
+                message,
+                &config.thinking_signature_core_config()
+            )
+        );
 
         let config = RectifierConfig {
             request_thinking_signature: false,
             ..RectifierConfig::default()
         };
-        assert!(!crate::thinking_rectifier::should_rectify_thinking_signature(
-            message,
-            &config.thinking_signature_core_config()
-        ));
+        assert!(
+            !crate::thinking_rectifier::should_rectify_thinking_signature(
+                message,
+                &config.thinking_signature_core_config()
+            )
+        );
     }
 
     #[test]
@@ -10613,34 +10617,40 @@ GEMINI_API_KEY=sk-test123
         let message = Some("thinking.budget_tokens: Input should be greater than or equal to 1024");
 
         let config = RectifierConfig::default();
-        assert!(crate::thinking_budget_rectifier::should_rectify_thinking_budget(
-            message,
-            &config.thinking_budget_core_config()
-        ));
+        assert!(
+            crate::thinking_budget_rectifier::should_rectify_thinking_budget(
+                message,
+                &config.thinking_budget_core_config()
+            )
+        );
 
         let config = RectifierConfig {
             enabled: false,
             ..RectifierConfig::default()
         };
-        assert!(!crate::thinking_budget_rectifier::should_rectify_thinking_budget(
-            message,
-            &config.thinking_budget_core_config()
-        ));
+        assert!(
+            !crate::thinking_budget_rectifier::should_rectify_thinking_budget(
+                message,
+                &config.thinking_budget_core_config()
+            )
+        );
 
         let config = RectifierConfig {
             request_thinking_budget: false,
             ..RectifierConfig::default()
         };
-        assert!(!crate::thinking_budget_rectifier::should_rectify_thinking_budget(
-            message,
-            &config.thinking_budget_core_config()
-        ));
+        assert!(
+            !crate::thinking_budget_rectifier::should_rectify_thinking_budget(
+                message,
+                &config.thinking_budget_core_config()
+            )
+        );
     }
 
     #[test]
     fn optimizer_config_defaults_and_projects_core_configs() {
-        let config: OptimizerConfig = serde_json::from_value(json!({}))
-            .expect("deserialize default optimizer config");
+        let config: OptimizerConfig =
+            serde_json::from_value(json!({})).expect("deserialize default optimizer config");
 
         assert_eq!(config, OptimizerConfig::default());
         assert!(!config.enabled);
@@ -10668,11 +10678,7 @@ GEMINI_API_KEY=sk-test123
 
     #[test]
     fn proxy_server_info_preserves_tauri_command_shape() {
-        let info = proxy_server_info_from_parts(
-            "127.0.0.1",
-            15721,
-            "2026-06-19T00:00:00Z",
-        );
+        let info = proxy_server_info_from_parts("127.0.0.1", 15721, "2026-06-19T00:00:00Z");
 
         let value = serde_json::to_value(info).expect("serialize proxy server info");
 
@@ -10998,35 +11004,34 @@ GEMINI_API_KEY=sk-test123
 
     #[test]
     fn app_channel_response_serializes_route_filter_envelope() {
-        let response: AppChannelResponse<serde_json::Value, _, _> =
-            AppChannelResponse::Route(AppChannelRouteResponse::from_route_resolve(
-                RouteResolveResponse {
-                    app_type: "claude".to_string(),
-                    requested_model: Some("sonnet".to_string()),
-                    interface_kind: Some("anthropic_messages".to_string()),
+        let response: AppChannelResponse<serde_json::Value, _, _> = AppChannelResponse::Route(
+            AppChannelRouteResponse::from_route_resolve(RouteResolveResponse {
+                app_type: "claude".to_string(),
+                requested_model: Some("sonnet".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: "default".to_string(),
+                source: ChannelRouteSource::LegacyProjection,
+                candidates: vec![ChannelRouteCandidate {
+                    channel_id: "channel-a".to_string(),
+                    provider_id: "provider-a".to_string(),
+                    channel_name: "Primary".to_string(),
+                    base_url: "https://primary.example.com/v1".to_string(),
+                    interface_kind: "anthropic_messages".to_string(),
+                    public_model: Some("sonnet".to_string()),
+                    upstream_model: Some("claude-sonnet".to_string()),
                     route_group: "default".to_string(),
-                    source: ChannelRouteSource::LegacyProjection,
-                    candidates: vec![ChannelRouteCandidate {
-                        channel_id: "channel-a".to_string(),
-                        provider_id: "provider-a".to_string(),
-                        channel_name: "Primary".to_string(),
-                        base_url: "https://primary.example.com/v1".to_string(),
-                        interface_kind: "anthropic_messages".to_string(),
-                        public_model: Some("sonnet".to_string()),
-                        upstream_model: Some("claude-sonnet".to_string()),
-                        route_group: "default".to_string(),
-                        priority: 10,
-                        weight: 100,
-                        source_kind: "legacy_primary".to_string(),
-                    }],
-                    rejected: vec![ChannelRouteRejected {
-                        channel_id: "channel-b".to_string(),
-                        provider_id: "provider-b".to_string(),
-                        channel_name: "Secondary".to_string(),
-                        reasons: vec!["model_unavailable:sonnet".to_string()],
-                    }],
-                },
-            ));
+                    priority: 10,
+                    weight: 100,
+                    source_kind: "legacy_primary".to_string(),
+                }],
+                rejected: vec![ChannelRouteRejected {
+                    channel_id: "channel-b".to_string(),
+                    provider_id: "provider-b".to_string(),
+                    channel_name: "Secondary".to_string(),
+                    reasons: vec!["model_unavailable:sonnet".to_string()],
+                }],
+            }),
+        );
 
         let value = serde_json::to_value(response).expect("serialize response");
 
@@ -11126,16 +11131,16 @@ GEMINI_API_KEY=sk-test123
 
     #[test]
     fn channel_migration_preview_response_serializes_management_envelope() {
-        let response = ChannelMigrationPreviewResponse::from_input(
-            ChannelMigrationPreviewInput::new(
-            "claude",
-            vec![json!({
-                "id": "channel-a",
-                "needsReview": false
-            })],
-            1,
-            0,
-        ));
+        let response =
+            ChannelMigrationPreviewResponse::from_input(ChannelMigrationPreviewInput::new(
+                "claude",
+                vec![json!({
+                    "id": "channel-a",
+                    "needsReview": false
+                })],
+                1,
+                0,
+            ));
 
         let value = serde_json::to_value(response).expect("serialize response");
 
@@ -11319,7 +11324,10 @@ GEMINI_API_KEY=sk-test123
         assert_eq!(value["interfaceKind"], "anthropic_messages");
         assert_eq!(value["source"], "materialized_channels");
         assert_eq!(value["candidates"][0]["channelId"], "channel-a");
-        assert_eq!(value["rejected"][0]["reasons"][0], "model_unavailable:sonnet");
+        assert_eq!(
+            value["rejected"][0]["reasons"][0],
+            "model_unavailable:sonnet"
+        );
     }
 
     #[test]
@@ -11429,7 +11437,10 @@ GEMINI_API_KEY=sk-test123
         assert_eq!(value["models"][0]["capabilities"]["toolUse"], true);
         assert!(value["models"][0]["pricingModel"].is_null());
         assert_eq!(value["models"][0]["requestOverrides"]["temperature"], 0.2);
-        assert_eq!(value["models"][0]["responseOverrides"]["strip"][0], "metadata");
+        assert_eq!(
+            value["models"][0]["responseOverrides"]["strip"][0],
+            "metadata"
+        );
     }
 
     #[test]

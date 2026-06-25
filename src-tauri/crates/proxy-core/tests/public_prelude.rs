@@ -7,6 +7,7 @@ struct ExternalRelayServices {
     forwarded: Mutex<Vec<String>>,
     management_auth: Mutex<ManagementAuthRuntimeConfig>,
     usage: Mutex<Vec<UsageRecord>>,
+    clock: Mutex<i64>,
 }
 
 fn provider_spec() -> ProviderSpec {
@@ -231,7 +232,11 @@ impl ChannelSource for ExternalRelayServices {
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelMigrationMaterializeInput>> {
         let app_type = app.as_str().to_string();
-        Box::pin(async move { Ok(ChannelMigrationMaterializeInput::new(app_type, 3, 2, 4, 2, 1, 1)) })
+        Box::pin(async move {
+            Ok(ChannelMigrationMaterializeInput::new(
+                app_type, 3, 2, 4, 2, 1, 1,
+            ))
+        })
     }
 
     fn create_channel_record<'a>(
@@ -313,8 +318,8 @@ impl ChannelSource for ExternalRelayServices {
         &'a self,
         channel_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<Vec<ChannelKeyRecord>>>> {
-        let keys =
-            (channel_id == "channel-a").then(|| vec![channel_key_record("primary", "enabled", 10, 1)]);
+        let keys = (channel_id == "channel-a")
+            .then(|| vec![channel_key_record("primary", "enabled", 10, 1)]);
         Box::pin(async move { Ok(keys) })
     }
 
@@ -375,8 +380,8 @@ impl ChannelSource for ExternalRelayServices {
         &'a self,
         channel_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<Vec<ChannelModelRecord>>>> {
-        let models =
-            (channel_id == "channel-a").then(|| vec![channel_model_record("sonnet", "relay-sonnet")]);
+        let models = (channel_id == "channel-a")
+            .then(|| vec![channel_model_record("sonnet", "relay-sonnet")]);
         Box::pin(async move { Ok(models) })
     }
 
@@ -748,6 +753,10 @@ impl ForwardPipeline for ExternalRelayServices {
 }
 
 impl ProxyServices for ExternalRelayServices {
+    fn unix_timestamp(&self) -> i64 {
+        *self.clock.lock().expect("clock mutex")
+    }
+
     fn config(&self) -> &(dyn ProxyConfigSource + Send + Sync) {
         self
     }
@@ -890,11 +899,8 @@ fn external_host_can_use_management_auth_contracts_from_prelude() {
     *services
         .management_auth
         .lock()
-        .expect("management auth mutex") = ManagementAuthRuntimeConfig::new(
-        "0.0.0.0",
-        Some("management-token".to_string()),
-        None,
-    );
+        .expect("management auth mutex") =
+        ManagementAuthRuntimeConfig::new("0.0.0.0", Some("management-token".to_string()), None);
     let engine = ProxyEngine::new(services);
     let mut headers = HeaderMap::new();
 
@@ -956,7 +962,10 @@ fn external_host_can_use_custom_app_namespace_contracts_from_prelude() {
     assert_eq!(app, AppKind::Custom("opencode".to_string()));
     assert_eq!(app.as_str(), "opencode");
     assert_eq!(channel.app, app);
-    assert_eq!(channel.endpoint.base_url, "https://relay-tools.example/openai");
+    assert_eq!(
+        channel.endpoint.base_url,
+        "https://relay-tools.example/openai"
+    );
     assert_eq!(channel.interface, InterfaceKind::OpenAiChatCompletions);
     assert_eq!(channel.models[0].public_model, "toolsmith");
     assert_eq!(app_path.app_type, "opencode");
@@ -1001,7 +1010,10 @@ fn external_host_can_use_runtime_status_contracts_from_prelude() {
     assert_eq!(response.status.port, 4100);
     assert_eq!(response.status.total_requests, 8);
     assert_eq!(response.status.success_rate, 75.0);
-    assert_eq!(response.status.current_provider_id.as_deref(), Some("relay-a"));
+    assert_eq!(
+        response.status.current_provider_id.as_deref(),
+        Some("relay-a")
+    );
     assert_eq!(response.status.active_targets.len(), 1);
     assert_eq!(
         response.status.active_targets[0].channel_id.as_deref(),
@@ -1036,7 +1048,10 @@ fn external_host_can_use_event_stream_contracts_from_prelude() {
     let connected_data: Value = from_str(&connected_spec.data).expect("connected data");
     let lagged_data: Value = from_str(&lagged_spec.data).expect("lagged data");
 
-    assert_eq!(ProxyCoreEventType::RouteSelected.event_name(), "route_selected");
+    assert_eq!(
+        ProxyCoreEventType::RouteSelected.event_name(),
+        "route_selected"
+    );
     assert_eq!(
         ProxyCoreEventType::Custom("relay.updated".to_string()).event_name(),
         "relay.updated"
@@ -1064,10 +1079,9 @@ fn external_host_can_use_app_list_contracts_from_prelude() {
         futures::executor::block_on(engine.app_list_response(AppListRequest::new()))
             .expect("app list response");
     let apps: &[AppSummary] = response.apps.as_slice();
-    let from_source: AppListResponse =
-        AppListRequest::new().response_from_source(AppListSource::new(vec![
-            AppSummaryInput::new("codex", true, true, 2, 3),
-        ]));
+    let from_source: AppListResponse = AppListRequest::new().response_from_source(
+        AppListSource::new(vec![AppSummaryInput::new("codex", true, true, 2, 3)]),
+    );
 
     assert_eq!(apps.len(), 1);
     assert_eq!(apps[0].app_type, "claude");
@@ -1093,8 +1107,8 @@ fn external_host_can_use_group_list_contracts_from_prelude() {
         futures::executor::block_on(engine.group_list_response(request))
             .expect("group list response");
     let groups: &[RouteGroupSummary] = response.groups.as_slice();
-    let helper_request = GroupListRequest::from_query(GroupListQuery::all())
-        .expect("helper request");
+    let helper_request =
+        GroupListRequest::from_query(GroupListQuery::all()).expect("helper request");
     let source_input: RouteGroupSourceInput = helper_request.source_input(
         "codex",
         &ChannelRouteSource::LegacyProjection,
@@ -1149,15 +1163,12 @@ fn external_host_can_use_app_channel_contracts_from_prelude() {
         ChannelRecord,
         ChannelRouteCandidate,
         ChannelRouteRejected,
-    > = AppChannelManagementRequest::from_parts(
-        "codex",
-        AppChannelListQuery::list(),
-    )
-    .expect("helper list request")
-    .response_from_list_source(AppChannelListSource::new(
-        ChannelRouteSource::LegacyProjection,
-        vec![channel_record(vec!["research".to_string()])],
-    ));
+    > = AppChannelManagementRequest::from_parts("codex", AppChannelListQuery::list())
+        .expect("helper list request")
+        .response_from_list_source(AppChannelListSource::new(
+            ChannelRouteSource::LegacyProjection,
+            vec![channel_record(vec!["research".to_string()])],
+        ));
 
     match list_response {
         AppChannelResponse::List(list) => {
@@ -1216,7 +1227,7 @@ fn external_host_can_use_channel_crud_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
     let list_request = ChannelListRequest::from_query(ChannelListQuery::for_app("claude"))
-    .expect("channel list request");
+        .expect("channel list request");
     match list_request.plan() {
         ChannelListPlan::App { app_type } => assert_eq!(app_type, "claude"),
         ChannelListPlan::All => panic!("expected app-scoped list"),
@@ -1255,7 +1266,7 @@ fn external_host_can_use_channel_crud_contracts_from_prelude() {
     let helper_create: ChannelRecordResponse<ChannelRecord> =
         ChannelCreateRequest::from_body(ProxyChannelWriteRequest::default())
             .record_response_from_source(ChannelCreateSource::new(channel_record(vec![
-                "helper".to_string(),
+                "helper".to_string()
             ])));
 
     assert_eq!(create_response.channel.id, "channel-new");
@@ -1274,7 +1285,10 @@ fn external_host_can_use_channel_crud_contracts_from_prelude() {
         .expect("helper record response");
 
     assert_eq!(record_response.channel.id, "channel-a");
-    assert_eq!(record_response.channel.groups.as_slice(), ["default", "premium"]);
+    assert_eq!(
+        record_response.channel.groups.as_slice(),
+        ["default", "premium"]
+    );
     assert_eq!(helper_record.channel.groups.as_slice(), ["source"]);
 
     let patch = ProxyChannelPatchRequest {
@@ -1402,11 +1416,10 @@ fn external_host_can_use_channel_model_contracts_from_prelude() {
             },
         ))
         .expect("replace channel models response");
-    let helper_response: ChannelModelsResponse<ChannelModelRecord> = path
-        .models_response_from_source(ChannelModelsSource::new(Some(vec![channel_model_record(
-            "source-model",
-            "relay-source-model",
-        )])))
+    let helper_response: ChannelModelsResponse<ChannelModelRecord> =
+        path.models_response_from_source(ChannelModelsSource::new(Some(vec![
+            channel_model_record("source-model", "relay-source-model"),
+        ])))
         .expect("helper channel models response");
 
     assert_eq!(list_response.channel_id, "channel-a");
@@ -1479,6 +1492,7 @@ fn external_host_can_use_channel_health_contracts_from_prelude() {
 #[test]
 fn external_host_can_use_channel_test_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
+    *services.clock.lock().expect("clock mutex") = 1_771_000_000;
     let engine = ProxyEngine::new(services);
     let path = ChannelPathRequest::from_path("channel-a").expect("channel path");
 
@@ -1488,7 +1502,6 @@ fn external_host_can_use_channel_test_contracts_from_prelude() {
             model: Some("sonnet".to_string()),
             interface_kind: Some("anthropic_messages".to_string()),
         },
-        1_771_000_000,
     ))
     .expect("channel test response");
     let missing_model: ChannelTestResponse =
@@ -1498,7 +1511,6 @@ fn external_host_can_use_channel_test_contracts_from_prelude() {
                 model: Some("opus".to_string()),
                 interface_kind: Some("anthropic_messages".to_string()),
             },
-            1_771_000_000,
         ))
         .expect("missing model response");
     let helper_response = path.test_response(ChannelTestInput {
@@ -1532,10 +1544,7 @@ fn external_host_can_use_channel_test_contracts_from_prelude() {
         response.status,
         ChannelReachabilityStatus::Degraded.as_str()
     );
-    assert_eq!(
-        response.message,
-        "reachable: https://relay.example/v1"
-    );
+    assert_eq!(response.message, "reachable: https://relay.example/v1");
     assert_eq!(response.latency_ms, Some(6100));
     assert_eq!(response.http_status, Some(200));
     assert_eq!(response.retry_count, 1);
@@ -1567,8 +1576,7 @@ fn external_host_can_use_channel_test_contracts_from_prelude() {
 fn external_host_can_use_channel_migration_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
-    let request =
-        ManagementAppPathRequest::from_path("claude").expect("migration request");
+    let request = ManagementAppPathRequest::from_path("claude").expect("migration request");
 
     let preview: ChannelMigrationPreviewResponse<ChannelRecord> =
         futures::executor::block_on(engine.channel_migration_preview_response(request.clone()))
@@ -1578,27 +1586,19 @@ fn external_host_can_use_channel_migration_contracts_from_prelude() {
             .expect("migration materialize response");
     let helper_request =
         ManagementAppPathRequest::from_path("codex").expect("helper migration request");
-    let helper_preview: ChannelMigrationPreviewResponse<ChannelRecord> =
-        helper_request.migration_preview_response_from_source(
-            ChannelMigrationPreviewSource::from_input(ChannelMigrationPreviewInput::new(
+    let helper_preview: ChannelMigrationPreviewResponse<ChannelRecord> = helper_request
+        .migration_preview_response_from_source(ChannelMigrationPreviewSource::from_input(
+            ChannelMigrationPreviewInput::new(
                 "ignored-app",
                 vec![channel_record(vec!["helper".to_string()])],
                 4,
                 2,
-            )),
-        );
-    let helper_materialize: ChannelMigrationMaterializeResponse =
-        helper_request.migration_materialize_response_from_source(
-            ChannelMigrationMaterializeSource::from_input(ChannelMigrationMaterializeInput::new(
-                "ignored-app",
-                5,
-                3,
-                7,
-                3,
-                2,
-                1,
-            )),
-        );
+            ),
+        ));
+    let helper_materialize: ChannelMigrationMaterializeResponse = helper_request
+        .migration_materialize_response_from_source(ChannelMigrationMaterializeSource::from_input(
+            ChannelMigrationMaterializeInput::new("ignored-app", 5, 3, 7, 3, 2, 1),
+        ));
 
     assert_eq!(preview.app_type, "claude");
     assert_eq!(preview.channels.len(), 1);
@@ -1634,8 +1634,8 @@ fn external_host_can_use_app_model_catalog_contracts_from_prelude() {
         Some("anthropic".to_string()),
         Some(DEFAULT_ROUTE_GROUP.to_string()),
     );
-    let request = AppModelCatalogRequest::from_parts("claude", query)
-        .expect("model catalog request");
+    let request =
+        AppModelCatalogRequest::from_parts("claude", query).expect("model catalog request");
 
     let catalog: RoutableModelList =
         futures::executor::block_on(engine.list_model_catalog_for_request(request))
@@ -1664,7 +1664,10 @@ fn external_host_can_use_app_model_catalog_contracts_from_prelude() {
 
     assert_eq!(catalog.app_type, "claude");
     assert_eq!(catalog.route_group.as_deref(), Some("default"));
-    assert_eq!(catalog.interface_kind.as_deref(), Some("anthropic_messages"));
+    assert_eq!(
+        catalog.interface_kind.as_deref(),
+        Some("anthropic_messages")
+    );
     assert_eq!(catalog.models.len(), 1);
     assert_eq!(catalog.models[0].public_model, "sonnet");
     assert_eq!(catalog.models[0].upstream_model, "relay-sonnet");
@@ -1672,7 +1675,10 @@ fn external_host_can_use_app_model_catalog_contracts_from_prelude() {
     assert_eq!(catalog.models[0].channel_id, "channel-a");
     assert_eq!(from_source.app_type, "codex");
     assert_eq!(from_source.route_group.as_deref(), Some("research"));
-    assert_eq!(from_source.models[0].interface, InterfaceKind::OpenAiResponses);
+    assert_eq!(
+        from_source.models[0].interface,
+        InterfaceKind::OpenAiResponses
+    );
     assert_eq!(from_source.models[0].groups.as_slice(), ["research"]);
 
     let client_catalog = client_model_catalog_from_routable_models(
@@ -1710,12 +1716,11 @@ fn external_host_can_use_provider_list_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
 
-    let response: ProviderListResponse = futures::executor::block_on(
-        engine.provider_list_response(
+    let response: ProviderListResponse =
+        futures::executor::block_on(engine.provider_list_response(
             ManagementAppPathRequest::from_path("claude").expect("provider list request"),
-        ),
-    )
-    .expect("provider list response");
+        ))
+        .expect("provider list response");
     let providers: &[ProviderSummary] = response.providers.as_slice();
     let from_source = ManagementAppPathRequest::from_path("codex")
         .expect("source request")
@@ -1753,12 +1758,11 @@ fn external_host_can_use_current_route_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
 
-    let response: CurrentRouteResponse<CurrentRouteTarget> = futures::executor::block_on(
-        engine.current_route_response(
+    let response: CurrentRouteResponse<CurrentRouteTarget> =
+        futures::executor::block_on(engine.current_route_response(
             ManagementAppPathRequest::from_path("claude").expect("current route request"),
-        ),
-    )
-    .expect("current route response");
+        ))
+        .expect("current route response");
     let configured: &CurrentRouteProviderSummary = response
         .configured_provider
         .as_ref()
@@ -1823,7 +1827,10 @@ fn external_host_can_use_route_resolve_contracts_from_prelude() {
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].channel_id, "channel-a");
     assert_eq!(candidates[0].public_model.as_deref(), Some("sonnet"));
-    assert_eq!(candidates[0].upstream_model.as_deref(), Some("relay-sonnet"));
+    assert_eq!(
+        candidates[0].upstream_model.as_deref(),
+        Some("relay-sonnet")
+    );
     assert_eq!(candidates[0].route_group, "premium");
     assert_eq!(rejected.len(), 1);
     assert_eq!(rejected[0].channel_id, "channel-b");

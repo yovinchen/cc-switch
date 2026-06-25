@@ -1,27 +1,25 @@
-use super::domain::{
-    interfaces_compatible, route_group_matches, ChannelQuery, ChannelStatus, InterfaceKind,
-    AppKind, ProxyRequest, ProxyResult, RoutableModel, RoutableModelList, RoutePlan, RoutePolicy,
-    RouteRequest,
-    DEFAULT_ROUTE_GROUP,
-};
 use super::claude_desktop_gateway_auth::{
     validate_claude_desktop_gateway_bearer_header, ClaudeDesktopModelListResponse,
 };
-use super::error::{ProxyCoreError, ProxyCoreResult};
-use super::management_auth::{
-    resolve_management_auth_decision, validate_management_bearer_header, ManagementAuthDecision,
+use super::domain::{
+    interfaces_compatible, route_group_matches, AppKind, ChannelQuery, ChannelStatus,
+    InterfaceKind, ProxyRequest, ProxyResult, RoutableModel, RoutableModelList, RoutePlan,
+    RoutePolicy, RouteRequest, DEFAULT_ROUTE_GROUP,
 };
+use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::management_api::{
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest, AppListRequest,
     AppListSource, AppModelCatalogRequest, ChannelBreakerStatsSource, ChannelCreateRequest,
-    ChannelCreateSource, ChannelDeleteSource, ChannelHealthResetSource,
-    ChannelKeyDeleteSource, ChannelKeyPathRequest, ChannelKeyRecordSource, ChannelKeysSource,
-    ChannelListPlan, ChannelListRequest, ChannelListSource,
-    ChannelModelsSource,
-    ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource, ChannelPathRequest,
-    ChannelRecordSource, CurrentRouteSource, GroupListChannelRecordInput,
-    GroupListChannelSource, GroupListRequest, ManagementAppPathRequest, ProviderListSource,
-    ProxyStatusRequest, ProxyStatusSource, RouteResolveManagementRequest,
+    ChannelCreateSource, ChannelDeleteSource, ChannelHealthResetSource, ChannelKeyDeleteSource,
+    ChannelKeyPathRequest, ChannelKeyRecordSource, ChannelKeysSource, ChannelListPlan,
+    ChannelListRequest, ChannelListSource, ChannelMigrationMaterializeSource,
+    ChannelMigrationPreviewSource, ChannelModelsSource, ChannelPathRequest, ChannelRecordSource,
+    CurrentRouteSource, GroupListChannelRecordInput, GroupListChannelSource, GroupListRequest,
+    ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest, ProxyStatusSource,
+    RouteResolveManagementRequest,
+};
+use super::management_auth::{
+    resolve_management_auth_decision, validate_management_bearer_header, ManagementAuthDecision,
 };
 use super::ports::{
     AppChannelResponse, AppListResponse, ChannelBreakerStats, ChannelBreakerStatsResponse,
@@ -33,15 +31,14 @@ use super::ports::{
     ClientModelCatalogResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
     CurrentRouteTarget, ModelCatalog, ProviderListResponse, ProxyChannelKeyPatchRequest,
     ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelTestRequest, ProxyCoreEvent,
-    ProxyCoreEventType, ProxyRuntimeStatus, ProxyServices, ProxyStatusResponse,
-    RouteGroupListResponse, RouteResolveResponse,
+    ProxyChannelTestRequest, ProxyCoreEvent, ProxyCoreEventType, ProxyRuntimeStatus, ProxyServices,
+    ProxyStatusResponse, RouteGroupListResponse, RouteResolveResponse,
 };
+use http::HeaderMap;
 use serde_json::{json, to_value};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use http::HeaderMap;
 
 #[derive(Debug, Default)]
 pub struct ProxyRuntimeState {
@@ -98,8 +95,7 @@ where
     pub async fn app_list_response(
         &self,
         request: AppListRequest,
-    ) -> ProxyCoreResult<AppListResponse>
-    {
+    ) -> ProxyCoreResult<AppListResponse> {
         let apps = self.services.config().list_apps().await?;
         let mut summaries = Vec::new();
 
@@ -294,10 +290,7 @@ where
         Ok(request.response(models))
     }
 
-    pub async fn provider_list_source(
-        &self,
-        app: &AppKind,
-    ) -> ProxyCoreResult<ProviderListSource> {
+    pub async fn provider_list_source(&self, app: &AppKind) -> ProxyCoreResult<ProviderListSource> {
         let providers = self.services.providers().list_providers(app).await?;
         let current_provider = self.services.providers().current_provider_id(app).await?;
         let route_policy = self.services.route_policies().load_policy(app).await?;
@@ -332,14 +325,21 @@ where
         let app = AppKind::from(request.app_type.as_str());
         let active_target = self.services.providers().active_route_target(&app).await?;
         let configured_provider = match self.services.providers().current_provider_id(&app).await? {
-            Some(provider_id) => self.services.providers().get_provider(&app, &provider_id).await?,
+            Some(provider_id) => {
+                self.services
+                    .providers()
+                    .get_provider(&app, &provider_id)
+                    .await?
+            }
             None => None,
         };
 
-        Ok(request.current_route_response_from_source(CurrentRouteSource::new(
-            active_target,
-            configured_provider.map(CurrentRouteProviderSummaryInput::from_provider_spec),
-        )))
+        Ok(
+            request.current_route_response_from_source(CurrentRouteSource::new(
+                active_target,
+                configured_provider.map(CurrentRouteProviderSummaryInput::from_provider_spec),
+            )),
+        )
     }
 
     pub async fn resolve_route_response(
@@ -357,21 +357,23 @@ where
     pub async fn app_channel_response(
         &self,
         request: AppChannelManagementRequest,
-    ) -> ProxyCoreResult<AppChannelResponse<ChannelRecord, ChannelRouteCandidate, ChannelRouteRejected>>
-    {
+    ) -> ProxyCoreResult<
+        AppChannelResponse<ChannelRecord, ChannelRouteCandidate, ChannelRouteRejected>,
+    > {
         match request.plan() {
             AppChannelManagementPlan::Route(route_request) => {
                 let response = self
-                    .resolve_route_response(RouteResolveManagementRequest::from_body(route_request)?)
+                    .resolve_route_response(RouteResolveManagementRequest::from_body(
+                        route_request,
+                    )?)
                     .await?;
                 Ok(request.response_from_route_resolution(response))
             }
             AppChannelManagementPlan::List { app_type } => {
                 let app = AppKind::from(app_type.as_str());
-                let (source, channels) = self.services.channels().list_channel_records(&app).await?;
-                Ok(request.response_from_list_source(AppChannelListSource::new(
-                    source, channels,
-                )))
+                let (source, channels) =
+                    self.services.channels().list_channel_records(&app).await?;
+                Ok(request.response_from_list_source(AppChannelListSource::new(source, channels)))
             }
         }
     }
@@ -401,9 +403,7 @@ where
             .channels()
             .create_channel_record(request.clone().into_body())
             .await?;
-        Ok(request.record_response_from_source(ChannelCreateSource::new(
-            channel,
-        )))
+        Ok(request.record_response_from_source(ChannelCreateSource::new(channel)))
     }
 
     pub async fn channel_record_response(
@@ -549,8 +549,7 @@ where
     pub async fn group_list_response(
         &self,
         request: GroupListRequest,
-    ) -> ProxyCoreResult<RouteGroupListResponse>
-    {
+    ) -> ProxyCoreResult<RouteGroupListResponse> {
         let apps = match request.app_type() {
             Some(app_type) => vec![AppKind::from(app_type)],
             None => self.services.config().list_apps().await?,
@@ -624,9 +623,7 @@ where
             .reset_channel_health(&request.channel_id)
             .await
             .map(ChannelHealthResetResponse::from_reset)?;
-        Ok(request.health_reset_response_from_source(ChannelHealthResetSource::new(
-            response,
-        )))
+        Ok(request.health_reset_response_from_source(ChannelHealthResetSource::new(response)))
     }
 
     pub async fn channel_breaker_stats_response(
@@ -637,16 +634,13 @@ where
             .channel_breaker_stats(&request.channel_id)
             .await
             .map(ChannelBreakerStatsResponse::from_stats)?;
-        Ok(request.breaker_stats_response_from_source(ChannelBreakerStatsSource::new(
-            response,
-        )))
+        Ok(request.breaker_stats_response_from_source(ChannelBreakerStatsSource::new(response)))
     }
 
     pub async fn channel_test_response(
         &self,
         request: ChannelPathRequest,
         test_request: ProxyChannelTestRequest,
-        tested_at: i64,
     ) -> ProxyCoreResult<ChannelTestResponse> {
         let channel = self
             .services
@@ -655,6 +649,7 @@ where
             .await?
             .ok_or_else(|| request.channel_not_found_error())?;
 
+        let tested_at = self.services.unix_timestamp();
         match super::ports::plan_channel_test(&channel, &test_request, tested_at) {
             ChannelTestPlan::Failure(response) => Ok(response),
             ChannelTestPlan::Probe(context) => {
@@ -730,7 +725,10 @@ where
             .await?;
 
         if let Some(usage_record) = result.usage_record.clone() {
-            self.services().usage_sink().record_usage(usage_record).await?;
+            self.services()
+                .usage_sink()
+                .record_usage(usage_record)
+                .await?;
         }
 
         Ok(result)
@@ -751,25 +749,24 @@ mod tests {
         route_policy_from_failover_provider_ids, AppKind, ChannelAttemptResult,
         ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
         ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec, ProxyBody,
-        ProxyCoreResponse, RetryPolicy, RoutePolicy, RouteSelection, UpstreamEndpoint,
-        UsageRecord, UsageTokens, DEFAULT_ROUTE_GROUP,
+        ProxyCoreResponse, RetryPolicy, RoutePolicy, RouteSelection, UpstreamEndpoint, UsageRecord,
+        UsageTokens, DEFAULT_ROUTE_GROUP,
     };
     use crate::error::ProxyCoreError;
     use crate::ports::{
-        auth_info_from_profile_ref, channel_key_record_from_input,
-        channel_model_record_from_input, channel_record_from_input, AppChannelListResponse,
-        AuthInfo, AuthProvider, ChannelHealthStore, ChannelKeyRecordInput,
-        ChannelKeyRuntimeSource, ChannelModelRecordInput, ChannelMigrationMaterializeInput,
-        ChannelMigrationPreviewInput, ChannelReachabilityProbe, ChannelReachabilityResult,
-        ChannelRecordInput, ChannelRouteSource, ChannelSource,
-        ClaudeDesktopGatewayAuthSource,
-        ChannelTestProbeRequest, ForwardPipeline, ManagementAuthRuntimeConfig,
-        ManagementAuthSource, ModelCatalog, ModelCatalogProvider, ProviderSource, ProxyAppConfig,
-        ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
+        auth_info_from_profile_ref, channel_key_record_from_input, channel_model_record_from_input,
+        channel_record_from_input, AppChannelListResponse, AuthInfo, AuthProvider,
+        ChannelHealthStore, ChannelKeyRecordInput, ChannelKeyRuntimeSource,
+        ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelModelRecordInput,
+        ChannelReachabilityProbe, ChannelReachabilityResult, ChannelRecordInput,
+        ChannelRouteSource, ChannelSource, ChannelTestProbeRequest, ClaudeDesktopGatewayAuthSource,
+        ForwardPipeline, ManagementAuthRuntimeConfig, ManagementAuthSource, ModelCatalog,
+        ModelCatalogProvider, ProviderSource, ProxyAppConfig, ProxyChannelKeyPatchRequest,
+        ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreEvent, ProxyEventSink,
-        ProxyGlobalConfig, ProxyRuntimeConfig, ProxyRuntimeStatus, RuntimeStatusSource,
-        RoutePolicySource, RouteResolver, RouteResolveRequest, UsageSink,
+        ProxyGlobalConfig, ProxyRuntimeConfig, ProxyRuntimeStatus, RoutePolicySource,
+        RouteResolveRequest, RouteResolver, RuntimeStatusSource, UsageSink,
     };
     use futures::future::BoxFuture;
     use http::{HeaderMap, Method, StatusCode};
@@ -798,9 +795,14 @@ mod tests {
         runtime_status: Mutex<ProxyRuntimeStatus>,
         claude_desktop_gateway_token: Mutex<Option<String>>,
         management_auth_config: Mutex<ManagementAuthRuntimeConfig>,
+        unix_timestamp: Mutex<i64>,
     }
 
     impl ProxyServices for TestServices {
+        fn unix_timestamp(&self) -> i64 {
+            *self.unix_timestamp.lock().expect("unix timestamp mutex")
+        }
+
         fn config(&self) -> &(dyn ProxyConfigSource + Send + Sync) {
             self
         }
@@ -946,9 +948,7 @@ mod tests {
             _app: &'a AppKind,
             provider_id: &'a str,
         ) -> BoxFuture<'a, ProxyCoreResult<Option<ProviderSpec>>> {
-            Box::pin(async move {
-                Ok((provider_id == "provider-a").then(provider_spec))
-            })
+            Box::pin(async move { Ok((provider_id == "provider-a").then(provider_spec)) })
         }
 
         fn current_provider_id<'a>(
@@ -1104,13 +1104,11 @@ mod tests {
             &'a self,
             channel_id: &'a str,
         ) -> BoxFuture<'a, ProxyCoreResult<Option<Vec<ChannelKeyRecord>>>> {
-            let keys = (channel_id == "channel-a").then(|| vec![channel_key_record(
-                channel_id,
-                "primary",
-                "enabled",
-                10,
-                100,
-            )]);
+            let keys = (channel_id == "channel-a").then(|| {
+                vec![channel_key_record(
+                    channel_id, "primary", "enabled", 10, 100,
+                )]
+            });
             Box::pin(async move { Ok(keys) })
         }
 
@@ -1161,11 +1159,13 @@ mod tests {
             &'a self,
             channel_id: &'a str,
         ) -> BoxFuture<'a, ProxyCoreResult<Option<Vec<ChannelModelRecord>>>> {
-            let models = (channel_id == "channel-a").then(|| vec![channel_model_record(
-                channel_id,
-                "sonnet",
-                "upstream-sonnet",
-            )]);
+            let models = (channel_id == "channel-a").then(|| {
+                vec![channel_model_record(
+                    channel_id,
+                    "sonnet",
+                    "upstream-sonnet",
+                )]
+            });
             Box::pin(async move { Ok(models) })
         }
 
@@ -1309,16 +1309,14 @@ mod tests {
             request: RouteRequest<'a>,
         ) -> BoxFuture<'a, ProxyCoreResult<RoutePlan>> {
             Box::pin(async move {
-                let provider = request
-                    .providers
-                    .first()
-                    .cloned()
-                    .ok_or_else(|| ProxyCoreError::Unavailable("missing provider".to_string()))?;
-                let channel = request
-                    .channels
-                    .first()
-                    .cloned()
-                    .ok_or_else(|| ProxyCoreError::Unavailable("missing channel".to_string()))?;
+                let provider =
+                    request.providers.first().cloned().ok_or_else(|| {
+                        ProxyCoreError::Unavailable("missing provider".to_string())
+                    })?;
+                let channel =
+                    request.channels.first().cloned().ok_or_else(|| {
+                        ProxyCoreError::Unavailable("missing channel".to_string())
+                    })?;
                 let model_route = channel.models.first().cloned();
                 let selection = RouteSelection {
                     provider,
@@ -1591,7 +1589,11 @@ mod tests {
         assert_eq!(result.selected_route.channel.id, "channel-a");
         assert_eq!(result.outbound_model.as_deref(), Some("upstream-sonnet"));
         assert_eq!(
-            services.forwarded.lock().expect("forwarded mutex").as_slice(),
+            services
+                .forwarded
+                .lock()
+                .expect("forwarded mutex")
+                .as_slice(),
             ["POST /v1/messages"]
         );
         let usage = services.usage.lock().expect("usage mutex");
@@ -1716,9 +1718,8 @@ mod tests {
         )
         .expect("catalog request");
 
-        let catalog =
-            futures::executor::block_on(engine.list_model_catalog_for_request(request))
-                .expect("catalog");
+        let catalog = futures::executor::block_on(engine.list_model_catalog_for_request(request))
+            .expect("catalog");
 
         assert_eq!(catalog.app_type, "claude");
         assert_eq!(catalog.route_group.as_deref(), Some(DEFAULT_ROUTE_GROUP));
@@ -1777,8 +1778,7 @@ mod tests {
         };
         let engine = ProxyEngine::new(services);
 
-        let status = futures::executor::block_on(engine.runtime_status())
-            .expect("runtime status");
+        let status = futures::executor::block_on(engine.runtime_status()).expect("runtime status");
         let response =
             futures::executor::block_on(engine.proxy_status_response(ProxyStatusRequest::new()))
                 .expect("proxy status response");
@@ -1825,11 +1825,8 @@ mod tests {
         *services
             .management_auth_config
             .lock()
-            .expect("management auth config mutex") = ManagementAuthRuntimeConfig::new(
-            "0.0.0.0",
-            Some("management-token".to_string()),
-            None,
-        );
+            .expect("management auth config mutex") =
+            ManagementAuthRuntimeConfig::new("0.0.0.0", Some("management-token".to_string()), None);
         let engine = ProxyEngine::new(services);
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -1911,15 +1908,17 @@ mod tests {
             upstream_model: Some("upstream-sonnet".to_string()),
         });
         let engine = ProxyEngine::new(services);
-        let request = ManagementAppPathRequest::from_path("claude")
-            .expect("current route request");
+        let request = ManagementAppPathRequest::from_path("claude").expect("current route request");
 
         let response = futures::executor::block_on(engine.current_route_response(request))
             .expect("current route response");
 
         assert_eq!(response.app_type, "claude");
         assert!(response.active);
-        assert_eq!(response.target.expect("active target").provider_id, "provider-a");
+        assert_eq!(
+            response.target.expect("active target").provider_id,
+            "provider-a"
+        );
         assert_eq!(
             response
                 .configured_provider
@@ -1963,7 +1962,10 @@ mod tests {
             response.interface_kind.as_deref(),
             Some("anthropic_messages")
         );
-        assert_eq!(response.source, crate::ports::ChannelRouteSource::LegacyProjection);
+        assert_eq!(
+            response.source,
+            crate::ports::ChannelRouteSource::LegacyProjection
+        );
     }
 
     #[test]
@@ -2052,9 +2054,8 @@ mod tests {
             ..ProxyChannelWriteRequest::default()
         });
 
-        let created =
-            futures::executor::block_on(engine.create_channel_response(create_request))
-                .expect("create channel response");
+        let created = futures::executor::block_on(engine.create_channel_response(create_request))
+            .expect("create channel response");
         let fetched = futures::executor::block_on(engine.channel_record_response(
             ChannelPathRequest::from_path("channel-a").expect("channel path"),
         ))
@@ -2157,8 +2158,7 @@ mod tests {
             .expect("channel records mutex") =
             vec![channel_record_with_groups(vec!["migration".to_string()])];
         let engine = ProxyEngine::new(services);
-        let request = ManagementAppPathRequest::from_path("claude")
-            .expect("migration request");
+        let request = ManagementAppPathRequest::from_path("claude").expect("migration request");
 
         let preview =
             futures::executor::block_on(engine.channel_migration_preview_response(request.clone()))
@@ -2189,8 +2189,9 @@ mod tests {
             .expect("channel records mutex") =
             vec![channel_record_with_groups(vec!["shared".to_string()])];
         let engine = ProxyEngine::new(services.clone());
-        let request = GroupListRequest::from_query(serde_json::from_value(json!({})).expect("query"))
-            .expect("group request");
+        let request =
+            GroupListRequest::from_query(serde_json::from_value(json!({})).expect("query"))
+                .expect("group request");
 
         *services.apps.lock().expect("apps mutex") = vec![AppKind::Claude, AppKind::Codex];
 
@@ -2217,9 +2218,8 @@ mod tests {
         let services = Arc::new(TestServices::default());
         let engine = ProxyEngine::new(services);
 
-        let catalog =
-            futures::executor::block_on(engine.client_model_catalog(&AppKind::Codex))
-                .expect("client model catalog");
+        let catalog = futures::executor::block_on(engine.client_model_catalog(&AppKind::Codex))
+            .expect("client model catalog");
 
         assert_eq!(catalog.provider_id, "codex");
         assert_eq!(catalog.models, ["gpt-5"]);
@@ -2265,9 +2265,8 @@ mod tests {
         let services = Arc::new(TestServices::default());
         let engine = ProxyEngine::new(services);
 
-        let reset =
-            futures::executor::block_on(engine.reset_channel_health("channel-a"))
-                .expect("reset channel health");
+        let reset = futures::executor::block_on(engine.reset_channel_health("channel-a"))
+            .expect("reset channel health");
 
         assert_eq!(reset.channel_id, "channel-a");
         assert_eq!(reset.app, AppKind::Claude);
@@ -2336,12 +2335,9 @@ mod tests {
         }))
         .expect("test request");
 
-        let response = futures::executor::block_on(engine.channel_test_response(
-            path_request,
-            test_request,
-            1_771_000_000,
-        ))
-        .expect("channel test response");
+        let response =
+            futures::executor::block_on(engine.channel_test_response(path_request, test_request))
+                .expect("channel test response");
 
         assert_eq!(response.channel_id, "channel-a");
         assert_eq!(response.provider_id, "provider-a");
@@ -2365,6 +2361,42 @@ mod tests {
         assert_eq!(requests[0].provider_id, "provider-a");
         assert_eq!(requests[0].app_type, "claude");
         assert_eq!(requests[0].base_url, "https://upstream.example.com/v1");
+    }
+
+    #[test]
+    fn channel_test_response_uses_service_clock_for_preflight_failure() {
+        let services = Arc::new(TestServices::default());
+        *services
+            .unix_timestamp
+            .lock()
+            .expect("unix timestamp mutex") = 1_771_999_000;
+        let engine = ProxyEngine::new(services.clone());
+        let path_request = ChannelPathRequest::from_path("channel-a").expect("path");
+        let test_request: ProxyChannelTestRequest = serde_json::from_value(json!({
+            "model": "missing-model",
+            "interfaceKind": "anthropic_messages"
+        }))
+        .expect("test request");
+
+        let response =
+            futures::executor::block_on(engine.channel_test_response(path_request, test_request))
+                .expect("channel test response");
+
+        assert!(!response.success);
+        assert_eq!(response.model_available, Some(false));
+        assert_eq!(response.tested_at, 1_771_999_000);
+        assert_eq!(
+            response.failure_reason.as_deref(),
+            Some("model not mapped on channel: missing-model")
+        );
+        assert!(
+            services
+                .reachability_requests
+                .lock()
+                .expect("reachability requests mutex")
+                .is_empty(),
+            "preflight failure must not call reachability probe"
+        );
     }
 
     fn provider_spec() -> ProviderSpec {

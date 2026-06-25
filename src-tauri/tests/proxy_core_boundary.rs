@@ -2609,6 +2609,8 @@ fn channel_test_handler_delegates_probe_to_proxy_engine() {
         "channel_test_plan_from_record",
         "stream_check_result_to_channel_reachability",
         "AppType::from_str",
+        "chrono::Utc::now()",
+        ".timestamp()",
         ".get_proxy_channel(",
         ".get_provider_by_id(",
         ".get_stream_check_config(",
