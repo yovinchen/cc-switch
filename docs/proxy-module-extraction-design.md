@@ -1590,6 +1590,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1145. Claude Desktop provider mode 默认值已收敛到 `proxy_core_adapter::provider_claude_desktop_mode`；host `provider_mode` 仅保留兼容入口并委托 adapter，adapter 统一维护缺失 `ProviderMeta.claude_desktop_mode` 时回退 Direct 的策略，边界测试防止 host config 重新读取 provider meta 或复制默认值逻辑。
 1146. Claude Desktop direct inference model specs 的 provider route 投影已收敛到 `proxy_core_adapter::provider_claude_desktop_direct_inference_model_specs`；host `direct_inference_model_specs` 只保留 core issue 到本地化 `AppError` 的映射，adapter 统一维护 `ProviderMeta.claude_desktop_model_routes` 到 `ClaudeDesktopProxyRouteInput`/gateway profile model spec 的转换，边界测试防止 host config 重新展开 route input 投影。
 1147. Claude Desktop proxy model routes 的 provider route 投影已收敛到 `proxy_core_adapter::provider_claude_desktop_proxy_model_routes`；host `proxy_model_routes` 只保留 Missing/Empty issue 到既有本地化 `AppError` 的映射和 Tauri DTO 转换，adapter 统一维护 `ProviderMeta.claude_desktop_model_routes` 到 core resolved proxy route 的转换，并复用同一 helper 判定 status missing route mappings。
+1148. Claude Desktop proxy request body 的 provider 投影已收敛到 `proxy_core_adapter::provider_claude_desktop_proxy_request_body`；host `map_proxy_request_model` 只保留 route/body issue 到本地化 `AppError` 的映射，adapter 统一维护 resolved/raw route、provider settings 与 `api_format` 到 core request-body mapper 的输入组装，边界测试防止 host config 重新展开 raw route、resolved route 或 provider settings 投影。
 
 ## 背景
 
