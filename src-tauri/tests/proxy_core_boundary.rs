@@ -1616,6 +1616,41 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
 }
 
 #[test]
+fn proxy_core_crate_manifest_remains_host_neutral() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let manifest_path = manifest_dir.join("crates/proxy-core/Cargo.toml");
+    let manifest = fs::read_to_string(&manifest_path).expect("read proxy-core Cargo.toml");
+    let dependency_names = dependency_names_from_manifest(&manifest);
+    let forbidden_dependencies = [
+        "cc-switch",
+        "rusqlite",
+        "sqlite",
+        "sqlx",
+        "tauri",
+        "tauri-build",
+    ];
+    let violations: Vec<String> = dependency_names
+        .into_iter()
+        .filter(|name| forbidden_dependencies.contains(&name.as_str()))
+        .map(|name| format!("crates/proxy-core/Cargo.toml depends on host crate `{name}`"))
+        .collect();
+
+    assert!(
+        manifest.contains("name = \"cc-switch-proxy-core\""),
+        "proxy-core package name should remain stable for host path dependency"
+    );
+    assert!(
+        manifest.contains("path = \"src/mod.rs\""),
+        "proxy-core should remain an independent lib crate with an explicit lib path"
+    );
+    assert!(
+        violations.is_empty(),
+        "proxy-core must not depend on Tauri, SQLite, or the CC Switch host crate:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn request_context_does_not_preselect_provider() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handler_context.rs");
@@ -12072,6 +12107,37 @@ fn function_slice<'a>(source: &'a str, start_marker: &str, end_marker: &str) -> 
         .find(end_marker)
         .unwrap_or_else(|| panic!("missing end marker {end_marker}"));
     &tail[..end]
+}
+
+fn dependency_names_from_manifest(manifest: &str) -> Vec<String> {
+    let mut in_dependency_section = false;
+    let mut names = Vec::new();
+
+    for line in manifest.lines() {
+        let line = line.split('#').next().unwrap_or_default().trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if line.starts_with('[') && line.ends_with(']') {
+            let section = line.trim_matches(['[', ']']);
+            in_dependency_section = section == "dependencies"
+                || section == "build-dependencies"
+                || section == "dev-dependencies"
+                || section.ends_with(".dependencies");
+            continue;
+        }
+
+        if !in_dependency_section {
+            continue;
+        }
+
+        if let Some((name, _)) = line.split_once('=') {
+            names.push(name.trim().trim_matches('"').to_string());
+        }
+    }
+
+    names
 }
 
 fn production_lines(source: &str) -> impl Iterator<Item = (usize, &str)> {
