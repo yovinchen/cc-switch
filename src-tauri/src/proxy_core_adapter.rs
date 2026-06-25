@@ -14290,9 +14290,11 @@ base_url = "https://api.openai.com/v1"
     fn forwarder_auth_source_prepares_optional_copilot_auth_optimization() {
         let source = default_forwarder_auth_source();
         let headers = HeaderMap::new();
-        let mut config = CopilotOptimizerConfig::default();
-        config.request_classification = true;
-        config.deterministic_request_id = true;
+        let config = CopilotOptimizerConfig {
+            request_classification: true,
+            deterministic_request_id: true,
+            ..CopilotOptimizerConfig::default()
+        };
 
         let skipped = source.prepare_optional_copilot_auth_optimization(
             ForwarderMaybeCopilotAuthOptimizationInput {
@@ -14960,9 +14962,9 @@ base_url = "https://api.openai.com/v1"
             None,
         );
         let legacy_attempt = ForwardAttempt::from_provider(provider.clone());
-        assert!(forwarder_should_bypass_circuit_breaker(&[
-            legacy_attempt.clone()
-        ]));
+        assert!(forwarder_should_bypass_circuit_breaker(
+            std::slice::from_ref(&legacy_attempt)
+        ));
         assert!(!forwarder_should_bypass_circuit_breaker(&[]));
         assert!(!forwarder_should_bypass_circuit_breaker(&[
             legacy_attempt.clone(),

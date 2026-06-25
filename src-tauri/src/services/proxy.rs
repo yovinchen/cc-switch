@@ -3986,8 +3986,10 @@ wire_api = "responses"
     async fn update_live_backup_from_provider_applies_codex_common_config() {
         let _home = TempHome::new();
         crate::settings::reload_settings().expect("reload settings");
-        let mut app_settings = crate::settings::AppSettings::default();
-        app_settings.unify_codex_session_history = true;
+        let app_settings = crate::settings::AppSettings {
+            unify_codex_session_history: true,
+            ..crate::settings::AppSettings::default()
+        };
         crate::settings::update_settings(app_settings).expect("enable unified session");
 
         let db = Arc::new(Database::memory().expect("init db"));
@@ -4583,8 +4585,10 @@ command = "shared-command"
         )
         .expect("set common config snippet");
 
-        let mut proxy_config = ProxyConfig::default();
-        proxy_config.listen_port = 0;
+        let proxy_config = ProxyConfig {
+            listen_port: 0,
+            ..ProxyConfig::default()
+        };
         db.update_proxy_config(proxy_config)
             .await
             .expect("set test proxy config");
@@ -4721,8 +4725,10 @@ requires_openai_auth = true
         let db = Arc::new(Database::memory().expect("init db"));
         let state = crate::store::AppState::new(db.clone());
 
-        let mut proxy_config = ProxyConfig::default();
-        proxy_config.listen_port = 0;
+        let proxy_config = ProxyConfig {
+            listen_port: 0,
+            ..ProxyConfig::default()
+        };
         db.update_proxy_config(proxy_config)
             .await
             .expect("set test proxy config");

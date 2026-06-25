@@ -1173,8 +1173,7 @@ mod tests {
             .await
             .expect("record usage");
 
-        let conn = crate::database::lock_conn!(db.conn);
-        let row: (
+        type UsageRow = (
             String,
             String,
             String,
@@ -1192,7 +1191,10 @@ mod tests {
             Option<String>,
             i64,
             String,
-        ) = conn
+        );
+
+        let conn = crate::database::lock_conn!(db.conn);
+        let row: UsageRow = conn
             .query_row(
                 "SELECT
                     provider_id,

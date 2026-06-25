@@ -1349,11 +1349,10 @@ mod tests {
 
         assert!(stop.is_ok(), "stop proxy server: {stop:?}");
         smoke.expect("runtime management smoke");
-        let upstream = tokio::time::timeout(std::time::Duration::from_secs(1), upstream_handle)
+        tokio::time::timeout(std::time::Duration::from_secs(1), upstream_handle)
             .await
             .expect("reachability probe server should be consumed")
             .expect("reachability probe server task");
-        assert_eq!(upstream, ());
     }
 
     #[tokio::test]

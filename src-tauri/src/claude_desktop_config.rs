@@ -1203,8 +1203,10 @@ mod tests {
     }
 
     fn set_proxy_port(db: &Database, port: u16) {
-        let mut config = ProxyConfig::default();
-        config.listen_port = port;
+        let config = ProxyConfig {
+            listen_port: port,
+            ..ProxyConfig::default()
+        };
         futures::executor::block_on(db.update_proxy_config(config)).expect("update proxy config");
     }
 
