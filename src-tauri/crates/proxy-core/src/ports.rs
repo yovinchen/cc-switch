@@ -35,6 +35,7 @@ pub trait ProxyServices: Send + Sync {
     fn claude_desktop_gateway_auth_source(
         &self,
     ) -> &(dyn ClaudeDesktopGatewayAuthSource + Send + Sync);
+    fn management_auth_source(&self) -> &(dyn ManagementAuthSource + Send + Sync);
     fn usage_sink(&self) -> &(dyn UsageSink + Send + Sync);
     fn event_sink(&self) -> &(dyn ProxyEventSink + Send + Sync);
     fn forward_pipeline(&self) -> &(dyn ForwardPipeline + Send + Sync);
@@ -717,6 +718,39 @@ pub trait RuntimeStatusSource: Send + Sync {
 
 pub trait ClaudeDesktopGatewayAuthSource: Send + Sync {
     fn load_gateway_token<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<String>>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagementAuthRuntimeConfig {
+    pub listen_address: String,
+    pub management_auth_token: Option<String>,
+    pub fallback_auth_token: Option<String>,
+}
+
+impl Default for ManagementAuthRuntimeConfig {
+    fn default() -> Self {
+        Self::new(DEFAULT_PROXY_LISTEN_ADDRESS, None, None)
+    }
+}
+
+impl ManagementAuthRuntimeConfig {
+    pub fn new(
+        listen_address: impl Into<String>,
+        management_auth_token: Option<String>,
+        fallback_auth_token: Option<String>,
+    ) -> Self {
+        Self {
+            listen_address: listen_address.into(),
+            management_auth_token,
+            fallback_auth_token,
+        }
+    }
+}
+
+pub trait ManagementAuthSource: Send + Sync {
+    fn load_management_auth_config<'a>(
+        &'a self,
+    ) -> BoxFuture<'a, ProxyCoreResult<ManagementAuthRuntimeConfig>>;
 }
 
 pub fn proxy_runtime_status_stopped() -> ProxyRuntimeStatus {

@@ -65,6 +65,7 @@ pub(crate) const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
 #[derive(Clone)]
 pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) db: Arc<Database>,
+    pub(crate) config: Arc<RwLock<ProxyConfig>>,
     pub(crate) provider_router: Arc<ProviderRouter>,
     pub(crate) status: Arc<RwLock<ProxyRuntimeStatus>>,
     pub(crate) start_time: Arc<RwLock<Option<std::time::Instant>>>,
@@ -392,13 +393,7 @@ pub(crate) use crate::proxy_core::api::ports::{
 
 const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
 
-pub(crate) fn management_auth_decision_from_proxy_config(
-    config: &ProxyConfig,
-) -> Result<ManagementAuthDecision, ManagementAuthError> {
-    let fallback_token = std::env::var(PROXY_MANAGEMENT_AUTH_TOKEN_ENV).ok();
-    management_auth_decision_from_proxy_config_sources(config, fallback_token.as_deref())
-}
-
+#[cfg(test)]
 pub(crate) fn management_auth_decision_from_proxy_config_sources(
     config: &ProxyConfig,
     fallback_token: Option<&str>,
@@ -408,6 +403,32 @@ pub(crate) fn management_auth_decision_from_proxy_config_sources(
         config.management_auth_token.as_deref(),
         fallback_token,
     )
+}
+
+#[derive(Clone)]
+struct CcSwitchManagementAuthSource {
+    config: Arc<RwLock<ProxyConfig>>,
+}
+
+impl CcSwitchManagementAuthSource {
+    fn new(config: Arc<RwLock<ProxyConfig>>) -> Self {
+        Self { config }
+    }
+}
+
+impl ManagementAuthSource for CcSwitchManagementAuthSource {
+    fn load_management_auth_config<'a>(
+        &'a self,
+    ) -> BoxFuture<'a, ProxyCoreResult<ManagementAuthRuntimeConfig>> {
+        Box::pin(async move {
+            let config = self.config.read().await;
+            Ok(ManagementAuthRuntimeConfig::new(
+                config.listen_address.clone(),
+                config.management_auth_token.clone(),
+                std::env::var(PROXY_MANAGEMENT_AUTH_TOKEN_ENV).ok(),
+            ))
+        })
+    }
 }
 
 pub(crate) fn record_forward_success_status(
@@ -565,6 +586,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
     let provider_router = Arc::new(provider_router_from_database(db.clone()));
     let events = Arc::new(ProxyEventBus::default());
     let failover_manager = Arc::new(FailoverSwitchManager::new(db.clone()));
+    let config = Arc::new(RwLock::new(config));
     let status = Arc::new(RwLock::new(ProxyRuntimeStatus::default()));
     let start_time = Arc::new(RwLock::new(None));
     let current_providers = Arc::new(RwLock::new(HashMap::new()));
@@ -597,6 +619,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
     let response_source = default_forwarder_response_source();
     let proxy_core_services = Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
         db: db.clone(),
+        config: config.clone(),
         provider_router: provider_router.clone(),
         status: status.clone(),
         start_time: start_time.clone(),
@@ -614,7 +637,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
 
     ProxyState {
         db,
-        config: Arc::new(RwLock::new(config)),
+        config,
         status,
         start_time,
         current_providers,
@@ -2621,6 +2644,7 @@ pub(crate) fn forwarder_rectifier_retry_failure_label(
 ) -> &'static str {
     core_forwarder_rectifier_retry_failure_label(kind)
 }
+#[cfg(test)]
 pub(crate) type ManagementAuthError = crate::proxy_core::api::auth::ManagementAuthError;
 pub(crate) type CircuitBreakerFailureDecision =
     crate::proxy_core::api::config::CircuitBreakerFailureDecision;
@@ -2629,9 +2653,12 @@ pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_a
 pub(crate) use crate::proxy_core::api::auth::ManagedAccountAuthError;
 pub(crate) use crate::proxy_core::api::auth::{
     channel_auth_profile_missing_key_error_message, extract_claude_auth_key_from_settings,
-    is_gemini_oauth_key_shape, parse_gemini_oauth_credentials, resolve_management_auth_decision,
-    settings_config_with_channel_auth_key_for_app, validate_management_bearer_header,
-    ManagementAuthDecision,
+    is_gemini_oauth_key_shape, parse_gemini_oauth_credentials,
+    settings_config_with_channel_auth_key_for_app,
+};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::auth::{
+    resolve_management_auth_decision, ManagementAuthDecision,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::auth::validate_claude_desktop_gateway_bearer_header;
@@ -2698,7 +2725,8 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
 pub(crate) use crate::proxy_core::api::ports::{
     channel_health_reset_from_parts, AppSummaryConfig, AuthProvider, ChannelHealthReset,
     ChannelHealthStore, ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource,
-    ClaudeDesktopGatewayAuthSource, ForwardPipeline,
+    ClaudeDesktopGatewayAuthSource, ForwardPipeline, ManagementAuthRuntimeConfig,
+    ManagementAuthSource,
     ModelCatalogProvider, ProviderHealthStore, ProviderSource, ProxyConfigSource, ProxyEventSink,
     ProxyServices, RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
 };
@@ -9588,6 +9616,7 @@ pub(crate) trait ProxyServiceRuntimeResources:
     HostForwardRuntime + Clone + Send + Sync
 {
     fn db(&self) -> Arc<Database>;
+    fn config(&self) -> Arc<RwLock<ProxyConfig>>;
     fn provider_router(&self) -> Arc<ProviderRouter>;
     fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>>;
     fn start_time(&self) -> Arc<RwLock<Option<std::time::Instant>>>;
@@ -9607,6 +9636,7 @@ pub(crate) struct CcSwitchProxyServices<R> {
     reachability_probe: CcSwitchChannelReachabilityProbe,
     auth_provider: CcSwitchAuthProvider,
     claude_desktop_gateway_auth_source: CcSwitchClaudeDesktopGatewayAuthSource,
+    management_auth_source: CcSwitchManagementAuthSource,
     channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource,
     model_catalog: CcSwitchModelCatalogProvider,
     runtime_status_source: Arc<dyn RuntimeStatusSource + Send + Sync>,
@@ -9644,6 +9674,9 @@ impl<R> CcSwitchProxyServices<R> {
             claude_desktop_gateway_auth_source: CcSwitchClaudeDesktopGatewayAuthSource::new(
                 db.clone(),
             ),
+            management_auth_source: CcSwitchManagementAuthSource::new(Arc::new(RwLock::new(
+                ProxyConfig::default(),
+            ))),
             channel_key_runtime_source: channel_key_runtime_source.clone(),
             model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), router.clone()),
             runtime_status_source: Arc::new(DefaultRuntimeStatusSource),
@@ -9678,6 +9711,7 @@ where
             claude_desktop_gateway_auth_source: CcSwitchClaudeDesktopGatewayAuthSource::new(
                 db.clone(),
             ),
+            management_auth_source: CcSwitchManagementAuthSource::new(runtime.config()),
             channel_key_runtime_source: channel_key_runtime_source.clone(),
             model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), provider_router.clone()),
             runtime_status_source: Arc::new(CcSwitchRuntimeStatusSource::new(
@@ -9737,6 +9771,10 @@ where
         &self.claude_desktop_gateway_auth_source
     }
 
+    fn management_auth_source(&self) -> &(dyn ManagementAuthSource + Send + Sync) {
+        &self.management_auth_source
+    }
+
     fn channel_key_runtime_source(&self) -> &(dyn ChannelKeyRuntimeSource + Send + Sync) {
         &self.channel_key_runtime_source
     }
@@ -9774,6 +9812,10 @@ pub(crate) trait HostForwardRuntime {
 impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime {
     fn db(&self) -> Arc<Database> {
         self.db.clone()
+    }
+
+    fn config(&self) -> Arc<RwLock<ProxyConfig>> {
+        self.config.clone()
     }
 
     fn provider_router(&self) -> Arc<ProviderRouter> {

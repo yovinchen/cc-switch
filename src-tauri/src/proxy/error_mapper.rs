@@ -12,8 +12,8 @@ use crate::proxy_core_adapter::{
     codex_proxy_error_response_from_proxy_error as core_codex_proxy_error_response,
     log_unlabeled_sse_fallback_event, parse_upstream_json_or_unlabeled_sse,
     proxy_core_error_from_status_kind, proxy_error_display_message, proxy_error_status_code,
-    upstream_response_parse_failure_log_message, ManagementAuthError, ProxyCoreError,
-    ProxyCoreResponse, ProxyCoreResult,
+    upstream_response_parse_failure_log_message, ProxyCoreError, ProxyCoreResponse,
+    ProxyCoreResult,
     UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
     UpstreamSseAggregationKind,
 };
@@ -81,10 +81,6 @@ pub(crate) fn management_api_error_to_proxy_error(error: ProxyCoreError) -> Prox
         ProxyCoreError::InvalidRequest(message) => ProxyError::InvalidRequest(message),
         other => proxy_core_error_to_proxy_error(other),
     }
-}
-
-pub(crate) fn management_auth_error_to_proxy_error(error: ManagementAuthError) -> ProxyError {
-    ProxyError::AuthError(error.message().to_string())
 }
 
 pub(crate) fn response_body_parse_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
@@ -407,15 +403,6 @@ mod tests {
             management_api_error_to_proxy_error(ProxyCoreError::InvalidRequest("bad".to_string()));
 
         assert!(matches!(error, ProxyError::InvalidRequest(message) if message == "bad"));
-    }
-
-    #[test]
-    fn test_management_auth_error_bridge_maps_to_auth_error() {
-        let error = management_auth_error_to_proxy_error(ManagementAuthError::MissingBearerToken);
-
-        assert!(
-            matches!(error, ProxyError::AuthError(message) if message == "Missing management bearer token")
-        );
     }
 
     #[test]

@@ -1269,9 +1269,12 @@ const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_RESPONSE_TRANSFORM_MARKERS: &[&str] = &[
     "body.get(\"output\")",
 ];
 const FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS: &[&str] = &[
+    "state.config",
+    ".config.read()",
     "std::env::var(",
     "CC_SWITCH_PROXY_MANAGEMENT_TOKEN",
     "resolve_management_auth_decision(",
+    "validate_management_bearer_header(",
 ];
 const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
     "fn create_usage_collector(",
@@ -3708,6 +3711,11 @@ fn production_handlers_delegate_management_auth_decisions_to_adapter() {
         &source,
         "pub async fn require_proxy_management_auth",
         "/// GET /proxy/v1/apps",
+    );
+
+    assert!(
+        handler.contains(".proxy_engine()") && handler.contains(".validate_management_auth("),
+        "management auth middleware must delegate auth validation to ProxyEngine"
     );
 
     let mut violations = Vec::new();

@@ -41,8 +41,8 @@ mod tests {
         ProxyCoreChannelOverrides as ChannelOverrides, ProxyCoreError, ProxyCoreEventType,
         ProxyCoreInterfaceKind as InterfaceKind, ProxyCoreModelCapabilities as ModelCapabilities,
         ProxyCoreModelRoute as ModelRoute, ProxyCoreUpstreamEndpoint as UpstreamEndpoint,
-        ProxyEngine, ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy,
-        RouteResolveRequest, RouteSelection, UsageRecord, UsageTokens,
+        ProxyConfig, ProxyEngine, ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt,
+        RetryPolicy, RouteResolveRequest, RouteSelection, UsageRecord, UsageTokens,
     };
     use bytes::Bytes;
     use futures::StreamExt;
@@ -505,6 +505,7 @@ mod tests {
         let provider_router = Arc::new(provider_router_from_database(db.clone()));
         CcSwitchProxyRuntime {
             db: db.clone(),
+            config: Arc::new(RwLock::new(ProxyConfig::default())),
             provider_router: provider_router.clone(),
             status: status.clone(),
             start_time: Arc::new(RwLock::new(None)),

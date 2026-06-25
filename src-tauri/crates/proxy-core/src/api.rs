@@ -254,8 +254,8 @@ pub mod ports {
         ProxyConfig, ProxyConfigSource, ProxyCoreEvent, ProxyCoreEventType, ProxyEventSink,
         ProxyGlobalConfig, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServerInfo,
         ProxyServerStartedStatusInput, ProxyServices, ProxyTakeoverStatus, RectifierConfig,
-        RectifierConfigSpec, RoutePolicySource, RouteResolver, RuntimeStatusSource,
-        ClaudeDesktopGatewayAuthSource, UsageSink,
+        ClaudeDesktopGatewayAuthSource, ManagementAuthRuntimeConfig, ManagementAuthSource,
+        RectifierConfigSpec, RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
     };
 }
 
@@ -374,8 +374,8 @@ pub mod prelude {
         ChannelReachabilityProbe, ChannelSource, ForwardPipeline, ModelCatalogProvider,
         ProviderAttemptResult,
         ProviderHealthStore, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
-        ProxyRuntimeStatus, RoutePolicySource, RouteResolver, RuntimeStatusSource,
-        ClaudeDesktopGatewayAuthSource, UsageSink,
+        ClaudeDesktopGatewayAuthSource, ManagementAuthRuntimeConfig, ManagementAuthSource,
+        ProxyRuntimeStatus, RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
     };
     pub use super::routing::{ChannelQuery, ChannelSpec, DEFAULT_ROUTE_GROUP};
     pub use super::transport::{
@@ -684,6 +684,20 @@ mod tests {
             }
         }
 
+        impl ManagementAuthSource for StubServices {
+            fn load_management_auth_config<'a>(
+                &'a self,
+            ) -> BoxFuture<'a, ProxyCoreResult<ManagementAuthRuntimeConfig>> {
+                Box::pin(async {
+                    Ok(ManagementAuthRuntimeConfig::new(
+                        "127.0.0.1",
+                        None,
+                        Some("management-token".to_string()),
+                    ))
+                })
+            }
+        }
+
         impl UsageSink for StubServices {
             fn record_usage<'a>(
                 &'a self,
@@ -760,6 +774,10 @@ mod tests {
             fn claude_desktop_gateway_auth_source(
                 &self,
             ) -> &(dyn ClaudeDesktopGatewayAuthSource + Send + Sync) {
+                self
+            }
+
+            fn management_auth_source(&self) -> &(dyn ManagementAuthSource + Send + Sync) {
                 self
             }
 

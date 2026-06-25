@@ -1400,6 +1400,7 @@
 980. Codex provider credential value 的 base_url 解析与 `CodexBaseUrlMissing/Invalid` 分类已迁入 `proxy-core::ports::provider_codex_credential_values_from_parts`；host adapter 只提取 auth/config 文本并投影为 `CodexCredentialParts`。
 981. Codex provider base URL 从 `settings_config.base_url/baseURL/config` 的提取与尾斜杠归一化已迁入 `proxy-core::ports::codex_base_url_from_settings`；host adapter 只传入 provider settings。
 982. required provider base URL 的缺失错误文案与 `Option<String> -> Result<String, String>` 包装已迁入 `proxy-core::ports::required_provider_base_url`；host adapter 只提供 provider label 与各 provider base URL。
+983. 管理 API bearer 鉴权的 runtime config 读取与校验已下沉到 `proxy-core::ManagementAuthSource` 与 `ProxyEngine::validate_management_auth`；host middleware 不再直接读取 `state.config` 或组装 bearer decision，热更新后的 `ProxyState.config` 通过 runtime source 继续生效。
 
 ## 背景
 

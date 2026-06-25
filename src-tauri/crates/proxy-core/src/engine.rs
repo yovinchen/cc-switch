@@ -8,6 +8,9 @@ use super::claude_desktop_gateway_auth::{
     validate_claude_desktop_gateway_bearer_header, ClaudeDesktopModelListResponse,
 };
 use super::error::{ProxyCoreError, ProxyCoreResult};
+use super::management_auth::{
+    resolve_management_auth_decision, validate_management_bearer_header, ManagementAuthDecision,
+};
 use super::management_api::{
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest, AppListRequest,
     AppListSource, AppModelCatalogRequest, ChannelCreateRequest, ChannelCreateSource,
@@ -144,6 +147,27 @@ where
 
         validate_claude_desktop_gateway_bearer_header(headers, &expected_token)
             .map_err(|error| ProxyCoreError::Auth(error.message().to_string()))
+    }
+
+    pub async fn validate_management_auth(&self, headers: &HeaderMap) -> ProxyCoreResult<()> {
+        let config = self
+            .services
+            .management_auth_source()
+            .load_management_auth_config()
+            .await?;
+        let decision = resolve_management_auth_decision(
+            &config.listen_address,
+            config.management_auth_token.as_deref(),
+            config.fallback_auth_token.as_deref(),
+        )
+        .map_err(|error| ProxyCoreError::Auth(error.message().to_string()))?;
+
+        if let ManagementAuthDecision::RequireToken(expected_token) = decision {
+            validate_management_bearer_header(headers, &expected_token)
+                .map_err(|error| ProxyCoreError::Auth(error.message().to_string()))?;
+        }
+
+        Ok(())
     }
 
     pub async fn plan_route(&self, request: &ProxyRequest) -> ProxyCoreResult<RoutePlan> {
@@ -716,9 +740,9 @@ mod tests {
         ChannelMigrationPreviewInput, ChannelReachabilityProbe, ChannelReachabilityResult,
         ChannelRecordInput, ChannelRouteSource, ChannelSource,
         ClaudeDesktopGatewayAuthSource,
-        ChannelTestProbeRequest, ForwardPipeline, ModelCatalog, ModelCatalogProvider,
-        ProviderSource, ProxyAppConfig, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
-        ProxyChannelModelWriteRequest,
+        ChannelTestProbeRequest, ForwardPipeline, ManagementAuthRuntimeConfig,
+        ManagementAuthSource, ModelCatalog, ModelCatalogProvider, ProviderSource, ProxyAppConfig,
+        ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreEvent, ProxyEventSink,
         ProxyGlobalConfig, ProxyRuntimeConfig, ProxyRuntimeStatus, RuntimeStatusSource,
@@ -750,6 +774,7 @@ mod tests {
         queried_claude_desktop_model_apps: Mutex<Vec<String>>,
         runtime_status: Mutex<ProxyRuntimeStatus>,
         claude_desktop_gateway_token: Mutex<Option<String>>,
+        management_auth_config: Mutex<ManagementAuthRuntimeConfig>,
     }
 
     impl ProxyServices for TestServices {
@@ -800,6 +825,10 @@ mod tests {
         fn claude_desktop_gateway_auth_source(
             &self,
         ) -> &(dyn ClaudeDesktopGatewayAuthSource + Send + Sync) {
+            self
+        }
+
+        fn management_auth_source(&self) -> &(dyn ManagementAuthSource + Send + Sync) {
             self
         }
 
@@ -858,6 +887,19 @@ mod tests {
                 .clone()
                 .unwrap_or_else(|| "gateway-token".to_string());
             Box::pin(async move { Ok(token) })
+        }
+    }
+
+    impl ManagementAuthSource for TestServices {
+        fn load_management_auth_config<'a>(
+            &'a self,
+        ) -> BoxFuture<'a, ProxyCoreResult<ManagementAuthRuntimeConfig>> {
+            let config = self
+                .management_auth_config
+                .lock()
+                .expect("management auth config mutex")
+                .clone();
+            Box::pin(async move { Ok(config) })
         }
     }
 
@@ -1738,6 +1780,36 @@ mod tests {
             error,
             ProxyCoreError::Auth(message)
                 if message == "Claude Desktop gateway 缺少 Authorization 头"
+        ));
+    }
+
+    #[test]
+    fn management_auth_uses_runtime_config_source() {
+        let services = Arc::new(TestServices::default());
+        *services
+            .management_auth_config
+            .lock()
+            .expect("management auth config mutex") = ManagementAuthRuntimeConfig::new(
+            "0.0.0.0",
+            Some("management-token".to_string()),
+            None,
+        );
+        let engine = ProxyEngine::new(services);
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            http::header::AUTHORIZATION,
+            http::HeaderValue::from_static("Bearer management-token"),
+        );
+
+        futures::executor::block_on(engine.validate_management_auth(&headers))
+            .expect("valid management bearer");
+
+        let error = futures::executor::block_on(engine.validate_management_auth(&HeaderMap::new()))
+            .expect_err("missing management bearer should fail");
+
+        assert!(matches!(
+            error,
+            ProxyCoreError::Auth(message) if message == "Missing management bearer token"
         ));
     }
 
