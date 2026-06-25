@@ -1562,6 +1562,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1117. Claude OpenAI Chat/OpenAI Responses/Gemini Native 的非流与流式响应 api_format 分发已迁入 `proxy-core::response_transform::{claude_response_to_anthropic_message_for_api_format,create_claude_to_anthropic_sse_stream_for_api_format}`；host adapter 只注入 Gemini tool-call UUID 生成器、shadow store 参数和 rectifier 日志回调。
 1118. Claude OpenAI Chat/OpenAI Responses/Gemini Native 的请求 api_format 分发已迁入 `proxy-core::response_transform::claude_request_transform_for_api_format`；host adapter 只投影 prompt cache、Codex OAuth/fast-mode、reasoning_content 保留、Gemini shadow/session 等 provider 事实，并执行 core 返回的可选 cache 日志事件。
 1119. Claude Anthropic 消息兼容 normalization 的组合规则已迁入 `proxy-core::response_transform::normalize_claude_anthropic_messages`：core 统一维护 Anthropic format gate、tool-thinking history 修复和 DeepSeek thinking-disabled effort 清理，host adapter 只传 `Provider.settings_config` 与请求体。
+1120. Claude request/response/normalization transform contract 已通过 `proxy-core` public prelude 对外暴露；crate 外 `public_prelude` smoke 覆盖外部中转宿主只经 `cc_switch_proxy_core::api::prelude::*` 调用请求转换、响应转换、normalization 与 SSE context 类型，避免外部集成回退到内部模块 import。
 
 ## 背景
 
