@@ -509,6 +509,20 @@ impl ChannelHealthStore for ExternalRelayServices {
             })
         })
     }
+
+    fn channel_breaker_stats<'a>(
+        &'a self,
+        channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelBreakerStats>> {
+        let channel_id = channel_id.to_string();
+        Box::pin(async move {
+            Ok(ChannelBreakerStats {
+                channel_id,
+                app: AppKind::Claude,
+                stats: None,
+            })
+        })
+    }
 }
 
 impl ChannelReachabilityProbe for ExternalRelayServices {
@@ -1288,6 +1302,47 @@ fn external_host_can_use_channel_model_contracts_from_prelude() {
         helper_response.models[0].upstream_model,
         "relay-source-model"
     );
+}
+
+#[test]
+fn external_host_can_use_channel_health_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+    let path = ChannelPathRequest::from_path("channel-a").expect("channel path");
+
+    let reset_response: ChannelHealthResetResponse =
+        futures::executor::block_on(engine.reset_channel_health_response(path.clone()))
+            .expect("channel health reset response");
+    let stats_response: ChannelBreakerStatsResponse =
+        futures::executor::block_on(engine.channel_breaker_stats_response(path.clone()))
+            .expect("channel breaker stats response");
+    let helper_reset = path.health_reset_response_from_source(ChannelHealthResetSource::new(
+        ChannelHealthResetResponse::from_reset(ChannelHealthReset {
+            channel_id: "channel-helper".to_string(),
+            app: AppKind::Codex,
+        }),
+    ));
+    let helper_stats = path.breaker_stats_response_from_source(ChannelBreakerStatsSource::new(
+        ChannelBreakerStatsResponse::from_stats(ChannelBreakerStats {
+            channel_id: "channel-helper".to_string(),
+            app: AppKind::Codex,
+            stats: None,
+        }),
+    ));
+
+    assert_eq!(reset_response.channel_id, "channel-a");
+    assert_eq!(reset_response.app_type, "claude");
+    assert!(reset_response.reset);
+    assert_eq!(stats_response.channel_id, "channel-a");
+    assert_eq!(stats_response.app_type, "claude");
+    assert!(stats_response.stats.is_none());
+
+    assert_eq!(helper_reset.channel_id, "channel-helper");
+    assert_eq!(helper_reset.app_type, "codex");
+    assert!(helper_reset.reset);
+    assert_eq!(helper_stats.channel_id, "channel-helper");
+    assert_eq!(helper_stats.app_type, "codex");
+    assert!(helper_stats.stats.is_none());
 }
 
 #[test]
