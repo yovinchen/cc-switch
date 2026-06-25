@@ -768,6 +768,96 @@ fn external_host_can_use_group_list_contracts_from_prelude() {
 }
 
 #[test]
+fn external_host_can_use_app_channel_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+    let list_query: AppChannelListQuery =
+        serde_json::from_value(json!({})).expect("list query");
+    let list_request =
+        AppChannelManagementRequest::from_parts("claude", list_query).expect("list request");
+    match list_request.plan() {
+        AppChannelManagementPlan::List { app_type } => assert_eq!(app_type, "claude"),
+        AppChannelManagementPlan::Route(_) => panic!("expected list plan"),
+    }
+
+    let list_response: AppChannelResponse<
+        ChannelRecord,
+        ChannelRouteCandidate,
+        ChannelRouteRejected,
+    > = futures::executor::block_on(engine.app_channel_response(list_request))
+        .expect("app channel list response");
+    let helper_response: AppChannelResponse<
+        ChannelRecord,
+        ChannelRouteCandidate,
+        ChannelRouteRejected,
+    > = AppChannelManagementRequest::from_parts(
+        "codex",
+        serde_json::from_value(json!({})).expect("helper list query"),
+    )
+    .expect("helper list request")
+    .response_from_list_source(AppChannelListSource::new(
+        ChannelRouteSource::LegacyProjection,
+        vec![channel_record(vec!["research".to_string()])],
+    ));
+
+    match list_response {
+        AppChannelResponse::List(list) => {
+            let list: AppChannelListResponse<ChannelRecord> = list;
+            assert_eq!(list.app_type, "claude");
+            assert_eq!(list.source, "materialized_channels");
+            assert_eq!(list.channels.len(), 1);
+            assert_eq!(list.channels[0].groups.as_slice(), ["default", "premium"]);
+        }
+        AppChannelResponse::Route(_) => panic!("expected list response"),
+    }
+    match helper_response {
+        AppChannelResponse::List(list) => {
+            assert_eq!(list.app_type, "codex");
+            assert_eq!(list.source, "legacy_projection");
+            assert_eq!(list.channels[0].groups.as_slice(), ["research"]);
+        }
+        AppChannelResponse::Route(_) => panic!("expected helper list response"),
+    }
+
+    let route_query: AppChannelListQuery = serde_json::from_value(json!({
+        "model": "sonnet",
+        "interface": "anthropic",
+        "group": "premium"
+    }))
+    .expect("route query");
+    let route_request =
+        AppChannelManagementRequest::from_parts("claude", route_query).expect("route request");
+    match route_request.plan() {
+        AppChannelManagementPlan::Route(route) => {
+            assert_eq!(route.requested_model.as_deref(), Some("sonnet"));
+            assert_eq!(route.interface_kind.as_deref(), Some("anthropic"));
+            assert_eq!(route.route_group.as_deref(), Some("premium"));
+        }
+        AppChannelManagementPlan::List { .. } => panic!("expected route plan"),
+    }
+
+    let route_response: AppChannelResponse<
+        ChannelRecord,
+        ChannelRouteCandidate,
+        ChannelRouteRejected,
+    > = futures::executor::block_on(engine.app_channel_response(route_request))
+        .expect("app channel route response");
+    match route_response {
+        AppChannelResponse::Route(route) => {
+            let route: AppChannelRouteResponse<ChannelRouteCandidate, ChannelRouteRejected> = route;
+            assert_eq!(route.app_type, "claude");
+            assert_eq!(route.source, "materialized_channels");
+            assert_eq!(route.route_group, "premium");
+            assert_eq!(route.channels.len(), 1);
+            assert_eq!(route.channels[0].channel_id, "channel-a");
+            assert_eq!(route.rejected.len(), 1);
+            assert_eq!(route.rejected[0].channel_id, "channel-b");
+        }
+        AppChannelResponse::List(_) => panic!("expected route response"),
+    }
+}
+
+#[test]
 fn external_host_can_use_provider_list_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
