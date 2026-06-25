@@ -1210,7 +1210,7 @@ forwarder 的 Claude 默认 api_format 一跳 wrapper `forwarder_claude_api_form
 本轮继续把 forwarder 的 provider adapter auth info 提取收敛到 `proxy_core_adapter::forwarder_provider_auth_info`，forwarder 不再直接调用 `ProviderAdapter::extract_auth`。
 本轮继续把 forwarder 的 provider adapter auth headers 构造收敛到 `proxy_core_adapter::forwarder_provider_auth_headers`，forwarder 不再直接调用 `ProviderAdapter::get_auth_headers`。
 本轮继续把 forwarder 的 provider adapter upstream URL 构造收敛到 `proxy_core_adapter::forwarder_provider_upstream_url`，forwarder 不再直接调用 `ProviderAdapter::build_url`。
-本轮继续把 forwarder 的 provider adapter name 读取收敛到 `proxy_core_adapter::forwarder_provider_adapter_name`，forwarder 不再直接调用 `ProviderAdapter::name`。
+forwarder provider adapter name 的一跳 wrapper `forwarder_provider_adapter_name` 已删除；`ForwarderAdapterFacts` 在 adapter context 内直接从 trait object 读取 name，`forwarder.rs` 仍只消费 facts。
 本轮继续把 forwarder 的 provider adapter registry 入口收敛到 `proxy_core_adapter::forwarder_provider_adapter_for_app`，forwarder 不再直接调用 provider 模块的 `get_adapter`。
 本轮继续把 forwarder 暴露在函数签名里的 provider adapter trait 收敛为 `proxy_core_adapter::ForwarderAdapterHandle`，forwarder 不再直接导入 `providers::ProviderAdapter`。
 本轮继续把模型列表命令层的 `FetchedModel` DTO 入口收敛到 `proxy_core_adapter::FetchedModel`，`model_fetch_transport` 不再作为命令层 DTO re-export，只保留 core model catalog transport port 的 reqwest 执行实现。
@@ -1459,6 +1459,7 @@ forwarder 的 Claude 默认 api_format 一跳 wrapper `forwarder_claude_api_form
 1039. Gemini provider API key/base URL 删除 `provider_gemini_api_key` / `provider_gemini_base_url` 单字段 getter；保留 auth/base-url 对外入口，但 adapter 内部直接使用 core settings extractor 读取 `Provider.settings_config`。
 1040. Claude forwarder api_format 删除 `forwarder_claude_api_format` 一跳 wrapper；request source 和 `resolve_forwarder_claude_api_format` 直接复用 provider 级 adapter API，Copilot vendor 分流策略保持不变。
 1041. forwarder provider URL facts 删除 `forwarder_is_full_url_provider` / `forwarder_is_github_copilot_upstream` 两个一跳 wrapper；adapter context 在已持有 provider/base_url 的位置直接调用 provider 级事实投影。
+1042. forwarder provider adapter facts 删除 `forwarder_provider_adapter_name` 一跳 wrapper；adapter context 构造 facts 时直接读取 trait object name，外部 forwarder 仍只拿到聚合后的 adapter facts。
 
 ## 背景
 

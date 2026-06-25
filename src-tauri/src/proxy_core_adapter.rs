@@ -4300,10 +4300,6 @@ impl ForwarderAdapterContext {
     }
 }
 
-pub(crate) fn forwarder_provider_adapter_name(adapter: &ForwarderAdapterHandle) -> &'static str {
-    adapter.name()
-}
-
 pub(crate) fn forwarder_provider_adapter_context_for_app(
     app_type: &AppType,
 ) -> ForwarderAdapterContext {
@@ -7897,7 +7893,7 @@ pub(crate) struct ForwarderAdapterFacts {
 
 impl ForwarderAdapterFacts {
     fn from_adapter(adapter: &ForwarderAdapterHandle) -> Self {
-        let adapter_name = forwarder_provider_adapter_name(adapter);
+        let adapter_name = adapter.name();
         Self {
             adapter_name,
             is_claude_adapter: provider_adapter_name_is_claude(adapter_name),
@@ -20977,8 +20973,8 @@ command = "latest-command"
         });
         let claude_adapter = crate::proxy::providers::ClaudeAdapter::new();
         let codex_adapter = crate::proxy::providers::CodexAdapter::new();
-        assert_eq!(forwarder_provider_adapter_name(&claude_adapter), "Claude");
-        assert_eq!(forwarder_provider_adapter_name(&codex_adapter), "Codex");
+        assert_eq!(claude_adapter.name(), "Claude");
+        assert_eq!(codex_adapter.name(), "Codex");
         let forwarder_claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
         assert_eq!(forwarder_claude_adapter.facts().adapter_name, "Claude");
         let forwarder_fallback_adapter =
