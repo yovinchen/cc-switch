@@ -45,6 +45,42 @@ pub fn normalize_channel_id_path(channel_id: impl AsRef<str>) -> ProxyCoreResult
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CustomEndpointUrlIssue {
+    Empty,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CustomEndpointUrlIssueSpec {
+    pub key: &'static str,
+    pub zh: &'static str,
+    pub en: &'static str,
+}
+
+pub fn custom_endpoint_url_key(url: &str) -> String {
+    url.trim().trim_end_matches('/').to_string()
+}
+
+pub fn normalize_custom_endpoint_url(url: &str) -> Result<String, CustomEndpointUrlIssue> {
+    let normalized = custom_endpoint_url_key(url);
+    if normalized.is_empty() {
+        return Err(CustomEndpointUrlIssue::Empty);
+    }
+    Ok(normalized)
+}
+
+pub fn custom_endpoint_url_issue_spec(
+    issue: CustomEndpointUrlIssue,
+) -> CustomEndpointUrlIssueSpec {
+    match issue {
+        CustomEndpointUrlIssue::Empty => CustomEndpointUrlIssueSpec {
+            key: "provider.endpoint.url_required",
+            zh: "URL 不能为空",
+            en: "URL cannot be empty",
+        },
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AppListRequest;
 
@@ -965,8 +1001,10 @@ mod tests {
         GroupListChannelSource, GroupListRequest, HealthCheckRequest, HealthCheckSource,
         ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest, ProxyStatusSource,
         RouteResolveManagementRequest,
-        channel_key_not_found_message, channel_not_found_message, normalize_channel_id_path,
-        normalize_channel_key_ref_path, validate_management_app_type, validate_route_resolve_app_type,
+        channel_key_not_found_message, channel_not_found_message, custom_endpoint_url_issue_spec,
+        custom_endpoint_url_key, normalize_channel_id_path, normalize_channel_key_ref_path,
+        normalize_custom_endpoint_url, validate_management_app_type,
+        validate_route_resolve_app_type, CustomEndpointUrlIssue,
     };
     use crate::domain::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus,
@@ -1052,6 +1090,30 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "invalid proxy request: channel_id cannot be empty"
+        );
+    }
+
+    #[test]
+    fn normalize_custom_endpoint_url_trims_slashes_and_reports_empty_issue() {
+        assert_eq!(
+            custom_endpoint_url_key(" https://relay.example.com/v1/// "),
+            "https://relay.example.com/v1"
+        );
+        assert_eq!(
+            normalize_custom_endpoint_url(" https://relay.example.com/v1/ ")
+                .expect("normalized endpoint URL"),
+            "https://relay.example.com/v1"
+        );
+
+        let issue = normalize_custom_endpoint_url(" / ").expect_err("empty URL");
+        assert_eq!(issue, CustomEndpointUrlIssue::Empty);
+        assert_eq!(
+            custom_endpoint_url_issue_spec(issue),
+            super::CustomEndpointUrlIssueSpec {
+                key: "provider.endpoint.url_required",
+                zh: "URL 不能为空",
+                en: "URL cannot be empty",
+            }
         );
     }
 

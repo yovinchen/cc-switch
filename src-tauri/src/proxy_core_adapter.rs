@@ -236,6 +236,8 @@ pub(crate) use crate::proxy_core::api::transport::{
     validate_explicit_proxy_url,
 };
 
+pub(crate) use crate::proxy_core::api::management::custom_endpoint_url_key;
+
 pub(crate) fn provider_custom_endpoint_list(provider: Option<&Provider>) -> Vec<CustomEndpoint> {
     let Some(meta) = provider.and_then(|provider| provider.meta.as_ref()) else {
         return Vec::new();
@@ -245,20 +247,11 @@ pub(crate) fn provider_custom_endpoint_list(provider: Option<&Provider>) -> Vec<
     endpoints
 }
 
-pub(crate) fn custom_endpoint_url_key(url: &str) -> String {
-    url.trim().trim_end_matches('/').to_string()
-}
-
 pub(crate) fn normalize_custom_endpoint_url(url: &str) -> Result<String, AppError> {
-    let normalized = custom_endpoint_url_key(url);
-    if normalized.is_empty() {
-        return Err(AppError::localized(
-            "provider.endpoint.url_required",
-            "URL 不能为空",
-            "URL cannot be empty",
-        ));
-    }
-    Ok(normalized)
+    crate::proxy_core::api::management::normalize_custom_endpoint_url(url).map_err(|issue| {
+        let spec = crate::proxy_core::api::management::custom_endpoint_url_issue_spec(issue);
+        AppError::localized(spec.key, spec.zh, spec.en)
+    })
 }
 
 pub(crate) fn mark_custom_endpoint_last_used(

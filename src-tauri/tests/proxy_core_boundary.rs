@@ -1116,6 +1116,12 @@ const FORBIDDEN_PROVIDER_ENDPOINT_SERVICE_PROJECTION_MARKERS: &[&str] = &[
     "std::cmp::Reverse(",
     ".last_used = Some(",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_CUSTOM_ENDPOINT_URL_POLICY_MARKERS: &[&str] = &[
+    "trim().trim_end_matches('/')",
+    "\"provider.endpoint.url_required\"",
+    "\"URL 不能为空\"",
+    "\"URL cannot be empty\"",
+];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
     "ProviderKind::CodexOAuth",
@@ -2938,6 +2944,44 @@ fn production_provider_endpoint_service_delegates_projection_to_adapter() {
     assert!(
         violations.is_empty(),
         "provider endpoint service must delegate custom endpoint normalization, sorting, and last-used mutation to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_custom_endpoint_url_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        source.contains(
+            "pub(crate) use crate::proxy_core::api::management::custom_endpoint_url_key"
+        ),
+        "proxy_core_adapter should expose the core custom endpoint URL key helper"
+    );
+
+    let slice = function_slice(
+        &source,
+        "pub(crate) fn normalize_custom_endpoint_url",
+        "pub(crate) fn mark_custom_endpoint_last_used",
+    );
+    assert!(
+        slice.contains("crate::proxy_core::api::management::normalize_custom_endpoint_url")
+            && slice.contains("custom_endpoint_url_issue_spec"),
+        "proxy_core_adapter should delegate custom endpoint URL normalization and issue specs to core"
+    );
+
+    let mut violations = Vec::new();
+    for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CUSTOM_ENDPOINT_URL_POLICY_MARKERS {
+        if slice.contains(marker) {
+            violations.push(*marker);
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep custom endpoint URL policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }
