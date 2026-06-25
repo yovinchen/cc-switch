@@ -1593,6 +1593,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1148. Claude Desktop proxy request body 的 provider 投影已收敛到 `proxy_core_adapter::provider_claude_desktop_proxy_request_body`；host `map_proxy_request_model` 只保留 route/body issue 到本地化 `AppError` 的映射，adapter 统一维护 resolved/raw route、provider settings 与 `api_format` 到 core request-body mapper 的输入组装，边界测试防止 host config 重新展开 raw route、resolved route 或 provider settings 投影。
 1149. Claude Desktop proxy gateway profile model specs 已收敛到 `proxy_core_adapter::provider_claude_desktop_proxy_gateway_profile_model_specs`；host `apply_provider_to_paths_inner` 在 Proxy 模式只负责读取 proxy base URL、gateway token 并调用 gateway profile builder，adapter 统一维护 resolved proxy route 到 `ClaudeDesktopGatewayProfileModelSpec` 的投影，边界测试防止 host apply path 重新手写 profile model spec 字段映射。
 1150. Claude Desktop Direct gateway profile assembly 已收敛到 `proxy_core_adapter::provider_claude_desktop_direct_gateway_profile`；host `apply_provider_to_paths_inner` 在 Direct 模式只保留 provider profile issue 到本地化 `AppError` 的映射，adapter 统一维护 direct credentials、direct model specs 和 gateway profile JSON builder 的组合，文件 rollback/path 写入仍留在 host。
+1151. Claude Desktop Direct provider validation assembly 已收敛到 `proxy_core_adapter::provider_claude_desktop_direct_provider_validation`；host `validate_direct_provider` 只保留官方 provider 快速通过和 provider/model/credential issue 到本地化 `AppError` 的映射，adapter 统一维护 direct validation issue、direct model specs 和 direct credentials 的检查顺序，边界测试防止 host config 重新展开三段 Direct 校验或保留 dead wrapper surface。
 
 ## 背景
 
