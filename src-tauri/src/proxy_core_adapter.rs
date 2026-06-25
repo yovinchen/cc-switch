@@ -3039,12 +3039,43 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
         runtime: ManagedAccountAuthRuntime,
     ) -> BoxFuture<'a, Result<ProviderAuthInfo, ProxyError>> {
         Box::pin(async move {
-            crate::proxy::managed_account_auth::resolve_copilot_auth(
-                self.app_handle.as_ref(),
-                account_id,
-                runtime,
+            let Some(app_handle) = self.app_handle.as_ref() else {
+                log::error!(
+                    "{}",
+                    managed_account_app_handle_unavailable_log_message(runtime)
+                );
+                return Err(ProxyError::AuthError(
+                    managed_account_app_handle_unavailable_error_message(runtime),
+                ));
+            };
+
+            log::debug!(
+                "{}",
+                managed_account_token_request_log_message(runtime, account_id)
+            );
+
+            match crate::proxy::managed_account_auth::copilot_token_from_app_handle(
+                app_handle, account_id,
             )
             .await
+            {
+                Ok(token) => {
+                    log::debug!(
+                        "{}",
+                        managed_account_token_success_log_message(runtime, account_id)
+                    );
+                    Ok(runtime.provider_auth_info(token))
+                }
+                Err(error) => {
+                    log::error!(
+                        "{}",
+                        managed_account_token_failure_log_message(runtime, account_id, &error)
+                    );
+                    Err(ProxyError::AuthError(
+                        managed_account_token_failure_error_message(runtime, &error),
+                    ))
+                }
+            }
         })
     }
 
@@ -3054,12 +3085,51 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
         runtime: ManagedAccountAuthRuntime,
     ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), ProxyError>> {
         Box::pin(async move {
-            crate::proxy::managed_account_auth::resolve_codex_oauth(
-                self.app_handle.as_ref(),
-                account_id,
-                runtime,
+            let Some(app_handle) = self.app_handle.as_ref() else {
+                log::error!(
+                    "{}",
+                    managed_account_app_handle_unavailable_log_message(runtime)
+                );
+                return Err(ProxyError::AuthError(
+                    managed_account_app_handle_unavailable_error_message(runtime),
+                ));
+            };
+
+            log::debug!(
+                "{}",
+                managed_account_token_request_log_message(runtime, account_id.as_deref())
+            );
+
+            match crate::proxy::managed_account_auth::codex_oauth_token_from_app_handle(
+                app_handle,
+                account_id.as_deref(),
             )
             .await
+            {
+                Ok((token, resolved_account_id)) => {
+                    log::debug!(
+                        "{}",
+                        managed_account_token_success_log_message(
+                            runtime,
+                            resolved_account_id.as_deref()
+                        )
+                    );
+                    Ok((runtime.provider_auth_info(token), resolved_account_id))
+                }
+                Err(error) => {
+                    log::error!(
+                        "{}",
+                        managed_account_token_failure_log_message(
+                            runtime,
+                            account_id.as_deref(),
+                            &error
+                        )
+                    );
+                    Err(ProxyError::AuthError(
+                        managed_account_token_failure_error_message(runtime, &error),
+                    ))
+                }
+            }
         })
     }
 

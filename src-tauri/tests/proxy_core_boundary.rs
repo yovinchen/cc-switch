@@ -7633,6 +7633,13 @@ fn production_managed_account_auth_runtime_text_delegates_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/managed_account_auth.rs");
     let source = fs::read_to_string(&path).expect("read managed_account_auth.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = function_slice(
+        &adapter_source,
+        "impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource",
+        "#[cfg(test)]\npub(crate) async fn resolve_managed_account_auth_from_runtime_source",
+    );
 
     for marker in [
         "managed_account_app_handle_unavailable_log_message(",
@@ -7643,8 +7650,12 @@ fn production_managed_account_auth_runtime_text_delegates_to_adapter() {
         "managed_account_token_failure_error_message(",
     ] {
         assert!(
-            source.contains(marker),
-            "managed_account_auth.rs should delegate runtime text marker `{marker}` to proxy_core_adapter"
+            adapter_runtime_source.contains(marker),
+            "CcSwitchManagedAccountRuntimeSource should own managed-auth runtime text marker `{marker}`"
+        );
+        assert!(
+            !source.contains(marker),
+            "managed_account_auth.rs should not own managed-auth runtime text marker `{marker}` after source extraction"
         );
     }
 

@@ -1549,6 +1549,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1107. 管理 query DTO 已补齐 Rust API 构造器：`AppChannelListQuery::list/route`、`AppModelListQuery::new`、`ChannelListQuery::all/for_app` 与 `GroupListQuery::all/for_app` 让外部宿主不必通过 JSON roundtrip 构造管理请求；`external_relay_host` example 已改用这些构造器，boundary guard 同步禁止示例直接引用 `http::`/`serde_json::`，继续把外部集成入口收敛到 public prelude。
 1108. crate 外 public prelude smoke 已去除对 `http` 与 `serde_json` 的直接 import/限定调用：测试现在只经 `cc_switch_proxy_core::api::prelude::*` 使用 HTTP 基础类型、JSON macro/value/parser 和管理 query builders，并新增 boundary guard 防止 smoke test 绕过 public prelude。
 1109. 外部宿主自定义 app namespace 已补充集成证据：`external_relay_host` example 现在注册 `opencode` 自定义 app、独立 provider/channel、OpenAI Chat interface、tools route group 和自定义模型目录；crate 外 public prelude smoke 也直接验证 `AppKind::Custom`、`ManagementAppPathRequest`、`AppModelCatalogRequest`、`AppChannelManagementRequest` 与 `RouteResolveManagementRequest` 均接受该 namespace，避免独立中转模块被固定在 CC Switch 内置 app 枚举上。
+1110. managed-account token runtime 继续向可替换 source 收口：`CcSwitchManagedAccountRuntimeSource` 现在拥有无 AppHandle、token 请求/成功/失败日志与 `ProxyError` 包装契约，`proxy::managed_account_auth` 只保留 Tauri state 读取和原始 token/account fact 获取；边界测试同步禁止 runtime text contract 回流到薄 helper 文件，外部中转宿主可替换 runtime source 而无需复制 CC Switch 的 Tauri state 包装。
 
 ## 背景
 

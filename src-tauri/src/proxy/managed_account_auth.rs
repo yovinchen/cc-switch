@@ -1,12 +1,5 @@
 use crate::commands::{CodexOAuthState, CopilotAuthState};
-use crate::proxy::error::ProxyError;
-use crate::proxy_core_adapter::{
-    managed_account_app_handle_unavailable_error_message,
-    managed_account_app_handle_unavailable_log_message,
-    managed_account_token_failure_error_message, managed_account_token_failure_log_message,
-    managed_account_token_request_log_message, managed_account_token_success_log_message,
-    CopilotModel, ManagedAccountAuthRuntime, ProviderAuthInfo,
-};
+use crate::proxy_core_adapter::CopilotModel;
 use tauri::Manager;
 
 pub(crate) async fn resolve_copilot_api_endpoint(
@@ -81,119 +74,41 @@ pub(crate) async fn resolve_copilot_model_vendor(
     }
 }
 
-pub(crate) async fn resolve_copilot_auth(
-    app_handle: Option<&tauri::AppHandle>,
+pub(crate) async fn copilot_token_from_app_handle(
+    app_handle: &tauri::AppHandle,
     account_id: Option<&str>,
-    runtime: ManagedAccountAuthRuntime,
-) -> Result<ProviderAuthInfo, ProxyError> {
-    let Some(app_handle) = app_handle else {
-        log::error!(
-            "{}",
-            managed_account_app_handle_unavailable_log_message(runtime)
-        );
-        return Err(ProxyError::AuthError(
-            managed_account_app_handle_unavailable_error_message(runtime),
-        ));
-    };
-
+) -> Result<String, String> {
     let copilot_state = app_handle.state::<CopilotAuthState>();
     let copilot_auth = copilot_state.0.read().await;
 
-    let token_result = match account_id {
-        Some(id) => {
-            log::debug!(
-                "{}",
-                managed_account_token_request_log_message(runtime, Some(id))
-            );
-            copilot_auth.get_valid_token_for_account(id).await
-        }
-        None => {
-            log::debug!(
-                "{}",
-                managed_account_token_request_log_message(runtime, None)
-            );
-            copilot_auth.get_valid_token().await
-        }
-    };
-
-    match token_result {
-        Ok(token) => {
-            log::debug!(
-                "{}",
-                managed_account_token_success_log_message(runtime, account_id)
-            );
-            Ok(runtime.provider_auth_info(token))
-        }
-        Err(error) => {
-            let error = error.to_string();
-            log::error!(
-                "{}",
-                managed_account_token_failure_log_message(runtime, account_id, &error)
-            );
-            Err(ProxyError::AuthError(
-                managed_account_token_failure_error_message(runtime, &error),
-            ))
-        }
+    match account_id {
+        Some(id) => copilot_auth.get_valid_token_for_account(id).await,
+        None => copilot_auth.get_valid_token().await,
     }
+    .map_err(|error| error.to_string())
 }
 
-pub(crate) async fn resolve_codex_oauth(
-    app_handle: Option<&tauri::AppHandle>,
-    account_id: Option<String>,
-    runtime: ManagedAccountAuthRuntime,
-) -> Result<(ProviderAuthInfo, Option<String>), ProxyError> {
-    let Some(app_handle) = app_handle else {
-        log::error!(
-            "{}",
-            managed_account_app_handle_unavailable_log_message(runtime)
-        );
-        return Err(ProxyError::AuthError(
-            managed_account_app_handle_unavailable_error_message(runtime),
-        ));
-    };
-
+pub(crate) async fn codex_oauth_token_from_app_handle(
+    app_handle: &tauri::AppHandle,
+    account_id: Option<&str>,
+) -> Result<(String, Option<String>), String> {
     let codex_state = app_handle.state::<CodexOAuthState>();
     let codex_auth = codex_state.0.read().await;
 
-    let token_result = match &account_id {
-        Some(id) => {
-            log::debug!(
-                "{}",
-                managed_account_token_request_log_message(runtime, Some(id))
-            );
-            codex_auth.get_valid_token_for_account(id).await
-        }
-        None => {
-            log::debug!(
-                "{}",
-                managed_account_token_request_log_message(runtime, None)
-            );
-            codex_auth.get_valid_token().await
-        }
+    let token_result = match account_id {
+        Some(id) => codex_auth.get_valid_token_for_account(id).await,
+        None => codex_auth.get_valid_token().await,
     };
 
     match token_result {
         Ok(token) => {
             let resolved_account_id = match account_id {
-                Some(id) => Some(id),
+                Some(id) => Some(id.to_string()),
                 None => codex_auth.default_account_id().await,
             };
-            log::debug!(
-                "{}",
-                managed_account_token_success_log_message(runtime, resolved_account_id.as_deref())
-            );
-            Ok((runtime.provider_auth_info(token), resolved_account_id))
+            Ok((token, resolved_account_id))
         }
-        Err(error) => {
-            let error = error.to_string();
-            log::error!(
-                "{}",
-                managed_account_token_failure_log_message(runtime, account_id.as_deref(), &error)
-            );
-            Err(ProxyError::AuthError(
-                managed_account_token_failure_error_message(runtime, &error),
-            ))
-        }
+        Err(error) => Err(error.to_string()),
     }
 }
 
@@ -201,9 +116,10 @@ pub(crate) async fn resolve_codex_oauth(
 mod tests {
     use super::*;
     use crate::provider::Provider;
+    use crate::proxy::error::ProxyError;
     use crate::proxy_core_adapter::{
         default_managed_account_runtime_source, resolve_managed_account_auth_from_runtime_source,
-        ProviderAuthStrategy,
+        ProviderAuthInfo, ProviderAuthStrategy,
     };
 
     #[tokio::test]
