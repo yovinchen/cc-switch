@@ -1560,6 +1560,31 @@ mod tests {
                 ));
             }
 
+            let stats_response = client
+                .get(format!(
+                    "{base_url}/proxy/v1/channels/{channel_id}/breakers/stats"
+                ))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if stats_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected breaker stats status: {}",
+                    stats_response.status()
+                ));
+            }
+            let stats = stats_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if stats["channelId"] != channel_id
+                || stats["appType"] != "claude"
+                || stats["stats"]["state"] != "open"
+                || stats["stats"]["failedRequests"] != 1
+            {
+                return Err(format!("unexpected breaker stats body: {stats}"));
+            }
+
             let reset_response = client
                 .post(format!(
                     "{base_url}/proxy/v1/channels/{channel_id}/breakers/reset"

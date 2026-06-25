@@ -633,7 +633,7 @@
 618. `ProxyServer::start` 级 runtime smoke 已覆盖 `/proxy/v1/apps/{app}/channels/migration/preview` 与 `/materialize`：真实本机端口验证旧 provider 投影、密钥不泄漏、物化计数、物化后 channel 查询可见，以及二次 materialize 插入计数为 0 的幂等行为。
 619. 熔断器的 Open 超时恢复判定与失败后是否打开的纯策略已迁入 `proxy-core::circuit_breaker_config`；host `proxy::circuit_breaker` 继续保留 Tokio/Atomic/Instant 运行态和日志，但不再手写失败阈值、错误率和 HalfOpen 失败开闸规则。
 620. 熔断器 HalfOpen 成功恢复阈值与探测名额放行规则已继续迁入 `proxy-core::circuit_breaker_config`；host 仍负责原子计数增减和 permit 回退，但成功恢复与 permit 结果由 core 策略函数决定。
-621. `ProxyServer::start` 级 runtime smoke 已覆盖 `/proxy/v1/channels/{channel_id}/breakers/reset`：真实本机端口在物化 channel 后制造熔断、验证 dry-run route 被拦截，再通过 HTTP reset 恢复 route candidate。
+621. `ProxyServer::start` 级 runtime smoke 已覆盖 `/proxy/v1/channels/{channel_id}/breakers/stats` 与 `/breakers/reset`：真实本机端口在物化 channel 后制造熔断，验证 dry-run route 被拦截、stats response 回显 channelId/appType/open/failedRequests，再通过 HTTP reset 恢复 route candidate。
 622. `ProviderSpec` 的 metadata/accountRef 投影规则已迁入 `proxy-core::domain`：host adapter 只采集 `Provider/ProviderMeta` 的非密钥事实并传给 core DTO，provider summary/current route 等对外响应继续由 core 负责脱敏字段选择。
 623. host adapter 的 channel/model JSON 默认化已复用 `proxy-core::channel_request` 的 object/array 默认规则，删除本地重复 helper，确保 `ChannelSpec`、`ModelRoute` 与 channel 写请求使用同一 JSON 形状收敛策略。
 624. `ProxyServer::start` 级 runtime smoke 已覆盖 `/proxy/v1/apps/{app}/channels` 的 route filter rejected 分支：真实本机端口验证 missing model 查询返回空 channels、保留 rejected channel/reason，并继续回显 materialized channel source 与 route group。
@@ -1517,6 +1517,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1075. 新增 `/proxy/v1/channels/{channel_id}/breakers/stats` 管理 API，`ChannelHealthStore` 增加 channel breaker stats 端口并由 CC Switch adapter 查 channel 所属 app 后读取 `ProviderRouter::get_channel_circuit_breaker_stats`；channel 级运行态 stats 现在可通过 core `ChannelBreakerStatsResponse` 对外暴露，支撑每个中转地址独立观测熔断状态。
 1076. 删除代理相关测试 `TempHome.dir` 的 dead-code allowance；纯 RAII 临时目录字段改为 `_dir`，仍被测试读取路径的 provider service fixture 保留 `dir`，不再为迁移分支保留无语义 allow。
 1077. 删除 `RequestContext.app_type` 的 dead-code allowance，并修正文档注释说明它由 `apply_proxy_result` 用于按 app 加载 ProxyEngine 选中的 Provider；该字段不是预留 surface。
+1078. `/proxy/v1/channels/{channel_id}/breakers/stats` 已补充 `ProxyServer::start` 级 runtime smoke：真实本机监听端口在 materialize channel、制造熔断、dry-run 阻断后，通过 HTTP stats 端点验证 open 状态与失败计数，再执行 reset 恢复。
 
 ## 背景
 
@@ -2349,6 +2350,7 @@ CC Switch 桌面宿主通过 adapter-owned `CcSwitchModelCatalogProvider::load_c
 | `/proxy/v1/channels/{channel_id}` | GET/PATCH/DELETE | 查询、更新、删除单个 channel |
 | `/proxy/v1/channels/{channel_id}/models` | GET/PUT | 查询或替换 channel 模型映射 |
 | `/proxy/v1/channels/{channel_id}/test` | POST | 使用指定模型和接口测试该 channel |
+| `/proxy/v1/channels/{channel_id}/breakers/stats` | GET | 查询 channel 运行时熔断器统计 |
 | `/proxy/v1/channels/{channel_id}/breakers/reset` | POST | 重置 channel 熔断器 |
 | `/proxy/v1/groups` | GET/POST | route group 列表和创建 |
 | `/proxy/v1/route/resolve` | POST | dry-run 路由解析，返回候选 channel 和淘汰原因 |
