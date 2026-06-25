@@ -1076,6 +1076,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮补齐 `proxy-core::api::prelude` 的外部接入烟测所需 channel 构造 contract；独立 integration test 只经 public prelude 构造 `ProxyEngine`、实现 `ProxyServices` 并调用 `handle`，锁住外部 host 直接集成中转模块的最小可用路径。
 本轮加固 `proxy_core_host.rs` 兼容壳边界：文件在 `mod tests` 之前只允许 `#[cfg(test)]` 保护的 import/re-export，防止旧 host 模块重新承载生产 services/runtime 装配。
 本轮删除 adapter 内部 `proxy_engine_from_services` 一跳构造 facade；`ProxyState::proxy_engine` 在 adapter 所有权边界内直接调用 `ProxyEngine::new`，保留“生产 host 只能经 adapter 构造 engine”的边界测试。
+本轮继续删除 `ProxyState` 对 `AppHandle` 和 `FailoverSwitchManager` 的重复保留字段；这些 host 资源只由 `ManagedAccountRuntimeSource` 与 `FailoverSwitchScheduler` 注入 source 持有，`ProxyState` 只保留 HTTP server 实际读写的 runtime state surface。
 本轮继续把 `CcSwitchChannelSource` 的 route/materialized channel record list 读取与 `ChannelRecord` 投影收敛到 adapter-owned source wrapper。
 本轮继续把 `CcSwitchChannelSource` 的 legacy channel migration preview/materialize DB 操作与 response input 投影收敛到 adapter-owned source wrapper，host services 只装配 channel source。
 本轮继续把 `CcSwitchRoutePolicySource` 的 failover queue DB 读取与 `RoutePolicy` 投影迁入 adapter-owned source，host services 只装配 source。
@@ -1484,6 +1485,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1057. `proxy-core::api::prelude` 补齐外部 channel 构造 helper 与 `ChannelAttemptPlan` 导出；新增 `tests/public_prelude.rs` 作为 crate 外集成烟测，只通过 public prelude 构造 services/engine 并调用 `ProxyEngine::handle`，验证独立中转模块最小集成路径。
 1058. `proxy_core_host.rs` 新增兼容壳边界测试：`mod tests` 前只允许 `#[cfg(test)]` import/re-export，生产 services/runtime 装配继续归属 `proxy_core_adapter`，旧 host 模块保持 test-only。
 1059. 删除 `proxy_engine_from_services` 一跳构造 helper；`ProxyState::proxy_engine` 直接在 adapter 边界内调用 `ProxyEngine::new`，新增 boundary marker 防止无语义 constructor facade 回流。
+1060. 删除 `ProxyState` 对 `app_handle` / `failover_manager` 的重复 host 资源保留字段；`ManagedAccountRuntimeSource` 与 `FailoverSwitchScheduler` 仍在 adapter runtime 装配阶段持有所需 clone，新增 boundary marker 防止注入型 host 资源重新回流到 server state shape。
 
 ## 背景
 

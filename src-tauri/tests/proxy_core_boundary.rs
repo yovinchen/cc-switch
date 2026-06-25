@@ -353,6 +353,10 @@ const FORBIDDEN_PROXY_STATE_SERVER_COMPAT_PATH_MARKERS: &[&str] = &[
     "server::{ProxyState",
     "pub use crate::proxy_core_adapter::ProxyState",
 ];
+const FORBIDDEN_PROXY_STATE_HOST_RESOURCE_RETENTION_MARKERS: &[&str] = &[
+    "app_handle: Option<tauri::AppHandle>",
+    "failover_manager: Arc<FailoverSwitchManager>",
+];
 const FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_MARKERS: &[&str] = &[
     "build_effective_settings_with_common_config(",
     "get_config_snippet(",
@@ -10751,6 +10755,34 @@ fn production_proxy_state_imports_use_adapter_path() {
     assert!(
         violations.is_empty(),
         "production proxy modules must import ProxyState directly from proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_state_does_not_retain_injected_host_resources() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let proxy_state = function_slice(&source, "pub struct ProxyState", "impl ProxyState");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(proxy_state) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_STATE_HOST_RESOURCE_RETENTION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs ProxyState:{} retains host resource marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production ProxyState must leave host resources inside injected runtime sources:\n{}",
         violations.join("\n")
     );
 }

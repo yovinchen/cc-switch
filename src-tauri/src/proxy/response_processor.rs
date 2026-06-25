@@ -226,7 +226,6 @@ mod tests {
     use crate::error::AppError;
     use crate::provider::ProviderMeta;
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
-    use crate::proxy::failover_switch::FailoverSwitchManager;
     use crate::proxy_core_adapter::{
         decompress_body, strip_sse_field, GeminiShadowStore, ProxyConfig, ProxyRuntimeStatus,
     };
@@ -303,8 +302,6 @@ mod tests {
             proxy_core_services: Arc::new(CcSwitchProxyServices::new(db.clone())),
             gemini_shadow: Arc::new(GeminiShadowStore::default()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
-            app_handle: None,
-            failover_manager: Arc::new(FailoverSwitchManager::new(db)),
             events: Arc::new(crate::proxy::events::ProxyEventBus::default()),
         }
     }
