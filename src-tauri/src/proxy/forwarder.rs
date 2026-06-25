@@ -852,10 +852,10 @@ impl RequestForwarder {
         let resolved_claude_api_format = self
             .request_source
             .resolve_claude_api_format_for_adapter(ForwarderClaudeApiFormatInput {
+                adapter,
                 provider,
                 body: &mapped_body,
                 is_copilot,
-                adapter_facts: &adapter_facts,
             })
             .await;
         self.request_source

@@ -7964,10 +7964,10 @@ pub(crate) struct ForwarderCopilotDynamicBaseUrlInput<'a> {
 }
 
 pub(crate) struct ForwarderClaudeApiFormatInput<'a> {
+    pub(crate) adapter: &'a ForwarderAdapterContext,
     pub(crate) provider: &'a Provider,
     pub(crate) body: &'a Value,
     pub(crate) is_copilot: bool,
-    pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
 }
 
 pub(crate) struct ForwarderCopilotRequestOptimization {
@@ -8585,7 +8585,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
                     input.provider,
                     input.body,
                     input.is_copilot,
-                    input.adapter_facts.is_claude_adapter,
+                    input.adapter.facts().is_claude_adapter,
                 )
                 .await
         })
