@@ -8267,31 +8267,34 @@ impl CcSwitchForwarderRequestSource {
         }
     }
 
-    fn apply_media_prevention(&self, input: ForwarderMediaPreventionInput<'_>) -> usize {
-        let replaced_images = apply_forwarder_media_prevention_from_facts(
-            ForwarderMediaPreventionFacts {
-                rectifier_enabled: input.config.enabled,
-                request_media_fallback: input.config.request_media_fallback,
-                request_media_heuristic: input.config.request_media_heuristic,
-                body: input.body,
-                provider_settings: &input.provider.settings_config,
-            },
+}
+
+fn apply_forwarder_media_prevention_with_log(
+    input: ForwarderMediaPreventionInput<'_>,
+) -> usize {
+    let replaced_images = apply_forwarder_media_prevention_from_facts(
+        ForwarderMediaPreventionFacts {
+            rectifier_enabled: input.config.enabled,
+            request_media_fallback: input.config.request_media_fallback,
+            request_media_heuristic: input.config.request_media_heuristic,
+            body: input.body,
+            provider_settings: &input.provider.settings_config,
+        },
+    );
+    if replaced_images > 0 {
+        let model = input
+            .body
+            .get("model")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        log::info!(
+            "[Media] Replaced {replaced_images} image block(s) with {} for text-only provider={}, model={}",
+            UNSUPPORTED_IMAGE_MARKER,
+            input.provider.id,
+            model
         );
-        if replaced_images > 0 {
-            let model = input
-                .body
-                .get("model")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            log::info!(
-                "[Media] Replaced {replaced_images} image block(s) with {} for text-only provider={}, model={}",
-                UNSUPPORTED_IMAGE_MARKER,
-                input.provider.id,
-                model
-            );
-        }
-        replaced_images
     }
+    replaced_images
 }
 
 impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
@@ -8407,7 +8410,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         };
 
         forwarder_claude_normalize_anthropic_messages(input.body, input.provider, api_format);
-        self.apply_media_prevention(ForwarderMediaPreventionInput {
+        apply_forwarder_media_prevention_with_log(ForwarderMediaPreventionInput {
             body: input.body,
             provider: input.provider,
             config: input.config,
@@ -8570,7 +8573,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             return 0;
         }
 
-        self.apply_media_prevention(ForwarderMediaPreventionInput {
+        apply_forwarder_media_prevention_with_log(ForwarderMediaPreventionInput {
             body: input.body,
             provider: input.provider,
             config: input.config,

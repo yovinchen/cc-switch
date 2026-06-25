@@ -8251,6 +8251,11 @@ fn production_forwarder_uses_request_source_resource() {
         "impl RequestForwarder",
     );
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
+    let request_impl_slice = function_slice(
+        &adapter_source,
+        "impl ForwarderRequestSource for CcSwitchForwarderRequestSource",
+        "pub(crate) fn forwarder_request_source_from_managed_account_runtime_source",
+    );
 
     assert!(
         struct_slice.contains("request_source"),
@@ -8539,8 +8544,13 @@ fn production_forwarder_uses_request_source_resource() {
         "default ForwarderRequestSource implementation must retain Copilot optimizer sequencing"
     );
     assert!(
-        adapter_source.contains("fn apply_media_prevention"),
-        "default ForwarderRequestSource implementation must retain media prevention replacement"
+        !adapter_source.contains("fn apply_media_prevention"),
+        "default ForwarderRequestSource implementation must not retain a private media prevention replacement method"
+    );
+    assert!(
+        adapter_source.contains("fn apply_forwarder_media_prevention_with_log")
+            && request_impl_slice.contains("apply_forwarder_media_prevention_with_log("),
+        "default ForwarderRequestSource implementation should delegate media prevention to the adapter helper"
     );
     let request_trait_slice = function_slice(
         &adapter_source,
