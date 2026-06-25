@@ -1151,6 +1151,25 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_CONFIG_TOML_POLICY_MARKERS: &[&str] = &
     ".get(\"model_provider\")",
     ".get(\"wire_api\")",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_LIVE_SETTINGS_SHAPE_MARKERS: &[&str] = &[
+    "pub(crate) struct CodexLiveSettingsParts",
+    "pub(crate) struct CodexProviderLiveWriteParts",
+    "pub(crate) struct CodexRestoredLiveSettingsParts",
+    "pub(crate) struct CodexLiveSnapshotParts",
+    "pub(crate) struct CodexProviderValidationParts",
+    "pub(crate) enum CodexProviderLiveWriteIssue",
+    "pub(crate) enum CodexLiveSettingsIssue",
+    "pub(crate) enum CodexLiveSnapshotIssue",
+    "pub(crate) enum CodexProviderValidationIssue",
+    ".ok_or(CodexProviderLiveWriteIssue::MissingAuth)",
+    ".ok_or(CodexLiveSettingsIssue::NotObject)",
+    ".ok_or(CodexLiveSettingsIssue::MissingAuth)",
+    ".ok_or(CodexLiveSnapshotIssue::NotObject)",
+    ".ok_or(CodexLiveSnapshotIssue::MissingAuth)",
+    ".ok_or(CodexProviderValidationIssue::NotObject)",
+    ".ok_or(CodexProviderValidationIssue::MissingAuth)",
+    "CodexProviderValidationIssue::ConfigInvalidType);",
+];
 const FORBIDDEN_PROXY_CORE_ADAPTER_REQUIRED_BASE_URL_POLICY_MARKERS: &[&str] = &[
     "fn missing_provider_base_url_message",
     "Provider 缺少 base_url 配置",
@@ -3127,6 +3146,47 @@ fn proxy_core_adapter_delegates_codex_config_toml_projection_to_core() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter must keep Codex config TOML projection policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let production_source = production_lines(&source)
+        .map(|(_, line)| line)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    for marker in [
+        "core_codex_auth_object_value_from_settings(",
+        "core_codex_provider_live_write_parts_from_settings(",
+        "core_codex_restored_live_settings_parts(",
+        "core_codex_live_settings_parts_from_settings(",
+        "core_codex_live_snapshot_parts_from_settings(",
+        "core_codex_provider_validation_parts_from_settings(",
+    ] {
+        assert!(
+            production_source.contains(marker),
+            "proxy_core_adapter should delegate Codex live/settings shape marker `{marker}` to core"
+        );
+    }
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_LIVE_SETTINGS_SHAPE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!("line {}: {}", line_index + 1, marker));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Codex live/settings JSON shape policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }

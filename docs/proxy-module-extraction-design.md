@@ -2097,6 +2097,8 @@ pub trait AuthProvider: Send + Sync {
 
 provider adapter 仍负责 CC Switch 默认 fallback 的 provider settings 到 header 转换，但 token 刷新和宿主账号状态读取不在 provider adapter 内完成。channel 可以指向同一个 provider 的不同 key/auth profile，必须避免把一个 channel 的 key 泄漏到另一个 channel。下一步是把 managed-account token 刷新、channel-key 轮询/随机和失败回退继续收敛到宿主可替换端口，直到 forwarder 不再需要理解 CC Switch 的 provider settings 鉴权细节。
 
+本轮继续把 Codex live/settings 的 JSON 形状契约收进 `proxy-core::ports`：auth 对象提取、live write parts、restore parts、live settings parts、snapshot parts 和 provider validation parts 都由 core 基于 `settings + category` 生成；`proxy_core_adapter` 只负责把 CC Switch `Provider` 拆成中立输入。这样后续中转迁移可以让不同地址绑定不同认证、接口和模型信息，同时不让宿主 adapter 重新承载 Codex 配置形状规则。
+
 ### Model catalog 接口
 
 `GET /v1/models` 已从 `handlers::handle_models` 直读 Codex 配置文件迁出。当前端口分两类模型视图：

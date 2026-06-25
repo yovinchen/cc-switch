@@ -310,10 +310,16 @@ pub(crate) use crate::proxy_core::api::ports::{
     live_takeover_config_matches_proxy_for_app as core_live_takeover_config_matches_proxy_for_app,
     live_token_sync_app_label as core_live_token_sync_app_label,
     normalize_provider_settings_for_storage as core_normalize_provider_settings_for_storage,
+    codex_auth_object_value_from_settings as core_codex_auth_object_value_from_settings,
     codex_base_url_from_settings as core_codex_base_url_from_settings,
     codex_config_has_base_url_matching as core_codex_config_has_base_url_matching,
     codex_config_text_from_settings as core_codex_config_text_from_settings,
+    codex_live_settings_parts_from_settings as core_codex_live_settings_parts_from_settings,
+    codex_live_snapshot_parts_from_settings as core_codex_live_snapshot_parts_from_settings,
     codex_model_from_config_toml as core_codex_model_from_config_toml,
+    codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
+    codex_provider_validation_parts_from_settings as core_codex_provider_validation_parts_from_settings,
+    codex_restored_live_settings_parts as core_codex_restored_live_settings_parts,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_additive_update_route_for_app as core_provider_additive_update_route,
@@ -359,10 +365,14 @@ pub(crate) use crate::proxy_core::api::ports::{
     validate_gemini_settings_strict as core_validate_gemini_settings_strict,
     GeminiAuthType, GeminiAuthTypeInput, GeminiEnvParseIssue, GeminiLiveConfigIssue,
     GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, LocalizedErrorSpec,
-    CodexCredentialParts, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
-    ProviderCredentialIssue, ProviderCredentialValues as CoreProviderCredentialValues,
-    ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
-    ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
+    CodexCredentialParts, CodexLiveSettingsIssue, CodexLiveSettingsParts,
+    CodexLiveSnapshotIssue, CodexLiveSnapshotParts, CodexProviderLiveWriteIssue,
+    CodexProviderLiveWriteParts, CodexProviderValidationIssue,
+    CodexProviderValidationParts, CodexRestoredLiveSettingsParts,
+    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderCredentialIssue,
+    ProviderCredentialValues as CoreProviderCredentialValues, ProviderKeyChangePolicyIssue,
+    ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
+    ProviderOmoSwitchPair, ProviderOmoVariant,
     ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
 };
 #[cfg(test)]
@@ -3386,9 +3396,7 @@ pub(crate) fn provider_codex_auth_info(provider: &Provider) -> Option<ProviderAu
 }
 
 pub(crate) fn codex_auth_object_value_from_settings(settings: &Value) -> Option<&Value> {
-    let auth = settings.get("auth")?;
-    auth.as_object()?;
-    Some(auth)
+    core_codex_auth_object_value_from_settings(settings)
 }
 
 pub(crate) fn codex_api_key_from_auth_and_config(
@@ -3457,41 +3465,11 @@ pub(crate) fn provider_from_default_live_settings(
     provider
 }
 
-pub(crate) struct CodexLiveSettingsParts<'a> {
-    pub(crate) category: Option<&'a str>,
-    pub(crate) auth: &'a Value,
-    pub(crate) config_text: Option<&'a str>,
-}
-
-pub(crate) struct CodexProviderLiveWriteParts<'a> {
-    pub(crate) category: Option<&'a str>,
-    pub(crate) auth: &'a Value,
-    pub(crate) config_text: Option<&'a str>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CodexProviderLiveWriteIssue {
-    MissingAuth,
-}
-
 pub(crate) fn codex_provider_live_write_parts<'a>(
     settings: &'a Value,
     provider: &'a Provider,
 ) -> Result<CodexProviderLiveWriteParts<'a>, CodexProviderLiveWriteIssue> {
-    let auth = settings
-        .get("auth")
-        .ok_or(CodexProviderLiveWriteIssue::MissingAuth)?;
-
-    Ok(CodexProviderLiveWriteParts {
-        category: provider.category.as_deref(),
-        auth,
-        config_text: codex_config_text_from_settings(settings),
-    })
-}
-
-pub(crate) struct CodexRestoredLiveSettingsParts<'a> {
-    pub(crate) auth: Option<&'a Value>,
-    pub(crate) config: Option<&'a Value>,
+    core_codex_provider_live_write_parts_from_settings(settings, provider.category.as_deref())
 }
 
 pub(crate) struct CodexProviderBackfillParts<'a> {
@@ -3601,107 +3579,31 @@ pub(crate) fn apply_codex_unified_session_bucket_for_provider(
 pub(crate) fn codex_restored_live_settings_parts(
     settings: &Value,
 ) -> CodexRestoredLiveSettingsParts<'_> {
-    CodexRestoredLiveSettingsParts {
-        auth: settings.get("auth"),
-        config: settings.get("config"),
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CodexLiveSettingsIssue {
-    NotObject,
-    MissingAuth,
-    AuthNotObject,
+    core_codex_restored_live_settings_parts(settings)
 }
 
 pub(crate) fn provider_codex_live_settings_parts(
     provider: &Provider,
 ) -> Result<CodexLiveSettingsParts<'_>, CodexLiveSettingsIssue> {
-    let settings = provider
-        .settings_config
-        .as_object()
-        .ok_or(CodexLiveSettingsIssue::NotObject)?;
-    let auth = settings
-        .get("auth")
-        .ok_or(CodexLiveSettingsIssue::MissingAuth)?;
-
-    if !auth.is_object() {
-        return Err(CodexLiveSettingsIssue::AuthNotObject);
-    }
-
-    Ok(CodexLiveSettingsParts {
-        category: provider.category.as_deref(),
-        auth,
-        config_text: codex_config_text_from_settings(&provider.settings_config),
-    })
-}
-
-pub(crate) struct CodexLiveSnapshotParts<'a> {
-    pub(crate) category: Option<&'a str>,
-    pub(crate) auth: &'a Value,
-    pub(crate) config_text: Option<&'a str>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CodexLiveSnapshotIssue {
-    NotObject,
-    MissingAuth,
+    core_codex_live_settings_parts_from_settings(
+        &provider.settings_config,
+        provider.category.as_deref(),
+    )
 }
 
 pub(crate) fn provider_codex_live_snapshot_parts(
     provider: &Provider,
 ) -> Result<CodexLiveSnapshotParts<'_>, CodexLiveSnapshotIssue> {
-    let settings = provider
-        .settings_config
-        .as_object()
-        .ok_or(CodexLiveSnapshotIssue::NotObject)?;
-    let auth = settings
-        .get("auth")
-        .ok_or(CodexLiveSnapshotIssue::MissingAuth)?;
-
-    Ok(CodexLiveSnapshotParts {
-        category: provider.category.as_deref(),
-        auth,
-        config_text: codex_config_text_from_settings(&provider.settings_config),
-    })
-}
-
-pub(crate) struct CodexProviderValidationParts<'a> {
-    pub(crate) config_text: Option<&'a str>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CodexProviderValidationIssue {
-    NotObject,
-    MissingAuth,
-    AuthNotObject,
-    ConfigInvalidType,
+    core_codex_live_snapshot_parts_from_settings(
+        &provider.settings_config,
+        provider.category.as_deref(),
+    )
 }
 
 pub(crate) fn provider_codex_validation_parts(
     provider: &Provider,
 ) -> Result<CodexProviderValidationParts<'_>, CodexProviderValidationIssue> {
-    let settings = provider
-        .settings_config
-        .as_object()
-        .ok_or(CodexProviderValidationIssue::NotObject)?;
-    let auth = settings
-        .get("auth")
-        .ok_or(CodexProviderValidationIssue::MissingAuth)?;
-
-    if !auth.is_object() {
-        return Err(CodexProviderValidationIssue::AuthNotObject);
-    }
-
-    let config_text = match settings.get("config") {
-        Some(config_value) if !(config_value.is_string() || config_value.is_null()) => {
-            return Err(CodexProviderValidationIssue::ConfigInvalidType);
-        }
-        Some(_) => codex_config_text_from_settings(&provider.settings_config),
-        None => None,
-    };
-
-    Ok(CodexProviderValidationParts { config_text })
+    core_codex_provider_validation_parts_from_settings(&provider.settings_config)
 }
 
 #[derive(Default)]

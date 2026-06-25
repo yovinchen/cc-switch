@@ -2599,6 +2599,154 @@ pub fn codex_config_text_from_settings(settings_config: &Value) -> Option<&str> 
     settings_config.get("config").and_then(Value::as_str)
 }
 
+pub fn codex_auth_object_value_from_settings(settings_config: &Value) -> Option<&Value> {
+    let auth = settings_config.get("auth")?;
+    auth.as_object()?;
+    Some(auth)
+}
+
+pub struct CodexProviderLiveWriteParts<'a> {
+    pub category: Option<&'a str>,
+    pub auth: &'a Value,
+    pub config_text: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodexProviderLiveWriteIssue {
+    MissingAuth,
+}
+
+pub fn codex_provider_live_write_parts_from_settings<'a>(
+    settings_config: &'a Value,
+    category: Option<&'a str>,
+) -> Result<CodexProviderLiveWriteParts<'a>, CodexProviderLiveWriteIssue> {
+    let auth = settings_config
+        .get("auth")
+        .ok_or(CodexProviderLiveWriteIssue::MissingAuth)?;
+
+    Ok(CodexProviderLiveWriteParts {
+        category,
+        auth,
+        config_text: codex_config_text_from_settings(settings_config),
+    })
+}
+
+pub struct CodexRestoredLiveSettingsParts<'a> {
+    pub auth: Option<&'a Value>,
+    pub config: Option<&'a Value>,
+}
+
+pub fn codex_restored_live_settings_parts(
+    settings_config: &Value,
+) -> CodexRestoredLiveSettingsParts<'_> {
+    CodexRestoredLiveSettingsParts {
+        auth: settings_config.get("auth"),
+        config: settings_config.get("config"),
+    }
+}
+
+pub struct CodexLiveSettingsParts<'a> {
+    pub category: Option<&'a str>,
+    pub auth: &'a Value,
+    pub config_text: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodexLiveSettingsIssue {
+    NotObject,
+    MissingAuth,
+    AuthNotObject,
+}
+
+pub fn codex_live_settings_parts_from_settings<'a>(
+    settings_config: &'a Value,
+    category: Option<&'a str>,
+) -> Result<CodexLiveSettingsParts<'a>, CodexLiveSettingsIssue> {
+    let settings = settings_config
+        .as_object()
+        .ok_or(CodexLiveSettingsIssue::NotObject)?;
+    let auth = settings
+        .get("auth")
+        .ok_or(CodexLiveSettingsIssue::MissingAuth)?;
+
+    if !auth.is_object() {
+        return Err(CodexLiveSettingsIssue::AuthNotObject);
+    }
+
+    Ok(CodexLiveSettingsParts {
+        category,
+        auth,
+        config_text: codex_config_text_from_settings(settings_config),
+    })
+}
+
+pub struct CodexLiveSnapshotParts<'a> {
+    pub category: Option<&'a str>,
+    pub auth: &'a Value,
+    pub config_text: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodexLiveSnapshotIssue {
+    NotObject,
+    MissingAuth,
+}
+
+pub fn codex_live_snapshot_parts_from_settings<'a>(
+    settings_config: &'a Value,
+    category: Option<&'a str>,
+) -> Result<CodexLiveSnapshotParts<'a>, CodexLiveSnapshotIssue> {
+    let settings = settings_config
+        .as_object()
+        .ok_or(CodexLiveSnapshotIssue::NotObject)?;
+    let auth = settings
+        .get("auth")
+        .ok_or(CodexLiveSnapshotIssue::MissingAuth)?;
+
+    Ok(CodexLiveSnapshotParts {
+        category,
+        auth,
+        config_text: codex_config_text_from_settings(settings_config),
+    })
+}
+
+pub struct CodexProviderValidationParts<'a> {
+    pub config_text: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodexProviderValidationIssue {
+    NotObject,
+    MissingAuth,
+    AuthNotObject,
+    ConfigInvalidType,
+}
+
+pub fn codex_provider_validation_parts_from_settings(
+    settings_config: &Value,
+) -> Result<CodexProviderValidationParts<'_>, CodexProviderValidationIssue> {
+    let settings = settings_config
+        .as_object()
+        .ok_or(CodexProviderValidationIssue::NotObject)?;
+    let auth = settings
+        .get("auth")
+        .ok_or(CodexProviderValidationIssue::MissingAuth)?;
+
+    if !auth.is_object() {
+        return Err(CodexProviderValidationIssue::AuthNotObject);
+    }
+
+    let config_text = match settings.get("config") {
+        Some(config_value) if !(config_value.is_string() || config_value.is_null()) => {
+            return Err(CodexProviderValidationIssue::ConfigInvalidType);
+        }
+        Some(_) => codex_config_text_from_settings(settings_config),
+        None => None,
+    };
+
+    Ok(CodexProviderValidationParts { config_text })
+}
+
 pub fn codex_wire_api_from_config_toml(config_toml: &str) -> Option<String> {
     codex_active_model_provider_string_value(config_toml, "wire_api")
         .or_else(|| toml_top_level_string_value(config_toml, "wire_api"))
@@ -5649,10 +5797,16 @@ mod tests {
         claude_takeover_auth_policy_from_provider_facts,
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
         ClaudeTakeoverProviderFacts,
-        CodexCredentialParts, CodexLiveTakeoverMatchFacts,
+        CodexCredentialParts, CodexLiveSettingsIssue, CodexLiveSnapshotIssue,
+        CodexLiveTakeoverMatchFacts, CodexProviderLiveWriteIssue,
+        CodexProviderValidationIssue,
+        codex_auth_object_value_from_settings,
         codex_base_url_from_config_toml, codex_base_url_from_settings,
         codex_config_has_base_url_matching, codex_config_text_from_settings,
-        codex_live_auth_has_proxy_placeholder, codex_model_from_config_toml,
+        codex_live_auth_has_proxy_placeholder, codex_live_settings_parts_from_settings,
+        codex_live_snapshot_parts_from_settings, codex_model_from_config_toml,
+        codex_provider_live_write_parts_from_settings,
+        codex_provider_validation_parts_from_settings, codex_restored_live_settings_parts,
         codex_takeover_toml_config_patch,
         codex_wire_api_from_config_toml,
         CodexTakeoverTomlConfigPatch,
@@ -7424,6 +7578,95 @@ wire_api = "chat"
             None
         );
         assert_eq!(codex_config_text_from_settings(&json!({})), None);
+    }
+
+    #[test]
+    fn codex_live_settings_shape_helpers_preserve_contracts() {
+        let settings = json!({
+            "auth": {"OPENAI_API_KEY": "sk-test"},
+            "config": "model = \"gpt-5\""
+        });
+
+        let auth = codex_auth_object_value_from_settings(&settings).expect("auth object");
+        assert_eq!(
+            auth.get("OPENAI_API_KEY").and_then(Value::as_str),
+            Some("sk-test")
+        );
+        assert!(codex_auth_object_value_from_settings(&json!({"auth": "sk-test"})).is_none());
+
+        let write_parts = codex_provider_live_write_parts_from_settings(&settings, Some("custom"))
+            .expect("write parts");
+        assert_eq!(write_parts.category, Some("custom"));
+        assert_eq!(
+            write_parts
+                .auth
+                .get("OPENAI_API_KEY")
+                .and_then(Value::as_str),
+            Some("sk-test")
+        );
+        assert_eq!(write_parts.config_text, Some("model = \"gpt-5\""));
+        assert!(matches!(
+            codex_provider_live_write_parts_from_settings(&json!({"config": ""}), Some("custom")),
+            Err(CodexProviderLiveWriteIssue::MissingAuth)
+        ));
+
+        let restored_parts = codex_restored_live_settings_parts(&settings);
+        assert_eq!(restored_parts.auth, settings.get("auth"));
+        assert_eq!(restored_parts.config, settings.get("config"));
+
+        let live_parts = codex_live_settings_parts_from_settings(&settings, Some("official"))
+            .expect("live settings parts");
+        assert_eq!(live_parts.category, Some("official"));
+        assert!(live_parts.auth.is_object());
+        assert_eq!(live_parts.config_text, Some("model = \"gpt-5\""));
+        assert!(matches!(
+            codex_live_settings_parts_from_settings(&json!("invalid"), None),
+            Err(CodexLiveSettingsIssue::NotObject)
+        ));
+        assert!(matches!(
+            codex_live_settings_parts_from_settings(&json!({"config": ""}), None),
+            Err(CodexLiveSettingsIssue::MissingAuth)
+        ));
+        assert!(matches!(
+            codex_live_settings_parts_from_settings(&json!({"auth": "legacy"}), None),
+            Err(CodexLiveSettingsIssue::AuthNotObject)
+        ));
+
+        let legacy_snapshot_settings = json!({"auth": "legacy"});
+        let snapshot_parts =
+            codex_live_snapshot_parts_from_settings(&legacy_snapshot_settings, Some("custom"))
+                .expect("snapshot parts");
+        assert_eq!(snapshot_parts.category, Some("custom"));
+        assert_eq!(snapshot_parts.auth, &json!("legacy"));
+        assert_eq!(snapshot_parts.config_text, None);
+        assert!(matches!(
+            codex_live_snapshot_parts_from_settings(&json!("invalid"), None),
+            Err(CodexLiveSnapshotIssue::NotObject)
+        ));
+        assert!(matches!(
+            codex_live_snapshot_parts_from_settings(&json!({"config": ""}), None),
+            Err(CodexLiveSnapshotIssue::MissingAuth)
+        ));
+
+        let validation_parts =
+            codex_provider_validation_parts_from_settings(&settings).expect("validation parts");
+        assert_eq!(validation_parts.config_text, Some("model = \"gpt-5\""));
+        assert!(matches!(
+            codex_provider_validation_parts_from_settings(&json!("invalid")),
+            Err(CodexProviderValidationIssue::NotObject)
+        ));
+        assert!(matches!(
+            codex_provider_validation_parts_from_settings(&json!({"config": ""})),
+            Err(CodexProviderValidationIssue::MissingAuth)
+        ));
+        assert!(matches!(
+            codex_provider_validation_parts_from_settings(&json!({"auth": "legacy"})),
+            Err(CodexProviderValidationIssue::AuthNotObject)
+        ));
+        assert!(matches!(
+            codex_provider_validation_parts_from_settings(&json!({"auth": {}, "config": 42})),
+            Err(CodexProviderValidationIssue::ConfigInvalidType)
+        ));
     }
 
     #[test]
