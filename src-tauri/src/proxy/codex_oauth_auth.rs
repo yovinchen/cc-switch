@@ -26,6 +26,12 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
 use super::copilot_auth::{GitHubAccount, GitHubDeviceCodeResponse};
+use crate::proxy_core_adapter::{
+    codex_oauth_access_token_expires_at_ms, codex_oauth_device_code_expires_at_ms,
+    codex_oauth_device_code_expires_in_secs, codex_oauth_device_poll_status_kind,
+    codex_oauth_pending_device_code_is_expired, codex_oauth_poll_interval_secs,
+    codex_oauth_token_is_expiring_soon, CodexOAuthDevicePollStatusKind,
+};
 
 /// OpenAI OAuth 客户端 ID（OpenCode 使用，与官方 Codex CLI 相同）
 const CODEX_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -44,15 +50,6 @@ const DEVICE_VERIFICATION_URL: &str = "https://auth.openai.com/codex/device";
 
 /// Device Code 流程的 redirect_uri（OpenAI 服务端约定）
 const DEVICE_REDIRECT_URI: &str = "https://auth.openai.com/deviceauth/callback";
-
-/// Token 刷新提前量（毫秒）
-const TOKEN_REFRESH_BUFFER_MS: i64 = 60_000;
-
-/// Device Code 默认有效时长（秒），OpenAI 文档约定 15 分钟
-const DEVICE_CODE_DEFAULT_EXPIRES_IN: u64 = 900;
-
-/// 轮询间隔安全余量（秒）
-const POLLING_SAFETY_MARGIN_SECS: u64 = 3;
 
 /// User-Agent
 const CODEX_USER_AGENT: &str = "cc-switch-codex-oauth";
@@ -165,7 +162,7 @@ struct CachedAccessToken {
 impl CachedAccessToken {
     fn is_expiring_soon(&self) -> bool {
         let now = chrono::Utc::now().timestamp_millis();
-        self.expires_at_ms - now < TOKEN_REFRESH_BUFFER_MS
+        codex_oauth_token_is_expiring_soon(self.expires_at_ms, now)
     }
 }
 
@@ -288,16 +285,21 @@ impl CodexOAuthManager {
             .await
             .map_err(|e| CodexOAuthError::ParseError(e.to_string()))?;
 
-        let interval = parse_interval(device.interval.as_ref());
-        let expires_in = device.expires_in.unwrap_or(DEVICE_CODE_DEFAULT_EXPIRES_IN);
-        let expires_at_ms = chrono::Utc::now().timestamp_millis() + (expires_in as i64) * 1000;
+        let interval = codex_oauth_poll_interval_secs(device.interval.as_ref());
+        let expires_in = codex_oauth_device_code_expires_in_secs(device.expires_in);
+        let expires_at_ms = codex_oauth_device_code_expires_at_ms(
+            device.expires_in,
+            chrono::Utc::now().timestamp_millis(),
+        );
 
         // 记录 device_auth_id -> 用户码映射；同时清理所有已过期的条目，
         // 避免用户放弃登录流程导致 HashMap 无界增长
         {
             let mut pending = self.pending_device_codes.write().await;
             let now_ms = chrono::Utc::now().timestamp_millis();
-            pending.retain(|_, entry| entry.expires_at_ms > now_ms);
+            pending.retain(|_, entry| {
+                !codex_oauth_pending_device_code_is_expired(entry.expires_at_ms, now_ms)
+            });
             pending.insert(
                 device.device_auth_id.clone(),
                 PendingDeviceCode {
@@ -339,7 +341,10 @@ impl CodexOAuthManager {
             )
         })?;
 
-        if entry.expires_at_ms <= chrono::Utc::now().timestamp_millis() {
+        if codex_oauth_pending_device_code_is_expired(
+            entry.expires_at_ms,
+            chrono::Utc::now().timestamp_millis(),
+        ) {
             let mut pending = self.pending_device_codes.write().await;
             pending.remove(device_code);
             return Err(CodexOAuthError::ExpiredToken);
@@ -363,20 +368,20 @@ impl CodexOAuthManager {
 
         let status = poll_response.status();
 
-        // 403/404 表示用户未完成授权，继续轮询
-        if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::NOT_FOUND {
-            return Err(CodexOAuthError::AuthorizationPending);
-        }
-
-        if status == reqwest::StatusCode::GONE {
-            return Err(CodexOAuthError::ExpiredToken);
-        }
-
-        if !status.is_success() {
-            let text = poll_response.text().await.unwrap_or_default();
-            return Err(CodexOAuthError::TokenFetchFailed(format!(
-                "{status} - {text}"
-            )));
+        match codex_oauth_device_poll_status_kind(status) {
+            CodexOAuthDevicePollStatusKind::AuthorizationPending => {
+                return Err(CodexOAuthError::AuthorizationPending);
+            }
+            CodexOAuthDevicePollStatusKind::ExpiredToken => {
+                return Err(CodexOAuthError::ExpiredToken);
+            }
+            CodexOAuthDevicePollStatusKind::Failed => {
+                let text = poll_response.text().await.unwrap_or_default();
+                return Err(CodexOAuthError::TokenFetchFailed(format!(
+                    "{status} - {text}"
+                )));
+            }
+            CodexOAuthDevicePollStatusKind::Success => {}
         }
 
         let success: DevicePollSuccess = poll_response
@@ -413,7 +418,10 @@ impl CodexOAuthManager {
                 account_id.clone(),
                 CachedAccessToken {
                     token: tokens.access_token.clone(),
-                    expires_at_ms: compute_expires_at_ms(tokens.expires_in),
+                    expires_at_ms: codex_oauth_access_token_expires_at_ms(
+                        tokens.expires_in,
+                        chrono::Utc::now().timestamp_millis(),
+                    ),
                 },
             );
         }
@@ -552,7 +560,10 @@ impl CodexOAuthManager {
         }
 
         let access_token = new_tokens.access_token.clone();
-        let expires_at_ms = compute_expires_at_ms(new_tokens.expires_in);
+        let expires_at_ms = codex_oauth_access_token_expires_at_ms(
+            new_tokens.expires_in,
+            chrono::Utc::now().timestamp_millis(),
+        );
 
         {
             let mut tokens = self.access_tokens.write().await;
@@ -901,25 +912,6 @@ pub struct CodexOAuthStatus {
 
 // ==================== 工具函数 ====================
 
-/// 解析 OpenAI Device Code 响应中的 interval 字段
-///
-/// 服务端可能返回字符串或数字，需要兼容
-fn parse_interval(value: Option<&serde_json::Value>) -> u64 {
-    let raw = match value {
-        Some(serde_json::Value::Number(n)) => n.as_u64().unwrap_or(5),
-        Some(serde_json::Value::String(s)) => s.parse::<u64>().unwrap_or(5),
-        _ => 5,
-    };
-    raw.max(1) + POLLING_SAFETY_MARGIN_SECS
-}
-
-/// 从 expires_in（秒）计算过期时间戳（毫秒）
-fn compute_expires_at_ms(expires_in: Option<i64>) -> i64 {
-    let now_ms = chrono::Utc::now().timestamp_millis();
-    let secs = expires_in.unwrap_or(3600);
-    now_ms + secs * 1000
-}
-
 /// 解析 JWT 中的 claims
 fn parse_jwt_claims(token: &str) -> Option<IdTokenClaims> {
     let parts: Vec<&str> = token.split('.').collect();
@@ -979,41 +971,40 @@ mod tests {
     #[test]
     fn test_parse_interval_number() {
         let v = serde_json::Value::Number(serde_json::Number::from(5));
-        assert_eq!(parse_interval(Some(&v)), 5 + POLLING_SAFETY_MARGIN_SECS);
+        assert_eq!(codex_oauth_poll_interval_secs(Some(&v)), 8);
     }
 
     #[test]
     fn test_parse_interval_string() {
         let v = serde_json::Value::String("10".to_string());
-        assert_eq!(parse_interval(Some(&v)), 10 + POLLING_SAFETY_MARGIN_SECS);
+        assert_eq!(codex_oauth_poll_interval_secs(Some(&v)), 13);
     }
 
     #[test]
     fn test_parse_interval_default() {
-        assert_eq!(parse_interval(None), 5 + POLLING_SAFETY_MARGIN_SECS);
+        assert_eq!(codex_oauth_poll_interval_secs(None), 8);
     }
 
     #[test]
     fn test_parse_interval_min() {
         let v = serde_json::Value::Number(serde_json::Number::from(0));
         // 0 应被提升到 1
-        assert_eq!(parse_interval(Some(&v)), 1 + POLLING_SAFETY_MARGIN_SECS);
+        assert_eq!(codex_oauth_poll_interval_secs(Some(&v)), 4);
     }
 
     #[test]
     fn test_compute_expires_at_ms() {
-        let result = compute_expires_at_ms(Some(3600));
         let now = chrono::Utc::now().timestamp_millis();
+        let result = codex_oauth_access_token_expires_at_ms(Some(3600), now);
         // 应在未来约 3600 秒处（允许少量误差）
-        assert!(result > now + 3500 * 1000);
-        assert!(result < now + 3700 * 1000);
+        assert_eq!(result, now + 3600 * 1000);
     }
 
     #[test]
     fn test_compute_expires_at_ms_default() {
-        let result = compute_expires_at_ms(None);
         let now = chrono::Utc::now().timestamp_millis();
-        assert!(result > now);
+        let result = codex_oauth_access_token_expires_at_ms(None, now);
+        assert_eq!(result, now + 3600 * 1000);
     }
 
     #[test]

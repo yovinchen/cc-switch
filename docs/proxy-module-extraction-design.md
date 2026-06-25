@@ -1437,6 +1437,7 @@
 1017. Host `ProxyError` 到 core `ProxyErrorStatusKind` 的状态事实投影已收敛到 `proxy_core_adapter::proxy_error_status_kind`，`proxy/error.rs` 不再维护 host-to-core 映射，`error_mapper` 也统一经 adapter 获取 status fact。
 1018. Copilot `/copilot_internal/user` usage/quota DTO、usage JSON parse 和 `endpoints.api` 到默认 Copilot API base 的 fallback policy 已迁入 `proxy-core::copilot_model_map`，host `copilot_auth` 只保留 HTTP 调用、token/account 读取和 endpoint cache 写入。
 1019. Copilot OAuth device polling 的错误码分类与 token 提前刷新 buffer policy 已迁入 `proxy-core::managed_account_auth`；host `copilot_auth` 只保留 HTTP 轮询、账号持久化和 core classification 到 `CopilotAuthError` 的映射。
+1020. Codex OAuth device polling 的 HTTP status 分类、device code 默认过期/interval 安全余量、access token 过期时间计算和 token 提前刷新 buffer policy 已迁入 `proxy-core::managed_account_auth`；host `codex_oauth_auth` 只保留 reqwest 调用、token cache、refresh token 持久化和 status classification 到 `CodexOAuthError` 的映射。
 
 ## 背景
 

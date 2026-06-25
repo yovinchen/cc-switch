@@ -2627,8 +2627,11 @@ pub(crate) use crate::proxy_core::api::auth::{
     settings_config_with_channel_auth_key_for_app,
 };
 pub(crate) use crate::proxy_core::api::auth::{
-    copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
-    managed_account_app_handle_unavailable_error_message,
+    codex_oauth_access_token_expires_at_ms, codex_oauth_device_code_expires_at_ms,
+    codex_oauth_device_code_expires_in_secs, codex_oauth_device_poll_status_kind,
+    codex_oauth_pending_device_code_is_expired, codex_oauth_poll_interval_secs,
+    codex_oauth_token_is_expiring_soon, copilot_oauth_poll_error_kind,
+    copilot_token_is_expiring_soon, managed_account_app_handle_unavailable_error_message,
     managed_account_app_handle_unavailable_log_message,
     managed_account_id_for_auth_provider as core_managed_account_id_for_auth_provider,
     managed_account_token_failure_error_message, managed_account_token_failure_log_message,
@@ -2641,8 +2644,8 @@ pub(crate) use crate::proxy_core::api::auth::{
     resolve_copilot_live_model_for_binding_with_runtime_source as resolve_core_copilot_live_model_for_binding_with_runtime_source,
     resolve_copilot_model_vendor_for_binding_with_runtime_source as resolve_core_copilot_model_vendor_for_binding_with_runtime_source,
     resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
-    CopilotOAuthPollErrorKind, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
-    ManagedAccountBindingInput, ManagedAccountBindingSource,
+    CodexOAuthDevicePollStatusKind, CopilotOAuthPollErrorKind, ManagedAccountAuthResolution,
+    ManagedAccountAuthRuntime, ManagedAccountBindingInput, ManagedAccountBindingSource,
     ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, GITHUB_COPILOT_AUTH_PROVIDER,
 };
 pub(crate) use crate::proxy_core::api::config::{

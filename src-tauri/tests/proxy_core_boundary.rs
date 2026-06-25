@@ -1050,6 +1050,13 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn parse_copilot_usage_response_bytes(",
     "fn copilot_usage_response_endpoint(",
     "fn copilot_api_endpoint_from_usage_or_default(",
+    "fn codex_oauth_token_is_expiring_soon(",
+    "fn codex_oauth_device_code_expires_in_secs(",
+    "fn codex_oauth_device_code_expires_at_ms(",
+    "fn codex_oauth_access_token_expires_at_ms(",
+    "fn codex_oauth_pending_device_code_is_expired(",
+    "fn codex_oauth_poll_interval_secs(",
+    "fn codex_oauth_device_poll_status_kind(",
     "fn copilot_token_is_expiring_soon(",
     "fn copilot_oauth_poll_error_kind(",
     "fn codex_default_model_context_window(",
@@ -7675,6 +7682,74 @@ fn production_copilot_auth_delegates_oauth_contract_to_core() {
             && poll_slice.contains("CopilotOAuthPollErrorKind::AccessDenied")
             && poll_slice.contains("CopilotOAuthPollErrorKind::NetworkError"),
         "copilot_auth.rs should map core OAuth polling classifications into host errors"
+    );
+}
+
+#[test]
+fn production_codex_oauth_auth_delegates_device_poll_contract_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/codex_oauth_auth.rs");
+    let source = fs::read_to_string(&path).expect("read codex_oauth_auth.rs");
+    let start_slice = function_slice(
+        &source,
+        "pub async fn start_device_flow",
+        "    /// 轮询 Device Code 状态",
+    );
+    let poll_slice = function_slice(
+        &source,
+        "pub async fn poll_for_token",
+        "    /// 用 authorization_code + code_verifier 换取 tokens",
+    );
+    let token_slice = function_slice(
+        &source,
+        "impl CachedAccessToken",
+        "/// 进行中的 Device Code 条目",
+    );
+    let valid_token_slice = function_slice(
+        &source,
+        "pub async fn get_valid_token_for_account",
+        "    /// 获取默认账号的有效 token",
+    );
+
+    for marker in [
+        "const TOKEN_REFRESH_BUFFER_MS",
+        "const DEVICE_CODE_DEFAULT_EXPIRES_IN",
+        "const POLLING_SAFETY_MARGIN_SECS",
+        "fn parse_interval(",
+        "fn compute_expires_at_ms(",
+    ] {
+        assert!(
+            !source.contains(marker),
+            "codex_oauth_auth.rs should not own Codex OAuth timing policy marker `{marker}`"
+        );
+    }
+
+    for marker in [
+        "StatusCode::FORBIDDEN",
+        "StatusCode::NOT_FOUND",
+        "StatusCode::GONE",
+        "status.is_success()",
+    ] {
+        assert!(
+            !poll_slice.contains(marker),
+            "poll_for_token should not own Codex OAuth device poll status policy marker `{marker}`"
+        );
+    }
+
+    assert!(
+        start_slice.contains("codex_oauth_poll_interval_secs(")
+            && start_slice.contains("codex_oauth_device_code_expires_in_secs(")
+            && start_slice.contains("codex_oauth_device_code_expires_at_ms(")
+            && start_slice.contains("codex_oauth_pending_device_code_is_expired(")
+            && poll_slice.contains("codex_oauth_pending_device_code_is_expired(")
+            && poll_slice.contains("codex_oauth_device_poll_status_kind(")
+            && poll_slice.contains("CodexOAuthDevicePollStatusKind::AuthorizationPending")
+            && poll_slice.contains("CodexOAuthDevicePollStatusKind::ExpiredToken")
+            && poll_slice.contains("CodexOAuthDevicePollStatusKind::Failed")
+            && poll_slice.contains("CodexOAuthDevicePollStatusKind::Success")
+            && token_slice.contains("codex_oauth_token_is_expiring_soon(")
+            && valid_token_slice.contains("codex_oauth_access_token_expires_at_ms("),
+        "codex_oauth_auth.rs should delegate timing and device poll status contracts to core"
     );
 }
 

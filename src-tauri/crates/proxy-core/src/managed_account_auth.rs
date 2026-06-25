@@ -1,5 +1,5 @@
 use futures::future::BoxFuture;
-use http::HeaderMap;
+use http::{HeaderMap, StatusCode};
 use thiserror::Error;
 
 use crate::copilot_model_map::{resolve_copilot_model_against_ids, CopilotModel};
@@ -13,6 +13,10 @@ pub const CODEX_OAUTH_AUTH_PROVIDER: &str = "codex_oauth";
 pub const GITHUB_COPILOT_AUTH_PLACEHOLDER: &str = "copilot_placeholder";
 pub const CODEX_OAUTH_AUTH_PLACEHOLDER: &str = "codex_oauth_placeholder";
 pub const COPILOT_TOKEN_REFRESH_BUFFER_SECONDS: i64 = 60;
+pub const CODEX_OAUTH_TOKEN_REFRESH_BUFFER_MS: i64 = 60_000;
+pub const CODEX_OAUTH_DEVICE_CODE_DEFAULT_EXPIRES_IN_SECS: u64 = 900;
+pub const CODEX_OAUTH_DEFAULT_TOKEN_EXPIRES_IN_SECS: i64 = 3600;
+pub const CODEX_OAUTH_POLLING_SAFETY_MARGIN_SECS: u64 = 3;
 
 pub type ManagedAccountRuntimeResultFuture<'a, T, E> = BoxFuture<'a, Result<T, E>>;
 pub type CodexOAuthResolution = (ProviderAuthInfo, Option<String>);
@@ -42,6 +46,54 @@ pub fn copilot_oauth_poll_error_kind(
             other,
             error_description.unwrap_or_default()
         )),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodexOAuthDevicePollStatusKind {
+    AuthorizationPending,
+    ExpiredToken,
+    Failed,
+    Success,
+}
+
+pub fn codex_oauth_token_is_expiring_soon(expires_at_ms: i64, now_ms: i64) -> bool {
+    expires_at_ms - now_ms < CODEX_OAUTH_TOKEN_REFRESH_BUFFER_MS
+}
+
+pub fn codex_oauth_device_code_expires_in_secs(expires_in: Option<u64>) -> u64 {
+    expires_in.unwrap_or(CODEX_OAUTH_DEVICE_CODE_DEFAULT_EXPIRES_IN_SECS)
+}
+
+pub fn codex_oauth_device_code_expires_at_ms(expires_in: Option<u64>, now_ms: i64) -> i64 {
+    now_ms + (codex_oauth_device_code_expires_in_secs(expires_in) as i64) * 1000
+}
+
+pub fn codex_oauth_access_token_expires_at_ms(expires_in: Option<i64>, now_ms: i64) -> i64 {
+    now_ms + expires_in.unwrap_or(CODEX_OAUTH_DEFAULT_TOKEN_EXPIRES_IN_SECS) * 1000
+}
+
+pub fn codex_oauth_pending_device_code_is_expired(expires_at_ms: i64, now_ms: i64) -> bool {
+    expires_at_ms <= now_ms
+}
+
+pub fn codex_oauth_poll_interval_secs(value: Option<&serde_json::Value>) -> u64 {
+    let raw = match value {
+        Some(serde_json::Value::Number(n)) => n.as_u64().unwrap_or(5),
+        Some(serde_json::Value::String(s)) => s.parse::<u64>().unwrap_or(5),
+        _ => 5,
+    };
+    raw.max(1) + CODEX_OAUTH_POLLING_SAFETY_MARGIN_SECS
+}
+
+pub fn codex_oauth_device_poll_status_kind(status: StatusCode) -> CodexOAuthDevicePollStatusKind {
+    match status {
+        StatusCode::FORBIDDEN | StatusCode::NOT_FOUND => {
+            CodexOAuthDevicePollStatusKind::AuthorizationPending
+        }
+        StatusCode::GONE => CodexOAuthDevicePollStatusKind::ExpiredToken,
+        status if status.is_success() => CodexOAuthDevicePollStatusKind::Success,
+        _ => CodexOAuthDevicePollStatusKind::Failed,
     }
 }
 
@@ -559,6 +611,10 @@ pub fn headers_contain_proxy_auth_placeholder(headers: &HeaderMap) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
+        codex_oauth_access_token_expires_at_ms, codex_oauth_device_code_expires_at_ms,
+        codex_oauth_device_code_expires_in_secs, codex_oauth_device_poll_status_kind,
+        codex_oauth_pending_device_code_is_expired, codex_oauth_poll_interval_secs,
+        codex_oauth_token_is_expiring_soon,
         copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
         managed_account_app_handle_unavailable_error_message,
@@ -576,14 +632,14 @@ mod tests {
         resolve_copilot_model_vendor_with_runtime_source,
         resolve_managed_account_auth_for_binding_with_runtime_source,
         resolve_managed_account_auth_with_runtime_source, validate_managed_account_upstream_auth,
-        CopilotOAuthPollErrorKind, ManagedAccountAuthError, ManagedAccountAuthPlan,
-        ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ManagedAccountBindingInput,
-        ManagedAccountBindingSource, ManagedAccountRuntimeSource, CODEX_OAUTH_AUTH_PLACEHOLDER,
-        CODEX_OAUTH_AUTH_PROVIDER,
+        CodexOAuthDevicePollStatusKind, CopilotOAuthPollErrorKind, ManagedAccountAuthError,
+        ManagedAccountAuthPlan, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
+        ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAccountRuntimeSource,
+        CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER,
         GITHUB_COPILOT_AUTH_PLACEHOLDER, GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
     };
     use futures::{executor::block_on, future::BoxFuture};
-    use http::{HeaderMap, HeaderValue};
+    use http::{HeaderMap, HeaderValue, StatusCode};
 
     use crate::copilot_model_map::CopilotModel;
     use crate::domain::ProviderKind;
@@ -627,6 +683,93 @@ mod tests {
         assert_eq!(
             copilot_oauth_poll_error_kind("unknown", None),
             CopilotOAuthPollErrorKind::NetworkError("unknown: ".to_string())
+        );
+    }
+
+    #[test]
+    fn codex_oauth_token_expiry_policy_uses_refresh_buffer() {
+        let now = 1_771_000_000_000;
+
+        assert!(!codex_oauth_token_is_expiring_soon(now + 3_600_000, now));
+        assert!(codex_oauth_token_is_expiring_soon(now + 30_000, now));
+        assert!(codex_oauth_token_is_expiring_soon(now - 1, now));
+        assert!(!codex_oauth_token_is_expiring_soon(now + 60_000, now));
+        assert!(codex_oauth_token_is_expiring_soon(now + 59_999, now));
+    }
+
+    #[test]
+    fn codex_oauth_device_and_access_expiry_policies_use_defaults() {
+        let now = 1_771_000_000_000;
+
+        assert_eq!(codex_oauth_device_code_expires_in_secs(Some(120)), 120);
+        assert_eq!(codex_oauth_device_code_expires_in_secs(None), 900);
+        assert_eq!(
+            codex_oauth_device_code_expires_at_ms(Some(120), now),
+            now + 120_000
+        );
+        assert_eq!(
+            codex_oauth_device_code_expires_at_ms(None, now),
+            now + 900_000
+        );
+        assert_eq!(
+            codex_oauth_access_token_expires_at_ms(Some(1800), now),
+            now + 1_800_000
+        );
+        assert_eq!(
+            codex_oauth_access_token_expires_at_ms(None, now),
+            now + 3_600_000
+        );
+        assert!(codex_oauth_pending_device_code_is_expired(now, now));
+        assert!(codex_oauth_pending_device_code_is_expired(now - 1, now));
+        assert!(!codex_oauth_pending_device_code_is_expired(now + 1, now));
+    }
+
+    #[test]
+    fn codex_oauth_poll_interval_handles_server_shapes() {
+        assert_eq!(
+            codex_oauth_poll_interval_secs(Some(&serde_json::Value::Number(
+                serde_json::Number::from(5)
+            ))),
+            8
+        );
+        assert_eq!(
+            codex_oauth_poll_interval_secs(Some(&serde_json::Value::String("10".to_string()))),
+            13
+        );
+        assert_eq!(codex_oauth_poll_interval_secs(None), 8);
+        assert_eq!(
+            codex_oauth_poll_interval_secs(Some(&serde_json::Value::Number(
+                serde_json::Number::from(0)
+            ))),
+            4
+        );
+        assert_eq!(
+            codex_oauth_poll_interval_secs(Some(&serde_json::Value::String("bad".to_string()))),
+            8
+        );
+    }
+
+    #[test]
+    fn codex_oauth_device_poll_status_maps_http_contract() {
+        assert_eq!(
+            codex_oauth_device_poll_status_kind(StatusCode::FORBIDDEN),
+            CodexOAuthDevicePollStatusKind::AuthorizationPending
+        );
+        assert_eq!(
+            codex_oauth_device_poll_status_kind(StatusCode::NOT_FOUND),
+            CodexOAuthDevicePollStatusKind::AuthorizationPending
+        );
+        assert_eq!(
+            codex_oauth_device_poll_status_kind(StatusCode::GONE),
+            CodexOAuthDevicePollStatusKind::ExpiredToken
+        );
+        assert_eq!(
+            codex_oauth_device_poll_status_kind(StatusCode::OK),
+            CodexOAuthDevicePollStatusKind::Success
+        );
+        assert_eq!(
+            codex_oauth_device_poll_status_kind(StatusCode::INTERNAL_SERVER_ERROR),
+            CodexOAuthDevicePollStatusKind::Failed
         );
     }
 
