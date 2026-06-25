@@ -924,6 +924,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn resolve_channel_route(",
     "fn channel_test_app_type_error(",
     "fn channel_test_provider_not_found_error(",
+    "fn channel_test_app_type_from_probe_request(",
+    "fn channel_test_provider_from_probe_source(",
     "fn channel_reachability_probe_error(",
     "fn channel_auth_profile_missing_key_error(",
     "fn channel_key_auth_error(",

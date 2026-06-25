@@ -12566,31 +12566,18 @@ pub(crate) fn extract_proxy_session_id(
     )
 }
 
-pub(crate) fn channel_test_app_type_from_probe_request(
-    request: &ChannelTestProbeRequest,
-) -> ProxyCoreResult<AppType> {
-    request
-        .app_type
-        .parse::<AppType>()
-        .map_err(channel_test_app_type_error)
-}
-
-pub(crate) fn channel_test_provider_from_probe_source(
-    request: &ChannelTestProbeRequest,
-    provider: Option<Provider>,
-) -> ProxyCoreResult<Provider> {
-    provider.ok_or_else(|| channel_test_provider_not_found_error(request))
-}
-
 pub(crate) async fn probe_channel_reachability_from_db_source(
     db: &Database,
     request: ChannelTestProbeRequest,
 ) -> ProxyCoreResult<ChannelReachabilityResult> {
-    let app_type = channel_test_app_type_from_probe_request(&request)?;
+    let app_type = request
+        .app_type
+        .parse::<AppType>()
+        .map_err(channel_test_app_type_error)?;
     let provider = db
         .get_provider_by_id(&request.provider_id, &request.app_type)
         .map_err(|error| app_error("get channel test provider", error))?;
-    let provider = channel_test_provider_from_probe_source(&request, provider)?;
+    let provider = provider.ok_or_else(|| channel_test_provider_not_found_error(&request))?;
     let config = db
         .get_stream_check_config()
         .map_err(|error| app_error("get stream check config", error))?;
@@ -21634,7 +21621,7 @@ command = "latest-command"
             base_url: "https://api.example.com/v1".to_string(),
         };
         assert_eq!(
-            channel_test_app_type_from_probe_request(&probe).expect("app type"),
+            probe.app_type.parse::<AppType>().expect("app type"),
             AppType::Claude
         );
         let provider = Provider::with_id(
@@ -21643,14 +21630,10 @@ command = "latest-command"
             json!({}),
             None,
         );
-        assert_eq!(
-            channel_test_provider_from_probe_source(&probe, Some(provider))
-                .expect("provider")
-                .id,
-            "provider-a"
-        );
-        let missing_provider =
-            channel_test_provider_from_probe_source(&probe, None).expect_err("missing provider");
+        assert_eq!(provider.id, "provider-a");
+        let missing_provider: ProxyCoreResult<Provider> =
+            None.ok_or_else(|| channel_test_provider_not_found_error(&probe));
+        let missing_provider = missing_provider.expect_err("missing provider");
         assert!(matches!(
             missing_provider,
             ProxyCoreError::Config(message)
@@ -21660,8 +21643,12 @@ command = "latest-command"
             app_type: "unknown-app".to_string(),
             ..probe.clone()
         };
+        let invalid_app_type: ProxyCoreResult<AppType> = invalid_probe
+            .app_type
+            .parse::<AppType>()
+            .map_err(channel_test_app_type_error);
         assert!(matches!(
-            channel_test_app_type_from_probe_request(&invalid_probe),
+            invalid_app_type,
             Err(ProxyCoreError::InvalidRequest(message))
                 if message.contains("unknown-app")
         ));
