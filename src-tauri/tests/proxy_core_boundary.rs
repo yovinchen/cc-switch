@@ -5467,6 +5467,38 @@ fn proxy_core_adapter_delegates_live_takeover_match_app_dispatch_to_core() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_hot_switch_takeover_policies_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn proxy_live_config_owned_by_takeover",
+        "pub(crate) fn toml_value_is_subset",
+    );
+
+    for marker in [
+        "core_proxy_live_config_owned_by_takeover(",
+        "core_proxy_switch_should_hot_switch(",
+        "core_proxy_hot_switch_should_refresh_codex_live_from_backup(",
+        "core_proxy_hot_switch_should_sync_codex_live_while_proxy_active(",
+        "core_proxy_hot_switch_should_sync_claude_live_while_proxy_active(",
+    ] {
+        assert!(
+            function.contains(marker),
+            "proxy_core_adapter must delegate hot-switch takeover policy marker `{marker}` to proxy-core"
+        );
+    }
+
+    for marker in ["has_live_backup || live_taken_over", "matches!(app_type"] {
+        assert!(
+            !function.contains(marker),
+            "proxy_core_adapter must not keep hot-switch takeover policy marker `{marker}`"
+        );
+    }
+}
+
+#[test]
 fn production_forwarder_delegates_managed_auth_resolution_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");

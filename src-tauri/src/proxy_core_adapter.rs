@@ -334,6 +334,11 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_switch_requires_takeover_lock as core_provider_switch_requires_takeover_lock,
     provider_switch_should_mark_live_config_managed as core_provider_switch_should_mark_live_config_managed,
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
+    proxy_hot_switch_should_refresh_codex_live_from_backup as core_proxy_hot_switch_should_refresh_codex_live_from_backup,
+    proxy_hot_switch_should_sync_claude_live_while_proxy_active as core_proxy_hot_switch_should_sync_claude_live_while_proxy_active,
+    proxy_hot_switch_should_sync_codex_live_while_proxy_active as core_proxy_hot_switch_should_sync_codex_live_while_proxy_active,
+    proxy_live_config_owned_by_takeover as core_proxy_live_config_owned_by_takeover,
+    proxy_switch_should_hot_switch as core_proxy_switch_should_hot_switch,
     proxy_urls_match as core_proxy_urls_match,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
@@ -5768,14 +5773,14 @@ pub(crate) fn proxy_live_config_owned_by_takeover(
     has_live_backup: bool,
     live_taken_over: bool,
 ) -> bool {
-    has_live_backup || live_taken_over
+    core_proxy_live_config_owned_by_takeover(has_live_backup, live_taken_over)
 }
 
 pub(crate) fn proxy_switch_should_hot_switch(
     proxy_config_takeover_enabled: bool,
     live_taken_over: bool,
 ) -> bool {
-    proxy_config_takeover_enabled || live_taken_over
+    core_proxy_switch_should_hot_switch(proxy_config_takeover_enabled, live_taken_over)
 }
 
 pub(crate) fn proxy_hot_switch_should_refresh_codex_live_from_backup(
@@ -5783,21 +5788,31 @@ pub(crate) fn proxy_hot_switch_should_refresh_codex_live_from_backup(
     has_live_backup: bool,
     live_taken_over: bool,
 ) -> bool {
-    matches!(app_type, AppType::Codex) && has_live_backup && !live_taken_over
+    core_proxy_hot_switch_should_refresh_codex_live_from_backup(
+        &AppKind::from(app_type),
+        has_live_backup,
+        live_taken_over,
+    )
 }
 
 pub(crate) fn proxy_hot_switch_should_sync_codex_live_while_proxy_active(
     app_type: &AppType,
     live_taken_over: bool,
 ) -> bool {
-    matches!(app_type, AppType::Codex) && live_taken_over
+    core_proxy_hot_switch_should_sync_codex_live_while_proxy_active(
+        &AppKind::from(app_type),
+        live_taken_over,
+    )
 }
 
 pub(crate) fn proxy_hot_switch_should_sync_claude_live_while_proxy_active(
     app_type: &AppType,
     proxy_live_owned_by_takeover: bool,
 ) -> bool {
-    matches!(app_type, AppType::Claude) && proxy_live_owned_by_takeover
+    core_proxy_hot_switch_should_sync_claude_live_while_proxy_active(
+        &AppKind::from(app_type),
+        proxy_live_owned_by_takeover,
+    )
 }
 
 pub(crate) fn toml_value_is_subset(target: &toml_edit::Value, source: &toml_edit::Value) -> bool {

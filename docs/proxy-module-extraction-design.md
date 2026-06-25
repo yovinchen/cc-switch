@@ -1353,6 +1353,7 @@
 本轮继续把 live takeover 占位符检测的 app 分派收敛到 `proxy-core::ports::live_config_has_proxy_placeholder_for_app`：core 维护 Claude/Codex/Gemini 统一检测语义，adapter 只投影 Codex config.toml bearer-token 是否命中的宿主解析事实。
 本轮继续把 live takeover 是否匹配当前代理地址的 app 分派收敛到 `proxy-core::ports::live_takeover_config_matches_proxy_for_app`：core 维护 Claude/Gemini env base URL 与 Codex config facts 的组合规则，adapter 只投影 Codex config.toml base_url 是否匹配当前 `/v1` 代理地址。
 本轮继续把 live backup snapshot 的占位符跳过策略收敛到 `proxy-core::ports::live_backup_snapshot_from_live_config`：core 维护“接管中的 live config 不作为备份来源”的规则，adapter 只投影 Codex config.toml bearer-token 是否命中的宿主解析事实。
+本轮继续把 takeover hot-switch 的 live 持有、Codex backup refresh、Codex/Claude live sync gate 收敛到 `proxy-core::ports`：core 维护纯布尔策略，adapter 只把 `AppType` 投影为 `AppKind`。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

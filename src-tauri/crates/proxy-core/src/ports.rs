@@ -1921,6 +1921,42 @@ pub fn proxy_takeover_should_restore_existing_backup_before_retakeover(
     has_live_backup && !live_matches_current_proxy
 }
 
+pub fn proxy_live_config_owned_by_takeover(
+    has_live_backup: bool,
+    live_taken_over: bool,
+) -> bool {
+    has_live_backup || live_taken_over
+}
+
+pub fn proxy_switch_should_hot_switch(
+    proxy_config_takeover_enabled: bool,
+    live_taken_over: bool,
+) -> bool {
+    proxy_config_takeover_enabled || live_taken_over
+}
+
+pub fn proxy_hot_switch_should_refresh_codex_live_from_backup(
+    app: &AppKind,
+    has_live_backup: bool,
+    live_taken_over: bool,
+) -> bool {
+    matches!(app, AppKind::Codex) && has_live_backup && !live_taken_over
+}
+
+pub fn proxy_hot_switch_should_sync_codex_live_while_proxy_active(
+    app: &AppKind,
+    live_taken_over: bool,
+) -> bool {
+    matches!(app, AppKind::Codex) && live_taken_over
+}
+
+pub fn proxy_hot_switch_should_sync_claude_live_while_proxy_active(
+    app: &AppKind,
+    proxy_live_owned_by_takeover: bool,
+) -> bool {
+    matches!(app, AppKind::Claude) && proxy_live_owned_by_takeover
+}
+
 pub fn provider_category_is_official(category: Option<&str>) -> bool {
     category == Some("official")
 }
@@ -5434,6 +5470,10 @@ mod tests {
         provider_switch_requires_takeover_lock,
         provider_switch_should_mark_live_config_managed,
         provider_takeover_live_sync_target_for_app,
+        proxy_hot_switch_should_refresh_codex_live_from_backup,
+        proxy_hot_switch_should_sync_claude_live_while_proxy_active,
+        proxy_hot_switch_should_sync_codex_live_while_proxy_active,
+        proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
         proxy_takeover_marked_state_is_reusable,
         proxy_takeover_should_restore_existing_backup_before_retakeover,
         remove_claude_common_config_from_settings,
@@ -8437,6 +8477,59 @@ GEMINI_API_KEY=sk-test123
         ));
         assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
             true, true
+        ));
+
+        assert!(!proxy_live_config_owned_by_takeover(false, false));
+        assert!(proxy_live_config_owned_by_takeover(true, false));
+        assert!(proxy_live_config_owned_by_takeover(false, true));
+        assert!(!proxy_switch_should_hot_switch(false, false));
+        assert!(proxy_switch_should_hot_switch(true, false));
+        assert!(proxy_switch_should_hot_switch(false, true));
+
+        assert!(!proxy_hot_switch_should_refresh_codex_live_from_backup(
+            &AppKind::Codex,
+            false,
+            false
+        ));
+        assert!(proxy_hot_switch_should_refresh_codex_live_from_backup(
+            &AppKind::Codex,
+            true,
+            false
+        ));
+        assert!(!proxy_hot_switch_should_refresh_codex_live_from_backup(
+            &AppKind::Codex,
+            true,
+            true
+        ));
+        assert!(!proxy_hot_switch_should_refresh_codex_live_from_backup(
+            &AppKind::Claude,
+            true,
+            false
+        ));
+
+        assert!(!proxy_hot_switch_should_sync_codex_live_while_proxy_active(
+            &AppKind::Codex,
+            false
+        ));
+        assert!(proxy_hot_switch_should_sync_codex_live_while_proxy_active(
+            &AppKind::Codex,
+            true
+        ));
+        assert!(!proxy_hot_switch_should_sync_codex_live_while_proxy_active(
+            &AppKind::Claude,
+            true
+        ));
+        assert!(!proxy_hot_switch_should_sync_claude_live_while_proxy_active(
+            &AppKind::Claude,
+            false
+        ));
+        assert!(proxy_hot_switch_should_sync_claude_live_while_proxy_active(
+            &AppKind::Claude,
+            true
+        ));
+        assert!(!proxy_hot_switch_should_sync_claude_live_while_proxy_active(
+            &AppKind::Codex,
+            true
         ));
 
         assert!(provider_category_is_official(Some("official")));
