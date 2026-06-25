@@ -11,13 +11,12 @@ use crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
 use crate::proxy_core_adapter::{
-    provider_claude_desktop_direct_validation_issue,
     provider_claude_desktop_proxy_config_validation_issue,
     provider_claude_desktop_proxy_has_base_url_and_key, ClaudeDesktopDirectGatewayCredentialIssue,
     ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopDirectProviderValidationIssue,
-    ClaudeDesktopProviderDirectGatewayProfileIssue, ClaudeDesktopProviderProxyRequestBodyIssue,
-    ClaudeDesktopProviderProxyRouteIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
-    ClaudeDesktopProxyRequestBodyIssue,
+    ClaudeDesktopProviderDirectGatewayProfileIssue, ClaudeDesktopProviderDirectValidationIssue,
+    ClaudeDesktopProviderProxyRequestBodyIssue, ClaudeDesktopProviderProxyRouteIssue,
+    ClaudeDesktopProxyProviderConfigValidationIssue, ClaudeDesktopProxyRequestBodyIssue,
 };
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
@@ -49,23 +48,6 @@ struct ClaudeDesktopPaths {
     config_library_path: PathBuf,
     profile_path: PathBuf,
     meta_path: PathBuf,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DirectGatewayCredentials {
-    pub base_url: String,
-    pub api_key: String,
-}
-
-impl From<crate::proxy_core_adapter::ClaudeDesktopDirectGatewayCredentials>
-    for DirectGatewayCredentials
-{
-    fn from(credentials: crate::proxy_core_adapter::ClaudeDesktopDirectGatewayCredentials) -> Self {
-        Self {
-            base_url: credentials.base_url,
-            api_key: credentials.api_key,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -245,26 +227,13 @@ fn direct_gateway_credential_issue_to_error(
     }
 }
 
-pub fn direct_gateway_credentials(
-    provider: &Provider,
-) -> Result<DirectGatewayCredentials, AppError> {
-    crate::proxy_core_adapter::claude_desktop_direct_gateway_credentials(&provider.settings_config)
-        .map(DirectGatewayCredentials::from)
-        .map_err(direct_gateway_credential_issue_to_error)
-}
-
 pub fn validate_direct_provider(provider: &Provider) -> Result<(), AppError> {
     if is_official_provider(provider) {
         return Ok(());
     }
 
-    if let Some(issue) = provider_claude_desktop_direct_validation_issue(provider) {
-        return Err(direct_validation_issue_to_error(issue));
-    }
-
-    direct_inference_model_specs(provider)?;
-    direct_gateway_credentials(provider)?;
-    Ok(())
+    crate::proxy_core_adapter::provider_claude_desktop_direct_provider_validation(provider)
+        .map_err(direct_provider_validation_issue_to_error)
 }
 
 pub fn validate_proxy_provider(provider: &Provider) -> Result<(), AppError> {
@@ -318,6 +287,22 @@ fn direct_validation_issue_to_error(issue: ClaudeDesktopDirectProviderValidation
             "Claude Desktop 直连模式不支持完整 URL 端点配置",
             "Claude Desktop direct mode does not support full URL endpoint configuration",
         ),
+    }
+}
+
+fn direct_provider_validation_issue_to_error(
+    issue: ClaudeDesktopProviderDirectValidationIssue,
+) -> AppError {
+    match issue {
+        ClaudeDesktopProviderDirectValidationIssue::Provider(issue) => {
+            direct_validation_issue_to_error(issue)
+        }
+        ClaudeDesktopProviderDirectValidationIssue::ModelRoute(issue) => {
+            direct_model_route_issue_to_error(issue)
+        }
+        ClaudeDesktopProviderDirectValidationIssue::Credentials(issue) => {
+            direct_gateway_credential_issue_to_error(issue)
+        }
     }
 }
 
@@ -375,13 +360,6 @@ pub fn validate_provider(provider: &Provider) -> Result<(), AppError> {
         ClaudeDesktopMode::Direct => validate_direct_provider(provider),
         ClaudeDesktopMode::Proxy => validate_proxy_provider(provider),
     }
-}
-
-fn direct_inference_model_specs(
-    provider: &Provider,
-) -> Result<Vec<crate::proxy_core_adapter::ClaudeDesktopGatewayProfileModelSpec>, AppError> {
-    crate::proxy_core_adapter::provider_claude_desktop_direct_inference_model_specs(provider)
-        .map_err(direct_model_route_issue_to_error)
 }
 
 pub fn proxy_model_routes(provider: &Provider) -> Result<Vec<ResolvedModelRoute>, AppError> {

@@ -125,8 +125,8 @@ mod tests {
     #[cfg(any(target_os = "macos", windows))]
     use crate::provider::{ClaudeDesktopMode, ClaudeDesktopModelRoute};
     use crate::proxy_core_adapter::{
-        provider_credential_issue_spec, provider_credential_values, ProviderCredentialIssue,
-        ProxyConfig,
+        claude_desktop_direct_gateway_credentials, provider_credential_issue_spec,
+        provider_credential_values, ProviderCredentialIssue, ProxyConfig,
     };
     use crate::store::AppState;
     use serde_json::json;
@@ -204,7 +204,12 @@ mod tests {
         app_type: &AppType,
     ) -> Result<(String, String), AppError> {
         if matches!(app_type, AppType::ClaudeDesktop) {
-            let credentials = crate::claude_desktop_config::direct_gateway_credentials(provider)?;
+            let credentials = claude_desktop_direct_gateway_credentials(&provider.settings_config)
+                .map_err(|issue| {
+                    AppError::Message(format!(
+                        "Claude Desktop credential extraction failed: {issue:?}"
+                    ))
+                })?;
             return Ok((credentials.api_key, credentials.base_url));
         }
 

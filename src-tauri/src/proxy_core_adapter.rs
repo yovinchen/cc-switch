@@ -2676,10 +2676,9 @@ pub(crate) use crate::proxy_core::api::auth::{
     claude_desktop_profile_gateway_base_url, claude_desktop_profile_has_unsafe_model_ids,
     claude_desktop_proxy_gateway_base_url, claude_desktop_proxy_model_routes,
     claude_desktop_proxy_request_body_with_upstream_model,
-    ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectGatewayCredentials,
-    ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopGatewayProfileModelSpec,
-    ClaudeDesktopProxyRequestBodyIssue, ClaudeDesktopProxyRouteInput,
-    ClaudeDesktopResolvedProxyRoute,
+    ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectModelRouteIssue,
+    ClaudeDesktopGatewayProfileModelSpec, ClaudeDesktopProxyRequestBodyIssue,
+    ClaudeDesktopProxyRouteInput, ClaudeDesktopResolvedProxyRoute,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
@@ -10714,14 +10713,33 @@ pub(crate) fn provider_claude_desktop_import_decision(
 }
 
 fn provider_claude_desktop_direct_importable(provider: &Provider) -> bool {
-    if provider_claude_desktop_direct_validation_issue(provider).is_some()
-        || !provider_claude_models_are_claude_safe(provider)
-        || claude_desktop_direct_gateway_credentials(&provider.settings_config).is_err()
-    {
+    if !provider_claude_models_are_claude_safe(provider) {
         return false;
     }
 
-    provider_claude_desktop_direct_inference_model_specs(provider).is_ok()
+    provider_claude_desktop_direct_provider_validation(provider).is_ok()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ClaudeDesktopProviderDirectValidationIssue {
+    Provider(ClaudeDesktopDirectProviderValidationIssue),
+    ModelRoute(ClaudeDesktopDirectModelRouteIssue),
+    Credentials(ClaudeDesktopDirectGatewayCredentialIssue),
+}
+
+pub(crate) fn provider_claude_desktop_direct_provider_validation(
+    provider: &Provider,
+) -> Result<(), ClaudeDesktopProviderDirectValidationIssue> {
+    if let Some(issue) = provider_claude_desktop_direct_validation_issue(provider) {
+        return Err(ClaudeDesktopProviderDirectValidationIssue::Provider(issue));
+    }
+
+    provider_claude_desktop_direct_inference_model_specs(provider)
+        .map_err(ClaudeDesktopProviderDirectValidationIssue::ModelRoute)?;
+    claude_desktop_direct_gateway_credentials(&provider.settings_config)
+        .map_err(ClaudeDesktopProviderDirectValidationIssue::Credentials)?;
+
+    Ok(())
 }
 
 pub(crate) fn provider_claude_desktop_direct_inference_model_specs(

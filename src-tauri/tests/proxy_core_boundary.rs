@@ -5137,6 +5137,59 @@ fn proxy_core_adapter_owns_claude_desktop_direct_gateway_profile() {
 }
 
 #[test]
+fn proxy_core_adapter_owns_claude_desktop_direct_provider_validation() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let direct_validation_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_claude_desktop_direct_provider_validation(",
+        "pub(crate) fn provider_claude_desktop_direct_inference_model_specs(",
+    );
+
+    assert!(
+        direct_validation_slice.contains("provider_claude_desktop_direct_validation_issue(")
+            && direct_validation_slice
+                .contains("provider_claude_desktop_direct_inference_model_specs(")
+            && direct_validation_slice.contains("claude_desktop_direct_gateway_credentials(")
+            && direct_validation_slice
+                .contains("ClaudeDesktopProviderDirectValidationIssue::Provider")
+            && direct_validation_slice
+                .contains("ClaudeDesktopProviderDirectValidationIssue::ModelRoute")
+            && direct_validation_slice
+                .contains("ClaudeDesktopProviderDirectValidationIssue::Credentials"),
+        "proxy_core_adapter should own Claude Desktop Direct provider validation assembly"
+    );
+
+    let forbidden_markers = [
+        "crate::claude_desktop_config",
+        "state.db",
+        "get_effective_current_provider",
+        "proxy_gateway_base_url_from_db",
+        "get_or_create_gateway_token",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(direct_validation_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs provider_claude_desktop_direct_provider_validation:{} contains host-owned direct validation marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Claude Desktop Direct validation assembly free of host side effects:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_owns_claude_desktop_proxy_model_routes_provider_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
@@ -5431,40 +5484,35 @@ fn claude_desktop_config_delegates_mimo_thinking_history_normalization_to_adapte
 }
 
 #[test]
-fn claude_desktop_config_delegates_direct_model_specs_to_adapter() {
+fn claude_desktop_config_delegates_direct_provider_validation_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/claude_desktop_config.rs");
     let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
-    let direct_specs_slice = function_slice(
+    let direct_validation_slice = function_slice(
         &source,
-        "fn direct_inference_model_specs(",
-        "pub fn proxy_model_routes(",
+        "pub fn validate_direct_provider(",
+        "pub fn validate_proxy_provider(",
     );
 
     assert!(
-        direct_specs_slice.contains("provider_claude_desktop_direct_inference_model_specs("),
-        "claude_desktop_config should delegate provider direct inference model specs to proxy_core_adapter"
+        direct_validation_slice.contains("provider_claude_desktop_direct_provider_validation("),
+        "claude_desktop_config should delegate Direct provider validation assembly to proxy_core_adapter"
     );
 
     let forbidden_markers = [
-        ".meta",
-        "claude_desktop_model_routes",
-        "ClaudeDesktopProxyRouteInput",
-        "supports_1m.unwrap_or",
-        "is_claude_safe_model_id(",
-        "direct_mapping_unsupported",
-        "route_invalid",
-        "upstream_model != route_id",
-        "supports_1m.cmp",
-        "dedup_by(|a, b| a.name == b.name)",
+        "provider_claude_desktop_direct_validation_issue(",
+        "direct_inference_model_specs(provider)",
+        "direct_gateway_credentials(provider)",
+        "claude_desktop_direct_gateway_credentials(",
+        "claude_desktop_direct_inference_model_specs(",
     ];
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(direct_specs_slice) {
+    for (line_index, line) in production_lines(direct_validation_slice) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/claude_desktop_config.rs direct_inference_model_specs:{} contains direct model policy marker `{}`",
+                    "src/claude_desktop_config.rs validate_direct_provider:{} contains direct validation policy marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5474,53 +5522,33 @@ fn claude_desktop_config_delegates_direct_model_specs_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "claude_desktop_config must keep direct model route policy in proxy-core:\n{}",
+        "claude_desktop_config must keep Direct provider validation assembly in proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
 
 #[test]
-fn claude_desktop_config_delegates_direct_gateway_credentials_to_adapter() {
+fn claude_desktop_config_does_not_retain_direct_model_specs_wrapper() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/claude_desktop_config.rs");
     let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
-    let credentials_slice = function_slice(
-        &source,
-        "pub fn direct_gateway_credentials(",
-        "pub fn validate_direct_provider(",
-    );
 
     assert!(
-        credentials_slice.contains("claude_desktop_direct_gateway_credentials("),
-        "claude_desktop_config should delegate direct gateway credential extraction to proxy_core_adapter/core"
+        !source.contains("fn direct_inference_model_specs("),
+        "claude_desktop_config should not retain a Direct model specs wrapper after provider validation/profile assembly moved to proxy_core_adapter"
     );
+}
 
-    let forbidden_markers = [
-        ".get(\"env\")",
-        "\"ANTHROPIC_BASE_URL\"",
-        "\"ANTHROPIC_AUTH_TOKEN\"",
-        "base_url_missing",
-        "auth_token_missing",
-        "env_missing",
-    ];
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(credentials_slice) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in forbidden_markers {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/claude_desktop_config.rs direct_gateway_credentials:{} contains direct gateway credential policy marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
+#[test]
+fn claude_desktop_config_does_not_retain_direct_gateway_credentials_wrapper() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
 
     assert!(
-        violations.is_empty(),
-        "claude_desktop_config must keep direct gateway credential extraction in proxy-core:\n{}",
-        violations.join("\n")
+        !source.contains("pub fn direct_gateway_credentials(")
+            && !source.contains("struct DirectGatewayCredentials"),
+        "claude_desktop_config should not retain Direct gateway credential wrapper DTOs after provider validation/profile assembly moved to proxy_core_adapter"
     );
 }
 
