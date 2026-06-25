@@ -25,12 +25,14 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::proxy_core_adapter::{
-    copilot_api_base, copilot_api_endpoint_from_usage_or_default, copilot_composite_account_id,
+    compare_managed_auth_account_order, copilot_api_base,
+    copilot_api_endpoint_from_usage_or_default, copilot_composite_account_id,
     copilot_github_client_id, copilot_github_device_code_url, copilot_github_oauth_token_url,
     copilot_github_user_url, copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
     copilot_token_url, copilot_usage_response_endpoint, copilot_usage_url, is_copilot_ghes_domain,
-    normalize_github_domain, parse_copilot_models_response_bytes,
-    parse_copilot_usage_response_bytes, CopilotModel, CopilotOAuthPollErrorKind,
+    managed_auth_fallback_default_account_id, normalize_github_domain,
+    parse_copilot_models_response_bytes, parse_copilot_usage_response_bytes, CopilotModel,
+    CopilotOAuthPollErrorKind, ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate,
     COPILOT_API_VERSION, COPILOT_EDITOR_VERSION, COPILOT_PLUGIN_VERSION,
     COPILOT_PUBLIC_GITHUB_DOMAIN, COPILOT_USER_AGENT,
 };
@@ -992,14 +994,9 @@ impl CopilotAuthManager {
     fn fallback_default_account_id(
         accounts: &HashMap<String, GitHubAccountData>,
     ) -> Option<String> {
-        accounts
-            .iter()
-            .max_by(|(id_a, a), (id_b, b)| {
-                a.authenticated_at
-                    .cmp(&b.authenticated_at)
-                    .then_with(|| id_b.cmp(id_a))
-            })
-            .map(|(id, _)| id.clone())
+        managed_auth_fallback_default_account_id(accounts.iter().map(|(id, account)| {
+            ManagedAuthDefaultAccountCandidate::new(id, account.authenticated_at)
+        }))
     }
 
     fn sorted_accounts(
@@ -1009,13 +1006,11 @@ impl CopilotAuthManager {
         let mut account_list: Vec<GitHubAccount> =
             accounts.values().map(GitHubAccount::from).collect();
         account_list.sort_by(|a, b| {
-            let a_default = default_account_id == Some(a.id.as_str());
-            let b_default = default_account_id == Some(b.id.as_str());
-
-            b_default
-                .cmp(&a_default)
-                .then_with(|| b.authenticated_at.cmp(&a.authenticated_at))
-                .then_with(|| a.login.cmp(&b.login))
+            compare_managed_auth_account_order(
+                ManagedAuthAccountSortKey::new(&a.id, &a.login, a.authenticated_at),
+                ManagedAuthAccountSortKey::new(&b.id, &b.login, b.authenticated_at),
+                default_account_id,
+            )
         });
         account_list
     }

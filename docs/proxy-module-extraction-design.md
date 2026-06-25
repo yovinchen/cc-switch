@@ -1441,6 +1441,7 @@
 1021. Codex OAuth device/code/refresh 请求 contract 已迁入 `proxy-core::managed_account_auth`，包括 OpenAI OAuth endpoint、client id、device JSON body、authorization/refresh form、verification URL 和固定错误文案；host `codex_oauth_auth` 只按 core request plan 执行 reqwest 并映射错误类型。
 1022. 托管账号统一命令的 `auth_provider` 白名单与 unsupported provider 错误文案已迁入 `proxy-core::managed_account_auth::ensure_managed_auth_provider`；Tauri `commands/auth.rs` 只消费 core validation 结果并分派到 Copilot/Codex OAuth manager。
 1023. 托管账号统一命令的 account/status/device-code response DTO 与默认账号标记规则已迁入 `proxy-core::managed_account_auth`；Tauri `commands/auth.rs` 只把 Copilot/Codex OAuth manager 返回的账号事实投影给 core response helper。
+1024. Copilot/Codex OAuth 托管账号的默认账号 fallback 与对外账号列表排序策略已迁入 `proxy-core::managed_account_auth`；host manager 只把本地账号存储投影为 core candidate/sort key，继续负责读写磁盘、token refresh 和 manager 状态锁。
 
 ## 背景
 

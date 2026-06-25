@@ -1,5 +1,6 @@
 use futures::future::BoxFuture;
 use http::{HeaderMap, StatusCode};
+use std::cmp::Ordering;
 use thiserror::Error;
 
 use crate::copilot_model_map::{resolve_copilot_model_against_ids, CopilotModel};
@@ -195,6 +196,66 @@ pub fn ensure_managed_auth_provider(auth_provider: &str) -> Result<&'static str,
         CODEX_OAUTH_AUTH_PROVIDER => Ok(CODEX_OAUTH_AUTH_PROVIDER),
         other => Err(unsupported_managed_auth_provider_message(other)),
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ManagedAuthDefaultAccountCandidate<'a> {
+    pub id: &'a str,
+    pub authenticated_at: i64,
+}
+
+impl<'a> ManagedAuthDefaultAccountCandidate<'a> {
+    pub fn new(id: &'a str, authenticated_at: i64) -> Self {
+        Self {
+            id,
+            authenticated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ManagedAuthAccountSortKey<'a> {
+    pub id: &'a str,
+    pub login: &'a str,
+    pub authenticated_at: i64,
+}
+
+impl<'a> ManagedAuthAccountSortKey<'a> {
+    pub fn new(id: &'a str, login: &'a str, authenticated_at: i64) -> Self {
+        Self {
+            id,
+            login,
+            authenticated_at,
+        }
+    }
+}
+
+pub fn managed_auth_fallback_default_account_id<'a, I>(accounts: I) -> Option<String>
+where
+    I: IntoIterator<Item = ManagedAuthDefaultAccountCandidate<'a>>,
+{
+    accounts
+        .into_iter()
+        .max_by(|a, b| {
+            a.authenticated_at
+                .cmp(&b.authenticated_at)
+                .then_with(|| b.id.cmp(a.id))
+        })
+        .map(|account| account.id.to_string())
+}
+
+pub fn compare_managed_auth_account_order(
+    a: ManagedAuthAccountSortKey<'_>,
+    b: ManagedAuthAccountSortKey<'_>,
+    default_account_id: Option<&str>,
+) -> Ordering {
+    let a_default = default_account_id == Some(a.id);
+    let b_default = default_account_id == Some(b.id);
+
+    b_default
+        .cmp(&a_default)
+        .then_with(|| b.authenticated_at.cmp(&a.authenticated_at))
+        .then_with(|| a.login.cmp(b.login))
 }
 
 #[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
@@ -810,8 +871,11 @@ mod tests {
         copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
         ensure_managed_auth_provider, headers_contain_proxy_auth_placeholder,
         is_managed_account_upstream_url,
+        managed_auth_fallback_default_account_id,
         managed_auth_account_from_parts, managed_auth_device_code_response_from_parts,
         managed_auth_status_from_parts,
+        compare_managed_auth_account_order, ManagedAuthAccountSortKey,
+        ManagedAuthDefaultAccountCandidate,
         managed_account_app_handle_unavailable_error_message,
         managed_account_app_handle_unavailable_log_message,
         managed_account_token_failure_error_message, managed_account_token_failure_log_message,
@@ -1130,6 +1194,59 @@ mod tests {
         assert_eq!(account.provider, "codex_oauth");
         assert!(!account.is_default);
         assert_eq!(account.avatar_url, None);
+    }
+
+    #[test]
+    fn managed_auth_default_account_fallback_prefers_latest_then_lowest_id() {
+        let candidates = [
+            ManagedAuthDefaultAccountCandidate::new("acct-b", 1_771_000_000),
+            ManagedAuthDefaultAccountCandidate::new("acct-c", 1_771_000_001),
+            ManagedAuthDefaultAccountCandidate::new("acct-a", 1_771_000_001),
+        ];
+
+        assert_eq!(
+            managed_auth_fallback_default_account_id(candidates),
+            Some("acct-a".to_string())
+        );
+    }
+
+    #[test]
+    fn managed_auth_default_account_fallback_handles_empty_list() {
+        assert_eq!(
+            managed_auth_fallback_default_account_id(std::iter::empty()),
+            None
+        );
+    }
+
+    #[test]
+    fn managed_auth_account_order_prefers_default_then_latest_then_login() {
+        let mut accounts = vec![
+            ManagedAuthAccountSortKey::new("acct-1", "zeta", 1_771_000_001),
+            ManagedAuthAccountSortKey::new("acct-2", "alpha", 1_771_000_001),
+            ManagedAuthAccountSortKey::new("acct-3", "beta", 1_771_000_002),
+        ];
+
+        accounts.sort_by(|a, b| compare_managed_auth_account_order(*a, *b, Some("acct-1")));
+
+        assert_eq!(
+            accounts.iter().map(|account| account.id).collect::<Vec<_>>(),
+            vec!["acct-1", "acct-3", "acct-2"]
+        );
+    }
+
+    #[test]
+    fn managed_auth_account_order_uses_login_tie_break_without_default() {
+        let mut accounts = vec![
+            ManagedAuthAccountSortKey::new("acct-1", "zeta", 1_771_000_001),
+            ManagedAuthAccountSortKey::new("acct-2", "alpha", 1_771_000_001),
+        ];
+
+        accounts.sort_by(|a, b| compare_managed_auth_account_order(*a, *b, None));
+
+        assert_eq!(
+            accounts.iter().map(|account| account.id).collect::<Vec<_>>(),
+            vec!["acct-2", "acct-1"]
+        );
     }
 
     impl ManagedAccountRuntimeSource for StaticManagedRuntimeSource {

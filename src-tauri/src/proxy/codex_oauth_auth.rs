@@ -37,7 +37,8 @@ use crate::proxy_core_adapter::{
     codex_oauth_missing_refresh_token_message, codex_oauth_pending_device_code_is_expired,
     codex_oauth_poll_interval_secs, codex_oauth_refresh_failure, codex_oauth_refresh_token_form,
     codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon, codex_oauth_token_url,
-    CodexOAuthDevicePollStatusKind,
+    compare_managed_auth_account_order, managed_auth_fallback_default_account_id,
+    CodexOAuthDevicePollStatusKind, ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate,
 };
 
 /// User-Agent
@@ -724,14 +725,9 @@ impl CodexOAuthManager {
     }
 
     fn fallback_default_account_id(accounts: &HashMap<String, CodexAccountData>) -> Option<String> {
-        accounts
-            .iter()
-            .max_by(|(id_a, a), (id_b, b)| {
-                a.authenticated_at
-                    .cmp(&b.authenticated_at)
-                    .then_with(|| id_b.cmp(id_a))
-            })
-            .map(|(id, _)| id.clone())
+        managed_auth_fallback_default_account_id(accounts.iter().map(|(id, account)| {
+            ManagedAuthDefaultAccountCandidate::new(id, account.authenticated_at)
+        }))
     }
 
     fn sorted_accounts(
@@ -740,12 +736,11 @@ impl CodexOAuthManager {
     ) -> Vec<GitHubAccount> {
         let mut list: Vec<GitHubAccount> = accounts.values().map(GitHubAccount::from).collect();
         list.sort_by(|a, b| {
-            let a_default = default_account_id == Some(a.id.as_str());
-            let b_default = default_account_id == Some(b.id.as_str());
-            b_default
-                .cmp(&a_default)
-                .then_with(|| b.authenticated_at.cmp(&a.authenticated_at))
-                .then_with(|| a.login.cmp(&b.login))
+            compare_managed_auth_account_order(
+                ManagedAuthAccountSortKey::new(&a.id, &a.login, a.authenticated_at),
+                ManagedAuthAccountSortKey::new(&b.id, &b.login, b.authenticated_at),
+                default_account_id,
+            )
         });
         list
     }

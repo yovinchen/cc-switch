@@ -1074,6 +1074,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn codex_oauth_missing_account_id_message(",
     "fn unsupported_managed_auth_provider_message(",
     "fn ensure_managed_auth_provider(",
+    "fn managed_auth_fallback_default_account_id(",
+    "fn compare_managed_auth_account_order(",
     "fn managed_auth_account_from_parts(",
     "fn managed_auth_status_from_parts(",
     "fn managed_auth_device_code_response_from_parts(",
@@ -5336,6 +5338,48 @@ fn managed_auth_commands_delegate_provider_validation_to_core() {
             && source.contains("managed_auth_device_code_response_from_parts("),
         "commands/auth.rs should consume core managed-auth command contracts through proxy_core_adapter"
     );
+}
+
+#[test]
+fn production_managed_auth_account_selection_delegates_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    for relative_path in ["src/proxy/copilot_auth.rs", "src/proxy/codex_oauth_auth.rs"] {
+        let path = manifest_dir.join(relative_path);
+        let source = fs::read_to_string(&path).expect("read managed auth source");
+        let fallback_slice = function_slice(
+            &source,
+            "fn fallback_default_account_id",
+            "    fn sorted_accounts",
+        );
+        let sort_slice = function_slice(
+            &source,
+            "fn sorted_accounts",
+            "    async fn resolve_default_account_id",
+        );
+
+        for marker in [
+            ".max_by(",
+            "authenticated_at.cmp",
+            "id_b.cmp(id_a)",
+            "let a_default",
+            "let b_default",
+            "b_default.cmp",
+        ] {
+            assert!(
+                !fallback_slice.contains(marker) && !sort_slice.contains(marker),
+                "{relative_path} should not own managed-auth account selection marker `{marker}`"
+            );
+        }
+
+        assert!(
+            fallback_slice.contains("managed_auth_fallback_default_account_id(")
+                && fallback_slice.contains("ManagedAuthDefaultAccountCandidate::new(")
+                && sort_slice.contains("compare_managed_auth_account_order(")
+                && sort_slice.contains("ManagedAuthAccountSortKey::new("),
+            "{relative_path} should delegate managed-auth default selection and account ordering to core"
+        );
+    }
 }
 
 #[test]
