@@ -5366,6 +5366,15 @@ fn production_stream_check_command_delegates_proxy_target_filter_to_adapter() {
     }
 
     assert!(
+        function.contains("stream_check_failed_result(")
+            && !function.contains("HealthStatus::Failed")
+            && !function.contains("status:")
+            && !function.contains("success:")
+            && !function.contains("response_time_ms:")
+            && !function.contains("http_status:"),
+        "stream_check_all_providers command should delegate fallback failure result envelopes to core"
+    );
+    assert!(
         violations.is_empty(),
         "stream_check_all_providers command must delegate proxy-target filter source projection to proxy_core_adapter:\n{}",
         violations.join("\n")

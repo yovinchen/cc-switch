@@ -4795,6 +4795,20 @@ pub fn stream_check_result_from_probe_result(
     }
 }
 
+pub fn stream_check_failed_result(message: impl Into<String>, tested_at: i64) -> StreamCheckResult {
+    StreamCheckResult {
+        status: ChannelReachabilityStatus::Failed,
+        success: false,
+        message: message.into(),
+        response_time_ms: None,
+        http_status: None,
+        model_used: String::new(),
+        tested_at,
+        retry_count: 0,
+        error_category: None,
+    }
+}
+
 pub fn plan_channel_test(
     channel: &ChannelSpec,
     request: &ProxyChannelTestRequest,
@@ -6294,7 +6308,7 @@ mod tests {
         ChannelRouteRejected, ChannelRouteSource, ChannelTestInput, ChannelTestPlan,
         ChannelTestResponse, ClientModelCatalogResponse, should_retry_channel_reachability_failure,
         merge_stream_check_config, select_enabled_channel_key_runtime_candidate,
-        stream_check_result_from_probe_result,
+        stream_check_failed_result, stream_check_result_from_probe_result,
         CopilotOptimizerConfig, CurrentRouteChannelTargetInput,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget,
         CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
@@ -6838,6 +6852,19 @@ mod tests {
         assert_eq!(failed_result.status, ChannelReachabilityStatus::Failed);
         assert_eq!(failed_result.http_status, None);
         assert_eq!(failed_result.message, "Connection failed: refused");
+
+        let command_failed_result =
+            stream_check_failed_result("检查失败: provider missing", 1_771_000_006);
+        assert!(!command_failed_result.success);
+        assert_eq!(
+            command_failed_result.status,
+            ChannelReachabilityStatus::Failed
+        );
+        assert_eq!(command_failed_result.response_time_ms, None);
+        assert_eq!(command_failed_result.http_status, None);
+        assert_eq!(command_failed_result.retry_count, 0);
+        assert_eq!(command_failed_result.tested_at, 1_771_000_006);
+        assert_eq!(command_failed_result.message, "检查失败: provider missing");
 
         let result = ChannelReachabilityResult::from_input(ChannelReachabilityInput {
             success: false,

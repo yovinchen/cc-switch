@@ -1432,6 +1432,7 @@
 1012. Forwarder attempt runtime 的最大尝试次数日志和 legacy 单 provider circuit-breaker bypass 决策已迁入 `proxy-core::forward_failure`，host adapter 只投影 `ForwardAttempt` 数量/channel 事实并继续执行 router permit。
 1013. 自定义 User-Agent 的 trim、空值忽略和 `HeaderValue` 校验规则已迁入 `proxy-core::request_headers::parse_custom_user_agent`，provider/model-fetch/stream-check/forwarder 路径继续经 `proxy_core_adapter` 共享同一解析入口。
 1014. Stream check 的 provider override 配置合并与 probe result 到 `StreamCheckResult` 的成功/失败/degraded envelope 构造已迁入 `proxy-core::ports`，host `StreamCheckService` 只保留 reqwest 探测、timestamp 注入和 provider override 投影。
+1015. Stream check 批量命令捕获单 provider 异常后的 failed `StreamCheckResult` envelope 已迁入 `proxy-core::ports::stream_check_failed_result`，host command 只负责并发/循环调度、错误文本和 timestamp 注入。
 
 ## 背景
 

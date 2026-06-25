@@ -8,11 +8,10 @@ use crate::commands::copilot::CopilotAuthState;
 use crate::error::AppError;
 use crate::proxy_core_adapter::{
     provider_github_copilot_managed_account_id, provider_is_full_url,
-    provider_is_github_copilot_stream_check_target, stream_check_proxy_target_ids_from_db,
+    provider_is_github_copilot_stream_check_target, stream_check_failed_result,
+    stream_check_proxy_target_ids_from_db,
 };
-use crate::services::stream_check::{
-    HealthStatus, StreamCheckConfig, StreamCheckResult, StreamCheckService,
-};
+use crate::services::stream_check::{StreamCheckConfig, StreamCheckResult, StreamCheckService};
 use crate::store::AppState;
 use tauri::State;
 
@@ -74,16 +73,8 @@ pub async fn stream_check_all_providers(
         let result =
             StreamCheckService::check_with_retry(&app_type, &provider, &config, base_url_override)
                 .await
-                .unwrap_or_else(|e| StreamCheckResult {
-                    status: HealthStatus::Failed,
-                    success: false,
-                    message: e.to_string(),
-                    response_time_ms: None,
-                    http_status: None,
-                    model_used: String::new(),
-                    tested_at: chrono::Utc::now().timestamp(),
-                    retry_count: 0,
-                    error_category: None,
+                .unwrap_or_else(|error| {
+                    stream_check_failed_result(error.to_string(), chrono::Utc::now().timestamp())
                 });
 
         let _ = state
