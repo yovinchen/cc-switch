@@ -1560,6 +1560,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1115. 通用 SSE passthrough 的 chunk-level policy 已迁入 `proxy-core::SsePassthroughStreamState`：core 维护首包/idle timeout phase、首包日志消息、SSE passthrough event 日志和 collectable usage JSON；host `create_logged_passthrough_stream` 只保留 `tokio` timeout、字节 yield、异步 collector push 和 connection guard 生命周期。
 1116. Claude transform 与 Codex Chat->Responses transform 的 streaming/非流 SSE 聚合决策已迁入 `proxy-core::response_transform::{claude_transform_streaming_decision,codex_chat_transform_streaming_decision}`；host adapter 只投影 `Provider` 是否 Codex OAuth 等宿主事实，并把 core decision 返回给 handler。
 1117. Claude OpenAI Chat/OpenAI Responses/Gemini Native 的非流与流式响应 api_format 分发已迁入 `proxy-core::response_transform::{claude_response_to_anthropic_message_for_api_format,create_claude_to_anthropic_sse_stream_for_api_format}`；host adapter 只注入 Gemini tool-call UUID 生成器、shadow store 参数和 rectifier 日志回调。
+1118. Claude OpenAI Chat/OpenAI Responses/Gemini Native 的请求 api_format 分发已迁入 `proxy-core::response_transform::claude_request_transform_for_api_format`；host adapter 只投影 prompt cache、Codex OAuth/fast-mode、reasoning_content 保留、Gemini shadow/session 等 provider 事实，并执行 core 返回的可选 cache 日志事件。
 
 ## 背景
 
