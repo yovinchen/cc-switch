@@ -318,7 +318,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     codex_live_snapshot_parts_from_settings as core_codex_live_snapshot_parts_from_settings,
     codex_model_from_config_toml as core_codex_model_from_config_toml,
     codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
-    codex_provider_validation_parts_from_settings as core_codex_provider_validation_parts_from_settings,
     codex_restored_live_settings_parts as core_codex_restored_live_settings_parts,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
@@ -338,6 +337,8 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
     provider_omo_variant_for_app_category as core_provider_omo_variant_for_category,
     provider_non_codex_credential_values_from_settings as core_provider_non_codex_credential_values_from_settings,
+    provider_settings_validation_issue_spec as core_provider_settings_validation_issue_spec,
+    provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
     provider_switch_backfill_source_id as core_provider_switch_backfill_source_id,
     provider_switch_dispatch_for_app as core_provider_switch_dispatch,
@@ -367,17 +368,18 @@ pub(crate) use crate::proxy_core::api::ports::{
     GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, LocalizedErrorSpec,
     CodexCredentialParts, CodexLiveSettingsIssue, CodexLiveSettingsParts,
     CodexLiveSnapshotIssue, CodexLiveSnapshotParts, CodexProviderLiveWriteIssue,
-    CodexProviderLiveWriteParts, CodexProviderValidationIssue,
-    CodexProviderValidationParts, CodexRestoredLiveSettingsParts,
+    CodexProviderLiveWriteParts, CodexRestoredLiveSettingsParts,
     ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderCredentialIssue,
     ProviderCredentialValues as CoreProviderCredentialValues, ProviderKeyChangePolicyIssue,
     ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
-    ProviderOmoSwitchPair, ProviderOmoVariant,
+    ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
+    ProviderSettingsValidationParts,
     ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::ports::{
     claude_env_credentials_from_settings, gemini_env_map_from_settings,
+    CodexProviderValidationIssue,
     openclaw_credential_parts_from_settings, opencode_credential_parts_from_settings,
     OpenCodeCredentialIssue,
 };
@@ -3600,112 +3602,21 @@ pub(crate) fn provider_codex_live_snapshot_parts(
     )
 }
 
-pub(crate) fn provider_codex_validation_parts(
-    provider: &Provider,
-) -> Result<CodexProviderValidationParts<'_>, CodexProviderValidationIssue> {
-    core_codex_provider_validation_parts_from_settings(&provider.settings_config)
-}
-
-#[derive(Default)]
-pub(crate) struct ProviderSettingsValidationParts<'a> {
-    pub(crate) codex_config_text: Option<&'a str>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProviderSettingsValidationIssue {
-    ClaudeSettingsNotObject,
-    Codex(CodexProviderValidationIssue),
-    OpenCodeSettingsNotObject,
-    OpenClawSettingsNotObject,
-    HermesSettingsNotObject,
-}
-
 pub(crate) fn provider_settings_validation_issue_spec(
     issue: ProviderSettingsValidationIssue,
     provider_id: &str,
 ) -> LocalizedErrorSpec {
-    match issue {
-        ProviderSettingsValidationIssue::ClaudeSettingsNotObject => LocalizedErrorSpec::new(
-            "provider.claude.settings.not_object",
-            "Claude 配置必须是 JSON 对象",
-            "Claude configuration must be a JSON object",
-        ),
-        ProviderSettingsValidationIssue::Codex(issue) => match issue {
-            CodexProviderValidationIssue::NotObject => LocalizedErrorSpec::new(
-                "provider.codex.settings.not_object",
-                "Codex 配置必须是 JSON 对象",
-                "Codex configuration must be a JSON object",
-            ),
-            CodexProviderValidationIssue::MissingAuth => LocalizedErrorSpec::new(
-                "provider.codex.auth.missing",
-                format!("供应商 {provider_id} 缺少 auth 配置"),
-                format!("Provider {provider_id} is missing auth configuration"),
-            ),
-            CodexProviderValidationIssue::AuthNotObject => LocalizedErrorSpec::new(
-                "provider.codex.auth.not_object",
-                format!("供应商 {provider_id} 的 auth 配置必须是 JSON 对象"),
-                format!("Provider {provider_id} auth configuration must be a JSON object"),
-            ),
-            CodexProviderValidationIssue::ConfigInvalidType => LocalizedErrorSpec::new(
-                "provider.codex.config.invalid_type",
-                "Codex config 字段必须是字符串",
-                "Codex config field must be a string",
-            ),
-        },
-        ProviderSettingsValidationIssue::OpenCodeSettingsNotObject => LocalizedErrorSpec::new(
-            "provider.opencode.settings.not_object",
-            "OpenCode 配置必须是 JSON 对象",
-            "OpenCode configuration must be a JSON object",
-        ),
-        ProviderSettingsValidationIssue::OpenClawSettingsNotObject => LocalizedErrorSpec::new(
-            "provider.openclaw.settings.not_object",
-            "OpenClaw 配置必须是 JSON 对象",
-            "OpenClaw configuration must be a JSON object",
-        ),
-        ProviderSettingsValidationIssue::HermesSettingsNotObject => LocalizedErrorSpec::new(
-            "provider.hermes.settings.not_object",
-            "Hermes 配置必须是 JSON 对象",
-            "Hermes configuration must be a JSON object",
-        ),
-    }
+    core_provider_settings_validation_issue_spec(issue, provider_id)
 }
 
 pub(crate) fn provider_settings_validation_parts<'a>(
     app_type: &AppType,
     provider: &'a Provider,
 ) -> Result<ProviderSettingsValidationParts<'a>, ProviderSettingsValidationIssue> {
-    match app_type {
-        AppType::Claude => {
-            if !provider_settings_config_is_object(provider) {
-                return Err(ProviderSettingsValidationIssue::ClaudeSettingsNotObject);
-            }
-        }
-        AppType::Codex => {
-            let parts = provider_codex_validation_parts(provider)
-                .map_err(ProviderSettingsValidationIssue::Codex)?;
-            return Ok(ProviderSettingsValidationParts {
-                codex_config_text: parts.config_text,
-            });
-        }
-        AppType::OpenCode => {
-            if !provider_settings_config_is_object(provider) {
-                return Err(ProviderSettingsValidationIssue::OpenCodeSettingsNotObject);
-            }
-        }
-        AppType::OpenClaw => {
-            if !provider_settings_config_is_object(provider) {
-                return Err(ProviderSettingsValidationIssue::OpenClawSettingsNotObject);
-            }
-        }
-        AppType::Hermes => {
-            if !provider_settings_config_is_object(provider) {
-                return Err(ProviderSettingsValidationIssue::HermesSettingsNotObject);
-            }
-        }
-        AppType::ClaudeDesktop | AppType::Gemini => {}
-    }
-
-    Ok(ProviderSettingsValidationParts::default())
+    core_provider_settings_validation_parts_from_settings(
+        &AppKind::from(app_type),
+        &provider.settings_config,
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4584,10 +4495,6 @@ pub(crate) fn provider_claude_responses_prompt_cache_key(
 
 pub(crate) fn provider_codex_fast_mode_enabled(provider: &Provider) -> bool {
     provider.codex_fast_mode_enabled()
-}
-
-pub(crate) fn provider_settings_config_is_object(provider: &Provider) -> bool {
-    provider.settings_config.is_object()
 }
 
 pub(crate) fn provider_claude_auth_key(provider: &Provider) -> Option<ClaudeAuthKey> {
@@ -17066,16 +16973,15 @@ experimental_bearer_token = "live-token"
             provider_codex_live_snapshot_parts(&missing_auth),
             Err(CodexLiveSnapshotIssue::MissingAuth)
         ));
-        let validation_parts = provider_codex_validation_parts(&official_live_provider)
-            .expect("codex validation parts");
-        assert_eq!(validation_parts.config_text, Some(""));
         let provider_validation_parts =
             provider_settings_validation_parts(&AppType::Codex, &official_live_provider)
                 .expect("provider validation parts");
         assert_eq!(provider_validation_parts.codex_config_text, Some(""));
         assert!(matches!(
-            provider_codex_validation_parts(&invalid_shape),
-            Err(CodexProviderValidationIssue::NotObject)
+            provider_settings_validation_parts(&AppType::Codex, &invalid_shape),
+            Err(ProviderSettingsValidationIssue::Codex(
+                CodexProviderValidationIssue::NotObject
+            ))
         ));
         assert!(matches!(
             provider_settings_validation_parts(&AppType::Claude, &invalid_shape),
@@ -17086,18 +16992,16 @@ experimental_bearer_token = "live-token"
             Err(ProviderSettingsValidationIssue::OpenCodeSettingsNotObject)
         ));
         assert!(matches!(
-            provider_codex_validation_parts(&missing_auth),
-            Err(CodexProviderValidationIssue::MissingAuth)
-        ));
-        assert!(matches!(
             provider_settings_validation_parts(&AppType::Codex, &missing_auth),
             Err(ProviderSettingsValidationIssue::Codex(
                 CodexProviderValidationIssue::MissingAuth
             ))
         ));
         assert!(matches!(
-            provider_codex_validation_parts(&auth_not_object),
-            Err(CodexProviderValidationIssue::AuthNotObject)
+            provider_settings_validation_parts(&AppType::Codex, &auth_not_object),
+            Err(ProviderSettingsValidationIssue::Codex(
+                CodexProviderValidationIssue::AuthNotObject
+            ))
         ));
         let invalid_config = Provider::with_id(
             "codex-live-invalid-config".to_string(),
@@ -17106,8 +17010,10 @@ experimental_bearer_token = "live-token"
             None,
         );
         assert!(matches!(
-            provider_codex_validation_parts(&invalid_config),
-            Err(CodexProviderValidationIssue::ConfigInvalidType)
+            provider_settings_validation_parts(&AppType::Codex, &invalid_config),
+            Err(ProviderSettingsValidationIssue::Codex(
+                CodexProviderValidationIssue::ConfigInvalidType
+            ))
         ));
         let validation_spec = provider_settings_validation_issue_spec(
             ProviderSettingsValidationIssue::Codex(CodexProviderValidationIssue::MissingAuth),
@@ -17717,13 +17623,6 @@ base_url = "https://api.openai.com/v1"
             settings.clone(),
             None,
         );
-        assert!(provider_settings_config_is_object(&provider));
-        assert!(!provider_settings_config_is_object(&Provider::with_id(
-            "invalid".to_string(),
-            "Invalid".to_string(),
-            json!("not-object"),
-            None,
-        )));
         provider.meta = Some(ProviderMeta {
             api_format: Some("openai_chat".to_string()),
             ..Default::default()

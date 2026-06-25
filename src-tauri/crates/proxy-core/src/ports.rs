@@ -2747,6 +2747,108 @@ pub fn codex_provider_validation_parts_from_settings(
     Ok(CodexProviderValidationParts { config_text })
 }
 
+#[derive(Default)]
+pub struct ProviderSettingsValidationParts<'a> {
+    pub codex_config_text: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderSettingsValidationIssue {
+    ClaudeSettingsNotObject,
+    Codex(CodexProviderValidationIssue),
+    OpenCodeSettingsNotObject,
+    OpenClawSettingsNotObject,
+    HermesSettingsNotObject,
+}
+
+pub fn provider_settings_validation_issue_spec(
+    issue: ProviderSettingsValidationIssue,
+    provider_id: &str,
+) -> LocalizedErrorSpec {
+    match issue {
+        ProviderSettingsValidationIssue::ClaudeSettingsNotObject => LocalizedErrorSpec::new(
+            "provider.claude.settings.not_object",
+            "Claude 配置必须是 JSON 对象",
+            "Claude configuration must be a JSON object",
+        ),
+        ProviderSettingsValidationIssue::Codex(issue) => match issue {
+            CodexProviderValidationIssue::NotObject => LocalizedErrorSpec::new(
+                "provider.codex.settings.not_object",
+                "Codex 配置必须是 JSON 对象",
+                "Codex configuration must be a JSON object",
+            ),
+            CodexProviderValidationIssue::MissingAuth => LocalizedErrorSpec::new(
+                "provider.codex.auth.missing",
+                format!("供应商 {provider_id} 缺少 auth 配置"),
+                format!("Provider {provider_id} is missing auth configuration"),
+            ),
+            CodexProviderValidationIssue::AuthNotObject => LocalizedErrorSpec::new(
+                "provider.codex.auth.not_object",
+                format!("供应商 {provider_id} 的 auth 配置必须是 JSON 对象"),
+                format!("Provider {provider_id} auth configuration must be a JSON object"),
+            ),
+            CodexProviderValidationIssue::ConfigInvalidType => LocalizedErrorSpec::new(
+                "provider.codex.config.invalid_type",
+                "Codex config 字段必须是字符串",
+                "Codex config field must be a string",
+            ),
+        },
+        ProviderSettingsValidationIssue::OpenCodeSettingsNotObject => LocalizedErrorSpec::new(
+            "provider.opencode.settings.not_object",
+            "OpenCode 配置必须是 JSON 对象",
+            "OpenCode configuration must be a JSON object",
+        ),
+        ProviderSettingsValidationIssue::OpenClawSettingsNotObject => LocalizedErrorSpec::new(
+            "provider.openclaw.settings.not_object",
+            "OpenClaw 配置必须是 JSON 对象",
+            "OpenClaw configuration must be a JSON object",
+        ),
+        ProviderSettingsValidationIssue::HermesSettingsNotObject => LocalizedErrorSpec::new(
+            "provider.hermes.settings.not_object",
+            "Hermes 配置必须是 JSON 对象",
+            "Hermes configuration must be a JSON object",
+        ),
+    }
+}
+
+pub fn provider_settings_validation_parts_from_settings<'a>(
+    app: &AppKind,
+    settings_config: &'a Value,
+) -> Result<ProviderSettingsValidationParts<'a>, ProviderSettingsValidationIssue> {
+    match app {
+        AppKind::Claude => {
+            if !settings_config.is_object() {
+                return Err(ProviderSettingsValidationIssue::ClaudeSettingsNotObject);
+            }
+        }
+        AppKind::Codex => {
+            let parts = codex_provider_validation_parts_from_settings(settings_config)
+                .map_err(ProviderSettingsValidationIssue::Codex)?;
+            return Ok(ProviderSettingsValidationParts {
+                codex_config_text: parts.config_text,
+            });
+        }
+        app if app_custom_name_is(app, "opencode") => {
+            if !settings_config.is_object() {
+                return Err(ProviderSettingsValidationIssue::OpenCodeSettingsNotObject);
+            }
+        }
+        app if app_custom_name_is(app, "openclaw") => {
+            if !settings_config.is_object() {
+                return Err(ProviderSettingsValidationIssue::OpenClawSettingsNotObject);
+            }
+        }
+        app if app_custom_name_is(app, "hermes") => {
+            if !settings_config.is_object() {
+                return Err(ProviderSettingsValidationIssue::HermesSettingsNotObject);
+            }
+        }
+        AppKind::ClaudeDesktop | AppKind::Gemini | AppKind::Custom(_) => {}
+    }
+
+    Ok(ProviderSettingsValidationParts::default())
+}
+
 pub fn codex_wire_api_from_config_toml(config_toml: &str) -> Option<String> {
     codex_active_model_provider_string_value(config_toml, "wire_api")
         .or_else(|| toml_top_level_string_value(config_toml, "wire_api"))
@@ -5853,6 +5955,8 @@ mod tests {
         provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
         provider_live_sync_scope_for_app,
         provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
+        provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
+        ProviderSettingsValidationIssue,
         required_provider_base_url,
         provider_should_sync_to_live, provider_supports_legacy_common_config_migration,
         provider_switch_backfill_source_id, provider_switch_dispatch_for_app,
@@ -7667,6 +7771,79 @@ wire_api = "chat"
             codex_provider_validation_parts_from_settings(&json!({"auth": {}, "config": 42})),
             Err(CodexProviderValidationIssue::ConfigInvalidType)
         ));
+    }
+
+    #[test]
+    fn provider_settings_validation_dispatches_app_contracts() {
+        let codex_settings = json!({"auth": {}, "config": "model = \"gpt-5\""});
+        let codex_parts =
+            provider_settings_validation_parts_from_settings(&AppKind::Codex, &codex_settings)
+                .expect("codex validation parts");
+        assert_eq!(codex_parts.codex_config_text, Some("model = \"gpt-5\""));
+        assert!(matches!(
+            provider_settings_validation_parts_from_settings(
+                &AppKind::Codex,
+                &json!({"config": ""})
+            ),
+            Err(ProviderSettingsValidationIssue::Codex(
+                CodexProviderValidationIssue::MissingAuth
+            ))
+        ));
+
+        for (app, issue) in [
+            (
+                AppKind::Claude,
+                ProviderSettingsValidationIssue::ClaudeSettingsNotObject,
+            ),
+            (
+                AppKind::Custom("opencode".to_string()),
+                ProviderSettingsValidationIssue::OpenCodeSettingsNotObject,
+            ),
+            (
+                AppKind::Custom("openclaw".to_string()),
+                ProviderSettingsValidationIssue::OpenClawSettingsNotObject,
+            ),
+            (
+                AppKind::Custom("hermes".to_string()),
+                ProviderSettingsValidationIssue::HermesSettingsNotObject,
+            ),
+        ] {
+            assert_eq!(
+                provider_settings_validation_parts_from_settings(&app, &json!("invalid"))
+                    .err()
+                    .expect("provider settings validation issue"),
+                issue
+            );
+        }
+
+        assert!(provider_settings_validation_parts_from_settings(
+            &AppKind::Gemini,
+            &json!("host validates gemini separately")
+        )
+        .is_ok());
+        assert!(provider_settings_validation_parts_from_settings(
+            &AppKind::Custom("unknown".to_string()),
+            &json!("unknown custom app")
+        )
+        .is_ok());
+
+        let missing_auth_spec = provider_settings_validation_issue_spec(
+            ProviderSettingsValidationIssue::Codex(CodexProviderValidationIssue::MissingAuth),
+            "codex-live-missing-auth",
+        );
+        assert_eq!(missing_auth_spec.key, "provider.codex.auth.missing");
+        assert_eq!(
+            missing_auth_spec.zh,
+            "供应商 codex-live-missing-auth 缺少 auth 配置"
+        );
+        assert_eq!(
+            provider_settings_validation_issue_spec(
+                ProviderSettingsValidationIssue::OpenClawSettingsNotObject,
+                "openclaw-invalid",
+            )
+            .key,
+            "provider.openclaw.settings.not_object"
+        );
     }
 
     #[test]

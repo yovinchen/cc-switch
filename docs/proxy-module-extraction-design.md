@@ -2099,6 +2099,8 @@ provider adapter 仍负责 CC Switch 默认 fallback 的 provider settings 到 h
 
 本轮继续把 Codex live/settings 的 JSON 形状契约收进 `proxy-core::ports`：auth 对象提取、live write parts、restore parts、live settings parts、snapshot parts 和 provider validation parts 都由 core 基于 `settings + category` 生成；`proxy_core_adapter` 只负责把 CC Switch `Provider` 拆成中立输入。这样后续中转迁移可以让不同地址绑定不同认证、接口和模型信息，同时不让宿主 adapter 重新承载 Codex 配置形状规则。
 
+随后又把 provider settings validation 的 app 分派和 localized issue spec 收进 `proxy-core::ports`：core 基于 `AppKind + settings` 决定 Claude/OpenCode/OpenClaw/Hermes 是否要求 JSON object，并复用 Codex validation parts 输出 Codex config 文本；host 仍只负责执行 ClaudeDesktop/Gemini 这类宿主专属校验和实际 TOML 语义校验。
+
 ### Model catalog 接口
 
 `GET /v1/models` 已从 `handlers::handle_models` 直读 Codex 配置文件迁出。当前端口分两类模型视图：

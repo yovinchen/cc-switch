@@ -1170,6 +1170,16 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_LIVE_SETTINGS_SHAPE_MARKERS: &[&str] = 
     ".ok_or(CodexProviderValidationIssue::MissingAuth)",
     "CodexProviderValidationIssue::ConfigInvalidType);",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_SETTINGS_VALIDATION_MARKERS: &[&str] = &[
+    "pub(crate) struct ProviderSettingsValidationParts",
+    "pub(crate) enum ProviderSettingsValidationIssue",
+    "ProviderSettingsValidationIssue::ClaudeSettingsNotObject => LocalizedErrorSpec::new",
+    "ProviderSettingsValidationIssue::OpenCodeSettingsNotObject => LocalizedErrorSpec::new",
+    "ProviderSettingsValidationIssue::OpenClawSettingsNotObject => LocalizedErrorSpec::new",
+    "ProviderSettingsValidationIssue::HermesSettingsNotObject => LocalizedErrorSpec::new",
+    "provider_settings_config_is_object(provider)",
+    ".map_err(ProviderSettingsValidationIssue::Codex)",
+];
 const FORBIDDEN_PROXY_CORE_ADAPTER_REQUIRED_BASE_URL_POLICY_MARKERS: &[&str] = &[
     "fn missing_provider_base_url_message",
     "Provider 缺少 base_url 配置",
@@ -3166,7 +3176,6 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
         "core_codex_restored_live_settings_parts(",
         "core_codex_live_settings_parts_from_settings(",
         "core_codex_live_snapshot_parts_from_settings(",
-        "core_codex_provider_validation_parts_from_settings(",
     ] {
         assert!(
             production_source.contains(marker),
@@ -3187,6 +3196,38 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter must keep Codex live/settings JSON shape policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_provider_settings_validation_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let slice = function_slice(
+        &source,
+        "pub(crate) fn provider_settings_validation_issue_spec",
+        "pub(crate) enum CodexBackupProjectionIssue",
+    );
+
+    assert!(
+        slice.contains("core_provider_settings_validation_issue_spec(")
+            && slice.contains("core_provider_settings_validation_parts_from_settings(")
+            && slice.contains("AppKind::from(app_type)"),
+        "proxy_core_adapter should delegate provider settings validation policy to core"
+    );
+
+    let mut violations = Vec::new();
+    for marker in FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_SETTINGS_VALIDATION_MARKERS {
+        if slice.contains(marker) {
+            violations.push(*marker);
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep provider settings validation dispatch/spec policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }
