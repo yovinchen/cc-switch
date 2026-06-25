@@ -2637,7 +2637,7 @@ pub(crate) use crate::proxy_core::api::auth::{
     codex_oauth_missing_refresh_token_message, codex_oauth_pending_device_code_is_expired,
     codex_oauth_poll_interval_secs, codex_oauth_refresh_failure, codex_oauth_refresh_token_form,
     codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon, codex_oauth_token_url,
-    copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
+    copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon, ensure_managed_auth_provider,
     managed_account_app_handle_unavailable_error_message,
     managed_account_app_handle_unavailable_log_message,
     managed_account_id_for_auth_provider as core_managed_account_id_for_auth_provider,
@@ -2653,7 +2653,8 @@ pub(crate) use crate::proxy_core::api::auth::{
     resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
     CodexOAuthDevicePollStatusKind, CopilotOAuthPollErrorKind, ManagedAccountAuthResolution,
     ManagedAccountAuthRuntime, ManagedAccountBindingInput, ManagedAccountBindingSource,
-    ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, GITHUB_COPILOT_AUTH_PROVIDER,
+    ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, CODEX_OAUTH_AUTH_PROVIDER,
+    GITHUB_COPILOT_AUTH_PROVIDER,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,

@@ -4,9 +4,9 @@ use crate::commands::codex_oauth::CodexOAuthState;
 use crate::commands::copilot::CopilotAuthState;
 use crate::proxy::codex_oauth_auth::CodexOAuthError;
 use crate::proxy::copilot_auth::{CopilotAuthError, GitHubAccount, GitHubDeviceCodeResponse};
-
-const AUTH_PROVIDER_GITHUB_COPILOT: &str = "github_copilot";
-const AUTH_PROVIDER_CODEX_OAUTH: &str = "codex_oauth";
+use crate::proxy_core_adapter::{
+    ensure_managed_auth_provider, CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
+};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ManagedAuthAccount {
@@ -36,14 +36,6 @@ pub struct ManagedAuthDeviceCodeResponse {
     pub verification_uri: String,
     pub expires_in: u64,
     pub interval: u64,
-}
-
-fn ensure_auth_provider(auth_provider: &str) -> Result<&'static str, String> {
-    match auth_provider {
-        AUTH_PROVIDER_GITHUB_COPILOT => Ok(AUTH_PROVIDER_GITHUB_COPILOT),
-        AUTH_PROVIDER_CODEX_OAUTH => Ok(AUTH_PROVIDER_CODEX_OAUTH),
-        _ => Err(format!("Unsupported auth provider: {auth_provider}")),
-    }
 }
 
 fn map_account(
@@ -83,9 +75,9 @@ pub async fn auth_start_login(
     copilot_state: State<'_, CopilotAuthState>,
     codex_state: State<'_, CodexOAuthState>,
 ) -> Result<ManagedAuthDeviceCodeResponse, String> {
-    let auth_provider = ensure_auth_provider(&auth_provider)?;
+    let auth_provider = ensure_managed_auth_provider(&auth_provider)?;
     match auth_provider {
-        AUTH_PROVIDER_GITHUB_COPILOT => {
+        GITHUB_COPILOT_AUTH_PROVIDER => {
             let auth_manager = copilot_state.0.read().await;
             let response = auth_manager
                 .start_device_flow(github_domain.as_deref())
@@ -93,7 +85,7 @@ pub async fn auth_start_login(
                 .map_err(|e| e.to_string())?;
             Ok(map_device_code_response(auth_provider, response))
         }
-        AUTH_PROVIDER_CODEX_OAUTH => {
+        CODEX_OAUTH_AUTH_PROVIDER => {
             let auth_manager = codex_state.0.read().await;
             let response = auth_manager
                 .start_device_flow()
@@ -113,9 +105,9 @@ pub async fn auth_poll_for_account(
     copilot_state: State<'_, CopilotAuthState>,
     codex_state: State<'_, CodexOAuthState>,
 ) -> Result<Option<ManagedAuthAccount>, String> {
-    let auth_provider = ensure_auth_provider(&auth_provider)?;
+    let auth_provider = ensure_managed_auth_provider(&auth_provider)?;
     match auth_provider {
-        AUTH_PROVIDER_GITHUB_COPILOT => {
+        GITHUB_COPILOT_AUTH_PROVIDER => {
             let auth_manager = copilot_state.0.write().await;
             match auth_manager
                 .poll_for_token(&device_code, github_domain.as_deref())
@@ -131,7 +123,7 @@ pub async fn auth_poll_for_account(
                 Err(e) => Err(e.to_string()),
             }
         }
-        AUTH_PROVIDER_CODEX_OAUTH => {
+        CODEX_OAUTH_AUTH_PROVIDER => {
             let auth_manager = codex_state.0.write().await;
             match auth_manager.poll_for_token(&device_code).await {
                 Ok(account) => {
@@ -154,9 +146,9 @@ pub async fn auth_list_accounts(
     copilot_state: State<'_, CopilotAuthState>,
     codex_state: State<'_, CodexOAuthState>,
 ) -> Result<Vec<ManagedAuthAccount>, String> {
-    let auth_provider = ensure_auth_provider(&auth_provider)?;
+    let auth_provider = ensure_managed_auth_provider(&auth_provider)?;
     match auth_provider {
-        AUTH_PROVIDER_GITHUB_COPILOT => {
+        GITHUB_COPILOT_AUTH_PROVIDER => {
             let auth_manager = copilot_state.0.read().await;
             let status = auth_manager.get_status().await;
             let default_account_id = status.default_account_id.clone();
@@ -166,7 +158,7 @@ pub async fn auth_list_accounts(
                 .map(|account| map_account(auth_provider, account, default_account_id.as_deref()))
                 .collect())
         }
-        AUTH_PROVIDER_CODEX_OAUTH => {
+        CODEX_OAUTH_AUTH_PROVIDER => {
             let auth_manager = codex_state.0.read().await;
             let status = auth_manager.get_status().await;
             let default_account_id = status.default_account_id.clone();
@@ -186,9 +178,9 @@ pub async fn auth_get_status(
     copilot_state: State<'_, CopilotAuthState>,
     codex_state: State<'_, CodexOAuthState>,
 ) -> Result<ManagedAuthStatus, String> {
-    let auth_provider = ensure_auth_provider(&auth_provider)?;
+    let auth_provider = ensure_managed_auth_provider(&auth_provider)?;
     match auth_provider {
-        AUTH_PROVIDER_GITHUB_COPILOT => {
+        GITHUB_COPILOT_AUTH_PROVIDER => {
             let auth_manager = copilot_state.0.read().await;
             let status = auth_manager.get_status().await;
             let default_account_id = status.default_account_id.clone();
@@ -206,7 +198,7 @@ pub async fn auth_get_status(
                     .collect(),
             })
         }
-        AUTH_PROVIDER_CODEX_OAUTH => {
+        CODEX_OAUTH_AUTH_PROVIDER => {
             let auth_manager = codex_state.0.read().await;
             let status = auth_manager.get_status().await;
             let default_account_id = status.default_account_id.clone();
@@ -235,16 +227,16 @@ pub async fn auth_remove_account(
     copilot_state: State<'_, CopilotAuthState>,
     codex_state: State<'_, CodexOAuthState>,
 ) -> Result<(), String> {
-    let auth_provider = ensure_auth_provider(&auth_provider)?;
+    let auth_provider = ensure_managed_auth_provider(&auth_provider)?;
     match auth_provider {
-        AUTH_PROVIDER_GITHUB_COPILOT => {
+        GITHUB_COPILOT_AUTH_PROVIDER => {
             let auth_manager = copilot_state.0.write().await;
             auth_manager
                 .remove_account(&account_id)
                 .await
                 .map_err(|e| e.to_string())
         }
-        AUTH_PROVIDER_CODEX_OAUTH => {
+        CODEX_OAUTH_AUTH_PROVIDER => {
             let auth_manager = codex_state.0.write().await;
             auth_manager
                 .remove_account(&account_id)
@@ -262,16 +254,16 @@ pub async fn auth_set_default_account(
     copilot_state: State<'_, CopilotAuthState>,
     codex_state: State<'_, CodexOAuthState>,
 ) -> Result<(), String> {
-    let auth_provider = ensure_auth_provider(&auth_provider)?;
+    let auth_provider = ensure_managed_auth_provider(&auth_provider)?;
     match auth_provider {
-        AUTH_PROVIDER_GITHUB_COPILOT => {
+        GITHUB_COPILOT_AUTH_PROVIDER => {
             let auth_manager = copilot_state.0.write().await;
             auth_manager
                 .set_default_account(&account_id)
                 .await
                 .map_err(|e| e.to_string())
         }
-        AUTH_PROVIDER_CODEX_OAUTH => {
+        CODEX_OAUTH_AUTH_PROVIDER => {
             let auth_manager = codex_state.0.write().await;
             auth_manager
                 .set_default_account(&account_id)
@@ -288,13 +280,13 @@ pub async fn auth_logout(
     copilot_state: State<'_, CopilotAuthState>,
     codex_state: State<'_, CodexOAuthState>,
 ) -> Result<(), String> {
-    let auth_provider = ensure_auth_provider(&auth_provider)?;
+    let auth_provider = ensure_managed_auth_provider(&auth_provider)?;
     match auth_provider {
-        AUTH_PROVIDER_GITHUB_COPILOT => {
+        GITHUB_COPILOT_AUTH_PROVIDER => {
             let auth_manager = copilot_state.0.write().await;
             auth_manager.clear_auth().await.map_err(|e| e.to_string())
         }
-        AUTH_PROVIDER_CODEX_OAUTH => {
+        CODEX_OAUTH_AUTH_PROVIDER => {
             let auth_manager = codex_state.0.write().await;
             auth_manager.clear_auth().await.map_err(|e| e.to_string())
         }

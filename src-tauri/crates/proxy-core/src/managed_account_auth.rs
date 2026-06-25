@@ -185,6 +185,18 @@ pub fn codex_oauth_missing_account_id_message() -> &'static str {
     "无法从 token 中提取 account_id"
 }
 
+pub fn unsupported_managed_auth_provider_message(auth_provider: &str) -> String {
+    format!("Unsupported auth provider: {auth_provider}")
+}
+
+pub fn ensure_managed_auth_provider(auth_provider: &str) -> Result<&'static str, String> {
+    match auth_provider {
+        GITHUB_COPILOT_AUTH_PROVIDER => Ok(GITHUB_COPILOT_AUTH_PROVIDER),
+        CODEX_OAUTH_AUTH_PROVIDER => Ok(CODEX_OAUTH_AUTH_PROVIDER),
+        other => Err(unsupported_managed_auth_provider_message(other)),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManagedAccountAuthRuntime {
     GitHubCopilot,
@@ -711,7 +723,8 @@ mod tests {
         codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon,
         codex_oauth_token_url,
         copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
-        headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
+        ensure_managed_auth_provider, headers_contain_proxy_auth_placeholder,
+        is_managed_account_upstream_url,
         managed_account_app_handle_unavailable_error_message,
         managed_account_app_handle_unavailable_log_message,
         managed_account_token_failure_error_message, managed_account_token_failure_log_message,
@@ -947,6 +960,22 @@ mod tests {
         assert_eq!(
             codex_oauth_missing_account_id_message(),
             "无法从 token 中提取 account_id"
+        );
+    }
+
+    #[test]
+    fn managed_auth_provider_validation_accepts_supported_providers() {
+        assert_eq!(
+            ensure_managed_auth_provider("github_copilot").unwrap(),
+            GITHUB_COPILOT_AUTH_PROVIDER
+        );
+        assert_eq!(
+            ensure_managed_auth_provider("codex_oauth").unwrap(),
+            CODEX_OAUTH_AUTH_PROVIDER
+        );
+        assert_eq!(
+            ensure_managed_auth_provider("unknown").unwrap_err(),
+            "Unsupported auth provider: unknown"
         );
     }
 

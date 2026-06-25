@@ -1072,6 +1072,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn codex_oauth_missing_pending_user_code_message(",
     "fn codex_oauth_missing_refresh_token_message(",
     "fn codex_oauth_missing_account_id_message(",
+    "fn unsupported_managed_auth_provider_message(",
+    "fn ensure_managed_auth_provider(",
     "fn copilot_token_is_expiring_soon(",
     "fn copilot_oauth_poll_error_kind(",
     "fn codex_default_model_context_window(",
@@ -5294,6 +5296,31 @@ fn model_fetch_commands_use_adapter_dto_entrypoint() {
         violations.is_empty(),
         "model fetch commands must use proxy_core_adapter as the FetchedModel DTO entrypoint:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn managed_auth_commands_delegate_provider_validation_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/commands/auth.rs");
+    let source = fs::read_to_string(&path).expect("read commands/auth.rs");
+
+    for marker in [
+        "const AUTH_PROVIDER_",
+        "fn ensure_auth_provider(",
+        "Unsupported auth provider:",
+    ] {
+        assert!(
+            !source.contains(marker),
+            "commands/auth.rs should not own managed-auth provider validation marker `{marker}`"
+        );
+    }
+
+    assert!(
+        source.contains("ensure_managed_auth_provider(")
+            && source.contains("GITHUB_COPILOT_AUTH_PROVIDER")
+            && source.contains("CODEX_OAUTH_AUTH_PROVIDER"),
+        "commands/auth.rs should consume core managed-auth provider validation through proxy_core_adapter"
     );
 }
 

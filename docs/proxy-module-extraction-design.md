@@ -1439,6 +1439,7 @@
 1019. Copilot OAuth device polling 的错误码分类与 token 提前刷新 buffer policy 已迁入 `proxy-core::managed_account_auth`；host `copilot_auth` 只保留 HTTP 轮询、账号持久化和 core classification 到 `CopilotAuthError` 的映射。
 1020. Codex OAuth device polling 的 HTTP status 分类、device code 默认过期/interval 安全余量、access token 过期时间计算和 token 提前刷新 buffer policy 已迁入 `proxy-core::managed_account_auth`；host `codex_oauth_auth` 只保留 reqwest 调用、token cache、refresh token 持久化和 status classification 到 `CodexOAuthError` 的映射。
 1021. Codex OAuth device/code/refresh 请求 contract 已迁入 `proxy-core::managed_account_auth`，包括 OpenAI OAuth endpoint、client id、device JSON body、authorization/refresh form、verification URL 和固定错误文案；host `codex_oauth_auth` 只按 core request plan 执行 reqwest 并映射错误类型。
+1022. 托管账号统一命令的 `auth_provider` 白名单与 unsupported provider 错误文案已迁入 `proxy-core::managed_account_auth::ensure_managed_auth_provider`；Tauri `commands/auth.rs` 只消费 core validation 结果并分派到 Copilot/Codex OAuth manager。
 
 ## 背景
 
