@@ -1025,7 +1025,7 @@
 本轮继续删除 proxy event/server event payload 的 adapter 私有 passthrough helper；`proxy_core_adapter` 的消息构造直接消费 `proxy-core::events::{build_proxy_events_connected_payload,build_proxy_events_lagged_payload,build_server_started_event_payload,build_server_stopped_event_payload}`，payload shape 继续由 core 单测覆盖。
 
 本轮继续把 Codex provider `config` 文本读取、config TOML `wire_api`/`model` 投影与 active provider `base_url` 匹配收敛到 `proxy-core::ports::{codex_config_text_from_settings,codex_wire_api_from_config_toml,codex_model_from_config_toml,codex_config_has_base_url_matching}`；host adapter 不再维护 TOML value 解析、live takeover base_url 匹配或 legacy projection duplicate extractor。
-本轮继续把 forwarder 的 Claude/ClaudeAuth rectifier gate 收敛到 `proxy_core_adapter::forwarder_uses_anthropic_rectifiers`；provider 级 rectifier 判定不再作为 forwarder 的生产直接依赖。
+forwarder 的 Claude/ClaudeAuth rectifier gate 一跳 wrapper `forwarder_uses_anthropic_rectifiers` 已删除；request source 直接复用 provider 级 rectifier 判定，`forwarder.rs` 仍只通过 source 获取 rectifier gate。
 Codex Responses→Chat 上游模型覆写与 reasoning options 解析已由 forwarder request source 直接复用 provider 级 adapter API；此前的 `forwarder_apply_codex_chat_upstream_model` / `forwarder_codex_chat_reasoning_options` 一跳 wrapper 已删除。
 forwarder 的 Codex OAuth header-casing fact 一跳 wrapper `forwarder_is_codex_oauth_provider` 已删除；request source 直接复用 provider 级 Codex OAuth 判定，`forwarder.rs` 仍只通过 source 获取 header policy。
 forwarder 的 Bedrock pre-send optimizer provider env fact 一跳 wrapper `forwarder_bedrock_env_flag` 已删除；request source 直接复用 provider 级 env 投影 helper，`forwarder.rs` 仍只通过 source 执行 optimizer gate。
@@ -1465,6 +1465,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1047. forwarder provider adapter registry 删除 `forwarder_provider_adapter_for_app` 一跳 wrapper；adapter context factory 和 stream check fallback 直接调用 provider registry，forwarder 仍只消费 context/source 入口。
 1048. forwarder provider facts 删除 `forwarder_is_codex_oauth_provider` / `forwarder_bedrock_env_flag` 两个一跳 wrapper；request source 直接调用 provider 级 fact helper，forwarder 仍只消费 source 组装结果。
 1049. forwarder custom User-Agent 删除 `forwarder_custom_user_agent_header` 一跳 wrapper；request source 直接调用 provider 级 UA helper，并用 request-parts 单测锁住最终 `user-agent` header。
+1050. forwarder Anthropic rectifier gate 删除 `forwarder_uses_anthropic_rectifiers` 一跳 wrapper；request source 直接调用 provider 级 rectifier gate helper，forwarder 仍只消费 source 判定结果。
 
 ## 背景
 

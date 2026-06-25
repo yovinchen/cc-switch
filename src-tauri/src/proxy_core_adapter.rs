@@ -4423,10 +4423,6 @@ pub(crate) fn forwarder_claude_transform_request_for_api_format(
     )
 }
 
-pub(crate) fn forwarder_uses_anthropic_rectifiers(app_type: &AppType, provider: &Provider) -> bool {
-    provider_uses_anthropic_rectifiers(app_type, provider)
-}
-
 pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
     if provider_claude_kind(provider).needs_transform() {
         return true;
@@ -8475,7 +8471,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         &self,
         input: ForwarderAnthropicRectifierGateInput<'_>,
     ) -> bool {
-        forwarder_uses_anthropic_rectifiers(input.app_type, input.provider)
+        provider_uses_anthropic_rectifiers(input.app_type, input.provider)
     }
 
     fn thinking_signature_rectifier_plan(
@@ -22865,15 +22861,7 @@ command = "latest-command"
             &AppType::Claude,
             &claude_auth_provider
         ));
-        assert!(forwarder_uses_anthropic_rectifiers(
-            &AppType::Claude,
-            &claude_auth_provider
-        ));
         assert!(!provider_uses_anthropic_rectifiers(
-            &AppType::Codex,
-            &claude_auth_provider
-        ));
-        assert!(!forwarder_uses_anthropic_rectifiers(
             &AppType::Codex,
             &claude_auth_provider
         ));
