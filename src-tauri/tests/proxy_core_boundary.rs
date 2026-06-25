@@ -5086,6 +5086,57 @@ fn proxy_core_adapter_owns_claude_desktop_direct_model_specs_provider_projection
 }
 
 #[test]
+fn proxy_core_adapter_owns_claude_desktop_direct_gateway_profile() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let direct_profile_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_claude_desktop_direct_gateway_profile(",
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
+    );
+
+    assert!(
+        direct_profile_slice.contains("claude_desktop_direct_gateway_credentials(")
+            && direct_profile_slice
+                .contains("provider_claude_desktop_direct_inference_model_specs(")
+            && direct_profile_slice.contains("claude_desktop_gateway_profile(")
+            && direct_profile_slice
+                .contains("ClaudeDesktopProviderDirectGatewayProfileIssue::Credentials")
+            && direct_profile_slice
+                .contains("ClaudeDesktopProviderDirectGatewayProfileIssue::ModelRoute"),
+        "proxy_core_adapter should own Claude Desktop Direct provider profile assembly"
+    );
+
+    let forbidden_markers = [
+        "crate::claude_desktop_config",
+        "state.db",
+        "get_effective_current_provider",
+        "proxy_gateway_base_url_from_db",
+        "get_or_create_gateway_token",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(direct_profile_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs provider_claude_desktop_direct_gateway_profile:{} contains host-owned direct profile marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Claude Desktop Direct profile assembly free of host side effects:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_owns_claude_desktop_proxy_model_routes_provider_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
@@ -5730,6 +5781,7 @@ fn claude_desktop_config_delegates_gateway_profile_json_to_adapter() {
 
     assert!(
         apply_slice.contains("claude_desktop_gateway_profile(")
+            && apply_slice.contains("provider_claude_desktop_direct_gateway_profile(")
             && apply_slice.contains("provider_claude_desktop_proxy_gateway_profile_model_specs("),
         "claude_desktop_config should delegate gateway profile JSON construction to proxy_core_adapter/core"
     );
@@ -5753,6 +5805,8 @@ fn claude_desktop_config_delegates_gateway_profile_json_to_adapter() {
         "ClaudeDesktopGatewayProfileModelSpec {",
         "route.route_id.clone()",
         "route.label_override.clone()",
+        "direct_gateway_credentials(provider)",
+        "direct_inference_model_specs(provider)",
         "json!({",
     ];
     let mut violations = Vec::new();

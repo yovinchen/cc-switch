@@ -10747,6 +10747,27 @@ pub(crate) fn provider_claude_desktop_direct_inference_model_specs(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ClaudeDesktopProviderDirectGatewayProfileIssue {
+    Credentials(ClaudeDesktopDirectGatewayCredentialIssue),
+    ModelRoute(ClaudeDesktopDirectModelRouteIssue),
+}
+
+pub(crate) fn provider_claude_desktop_direct_gateway_profile(
+    provider: &Provider,
+) -> Result<Value, ClaudeDesktopProviderDirectGatewayProfileIssue> {
+    let credentials = claude_desktop_direct_gateway_credentials(&provider.settings_config)
+        .map_err(ClaudeDesktopProviderDirectGatewayProfileIssue::Credentials)?;
+    let model_specs = provider_claude_desktop_direct_inference_model_specs(provider)
+        .map_err(ClaudeDesktopProviderDirectGatewayProfileIssue::ModelRoute)?;
+
+    Ok(claude_desktop_gateway_profile(
+        &credentials.base_url,
+        &credentials.api_key,
+        (!model_specs.is_empty()).then_some(model_specs.as_slice()),
+    ))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ClaudeDesktopProviderProxyRouteIssue {
     Missing,

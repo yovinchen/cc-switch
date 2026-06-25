@@ -15,8 +15,9 @@ use crate::proxy_core_adapter::{
     provider_claude_desktop_proxy_config_validation_issue,
     provider_claude_desktop_proxy_has_base_url_and_key, ClaudeDesktopDirectGatewayCredentialIssue,
     ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopDirectProviderValidationIssue,
-    ClaudeDesktopProviderProxyRequestBodyIssue, ClaudeDesktopProviderProxyRouteIssue,
-    ClaudeDesktopProxyProviderConfigValidationIssue, ClaudeDesktopProxyRequestBodyIssue,
+    ClaudeDesktopProviderDirectGatewayProfileIssue, ClaudeDesktopProviderProxyRequestBodyIssue,
+    ClaudeDesktopProviderProxyRouteIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
+    ClaudeDesktopProxyRequestBodyIssue,
 };
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
@@ -499,13 +500,8 @@ fn apply_provider_to_paths_inner(
 ) -> Result<(), AppError> {
     let profile = match provider_mode(provider) {
         ClaudeDesktopMode::Direct => {
-            let credentials = direct_gateway_credentials(provider)?;
-            let model_specs = direct_inference_model_specs(provider)?;
-            crate::proxy_core_adapter::claude_desktop_gateway_profile(
-                &credentials.base_url,
-                &credentials.api_key,
-                (!model_specs.is_empty()).then_some(model_specs.as_slice()),
-            )
+            crate::proxy_core_adapter::provider_claude_desktop_direct_gateway_profile(provider)
+                .map_err(direct_gateway_profile_issue_to_error)?
         }
         ClaudeDesktopMode::Proxy => {
             let base_url = proxy_gateway_base_url_from_db(db)?;
@@ -529,6 +525,19 @@ fn apply_provider_to_paths_inner(
     write_meta(&paths.meta_path, Some(PROFILE_ID))?;
 
     Ok(())
+}
+
+fn direct_gateway_profile_issue_to_error(
+    issue: ClaudeDesktopProviderDirectGatewayProfileIssue,
+) -> AppError {
+    match issue {
+        ClaudeDesktopProviderDirectGatewayProfileIssue::Credentials(issue) => {
+            direct_gateway_credential_issue_to_error(issue)
+        }
+        ClaudeDesktopProviderDirectGatewayProfileIssue::ModelRoute(issue) => {
+            direct_model_route_issue_to_error(issue)
+        }
+    }
 }
 
 fn restore_official_at_paths_inner(paths: &ClaudeDesktopPaths) -> Result<(), AppError> {
