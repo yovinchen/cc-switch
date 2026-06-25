@@ -5420,6 +5420,38 @@ fn production_managed_auth_legacy_command_dtos_delegate_to_core() {
 }
 
 #[test]
+fn production_managed_auth_status_assembly_delegates_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let copilot_path = manifest_dir.join("src/proxy/copilot_auth.rs");
+    let copilot_source = fs::read_to_string(&copilot_path).expect("read copilot_auth.rs");
+    let codex_path = manifest_dir.join("src/proxy/codex_oauth_auth.rs");
+    let codex_source = fs::read_to_string(&codex_path).expect("read codex_oauth_auth.rs");
+    let copilot_status_slice = function_slice(
+        &copilot_source,
+        "pub async fn get_status",
+        "    pub async fn clear_auth",
+    );
+    let codex_status_slice = function_slice(
+        &codex_source,
+        "pub async fn get_status",
+        "    // ==================== 内部方法",
+    );
+
+    for marker in ["let authenticated", "let username", "account_list.first()"] {
+        assert!(
+            !copilot_status_slice.contains(marker) && !codex_status_slice.contains(marker),
+            "managed-auth get_status should not own legacy status assembly marker `{marker}`"
+        );
+    }
+
+    assert!(
+        copilot_status_slice.contains("copilot_auth_status_from_parts(")
+            && codex_status_slice.contains("codex_oauth_status_from_parts("),
+        "managed-auth get_status implementations should delegate legacy status assembly to core"
+    );
+}
+
+#[test]
 fn model_fetch_command_delegates_user_agent_parsing_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/commands/model_fetch.rs");

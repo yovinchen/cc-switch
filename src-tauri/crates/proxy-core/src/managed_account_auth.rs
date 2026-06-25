@@ -396,6 +396,54 @@ pub struct CodexOAuthStatus {
     pub username: Option<String>,
 }
 
+pub fn legacy_managed_auth_status_username(
+    accounts: &[GitHubAccount],
+    default_account_id: Option<&str>,
+) -> Option<String> {
+    default_account_id
+        .and_then(|id| {
+            accounts
+                .iter()
+                .find(|account| account.id == id)
+                .map(|account| account.login.clone())
+        })
+        .or_else(|| accounts.first().map(|account| account.login.clone()))
+}
+
+pub fn copilot_auth_status_from_parts(
+    accounts: Vec<GitHubAccount>,
+    default_account_id: Option<String>,
+    migration_error: Option<String>,
+    expires_at: Option<i64>,
+) -> CopilotAuthStatus {
+    let authenticated = !accounts.is_empty();
+    let username = legacy_managed_auth_status_username(&accounts, default_account_id.as_deref());
+
+    CopilotAuthStatus {
+        accounts,
+        default_account_id,
+        migration_error,
+        authenticated,
+        username,
+        expires_at,
+    }
+}
+
+pub fn codex_oauth_status_from_parts(
+    accounts: Vec<GitHubAccount>,
+    default_account_id: Option<String>,
+) -> CodexOAuthStatus {
+    let authenticated = !accounts.is_empty();
+    let username = legacy_managed_auth_status_username(&accounts, default_account_id.as_deref());
+
+    CodexOAuthStatus {
+        accounts,
+        default_account_id,
+        authenticated,
+        username,
+    }
+}
+
 pub fn managed_auth_account_from_parts(
     provider: &str,
     id: String,
@@ -977,6 +1025,7 @@ mod tests {
         codex_oauth_refresh_failure, codex_oauth_refresh_token_form,
         codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon,
         codex_oauth_token_url,
+        codex_oauth_status_from_parts, copilot_auth_status_from_parts,
         copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
         ensure_managed_auth_provider, headers_contain_proxy_auth_placeholder,
         is_managed_account_upstream_url,
@@ -1479,6 +1528,65 @@ mod tests {
 
         assert_eq!(copilot.accounts[0].id, codex.accounts[0].id);
         assert_eq!(copilot.default_account_id, codex.default_account_id);
+    }
+
+    #[test]
+    fn legacy_copilot_auth_status_selects_default_username_and_authentication() {
+        let accounts = vec![
+            GitHubAccount {
+                id: "acct-1".to_string(),
+                login: "first".to_string(),
+                avatar_url: None,
+                authenticated_at: 1_771_000_000,
+                github_domain: "github.com".to_string(),
+            },
+            GitHubAccount {
+                id: "acct-2".to_string(),
+                login: "default".to_string(),
+                avatar_url: None,
+                authenticated_at: 1_771_000_001,
+                github_domain: "github.com".to_string(),
+            },
+        ];
+
+        let status = copilot_auth_status_from_parts(
+            accounts,
+            Some("acct-2".to_string()),
+            Some("migration warning".to_string()),
+            Some(1_771_003_600),
+        );
+
+        assert!(status.authenticated);
+        assert_eq!(status.username.as_deref(), Some("default"));
+        assert_eq!(status.migration_error.as_deref(), Some("migration warning"));
+        assert_eq!(status.expires_at, Some(1_771_003_600));
+    }
+
+    #[test]
+    fn legacy_codex_oauth_status_falls_back_to_first_account_username() {
+        let accounts = vec![GitHubAccount {
+            id: "acct-1".to_string(),
+            login: "first@example.com".to_string(),
+            avatar_url: None,
+            authenticated_at: 1_771_000_000,
+            github_domain: "github.com".to_string(),
+        }];
+
+        let status = codex_oauth_status_from_parts(accounts, Some("missing".to_string()));
+
+        assert!(status.authenticated);
+        assert_eq!(status.username.as_deref(), Some("first@example.com"));
+    }
+
+    #[test]
+    fn legacy_managed_auth_status_helpers_mark_empty_accounts_unauthenticated() {
+        let copilot = copilot_auth_status_from_parts(Vec::new(), None, None, None);
+        let codex = codex_oauth_status_from_parts(Vec::new(), None);
+
+        assert!(!copilot.authenticated);
+        assert_eq!(copilot.username, None);
+        assert!(!codex.authenticated);
+        assert_eq!(codex.username, None);
     }
 
     impl ManagedAccountRuntimeSource for StaticManagedRuntimeSource {

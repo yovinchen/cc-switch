@@ -26,15 +26,16 @@ use tokio::sync::{Mutex, RwLock};
 
 use crate::proxy_core_adapter::{
     compare_managed_auth_account_order, copilot_api_base,
-    copilot_api_endpoint_from_usage_or_default, copilot_composite_account_id,
-    copilot_github_client_id, copilot_github_device_code_url, copilot_github_oauth_token_url,
-    copilot_github_user_url, copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
-    copilot_token_url, copilot_usage_response_endpoint, copilot_usage_url, is_copilot_ghes_domain,
-    managed_auth_fallback_default_account_id, normalize_github_domain,
-    parse_copilot_models_response_bytes, parse_copilot_usage_response_bytes, CopilotModel,
-    CopilotOAuthPollErrorKind, ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate,
-    COPILOT_API_VERSION, COPILOT_EDITOR_VERSION, COPILOT_PLUGIN_VERSION,
-    COPILOT_PUBLIC_GITHUB_DOMAIN, COPILOT_USER_AGENT,
+    copilot_api_endpoint_from_usage_or_default, copilot_auth_status_from_parts,
+    copilot_composite_account_id, copilot_github_client_id, copilot_github_device_code_url,
+    copilot_github_oauth_token_url, copilot_github_user_url, copilot_oauth_poll_error_kind,
+    copilot_token_is_expiring_soon, copilot_token_url, copilot_usage_response_endpoint,
+    copilot_usage_url, is_copilot_ghes_domain, managed_auth_fallback_default_account_id,
+    normalize_github_domain, parse_copilot_models_response_bytes,
+    parse_copilot_usage_response_bytes, CopilotModel, CopilotOAuthPollErrorKind,
+    ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate, COPILOT_API_VERSION,
+    COPILOT_EDITOR_VERSION, COPILOT_PLUGIN_VERSION, COPILOT_PUBLIC_GITHUB_DOMAIN,
+    COPILOT_USER_AGENT,
 };
 
 const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;
@@ -869,27 +870,17 @@ impl CopilotAuthManager {
         let migration_error = self.migration_error.read().await.clone();
 
         let account_list = Self::sorted_accounts(&accounts, default_account_id.as_deref());
-        let authenticated = !account_list.is_empty();
-        let username = default_account_id
-            .as_ref()
-            .and_then(|id| accounts.get(id))
-            .map(|a| a.user.login.clone())
-            .or_else(|| account_list.first().map(|a| a.login.clone()));
-
-        // 获取默认账号的过期时间
         let expires_at = default_account_id
             .as_ref()
             .and_then(|id| copilot_tokens.get(id))
             .map(|t| t.expires_at);
 
-        CopilotAuthStatus {
-            accounts: account_list,
+        copilot_auth_status_from_parts(
+            account_list,
             default_account_id,
             migration_error,
-            authenticated,
-            username,
             expires_at,
-        }
+        )
     }
 
     /// 检查是否已认证（有任意账号）

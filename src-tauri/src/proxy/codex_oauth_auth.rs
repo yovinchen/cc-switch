@@ -36,7 +36,7 @@ use crate::proxy_core_adapter::{
     codex_oauth_identity_from_token_claims, codex_oauth_missing_account_id_message,
     codex_oauth_missing_pending_user_code_message, codex_oauth_missing_refresh_token_message,
     codex_oauth_pending_device_code_is_expired, codex_oauth_poll_interval_secs,
-    codex_oauth_refresh_failure, codex_oauth_refresh_token_form,
+    codex_oauth_refresh_failure, codex_oauth_refresh_token_form, codex_oauth_status_from_parts,
     codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon, codex_oauth_token_url,
     compare_managed_auth_account_order, managed_auth_fallback_default_account_id,
     CodexOAuthDevicePollStatusKind, CodexOAuthStatus, CodexOAuthTokenClaims,
@@ -651,19 +651,8 @@ impl CodexOAuthManager {
         let accounts_map = self.accounts.read().await.clone();
         let default_id = self.resolve_default_account_id().await;
         let account_list = Self::sorted_accounts(&accounts_map, default_id.as_deref());
-        let authenticated = !account_list.is_empty();
-        let username = default_id
-            .as_ref()
-            .and_then(|id| accounts_map.get(id))
-            .and_then(|a| a.email.clone())
-            .or_else(|| account_list.first().map(|a| a.login.clone()));
 
-        CodexOAuthStatus {
-            accounts: account_list,
-            default_account_id: default_id,
-            authenticated,
-            username,
-        }
+        codex_oauth_status_from_parts(account_list, default_id)
     }
 
     // ==================== 内部方法 ====================
