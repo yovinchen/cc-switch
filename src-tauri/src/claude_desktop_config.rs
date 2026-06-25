@@ -378,29 +378,8 @@ pub fn validate_provider(provider: &Provider) -> Result<(), AppError> {
 fn direct_inference_model_specs(
     provider: &Provider,
 ) -> Result<Vec<crate::proxy_core_adapter::ClaudeDesktopGatewayProfileModelSpec>, AppError> {
-    let Some(routes) = provider
-        .meta
-        .as_ref()
-        .map(|meta| &meta.claude_desktop_model_routes)
-    else {
-        return Ok(Vec::new());
-    };
-
-    crate::proxy_core_adapter::claude_desktop_direct_inference_model_specs(routes.iter().map(
-        |(route_id, route)| crate::proxy_core_adapter::ClaudeDesktopProxyRouteInput {
-            route_id,
-            upstream_model: &route.model,
-            label_override: route.label_override.as_deref(),
-            supports_1m: route.supports_1m.unwrap_or(false),
-        },
-    ))
-    .map(|specs| {
-        specs
-            .into_iter()
-            .map(crate::proxy_core_adapter::ClaudeDesktopGatewayProfileModelSpec::from)
-            .collect()
-    })
-    .map_err(direct_model_route_issue_to_error)
+    crate::proxy_core_adapter::provider_claude_desktop_direct_inference_model_specs(provider)
+        .map_err(direct_model_route_issue_to_error)
 }
 
 pub fn proxy_model_routes(provider: &Provider) -> Result<Vec<ResolvedModelRoute>, AppError> {

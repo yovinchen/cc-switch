@@ -5041,6 +5041,51 @@ fn proxy_core_adapter_owns_claude_desktop_provider_mode_policy() {
 }
 
 #[test]
+fn proxy_core_adapter_owns_claude_desktop_direct_model_specs_provider_projection() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let direct_specs_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_claude_desktop_direct_inference_model_specs(",
+        "#[derive(Debug, Clone, PartialEq, Eq)]",
+    );
+
+    assert!(
+        direct_specs_slice.contains("claude_desktop_direct_inference_model_specs(")
+            && direct_specs_slice.contains("ClaudeDesktopProxyRouteInput")
+            && direct_specs_slice.contains("ClaudeDesktopGatewayProfileModelSpec::from"),
+        "proxy_core_adapter should own Claude Desktop direct model route projection from Provider"
+    );
+
+    let forbidden_markers = [
+        "crate::claude_desktop_config",
+        "state.db",
+        "get_effective_current_provider",
+        "proxy_gateway_base_url_from_db",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(direct_specs_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs provider_claude_desktop_direct_inference_model_specs:{} contains host-owned direct specs marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Claude Desktop direct model specs projection free of host side effects:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn claude_desktop_config_delegates_proxy_route_projection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/claude_desktop_config.rs");
@@ -5200,12 +5245,15 @@ fn claude_desktop_config_delegates_direct_model_specs_to_adapter() {
     );
 
     assert!(
-        direct_specs_slice.contains("claude_desktop_direct_inference_model_specs(")
-            && direct_specs_slice.contains("ClaudeDesktopProxyRouteInput"),
-        "claude_desktop_config should delegate direct inference model specs to proxy_core_adapter/core"
+        direct_specs_slice.contains("provider_claude_desktop_direct_inference_model_specs("),
+        "claude_desktop_config should delegate provider direct inference model specs to proxy_core_adapter"
     );
 
     let forbidden_markers = [
+        ".meta",
+        "claude_desktop_model_routes",
+        "ClaudeDesktopProxyRouteInput",
+        "supports_1m.unwrap_or",
         "is_claude_safe_model_id(",
         "direct_mapping_unsupported",
         "route_invalid",

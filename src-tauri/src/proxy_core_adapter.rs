@@ -10721,6 +10721,12 @@ fn provider_claude_desktop_direct_importable(provider: &Provider) -> bool {
         return false;
     }
 
+    provider_claude_desktop_direct_inference_model_specs(provider).is_ok()
+}
+
+pub(crate) fn provider_claude_desktop_direct_inference_model_specs(
+    provider: &Provider,
+) -> Result<Vec<ClaudeDesktopGatewayProfileModelSpec>, ClaudeDesktopDirectModelRouteIssue> {
     let route_inputs = provider
         .meta
         .as_ref()
@@ -10733,7 +10739,12 @@ fn provider_claude_desktop_direct_importable(provider: &Provider) -> bool {
             supports_1m: route.supports_1m.unwrap_or(false),
         });
 
-    claude_desktop_direct_inference_model_specs(route_inputs).is_ok()
+    claude_desktop_direct_inference_model_specs(route_inputs).map(|specs| {
+        specs
+            .into_iter()
+            .map(ClaudeDesktopGatewayProfileModelSpec::from)
+            .collect()
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
