@@ -1197,6 +1197,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn forwarder_provider_base_url(",
     "fn forwarder_provider_auth_info(",
     "fn forwarder_provider_auth_headers(",
+    "fn forwarder_provider_upstream_url(",
     "fn apply_provider_model_mapping(",
     "fn claude_takeover_client_model_for_upstream(",
     "fn claude_takeover_default_display_name(",

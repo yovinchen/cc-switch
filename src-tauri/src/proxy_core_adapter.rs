@@ -4296,7 +4296,7 @@ impl ForwarderAdapterContext {
     }
 
     fn provider_upstream_url(&self, base_url: &str, endpoint: &str) -> String {
-        forwarder_provider_upstream_url(self.adapter(), base_url, endpoint)
+        self.adapter().build_url(base_url, endpoint)
     }
 }
 
@@ -4403,14 +4403,6 @@ pub(crate) fn stream_check_proxy_target_ids_from_db(
         current_provider_id,
         failover_provider_ids,
     )
-}
-
-pub(crate) fn forwarder_provider_upstream_url(
-    adapter: &ForwarderAdapterHandle,
-    base_url: &str,
-    endpoint: &str,
-) -> String {
-    adapter.build_url(base_url, endpoint)
 }
 
 pub(crate) fn forwarder_claude_normalize_anthropic_messages(
@@ -20846,11 +20838,7 @@ command = "latest-command"
     fn upstream_url_adapter_projects_codex_and_gemini_url_rules() {
         let codex_adapter = crate::proxy::providers::CodexAdapter::new();
         assert_eq!(
-            forwarder_provider_upstream_url(
-                &codex_adapter,
-                "https://api.openai.com/v1",
-                "/chat/completions"
-            ),
+            codex_adapter.build_url("https://api.openai.com/v1", "/chat/completions"),
             "https://api.openai.com/v1/chat/completions"
         );
 
