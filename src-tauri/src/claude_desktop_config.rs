@@ -190,17 +190,8 @@ pub fn get_status(db: &Database, proxy_running: bool) -> Result<ClaudeDesktopSta
         .get("inferenceGatewayBaseUrl")
         .and_then(Value::as_str)
         .map(str::to_string);
-    let stale_raw_models = profile
-        .get("inferenceModels")
-        .and_then(Value::as_array)
-        .map(|models| {
-            models.iter().any(|item| {
-                item.as_str()
-                    .or_else(|| item.get("name").and_then(Value::as_str))
-                    .is_some_and(|model| !is_claude_safe_model_id(model))
-            })
-        })
-        .unwrap_or(false);
+    let stale_raw_models =
+        crate::proxy_core_adapter::claude_desktop_profile_has_unsafe_model_ids(&profile);
     let gateway_token_configured = db
         .get_setting(GATEWAY_TOKEN_SETTING_KEY)
         .ok()

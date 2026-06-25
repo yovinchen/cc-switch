@@ -183,6 +183,19 @@ pub fn claude_desktop_provider_models_are_profile_safe(settings_config: &Value) 
     .all(claude_desktop_model_id_is_profile_safe)
 }
 
+pub fn claude_desktop_profile_has_unsafe_model_ids(profile: &Value) -> bool {
+    profile
+        .get("inferenceModels")
+        .and_then(Value::as_array)
+        .is_some_and(|models| {
+            models.iter().any(|item| {
+                item.as_str()
+                    .or_else(|| item.get("name").and_then(Value::as_str))
+                    .is_some_and(|model| !claude_desktop_model_id_is_profile_safe(model))
+            })
+        })
+}
+
 pub fn claude_desktop_proxy_model_routes<'a>(
     routes: impl IntoIterator<Item = ClaudeDesktopProxyRouteInput<'a>>,
 ) -> Vec<ClaudeDesktopResolvedProxyRoute> {
@@ -585,8 +598,9 @@ mod tests {
     use super::{
         claude_desktop_direct_gateway_credentials, claude_desktop_direct_inference_model_specs,
         claude_desktop_direct_provider_validation_issue, claude_desktop_gateway_token_error,
-        claude_desktop_model_id_is_profile_safe, claude_desktop_provider_models_are_profile_safe,
-        claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
+        claude_desktop_model_id_is_profile_safe, claude_desktop_profile_has_unsafe_model_ids,
+        claude_desktop_provider_models_are_profile_safe, claude_desktop_provider_selection_error,
+        claude_desktop_provider_unavailable_error,
         claude_desktop_provider_unavailable_error_message,
         claude_desktop_proxy_has_base_url_and_key, claude_desktop_proxy_model_routes,
         claude_desktop_proxy_provider_config_validation_issue,
@@ -897,6 +911,28 @@ mod tests {
             .expect_err("missing auth token"),
             ClaudeDesktopDirectGatewayCredentialIssue::AuthTokenMissing
         );
+    }
+
+    #[test]
+    fn profile_unsafe_model_detection_checks_string_and_object_models() {
+        assert!(!claude_desktop_profile_has_unsafe_model_ids(&json!({})));
+        assert!(!claude_desktop_profile_has_unsafe_model_ids(&json!({
+            "inferenceModels": [
+                "claude-sonnet-4-6",
+                { "name": "anthropic/claude-opus-4-8" },
+                { "labelOverride": "missing name" }
+            ]
+        })));
+        assert!(claude_desktop_profile_has_unsafe_model_ids(&json!({
+            "inferenceModels": [
+                { "name": "claude-sonnet-4-6 [1m]" }
+            ]
+        })));
+        assert!(claude_desktop_profile_has_unsafe_model_ids(&json!({
+            "inferenceModels": [
+                "kimi-k2"
+            ]
+        })));
     }
 
     #[test]

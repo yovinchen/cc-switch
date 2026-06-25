@@ -5030,6 +5030,48 @@ fn claude_desktop_config_delegates_proxy_gateway_origin_to_adapter() {
 }
 
 #[test]
+fn claude_desktop_config_delegates_profile_stale_model_detection_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let status_slice = function_slice(
+        &source,
+        "pub fn get_status(",
+        "pub fn get_config_library_path(",
+    );
+
+    assert!(
+        status_slice.contains("claude_desktop_profile_has_unsafe_model_ids("),
+        "claude_desktop_config should delegate Claude Desktop profile stale model detection to proxy_core_adapter/core"
+    );
+
+    let forbidden_markers = [
+        "\"inferenceModels\"",
+        "is_claude_safe_model_id(",
+        "!is_claude_safe_model_id",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(status_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/claude_desktop_config.rs get_status:{} contains profile stale-model policy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "claude_desktop_config must keep profile stale-model detection in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
