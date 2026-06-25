@@ -1010,6 +1010,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn build_claude_auth_headers(",
     "fn build_copilot_auth_headers(",
     "fn parse_copilot_models_response_bytes(",
+    "fn codex_default_model_context_window(",
     "fn client_model_catalog_from_optional_raw(",
     "fn build_codex_upstream_url(",
     "fn should_convert_codex_responses_endpoint_to_chat(",

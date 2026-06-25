@@ -6753,13 +6753,10 @@ pub(crate) fn claude_desktop_model_routes_to_core_inputs(
         .collect()
 }
 
-pub(crate) fn codex_default_model_context_window() -> u64 {
-    crate::proxy_core::api::model_catalog::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW
-}
-
 pub(crate) use crate::proxy_core::api::model_catalog::{
     build_codex_model_catalog_from_settings as codex_model_catalog_from_settings,
     client_model_catalog_raw_from_text, empty_client_model_catalog_raw,
+    DEFAULT_CODEX_MODEL_CONTEXT_WINDOW as CODEX_DEFAULT_MODEL_CONTEXT_WINDOW,
     has_codex_model_catalog_specs as codex_settings_have_model_catalog_specs,
     provider_model_catalog_from_settings, simplify_codex_model_catalog,
 };
@@ -20458,7 +20455,7 @@ command = "latest-command"
         });
 
         assert!(codex_settings_have_model_catalog_specs(&settings));
-        assert_eq!(codex_default_model_context_window(), 128_000);
+        assert_eq!(CODEX_DEFAULT_MODEL_CONTEXT_WINDOW, 128_000);
 
         let catalog =
             codex_model_catalog_from_settings(&settings, 128_000, &template).expect("catalog");
