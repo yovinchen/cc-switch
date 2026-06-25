@@ -14,12 +14,12 @@ use crate::database::Database;
 use crate::proxy_core_adapter::ProxyState;
 use crate::proxy_core_adapter::{
     emit_proxy_server_started_event_source, emit_proxy_server_stopped_event_source,
-    proxy_runtime_status_from_runtime_sources, proxy_server_info_from_parts,
-    record_proxy_server_listen_port_runtime_source, record_proxy_server_started_runtime_source,
-    record_proxy_server_stopped_runtime_source, reset_provider_circuit_breaker_source,
-    server_log_codes as log_srv, set_active_route_target_runtime_source,
-    update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
-    CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+    proxy_server_info_from_parts, record_proxy_server_listen_port_runtime_source,
+    record_proxy_server_started_runtime_source, record_proxy_server_stopped_runtime_source,
+    reset_provider_circuit_breaker_source, server_log_codes as log_srv,
+    set_active_route_target_runtime_source, update_all_circuit_breaker_configs_source,
+    update_app_circuit_breaker_config_source, CircuitBreakerConfig, ProxyConfig,
+    ProxyRuntimeStatus, ProxyServerInfo,
 };
 use axum::{
     extract::DefaultBodyLimit,
@@ -236,12 +236,14 @@ impl ProxyServer {
     }
 
     pub async fn get_status(&self) -> ProxyRuntimeStatus {
-        proxy_runtime_status_from_runtime_sources(
-            self.state.status.as_ref(),
-            self.state.start_time.as_ref(),
-            self.state.current_providers.as_ref(),
-        )
-        .await
+        self.state
+            .proxy_engine()
+            .runtime_status()
+            .await
+            .unwrap_or_else(|error| {
+                log::warn!("[{}] 获取代理状态失败: {error}", log_srv::TASK_ERROR);
+                ProxyRuntimeStatus::default()
+            })
     }
 
     /// 更新某个应用类型当前“目标供应商”（用于 UI 展示 active_targets）

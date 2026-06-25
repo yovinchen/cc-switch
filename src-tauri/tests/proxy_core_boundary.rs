@@ -1744,6 +1744,47 @@ fn basic_health_status_handlers_use_management_contracts() {
 }
 
 #[test]
+fn proxy_server_status_delegates_to_proxy_engine_runtime_status() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/server.rs");
+    let source = fs::read_to_string(&path).expect("read server.rs");
+    let function = function_slice(
+        &source,
+        "pub async fn get_status(&self) -> ProxyRuntimeStatus",
+        "/// 更新某个应用类型当前",
+    );
+
+    assert!(
+        function.contains(".proxy_engine()") && function.contains(".runtime_status()"),
+        "ProxyServer::get_status must use ProxyEngine runtime status source"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in [
+            "proxy_runtime_status_from_runtime_sources",
+            "self.state.status",
+            "self.state.current_providers",
+        ] {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/server.rs get_status:{} contains runtime status source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyServer::get_status must keep runtime status source reads behind ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn provider_list_handler_delegates_sources_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");

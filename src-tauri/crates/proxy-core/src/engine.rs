@@ -121,8 +121,12 @@ where
         &self,
         request: ProxyStatusRequest,
     ) -> ProxyCoreResult<ProxyStatusResponse<ProxyRuntimeStatus>> {
-        let status = self.services.runtime_status_source().load_status().await?;
+        let status = self.runtime_status().await?;
         Ok(request.response_from_source(ProxyStatusSource::new(status)))
+    }
+
+    pub async fn runtime_status(&self) -> ProxyCoreResult<ProxyRuntimeStatus> {
+        self.services.runtime_status_source().load_status().await
     }
 
     pub async fn plan_route(&self, request: &ProxyRequest) -> ProxyCoreResult<RoutePlan> {
@@ -1658,10 +1662,13 @@ mod tests {
         };
         let engine = ProxyEngine::new(services);
 
+        let status = futures::executor::block_on(engine.runtime_status())
+            .expect("runtime status");
         let response =
             futures::executor::block_on(engine.proxy_status_response(ProxyStatusRequest::new()))
                 .expect("proxy status response");
 
+        assert_eq!(status.total_requests, 42);
         assert!(response.status.running);
         assert_eq!(response.status.address, "127.0.0.1");
         assert_eq!(response.status.port, 15721);
