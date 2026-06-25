@@ -1030,7 +1030,7 @@ Codex Responses→Chat 上游模型覆写与 reasoning options 解析已由 forw
 本轮继续把 forwarder 的 Codex OAuth header-casing fact 收敛到 `proxy_core_adapter::forwarder_is_codex_oauth_provider`；provider 级 Codex OAuth 判定不再作为 forwarder 的生产直接依赖。
 本轮继续把 forwarder 的 Bedrock pre-send optimizer provider env fact 收敛到 `proxy_core_adapter::forwarder_bedrock_env_flag`；request optimizer 不再直接消费 provider 级 env 投影 helper。
 本轮继续把 forwarder 的 custom User-Agent header provider fact 收敛到 `proxy_core_adapter::forwarder_custom_user_agent_header`；request header 组装不再直接消费 provider 级 UA 投影 helper。
-本轮继续把 forwarder 的 full URL 与 GitHub Copilot upstream provider fact 收敛到 `proxy_core_adapter::{forwarder_is_full_url_provider, forwarder_is_github_copilot_upstream}`；上游 URL 分支不再直接消费 provider 级 URL 投影 helper。
+forwarder provider URL facts 内部的 full URL 与 GitHub Copilot upstream 一跳 wrapper 已删除；adapter context 直接复用 `provider_is_full_url` / `provider_is_github_copilot_upstream`，`forwarder.rs` 仍只消费注入后的 URL facts。
 本轮继续把 forwarder 的 media prevention text-only provider 图片替换 fact 收敛到 `proxy-core::request_media::apply_forwarder_media_prevention_from_facts`；media 预防式降级不再直接消费 provider 级模型能力投影 helper。
 本轮继续把 forwarder 的 provider adapter transform gate 收敛到 `proxy_core_adapter::forwarder_provider_transform_required`；forwarder 不再直接调用 `ProviderAdapter::needs_transform`。
 本轮继续把 forwarder 的 provider adapter request transform 调用收敛到 `proxy_core_adapter::forwarder_provider_transform_request`；forwarder 不再直接调用 `ProviderAdapter::transform_request`。
@@ -1458,6 +1458,7 @@ forwarder 的 Claude 默认 api_format 一跳 wrapper `forwarder_claude_api_form
 1038. Codex responses-to-chat forwarder source 删除 `forwarder_apply_codex_chat_upstream_model` / `forwarder_codex_chat_reasoning_options` 两个一跳 wrapper；request source 直接调用 provider 级 adapter API，避免在中转 forwarder 内部复制额外命名层。
 1039. Gemini provider API key/base URL 删除 `provider_gemini_api_key` / `provider_gemini_base_url` 单字段 getter；保留 auth/base-url 对外入口，但 adapter 内部直接使用 core settings extractor 读取 `Provider.settings_config`。
 1040. Claude forwarder api_format 删除 `forwarder_claude_api_format` 一跳 wrapper；request source 和 `resolve_forwarder_claude_api_format` 直接复用 provider 级 adapter API，Copilot vendor 分流策略保持不变。
+1041. forwarder provider URL facts 删除 `forwarder_is_full_url_provider` / `forwarder_is_github_copilot_upstream` 两个一跳 wrapper；adapter context 在已持有 provider/base_url 的位置直接调用 provider 级事实投影。
 
 ## 背景
 

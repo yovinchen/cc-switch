@@ -1189,6 +1189,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn forwarder_apply_codex_chat_upstream_model(",
     "fn forwarder_codex_chat_reasoning_options(",
     "fn forwarder_claude_api_format(",
+    "fn forwarder_is_full_url_provider(",
+    "fn forwarder_is_github_copilot_upstream(",
     "fn apply_provider_model_mapping(",
     "fn claude_takeover_client_model_for_upstream(",
     "fn claude_takeover_default_display_name(",

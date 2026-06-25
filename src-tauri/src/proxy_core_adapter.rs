@@ -4277,8 +4277,8 @@ impl ForwarderAdapterContext {
     ) -> Result<ForwarderProviderUrlFacts, ProxyError> {
         let base_url = forwarder_provider_base_url(self.adapter(), provider)?;
         Ok(ForwarderProviderUrlFacts {
-            is_full_url: forwarder_is_full_url_provider(provider),
-            is_copilot: forwarder_is_github_copilot_upstream(provider, &base_url),
+            is_full_url: provider_is_full_url(provider),
+            is_copilot: provider_is_github_copilot_upstream(provider, &base_url),
             base_url,
         })
     }
@@ -10460,10 +10460,6 @@ pub(crate) fn provider_is_github_copilot_upstream(provider: &Provider, base_url:
     )
 }
 
-pub(crate) fn forwarder_is_github_copilot_upstream(provider: &Provider, base_url: &str) -> bool {
-    provider_is_github_copilot_upstream(provider, base_url)
-}
-
 pub(crate) fn provider_is_github_copilot_stream_check_target(provider: &Provider) -> bool {
     let base_url = provider
         .settings_config
@@ -10890,10 +10886,6 @@ pub(crate) fn provider_is_full_url(provider: &Provider) -> bool {
         .as_ref()
         .and_then(|meta| meta.is_full_url)
         .unwrap_or(false)
-}
-
-pub(crate) fn forwarder_is_full_url_provider(provider: &Provider) -> bool {
-    provider_is_full_url(provider)
 }
 
 pub(crate) fn provider_custom_user_agent_header(
@@ -22844,8 +22836,6 @@ command = "latest-command"
         let usage_provider_needs_claude_transform = provider_needs_claude_transform(&provider);
         let usage_provider_is_copilot =
             provider_is_github_copilot_upstream(&provider, "https://example.com");
-        let forwarder_provider_is_copilot =
-            forwarder_is_github_copilot_upstream(&provider, "https://example.com");
         let stream_check_provider_is_copilot =
             provider_is_github_copilot_stream_check_target(&provider);
         let copilot_account_id = provider_github_copilot_managed_account_id(&provider);
@@ -22862,7 +22852,6 @@ command = "latest-command"
         );
         assert!(provider_usage_script(None).is_none());
         let usage_provider_is_full_url = provider_is_full_url(&provider);
-        let forwarder_provider_is_full_url = forwarder_is_full_url_provider(&provider);
         let provider_user_agent =
             provider_custom_user_agent_header(&provider, false).expect("custom user agent");
         let copilot_provider_user_agent = provider_custom_user_agent_header(&provider, true);
@@ -22919,7 +22908,6 @@ command = "latest-command"
         assert!(usage_provider_uses_managed_account);
         assert!(usage_provider_needs_claude_transform);
         assert!(usage_provider_is_copilot);
-        assert!(forwarder_provider_is_copilot);
         assert!(stream_check_provider_is_copilot);
         assert_eq!(copilot_account_id.as_deref(), Some("acct-1"));
         assert!(has_claude_env);
@@ -22927,7 +22915,6 @@ command = "latest-command"
         assert!(!supports_1m_by_default);
         assert_eq!(stream_check_timeout_secs, Some(20));
         assert!(usage_provider_is_full_url);
-        assert!(forwarder_provider_is_full_url);
         assert_eq!(
             provider_user_agent,
             http::HeaderValue::from_static("cc-switch-test/1.0")
@@ -22943,10 +22930,6 @@ command = "latest-command"
         );
         assert!(forwarder_copilot_user_agent.is_none());
         assert!(provider_is_github_copilot_upstream(
-            &Provider::with_id("plain".to_string(), "Plain".to_string(), json!({}), None,),
-            "https://api.githubcopilot.com"
-        ));
-        assert!(forwarder_is_github_copilot_upstream(
             &Provider::with_id("plain".to_string(), "Plain".to_string(), json!({}), None,),
             "https://api.githubcopilot.com"
         ));
