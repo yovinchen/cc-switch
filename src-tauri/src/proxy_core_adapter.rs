@@ -2541,7 +2541,6 @@ pub(crate) type CodexProxyErrorContext<'a> =
     crate::proxy_core::api::transforms::CodexProxyErrorContext<'a>;
 pub(crate) type CodexProxyErrorKind = crate::proxy_core::api::transforms::CodexProxyErrorKind;
 pub(crate) type ForwardFailureKind = crate::proxy_core::api::transport::ForwardFailureKind;
-pub(crate) type ForwardFailureLog = crate::proxy_core::api::transport::ForwardFailureLog;
 pub(crate) enum ForwarderFailureDecision {
     Retryable,
     NonRetryable,
@@ -2552,17 +2551,6 @@ pub(crate) enum ForwarderRectifierRetryFailureDecision {
 }
 pub(crate) type ForwarderRectifierRetryKind =
     crate::proxy_core::api::transport::ForwarderRectifierRetryKind;
-pub(crate) fn forwarder_no_available_provider_status_message() -> &'static str {
-    core_forwarder_no_available_provider_status_message()
-}
-
-pub(crate) fn forwarder_terminal_failure_status_message() -> &'static str {
-    core_forwarder_terminal_failure_status_message()
-}
-
-pub(crate) fn forwarder_failure_log_line(app_type: &str, log: &ForwardFailureLog) -> String {
-    core_forwarder_failure_log_line(app_type, log)
-}
 
 pub(crate) fn terminal_forward_failure_log_line_for_error(
     app_type: &str,
@@ -2617,11 +2605,6 @@ pub(crate) fn forwarder_rectifier_retry_failure_log_line(
     )
 }
 
-pub(crate) fn forwarder_rectifier_retry_failure_label(
-    kind: ForwarderRectifierRetryKind,
-) -> &'static str {
-    core_forwarder_rectifier_retry_failure_label(kind)
-}
 #[cfg(test)]
 pub(crate) type ManagementAuthError = crate::proxy_core::api::auth::ManagementAuthError;
 pub(crate) type CircuitBreakerFailureDecision =
@@ -2756,16 +2739,16 @@ pub(crate) use crate::proxy_core::api::transport::{
     classify_copilot_request, AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
     forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
     forward_upstream_url_plan, forwarder_all_providers_circuit_open_log_line,
-    forwarder_failure_log_line as core_forwarder_failure_log_line,
+    forwarder_failure_log_line,
     forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
-    forwarder_no_available_provider_status_message as core_forwarder_no_available_provider_status_message,
+    forwarder_no_available_provider_status_message,
     forwarder_no_providers_configured_log_line,
     forwarder_rectifier_error_message as core_forwarder_rectifier_error_message,
-    forwarder_rectifier_retry_failure_label as core_forwarder_rectifier_retry_failure_label,
+    forwarder_rectifier_retry_failure_label,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
     forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
-    forwarder_terminal_failure_status_message as core_forwarder_terminal_failure_status_message,
+    forwarder_terminal_failure_status_message,
     forwarder_transform_plan_from_facts, ForwarderRectifierErrorInput,
     ForwarderRequestBodyTransformAction, ForwardUpstreamUrlPlan, ForwardUpstreamUrlPlanInput,
     invalid_upstream_url_error_message,
