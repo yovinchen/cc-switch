@@ -213,6 +213,29 @@ impl ChannelSource for ExternalRelayServices {
         })
     }
 
+    fn preview_legacy_channel_migration<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelMigrationPreviewInput<ChannelRecord>>> {
+        let app_type = app.as_str().to_string();
+        Box::pin(async move {
+            Ok(ChannelMigrationPreviewInput::new(
+                app_type,
+                vec![channel_record(vec![DEFAULT_ROUTE_GROUP.to_string()])],
+                2,
+                1,
+            ))
+        })
+    }
+
+    fn materialize_legacy_channel_migration<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelMigrationMaterializeInput>> {
+        let app_type = app.as_str().to_string();
+        Box::pin(async move { Ok(ChannelMigrationMaterializeInput::new(app_type, 3, 2, 4, 2, 1, 1)) })
+    }
+
     fn create_channel_record<'a>(
         &'a self,
         request: ProxyChannelWriteRequest,
@@ -1434,6 +1457,69 @@ fn external_host_can_use_channel_test_contracts_from_prelude() {
         }
         ChannelTestPlan::Probe(_) => panic!("expected failure plan"),
     }
+}
+
+#[test]
+fn external_host_can_use_channel_migration_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+    let request =
+        ManagementAppPathRequest::from_path("claude").expect("migration request");
+
+    let preview: ChannelMigrationPreviewResponse<ChannelRecord> =
+        futures::executor::block_on(engine.channel_migration_preview_response(request.clone()))
+            .expect("migration preview response");
+    let materialize: ChannelMigrationMaterializeResponse =
+        futures::executor::block_on(engine.channel_migration_materialize_response(request))
+            .expect("migration materialize response");
+    let helper_request =
+        ManagementAppPathRequest::from_path("codex").expect("helper migration request");
+    let helper_preview: ChannelMigrationPreviewResponse<ChannelRecord> =
+        helper_request.migration_preview_response_from_source(
+            ChannelMigrationPreviewSource::from_input(ChannelMigrationPreviewInput::new(
+                "ignored-app",
+                vec![channel_record(vec!["helper".to_string()])],
+                4,
+                2,
+            )),
+        );
+    let helper_materialize: ChannelMigrationMaterializeResponse =
+        helper_request.migration_materialize_response_from_source(
+            ChannelMigrationMaterializeSource::from_input(ChannelMigrationMaterializeInput::new(
+                "ignored-app",
+                5,
+                3,
+                7,
+                3,
+                2,
+                1,
+            )),
+        );
+
+    assert_eq!(preview.app_type, "claude");
+    assert_eq!(preview.channels.len(), 1);
+    assert_eq!(preview.channels[0].id, "channel-a");
+    assert_eq!(preview.duplicate_count, 2);
+    assert_eq!(preview.needs_review_count, 1);
+    assert_eq!(materialize.app_type, "claude");
+    assert_eq!(materialize.previewed_channels, 3);
+    assert_eq!(materialize.inserted_channels, 2);
+    assert_eq!(materialize.inserted_models, 4);
+    assert_eq!(materialize.inserted_health_rows, 2);
+    assert_eq!(materialize.duplicate_count, 1);
+    assert_eq!(materialize.needs_review_count, 1);
+
+    assert_eq!(helper_preview.app_type, "codex");
+    assert_eq!(helper_preview.channels[0].groups.as_slice(), ["helper"]);
+    assert_eq!(helper_preview.duplicate_count, 4);
+    assert_eq!(helper_preview.needs_review_count, 2);
+    assert_eq!(helper_materialize.app_type, "codex");
+    assert_eq!(helper_materialize.previewed_channels, 5);
+    assert_eq!(helper_materialize.inserted_channels, 3);
+    assert_eq!(helper_materialize.inserted_models, 7);
+    assert_eq!(helper_materialize.inserted_health_rows, 3);
+    assert_eq!(helper_materialize.duplicate_count, 2);
+    assert_eq!(helper_materialize.needs_review_count, 1);
 }
 
 #[test]
