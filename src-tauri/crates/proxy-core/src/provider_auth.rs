@@ -1,5 +1,6 @@
 use crate::claude_auth::{extract_claude_auth_key_from_settings, ClaudeAuthKeySource};
 use crate::domain::{AppKind, ProviderKind};
+use crate::error::ProxyCoreError;
 use crate::gemini_auth::GeminiOAuthCredentials;
 use crate::secret::mask_secret;
 use serde_json::{Map, Value};
@@ -189,6 +190,12 @@ pub fn channel_auth_profile_missing_key_error_message(channel_id: &str, key_ref:
     format!(
         "channel auth profile references missing or disabled key: channel_id={channel_id}, key_ref={key_ref}"
     )
+}
+
+pub fn channel_auth_profile_missing_key_error(channel_id: &str, key_ref: &str) -> ProxyCoreError {
+    ProxyCoreError::Auth(channel_auth_profile_missing_key_error_message(
+        channel_id, key_ref,
+    ))
 }
 
 fn set_env_auth_key(settings: &mut Value, key_name: &str, key_value: &str) {
@@ -577,5 +584,15 @@ mod tests {
             channel_auth_profile_missing_key_error_message("channel-a", "primary"),
             "channel auth profile references missing or disabled key: channel_id=channel-a, key_ref=primary"
         );
+    }
+
+    #[test]
+    fn channel_auth_profile_missing_key_error_preserves_contract() {
+        assert!(matches!(
+            channel_auth_profile_missing_key_error("channel-a", "primary"),
+            ProxyCoreError::Auth(message)
+                if message.contains("channel_id=channel-a")
+                    && message.contains("key_ref=primary")
+        ));
     }
 }

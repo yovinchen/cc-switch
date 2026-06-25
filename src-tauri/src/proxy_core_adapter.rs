@@ -2643,7 +2643,7 @@ pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_a
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::auth::ManagedAccountAuthError;
 pub(crate) use crate::proxy_core::api::auth::{
-    channel_auth_profile_missing_key_error_message, extract_claude_auth_key_from_settings,
+    channel_auth_profile_missing_key_error, extract_claude_auth_key_from_settings,
     is_gemini_oauth_key_shape, parse_gemini_oauth_credentials,
     settings_config_with_channel_auth_key_for_app,
 };
@@ -4750,9 +4750,7 @@ pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderA
 }
 
 pub(crate) fn channel_key_auth_error(channel_id: &str, key_ref: &str) -> ProxyCoreError {
-    ProxyCoreError::Auth(channel_auth_profile_missing_key_error_message(
-        channel_id, key_ref,
-    ))
+    channel_auth_profile_missing_key_error(channel_id, key_ref)
 }
 
 pub(crate) fn channel_key_value_from_runtime_candidate(
