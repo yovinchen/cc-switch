@@ -1565,6 +1565,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1120. Claude request/response/normalization transform contract 已通过 `proxy-core` public prelude 对外暴露；crate 外 `public_prelude` smoke 覆盖外部中转宿主只经 `cc_switch_proxy_core::api::prelude::*` 调用请求转换、响应转换、normalization 与 SSE context 类型，避免外部集成回退到内部模块 import。
 1121. App 到 provider/protocol adapter family 的选择策略已迁入 `proxy-core::provider_adapter_kind_for_app`；host `providers::get_adapter` 只经 `proxy_core_adapter::provider_adapter_kind_for_app_type` 消费 core decision 并实例化具体 `Claude/Codex/Gemini` adapter，custom/additive app 继续按 Codex-compatible fallback 处理，边界测试防止 host 重新手写 `AppType` 分支。
 1122. Claude transform gate 的组合策略已迁入 `proxy-core::claude_provider_transform_required`；host adapter 只投影 provider kind 是否强制转换与 resolved api_format，core 统一决定 GitHub Copilot/Codex OAuth provider-kind transform 与 OpenAI Chat/Responses/Gemini Native api_format transform 的 OR 关系，边界测试防止 `proxy_core_adapter` 重新手写短路分支。
+1123. Codex Responses→Chat conversion gate 已迁入 `proxy-core::request_url::{CodexProviderChatCompletionsFacts,CodexResponsesToChatConversionFacts,codex_responses_to_chat_conversion_required}`；host adapter 只从 `Provider`/TOML 抽取 api_format、wire_api、base_url 和 config_base_url facts，core 统一决定 provider chat-completions 模式与 `/responses`/`/responses/compact` endpoint 的组合条件。该契约已通过 public prelude 暴露给外部中转宿主，并由 `public_prelude` smoke 与 `proxy_core_boundary` 防止 host 重新手写 Responses→Chat gate。
 
 ## 背景
 
