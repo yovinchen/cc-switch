@@ -303,6 +303,21 @@ pub enum ChannelAuthProfileAction {
     Ignore,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChannelAuthProfileProviderApplication {
+    UseProvider {
+        provider_id: String,
+    },
+    MissingProvider {
+        warning: String,
+    },
+    UseChannelKey {
+        channel_id: String,
+        key_ref: String,
+    },
+    Ignore,
+}
+
 impl AuthProfileRef {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -394,6 +409,36 @@ pub fn channel_auth_profile_action(
             }
         }
         ChannelAuthProfileResolution::Ignore => ChannelAuthProfileAction::Ignore,
+    }
+}
+
+pub fn channel_auth_profile_provider_application(
+    app_type: &str,
+    auth_profile_ref: Option<&str>,
+    channel_id: Option<&str>,
+    provider_available: impl FnOnce(&str) -> bool,
+) -> ChannelAuthProfileProviderApplication {
+    match channel_auth_profile_action(app_type, auth_profile_ref, channel_id) {
+        ChannelAuthProfileAction::Provider {
+            provider_id,
+            missing_provider_warning,
+        } => {
+            if provider_available(&provider_id) {
+                ChannelAuthProfileProviderApplication::UseProvider { provider_id }
+            } else {
+                ChannelAuthProfileProviderApplication::MissingProvider {
+                    warning: missing_provider_warning,
+                }
+            }
+        }
+        ChannelAuthProfileAction::ChannelKey {
+            channel_id,
+            key_ref,
+        } => ChannelAuthProfileProviderApplication::UseChannelKey {
+            channel_id,
+            key_ref,
+        },
+        ChannelAuthProfileAction::Ignore => ChannelAuthProfileProviderApplication::Ignore,
     }
 }
 
@@ -1917,6 +1962,55 @@ mod tests {
         assert_eq!(
             channel_auth_profile_action("claude", Some("vault:primary"), Some("channel-a")),
             ChannelAuthProfileAction::Ignore
+        );
+    }
+
+    #[test]
+    fn channel_auth_profile_provider_application_plans_provider_presence() {
+        assert_eq!(
+            channel_auth_profile_provider_application(
+                "claude",
+                Some("provider:claude:auth-provider"),
+                Some("channel-a"),
+                |provider_id| provider_id == "auth-provider",
+            ),
+            ChannelAuthProfileProviderApplication::UseProvider {
+                provider_id: "auth-provider".to_string()
+            }
+        );
+        assert_eq!(
+            channel_auth_profile_provider_application(
+                "claude",
+                Some("provider:claude:missing-provider"),
+                Some("channel-a"),
+                |_| false,
+            ),
+            ChannelAuthProfileProviderApplication::MissingProvider {
+                warning:
+                    "[claude] channel auth profile references missing provider: provider:claude:missing-provider"
+                        .to_string(),
+            }
+        );
+        assert_eq!(
+            channel_auth_profile_provider_application(
+                "claude",
+                Some("channel-key: primary "),
+                Some("channel-a"),
+                |_| panic!("channel-key auth should not check provider availability"),
+            ),
+            ChannelAuthProfileProviderApplication::UseChannelKey {
+                channel_id: "channel-a".to_string(),
+                key_ref: "primary".to_string(),
+            }
+        );
+        assert_eq!(
+            channel_auth_profile_provider_application(
+                "claude",
+                Some("provider:codex:auth-provider"),
+                Some("channel-a"),
+                |_| panic!("ignored auth profile should not check provider availability"),
+            ),
+            ChannelAuthProfileProviderApplication::Ignore
         );
     }
 

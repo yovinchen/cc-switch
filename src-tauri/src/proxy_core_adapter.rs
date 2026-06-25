@@ -2398,6 +2398,10 @@ pub(crate) fn provider_from_opencode_live_config(
 }
 
 pub(crate) use crate::proxy_core::api::domain::{
+    channel_auth_profile_provider_application, ChannelAuthProfileProviderApplication,
+};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::domain::{
     channel_auth_profile_action, ChannelAuthProfileAction,
 };
 #[cfg(test)]
@@ -7196,18 +7200,24 @@ pub(crate) fn apply_channel_auth_profile_providers_from_source(
             .and_then(|channel| channel.auth_profile_ref.as_ref())
             .map(String::as_str);
         let channel_id = attempt.channel().map(|channel| channel.channel_id.as_str());
-        match channel_auth_profile_action(app_type.as_str(), auth_profile_ref, channel_id) {
-            ChannelAuthProfileAction::Provider {
-                provider_id,
-                missing_provider_warning,
-            } => {
-                let Some(provider) = providers.get(&provider_id).cloned() else {
-                    log::warn!("{missing_provider_warning}");
-                    continue;
-                };
+        match channel_auth_profile_provider_application(
+            app_type.as_str(),
+            auth_profile_ref,
+            channel_id,
+            |provider_id| providers.contains_key(provider_id),
+        ) {
+            ChannelAuthProfileProviderApplication::UseProvider { provider_id } => {
+                let provider = providers
+                    .get(&provider_id)
+                    .expect("provider availability was checked by proxy-core")
+                    .clone();
                 attempt.set_auth_provider(provider);
             }
-            ChannelAuthProfileAction::ChannelKey {
+            ChannelAuthProfileProviderApplication::MissingProvider { warning } => {
+                log::warn!("{warning}");
+                continue;
+            }
+            ChannelAuthProfileProviderApplication::UseChannelKey {
                 channel_id,
                 key_ref,
             } => {
@@ -7220,7 +7230,7 @@ pub(crate) fn apply_channel_auth_profile_providers_from_source(
                     &key_value,
                 ));
             }
-            ChannelAuthProfileAction::Ignore => {
+            ChannelAuthProfileProviderApplication::Ignore => {
                 continue;
             }
         }

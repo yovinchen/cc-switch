@@ -1050,6 +1050,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn channel_auth_profile_resolution(",
     "fn channel_auth_profile_action(",
     "enum ChannelAuthProfileAction",
+    "fn channel_auth_profile_provider_application(",
+    "enum ChannelAuthProfileProviderApplication",
     "fn model_route_from_input(",
     "fn channel_spec_from_input(",
     "fn channel_model_record_from_input(",
@@ -5524,6 +5526,35 @@ fn proxy_core_adapter_delegates_channel_key_settings_policy_to_typed_core_helper
     assert!(
         !function.contains("app_type.as_str()"),
         "provider_with_channel_auth_key must not pass app strings for channel key settings policy"
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn apply_channel_auth_profile_providers_from_source",
+        "pub(crate) fn apply_channel_auth_profile_providers_from_db",
+    );
+
+    assert!(
+        function.contains("channel_auth_profile_provider_application("),
+        "apply_channel_auth_profile_providers_from_source must delegate channel auth application planning to proxy-core"
+    );
+    assert!(
+        function.contains("providers.contains_key(provider_id)"),
+        "adapter should pass provider availability as a fact into the core channel auth plan"
+    );
+    assert!(
+        !function.contains("channel_auth_profile_action("),
+        "adapter must not bypass the core channel auth application plan with the lower-level action helper"
+    );
+    assert!(
+        !function.contains("missing_provider_warning"),
+        "adapter must not own missing-provider warning selection"
     );
 }
 
