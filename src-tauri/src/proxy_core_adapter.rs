@@ -2526,7 +2526,11 @@ pub(crate) use crate::proxy_core::api::auth::{
     validate_management_bearer_header, ManagementAuthDecision,
 };
 pub(crate) use crate::proxy_core::api::auth::{
+    managed_account_app_handle_unavailable_error_message,
+    managed_account_app_handle_unavailable_log_message,
     managed_account_id_for_auth_provider as core_managed_account_id_for_auth_provider,
+    managed_account_token_failure_error_message, managed_account_token_failure_log_message,
+    managed_account_token_request_log_message, managed_account_token_success_log_message,
     managed_provider_auth_info_for_provider_kind as core_managed_provider_auth_info_for_provider_kind,
     provider_kind_is_codex_oauth as core_provider_kind_is_codex_oauth,
     provider_kind_is_github_copilot as core_provider_kind_is_github_copilot,

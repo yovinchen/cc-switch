@@ -27,6 +27,27 @@ impl ManagedAccountAuthRuntime {
         }
     }
 
+    pub fn log_label(self) -> &'static str {
+        match self {
+            Self::GitHubCopilot => "Copilot",
+            Self::CodexOAuth => "CodexOAuth",
+        }
+    }
+
+    pub fn auth_error_label(self) -> &'static str {
+        match self {
+            Self::GitHubCopilot => "GitHub Copilot",
+            Self::CodexOAuth => "Codex OAuth",
+        }
+    }
+
+    pub fn token_label(self) -> &'static str {
+        match self {
+            Self::GitHubCopilot => "Copilot token",
+            Self::CodexOAuth => "access_token",
+        }
+    }
+
     pub fn provider_auth_info(self, token: String) -> ProviderAuthInfo {
         ProviderAuthInfo::new(token, self.provider_auth_strategy())
     }
@@ -407,6 +428,68 @@ pub fn managed_account_auth_plan(
     }
 }
 
+pub fn managed_account_app_handle_unavailable_log_message(
+    runtime: ManagedAccountAuthRuntime,
+) -> String {
+    format!("[{}] AppHandle 不可用", runtime.log_label())
+}
+
+pub fn managed_account_app_handle_unavailable_error_message(
+    runtime: ManagedAccountAuthRuntime,
+) -> String {
+    format!("{} 认证不可用（无 AppHandle）", runtime.auth_error_label())
+}
+
+pub fn managed_account_token_request_log_message(
+    runtime: ManagedAccountAuthRuntime,
+    account_id: Option<&str>,
+) -> String {
+    match account_id {
+        Some(id) => format!("[{}] 使用指定账号 {id} 获取 token", runtime.log_label()),
+        None => format!("[{}] 使用默认账号获取 token", runtime.log_label()),
+    }
+}
+
+pub fn managed_account_token_success_log_message(
+    runtime: ManagedAccountAuthRuntime,
+    account_label: Option<&str>,
+) -> String {
+    format!(
+        "[{}] 成功获取 {} (account={})",
+        runtime.log_label(),
+        runtime.token_label(),
+        account_label.unwrap_or("default")
+    )
+}
+
+pub fn managed_account_token_failure_log_message(
+    runtime: ManagedAccountAuthRuntime,
+    account_id: Option<&str>,
+    error: &str,
+) -> String {
+    if runtime == ManagedAccountAuthRuntime::GitHubCopilot {
+        return format!(
+            "[{}] 获取 {} 失败 (account={}): {error}",
+            runtime.log_label(),
+            runtime.token_label(),
+            account_id.unwrap_or("default")
+        );
+    }
+
+    format!(
+        "[{}] 获取 {} 失败: {error}",
+        runtime.log_label(),
+        runtime.token_label()
+    )
+}
+
+pub fn managed_account_token_failure_error_message(
+    runtime: ManagedAccountAuthRuntime,
+    error: &str,
+) -> String {
+    format!("{} 认证失败: {error}", runtime.auth_error_label())
+}
+
 pub fn validate_managed_account_upstream_auth(
     url: &str,
     headers: &HeaderMap,
@@ -445,6 +528,10 @@ pub fn headers_contain_proxy_auth_placeholder(headers: &HeaderMap) -> bool {
 mod tests {
     use super::{
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
+        managed_account_app_handle_unavailable_error_message,
+        managed_account_app_handle_unavailable_log_message,
+        managed_account_token_failure_error_message, managed_account_token_failure_log_message,
+        managed_account_token_request_log_message, managed_account_token_success_log_message,
         managed_account_auth_plan, managed_provider_auth_info_for_provider_kind,
         provider_kind_is_codex_oauth, provider_kind_is_github_copilot,
         provider_kind_uses_managed_account_auth,
@@ -648,6 +735,90 @@ mod tests {
         let auth = ManagedAccountAuthRuntime::CodexOAuth.provider_auth_info("token".to_string());
         assert_eq!(auth.api_key, "token");
         assert_eq!(auth.strategy, ProviderAuthStrategy::CodexOAuth);
+    }
+
+    #[test]
+    fn managed_account_runtime_messages_preserve_host_contract() {
+        assert_eq!(
+            managed_account_app_handle_unavailable_log_message(
+                ManagedAccountAuthRuntime::GitHubCopilot
+            ),
+            "[Copilot] AppHandle 不可用"
+        );
+        assert_eq!(
+            managed_account_app_handle_unavailable_error_message(
+                ManagedAccountAuthRuntime::GitHubCopilot
+            ),
+            "GitHub Copilot 认证不可用（无 AppHandle）"
+        );
+        assert_eq!(
+            managed_account_token_request_log_message(
+                ManagedAccountAuthRuntime::GitHubCopilot,
+                Some("acct-1"),
+            ),
+            "[Copilot] 使用指定账号 acct-1 获取 token"
+        );
+        assert_eq!(
+            managed_account_token_success_log_message(
+                ManagedAccountAuthRuntime::GitHubCopilot,
+                None,
+            ),
+            "[Copilot] 成功获取 Copilot token (account=default)"
+        );
+        assert_eq!(
+            managed_account_token_failure_log_message(
+                ManagedAccountAuthRuntime::GitHubCopilot,
+                Some("acct-1"),
+                "expired",
+            ),
+            "[Copilot] 获取 Copilot token 失败 (account=acct-1): expired"
+        );
+        assert_eq!(
+            managed_account_token_failure_error_message(
+                ManagedAccountAuthRuntime::GitHubCopilot,
+                "expired",
+            ),
+            "GitHub Copilot 认证失败: expired"
+        );
+
+        assert_eq!(
+            managed_account_app_handle_unavailable_log_message(
+                ManagedAccountAuthRuntime::CodexOAuth
+            ),
+            "[CodexOAuth] AppHandle 不可用"
+        );
+        assert_eq!(
+            managed_account_app_handle_unavailable_error_message(
+                ManagedAccountAuthRuntime::CodexOAuth
+            ),
+            "Codex OAuth 认证不可用（无 AppHandle）"
+        );
+        assert_eq!(
+            managed_account_token_request_log_message(ManagedAccountAuthRuntime::CodexOAuth, None),
+            "[CodexOAuth] 使用默认账号获取 token"
+        );
+        assert_eq!(
+            managed_account_token_success_log_message(
+                ManagedAccountAuthRuntime::CodexOAuth,
+                Some("codex-default"),
+            ),
+            "[CodexOAuth] 成功获取 access_token (account=codex-default)"
+        );
+        assert_eq!(
+            managed_account_token_failure_log_message(
+                ManagedAccountAuthRuntime::CodexOAuth,
+                Some("codex-default"),
+                "revoked",
+            ),
+            "[CodexOAuth] 获取 access_token 失败: revoked"
+        );
+        assert_eq!(
+            managed_account_token_failure_error_message(
+                ManagedAccountAuthRuntime::CodexOAuth,
+                "revoked",
+            ),
+            "Codex OAuth 认证失败: revoked"
+        );
     }
 
     #[test]

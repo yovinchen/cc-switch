@@ -389,6 +389,22 @@ const FORBIDDEN_MANAGED_ACCOUNT_AUTH_PLAN_SOURCE_MARKERS: &[&str] = &[
     "provider_codex_oauth_managed_account_id(",
     "ManagedAccountAuthPlan::",
 ];
+const FORBIDDEN_MANAGED_ACCOUNT_AUTH_RUNTIME_TEXT_MARKERS: &[&str] = &[
+    "[Copilot] AppHandle 不可用",
+    "GitHub Copilot 认证不可用（无 AppHandle）",
+    "[Copilot] 使用指定账号",
+    "[Copilot] 使用默认账号获取 token",
+    "[Copilot] 成功获取 Copilot token",
+    "[Copilot] 获取 Copilot token 失败",
+    "GitHub Copilot 认证失败:",
+    "[CodexOAuth] AppHandle 不可用",
+    "Codex OAuth 认证不可用（无 AppHandle）",
+    "[CodexOAuth] 使用指定账号",
+    "[CodexOAuth] 使用默认账号获取 token",
+    "[CodexOAuth] 成功获取 access_token",
+    "[CodexOAuth] 获取 access_token 失败",
+    "Codex OAuth 认证失败:",
+];
 const FORBIDDEN_ADAPTER_MANAGED_AUTH_PLAN_RUNTIME_CALL_MARKERS: &[&str] = &[
     "crate::proxy::managed_account_auth::resolve_copilot_auth(",
     "crate::proxy::managed_account_auth::resolve_codex_oauth(",
@@ -6564,6 +6580,47 @@ fn production_managed_account_auth_uses_adapter_plan_source() {
     assert!(
         violations.is_empty(),
         "managed account auth planning and provider account projection must be owned by proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_managed_account_auth_runtime_text_delegates_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/managed_account_auth.rs");
+    let source = fs::read_to_string(&path).expect("read managed_account_auth.rs");
+
+    for marker in [
+        "managed_account_app_handle_unavailable_log_message(",
+        "managed_account_app_handle_unavailable_error_message(",
+        "managed_account_token_request_log_message(",
+        "managed_account_token_success_log_message(",
+        "managed_account_token_failure_log_message(",
+        "managed_account_token_failure_error_message(",
+    ] {
+        assert!(
+            source.contains(marker),
+            "managed_account_auth.rs should delegate runtime text marker `{marker}` to proxy_core_adapter"
+        );
+    }
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_MANAGED_ACCOUNT_AUTH_RUNTIME_TEXT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/managed_account_auth.rs:{} contains managed auth runtime text marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "managed account auth runtime text must be owned by proxy_core_adapter/proxy-core:\n{}",
         violations.join("\n")
     );
 }
