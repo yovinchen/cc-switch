@@ -1587,6 +1587,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1142. Claude Desktop provider import decision 已收敛到 `proxy_core_adapter::provider_claude_desktop_import_decision`；`commands/provider::import_claude_desktop_providers_from_claude` 只负责读取 Claude providers、跳过既有 id、clone provider、写入 direct/proxy meta 和保存 DB，adapter 统一维护 direct/proxy/skip 决策、direct validation、safe model 检查、credential 存在性、direct route spec 校验和 proxy suggested routes fallback，边界测试防止 command 层重新组合这些导入策略或把 DB 副作用带进 adapter。
 1143. Claude Desktop profile gateway base URL extraction 已迁入 `proxy-core::claude_desktop_gateway_auth::claude_desktop_profile_gateway_base_url`；host `get_status` 只负责读取 profile 文件并组装 status DTO，core 统一维护 `inferenceGatewayBaseUrl` 字段读取和 string-only contract，边界测试防止 host status assembly 重新持有 gateway profile JSON key。
 1144. Claude Desktop status current-provider facts 已收敛到 `proxy_core_adapter::provider_claude_desktop_status_facts`；host `get_status` 只负责读取当前 provider、profile/path/token 事实并组装 Tauri status DTO，adapter 统一维护 provider mode 默认值、Direct expected base URL、Proxy expected gateway URL 和 missing route mappings 判定，边界测试防止 status assembly 重新展开 direct credentials 或 proxy route error 策略。
+1145. Claude Desktop provider mode 默认值已收敛到 `proxy_core_adapter::provider_claude_desktop_mode`；host `provider_mode` 仅保留兼容入口并委托 adapter，adapter 统一维护缺失 `ProviderMeta.claude_desktop_mode` 时回退 Direct 的策略，边界测试防止 host config 重新读取 provider meta 或复制默认值逻辑。
 
 ## 背景
 
