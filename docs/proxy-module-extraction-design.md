@@ -1589,6 +1589,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1144. Claude Desktop status current-provider facts 已收敛到 `proxy_core_adapter::provider_claude_desktop_status_facts`；host `get_status` 只负责读取当前 provider、profile/path/token 事实并组装 Tauri status DTO，adapter 统一维护 provider mode 默认值、Direct expected base URL、Proxy expected gateway URL 和 missing route mappings 判定，边界测试防止 status assembly 重新展开 direct credentials 或 proxy route error 策略。
 1145. Claude Desktop provider mode 默认值已收敛到 `proxy_core_adapter::provider_claude_desktop_mode`；host `provider_mode` 仅保留兼容入口并委托 adapter，adapter 统一维护缺失 `ProviderMeta.claude_desktop_mode` 时回退 Direct 的策略，边界测试防止 host config 重新读取 provider meta 或复制默认值逻辑。
 1146. Claude Desktop direct inference model specs 的 provider route 投影已收敛到 `proxy_core_adapter::provider_claude_desktop_direct_inference_model_specs`；host `direct_inference_model_specs` 只保留 core issue 到本地化 `AppError` 的映射，adapter 统一维护 `ProviderMeta.claude_desktop_model_routes` 到 `ClaudeDesktopProxyRouteInput`/gateway profile model spec 的转换，边界测试防止 host config 重新展开 route input 投影。
+1147. Claude Desktop proxy model routes 的 provider route 投影已收敛到 `proxy_core_adapter::provider_claude_desktop_proxy_model_routes`；host `proxy_model_routes` 只保留 Missing/Empty issue 到既有本地化 `AppError` 的映射和 Tauri DTO 转换，adapter 统一维护 `ProviderMeta.claude_desktop_model_routes` 到 core resolved proxy route 的转换，并复用同一 helper 判定 status missing route mappings。
 
 ## 背景
 
