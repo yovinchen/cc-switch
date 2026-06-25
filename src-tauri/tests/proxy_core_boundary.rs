@@ -953,6 +953,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn remove_claude_takeover_env_fields_if_present(",
     "fn apply_gemini_takeover_env_fields(",
     "fn remove_gemini_takeover_env_fields_if_present(",
+    "fn apply_claude_takeover_fields_with_policy(",
+    "fn apply_claude_takeover_fields_with_policy_and_models(",
     "fn channel_route_candidate_from_selection(",
     "fn resolved_channel_attempt_from_candidate(",
     "fn resolved_channel_attempt_from_selection(",

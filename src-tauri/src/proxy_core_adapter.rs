@@ -12029,15 +12029,17 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
 };
 use crate::proxy_core::api::ports::{
     apply_claude_takeover_fields_for_provider_facts as core_apply_claude_takeover_fields_for_provider_facts,
-    apply_claude_takeover_fields_with_policy as core_apply_claude_takeover_fields_with_policy,
     ClaudeTakeoverProviderFacts,
 };
 #[cfg(test)]
 use crate::proxy_core::api::ports::{
-    apply_claude_takeover_fields_with_policy_and_models as core_apply_claude_takeover_fields_with_policy_and_models,
     claude_takeover_model_fields_from_settings as core_claude_takeover_model_fields_from_settings,
 };
-pub(crate) use crate::proxy_core::api::ports::ClaudeTakeoverAuthPolicy;
+pub(crate) use crate::proxy_core::api::ports::{
+    apply_claude_takeover_fields_with_policy, ClaudeTakeoverAuthPolicy,
+};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::ports::apply_claude_takeover_fields_with_policy_and_models;
 
 #[cfg(test)]
 pub(crate) fn provider_claude_takeover_model_fields(
@@ -12061,32 +12063,6 @@ pub(crate) fn apply_claude_takeover_fields_for_provider(
             uses_managed_account: provider_uses_managed_account_auth(provider),
             is_github_copilot: provider_is_github_copilot(provider),
         },
-    );
-}
-
-pub(crate) fn apply_claude_takeover_fields_with_policy(
-    config: &mut Value,
-    proxy_url: &str,
-    placeholder: &str,
-    auth_policy: ClaudeTakeoverAuthPolicy,
-) {
-    core_apply_claude_takeover_fields_with_policy(config, proxy_url, placeholder, auth_policy);
-}
-
-#[cfg(test)]
-pub(crate) fn apply_claude_takeover_fields_with_policy_and_models(
-    config: &mut Value,
-    proxy_url: &str,
-    placeholder: &str,
-    auth_policy: ClaudeTakeoverAuthPolicy,
-    takeover_model_fields: Vec<(&'static str, String)>,
-) {
-    core_apply_claude_takeover_fields_with_policy_and_models(
-        config,
-        proxy_url,
-        placeholder,
-        auth_policy,
-        takeover_model_fields,
     );
 }
 
