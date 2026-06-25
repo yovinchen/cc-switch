@@ -8017,10 +8017,10 @@ impl ForwarderAdapterFacts {
 }
 
 pub(crate) struct ForwarderClaudeBodyPolicyInput<'a> {
+    pub(crate) adapter: &'a ForwarderAdapterContext,
     pub(crate) body: &'a mut Value,
     pub(crate) provider: &'a Provider,
     pub(crate) api_format: Option<&'a str>,
-    pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
     pub(crate) config: &'a RectifierConfig,
 }
 
@@ -8424,7 +8424,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     }
 
     fn apply_claude_body_policies(&self, input: ForwarderClaudeBodyPolicyInput<'_>) {
-        if !input.adapter_facts.is_claude_adapter {
+        if !input.adapter.facts().is_claude_adapter {
             return;
         }
         let Some(api_format) = input.api_format else {
@@ -14555,14 +14555,8 @@ base_url = "https://api.openai.com/v1"
             "output_config": { "effort": "max" },
             "messages": [{ "role": "user", "content": "hello" }]
         });
-        let claude_adapter_facts = ForwarderAdapterFacts {
-            adapter_name: "Claude",
-            is_claude_adapter: true,
-        };
-        let codex_adapter_facts = ForwarderAdapterFacts {
-            adapter_name: "Codex",
-            is_claude_adapter: false,
-        };
+        let claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let codex_adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
         let media_disabled_config = RectifierConfig {
             request_media_fallback: false,
             request_media_heuristic: false,
@@ -14570,10 +14564,10 @@ base_url = "https://api.openai.com/v1"
         };
 
         source.apply_claude_body_policies(ForwarderClaudeBodyPolicyInput {
+            adapter: &claude_adapter,
             body: &mut body,
             provider: &provider,
             api_format: Some("anthropic"),
-            adapter_facts: &claude_adapter_facts,
             config: &media_disabled_config,
         });
 
@@ -14585,10 +14579,10 @@ base_url = "https://api.openai.com/v1"
             "messages": [{ "role": "user", "content": "hello" }]
         });
         source.apply_claude_body_policies(ForwarderClaudeBodyPolicyInput {
+            adapter: &codex_adapter,
             body: &mut skipped_body,
             provider: &provider,
             api_format: Some("anthropic"),
-            adapter_facts: &codex_adapter_facts,
             config: &media_disabled_config,
         });
 

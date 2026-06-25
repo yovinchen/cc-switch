@@ -7155,12 +7155,13 @@ fn production_forwarder_delegates_claude_body_policy_gate_to_request_source() {
         "pub(crate) struct ForwarderCodexResponsesToChatInput",
     );
     assert!(
-        body_policy_input_slice.contains("adapter_facts: &'a ForwarderAdapterFacts"),
-        "ForwarderRequestSource must receive adapter facts for Claude body policy gating"
+        body_policy_input_slice.contains("adapter: &'a ForwarderAdapterContext"),
+        "ForwarderRequestSource must receive adapter context for Claude body policy gating"
     );
     assert!(
-        !body_policy_input_slice.contains("is_claude_adapter: bool"),
-        "ForwarderClaudeBodyPolicyInput must not expose a split Claude-adapter gate"
+        !body_policy_input_slice.contains("adapter_facts: &'a ForwarderAdapterFacts")
+            && !body_policy_input_slice.contains("is_claude_adapter: bool"),
+        "ForwarderClaudeBodyPolicyInput must not expose adapter facts or a split Claude-adapter gate"
     );
 
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
@@ -8412,14 +8413,6 @@ fn production_forwarder_uses_request_source_resource() {
                 &adapter_source,
                 "pub(crate) struct ForwarderClaudeApiFormatInput",
                 "pub(crate) struct ForwarderCopilotRequestOptimization",
-            ),
-        ),
-        (
-            "ForwarderClaudeBodyPolicyInput",
-            function_slice(
-                &adapter_source,
-                "pub(crate) struct ForwarderClaudeBodyPolicyInput",
-                "pub(crate) struct ForwarderCodexResponsesToChatInput",
             ),
         ),
         (

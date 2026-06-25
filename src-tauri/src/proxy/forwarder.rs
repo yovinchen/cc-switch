@@ -860,10 +860,10 @@ impl RequestForwarder {
             .await;
         self.request_source
             .apply_claude_body_policies(ForwarderClaudeBodyPolicyInput {
+                adapter,
                 body: &mut mapped_body,
                 provider,
                 api_format: resolved_claude_api_format.as_deref(),
-                adapter_facts: &adapter_facts,
                 config: &self.rectifier_config,
             });
         let transform_plan = self
