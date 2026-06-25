@@ -664,6 +664,9 @@ pub(crate) type ClaudeDesktopModelListResponse =
     crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
 pub(crate) type ClaudeDesktopModelRouteInput =
     crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
+pub(crate) use crate::proxy_core::api::auth::{
+    claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
+};
 pub(crate) type ProxyCoreResponse = crate::proxy_core::api::transport::ProxyCoreResponse;
 pub(crate) type RequestBodyJsonParseError =
     crate::proxy_core::api::transport::RequestBodyJsonParseError;
@@ -6792,17 +6795,14 @@ pub(crate) fn claude_desktop_provider_from_selection_result(
     result: Result<Vec<String>, AppError>,
     load_provider: impl FnOnce(&str) -> Result<Option<Provider>, AppError>,
 ) -> ProxyCoreResult<Provider> {
-    let provider_ids = result.map_err(|error| {
-        ProxyCoreError::Internal(format!("select claude desktop provider: {error}"))
-    })?;
-    let provider_id = provider_ids.into_iter().next().ok_or_else(|| {
-        ProxyCoreError::Unavailable("no available claude desktop provider".to_string())
-    })?;
+    let provider_ids = result.map_err(claude_desktop_provider_selection_error)?;
+    let provider_id = provider_ids
+        .into_iter()
+        .next()
+        .ok_or_else(claude_desktop_provider_unavailable_error)?;
     load_provider(&provider_id)
         .map_err(|error| app_error("load claude desktop provider", error))?
-        .ok_or_else(|| {
-            ProxyCoreError::Unavailable("no available claude desktop provider".to_string())
-        })
+        .ok_or_else(claude_desktop_provider_unavailable_error)
 }
 
 pub(crate) async fn claude_desktop_model_routes_from_router_source(

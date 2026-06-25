@@ -3931,7 +3931,9 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
     assert!(
         source.contains("claude_desktop_proxy_has_base_url_and_key(")
             && source.contains("claude_desktop_direct_provider_validation_issue(")
-            && source.contains("claude_desktop_proxy_provider_config_validation_issue("),
+            && source.contains("claude_desktop_proxy_provider_config_validation_issue(")
+            && source.contains("claude_desktop_provider_selection_error")
+            && source.contains("claude_desktop_provider_unavailable_error"),
         "proxy_core_adapter should delegate Claude Desktop provider validation policy to core"
     );
     assert!(
@@ -3961,6 +3963,11 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
             "pub(crate) fn provider_claude_desktop_proxy_config_validation_issue",
             "fn claude_desktop_provider_validation_input",
         ),
+        function_slice(
+            &source,
+            "pub(crate) fn claude_desktop_provider_from_selection_result",
+            "pub(crate) async fn claude_desktop_model_routes_from_router_source",
+        ),
     ];
     let forbidden_markers = [
         "\"ANTHROPIC_AUTH_TOKEN\"",
@@ -3971,6 +3978,10 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
         "Some(\"github_copilot\") | Some(\"codex_oauth\")",
         "\"openai_chat\" | \"openai_responses\" | \"gemini_native\"",
         "settings_config.is_object()",
+        "\"select claude desktop provider:",
+        "\"no available claude desktop provider\"",
+        "ProxyCoreError::Internal(",
+        "ProxyCoreError::Unavailable(",
     ];
 
     let mut violations = Vec::new();
