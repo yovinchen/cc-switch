@@ -17,6 +17,14 @@ pub const CODEX_OAUTH_TOKEN_REFRESH_BUFFER_MS: i64 = 60_000;
 pub const CODEX_OAUTH_DEVICE_CODE_DEFAULT_EXPIRES_IN_SECS: u64 = 900;
 pub const CODEX_OAUTH_DEFAULT_TOKEN_EXPIRES_IN_SECS: i64 = 3600;
 pub const CODEX_OAUTH_POLLING_SAFETY_MARGIN_SECS: u64 = 3;
+pub const CODEX_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
+pub const CODEX_OAUTH_DEVICE_AUTH_USERCODE_URL: &str =
+    "https://auth.openai.com/api/accounts/deviceauth/usercode";
+pub const CODEX_OAUTH_DEVICE_AUTH_TOKEN_URL: &str =
+    "https://auth.openai.com/api/accounts/deviceauth/token";
+pub const CODEX_OAUTH_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
+pub const CODEX_OAUTH_DEVICE_VERIFICATION_URL: &str = "https://auth.openai.com/codex/device";
+pub const CODEX_OAUTH_DEVICE_REDIRECT_URI: &str = "https://auth.openai.com/deviceauth/callback";
 
 pub type ManagedAccountRuntimeResultFuture<'a, T, E> = BoxFuture<'a, Result<T, E>>;
 pub type CodexOAuthResolution = (ProviderAuthInfo, Option<String>);
@@ -95,6 +103,86 @@ pub fn codex_oauth_device_poll_status_kind(status: StatusCode) -> CodexOAuthDevi
         status if status.is_success() => CodexOAuthDevicePollStatusKind::Success,
         _ => CodexOAuthDevicePollStatusKind::Failed,
     }
+}
+
+pub fn codex_oauth_device_auth_usercode_url() -> &'static str {
+    CODEX_OAUTH_DEVICE_AUTH_USERCODE_URL
+}
+
+pub fn codex_oauth_device_auth_token_url() -> &'static str {
+    CODEX_OAUTH_DEVICE_AUTH_TOKEN_URL
+}
+
+pub fn codex_oauth_token_url() -> &'static str {
+    CODEX_OAUTH_TOKEN_URL
+}
+
+pub fn codex_oauth_device_verification_url() -> &'static str {
+    CODEX_OAUTH_DEVICE_VERIFICATION_URL
+}
+
+pub fn codex_oauth_device_usercode_request_body() -> serde_json::Value {
+    serde_json::json!({ "client_id": CODEX_OAUTH_CLIENT_ID })
+}
+
+pub fn codex_oauth_device_auth_token_request_body(
+    device_auth_id: &str,
+    user_code: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "device_auth_id": device_auth_id,
+        "user_code": user_code,
+    })
+}
+
+pub fn codex_oauth_authorization_code_form<'a>(
+    code: &'a str,
+    code_verifier: &'a str,
+) -> [(&'static str, &'a str); 5] {
+    [
+        ("grant_type", "authorization_code"),
+        ("code", code),
+        ("redirect_uri", CODEX_OAUTH_DEVICE_REDIRECT_URI),
+        ("client_id", CODEX_OAUTH_CLIENT_ID),
+        ("code_verifier", code_verifier),
+    ]
+}
+
+pub fn codex_oauth_refresh_token_form(refresh_token: &str) -> [(&'static str, &str); 4] {
+    [
+        ("grant_type", "refresh_token"),
+        ("refresh_token", refresh_token),
+        ("client_id", CODEX_OAUTH_CLIENT_ID),
+        ("scope", "openid profile email"),
+    ]
+}
+
+pub fn codex_oauth_device_code_request_failure(status: StatusCode, body: impl AsRef<str>) -> String {
+    format!("Device Code 请求失败: {status} - {}", body.as_ref())
+}
+
+pub fn codex_oauth_device_poll_failure(status: StatusCode, body: impl AsRef<str>) -> String {
+    format!("{status} - {}", body.as_ref())
+}
+
+pub fn codex_oauth_token_exchange_failure(status: StatusCode, body: impl AsRef<str>) -> String {
+    format!("Token 交换失败: {status} - {}", body.as_ref())
+}
+
+pub fn codex_oauth_refresh_failure(status: StatusCode, body: impl AsRef<str>) -> String {
+    format!("Refresh 失败: {status} - {}", body.as_ref())
+}
+
+pub fn codex_oauth_missing_pending_user_code_message() -> &'static str {
+    "未找到对应的 user_code，请重新启动登录流程"
+}
+
+pub fn codex_oauth_missing_refresh_token_message() -> &'static str {
+    "响应缺少 refresh_token"
+}
+
+pub fn codex_oauth_missing_account_id_message() -> &'static str {
+    "无法从 token 中提取 account_id"
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -612,9 +700,16 @@ pub fn headers_contain_proxy_auth_placeholder(headers: &HeaderMap) -> bool {
 mod tests {
     use super::{
         codex_oauth_access_token_expires_at_ms, codex_oauth_device_code_expires_at_ms,
-        codex_oauth_device_code_expires_in_secs, codex_oauth_device_poll_status_kind,
-        codex_oauth_pending_device_code_is_expired, codex_oauth_poll_interval_secs,
-        codex_oauth_token_is_expiring_soon,
+        codex_oauth_device_code_expires_in_secs, codex_oauth_device_code_request_failure,
+        codex_oauth_device_auth_token_request_body, codex_oauth_device_auth_token_url,
+        codex_oauth_device_auth_usercode_url, codex_oauth_device_poll_status_kind,
+        codex_oauth_device_poll_failure, codex_oauth_device_usercode_request_body,
+        codex_oauth_device_verification_url, codex_oauth_authorization_code_form,
+        codex_oauth_missing_account_id_message, codex_oauth_missing_pending_user_code_message,
+        codex_oauth_missing_refresh_token_message, codex_oauth_pending_device_code_is_expired,
+        codex_oauth_poll_interval_secs, codex_oauth_refresh_failure, codex_oauth_refresh_token_form,
+        codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon,
+        codex_oauth_token_url,
         copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
         managed_account_app_handle_unavailable_error_message,
@@ -770,6 +865,88 @@ mod tests {
         assert_eq!(
             codex_oauth_device_poll_status_kind(StatusCode::INTERNAL_SERVER_ERROR),
             CodexOAuthDevicePollStatusKind::Failed
+        );
+    }
+
+    #[test]
+    fn codex_oauth_request_contract_builds_urls_bodies_and_forms() {
+        assert_eq!(
+            codex_oauth_device_auth_usercode_url(),
+            "https://auth.openai.com/api/accounts/deviceauth/usercode"
+        );
+        assert_eq!(
+            codex_oauth_device_auth_token_url(),
+            "https://auth.openai.com/api/accounts/deviceauth/token"
+        );
+        assert_eq!(
+            codex_oauth_token_url(),
+            "https://auth.openai.com/oauth/token"
+        );
+        assert_eq!(
+            codex_oauth_device_verification_url(),
+            "https://auth.openai.com/codex/device"
+        );
+        assert_eq!(
+            codex_oauth_device_usercode_request_body(),
+            serde_json::json!({ "client_id": "app_EMoamEEZ73f0CkXaXp7hrann" })
+        );
+        assert_eq!(
+            codex_oauth_device_auth_token_request_body("device-123", "USER-456"),
+            serde_json::json!({
+                "device_auth_id": "device-123",
+                "user_code": "USER-456",
+            })
+        );
+        assert_eq!(
+            codex_oauth_authorization_code_form("code-123", "verifier-456"),
+            [
+                ("grant_type", "authorization_code"),
+                ("code", "code-123"),
+                ("redirect_uri", "https://auth.openai.com/deviceauth/callback"),
+                ("client_id", "app_EMoamEEZ73f0CkXaXp7hrann"),
+                ("code_verifier", "verifier-456"),
+            ]
+        );
+        assert_eq!(
+            codex_oauth_refresh_token_form("refresh-123"),
+            [
+                ("grant_type", "refresh_token"),
+                ("refresh_token", "refresh-123"),
+                ("client_id", "app_EMoamEEZ73f0CkXaXp7hrann"),
+                ("scope", "openid profile email"),
+            ]
+        );
+    }
+
+    #[test]
+    fn codex_oauth_request_failure_messages_match_legacy_text() {
+        assert_eq!(
+            codex_oauth_device_code_request_failure(StatusCode::BAD_GATEWAY, "upstream"),
+            "Device Code 请求失败: 502 Bad Gateway - upstream"
+        );
+        assert_eq!(
+            codex_oauth_device_poll_failure(StatusCode::BAD_REQUEST, "pending weirdly"),
+            "400 Bad Request - pending weirdly"
+        );
+        assert_eq!(
+            codex_oauth_token_exchange_failure(StatusCode::UNAUTHORIZED, "bad"),
+            "Token 交换失败: 401 Unauthorized - bad"
+        );
+        assert_eq!(
+            codex_oauth_refresh_failure(StatusCode::FORBIDDEN, "revoked"),
+            "Refresh 失败: 403 Forbidden - revoked"
+        );
+        assert_eq!(
+            codex_oauth_missing_pending_user_code_message(),
+            "未找到对应的 user_code，请重新启动登录流程"
+        );
+        assert_eq!(
+            codex_oauth_missing_refresh_token_message(),
+            "响应缺少 refresh_token"
+        );
+        assert_eq!(
+            codex_oauth_missing_account_id_message(),
+            "无法从 token 中提取 account_id"
         );
     }
 

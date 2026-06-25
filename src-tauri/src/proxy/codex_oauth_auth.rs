@@ -27,29 +27,18 @@ use tokio::sync::{Mutex, RwLock};
 
 use super::copilot_auth::{GitHubAccount, GitHubDeviceCodeResponse};
 use crate::proxy_core_adapter::{
-    codex_oauth_access_token_expires_at_ms, codex_oauth_device_code_expires_at_ms,
-    codex_oauth_device_code_expires_in_secs, codex_oauth_device_poll_status_kind,
-    codex_oauth_pending_device_code_is_expired, codex_oauth_poll_interval_secs,
-    codex_oauth_token_is_expiring_soon, CodexOAuthDevicePollStatusKind,
+    codex_oauth_access_token_expires_at_ms, codex_oauth_authorization_code_form,
+    codex_oauth_device_auth_token_request_body, codex_oauth_device_auth_token_url,
+    codex_oauth_device_auth_usercode_url, codex_oauth_device_code_expires_at_ms,
+    codex_oauth_device_code_expires_in_secs, codex_oauth_device_code_request_failure,
+    codex_oauth_device_poll_failure, codex_oauth_device_poll_status_kind,
+    codex_oauth_device_usercode_request_body, codex_oauth_device_verification_url,
+    codex_oauth_missing_account_id_message, codex_oauth_missing_pending_user_code_message,
+    codex_oauth_missing_refresh_token_message, codex_oauth_pending_device_code_is_expired,
+    codex_oauth_poll_interval_secs, codex_oauth_refresh_failure, codex_oauth_refresh_token_form,
+    codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon, codex_oauth_token_url,
+    CodexOAuthDevicePollStatusKind,
 };
-
-/// OpenAI OAuth 客户端 ID（OpenCode 使用，与官方 Codex CLI 相同）
-const CODEX_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
-
-/// Device Code 启动 URL
-const DEVICE_AUTH_USERCODE_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/usercode";
-
-/// Device Code 轮询 URL
-const DEVICE_AUTH_TOKEN_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/token";
-
-/// OAuth Token URL（用于 code 换 token 和 refresh token）
-const OAUTH_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
-
-/// Device Code 验证 URL（向用户展示）
-const DEVICE_VERIFICATION_URL: &str = "https://auth.openai.com/codex/device";
-
-/// Device Code 流程的 redirect_uri（OpenAI 服务端约定）
-const DEVICE_REDIRECT_URI: &str = "https://auth.openai.com/deviceauth/callback";
 
 /// User-Agent
 const CODEX_USER_AGENT: &str = "cc-switch-codex-oauth";
@@ -265,19 +254,19 @@ impl CodexOAuthManager {
 
         let response = self
             .http_client
-            .post(DEVICE_AUTH_USERCODE_URL)
+            .post(codex_oauth_device_auth_usercode_url())
             .header("Content-Type", "application/json")
             .header("User-Agent", CODEX_USER_AGENT)
-            .json(&serde_json::json!({ "client_id": CODEX_CLIENT_ID }))
+            .json(&codex_oauth_device_usercode_request_body())
             .send()
             .await?;
 
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(CodexOAuthError::NetworkError(format!(
-                "Device Code 请求失败: {status} - {text}"
-            )));
+            return Err(CodexOAuthError::NetworkError(
+                codex_oauth_device_code_request_failure(status, text),
+            ));
         }
 
         let device: DeviceCodeResponse = response
@@ -317,7 +306,7 @@ impl CodexOAuthManager {
         Ok(GitHubDeviceCodeResponse {
             device_code: device.device_auth_id,
             user_code: device.user_code,
-            verification_uri: DEVICE_VERIFICATION_URL.to_string(),
+            verification_uri: codex_oauth_device_verification_url().to_string(),
             expires_in,
             interval,
         })
@@ -337,7 +326,7 @@ impl CodexOAuthManager {
 
         let entry = entry.ok_or_else(|| {
             CodexOAuthError::TokenFetchFailed(
-                "未找到对应的 user_code，请重新启动登录流程".to_string(),
+                codex_oauth_missing_pending_user_code_message().to_string(),
             )
         })?;
 
@@ -356,13 +345,13 @@ impl CodexOAuthManager {
 
         let poll_response = self
             .http_client
-            .post(DEVICE_AUTH_TOKEN_URL)
+            .post(codex_oauth_device_auth_token_url())
             .header("Content-Type", "application/json")
             .header("User-Agent", CODEX_USER_AGENT)
-            .json(&serde_json::json!({
-                "device_auth_id": device_code,
-                "user_code": user_code,
-            }))
+            .json(&codex_oauth_device_auth_token_request_body(
+                device_code,
+                &user_code,
+            ))
             .send()
             .await?;
 
@@ -377,9 +366,9 @@ impl CodexOAuthManager {
             }
             CodexOAuthDevicePollStatusKind::Failed => {
                 let text = poll_response.text().await.unwrap_or_default();
-                return Err(CodexOAuthError::TokenFetchFailed(format!(
-                    "{status} - {text}"
-                )));
+                return Err(CodexOAuthError::TokenFetchFailed(
+                    codex_oauth_device_poll_failure(status, text),
+                ));
             }
             CodexOAuthDevicePollStatusKind::Success => {}
         }
@@ -403,12 +392,14 @@ impl CodexOAuthManager {
         }
 
         let refresh_token = tokens.refresh_token.clone().ok_or_else(|| {
-            CodexOAuthError::TokenFetchFailed("响应缺少 refresh_token".to_string())
+            CodexOAuthError::TokenFetchFailed(
+                codex_oauth_missing_refresh_token_message().to_string(),
+            )
         })?;
 
         let (account_id, email) = extract_identity_from_tokens(&tokens);
         let account_id = account_id.ok_or_else(|| {
-            CodexOAuthError::ParseError("无法从 token 中提取 account_id".to_string())
+            CodexOAuthError::ParseError(codex_oauth_missing_account_id_message().to_string())
         })?;
 
         // 缓存 access_token
@@ -439,27 +430,22 @@ impl CodexOAuthManager {
         code: &str,
         code_verifier: &str,
     ) -> Result<OAuthTokenResponse, CodexOAuthError> {
+        let form = codex_oauth_authorization_code_form(code, code_verifier);
         let response = self
             .http_client
-            .post(OAUTH_TOKEN_URL)
+            .post(codex_oauth_token_url())
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("User-Agent", CODEX_USER_AGENT)
-            .form(&[
-                ("grant_type", "authorization_code"),
-                ("code", code),
-                ("redirect_uri", DEVICE_REDIRECT_URI),
-                ("client_id", CODEX_CLIENT_ID),
-                ("code_verifier", code_verifier),
-            ])
+            .form(&form)
             .send()
             .await?;
 
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(CodexOAuthError::TokenFetchFailed(format!(
-                "Token 交换失败: {status} - {text}"
-            )));
+            return Err(CodexOAuthError::TokenFetchFailed(
+                codex_oauth_token_exchange_failure(status, text),
+            ));
         }
 
         response
@@ -473,17 +459,13 @@ impl CodexOAuthManager {
         &self,
         refresh_token: &str,
     ) -> Result<OAuthTokenResponse, CodexOAuthError> {
+        let form = codex_oauth_refresh_token_form(refresh_token);
         let response = self
             .http_client
-            .post(OAUTH_TOKEN_URL)
+            .post(codex_oauth_token_url())
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("User-Agent", CODEX_USER_AGENT)
-            .form(&[
-                ("grant_type", "refresh_token"),
-                ("refresh_token", refresh_token),
-                ("client_id", CODEX_CLIENT_ID),
-                ("scope", "openid profile email"),
-            ])
+            .form(&form)
             .send()
             .await?;
 
@@ -494,9 +476,9 @@ impl CodexOAuthManager {
 
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(CodexOAuthError::TokenFetchFailed(format!(
-                "Refresh 失败: {status} - {text}"
-            )));
+            return Err(CodexOAuthError::TokenFetchFailed(
+                codex_oauth_refresh_failure(status, text),
+            ));
         }
 
         response

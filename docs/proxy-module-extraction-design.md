@@ -1438,6 +1438,7 @@
 1018. Copilot `/copilot_internal/user` usage/quota DTO、usage JSON parse 和 `endpoints.api` 到默认 Copilot API base 的 fallback policy 已迁入 `proxy-core::copilot_model_map`，host `copilot_auth` 只保留 HTTP 调用、token/account 读取和 endpoint cache 写入。
 1019. Copilot OAuth device polling 的错误码分类与 token 提前刷新 buffer policy 已迁入 `proxy-core::managed_account_auth`；host `copilot_auth` 只保留 HTTP 轮询、账号持久化和 core classification 到 `CopilotAuthError` 的映射。
 1020. Codex OAuth device polling 的 HTTP status 分类、device code 默认过期/interval 安全余量、access token 过期时间计算和 token 提前刷新 buffer policy 已迁入 `proxy-core::managed_account_auth`；host `codex_oauth_auth` 只保留 reqwest 调用、token cache、refresh token 持久化和 status classification 到 `CodexOAuthError` 的映射。
+1021. Codex OAuth device/code/refresh 请求 contract 已迁入 `proxy-core::managed_account_auth`，包括 OpenAI OAuth endpoint、client id、device JSON body、authorization/refresh form、verification URL 和固定错误文案；host `codex_oauth_auth` 只按 core request plan 执行 reqwest 并映射错误类型。
 
 ## 背景
 

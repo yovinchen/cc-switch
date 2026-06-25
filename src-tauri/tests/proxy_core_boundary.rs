@@ -1057,6 +1057,21 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn codex_oauth_pending_device_code_is_expired(",
     "fn codex_oauth_poll_interval_secs(",
     "fn codex_oauth_device_poll_status_kind(",
+    "fn codex_oauth_device_auth_usercode_url(",
+    "fn codex_oauth_device_auth_token_url(",
+    "fn codex_oauth_token_url(",
+    "fn codex_oauth_device_verification_url(",
+    "fn codex_oauth_device_usercode_request_body(",
+    "fn codex_oauth_device_auth_token_request_body(",
+    "fn codex_oauth_authorization_code_form(",
+    "fn codex_oauth_refresh_token_form(",
+    "fn codex_oauth_device_code_request_failure(",
+    "fn codex_oauth_device_poll_failure(",
+    "fn codex_oauth_token_exchange_failure(",
+    "fn codex_oauth_refresh_failure(",
+    "fn codex_oauth_missing_pending_user_code_message(",
+    "fn codex_oauth_missing_refresh_token_message(",
+    "fn codex_oauth_missing_account_id_message(",
     "fn copilot_token_is_expiring_soon(",
     "fn copilot_oauth_poll_error_kind(",
     "fn codex_default_model_context_window(",
@@ -7710,17 +7725,42 @@ fn production_codex_oauth_auth_delegates_device_poll_contract_to_core() {
         "pub async fn get_valid_token_for_account",
         "    /// 获取默认账号的有效 token",
     );
+    let exchange_slice = function_slice(
+        &source,
+        "async fn exchange_code_for_tokens",
+        "    /// 用 refresh_token 刷新 access_token",
+    );
+    let refresh_slice = function_slice(
+        &source,
+        "async fn refresh_with_token",
+        "    // ==================== Token 获取",
+    );
 
     for marker in [
         "const TOKEN_REFRESH_BUFFER_MS",
         "const DEVICE_CODE_DEFAULT_EXPIRES_IN",
         "const POLLING_SAFETY_MARGIN_SECS",
+        "const CODEX_CLIENT_ID",
+        "const DEVICE_AUTH_USERCODE_URL",
+        "const DEVICE_AUTH_TOKEN_URL",
+        "const OAUTH_TOKEN_URL",
+        "const DEVICE_VERIFICATION_URL",
+        "const DEVICE_REDIRECT_URI",
         "fn parse_interval(",
         "fn compute_expires_at_ms(",
+        "serde_json::json!",
+        ".form(&[",
+        "Device Code 请求失败",
+        "Token 交换失败",
+        "Refresh 失败",
+        "未找到对应的 user_code",
+        "响应缺少 refresh_token",
+        "无法从 token 中提取 account_id",
+        "{status} - {text}",
     ] {
         assert!(
             !source.contains(marker),
-            "codex_oauth_auth.rs should not own Codex OAuth timing policy marker `{marker}`"
+            "codex_oauth_auth.rs should not own Codex OAuth request/timing contract marker `{marker}`"
         );
     }
 
@@ -7738,18 +7778,34 @@ fn production_codex_oauth_auth_delegates_device_poll_contract_to_core() {
 
     assert!(
         start_slice.contains("codex_oauth_poll_interval_secs(")
+            && start_slice.contains("codex_oauth_device_auth_usercode_url(")
+            && start_slice.contains("codex_oauth_device_usercode_request_body(")
+            && start_slice.contains("codex_oauth_device_code_request_failure(")
             && start_slice.contains("codex_oauth_device_code_expires_in_secs(")
             && start_slice.contains("codex_oauth_device_code_expires_at_ms(")
             && start_slice.contains("codex_oauth_pending_device_code_is_expired(")
+            && start_slice.contains("codex_oauth_device_verification_url(")
+            && poll_slice.contains("codex_oauth_missing_pending_user_code_message(")
+            && poll_slice.contains("codex_oauth_device_auth_token_url(")
+            && poll_slice.contains("codex_oauth_device_auth_token_request_body(")
             && poll_slice.contains("codex_oauth_pending_device_code_is_expired(")
             && poll_slice.contains("codex_oauth_device_poll_status_kind(")
             && poll_slice.contains("CodexOAuthDevicePollStatusKind::AuthorizationPending")
             && poll_slice.contains("CodexOAuthDevicePollStatusKind::ExpiredToken")
             && poll_slice.contains("CodexOAuthDevicePollStatusKind::Failed")
             && poll_slice.contains("CodexOAuthDevicePollStatusKind::Success")
+            && poll_slice.contains("codex_oauth_device_poll_failure(")
+            && poll_slice.contains("codex_oauth_missing_refresh_token_message(")
+            && poll_slice.contains("codex_oauth_missing_account_id_message(")
+            && exchange_slice.contains("codex_oauth_authorization_code_form(")
+            && exchange_slice.contains("codex_oauth_token_url(")
+            && exchange_slice.contains("codex_oauth_token_exchange_failure(")
+            && refresh_slice.contains("codex_oauth_refresh_token_form(")
+            && refresh_slice.contains("codex_oauth_token_url(")
+            && refresh_slice.contains("codex_oauth_refresh_failure(")
             && token_slice.contains("codex_oauth_token_is_expiring_soon(")
             && valid_token_slice.contains("codex_oauth_access_token_expires_at_ms("),
-        "codex_oauth_auth.rs should delegate timing and device poll status contracts to core"
+        "codex_oauth_auth.rs should delegate request, timing, and device poll status contracts to core"
     );
 }
 
