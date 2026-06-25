@@ -1,6 +1,4 @@
 use cc_switch_proxy_core::api::prelude::*;
-use http::{Method, StatusCode};
-use serde_json::json;
 use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
@@ -865,10 +863,10 @@ fn external_host_can_construct_engine_and_handle_request_from_prelude() {
 fn external_host_can_use_gateway_model_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
-    let mut headers = http::HeaderMap::new();
+    let mut headers = HeaderMap::new();
     headers.insert(
-        http::header::AUTHORIZATION,
-        http::HeaderValue::from_static("Bearer gateway-token"),
+        header::AUTHORIZATION,
+        HeaderValue::from_static("Bearer gateway-token"),
     );
 
     futures::executor::block_on(engine.validate_claude_desktop_gateway_auth(&headers))
@@ -898,7 +896,7 @@ fn external_host_can_use_management_auth_contracts_from_prelude() {
         None,
     );
     let engine = ProxyEngine::new(services);
-    let mut headers = http::HeaderMap::new();
+    let mut headers = HeaderMap::new();
 
     let rejected =
         futures::executor::block_on(engine.validate_management_auth(&headers)).unwrap_err();
@@ -907,8 +905,8 @@ fn external_host_can_use_management_auth_contracts_from_prelude() {
     );
 
     headers.insert(
-        http::header::AUTHORIZATION,
-        http::HeaderValue::from_static("Bearer management-token"),
+        header::AUTHORIZATION,
+        HeaderValue::from_static("Bearer management-token"),
     );
     futures::executor::block_on(engine.validate_management_auth(&headers))
         .expect("management auth");
@@ -974,10 +972,8 @@ fn external_host_can_use_event_stream_contracts_from_prelude() {
     );
     let connected_spec: ProxyEventSseSpec = connected.to_sse_spec();
     let lagged_spec: ProxyEventSseSpec = lagged.to_sse_spec();
-    let connected_data: serde_json::Value =
-        serde_json::from_str(&connected_spec.data).expect("connected data");
-    let lagged_data: serde_json::Value =
-        serde_json::from_str(&lagged_spec.data).expect("lagged data");
+    let connected_data: Value = from_str(&connected_spec.data).expect("connected data");
+    let lagged_data: Value = from_str(&lagged_spec.data).expect("lagged data");
 
     assert_eq!(ProxyCoreEventType::RouteSelected.event_name(), "route_selected");
     assert_eq!(
@@ -1029,17 +1025,15 @@ fn external_host_can_use_app_list_contracts_from_prelude() {
 fn external_host_can_use_group_list_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
-    let query: GroupListQuery = serde_json::from_value(json!({ "appType": "claude" }))
-        .expect("group list query");
+    let query = GroupListQuery::for_app("claude");
     let request = GroupListRequest::from_query(query).expect("group list request");
 
     let response: RouteGroupListResponse =
         futures::executor::block_on(engine.group_list_response(request))
             .expect("group list response");
     let groups: &[RouteGroupSummary] = response.groups.as_slice();
-    let helper_request =
-        GroupListRequest::from_query(serde_json::from_value(json!({})).expect("empty query"))
-            .expect("helper request");
+    let helper_request = GroupListRequest::from_query(GroupListQuery::all())
+        .expect("helper request");
     let source_input: RouteGroupSourceInput = helper_request.source_input(
         "codex",
         &ChannelRouteSource::LegacyProjection,
@@ -1047,7 +1041,7 @@ fn external_host_can_use_group_list_contracts_from_prelude() {
     );
     let from_source: RouteGroupListResponse = helper_request.response(vec![source_input]);
     let from_channel_source: RouteGroupListResponse =
-        GroupListRequest::from_query(serde_json::from_value(json!({})).expect("source query"))
+        GroupListRequest::from_query(GroupListQuery::all())
             .expect("source request")
             .response_from_channel_sources(vec![GroupListChannelSource::from_record_inputs(
                 "gemini",
@@ -1076,8 +1070,7 @@ fn external_host_can_use_group_list_contracts_from_prelude() {
 fn external_host_can_use_app_channel_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
-    let list_query: AppChannelListQuery =
-        serde_json::from_value(json!({})).expect("list query");
+    let list_query = AppChannelListQuery::list();
     let list_request =
         AppChannelManagementRequest::from_parts("claude", list_query).expect("list request");
     match list_request.plan() {
@@ -1097,7 +1090,7 @@ fn external_host_can_use_app_channel_contracts_from_prelude() {
         ChannelRouteRejected,
     > = AppChannelManagementRequest::from_parts(
         "codex",
-        serde_json::from_value(json!({})).expect("helper list query"),
+        AppChannelListQuery::list(),
     )
     .expect("helper list request")
     .response_from_list_source(AppChannelListSource::new(
@@ -1124,12 +1117,7 @@ fn external_host_can_use_app_channel_contracts_from_prelude() {
         AppChannelResponse::Route(_) => panic!("expected helper list response"),
     }
 
-    let route_query: AppChannelListQuery = serde_json::from_value(json!({
-        "model": "sonnet",
-        "interface": "anthropic",
-        "group": "premium"
-    }))
-    .expect("route query");
+    let route_query = AppChannelListQuery::route("sonnet", "anthropic", "premium");
     let route_request =
         AppChannelManagementRequest::from_parts("claude", route_query).expect("route request");
     match route_request.plan() {
@@ -1166,9 +1154,7 @@ fn external_host_can_use_app_channel_contracts_from_prelude() {
 fn external_host_can_use_channel_crud_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
-    let list_request = ChannelListRequest::from_query(
-        serde_json::from_value(json!({ "appType": "claude" })).expect("channel list query"),
-    )
+    let list_request = ChannelListRequest::from_query(ChannelListQuery::for_app("claude"))
     .expect("channel list request");
     match list_request.plan() {
         ChannelListPlan::App { app_type } => assert_eq!(app_type, "claude"),
@@ -1179,7 +1165,7 @@ fn external_host_can_use_channel_crud_contracts_from_prelude() {
         futures::executor::block_on(engine.channel_list_response(list_request))
             .expect("channel list response");
     let helper_list: ChannelListResponse<ChannelRecord> =
-        ChannelListRequest::from_query(serde_json::from_value(json!({})).expect("all query"))
+        ChannelListRequest::from_query(ChannelListQuery::all())
             .expect("all request")
             .response_from_source(ChannelListSource::new(vec![channel_record(vec![
                 "research".to_string(),
@@ -1583,11 +1569,10 @@ fn external_host_can_use_channel_migration_contracts_from_prelude() {
 fn external_host_can_use_app_model_catalog_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
-    let query: AppModelListQuery = serde_json::from_value(json!({
-        "interface": "anthropic",
-        "group": "default"
-    }))
-    .expect("model catalog query");
+    let query = AppModelListQuery::new(
+        Some("anthropic".to_string()),
+        Some(DEFAULT_ROUTE_GROUP.to_string()),
+    );
     let request = AppModelCatalogRequest::from_parts("claude", query)
         .expect("model catalog request");
 
@@ -1596,7 +1581,7 @@ fn external_host_can_use_app_model_catalog_contracts_from_prelude() {
             .expect("model catalog");
     let helper_request = AppModelCatalogRequest::from_parts(
         "codex",
-        serde_json::from_value(json!({ "group": "research" })).expect("helper query"),
+        AppModelListQuery::new(None, Some("research".to_string())),
     )
     .expect("helper request");
     let from_source: RoutableModelList =

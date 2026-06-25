@@ -347,7 +347,7 @@ pub mod usage {
 pub mod prelude {
     pub use futures::future::BoxFuture;
     pub use http::{header, HeaderMap, HeaderValue, Method, StatusCode};
-    pub use serde_json::{json, Value};
+    pub use serde_json::{from_str, json, Value};
 
     pub use super::auth::{
         ClaudeDesktopModelListItem, ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,

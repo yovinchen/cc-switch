@@ -1700,6 +1700,48 @@ fn proxy_core_external_example_uses_public_prelude_only() {
 }
 
 #[test]
+fn proxy_core_public_prelude_smoke_uses_public_prelude_only() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("crates/proxy-core/tests/public_prelude.rs");
+    let source = fs::read_to_string(&path).expect("read proxy-core public prelude test");
+    let required_import = "use cc_switch_proxy_core::api::prelude::*;";
+    let forbidden_markers = [
+        "use cc_switch_proxy_core::api::{",
+        "use cc_switch_proxy_core::{",
+        "use cc_switch_proxy_core::domain",
+        "use cc_switch_proxy_core::ports",
+        "use cc_switch_proxy_core::management_api",
+        "http::",
+        "serde_json::",
+    ];
+
+    assert!(
+        source.contains(required_import),
+        "public prelude smoke should enter proxy-core through `{required_import}`"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in source.lines().enumerate() {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "crates/proxy-core/tests/public_prelude.rs:{} contains forbidden prelude-smoke marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "public prelude smoke must prove the public prelude without direct internal/core dependency imports:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn request_context_does_not_preselect_provider() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handler_context.rs");
