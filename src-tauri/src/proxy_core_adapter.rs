@@ -499,32 +499,34 @@ pub(crate) async fn record_forward_failure_runtime_source(
 
 pub(crate) async fn record_forward_provider_failure_runtime_source(
     status: &RwLock<ProxyRuntimeStatus>,
-    provider_name: &str,
-    error_message: &str,
+    provider: &Provider,
+    error: &ProxyError,
 ) {
     let mut status = status.write().await;
+    let error_message = error.to_string();
     crate::proxy_core::api::ports::record_forward_provider_failure_status(
         &mut status,
         crate::proxy_core::api::ports::ForwardProviderFailureStatusInput {
-            provider_name,
-            error_message,
+            provider_name: provider.name.as_str(),
+            error_message: &error_message,
         },
     );
 }
 
 pub(crate) async fn record_forward_provider_rectifier_retry_failure_runtime_source(
     status: &RwLock<ProxyRuntimeStatus>,
-    provider_name: &str,
-    rectifier_label: &str,
-    error_message: &str,
+    provider: &Provider,
+    kind: ForwarderRectifierRetryKind,
+    error: &ProxyError,
 ) {
     let mut status = status.write().await;
+    let error_message = error.to_string();
     crate::proxy_core::api::ports::record_forward_provider_rectifier_retry_failure_status(
         &mut status,
         crate::proxy_core::api::ports::ForwardProviderRectifierRetryFailureStatusInput {
-            provider_name,
-            rectifier_label,
-            error_message,
+            provider_name: provider.name.as_str(),
+            rectifier_label: forwarder_rectifier_retry_failure_label(kind),
+            error_message: &error_message,
         },
     );
 }
@@ -993,8 +995,9 @@ pub(crate) async fn record_forward_attempt_failure_runtime_source(
     attempt: &ForwardAttempt,
     app_type: &str,
     used_half_open_permit: bool,
-    error_message: &str,
+    error: &ProxyError,
 ) {
+    let error_message = error.to_string();
     if let Some(channel) = attempt.channel() {
         let _ = router
             .record_channel_result(
@@ -1002,7 +1005,7 @@ pub(crate) async fn record_forward_attempt_failure_runtime_source(
                 app_type,
                 used_half_open_permit,
                 false,
-                Some(error_message.to_string()),
+                Some(error_message),
                 None,
             )
             .await;
@@ -1015,7 +1018,7 @@ pub(crate) async fn record_forward_attempt_failure_runtime_source(
             app_type,
             used_half_open_permit,
             false,
-            Some(error_message.to_string()),
+            Some(error_message),
         )
         .await;
 }
@@ -7335,11 +7338,10 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         error: &'a ProxyError,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            let error_message = error.to_string();
             record_forward_provider_failure_runtime_source(
                 self.status.as_ref(),
-                provider.name.as_str(),
-                &error_message,
+                provider,
+                error,
             )
             .await;
         })
@@ -7352,12 +7354,11 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         error: &'a ProxyError,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            let error_message = error.to_string();
             record_forward_provider_rectifier_retry_failure_runtime_source(
                 self.status.as_ref(),
-                provider.name.as_str(),
-                forwarder_rectifier_retry_failure_label(kind),
-                &error_message,
+                provider,
+                kind,
+                error,
             )
             .await;
         })
@@ -7716,13 +7717,12 @@ impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
         error: &'a ProxyError,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            let error_message = error.to_string();
             record_forward_attempt_failure_runtime_source(
                 self.router.as_ref(),
                 attempt,
                 app_type,
                 used_half_open_permit,
-                &error_message,
+                error,
             )
             .await;
         })

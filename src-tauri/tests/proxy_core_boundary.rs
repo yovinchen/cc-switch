@@ -7533,6 +7533,16 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "pub(crate) enum ForwarderRectifierRetryFailureDecision",
         "pub(crate) type ForwarderRectifierRetryKind",
     );
+    let provider_failure_runtime_source_slice = function_slice(
+        &adapter_source,
+        "pub(crate) async fn record_forward_provider_failure_runtime_source",
+        "pub(crate) async fn record_forward_provider_rectifier_retry_failure_runtime_source",
+    );
+    let provider_rectifier_failure_runtime_source_slice = function_slice(
+        &adapter_source,
+        "pub(crate) async fn record_forward_provider_rectifier_retry_failure_runtime_source",
+        "pub(crate) fn record_proxy_server_started_status",
+    );
 
     assert!(
         struct_slice.contains("runtime_state_source"),
@@ -7606,6 +7616,23 @@ fn production_forwarder_uses_runtime_state_source_resource() {
             && runtime_trait_slice
                 .contains("error: &ProxyError"),
         "ForwarderRuntimeStateSource must own attempt-failed error message projection"
+    );
+    assert!(
+        provider_failure_runtime_source_slice.contains("provider: &Provider")
+            && provider_failure_runtime_source_slice.contains("error: &ProxyError")
+            && !provider_failure_runtime_source_slice.contains("provider_name: &str")
+            && !provider_failure_runtime_source_slice.contains("error_message: &str"),
+        "provider failure runtime source helper must consume structured provider/error facts"
+    );
+    assert!(
+        provider_rectifier_failure_runtime_source_slice.contains("provider: &Provider")
+            && provider_rectifier_failure_runtime_source_slice
+                .contains("kind: ForwarderRectifierRetryKind")
+            && provider_rectifier_failure_runtime_source_slice.contains("error: &ProxyError")
+            && !provider_rectifier_failure_runtime_source_slice.contains("provider_name: &str")
+            && !provider_rectifier_failure_runtime_source_slice.contains("rectifier_label: &str")
+            && !provider_rectifier_failure_runtime_source_slice.contains("error_message: &str"),
+        "provider rectifier failure runtime source helper must consume structured provider/kind/error facts"
     );
     assert!(
         impl_slice.contains("log_rectifier_retry_success(")
@@ -8051,6 +8078,11 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         "pub(crate) trait ForwarderAttemptRuntimeSource",
         "struct CcSwitchForwarderAttemptRuntimeSource",
     );
+    let attempt_failure_runtime_source_slice = function_slice(
+        &adapter_source,
+        "pub(crate) async fn record_forward_attempt_failure_runtime_source",
+        "pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source",
+    );
     assert!(
         !attempt_runtime_trait_slice.contains("should_bypass_circuit_breaker"),
         "ForwarderAttemptRuntimeSource trait must not expose the internal legacy circuit-breaker bypass helper"
@@ -8058,6 +8090,11 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     assert!(
         !attempt_runtime_trait_slice.contains("attempt_limit_reached"),
         "ForwarderAttemptRuntimeSource trait must not expose the internal max-attempt helper"
+    );
+    assert!(
+        attempt_failure_runtime_source_slice.contains("error: &ProxyError")
+            && !attempt_failure_runtime_source_slice.contains("error_message: &str"),
+        "attempt failure runtime source helper must consume ProxyError and own message projection"
     );
 
     let struct_forbidden_markers = ["router: Arc<ProviderRouter>"];
