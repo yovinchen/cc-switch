@@ -26,12 +26,11 @@ use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     merge_stream_check_config, provider_custom_user_agent_header,
     provider_stream_check_config_override, should_retry_channel_reachability_failure,
-    stream_check_provider_base_url, stream_check_result_from_probe_result,
+    stream_check_failed_result_with_retry_count, stream_check_provider_base_url,
+    stream_check_result_from_probe_result,
 };
 
-pub use crate::proxy_core_adapter::{
-    ChannelReachabilityStatus as HealthStatus, StreamCheckConfig, StreamCheckResult,
-};
+pub use crate::proxy_core_adapter::{StreamCheckConfig, StreamCheckResult};
 
 /// 连通性检查服务
 pub struct StreamCheckService;
@@ -79,16 +78,12 @@ impl StreamCheckService {
             });
         }
 
-        Ok(last_result.unwrap_or_else(|| StreamCheckResult {
-            status: HealthStatus::Failed,
-            success: false,
-            message: "Check failed".to_string(),
-            response_time_ms: None,
-            http_status: None,
-            model_used: String::new(),
-            tested_at: chrono::Utc::now().timestamp(),
-            retry_count: effective.max_retries,
-            error_category: None,
+        Ok(last_result.unwrap_or_else(|| {
+            stream_check_failed_result_with_retry_count(
+                "Check failed",
+                chrono::Utc::now().timestamp(),
+                effective.max_retries,
+            )
         }))
     }
 
@@ -207,6 +202,7 @@ impl StreamCheckService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core_adapter::ChannelReachabilityStatus as HealthStatus;
 
     fn make_provider(settings_config: serde_json::Value) -> Provider {
         Provider::with_id(

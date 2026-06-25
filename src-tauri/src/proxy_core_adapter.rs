@@ -2446,7 +2446,9 @@ pub(crate) type ChannelRequestValidationError =
     crate::proxy_core::api::routing::ChannelRequestValidationError;
 pub(crate) type ChannelRouteSource = crate::proxy_core::api::management::ChannelRouteSource;
 pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecord;
-pub type ChannelReachabilityStatus = crate::proxy_core::api::management::ChannelReachabilityStatus;
+#[cfg(test)]
+pub(crate) type ChannelReachabilityStatus =
+    crate::proxy_core::api::management::ChannelReachabilityStatus;
 pub type StreamCheckConfig = crate::proxy_core::api::management::StreamCheckConfig;
 pub type StreamCheckResult = crate::proxy_core::api::management::StreamCheckResult;
 pub(crate) type ChannelKeyRecord = crate::proxy_core::api::management::ChannelKeyRecord;
@@ -2635,19 +2637,19 @@ pub(crate) use crate::proxy_core::api::management::{
     channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
     channel_test_app_type_error, channel_test_provider_not_found_error, merge_stream_check_config,
     provider_health_update_from_input, should_retry_channel_reachability_failure,
-    stream_check_failed_result, stream_check_result_from_probe_result, AppChannelListQuery,
-    AppChannelManagementRequest, AppChannelResponse, AppListRequest, AppListResponse,
-    AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelHealthUpdateInput, ChannelKeyDeleteResponse,
-    ChannelKeyPathRequest, ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery,
-    ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeInput,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
-    ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelPathRequest,
-    ChannelRecordResponse, ChannelRouteRejected, ChannelTestProbeRequest, ChannelTestResponse,
-    CurrentRouteResponse, GroupListQuery, GroupListRequest, HealthCheckRequest,
-    HealthCheckResponse, ManagementAppPathRequest, ProviderHealthUpdateInput, ProviderListResponse,
-    ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest, ProxyStatusRequest,
-    ProxyStatusResponse, RouteGroupListResponse, RouteResolveManagementRequest,
+    stream_check_failed_result, stream_check_failed_result_with_retry_count,
+    stream_check_result_from_probe_result, AppChannelListQuery, AppChannelManagementRequest,
+    AppChannelResponse, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
+    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelHealthUpdateInput, ChannelKeyDeleteResponse, ChannelKeyPathRequest,
+    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelsResponse,
+    ChannelPathRequest, ChannelRecordResponse, ChannelRouteRejected, ChannelTestProbeRequest,
+    ChannelTestResponse, CurrentRouteResponse, GroupListQuery, GroupListRequest,
+    HealthCheckRequest, HealthCheckResponse, ManagementAppPathRequest, ProviderHealthUpdateInput,
+    ProviderListResponse, ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest,
+    ProxyStatusRequest, ProxyStatusResponse, RouteGroupListResponse, RouteResolveManagementRequest,
     StreamCheckConfigOverride, CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 #[cfg(test)]

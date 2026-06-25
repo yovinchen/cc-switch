@@ -76,7 +76,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::stream_check::HealthStatus;
+    use crate::proxy_core_adapter::ChannelReachabilityStatus as HealthStatus;
     use serde_json::json;
 
     #[test]
