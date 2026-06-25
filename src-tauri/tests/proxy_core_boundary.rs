@@ -4988,6 +4988,48 @@ fn claude_desktop_config_delegates_direct_gateway_credentials_to_adapter() {
 }
 
 #[test]
+fn claude_desktop_config_delegates_proxy_gateway_origin_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let gateway_url_slice = function_slice(
+        &source,
+        "pub fn proxy_gateway_base_url_from_db(",
+        "fn apply_provider_to_paths(",
+    );
+
+    assert!(
+        gateway_url_slice.contains("proxy_live_urls_from_listen_parts("),
+        "claude_desktop_config should delegate proxy gateway origin formatting to proxy_core_adapter/core"
+    );
+    assert!(
+        !source.contains("fn proxy_origin_from_parts("),
+        "claude_desktop_config should not keep a duplicate proxy origin formatter"
+    );
+
+    let forbidden_markers = ["\"0.0.0.0\"", "\"::\"", "connect_host", "starts_with('[')"];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(gateway_url_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/claude_desktop_config.rs proxy_gateway_base_url_from_db:{} contains proxy origin policy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "claude_desktop_config must keep proxy origin formatting in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

@@ -638,16 +638,16 @@ pub fn proxy_gateway_base_url_from_db(db: &Database) -> Result<String, AppError>
     // get_proxy_config is async-tagged but its body is fully synchronous (rusqlite
     // under a Mutex), so block_on cannot deadlock the calling thread.
     let config = futures::executor::block_on(db.get_proxy_config())?;
-    if config.listen_port == 0 {
-        return Err(AppError::Config(
+    let (proxy_origin, _) = crate::proxy_core_adapter::proxy_live_urls_from_listen_parts(
+        &config.listen_address,
+        config.listen_port,
+    )
+    .ok_or_else(|| {
+        AppError::Config(
             "Claude Desktop 代理地址需要真实监听端口；请先启动本地代理或使用固定端口".to_string(),
-        ));
-    }
-    Ok(format!(
-        "{}{}",
-        proxy_origin_from_parts(&config.listen_address, config.listen_port),
-        CLAUDE_DESKTOP_PROXY_PREFIX
-    ))
+        )
+    })?;
+    Ok(format!("{proxy_origin}{CLAUDE_DESKTOP_PROXY_PREFIX}"))
 }
 
 fn apply_provider_to_paths(
@@ -1011,21 +1011,6 @@ fn paths_from_dirs(normal_dir: PathBuf, threep_dir: PathBuf) -> ClaudeDesktopPat
         profile_path,
         meta_path,
     }
-}
-
-fn proxy_origin_from_parts(listen_address: &str, listen_port: u16) -> String {
-    let connect_host = match listen_address {
-        "0.0.0.0" => "127.0.0.1",
-        "::" => "::1",
-        value => value,
-    };
-    let connect_host_for_url = if connect_host.contains(':') && !connect_host.starts_with('[') {
-        format!("[{connect_host}]")
-    } else {
-        connect_host.to_string()
-    };
-
-    format!("http://{}:{}", connect_host_for_url, listen_port)
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
