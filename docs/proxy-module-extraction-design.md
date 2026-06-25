@@ -1088,6 +1088,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续删除 Copilot token 响应 DTO 中未使用的 `refresh_in` 字段；serde 继续忽略上游额外字段，managed-auth host 只保留实际消费的 `token` / `expires_at` contract。
 本轮继续删除 adapter 内部 `current_provider_id_from_settings_for_app_type` 一跳 helper；forward current-provider fallback 读取统一经现有 `AppKind` settings 入口，避免保留重复 host type facade。
 本轮继续删除 provider live 服务中未被构造或调用的 `LiveSnapshot` / `restore` 旧备份恢复 surface；live 写入、备份和 restore 策略继续由现有 `write_live_snapshot`、ProxyService backup/restore 与 adapter/core snapshot policy 覆盖。
+本轮继续把 `ProviderService::extract_credentials` 收成测试本地 helper，并把 adapter 侧 `provider_credential_values` / `codex_api_key_from_auth_and_config` 收成 test-only contract；生产 provider service 不再暴露未被运行时调用的凭据提取 facade。
 本轮继续把 `CcSwitchChannelSource` 的 route/materialized channel record list 读取与 `ChannelRecord` 投影收敛到 adapter-owned source wrapper。
 本轮继续把 `CcSwitchChannelSource` 的 legacy channel migration preview/materialize DB 操作与 response input 投影收敛到 adapter-owned source wrapper，host services 只装配 channel source。
 本轮继续把 `CcSwitchRoutePolicySource` 的 failover queue DB 读取与 `RoutePolicy` 投影迁入 adapter-owned source，host services 只装配 source。
@@ -1508,6 +1509,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1069. 删除 `CopilotTokenResponse.refresh_in` dead-code 字段；host managed-auth token DTO 只保留运行时创建 `CopilotToken` 实际消费的 `token` 和 `expires_at`，serde 默认忽略上游额外字段，并新增 boundary marker 防止 unused upstream DTO field 回流。
 1070. 删除 `current_provider_id_from_settings_for_app_type` adapter facade；forward current-provider DB fallback 入口先投影为 `AppKind` 后复用 `current_provider_id_from_settings_for_app`，新增 small-helper boundary marker 防止 AppType 专用 settings wrapper 回流。
 1071. 删除 `services/provider/live.rs` 中未使用的 `LiveSnapshot` 与 `restore` 实现；provider live 服务只保留当前写入/读取/同步入口，旧 snapshot restore surface 不再作为生产 dead-code 负担，并新增 boundary marker 防止其回流。
+1072. 删除生产 `ProviderService::extract_credentials` dead-code facade；原测试改用 test-local helper 调用 test-only adapter/core `provider_credential_values` contract，`codex_api_key_from_auth_and_config` 同步收成 test-only，新增 boundary marker 防止 ProviderService 重新承载未使用的凭据提取入口。
 
 ## 背景
 

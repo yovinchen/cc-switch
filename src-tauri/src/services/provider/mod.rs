@@ -19,7 +19,6 @@ use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, common_config_snippet_issue_message,
     normalize_provider_settings_for_storage, provider_additive_live_write_action,
     provider_additive_update_route, provider_app_has_current_provider,
-    provider_credential_issue_spec, provider_credential_values,
     provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
     provider_key_change_policy_issue, provider_key_change_policy_issue_message,
     provider_live_config_presence_error_policy, provider_live_removal_target,
@@ -33,9 +32,9 @@ use crate::proxy_core_adapter::{
     should_block_proxy_switch_to_provider, should_reapply_codex_official_live_for_provider,
     should_skip_provider_legacy_common_config_migration, validate_provider_gemini_settings,
     CommonConfigSnippetIssue, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
-    ProviderCredentialIssue, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
-    ProviderLiveSyncScope, ProviderOmoVariant, ProviderSettingsValidationIssue,
-    ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+    ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
+    ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
+    ProviderTakeoverLiveSyncTarget,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -125,7 +124,10 @@ mod tests {
     use crate::provider::ProviderMeta;
     #[cfg(any(target_os = "macos", windows))]
     use crate::provider::{ClaudeDesktopMode, ClaudeDesktopModelRoute};
-    use crate::proxy_core_adapter::ProxyConfig;
+    use crate::proxy_core_adapter::{
+        provider_credential_issue_spec, provider_credential_values, ProviderCredentialIssue,
+        ProxyConfig,
+    };
     use crate::store::AppState;
     use serde_json::json;
     use serial_test::serial;
@@ -196,6 +198,25 @@ mod tests {
                 None => env::remove_var("CC_SWITCH_TEST_HOME"),
             }
         }
+    }
+
+    fn extract_credentials(
+        provider: &Provider,
+        app_type: &AppType,
+    ) -> Result<(String, String), AppError> {
+        if matches!(app_type, AppType::ClaudeDesktop) {
+            let credentials = crate::claude_desktop_config::direct_gateway_credentials(provider)?;
+            return Ok((credentials.api_key, credentials.base_url));
+        }
+
+        let credentials = provider_credential_values(provider, app_type)
+            .map_err(credential_issue_to_app_error)?;
+        Ok((credentials.api_key, credentials.base_url))
+    }
+
+    fn credential_issue_to_app_error(issue: ProviderCredentialIssue) -> AppError {
+        let spec = provider_credential_issue_spec(issue);
+        AppError::localized(spec.key, spec.zh, spec.en)
     }
 
     #[cfg(windows)]
@@ -420,8 +441,7 @@ mod tests {
             }),
             None,
         );
-        let (api_key, base_url) =
-            ProviderService::extract_credentials(&provider, &AppType::Claude).unwrap();
+        let (api_key, base_url) = extract_credentials(&provider, &AppType::Claude).unwrap();
         assert_eq!(api_key, "token");
         assert_eq!(base_url, "https://claude.example");
     }
@@ -439,8 +459,7 @@ mod tests {
             }),
             None,
         );
-        let (api_key, base_url) =
-            ProviderService::extract_credentials(&provider, &AppType::Codex).unwrap();
+        let (api_key, base_url) = extract_credentials(&provider, &AppType::Codex).unwrap();
         assert_eq!(api_key, "sk-test");
         assert_eq!(base_url, "https://codex.example/v1");
     }
@@ -458,8 +477,7 @@ mod tests {
             }),
             None,
         );
-        let (api_key, base_url) =
-            ProviderService::extract_credentials(&provider, &AppType::Gemini).unwrap();
+        let (api_key, base_url) = extract_credentials(&provider, &AppType::Gemini).unwrap();
         assert_eq!(api_key, "AIza-test");
         assert_eq!(base_url, "https://gemini.example");
     }
@@ -477,8 +495,7 @@ mod tests {
             }),
             None,
         );
-        let (api_key, base_url) =
-            ProviderService::extract_credentials(&provider, &AppType::OpenCode).unwrap();
+        let (api_key, base_url) = extract_credentials(&provider, &AppType::OpenCode).unwrap();
         assert_eq!(api_key, "sk-opencode");
         assert_eq!(base_url, "https://opencode.example");
     }
@@ -494,8 +511,7 @@ mod tests {
             }),
             None,
         );
-        let (api_key, base_url) =
-            ProviderService::extract_credentials(&provider, &AppType::OpenClaw).unwrap();
+        let (api_key, base_url) = extract_credentials(&provider, &AppType::OpenClaw).unwrap();
         assert_eq!(api_key, "sk-openclaw");
         assert_eq!(base_url, "https://openclaw.example");
     }
@@ -2318,26 +2334,6 @@ impl ProviderService {
         provider_id: &str,
     ) -> AppError {
         let spec = provider_settings_validation_issue_spec(issue, provider_id);
-        AppError::localized(spec.key, spec.zh, spec.en)
-    }
-
-    #[allow(dead_code)]
-    fn extract_credentials(
-        provider: &Provider,
-        app_type: &AppType,
-    ) -> Result<(String, String), AppError> {
-        if matches!(app_type, AppType::ClaudeDesktop) {
-            let credentials = crate::claude_desktop_config::direct_gateway_credentials(provider)?;
-            return Ok((credentials.api_key, credentials.base_url));
-        }
-
-        let credentials = provider_credential_values(provider, app_type)
-            .map_err(Self::credential_issue_to_app_error)?;
-        Ok((credentials.api_key, credentials.base_url))
-    }
-
-    fn credential_issue_to_app_error(issue: ProviderCredentialIssue) -> AppError {
-        let spec = provider_credential_issue_spec(issue);
         AppError::localized(spec.key, spec.zh, spec.en)
     }
 }

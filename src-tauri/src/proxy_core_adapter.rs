@@ -326,7 +326,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled,
     apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
     codex_auth_has_oauth_login_material as core_codex_auth_has_oauth_login_material,
-    codex_auth_object_value_from_settings,
     codex_base_url_from_settings as core_codex_base_url_from_settings,
     codex_config_has_base_url_matching as core_codex_config_has_base_url_matching,
     codex_config_text_from_settings,
@@ -355,8 +354,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_additive_update_route_for_app as core_provider_additive_update_route,
     provider_app_has_current_provider as core_provider_app_has_current_provider,
-    provider_codex_credential_values_from_parts as core_provider_codex_credential_values_from_parts,
-    provider_credential_issue_spec,
     provider_default_live_import_category_from_parts as core_provider_default_live_import_category_from_parts,
     provider_default_live_import_settings as core_provider_default_live_import_settings,
     provider_delete_is_current_provider,
@@ -366,7 +363,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_live_removal_target_for_app as core_provider_live_removal_target,
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
-    provider_non_codex_credential_values_from_settings as core_provider_non_codex_credential_values_from_settings,
     provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
     provider_omo_variant_for_app_category as core_provider_omo_variant_for_category,
     provider_settings_validation_issue_spec,
@@ -394,13 +390,12 @@ pub(crate) use crate::proxy_core::api::ports::{
     should_skip_provider_legacy_common_config_migration as core_should_skip_provider_legacy_common_config_migration,
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
     validate_gemini_settings_basic as core_validate_gemini_settings_basic,
-    validate_gemini_settings_strict as core_validate_gemini_settings_strict, CodexCredentialParts,
+    validate_gemini_settings_strict as core_validate_gemini_settings_strict,
     CodexLiveSettingsIssue, CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
     CodexLiveTakeoverMatchFacts, CodexProviderBackfillParts, CodexProviderLiveWriteIssue,
     CodexProviderLiveWriteParts, GeminiAuthType, GeminiAuthTypeInput, GeminiEnvParseIssue,
     GeminiLiveConfigIssue, GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue,
-    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderCredentialIssue,
-    ProviderCredentialValues as CoreProviderCredentialValues, ProviderKeyChangePolicyIssue,
+    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
     ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
     ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
     ProviderSettingsValidationParts, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
@@ -410,6 +405,17 @@ pub(crate) use crate::proxy_core::api::ports::{
     claude_env_credentials_from_settings, gemini_env_map_from_settings,
     openclaw_credential_parts_from_settings, opencode_credential_parts_from_settings,
     CodexProviderValidationIssue, OpenCodeCredentialIssue,
+};
+#[cfg(test)]
+use crate::proxy_core::api::ports::{
+    codex_auth_object_value_from_settings,
+    provider_codex_credential_values_from_parts as core_provider_codex_credential_values_from_parts,
+    provider_non_codex_credential_values_from_settings as core_provider_non_codex_credential_values_from_settings,
+    CodexCredentialParts, ProviderCredentialValues as CoreProviderCredentialValues,
+};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::ports::{
+    provider_credential_issue_spec, ProviderCredentialIssue,
 };
 
 const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
@@ -2242,8 +2248,10 @@ pub(crate) fn provider_switch_should_mark_live_config_managed(
     )
 }
 
+#[cfg(test)]
 pub(crate) type ProviderCredentialValues = CoreProviderCredentialValues;
 
+#[cfg(test)]
 pub(crate) fn provider_credential_values(
     provider: &Provider,
     app_type: &AppType,
@@ -3510,6 +3518,7 @@ pub(crate) fn provider_codex_auth_info(provider: &Provider) -> Option<ProviderAu
     provider_codex_api_key(provider).map(core_codex_auth_info_from_api_key)
 }
 
+#[cfg(test)]
 pub(crate) fn codex_api_key_from_auth_and_config(
     auth: Option<&Value>,
     config_text: Option<&str>,

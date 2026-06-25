@@ -3524,6 +3524,12 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
 
+    assert!(
+        source.contains("#[cfg(test)]\npub(crate) type ProviderCredentialValues")
+            && source.contains("#[cfg(test)]\npub(crate) fn provider_credential_values"),
+        "proxy_core_adapter credential value helper should remain test-only after production facade removal"
+    );
+
     let slice = function_slice(
         &source,
         "pub(crate) fn provider_credential_values",
@@ -3546,6 +3552,24 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
         violations.is_empty(),
         "proxy_core_adapter must keep Codex credential base_url parsing/error policy in proxy-core:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_service_excludes_credential_extract_facade() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/provider/mod.rs");
+    let source = fs::read_to_string(&path).expect("read services/provider/mod.rs");
+    let provider_service_impl = function_slice(
+        &source,
+        "impl ProviderService {",
+        "#[derive(Debug, Clone, Deserialize)]",
+    );
+
+    assert!(
+        !provider_service_impl.contains("fn extract_credentials(")
+            && !provider_service_impl.contains("#[allow(dead_code)]"),
+        "ProviderService production impl should not retain test-only credential extraction facades"
     );
 }
 
