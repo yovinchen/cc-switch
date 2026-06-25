@@ -41,12 +41,12 @@ use crate::proxy_core_adapter::{
     transform_codex_chat_response_with_history, transform_codex_chat_sse_with_history,
     ActiveConnectionGuard, AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse,
     AppKind, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
-    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
-    ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
-    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
+    ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
+    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord,
+    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
     ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CodexToolContext,
     CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
     HealthCheckResponse, InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest,
@@ -463,6 +463,22 @@ pub async fn materialize_proxy_channel_migration(
     let response = state
         .proxy_engine()
         .channel_migration_materialize_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
+}
+
+/// GET /proxy/v1/channels/{channel_id}/breakers/stats
+pub async fn get_proxy_channel_breaker_stats(
+    State(state): State<ProxyState>,
+    Path(channel_id): Path<String>,
+) -> Result<Json<ChannelBreakerStatsResponse>, ProxyError> {
+    let request =
+        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .channel_breaker_stats_response(request)
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
 

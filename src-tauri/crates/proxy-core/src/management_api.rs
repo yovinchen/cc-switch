@@ -4,8 +4,9 @@ use super::domain::{
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-    AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyRecordResponse,
+    AppListResponse, AppModelListQuery, AppSummaryInput, ChannelBreakerStatsResponse,
+    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
+    ChannelKeyRecordResponse,
     ChannelKeysResponse, ChannelListQuery, ChannelListResponse,
     ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
     ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelsResponse,
@@ -538,6 +539,17 @@ impl ChannelHealthResetSource {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ChannelBreakerStatsSource {
+    pub response: ChannelBreakerStatsResponse,
+}
+
+impl ChannelBreakerStatsSource {
+    pub fn new(response: ChannelBreakerStatsResponse) -> Self {
+        Self { response }
+    }
+}
+
 impl ChannelPathRequest {
     pub fn from_path(channel_id: impl AsRef<str>) -> ProxyCoreResult<Self> {
         Ok(Self {
@@ -608,6 +620,13 @@ impl ChannelPathRequest {
         &self,
         source: ChannelHealthResetSource,
     ) -> ChannelHealthResetResponse {
+        source.response
+    }
+
+    pub fn breaker_stats_response_from_source(
+        &self,
+        source: ChannelBreakerStatsSource,
+    ) -> ChannelBreakerStatsResponse {
         source.response
     }
 
@@ -1021,10 +1040,11 @@ mod tests {
     use super::{
         AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
         AppListRequest, AppListSource, AppModelCatalogRequest, AppModelCatalogSource,
-        ChannelCreateRequest, ChannelCreateSource, ChannelDeleteSource, ChannelHealthResetSource,
-        ChannelKeyDeleteSource, ChannelKeyPathRequest, ChannelKeyRecordSource, ChannelKeysSource,
-        ChannelListPlan, ChannelListRequest, ChannelListSource, ChannelMigrationMaterializeSource,
-        ChannelMigrationPreviewSource, ChannelModelsSource, ChannelPathRequest,
+        ChannelBreakerStatsSource, ChannelCreateRequest, ChannelCreateSource, ChannelDeleteSource,
+        ChannelHealthResetSource, ChannelKeyDeleteSource, ChannelKeyPathRequest,
+        ChannelKeyRecordSource, ChannelKeysSource, ChannelListPlan, ChannelListRequest,
+        ChannelListSource, ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource,
+        ChannelModelsSource, ChannelPathRequest,
         ChannelRecordSource, CurrentRouteSource, GroupListChannelRecordInput,
         GroupListChannelSource, GroupListRequest, HealthCheckRequest, HealthCheckSource,
         ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest, ProxyStatusSource,
@@ -1457,6 +1477,23 @@ mod tests {
         assert_eq!(response.channel_id, "channel-a");
         assert_eq!(response.app_type, "claude");
         assert!(response.reset);
+    }
+
+    #[test]
+    fn channel_path_request_wraps_breaker_stats_response() {
+        let request = ChannelPathRequest::from_path("channel-a").expect("request");
+        let response =
+            request.breaker_stats_response_from_source(ChannelBreakerStatsSource::new(
+                crate::ports::ChannelBreakerStatsResponse {
+                    channel_id: "channel-a".to_string(),
+                    app_type: "claude".to_string(),
+                    stats: None,
+                },
+            ));
+
+        assert_eq!(response.channel_id, "channel-a");
+        assert_eq!(response.app_type, "claude");
+        assert!(response.stats.is_none());
     }
 
     #[test]

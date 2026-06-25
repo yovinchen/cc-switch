@@ -1,5 +1,6 @@
 use super::cache_injector::CacheInjectionConfig;
 use super::claude_desktop_gateway_auth::ClaudeDesktopModelRouteInput;
+use super::circuit_breaker_config::CircuitBreakerStats;
 use super::domain::{
     AppKind, AuthProfileRef, ChannelAttemptResult, ChannelQuery, ChannelSpec, InterfaceKind,
     ModelRoute, ProviderAttemptResult, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan,
@@ -303,6 +304,18 @@ pub trait ChannelHealthStore: Send + Sync {
         &'a self,
         channel_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>>;
+
+    fn channel_breaker_stats<'a>(
+        &'a self,
+        channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelBreakerStats>> {
+        let channel_id = channel_id.to_string();
+        Box::pin(async move {
+            Err(ProxyCoreError::Unavailable(format!(
+                "channel breaker stats source is not configured for {channel_id}"
+            )))
+        })
+    }
 }
 
 pub trait ProviderHealthStore: Send + Sync {
@@ -4128,6 +4141,14 @@ pub struct ChannelHealthReset {
     pub app: AppKind,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelBreakerStats {
+    pub channel_id: String,
+    pub app: AppKind,
+    pub stats: Option<CircuitBreakerStats>,
+}
+
 pub fn channel_health_reset_from_parts(
     channel_id: impl Into<String>,
     app_type: &str,
@@ -4135,6 +4156,18 @@ pub fn channel_health_reset_from_parts(
     ChannelHealthReset {
         channel_id: channel_id.into(),
         app: AppKind::from(app_type),
+    }
+}
+
+pub fn channel_breaker_stats_from_parts(
+    channel_id: impl Into<String>,
+    app_type: &str,
+    stats: Option<CircuitBreakerStats>,
+) -> ChannelBreakerStats {
+    ChannelBreakerStats {
+        channel_id: channel_id.into(),
+        app: AppKind::from(app_type),
+        stats,
     }
 }
 
@@ -4216,6 +4249,24 @@ impl ChannelHealthResetResponse {
             channel_id: reset.channel_id,
             app_type: reset.app.as_str().to_string(),
             reset: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelBreakerStatsResponse {
+    pub channel_id: String,
+    pub app_type: String,
+    pub stats: Option<CircuitBreakerStats>,
+}
+
+impl ChannelBreakerStatsResponse {
+    pub fn from_stats(stats: ChannelBreakerStats) -> Self {
+        Self {
+            channel_id: stats.channel_id,
+            app_type: stats.app.as_str().to_string(),
+            stats: stats.stats,
         }
     }
 }

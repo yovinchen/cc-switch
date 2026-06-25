@@ -2594,7 +2594,7 @@ fn channel_migration_handlers_delegate_sources_to_proxy_engine() {
             function_slice(
                 &source,
                 "pub async fn materialize_proxy_channel_migration",
-                "/// POST /proxy/v1/channels/{channel_id}/breakers/reset",
+                "/// GET /proxy/v1/channels/{channel_id}/breakers/stats",
             ),
         ),
     ];
@@ -2629,6 +2629,44 @@ fn channel_migration_handlers_delegate_sources_to_proxy_engine() {
     assert!(
         violations.is_empty(),
         "channel migration HTTP handlers must delegate preview/materialize sources to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn channel_breaker_stats_handler_delegates_response_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "pub async fn get_proxy_channel_breaker_stats",
+        "/// POST /proxy/v1/channels/{channel_id}/breakers/reset",
+    );
+    let forbidden_markers = [
+        "state.db",
+        "channel_breaker_stats_with_router_source",
+        ".get_channel_circuit_breaker_stats(",
+        ".breaker_stats_response_from_source(",
+    ];
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs get_proxy_channel_breaker_stats:{} contains breaker stats source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "channel breaker stats HTTP handler must delegate response wrapping to ProxyEngine:\n{}",
         violations.join("\n")
     );
 }
@@ -11724,6 +11762,39 @@ fn production_provider_router_resets_channel_health_with_core_reset_fact() {
     assert!(
         !router_slice.contains(".reset_channel_health(channel_id)"),
         "ProviderRouter must not reset channel health through a bare channel_id"
+    );
+}
+
+#[test]
+fn production_channel_health_store_reads_channel_breaker_stats_through_core_port() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_slice = function_slice(
+        &adapter_source,
+        "pub(crate) async fn channel_breaker_stats_with_router_source",
+        "pub(crate) fn proxy_response_to_core_response",
+    );
+
+    assert!(
+        adapter_slice.contains(".get_proxy_channel_app_type(channel_id)")
+            && adapter_slice.contains(".get_channel_circuit_breaker_stats(channel_id, &app_type)")
+            && adapter_slice.contains("channel_breaker_stats_from_parts(")
+            && adapter_slice.contains("fn channel_breaker_stats<'a>("),
+        "ChannelHealthStore adapter must expose channel breaker stats through a core stats fact"
+    );
+
+    let router_path = manifest_dir.join("src/proxy/provider_router.rs");
+    let router_source = fs::read_to_string(&router_path).expect("read provider_router.rs");
+    let stats_slice = function_slice(
+        &router_source,
+        "pub async fn get_channel_circuit_breaker_stats",
+        "    async fn failure_threshold_for_app",
+    );
+
+    assert!(
+        !stats_slice.contains("#[cfg(test)]"),
+        "ProviderRouter channel breaker stats must stay production-visible for management API"
     );
 }
 

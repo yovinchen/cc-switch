@@ -2683,16 +2683,17 @@ pub(crate) use crate::proxy_core::api::management::{
     stream_check_failed_result, stream_check_failed_result_with_retry_count,
     stream_check_result_from_probe_result, AppChannelListQuery, AppChannelManagementRequest,
     AppChannelResponse, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
-    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelHealthUpdateInput, ChannelKeyDeleteResponse, ChannelKeyPathRequest,
-    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
-    ChannelListResponse, ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelsResponse,
-    ChannelPathRequest, ChannelRecordResponse, ChannelRouteRejected, ChannelTestProbeRequest,
-    ChannelTestResponse, CurrentRouteResponse, GroupListQuery, GroupListRequest,
-    HealthCheckRequest, HealthCheckResponse, ManagementAppPathRequest, ProviderHealthUpdateInput,
-    ProviderListResponse, ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest,
-    ProxyStatusRequest, ProxyStatusResponse, RouteGroupListResponse, RouteResolveManagementRequest,
+    ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
+    ChannelHealthResetResponse, ChannelHealthUpdateInput, ChannelKeyDeleteResponse,
+    ChannelKeyPathRequest, ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery,
+    ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeInput,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
+    ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelPathRequest,
+    ChannelRecordResponse, ChannelRouteRejected, ChannelTestProbeRequest, ChannelTestResponse,
+    CurrentRouteResponse, GroupListQuery, GroupListRequest, HealthCheckRequest,
+    HealthCheckResponse, ManagementAppPathRequest, ProviderHealthUpdateInput, ProviderListResponse,
+    ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest, ProxyStatusRequest,
+    ProxyStatusResponse, RouteGroupListResponse, RouteResolveManagementRequest,
     StreamCheckConfigOverride, CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 #[cfg(test)]
@@ -2706,8 +2707,9 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
     RoutableModelList,
 };
 pub(crate) use crate::proxy_core::api::ports::{
-    channel_health_reset_from_parts, AppSummaryConfig, AuthProvider, ChannelHealthReset,
-    ChannelHealthStore, ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource,
+    channel_breaker_stats_from_parts, channel_health_reset_from_parts, AppSummaryConfig,
+    AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelHealthStore,
+    ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource,
     ClaudeDesktopGatewayAuthSource, ForwardPipeline, ManagementAuthRuntimeConfig,
     ManagementAuthSource, ModelCatalogProvider, ProviderHealthStore, ProviderSource,
     ProxyConfigSource, ProxyEventSink, ProxyServices, RoutePolicySource, RouteResolver,
@@ -9662,6 +9664,26 @@ pub(crate) async fn reset_channel_health_with_router_source(
     ))
 }
 
+pub(crate) async fn channel_breaker_stats_with_router_source(
+    db: &Database,
+    router: &ProviderRouter,
+    channel_id: &str,
+) -> ProxyCoreResult<ChannelBreakerStats> {
+    let app_type = db
+        .get_proxy_channel_app_type(channel_id)
+        .map_err(|error| app_error("lookup channel app", error))?
+        .ok_or_else(|| channel_not_found_error(channel_id))?;
+    let stats = router
+        .get_channel_circuit_breaker_stats(channel_id, &app_type)
+        .await;
+
+    Ok(channel_breaker_stats_from_parts(
+        channel_id,
+        app_type.as_str(),
+        stats,
+    ))
+}
+
 #[derive(Clone)]
 pub(crate) struct CcSwitchChannelHealthStore {
     db: Arc<Database>,
@@ -9688,6 +9710,15 @@ impl ChannelHealthStore for CcSwitchChannelHealthStore {
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>> {
         Box::pin(async move {
             reset_channel_health_with_router_source(&self.db, &self.router, channel_id).await
+        })
+    }
+
+    fn channel_breaker_stats<'a>(
+        &'a self,
+        channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelBreakerStats>> {
+        Box::pin(async move {
+            channel_breaker_stats_with_router_source(&self.db, &self.router, channel_id).await
         })
     }
 }

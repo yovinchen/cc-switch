@@ -13,8 +13,8 @@ use super::management_auth::{
 };
 use super::management_api::{
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest, AppListRequest,
-    AppListSource, AppModelCatalogRequest, ChannelCreateRequest, ChannelCreateSource,
-    ChannelDeleteSource, ChannelHealthResetSource,
+    AppListSource, AppModelCatalogRequest, ChannelBreakerStatsSource, ChannelCreateRequest,
+    ChannelCreateSource, ChannelDeleteSource, ChannelHealthResetSource,
     ChannelKeyDeleteSource, ChannelKeyPathRequest, ChannelKeyRecordSource, ChannelKeysSource,
     ChannelListPlan, ChannelListRequest, ChannelListSource,
     ChannelModelsSource,
@@ -24,8 +24,8 @@ use super::management_api::{
     ProxyStatusRequest, ProxyStatusSource, RouteResolveManagementRequest,
 };
 use super::ports::{
-    AppChannelResponse, AppListResponse, ChannelDeleteResponse, ChannelHealthReset,
-    ChannelHealthResetResponse,
+    AppChannelResponse, AppListResponse, ChannelBreakerStats, ChannelBreakerStatsResponse,
+    ChannelDeleteResponse, ChannelHealthReset, ChannelHealthResetResponse,
     ChannelKeyDeleteResponse, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
     ChannelModelRecord, ChannelModelsResponse, ChannelRecord, ChannelRecordResponse,
@@ -606,6 +606,16 @@ where
         self.services.health_store().reset_channel(channel_id).await
     }
 
+    pub async fn channel_breaker_stats(
+        &self,
+        channel_id: &str,
+    ) -> ProxyCoreResult<ChannelBreakerStats> {
+        self.services
+            .health_store()
+            .channel_breaker_stats(channel_id)
+            .await
+    }
+
     pub async fn reset_channel_health_response(
         &self,
         request: ChannelPathRequest,
@@ -615,6 +625,19 @@ where
             .await
             .map(ChannelHealthResetResponse::from_reset)?;
         Ok(request.health_reset_response_from_source(ChannelHealthResetSource::new(
+            response,
+        )))
+    }
+
+    pub async fn channel_breaker_stats_response(
+        &self,
+        request: ChannelPathRequest,
+    ) -> ProxyCoreResult<ChannelBreakerStatsResponse> {
+        let response = self
+            .channel_breaker_stats(&request.channel_id)
+            .await
+            .map(ChannelBreakerStatsResponse::from_stats)?;
+        Ok(request.breaker_stats_response_from_source(ChannelBreakerStatsSource::new(
             response,
         )))
     }
@@ -1358,6 +1381,19 @@ mod tests {
                 Ok(ChannelHealthReset {
                     channel_id: channel_id.to_string(),
                     app: AppKind::Claude,
+                })
+            })
+        }
+
+        fn channel_breaker_stats<'a>(
+            &'a self,
+            channel_id: &'a str,
+        ) -> BoxFuture<'a, ProxyCoreResult<ChannelBreakerStats>> {
+            Box::pin(async move {
+                Ok(ChannelBreakerStats {
+                    channel_id: channel_id.to_string(),
+                    app: AppKind::Claude,
+                    stats: None,
                 })
             })
         }
@@ -2255,6 +2291,26 @@ mod tests {
         assert_eq!(value["channelId"], "channel-a");
         assert_eq!(value["appType"], "claude");
         assert_eq!(value["reset"], true);
+    }
+
+    #[test]
+    fn channel_breaker_stats_response_wraps_management_envelope() {
+        let services = Arc::new(TestServices::default());
+        let engine = ProxyEngine::new(services);
+
+        let response = futures::executor::block_on(engine.channel_breaker_stats_response(
+            ChannelPathRequest::from_path("channel-a").expect("channel path"),
+        ))
+        .expect("stats response");
+
+        assert_eq!(response.channel_id, "channel-a");
+        assert_eq!(response.app_type, "claude");
+        assert!(response.stats.is_none());
+
+        let value = serde_json::to_value(&response).expect("serialize stats response");
+        assert_eq!(value["channelId"], "channel-a");
+        assert_eq!(value["appType"], "claude");
+        assert!(value["stats"].is_null());
     }
 
     #[test]

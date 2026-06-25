@@ -342,7 +342,6 @@ impl ProviderRouter {
     }
 
     /// 获取 Channel 熔断器状态
-    #[cfg(test)]
     pub async fn get_channel_circuit_breaker_stats(
         &self,
         channel_id: &str,

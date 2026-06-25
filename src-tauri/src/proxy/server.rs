@@ -320,6 +320,10 @@ impl ProxyServer {
                 post(handlers::materialize_proxy_channel_migration),
             )
             .route(
+                "/proxy/v1/channels/:channel_id/breakers/stats",
+                get(handlers::get_proxy_channel_breaker_stats),
+            )
+            .route(
                 "/proxy/v1/channels/:channel_id/breakers/reset",
                 post(handlers::reset_proxy_channel_breaker),
             )
@@ -2315,6 +2319,23 @@ mod tests {
         .await
         .unwrap();
         assert!(blocked.candidates.is_empty());
+
+        let stats_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri(format!("/proxy/v1/channels/{channel_id}/breakers/stats"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats = response_json(stats_response).await;
+        assert_eq!(stats["channelId"], channel_id);
+        assert_eq!(stats["appType"], "claude");
+        assert_eq!(stats["stats"]["state"], "open");
+        assert_eq!(stats["stats"]["failedRequests"], 1);
 
         let reset_response = Service::call(
             &mut router,

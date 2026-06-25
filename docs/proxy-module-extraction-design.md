@@ -1514,6 +1514,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1072. 删除生产 `ProviderService::extract_credentials` dead-code facade；原测试改用 test-local helper 调用 test-only adapter/core `provider_credential_values` contract，`codex_api_key_from_auth_and_config` 同步收成 test-only，新增 boundary marker 防止 ProviderService 重新承载未使用的凭据提取入口。
 1073. `CircuitBreaker::get_state` 改为 `#[cfg(test)]`；测试继续使用裸状态断言，生产 circuit breaker 只保留已被 runtime/management 使用的 stats/reset surface，并新增 boundary marker 防止 test accessor 以 dead-code 形式回流。
 1074. `get_circuit_breaker_stats` Tauri command 从占位 `Ok(None)` 改为委托 `ProxyService::get_provider_circuit_breaker_stats`，并新增 `ProxyServer` / adapter source 到 `ProviderRouter::get_circuit_breaker_stats` 的运行时读取链路；ProviderRouter provider stats 与 CircuitBreaker stats/reset 不再需要 dead-code allowance，channel stats 收成 test-only。
+1075. 新增 `/proxy/v1/channels/{channel_id}/breakers/stats` 管理 API，`ChannelHealthStore` 增加 channel breaker stats 端口并由 CC Switch adapter 查 channel 所属 app 后读取 `ProviderRouter::get_channel_circuit_breaker_stats`；channel 级运行态 stats 现在可通过 core `ChannelBreakerStatsResponse` 对外暴露，支撑每个中转地址独立观测熔断状态。
 
 ## 背景
 

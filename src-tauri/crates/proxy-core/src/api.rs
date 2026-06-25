@@ -70,7 +70,7 @@ pub mod management {
         should_retry_channel_reachability_failure, stream_check_failed_result,
         stream_check_failed_result_with_retry_count, stream_check_result_from_probe_result,
         AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery,
-        AppSummaryInput, ChannelDeleteResponse,
+        AppSummaryInput, ChannelBreakerStatsResponse, ChannelDeleteResponse,
         CHANNEL_HEALTH_UNKNOWN_STATUS, ChannelHealthResetResponse, ChannelHealthUpdate,
         ChannelHealthUpdateInput, ChannelKeyDeleteResponse, ChannelKeyRecord,
         ChannelKeyRecordInput, ChannelKeyRecordResponse, ChannelKeyRuntimeCandidate,
@@ -109,8 +109,9 @@ pub mod ports {
     pub use crate::ports::{
         app_proxy_config_defaults_for_app, auth_info_from_profile_ref,
         auth_info_from_route_context, AppProxyConfig, AppSummaryConfig, AuthInfo, AuthProvider,
-        ChannelHealthReset, ChannelHealthResetResponse, ChannelHealthStore,
-        ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelModelRecord, ChannelSource,
+        ChannelBreakerStats, ChannelBreakerStatsResponse, ChannelHealthReset,
+        ChannelHealthResetResponse, ChannelHealthStore, ChannelKeyRuntimeSource,
+        ChannelReachabilityProbe, ChannelModelRecord, ChannelSource,
         CopilotOptimizerConfig, CopilotOptimizerConfigSpec, CurrentRouteChannelTargetInput,
         CurrentRouteTarget, CurrentRouteTargetInput, ForwardCurrentProviderStatusInput,
         ForwardFailureStatusInput, ForwardPipeline, ForwardProviderFailureStatusInput,
@@ -120,8 +121,9 @@ pub mod ports {
         OptimizerConfigSpec,
         DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD, DEFAULT_PROXY_LISTEN_ADDRESS,
         DEFAULT_PROXY_LISTEN_PORT, app_proxy_config_raw, app_proxy_config_with_enabled,
-        apply_proxy_runtime_active_targets, channel_health_reset_from_parts,
-        copilot_optimizer_config_spec_from_config, current_route_target_from_input,
+        apply_proxy_runtime_active_targets, channel_breaker_stats_from_parts,
+        channel_health_reset_from_parts, copilot_optimizer_config_spec_from_config,
+        current_route_target_from_input,
         optimizer_config_spec_from_config,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_preserving_live_takeover_active, proxy_config_with_live_takeover_active,
@@ -360,9 +362,9 @@ pub mod prelude {
     pub use super::events::{ProxyCoreEvent, ProxyCoreEventType};
     pub use super::management::{
         AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery,
-        AppModelCatalogRequest, AppModelCatalogSource, ChannelDeleteResponse,
-        ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyRecord,
-        ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListResponse,
+        AppModelCatalogRequest, AppModelCatalogSource, ChannelBreakerStatsResponse,
+        ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
+        ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListResponse,
         ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
         ChannelModelsResponse, ChannelReachabilityResult, ChannelRecord, ChannelRecordResponse,
         ChannelTestProbeRequest, ChannelTestResponse, CurrentRouteResponse, GroupListQuery,
@@ -379,8 +381,8 @@ pub mod prelude {
     };
     pub use super::ports::CurrentRouteTarget;
     pub use super::ports::{
-        AuthInfo, AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelKeyRuntimeSource,
-        ChannelReachabilityProbe, ChannelSource, ForwardPipeline, ModelCatalogProvider,
+        AuthInfo, AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelHealthStore,
+        ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource, ForwardPipeline, ModelCatalogProvider,
         ProviderAttemptResult,
         ProviderHealthStore, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
         ClaudeDesktopGatewayAuthSource, ManagementAuthRuntimeConfig, ManagementAuthSource,
@@ -606,6 +608,20 @@ mod tests {
                     Ok(ChannelHealthReset {
                         channel_id,
                         app: AppKind::Claude,
+                    })
+                })
+            }
+
+            fn channel_breaker_stats<'a>(
+                &'a self,
+                channel_id: &'a str,
+            ) -> BoxFuture<'a, ProxyCoreResult<ChannelBreakerStats>> {
+                let channel_id = channel_id.to_string();
+                Box::pin(async move {
+                    Ok(ChannelBreakerStats {
+                        channel_id,
+                        app: AppKind::Claude,
+                        stats: None,
                     })
                 })
             }
