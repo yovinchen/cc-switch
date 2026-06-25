@@ -4897,6 +4897,52 @@ fn claude_desktop_config_delegates_proxy_request_route_lookup_to_adapter() {
 }
 
 #[test]
+fn claude_desktop_config_delegates_direct_model_specs_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let direct_specs_slice = function_slice(
+        &source,
+        "fn direct_inference_model_specs(",
+        "pub fn proxy_model_routes(",
+    );
+
+    assert!(
+        direct_specs_slice.contains("claude_desktop_direct_inference_model_specs(")
+            && direct_specs_slice.contains("ClaudeDesktopProxyRouteInput"),
+        "claude_desktop_config should delegate direct inference model specs to proxy_core_adapter/core"
+    );
+
+    let forbidden_markers = [
+        "is_claude_safe_model_id(",
+        "direct_mapping_unsupported",
+        "route_invalid",
+        "upstream_model != route_id",
+        "supports_1m.cmp",
+        "dedup_by(|a, b| a.name == b.name)",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(direct_specs_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/claude_desktop_config.rs direct_inference_model_specs:{} contains direct model policy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "claude_desktop_config must keep direct model route policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

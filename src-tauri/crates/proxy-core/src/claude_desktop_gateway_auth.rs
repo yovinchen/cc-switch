@@ -94,6 +94,13 @@ pub struct ClaudeDesktopResolvedProxyRoute {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaudeDesktopDirectInferenceModelSpec {
+    pub name: String,
+    pub label_override: Option<String>,
+    pub supports_1m: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaudeDesktopDirectProviderValidationIssue {
     SettingsNotObject,
     ApiFormatUnsupported,
@@ -106,6 +113,17 @@ pub enum ClaudeDesktopDirectProviderValidationIssue {
 pub enum ClaudeDesktopProxyProviderConfigValidationIssue {
     SettingsNotObject,
     ApiFormatUnsupported(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaudeDesktopDirectModelRouteIssue {
+    InvalidRouteId {
+        route_id: String,
+    },
+    MappingUnsupported {
+        route_id: String,
+        upstream_model: String,
+    },
 }
 
 pub fn claude_desktop_routes_support_1m_by_default(provider_type: Option<&str>) -> bool {
@@ -195,6 +213,49 @@ pub fn claude_desktop_proxy_model_routes<'a>(
     result.sort_by(|a, b| a.route_id.cmp(&b.route_id));
     result.dedup_by(|a, b| a.route_id == b.route_id);
     result
+}
+
+pub fn claude_desktop_direct_inference_model_specs<'a>(
+    routes: impl IntoIterator<Item = ClaudeDesktopProxyRouteInput<'a>>,
+) -> Result<Vec<ClaudeDesktopDirectInferenceModelSpec>, ClaudeDesktopDirectModelRouteIssue> {
+    let mut result = Vec::new();
+    for route in routes {
+        let route_id = route.route_id.trim();
+        if route_id.is_empty() {
+            continue;
+        }
+        if !claude_desktop_model_id_is_profile_safe(route_id) {
+            return Err(ClaudeDesktopDirectModelRouteIssue::InvalidRouteId {
+                route_id: route_id.to_string(),
+            });
+        }
+
+        let upstream_model = route.upstream_model.trim();
+        if !upstream_model.is_empty() && upstream_model != route_id {
+            return Err(ClaudeDesktopDirectModelRouteIssue::MappingUnsupported {
+                route_id: route_id.to_string(),
+                upstream_model: upstream_model.to_string(),
+            });
+        }
+
+        result.push(ClaudeDesktopDirectInferenceModelSpec {
+            name: route_id.to_string(),
+            label_override: route
+                .label_override
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            supports_1m: route.supports_1m,
+        });
+    }
+
+    result.sort_by(|a, b| {
+        a.name
+            .cmp(&b.name)
+            .then_with(|| b.supports_1m.cmp(&a.supports_1m))
+    });
+    result.dedup_by(|a, b| a.name == b.name);
+    Ok(result)
 }
 
 pub fn claude_desktop_proxy_request_upstream_model<'a>(
@@ -482,6 +543,7 @@ fn is_false(value: &bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
+        claude_desktop_direct_inference_model_specs,
         claude_desktop_direct_provider_validation_issue, claude_desktop_gateway_token_error,
         claude_desktop_model_id_is_profile_safe, claude_desktop_provider_models_are_profile_safe,
         claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
@@ -490,10 +552,11 @@ mod tests {
         claude_desktop_proxy_provider_config_validation_issue,
         claude_desktop_proxy_request_upstream_model, claude_desktop_routes_support_1m_by_default,
         validate_claude_desktop_gateway_bearer_header,
-        validate_claude_desktop_gateway_bearer_value, ClaudeDesktopDirectProviderValidationIssue,
-        ClaudeDesktopGatewayAuthError, ClaudeDesktopModelListResponse,
-        ClaudeDesktopModelRouteInput, ClaudeDesktopProviderValidationInput,
-        ClaudeDesktopProxyProviderConfigValidationIssue, ClaudeDesktopProxyRouteInput,
+        validate_claude_desktop_gateway_bearer_value, ClaudeDesktopDirectModelRouteIssue,
+        ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopGatewayAuthError,
+        ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
+        ClaudeDesktopProviderValidationInput, ClaudeDesktopProxyProviderConfigValidationIssue,
+        ClaudeDesktopProxyRouteInput,
     };
     use crate::error::ProxyCoreError;
     use http::{HeaderMap, HeaderValue};
@@ -681,6 +744,79 @@ mod tests {
         assert_eq!(routes[0].upstream_model, "upstream-a");
         assert_eq!(routes[0].label_override.as_deref(), Some("First"));
         assert!(!routes[0].supports_1m);
+    }
+
+    #[test]
+    fn direct_inference_model_specs_trim_sort_and_deduplicate_routes() {
+        let specs = claude_desktop_direct_inference_model_specs([
+            ClaudeDesktopProxyRouteInput {
+                route_id: " claude-haiku-4-5 ",
+                upstream_model: "",
+                label_override: Some("  Haiku  "),
+                supports_1m: false,
+            },
+            ClaudeDesktopProxyRouteInput {
+                route_id: "claude-sonnet-4-6",
+                upstream_model: "claude-sonnet-4-6",
+                label_override: Some("   "),
+                supports_1m: false,
+            },
+            ClaudeDesktopProxyRouteInput {
+                route_id: "claude-sonnet-4-6",
+                upstream_model: "claude-sonnet-4-6",
+                label_override: Some("Sonnet 1M"),
+                supports_1m: true,
+            },
+            ClaudeDesktopProxyRouteInput {
+                route_id: " ",
+                upstream_model: "ignored",
+                label_override: Some("ignored"),
+                supports_1m: true,
+            },
+        ])
+        .expect("direct specs");
+
+        assert_eq!(specs.len(), 2);
+        assert_eq!(specs[0].name, "claude-haiku-4-5");
+        assert_eq!(specs[0].label_override.as_deref(), Some("Haiku"));
+        assert!(!specs[0].supports_1m);
+        assert_eq!(specs[1].name, "claude-sonnet-4-6");
+        assert_eq!(specs[1].label_override.as_deref(), Some("Sonnet 1M"));
+        assert!(specs[1].supports_1m);
+    }
+
+    #[test]
+    fn direct_inference_model_specs_reject_invalid_route_and_mapping() {
+        let invalid_route =
+            claude_desktop_direct_inference_model_specs([ClaudeDesktopProxyRouteInput {
+                route_id: "claude-old",
+                upstream_model: "claude-old",
+                label_override: None,
+                supports_1m: false,
+            }])
+            .expect_err("invalid route");
+        assert_eq!(
+            invalid_route,
+            ClaudeDesktopDirectModelRouteIssue::InvalidRouteId {
+                route_id: "claude-old".to_string()
+            }
+        );
+
+        let mapped_route =
+            claude_desktop_direct_inference_model_specs([ClaudeDesktopProxyRouteInput {
+                route_id: "claude-sonnet-4-6",
+                upstream_model: "mimo-v2.5-pro",
+                label_override: None,
+                supports_1m: false,
+            }])
+            .expect_err("direct mapping");
+        assert_eq!(
+            mapped_route,
+            ClaudeDesktopDirectModelRouteIssue::MappingUnsupported {
+                route_id: "claude-sonnet-4-6".to_string(),
+                upstream_model: "mimo-v2.5-pro".to_string()
+            }
+        );
     }
 
     #[test]

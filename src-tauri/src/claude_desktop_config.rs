@@ -14,7 +14,7 @@ use crate::proxy_core_adapter::{
     provider_claude_desktop_direct_validation_issue,
     provider_claude_desktop_proxy_config_validation_issue,
     provider_claude_desktop_proxy_has_base_url_and_key,
-    provider_should_normalize_mimo_anthropic_thinking_history,
+    provider_should_normalize_mimo_anthropic_thinking_history, ClaudeDesktopDirectModelRouteIssue,
     ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
 };
 
@@ -135,6 +135,16 @@ struct InferenceModelSpec {
     name: String,
     label_override: Option<String>,
     supports_1m: bool,
+}
+
+impl From<crate::proxy_core_adapter::ClaudeDesktopDirectInferenceModelSpec> for InferenceModelSpec {
+    fn from(spec: crate::proxy_core_adapter::ClaudeDesktopDirectInferenceModelSpec) -> Self {
+        Self {
+            name: spec.name,
+            label_override: spec.label_override,
+            supports_1m: spec.supports_1m,
+        }
+    }
 }
 
 pub fn apply_provider(db: &Database, provider: &Provider) -> Result<(), AppError> {
@@ -410,6 +420,32 @@ fn proxy_config_validation_issue_to_error(
     }
 }
 
+fn direct_model_route_issue_to_error(issue: ClaudeDesktopDirectModelRouteIssue) -> AppError {
+    match issue {
+        ClaudeDesktopDirectModelRouteIssue::InvalidRouteId { route_id } => AppError::localized(
+            "claude_desktop.provider.route_invalid",
+            format!(
+                "Claude Desktop 直连模型必须使用 claude-* 或 anthropic/claude-* 名称: {route_id}"
+            ),
+            format!(
+                "Claude Desktop direct model must use a claude-* or anthropic/claude-* name: {route_id}"
+            ),
+        ),
+        ClaudeDesktopDirectModelRouteIssue::MappingUnsupported {
+            route_id,
+            upstream_model,
+        } => AppError::localized(
+            "claude_desktop.provider.direct_mapping_unsupported",
+            format!(
+                "Claude Desktop 直连模式不能映射模型: {route_id} -> {upstream_model}；非 Claude 官方模型请使用本地路由模式"
+            ),
+            format!(
+                "Claude Desktop direct mode cannot map models: {route_id} -> {upstream_model}; use proxy mode for non-Claude official models"
+            ),
+        ),
+    }
+}
+
 pub fn validate_provider(provider: &Provider) -> Result<(), AppError> {
     if is_official_provider(provider) {
         return Ok(());
@@ -430,57 +466,16 @@ fn direct_inference_model_specs(provider: &Provider) -> Result<Vec<InferenceMode
         return Ok(Vec::new());
     };
 
-    let mut result = Vec::new();
-    for (route_id, route) in routes {
-        let supports_1m = route.supports_1m.unwrap_or(false);
-        let route_id = route_id.trim();
-        if route_id.is_empty() {
-            continue;
-        }
-        if !is_claude_safe_model_id(route_id) {
-            return Err(AppError::localized(
-                "claude_desktop.provider.route_invalid",
-                format!(
-                    "Claude Desktop 直连模型必须使用 claude-* 或 anthropic/claude-* 名称: {route_id}"
-                ),
-                format!(
-                    "Claude Desktop direct model must use a claude-* or anthropic/claude-* name: {route_id}"
-                ),
-            ));
-        }
-        let upstream_model = route.model.trim();
-        if !upstream_model.is_empty() && upstream_model != route_id {
-            return Err(AppError::localized(
-                "claude_desktop.provider.direct_mapping_unsupported",
-                format!(
-                    "Claude Desktop 直连模式不能映射模型: {route_id} -> {upstream_model}；非 Claude 官方模型请使用本地路由模式"
-                ),
-                format!(
-                    "Claude Desktop direct mode cannot map models: {route_id} -> {upstream_model}; use proxy mode for non-Claude official models"
-                ),
-            ));
-        }
-        result.push(InferenceModelSpec {
-            name: route_id.to_string(),
-            label_override: route
-                .label_override
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(str::to_string),
-            supports_1m,
-        });
-    }
-
-    // Sort supports_1m=true first within each name so the subsequent dedup_by
-    // (which keeps the first occurrence) preserves the 1M-capable variant.
-    result.sort_by(|a, b| {
-        a.name
-            .cmp(&b.name)
-            .then_with(|| b.supports_1m.cmp(&a.supports_1m))
-    });
-    result.dedup_by(|a, b| a.name == b.name);
-    Ok(result)
+    crate::proxy_core_adapter::claude_desktop_direct_inference_model_specs(routes.iter().map(
+        |(route_id, route)| crate::proxy_core_adapter::ClaudeDesktopProxyRouteInput {
+            route_id,
+            upstream_model: &route.model,
+            label_override: route.label_override.as_deref(),
+            supports_1m: route.supports_1m.unwrap_or(false),
+        },
+    ))
+    .map(|specs| specs.into_iter().map(InferenceModelSpec::from).collect())
+    .map_err(direct_model_route_issue_to_error)
 }
 
 pub fn proxy_model_routes(provider: &Provider) -> Result<Vec<ResolvedModelRoute>, AppError> {
