@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 struct ExternalRelayServices {
     events: Mutex<Vec<ProxyCoreEvent>>,
     forwarded: Mutex<Vec<String>>,
+    management_auth: Mutex<ManagementAuthRuntimeConfig>,
     usage: Mutex<Vec<UsageRecord>>,
 }
 
@@ -261,7 +262,13 @@ impl ManagementAuthSource for ExternalRelayServices {
     fn load_management_auth_config<'a>(
         &'a self,
     ) -> BoxFuture<'a, ProxyCoreResult<ManagementAuthRuntimeConfig>> {
-        Box::pin(async { Ok(ManagementAuthRuntimeConfig::default()) })
+        Box::pin(async {
+            Ok(self
+                .management_auth
+                .lock()
+                .expect("management auth mutex")
+                .clone())
+        })
     }
 }
 
@@ -479,4 +486,32 @@ fn external_host_can_use_gateway_model_contracts_from_prelude() {
     assert!(response.data[0].supports_1m);
     assert_eq!(response.data[1].id, "claude-haiku-4-5");
     assert!(!response.data[1].supports_1m);
+}
+
+#[test]
+fn external_host_can_use_management_auth_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    *services
+        .management_auth
+        .lock()
+        .expect("management auth mutex") = ManagementAuthRuntimeConfig::new(
+        "0.0.0.0",
+        Some("management-token".to_string()),
+        None,
+    );
+    let engine = ProxyEngine::new(services);
+    let mut headers = http::HeaderMap::new();
+
+    let rejected =
+        futures::executor::block_on(engine.validate_management_auth(&headers)).unwrap_err();
+    assert!(
+        matches!(rejected, ProxyCoreError::Auth(message) if message == "Missing management bearer token")
+    );
+
+    headers.insert(
+        http::header::AUTHORIZATION,
+        http::HeaderValue::from_static("Bearer management-token"),
+    );
+    futures::executor::block_on(engine.validate_management_auth(&headers))
+        .expect("management auth");
 }
