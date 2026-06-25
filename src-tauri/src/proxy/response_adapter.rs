@@ -52,11 +52,31 @@ pub(crate) fn proxy_core_response_to_axum_response(
     response: ProxyCoreResponse,
     build_error_context: AxumResponseBuildErrorContext<'_>,
 ) -> Result<axum::response::Response, ProxyError> {
-    proxy_core_response_to_axum_response_with_error_message(
-        response,
-        build_error_context,
-        "Failed to build response",
-    )
+    let response = response
+        .into_transport_response()
+        .map_err(ProxyError::Internal)?;
+    let ProxyTransportResponse {
+        status,
+        headers,
+        body,
+    } = response;
+    let body = match body {
+        ProxyTransportResponseBody::Empty => axum::body::Body::from(Bytes::new()),
+        ProxyTransportResponseBody::Bytes(body) => axum::body::Body::from(body),
+        ProxyTransportResponseBody::Stream(stream) => axum::body::Body::from_stream(stream),
+    };
+
+    let mut builder = axum::response::Response::builder().status(status);
+    for (key, value) in headers.iter() {
+        builder = builder.header(key, value);
+    }
+
+    let build_error_message = build_error_context.internal_error_prefix();
+    let build_error_context_message = build_error_context.message();
+    builder.body(body).map_err(|error| {
+        log::error!("{build_error_context_message}: {error}");
+        ProxyError::Internal(format!("{build_error_message}: {error}"))
+    })
 }
 
 pub(crate) fn rebuilt_json_proxy_response_to_axum_response(
@@ -147,37 +167,6 @@ pub(crate) fn codex_proxy_error_to_axum_response(
     let response = codex_proxy_error_response(provider_name, request_model, endpoint, error)
         .map_err(codex_proxy_error_body_build_error_to_proxy_error)?;
     proxy_core_response_to_axum_response(response, AxumResponseBuildErrorContext::CodexProxyError)
-}
-
-pub(crate) fn proxy_core_response_to_axum_response_with_error_message(
-    response: ProxyCoreResponse,
-    build_error_context: AxumResponseBuildErrorContext<'_>,
-    build_error_message: &str,
-) -> Result<axum::response::Response, ProxyError> {
-    let response = response
-        .into_transport_response()
-        .map_err(ProxyError::Internal)?;
-    let ProxyTransportResponse {
-        status,
-        headers,
-        body,
-    } = response;
-    let body = match body {
-        ProxyTransportResponseBody::Empty => axum::body::Body::from(Bytes::new()),
-        ProxyTransportResponseBody::Bytes(body) => axum::body::Body::from(body),
-        ProxyTransportResponseBody::Stream(stream) => axum::body::Body::from_stream(stream),
-    };
-
-    let mut builder = axum::response::Response::builder().status(status);
-    for (key, value) in headers.iter() {
-        builder = builder.header(key, value);
-    }
-
-    let build_error_context = build_error_context.message();
-    builder.body(body).map_err(|error| {
-        log::error!("{build_error_context}: {error}");
-        ProxyError::Internal(format!("{build_error_message}: {error}"))
-    })
 }
 
 pub(crate) fn proxy_event_envelope_to_axum_sse_event(event: ProxyEventEnvelope) -> Event {

@@ -735,6 +735,7 @@
 718. forward runtime 的 required attempts 空结果错误判断已移入 `proxy_core_adapter::required_forward_attempts_from_plan`：`proxy_core_host` 不再直接选择 `route_plan_no_matching_host_providers_error`。
 719. `ProxyRequest` 到 host forward runtime 输入的 app/body/method/header/session 投影已移入 `proxy_core_adapter::forward_runtime_request_from_proxy_request`：`proxy_core_host` 不再直接拆 `ProxyRequest`、调用 `ProxyBody::into_json` 或抽取 session id。
 720. `AppProxyConfig` 到 `RequestForwarder` timeout/retry 选项的投影已移入 `proxy_core_adapter::forwarder_runtime_options_from_app_proxy_config`：`proxy_core_host` 不再直接展开 `ResponseRuntimePolicy.timeout`。
+721. Axum response build 失败时映射为 host `ProxyError::Internal` 的英文错误前缀已迁入 `proxy-core::ProxyResponseBuildErrorContext::internal_error_prefix`；`response_adapter` 只负责执行 Axum builder 和桥接错误，不再手写普通/流式响应构建失败前缀。
 721. forward runtime 的 `AppProxyConfig`、rectifier、optimizer 与 Copilot optimizer 组合已收敛为 `proxy_core_adapter::forwarder_runtime_config_from_sources`：`proxy_core_host` 仍负责读取 DB 配置，但不再把 forwarder runtime config 作为散落局部变量维护。
 722. ConfigSource 的 app 配置投影已新增 `proxy_core_adapter::proxy_app_config_from_config_source` wrapper，app summary 投影已新增 `app_summary_config_from_config_source` wrapper：`proxy_core_host` 只传入 DB 读取到的 app/optimizer 配置，settings current-provider 读取、`ProxyAppConfig` 组合与 `AppSummaryConfig` 组装由 adapter 统一处理。
 723. channel-key auth profile 的 DB key record 到 runtime key value 投影已移入 `proxy_core_adapter::channel_key_value_from_record`：host auth-profile closure 只负责查询 enabled key 和错误映射，不再直接拆 DAO record 字段。

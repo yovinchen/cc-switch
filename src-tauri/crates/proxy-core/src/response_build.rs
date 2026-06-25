@@ -35,6 +35,13 @@ impl ProxyResponseBuildErrorContext<'_> {
             Self::CodexProxyError => "[Codex] 构建代理错误响应失败".to_string(),
         }
     }
+
+    pub fn internal_error_prefix(&self) -> &'static str {
+        match self {
+            Self::TaggedStreaming { .. } => "Failed to build streaming response",
+            _ => "Failed to build response",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,6 +174,32 @@ mod tests {
 
         for (context, expected) in cases {
             assert_eq!(context.message(), expected);
+        }
+    }
+
+    #[test]
+    fn response_build_error_context_internal_error_prefixes_preserve_host_contracts() {
+        let cases = [
+            (
+                ProxyResponseBuildErrorContext::TaggedStreaming { tag: "Usage" },
+                "Failed to build streaming response",
+            ),
+            (
+                ProxyResponseBuildErrorContext::TaggedResponse { tag: "JSON" },
+                "Failed to build response",
+            ),
+            (
+                ProxyResponseBuildErrorContext::ClaudeSse,
+                "Failed to build response",
+            ),
+            (
+                ProxyResponseBuildErrorContext::CodexProxyError,
+                "Failed to build response",
+            ),
+        ];
+
+        for (context, expected) in cases {
+            assert_eq!(context.internal_error_prefix(), expected);
         }
     }
 

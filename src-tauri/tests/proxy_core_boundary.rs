@@ -1464,12 +1464,19 @@ const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_PROJECTION_MARKERS: &[&str] = &[
     "String::from_utf8_lossy(",
 ];
 const FORBIDDEN_RESPONSE_BUILD_CONTEXT_LITERAL_MARKERS: &[&str] = &[
+    "Failed to build response",
+    "Failed to build streaming response",
     "构建流式响应失败",
     "构建响应失败",
     "构建 SSE 响应失败",
     "构建 Responses 响应失败",
     "构建 Responses 错误响应失败",
     "构建代理错误响应失败",
+];
+const FORBIDDEN_RESPONSE_ADAPTER_BUILD_ERROR_MESSAGE_MARKERS: &[&str] = &[
+    "Failed to build response",
+    "Failed to build streaming response",
+    "proxy_core_response_to_axum_response_with_error_message",
 ];
 const FORBIDDEN_PROXY_CORE_ADAPTER_RESPONSE_BUILD_CONTEXT_MARKERS: &[&str] = &[
     "enum AxumResponseBuildErrorContext",
@@ -4389,6 +4396,38 @@ fn response_pipeline_delegates_axum_build_context_to_adapter() {
     assert!(
         violations.is_empty(),
         "response handlers must delegate Axum response build context projection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn response_adapter_delegates_build_error_message_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read response_adapter.rs");
+
+    assert!(
+        source.contains(".internal_error_prefix()"),
+        "response_adapter should use proxy-core response build error message prefixes"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_RESPONSE_ADAPTER_BUILD_ERROR_MESSAGE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/response_adapter.rs:{} contains response build error message marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "response_adapter must delegate response build error message policy to proxy-core:\n{}",
         violations.join("\n")
     );
 }

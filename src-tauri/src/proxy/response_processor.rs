@@ -3,13 +3,8 @@
 //! 统一处理流式和非流式 API 响应
 
 use super::{
-    error::ProxyError,
-    handler_context::RequestContext,
-    hyper_client::ProxyResponse,
-    response_adapter::{
-        proxy_core_response_to_axum_response,
-        proxy_core_response_to_axum_response_with_error_message,
-    },
+    error::ProxyError, handler_context::RequestContext, hyper_client::ProxyResponse,
+    response_adapter::proxy_core_response_to_axum_response,
 };
 use crate::proxy_core_adapter::{
     create_logged_passthrough_stream, decode_raw_proxy_response_body,
@@ -108,10 +103,9 @@ pub async fn handle_streaming(
     );
 
     let response = passthrough_stream_proxy_response(status, response_headers, logged_stream);
-    match proxy_core_response_to_axum_response_with_error_message(
+    match proxy_core_response_to_axum_response(
         response,
         AxumResponseBuildErrorContext::TaggedStreaming { tag: ctx.tag },
-        "Failed to build streaming response",
     ) {
         Ok(response) => response,
         Err(e) => e.into_response(),
