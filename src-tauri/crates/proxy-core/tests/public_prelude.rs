@@ -11,14 +11,6 @@ struct ExternalRelayServices {
     usage: Mutex<Vec<UsageRecord>>,
 }
 
-fn unavailable<'a, T: Send + 'a>() -> BoxFuture<'a, ProxyCoreResult<T>> {
-    Box::pin(async {
-        Err(ProxyCoreError::Unavailable(
-            "external smoke service is not configured".to_string(),
-        ))
-    })
-}
-
 fn provider_spec() -> ProviderSpec {
     ProviderSpec {
         id: "relay-a".to_string(),
@@ -528,9 +520,21 @@ impl ChannelHealthStore for ExternalRelayServices {
 impl ChannelReachabilityProbe for ExternalRelayServices {
     fn probe_channel<'a>(
         &'a self,
-        _request: ChannelTestProbeRequest,
+        request: ChannelTestProbeRequest,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelReachabilityResult>> {
-        unavailable()
+        Box::pin(async move {
+            Ok(ChannelReachabilityResult::from_input(
+                ChannelReachabilityInput {
+                    success: true,
+                    status: ChannelReachabilityStatus::Degraded,
+                    message: format!("reachable: {}", request.base_url),
+                    latency_ms: Some(6100),
+                    http_status: Some(200),
+                    tested_at: 1_771_000_123,
+                    retry_count: 1,
+                },
+            ))
+        })
     }
 }
 
@@ -1343,6 +1347,93 @@ fn external_host_can_use_channel_health_contracts_from_prelude() {
     assert_eq!(helper_stats.channel_id, "channel-helper");
     assert_eq!(helper_stats.app_type, "codex");
     assert!(helper_stats.stats.is_none());
+}
+
+#[test]
+fn external_host_can_use_channel_test_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+    let path = ChannelPathRequest::from_path("channel-a").expect("channel path");
+
+    let response: ChannelTestResponse = futures::executor::block_on(engine.channel_test_response(
+        path.clone(),
+        ProxyChannelTestRequest {
+            model: Some("sonnet".to_string()),
+            interface_kind: Some("anthropic_messages".to_string()),
+        },
+        1_771_000_000,
+    ))
+    .expect("channel test response");
+    let missing_model: ChannelTestResponse =
+        futures::executor::block_on(engine.channel_test_response(
+            path.clone(),
+            ProxyChannelTestRequest {
+                model: Some("opus".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+            },
+            1_771_000_000,
+        ))
+        .expect("missing model response");
+    let helper_response = path.test_response(ChannelTestInput {
+        channel_id: "channel-helper".to_string(),
+        provider_id: "relay-helper".to_string(),
+        app_type: "codex".to_string(),
+        channel_name: "Helper Channel".to_string(),
+        base_url: "https://helper.example/v1".to_string(),
+        interface_kind: "openai_responses".to_string(),
+        model: Some("gpt-5.4".to_string()),
+        model_available: Some(true),
+        success: false,
+        status: ChannelReachabilityStatus::Failed.as_str().to_string(),
+        message: "timeout".to_string(),
+        latency_ms: None,
+        http_status: None,
+        tested_at: 1_771_000_999,
+        retry_count: 2,
+        failure_reason: Some("timeout".to_string()),
+    });
+    let plan: ChannelTestPlan = ChannelTestPlan::Failure(helper_response.clone());
+
+    assert_eq!(response.channel_id, "channel-a");
+    assert_eq!(response.provider_id, "relay-a");
+    assert_eq!(response.app_type, "claude");
+    assert_eq!(response.interface_kind, "anthropic_messages");
+    assert_eq!(response.model.as_deref(), Some("sonnet"));
+    assert_eq!(response.model_available, Some(true));
+    assert!(response.success);
+    assert_eq!(
+        response.status,
+        ChannelReachabilityStatus::Degraded.as_str()
+    );
+    assert_eq!(
+        response.message,
+        "reachable: https://relay.example/v1"
+    );
+    assert_eq!(response.latency_ms, Some(6100));
+    assert_eq!(response.http_status, Some(200));
+    assert_eq!(response.retry_count, 1);
+
+    assert_eq!(missing_model.model.as_deref(), Some("opus"));
+    assert_eq!(missing_model.model_available, Some(false));
+    assert!(!missing_model.success);
+    assert_eq!(
+        missing_model.status,
+        ChannelReachabilityStatus::Failed.as_str()
+    );
+    assert_eq!(
+        missing_model.failure_reason.as_deref(),
+        Some("model not mapped on channel: opus")
+    );
+
+    match plan {
+        ChannelTestPlan::Failure(failure) => {
+            assert_eq!(failure.channel_id, "channel-helper");
+            assert_eq!(failure.app_type, "codex");
+            assert_eq!(failure.retry_count, 2);
+            assert_eq!(failure.failure_reason.as_deref(), Some("timeout"));
+        }
+        ChannelTestPlan::Probe(_) => panic!("expected failure plan"),
+    }
 }
 
 #[test]
