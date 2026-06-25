@@ -1,4 +1,5 @@
 use crate::{
+    gemini_request::anthropic_request_to_gemini_request_with_shadow,
     gemini_response::gemini_response_to_anthropic_message_with_shadow,
     gemini_shadow::GeminiShadowStore,
     gemini_stream::create_gemini_to_anthropic_sse_stream_with_callbacks,
@@ -1493,6 +1494,96 @@ pub fn claude_api_format_needs_transform(api_format: &str) -> bool {
         api_format,
         "openai_chat" | "openai_responses" | "gemini_native"
     )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaudeResponsesPromptCacheLog {
+    pub provider_id: String,
+    pub cache_key_source: ClaudePromptCacheKeySource,
+    pub is_codex_oauth: bool,
+    pub has_key: bool,
+}
+
+impl ClaudeResponsesPromptCacheLog {
+    pub fn message(&self) -> String {
+        format!(
+            "[Cache] OpenAI Responses prompt_cache_key source={cache_key_source}, provider={}, codex_oauth={}, has_key={}",
+            self.provider_id,
+            self.is_codex_oauth,
+            self.has_key,
+            cache_key_source = self.cache_key_source.as_str()
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ClaudeApiFormatRequestTransformContext<'a> {
+    pub provider_id: &'a str,
+    pub responses_prompt_cache_key: Option<&'a str>,
+    pub responses_prompt_cache_key_source: ClaudePromptCacheKeySource,
+    pub chat_prompt_cache_key: Option<&'a str>,
+    pub is_codex_oauth: bool,
+    pub codex_fast_mode_enabled: bool,
+    pub preserve_reasoning_content: bool,
+    pub shadow_store: Option<&'a GeminiShadowStore>,
+    pub session_id: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClaudeApiFormatRequestTransformOutput {
+    pub request: Value,
+    pub responses_prompt_cache_log: Option<ClaudeResponsesPromptCacheLog>,
+}
+
+pub fn claude_request_transform_for_api_format(
+    body: Value,
+    api_format: &str,
+    context: ClaudeApiFormatRequestTransformContext<'_>,
+) -> Result<ClaudeApiFormatRequestTransformOutput, String> {
+    match api_format {
+        "openai_responses" => Ok(ClaudeApiFormatRequestTransformOutput {
+            request: anthropic_to_openai_responses_request(
+                &body,
+                context.responses_prompt_cache_key,
+                context.is_codex_oauth,
+                context.codex_fast_mode_enabled,
+            ),
+            responses_prompt_cache_log: Some(ClaudeResponsesPromptCacheLog {
+                provider_id: context.provider_id.to_string(),
+                cache_key_source: context.responses_prompt_cache_key_source,
+                is_codex_oauth: context.is_codex_oauth,
+                has_key: context.responses_prompt_cache_key.is_some(),
+            }),
+        }),
+        "openai_chat" => {
+            let mut request =
+                anthropic_to_openai_chat_request(&body, context.preserve_reasoning_content);
+            if let Some(key) = context.chat_prompt_cache_key {
+                request["prompt_cache_key"] = json!(key);
+            }
+            inject_openai_stream_include_usage(&mut request);
+            Ok(ClaudeApiFormatRequestTransformOutput {
+                request,
+                responses_prompt_cache_log: None,
+            })
+        }
+        "gemini_native" => {
+            let request = anthropic_request_to_gemini_request_with_shadow(
+                &body,
+                context.shadow_store,
+                Some(context.provider_id),
+                context.session_id,
+            )?;
+            Ok(ClaudeApiFormatRequestTransformOutput {
+                request,
+                responses_prompt_cache_log: None,
+            })
+        }
+        _ => Ok(ClaudeApiFormatRequestTransformOutput {
+            request: body,
+            responses_prompt_cache_log: None,
+        }),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -5895,6 +5986,72 @@ mod tests {
         assert!(claude_api_format_needs_transform("openai_responses"));
         assert!(claude_api_format_needs_transform("gemini_native"));
         assert!(!claude_api_format_needs_transform("unknown"));
+    }
+
+    #[test]
+    fn claude_request_transform_for_api_format_dispatches_formats() {
+        let anthropic_body = json!({
+            "model": "claude-sonnet",
+            "stream": true,
+            "max_tokens": 128,
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+        let base_context = ClaudeApiFormatRequestTransformContext {
+            provider_id: "provider-a",
+            responses_prompt_cache_key: Some("responses-cache"),
+            responses_prompt_cache_key_source: ClaudePromptCacheKeySource::Explicit,
+            chat_prompt_cache_key: Some("chat-cache"),
+            is_codex_oauth: false,
+            codex_fast_mode_enabled: false,
+            preserve_reasoning_content: false,
+            shadow_store: None,
+            session_id: Some("session-a"),
+        };
+
+        let responses_output = claude_request_transform_for_api_format(
+            anthropic_body.clone(),
+            "openai_responses",
+            base_context,
+        )
+        .expect("responses request");
+        assert_eq!(responses_output.request["prompt_cache_key"], "responses-cache");
+        assert!(responses_output.responses_prompt_cache_log.is_some());
+        assert!(responses_output
+            .responses_prompt_cache_log
+            .as_ref()
+            .expect("cache log")
+            .message()
+            .contains("provider=provider-a"));
+
+        let chat_output = claude_request_transform_for_api_format(
+            anthropic_body.clone(),
+            "openai_chat",
+            base_context,
+        )
+        .expect("chat request");
+        assert_eq!(chat_output.request["prompt_cache_key"], "chat-cache");
+        assert_eq!(
+            chat_output.request["stream_options"]["include_usage"],
+            true
+        );
+        assert!(chat_output.responses_prompt_cache_log.is_none());
+
+        let gemini_output = claude_request_transform_for_api_format(
+            anthropic_body.clone(),
+            "gemini_native",
+            base_context,
+        )
+        .expect("gemini request");
+        assert_eq!(gemini_output.request["contents"][0]["role"], "user");
+        assert!(gemini_output.responses_prompt_cache_log.is_none());
+
+        let passthrough_output = claude_request_transform_for_api_format(
+            anthropic_body.clone(),
+            "anthropic",
+            base_context,
+        )
+        .expect("passthrough request");
+        assert_eq!(passthrough_output.request, anthropic_body);
     }
 
     #[test]

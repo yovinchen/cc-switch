@@ -2730,21 +2730,23 @@ pub(crate) use crate::proxy_core::api::routing::{
     RoutePolicy, RouteRequest,
 };
 pub(crate) use crate::proxy_core::api::transforms::{
-    anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
-    anthropic_to_openai_responses_request, append_utf8_safe, build_gemini_upstream_url,
-    chat_completion_to_response_with_context, claude_response_to_anthropic_message_for_api_format,
-    claude_stream_usage_event_filter,
+    append_utf8_safe, build_gemini_upstream_url, chat_completion_to_response_with_context,
+    claude_request_transform_for_api_format,
+    claude_response_to_anthropic_message_for_api_format, claude_stream_usage_event_filter,
     claude_transform_streaming_decision as core_claude_transform_streaming_decision,
     codex_chat_transform_streaming_decision as core_codex_chat_transform_streaming_decision,
     codex_stream_usage_event_filter, create_claude_to_anthropic_sse_stream_for_api_format,
     create_codex_chat_to_responses_sse_stream_with_context, extract_anthropic_tool_schema_hints,
     inspect_codex_chat_history_sse_block, should_preserve_reasoning_content_for_openai_chat,
-    take_sse_block, AnthropicToolSchemaHints, ClaudeApiFormatSseTransformContext,
-    ClaudeTransformStreamingDecision, CodexChatTransformStreamingDecision,
+    take_sse_block, AnthropicToolSchemaHints, ClaudeApiFormatRequestTransformContext,
+    ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
+    CodexChatTransformStreamingDecision,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::{
-    canonical_json_string, gemini_response_to_anthropic_message, openai_chat_to_anthropic_message,
+    anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
+    anthropic_to_openai_responses_request, canonical_json_string,
+    gemini_response_to_anthropic_message, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message, short_value_hash,
 };
 pub(crate) use crate::proxy_core::api::transforms::{
@@ -4678,40 +4680,27 @@ pub(crate) fn provider_claude_transform_request_for_api_format(
     let is_codex_oauth = provider_is_codex_oauth(provider);
     let cache_key_resolution =
         provider_claude_responses_prompt_cache_key(provider, &body, session_id);
-
-    match api_format {
-        "openai_responses" => {
-            log::debug!(
-                "[Cache] OpenAI Responses prompt_cache_key source={cache_key_source}, provider={}, codex_oauth={is_codex_oauth}, has_key={}",
-                provider.id,
-                cache_key_resolution.key.is_some(),
-                cache_key_source = cache_key_resolution.source.as_str()
-            );
-            Ok(anthropic_to_openai_responses_request(
-                &body,
-                cache_key_resolution.key.as_deref(),
-                is_codex_oauth,
-                provider_codex_fast_mode_enabled(provider),
-            ))
-        }
-        "openai_chat" => {
-            let preserve_reasoning_content =
-                provider_should_preserve_reasoning_content_for_openai_chat(provider, &body);
-            let mut result = anthropic_to_openai_chat_request(&body, preserve_reasoning_content);
-            if let Some(key) = provider_claude_prompt_cache_key(provider) {
-                result["prompt_cache_key"] = serde_json::json!(key);
-            }
-            inject_openai_stream_include_usage(&mut result);
-            Ok(result)
-        }
-        "gemini_native" => anthropic_request_to_gemini_request_with_shadow(
-            &body,
+    let preserve_reasoning_content =
+        provider_should_preserve_reasoning_content_for_openai_chat(provider, &body);
+    let output = claude_request_transform_for_api_format(
+        body,
+        api_format,
+        ClaudeApiFormatRequestTransformContext {
+            provider_id: &provider.id,
+            responses_prompt_cache_key: cache_key_resolution.key.as_deref(),
+            responses_prompt_cache_key_source: cache_key_resolution.source,
+            chat_prompt_cache_key: provider_claude_prompt_cache_key(provider),
+            is_codex_oauth,
+            codex_fast_mode_enabled: provider_codex_fast_mode_enabled(provider),
+            preserve_reasoning_content,
             shadow_store,
-            Some(&provider.id),
             session_id,
-        ),
-        _ => Ok(body),
+        },
+    )?;
+    if let Some(cache_log) = output.responses_prompt_cache_log {
+        log::debug!("{}", cache_log.message());
     }
+    Ok(output.request)
 }
 
 #[cfg(test)]
@@ -10138,6 +10127,7 @@ pub(crate) fn provider_claude_normalize_anthropic_messages(
     changed
 }
 
+#[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::inject_openai_stream_include_usage;
 
 #[cfg(test)]

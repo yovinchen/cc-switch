@@ -5208,6 +5208,52 @@ fn production_forwarder_delegates_upstream_url_planning_to_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_claude_request_format_dispatch_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let request_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_claude_transform_request_for_api_format",
+        "#[cfg(test)]\npub(crate) fn provider_claude_transform_response",
+    );
+
+    assert!(
+        request_slice.contains("claude_request_transform_for_api_format("),
+        "Claude request api_format dispatch must be delegated to proxy-core"
+    );
+
+    let forbidden_markers = [
+        "\"openai_responses\"",
+        "\"openai_chat\"",
+        "\"gemini_native\"",
+        "anthropic_to_openai_responses_request(",
+        "anthropic_to_openai_chat_request(",
+        "anthropic_request_to_gemini_request_with_shadow(",
+        "inject_openai_stream_include_usage(",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(request_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs Claude request api_format dispatch:{} contains host-local marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Claude request api_format dispatch in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
