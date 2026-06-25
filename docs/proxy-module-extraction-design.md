@@ -572,6 +572,7 @@
 560. proxy event bus/response SSE bridge 使用的 event envelope、connected/lagged event 常量、payload builder 与 SSE spec 投影入口已迁入 `proxy_core_adapter`；host event bus 继续只负责 broadcast runtime state 与 sequence 分配。
 561. response adapter 使用的 core response、transport response 与 transport body DTO 入口已迁入 `proxy_core_adapter`；host response adapter 继续只负责映射到内部 `ProxyResponse` 与 Axum response/SSE event。
 562. route attempt 使用的 route candidate、resolved channel attempt、route plan 与 route selection DTO 入口已迁入 `proxy_core_adapter`；host `ForwardAttempt` 继续只负责 provider override、provider-shaped attempt 编排和 model override log。
+563. `CcSwitchForwarderResponseSource` 已删除私有 `upstream_error_body` / `upstream_error_response` 二次 helper；非成功上游响应在 `finalize_upstream_response` 内直接投影为 `ProxyError::UpstreamError`，外部替换 source 只面对完整响应 finalization 入口。
 563. usage stats/logger/session usage 使用的 cost calculator、pricing、token usage、cost breakdown 与 session request id prefix 入口已迁入 `proxy_core_adapter`；host 继续负责 DB 查询、日志文件解析、dedup 与 request log 落库。
 564. handler context 使用的 app config DTO、proxy result/services trait、response runtime policy DTO、Gemini path model 提取、Claude metadata API-format 提取与 session id 提取入口已迁入 `proxy_core_adapter`；host `RequestContext` 只保留 route result 后的 DB provider 回填与 response/usage 生命周期事实。
 565. proxy server 使用的 runtime config/status/info、current route target、Gemini shadow store、ProxyEngine、route resolve request 与 server log code 入口已迁入 `proxy_core_adapter`；host server 继续负责 Axum/Hyper/Tauri 状态、监听生命周期和管理路由装配。

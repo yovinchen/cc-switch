@@ -8693,13 +8693,24 @@ fn production_forwarder_uses_response_source_resource() {
             && impl_slice.contains("ForwarderChannelResponseStatusInput {"),
         "RequestForwarder must pass channel response status facts as a response-source input DTO"
     );
+    let response_source_impl_slice = function_slice(
+        &adapter_source,
+        "impl ForwarderResponseSource for CcSwitchForwarderResponseSource",
+        "async fn prime_streaming_forward_response",
+    );
     assert!(
-        adapter_source.contains("fn upstream_error_response"),
-        "default ForwarderResponseSource implementation must retain upstream error response projection"
+        !adapter_source.contains("fn upstream_error_body")
+            && !adapter_source.contains("fn upstream_error_response"),
+        "default ForwarderResponseSource implementation must not retain private upstream error projection helpers"
     );
     assert!(
         adapter_source.contains("fn prepare_success_response"),
         "default ForwarderResponseSource implementation must retain success response readiness projection"
+    );
+    assert!(
+        response_source_impl_slice.contains("input.response.bytes().await?")
+            && response_source_impl_slice.contains("ProxyError::UpstreamError { status, body }"),
+        "default ForwarderResponseSource should project upstream error responses inside finalize_upstream_response"
     );
     let response_trait_slice = function_slice(
         &adapter_source,

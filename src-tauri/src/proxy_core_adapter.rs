@@ -8996,25 +8996,6 @@ impl CcSwitchForwarderResponseSource {
             Ok(ProxyResponse::buffered(status, headers, body))
         })
     }
-
-    fn upstream_error_body<'a>(
-        &'a self,
-        response: ProxyResponse,
-    ) -> BoxFuture<'a, Result<Option<String>, ProxyError>> {
-        Box::pin(async move { Ok(String::from_utf8(response.bytes().await?.to_vec()).ok()) })
-    }
-
-    fn upstream_error_response<'a>(
-        &'a self,
-        response: ProxyResponse,
-    ) -> BoxFuture<'a, Result<ProxyError, ProxyError>> {
-        Box::pin(async move {
-            let status = response.status().as_u16();
-            let body = self.upstream_error_body(response).await?;
-
-            Ok(ProxyError::UpstreamError { status, body })
-        })
-    }
 }
 
 impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
@@ -9056,8 +9037,9 @@ impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
                 return self.prepare_success_response(input).await;
             }
 
-            let error = self.upstream_error_response(input.response).await?;
-            Err(error)
+            let status = input.response.status().as_u16();
+            let body = String::from_utf8(input.response.bytes().await?.to_vec()).ok();
+            Err(ProxyError::UpstreamError { status, body })
         })
     }
 }
@@ -15276,10 +15258,18 @@ base_url = "https://api.openai.com/v1"
             Bytes::from_static(br#"{"error":"bad request"}"#),
         );
 
-        let error = source
-            .upstream_error_response(response)
+        let error = match source
+            .finalize_upstream_response(ForwarderResponseFinalizationInput {
+                response,
+                request_is_streaming: false,
+                non_streaming_timeout: std::time::Duration::from_secs(0),
+                streaming_first_byte_timeout: std::time::Duration::from_secs(0),
+            })
             .await
-            .expect("upstream error projection");
+        {
+            Ok(_) => panic!("expected upstream error"),
+            Err(error) => error,
+        };
 
         match error {
             ProxyError::UpstreamError { status, body } => {
