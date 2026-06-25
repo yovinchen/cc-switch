@@ -4275,7 +4275,7 @@ impl ForwarderAdapterContext {
         &self,
         provider: &Provider,
     ) -> Result<ForwarderProviderUrlFacts, ProxyError> {
-        let base_url = forwarder_provider_base_url(self.adapter(), provider)?;
+        let base_url = self.adapter().extract_base_url(provider)?;
         Ok(ForwarderProviderUrlFacts {
             is_full_url: provider_is_full_url(provider),
             is_copilot: provider_is_github_copilot_upstream(provider, &base_url),
@@ -4333,13 +4333,6 @@ pub(crate) fn resolve_forwarder_claude_api_format(
     )
 }
 
-pub(crate) fn forwarder_provider_base_url(
-    adapter: &ForwarderAdapterHandle,
-    provider: &Provider,
-) -> Result<String, ProxyError> {
-    adapter.extract_base_url(provider)
-}
-
 pub(crate) fn stream_check_provider_base_url(
     app_type: &AppType,
     provider: &Provider,
@@ -4354,7 +4347,8 @@ pub(crate) fn stream_check_provider_base_url(
         }
         _ => {
             let adapter = forwarder_provider_adapter_for_app(app_type);
-            forwarder_provider_base_url(adapter.as_ref(), provider)
+            adapter
+                .extract_base_url(provider)
                 .map_err(|e| AppError::Message(format!("Failed to extract base_url: {e}")))
         }
     }
@@ -20972,10 +20966,13 @@ command = "latest-command"
             None,
         );
         assert_eq!(
-            forwarder_provider_base_url(&codex_adapter, &codex_provider).expect("codex base URL"),
+            codex_adapter
+                .extract_base_url(&codex_provider)
+                .expect("codex base URL"),
             "https://relay.example/v1"
         );
-        let missing_base_url = forwarder_provider_base_url(&codex_adapter, &provider)
+        let missing_base_url = codex_adapter
+            .extract_base_url(&provider)
             .expect_err("missing codex base URL should fail");
         assert!(matches!(
             missing_base_url,

@@ -1205,7 +1205,7 @@ forwarder 的 Claude 默认 api_format 一跳 wrapper `forwarder_claude_api_form
 本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
 本轮继续把 `ProviderRouterSource` 拆成 router 端的 provider/channel/config/health 四个 focused port；host adapter 侧拆出对应 DB-backed source/store，并把 `ProviderRouter::new(Arc<Database>)` 迁到 `proxy_core_adapter::provider_router_from_database` factory，生产代码不再直连 router 的 DB 构造入口。
 本轮继续把 `ProviderRouter` 的 route channel 输入从 router-local `ProviderRouterChannelRecord` 切到 core `RouteResolveChannelInput`；management channel specs/records 仍由 host adapter 直接从 DB source 读取完整记录，避免为了管理 API 把 DAO record 暴露给 router，也避免 router 维护自己的中转 DTO。
-本轮继续把 forwarder 的 provider adapter base URL 提取收敛到 `proxy_core_adapter::forwarder_provider_base_url`，forwarder 不再直接调用 `ProviderAdapter::extract_base_url`。
+forwarder provider adapter base URL 的一跳 wrapper `forwarder_provider_base_url` 已删除；adapter context 和 stream check fallback 在各自 host 边界内直接调用 trait object，`forwarder.rs` 仍只消费 URL facts。
 本轮继续把 forwarder 的 provider adapter auth info 提取收敛到 `proxy_core_adapter::forwarder_provider_auth_info`，forwarder 不再直接调用 `ProviderAdapter::extract_auth`。
 本轮继续把 forwarder 的 provider adapter auth headers 构造收敛到 `proxy_core_adapter::forwarder_provider_auth_headers`，forwarder 不再直接调用 `ProviderAdapter::get_auth_headers`。
 本轮继续把 forwarder 的 provider adapter upstream URL 构造收敛到 `proxy_core_adapter::forwarder_provider_upstream_url`，forwarder 不再直接调用 `ProviderAdapter::build_url`。
@@ -1460,6 +1460,7 @@ forwarder provider adapter name 的一跳 wrapper `forwarder_provider_adapter_na
 1041. forwarder provider URL facts 删除 `forwarder_is_full_url_provider` / `forwarder_is_github_copilot_upstream` 两个一跳 wrapper；adapter context 在已持有 provider/base_url 的位置直接调用 provider 级事实投影。
 1042. forwarder provider adapter facts 删除 `forwarder_provider_adapter_name` 一跳 wrapper；adapter context 构造 facts 时直接读取 trait object name，外部 forwarder 仍只拿到聚合后的 adapter facts。
 1043. forwarder provider transform 删除 `forwarder_provider_transform_required` / `forwarder_provider_transform_request` 两个一跳 wrapper；adapter context 直接调用 trait object 的 transform gate/request，外部 forwarder 仍经 request source。
+1044. forwarder provider base URL 删除 `forwarder_provider_base_url` 一跳 wrapper；adapter context 和 stream check fallback 直接调用 trait object 的 `extract_base_url`，forwarder 仍经 URL facts。
 
 ## 背景
 
