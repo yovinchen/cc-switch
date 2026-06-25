@@ -1434,6 +1434,7 @@
 1014. Stream check 的 provider override 配置合并与 probe result 到 `StreamCheckResult` 的成功/失败/degraded envelope 构造已迁入 `proxy-core::ports`，host `StreamCheckService` 只保留 reqwest 探测、timestamp 注入和 provider override 投影。
 1015. Stream check 批量命令捕获单 provider 异常后的 failed `StreamCheckResult` envelope 已迁入 `proxy-core::ports::stream_check_failed_result`，host command 只负责并发/循环调度、错误文本和 timestamp 注入。
 1016. Stream check retry loop 的终端兜底 failed envelope 已迁入 `proxy-core::ports::stream_check_failed_result_with_retry_count`，host service 仍负责重试循环和 `retry_count` 事实注入。
+1017. Host `ProxyError` 到 core `ProxyErrorStatusKind` 的状态事实投影已收敛到 `proxy_core_adapter::proxy_error_status_kind`，`proxy/error.rs` 不再维护 host-to-core 映射，`error_mapper` 也统一经 adapter 获取 status fact。
 
 ## 背景
 

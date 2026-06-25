@@ -1,6 +1,6 @@
 use crate::proxy_core_adapter::{
-    proxy_error_http_status_code, proxy_error_response_body, upstream_proxy_error_response_body,
-    ProxyErrorStatusKind,
+    proxy_error_http_status_code, proxy_error_response_body, proxy_error_status_kind,
+    upstream_proxy_error_response_body,
 };
 use axum::{
     http::StatusCode,
@@ -106,31 +106,6 @@ impl IntoResponse for ProxyError {
         };
 
         (status, Json(body)).into_response()
-    }
-}
-
-pub(crate) fn proxy_error_status_kind(error: &ProxyError) -> ProxyErrorStatusKind {
-    match error {
-        ProxyError::AlreadyRunning => ProxyErrorStatusKind::AlreadyRunning,
-        ProxyError::NotRunning => ProxyErrorStatusKind::NotRunning,
-        ProxyError::BindFailed(_) => ProxyErrorStatusKind::BindFailed,
-        ProxyError::StopTimeout => ProxyErrorStatusKind::StopTimeout,
-        ProxyError::StopFailed(_) => ProxyErrorStatusKind::StopFailed,
-        ProxyError::ForwardFailed(_) => ProxyErrorStatusKind::ForwardFailed,
-        ProxyError::NoAvailableProvider => ProxyErrorStatusKind::NoAvailableProvider,
-        ProxyError::AllProvidersCircuitOpen => ProxyErrorStatusKind::AllProvidersCircuitOpen,
-        ProxyError::NoProvidersConfigured => ProxyErrorStatusKind::NoProvidersConfigured,
-        ProxyError::ProviderUnhealthy(_) => ProxyErrorStatusKind::ProviderUnhealthy,
-        ProxyError::UpstreamError { status, .. } => ProxyErrorStatusKind::UpstreamError(*status),
-        ProxyError::MaxRetriesExceeded => ProxyErrorStatusKind::MaxRetriesExceeded,
-        ProxyError::DatabaseError(_) => ProxyErrorStatusKind::DatabaseError,
-        ProxyError::ConfigError(_) => ProxyErrorStatusKind::ConfigError,
-        ProxyError::TransformError(_) => ProxyErrorStatusKind::TransformError,
-        ProxyError::InvalidRequest(_) => ProxyErrorStatusKind::InvalidRequest,
-        ProxyError::Timeout(_) => ProxyErrorStatusKind::Timeout,
-        ProxyError::StreamIdleTimeout(_) => ProxyErrorStatusKind::StreamIdleTimeout,
-        ProxyError::AuthError(_) => ProxyErrorStatusKind::AuthError,
-        ProxyError::Internal(_) => ProxyErrorStatusKind::Internal,
     }
 }
 

@@ -1750,6 +1750,40 @@ fn proxy_core_adapter_delegates_proxy_error_display_message_policy_to_core() {
 }
 
 #[test]
+fn proxy_error_status_projection_lives_in_proxy_core_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let proxy_error_path = manifest_dir.join("src/proxy/error.rs");
+    let proxy_error_source = fs::read_to_string(&proxy_error_path).expect("read proxy/error.rs");
+    let error_mapper_path = manifest_dir.join("src/proxy/error_mapper.rs");
+    let error_mapper_source =
+        fs::read_to_string(&error_mapper_path).expect("read proxy/error_mapper.rs");
+
+    let adapter_function = function_slice(
+        &adapter_source,
+        "pub(crate) fn proxy_error_status_kind",
+        "pub(crate) fn proxy_error_status_code",
+    );
+
+    assert!(
+        adapter_function.contains("ProxyErrorStatusKind::ForwardFailed")
+            && adapter_function.contains("ProxyErrorStatusKind::UpstreamError(*status)")
+            && adapter_function.contains("ProxyErrorStatusKind::AuthError"),
+        "proxy_core_adapter should own host ProxyError to core status-kind projection"
+    );
+    assert!(
+        !proxy_error_source.contains("fn proxy_error_status_kind("),
+        "proxy/error.rs should not own host-to-core status-kind projection"
+    );
+    assert!(
+        error_mapper_source.contains("proxy_error_status_kind")
+            && !error_mapper_source.contains("use crate::proxy::error::proxy_error_status_kind"),
+        "error_mapper should use the adapter status-kind projection"
+    );
+}
+
+#[test]
 fn basic_health_status_handlers_use_management_contracts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");

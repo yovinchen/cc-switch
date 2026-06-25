@@ -3,7 +3,6 @@
 //! 将 ProxyError 映射到合适的 HTTP 状态码，用于日志记录和手动构建错误响应
 
 use super::{error::ProxyError, ForwardError};
-use crate::proxy::error::proxy_error_status_kind;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     codex_proxy_error_json_from_proxy_error as core_codex_proxy_error_json, ProxyResponseBody,
@@ -12,9 +11,9 @@ use crate::proxy_core_adapter::{
     codex_proxy_error_response_from_proxy_error as core_codex_proxy_error_response,
     log_unlabeled_sse_fallback_event, parse_upstream_json_or_unlabeled_sse,
     proxy_core_error_from_status_kind, proxy_error_display_message, proxy_error_status_code,
-    upstream_response_parse_failure_log_message, ProxyCoreError, ProxyCoreResponse,
-    ProxyCoreResult, UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
-    UpstreamSseAggregationKind,
+    proxy_error_status_kind, upstream_response_parse_failure_log_message, ProxyCoreError,
+    ProxyCoreResponse, ProxyCoreResult, UnlabeledSseFallbackLogContext,
+    UpstreamResponseParseFailureLogContext, UpstreamSseAggregationKind,
 };
 use http::HeaderMap;
 use serde_json::Value;
