@@ -5086,6 +5086,52 @@ fn proxy_core_adapter_owns_claude_desktop_direct_model_specs_provider_projection
 }
 
 #[test]
+fn proxy_core_adapter_owns_claude_desktop_proxy_model_routes_provider_projection() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let proxy_routes_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_claude_desktop_proxy_model_routes(",
+        "#[derive(Debug, Clone, PartialEq, Eq)]",
+    );
+
+    assert!(
+        proxy_routes_slice.contains("claude_desktop_proxy_model_routes(")
+            && proxy_routes_slice.contains("ClaudeDesktopProxyRouteInput")
+            && proxy_routes_slice.contains("ClaudeDesktopProviderProxyRouteIssue::Missing")
+            && proxy_routes_slice.contains("ClaudeDesktopProviderProxyRouteIssue::Empty"),
+        "proxy_core_adapter should own Claude Desktop proxy route projection from Provider"
+    );
+
+    let forbidden_markers = [
+        "crate::claude_desktop_config",
+        "state.db",
+        "get_effective_current_provider",
+        "proxy_gateway_base_url_from_db",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(proxy_routes_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs provider_claude_desktop_proxy_model_routes:{} contains host-owned proxy route marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Claude Desktop proxy route projection free of host side effects:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn claude_desktop_config_delegates_proxy_route_projection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/claude_desktop_config.rs");
@@ -5097,12 +5143,15 @@ fn claude_desktop_config_delegates_proxy_route_projection_to_adapter() {
     );
 
     assert!(
-        projection_slice.contains("claude_desktop_proxy_model_routes(")
-            && projection_slice.contains("ClaudeDesktopProxyRouteInput"),
-        "claude_desktop_config should delegate proxy route projection to proxy_core_adapter/core"
+        projection_slice.contains("provider_claude_desktop_proxy_model_routes("),
+        "claude_desktop_config should delegate provider proxy route projection to proxy_core_adapter"
     );
 
     let forbidden_markers = [
+        ".meta",
+        "claude_desktop_model_routes",
+        "ClaudeDesktopProxyRouteInput",
+        "supports_1m.unwrap_or",
         "next_catalog_safe_route_id",
         "reserved_route_ids",
         "dedup_by(|a, b| a.route_id == b.route_id)",

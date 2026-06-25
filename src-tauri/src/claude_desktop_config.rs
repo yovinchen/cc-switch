@@ -383,37 +383,26 @@ fn direct_inference_model_specs(
 }
 
 pub fn proxy_model_routes(provider: &Provider) -> Result<Vec<ResolvedModelRoute>, AppError> {
-    let routes = provider
-        .meta
-        .as_ref()
-        .map(|meta| &meta.claude_desktop_model_routes)
-        .ok_or_else(|| {
-            AppError::localized(
-                "claude_desktop.provider.routes_missing",
-                "Claude Desktop 本地路由模式缺少模型路由映射",
-                "Claude Desktop proxy mode is missing model route mappings",
-            )
-        })?;
-
-    let result = crate::proxy_core_adapter::claude_desktop_proxy_model_routes(routes.iter().map(
-        |(route_id, route)| crate::proxy_core_adapter::ClaudeDesktopProxyRouteInput {
-            route_id,
-            upstream_model: &route.model,
-            label_override: route.label_override.as_deref(),
-            supports_1m: route.supports_1m.unwrap_or(false),
-        },
-    ))
-    .into_iter()
-    .map(ResolvedModelRoute::from)
-    .collect::<Vec<_>>();
-
-    if result.is_empty() {
-        return Err(AppError::localized(
-            "claude_desktop.provider.routes_missing",
-            "Claude Desktop 本地路由模式至少需要一个模型路由映射",
-            "Claude Desktop proxy mode requires at least one model route mapping",
-        ));
-    }
+    let result = crate::proxy_core_adapter::provider_claude_desktop_proxy_model_routes(provider)
+        .map_err(|issue| match issue {
+            crate::proxy_core_adapter::ClaudeDesktopProviderProxyRouteIssue::Missing => {
+                AppError::localized(
+                    "claude_desktop.provider.routes_missing",
+                    "Claude Desktop 本地路由模式缺少模型路由映射",
+                    "Claude Desktop proxy mode is missing model route mappings",
+                )
+            }
+            crate::proxy_core_adapter::ClaudeDesktopProviderProxyRouteIssue::Empty => {
+                AppError::localized(
+                    "claude_desktop.provider.routes_missing",
+                    "Claude Desktop 本地路由模式至少需要一个模型路由映射",
+                    "Claude Desktop proxy mode requires at least one model route mapping",
+                )
+            }
+        })?
+        .into_iter()
+        .map(ResolvedModelRoute::from)
+        .collect::<Vec<_>>();
 
     Ok(result)
 }

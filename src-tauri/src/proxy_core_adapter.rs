@@ -10747,6 +10747,37 @@ pub(crate) fn provider_claude_desktop_direct_inference_model_specs(
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClaudeDesktopProviderProxyRouteIssue {
+    Missing,
+    Empty,
+}
+
+pub(crate) fn provider_claude_desktop_proxy_model_routes(
+    provider: &Provider,
+) -> Result<Vec<ClaudeDesktopResolvedProxyRoute>, ClaudeDesktopProviderProxyRouteIssue> {
+    let routes = provider
+        .meta
+        .as_ref()
+        .map(|meta| &meta.claude_desktop_model_routes)
+        .ok_or(ClaudeDesktopProviderProxyRouteIssue::Missing)?;
+
+    let result = claude_desktop_proxy_model_routes(routes.iter().map(|(route_id, route)| {
+        ClaudeDesktopProxyRouteInput {
+            route_id,
+            upstream_model: &route.model,
+            label_override: route.label_override.as_deref(),
+            supports_1m: route.supports_1m.unwrap_or(false),
+        }
+    }));
+
+    if result.is_empty() {
+        return Err(ClaudeDesktopProviderProxyRouteIssue::Empty);
+    }
+
+    Ok(result)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClaudeDesktopProviderStatusFacts {
     pub mode: crate::provider::ClaudeDesktopMode,
@@ -10788,23 +10819,7 @@ pub(crate) fn provider_claude_desktop_mode(
 }
 
 fn provider_claude_desktop_proxy_routes_missing(provider: &Provider) -> bool {
-    let Some(routes) = provider
-        .meta
-        .as_ref()
-        .map(|meta| &meta.claude_desktop_model_routes)
-    else {
-        return true;
-    };
-
-    claude_desktop_proxy_model_routes(routes.iter().map(|(route_id, route)| {
-        ClaudeDesktopProxyRouteInput {
-            route_id,
-            upstream_model: &route.model,
-            label_override: route.label_override.as_deref(),
-            supports_1m: route.supports_1m.unwrap_or(false),
-        }
-    }))
-    .is_empty()
+    provider_claude_desktop_proxy_model_routes(provider).is_err()
 }
 
 pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key(provider: &Provider) -> bool {
