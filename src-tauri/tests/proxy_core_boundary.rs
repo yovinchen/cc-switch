@@ -7733,8 +7733,17 @@ fn production_forwarder_delegates_codex_media_prevention_gate_to_request_source(
         adapter_source.contains("apply_app_media_prevention"),
         "ForwarderRequestSource must expose app-gated media prevention"
     );
+    assert!(
+        adapter_source.contains("should_apply_forwarder_media_prevention_for_app"),
+        "ForwarderRequestSource must delegate app media-prevention policy to proxy-core"
+    );
 
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
+    let adapter_media_prevention_slice = function_slice(
+        &adapter_source,
+        "fn apply_app_media_prevention",
+        "fn media_retry_plan",
+    );
     let forbidden_markers = ["matches!(app_type, AppType::Codex)"];
     let mut violations = Vec::new();
 
@@ -7744,6 +7753,18 @@ fn production_forwarder_delegates_codex_media_prevention_gate_to_request_source(
             if code.contains(marker) {
                 violations.push(format!(
                     "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct Codex media prevention gate marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+    for (line_index, line) in production_lines(adapter_media_prevention_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in ["matches!(input.app_type, AppType::Codex)"] {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs apply_app_media_prevention:{} contains adapter-local media prevention app gate marker `{}`",
                     line_index + 1,
                     marker
                 ));

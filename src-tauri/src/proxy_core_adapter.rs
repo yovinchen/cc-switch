@@ -2793,11 +2793,11 @@ pub(crate) use crate::proxy_core::api::transport::{
     request_body_filter_log_message, request_body_read_error_message,
     request_body_serialize_error_message, resolve_auth_provider_headers,
     resolve_codex_provider_uses_chat_completions, sanitize_copilot_orphan_tool_results,
-    should_apply_bedrock_pre_send_optimizer, should_convert_codex_responses_endpoint_to_chat,
-    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
-    should_send_anthropic_request_headers, strip_copilot_thinking_blocks,
-    supports_reasoning_effort, AuthProviderHeaderResolution, ForwardUpstreamUrlPlan,
-    ForwardUpstreamUrlPlanInput, ForwarderAttemptRuntimeDecisionInput,
+    should_apply_bedrock_pre_send_optimizer, should_apply_forwarder_media_prevention_for_app,
+    should_convert_codex_responses_endpoint_to_chat, should_failover_after_rectifier_retry_failure,
+    should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
+    strip_copilot_thinking_blocks, supports_reasoning_effort, AuthProviderHeaderResolution,
+    ForwardUpstreamUrlPlan, ForwardUpstreamUrlPlanInput, ForwarderAttemptRuntimeDecisionInput,
     ForwarderRectifierErrorInput, ForwarderRequestBodyTransformAction, UNSUPPORTED_IMAGE_MARKER,
 };
 pub(crate) use crate::proxy_core::api::transport::{
@@ -8337,7 +8337,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     }
 
     fn apply_app_media_prevention(&self, input: ForwarderAppMediaPreventionInput<'_>) -> usize {
-        if !matches!(input.app_type, AppType::Codex) {
+        if !should_apply_forwarder_media_prevention_for_app(&AppKind::from(input.app_type)) {
             return 0;
         }
 

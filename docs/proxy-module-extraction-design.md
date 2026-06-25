@@ -1022,6 +1022,8 @@ forwarder adapter facts 的 Claude 名称判定不再保留 `provider_adapter_na
 
 channel-key auth profile 的 test-only DB convenience helper `apply_channel_auth_profile_providers_from_db` 与 borrowed runtime source 已删除；host 回归测试和 forward runtime 均显式消费 `ChannelKeyRuntimeSource` 注入契约。
 
+Codex forwarder media-prevention 的 app gate 已下沉到 `proxy-core::request_media::should_apply_forwarder_media_prevention_for_app`；adapter 只把 `AppType` 投影成 core `AppKind` 并执行 request source 副作用。
+
 本轮继续把 Gemini live settings 的 env/config 组装与 env-only backup JSON contract 收敛到 `proxy-core::ports::{gemini_live_settings_from_env_json_and_config,gemini_live_backup_from_effective_settings}`；host adapter 只 re-export core helper 供 live write/backup 流程使用。
 
 本轮继续把 Gemini live provider `config` 对象选择与 settings.json 顶层 merge 写入 contract 收敛到 `proxy-core::ports::{gemini_live_config_object_from_settings,gemini_live_settings_to_write}`；host adapter 只负责从 `Provider.settings_config` 投影输入。
@@ -1475,6 +1477,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1053. forwarder Claude request transform 删除 `forwarder_claude_transform_request_for_api_format` 一跳 wrapper；protocol state source 直接调用 provider 级 transform helper，session id 与 Gemini shadow 传递逻辑保持在 source 内。
 1054. forwarder adapter facts 删除 `provider_adapter_name_is_claude` 单行 helper；`ForwarderAdapterFacts::from_adapter` 在 adapter context 边界内直接投影 Claude adapter fact，boundary forbidden marker 防止 helper 复活。
 1055. channel-key auth profile 删除 cfg(test) DB convenience helper 与 borrowed runtime source；host 测试改为构造 `CcSwitchChannelKeyRuntimeSource` 后调用 `apply_channel_auth_profile_providers_from_source`，boundary 反向禁止 DB helper 回流。
+1056. Codex media-prevention app gate 新增 core helper `should_apply_forwarder_media_prevention_for_app`；request source 只投影 `AppType -> AppKind` 后调用 core policy，boundary 禁止 adapter-local `AppType::Codex` gate 回流。
 
 ## 背景
 

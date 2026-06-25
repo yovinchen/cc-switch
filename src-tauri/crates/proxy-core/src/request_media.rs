@@ -1,3 +1,4 @@
+use crate::domain::AppKind;
 use serde_json::{json, Value};
 
 pub const UNSUPPORTED_IMAGE_MARKER: &str = "[Unsupported Image]";
@@ -67,6 +68,10 @@ pub fn apply_forwarder_media_prevention_from_facts(
     }
 
     replace_images_for_text_only_model(input.body, input.provider_settings, policy.allow_heuristic)
+}
+
+pub fn should_apply_forwarder_media_prevention_for_app(app: &AppKind) -> bool {
+    matches!(app, AppKind::Codex)
 }
 
 pub fn should_check_media_retry(
@@ -472,10 +477,11 @@ mod tests {
         apply_forwarder_media_prevention_from_facts, contains_image_blocks,
         forwarder_media_retry_plan_from_facts, is_unsupported_image_error,
         replace_image_blocks_with_marker, replace_images_for_text_only_model,
-        resolve_media_prevention_policy, should_check_media_retry, should_trigger_media_retry,
-        ForwarderMediaPreventionFacts, ForwarderMediaRetryPlanFacts, MediaRetryInput,
-        UNSUPPORTED_IMAGE_MARKER,
+        resolve_media_prevention_policy, should_apply_forwarder_media_prevention_for_app,
+        should_check_media_retry, should_trigger_media_retry, ForwarderMediaPreventionFacts,
+        ForwarderMediaRetryPlanFacts, MediaRetryInput, UNSUPPORTED_IMAGE_MARKER,
     };
+    use crate::domain::AppKind;
     use serde_json::json;
 
     #[test]
@@ -561,6 +567,22 @@ mod tests {
         );
         assert_eq!(disabled_replaced, 0);
         assert_eq!(disabled_body, disabled_before);
+    }
+
+    #[test]
+    fn forwarder_media_prevention_app_gate_is_codex_only() {
+        assert!(should_apply_forwarder_media_prevention_for_app(
+            &AppKind::Codex
+        ));
+        assert!(!should_apply_forwarder_media_prevention_for_app(
+            &AppKind::Claude
+        ));
+        assert!(!should_apply_forwarder_media_prevention_for_app(
+            &AppKind::Gemini
+        ));
+        assert!(!should_apply_forwarder_media_prevention_for_app(
+            &AppKind::Custom("hermes".to_string())
+        ));
     }
 
     #[test]
