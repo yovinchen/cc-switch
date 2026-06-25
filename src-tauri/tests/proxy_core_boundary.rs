@@ -11645,6 +11645,39 @@ fn proxy_core_adapter_excludes_proxy_engine_constructor_facade() {
 }
 
 #[test]
+fn production_forward_attempt_excludes_provider_only_constructor() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/route_attempt.rs");
+    let source = fs::read_to_string(&path).expect("read route_attempt.rs");
+    let lines: Vec<&str> = source.lines().collect();
+
+    let mut violations = Vec::new();
+    for (line_index, line) in lines.iter().enumerate() {
+        if line.trim() != "pub(crate) fn from_provider(provider: Provider) -> Self {" {
+            continue;
+        }
+
+        let previous = line_index
+            .checked_sub(1)
+            .and_then(|index| lines.get(index))
+            .map(|line| line.trim())
+            .unwrap_or_default();
+        if previous != "#[cfg(test)]" {
+            violations.push(format!(
+                "src/proxy/route_attempt.rs:{} keeps provider-only ForwardAttempt constructor in production",
+                line_index + 1
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production ForwardAttempt must be created from ProxyEngine route selections, not provider-only fallback constructors:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_uses_grouped_api_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");

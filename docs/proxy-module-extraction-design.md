@@ -1078,6 +1078,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮删除 adapter 内部 `proxy_engine_from_services` 一跳构造 facade；`ProxyState::proxy_engine` 在 adapter 所有权边界内直接调用 `ProxyEngine::new`，保留“生产 host 只能经 adapter 构造 engine”的边界测试。
 本轮继续删除 `ProxyState` 对 `AppHandle` 和 `FailoverSwitchManager` 的重复保留字段；这些 host 资源只由 `ManagedAccountRuntimeSource` 与 `FailoverSwitchScheduler` 注入 source 持有，`ProxyState` 只保留 HTTP server 实际读写的 runtime state surface。
 本轮继续删除 `ToProxyCore*` 单 impl DTO trait facade；Provider/channel/model 的 host record 到 core DTO 投影统一改为 adapter 直接函数，避免为独立中转模块暴露不必要的扩展 trait 表面。
+本轮继续把 `ForwardAttempt::from_provider` 收成 test-only 构造器；生产 `ForwardAttempt` 只能从 `ProxyEngine` route selection 转成 channel-aware attempt，避免 provider-only fallback 构造路径回流。
 本轮继续把 `CcSwitchChannelSource` 的 route/materialized channel record list 读取与 `ChannelRecord` 投影收敛到 adapter-owned source wrapper。
 本轮继续把 `CcSwitchChannelSource` 的 legacy channel migration preview/materialize DB 操作与 response input 投影收敛到 adapter-owned source wrapper，host services 只装配 channel source。
 本轮继续把 `CcSwitchRoutePolicySource` 的 failover queue DB 读取与 `RoutePolicy` 投影迁入 adapter-owned source，host services 只装配 source。
@@ -1488,6 +1489,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1059. 删除 `proxy_engine_from_services` 一跳构造 helper；`ProxyState::proxy_engine` 直接在 adapter 边界内调用 `ProxyEngine::new`，新增 boundary marker 防止无语义 constructor facade 回流。
 1060. 删除 `ProxyState` 对 `app_handle` / `failover_manager` 的重复 host 资源保留字段；`ManagedAccountRuntimeSource` 与 `FailoverSwitchScheduler` 仍在 adapter runtime 装配阶段持有所需 clone，新增 boundary marker 防止注入型 host 资源重新回流到 server state shape。
 1061. 删除 `ToProxyCoreProviderSpec`、`ToProxyCoreChannelSpec`、`ToProxyCoreModelRoute`、`ToProxyCoreChannelModelRecord`、`ToProxyCoreChannelRecord` 五个单 impl DTO trait facade；转换入口保留为 adapter 直接函数，新增 boundary marker 防止 DTO 投影重新绕回扩展 trait。
+1062. `ForwardAttempt::from_provider` 改为 `#[cfg(test)]`；生产 attempt 构造只保留 `from_core_selection` 路径，新增 boundary marker 防止 provider-only `ForwardAttempt` fallback 构造器重新进入生产 surface。
 
 ## 背景
 
