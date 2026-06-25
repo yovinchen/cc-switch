@@ -7994,6 +7994,29 @@ fn production_copilot_auth_delegates_oauth_contract_to_core() {
 }
 
 #[test]
+fn production_copilot_token_response_keeps_consumed_fields_only() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/copilot_auth.rs");
+    let source = fs::read_to_string(&path).expect("read copilot_auth.rs");
+    let token_response_slice = function_slice(
+        &source,
+        "struct CopilotTokenResponse",
+        "/// GitHub 用户信息",
+    );
+
+    assert!(
+        token_response_slice.contains("token: String")
+            && token_response_slice.contains("expires_at: i64"),
+        "CopilotTokenResponse should keep the fields consumed by runtime token creation"
+    );
+    assert!(
+        !token_response_slice.contains("refresh_in")
+            && !token_response_slice.contains("#[allow(dead_code)]"),
+        "CopilotTokenResponse should not preserve unused upstream token response fields"
+    );
+}
+
+#[test]
 fn production_codex_oauth_auth_delegates_device_poll_contract_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/codex_oauth_auth.rs");
