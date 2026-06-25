@@ -6719,20 +6719,14 @@ pub(crate) fn attach_codex_model_catalog_from_provider(
     root.insert("modelCatalog".to_string(), model_catalog);
 }
 
-pub(crate) fn client_model_catalog_raw_from_source(
-    source: ClientModelCatalogSource,
-) -> Option<Value> {
-    match source {
+pub(crate) fn client_model_catalog_from_app_source(app: &AppKind) -> ProxyCoreResult<ModelCatalog> {
+    let source = client_model_catalog_source_for_app(app.as_str());
+    let raw = match source {
         ClientModelCatalogSource::CodexActiveConfig => {
             Some(codex_client_model_catalog_raw_from_active_config())
         }
         ClientModelCatalogSource::Empty => None,
-    }
-}
-
-pub(crate) fn client_model_catalog_from_app_source(app: &AppKind) -> ProxyCoreResult<ModelCatalog> {
-    let source = client_model_catalog_source_for_app(app.as_str());
-    let raw = client_model_catalog_raw_from_source(source);
+    };
     Ok(
         crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw(
             app.as_str(),
