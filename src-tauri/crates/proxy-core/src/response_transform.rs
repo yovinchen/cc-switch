@@ -10,6 +10,7 @@ use crate::{
         map_codex_chat_reasoning_effort, resolve_reasoning_effort,
         strip_leading_anthropic_billing_header, supports_reasoning_effort,
     },
+    response_headers::response_headers_indicate_sse,
     session::parse_session_from_user_id,
     usage::{
         build_anthropic_usage_from_openai_chat, build_anthropic_usage_from_openai_responses,
@@ -18,6 +19,7 @@ use crate::{
 };
 use bytes::Bytes;
 use futures::{stream as futures_stream, Stream, StreamExt};
+use http::HeaderMap;
 use serde_json::{json, Map, Value};
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
@@ -1589,6 +1591,69 @@ pub fn claude_transform_unlabeled_sse_aggregation(
         "gemini_native" => None,
         "openai_responses" => Some(UpstreamSseAggregationKind::Responses),
         _ => Some(UpstreamSseAggregationKind::ChatCompletions),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaudeTransformStreamingDecision {
+    pub use_streaming: bool,
+    pub aggregate_codex_oauth_responses_sse: bool,
+    pub response_sse_aggregation: Option<UpstreamSseAggregationKind>,
+}
+
+pub fn claude_transform_streaming_decision(
+    requested_streaming: bool,
+    response_headers: &HeaderMap,
+    api_format: &str,
+    is_codex_oauth: bool,
+) -> ClaudeTransformStreamingDecision {
+    let aggregate_codex_oauth_responses_sse =
+        should_aggregate_codex_oauth_responses_sse(requested_streaming, api_format, is_codex_oauth);
+    let use_streaming = if aggregate_codex_oauth_responses_sse {
+        false
+    } else {
+        should_use_claude_transform_streaming(
+            requested_streaming,
+            response_headers_indicate_sse(response_headers),
+            api_format,
+            is_codex_oauth,
+        )
+    };
+    let response_sse_aggregation = if use_streaming {
+        None
+    } else if aggregate_codex_oauth_responses_sse {
+        Some(UpstreamSseAggregationKind::Responses)
+    } else {
+        claude_transform_unlabeled_sse_aggregation(api_format)
+    };
+
+    ClaudeTransformStreamingDecision {
+        use_streaming,
+        aggregate_codex_oauth_responses_sse,
+        response_sse_aggregation,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodexChatTransformStreamingDecision {
+    pub use_streaming: bool,
+    pub response_sse_aggregation: Option<UpstreamSseAggregationKind>,
+}
+
+pub fn codex_chat_transform_streaming_decision(
+    requested_streaming: bool,
+    response_headers: &HeaderMap,
+) -> CodexChatTransformStreamingDecision {
+    let use_streaming = requested_streaming || response_headers_indicate_sse(response_headers);
+    let response_sse_aggregation = if use_streaming {
+        None
+    } else {
+        Some(UpstreamSseAggregationKind::ChatCompletions)
+    };
+
+    CodexChatTransformStreamingDecision {
+        use_streaming,
+        response_sse_aggregation,
     }
 }
 
@@ -5910,6 +5975,73 @@ mod tests {
         assert_eq!(
             claude_transform_unlabeled_sse_aggregation("gemini_native"),
             None
+        );
+    }
+
+    #[test]
+    fn claude_transform_streaming_decision_handles_codex_oauth_and_unlabeled_sse() {
+        let mut sse_headers = HeaderMap::new();
+        sse_headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/event-stream"),
+        );
+
+        let aggregate_decision =
+            claude_transform_streaming_decision(false, &sse_headers, "openai_responses", true);
+        assert!(!aggregate_decision.use_streaming);
+        assert!(aggregate_decision.aggregate_codex_oauth_responses_sse);
+        assert_eq!(
+            aggregate_decision.response_sse_aggregation,
+            Some(UpstreamSseAggregationKind::Responses)
+        );
+
+        let streaming_decision =
+            claude_transform_streaming_decision(true, &HeaderMap::new(), "openai_responses", true);
+        assert!(streaming_decision.use_streaming);
+        assert!(!streaming_decision.aggregate_codex_oauth_responses_sse);
+        assert!(streaming_decision.response_sse_aggregation.is_none());
+
+        let upstream_sse_decision =
+            claude_transform_streaming_decision(false, &sse_headers, "openai_chat", false);
+        assert!(upstream_sse_decision.use_streaming);
+        assert!(!upstream_sse_decision.aggregate_codex_oauth_responses_sse);
+        assert!(upstream_sse_decision.response_sse_aggregation.is_none());
+
+        let non_stream_chat_decision =
+            claude_transform_streaming_decision(false, &HeaderMap::new(), "openai_chat", false);
+        assert!(!non_stream_chat_decision.use_streaming);
+        assert!(!non_stream_chat_decision.aggregate_codex_oauth_responses_sse);
+        assert_eq!(
+            non_stream_chat_decision.response_sse_aggregation,
+            Some(UpstreamSseAggregationKind::ChatCompletions)
+        );
+    }
+
+    #[test]
+    fn codex_chat_transform_streaming_decision_handles_sse_and_fallback() {
+        let mut sse_headers = HeaderMap::new();
+        sse_headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/event-stream"),
+        );
+
+        let header_streaming_decision =
+            codex_chat_transform_streaming_decision(false, &sse_headers);
+        assert!(header_streaming_decision.use_streaming);
+        assert!(header_streaming_decision.response_sse_aggregation.is_none());
+
+        let requested_streaming_decision =
+            codex_chat_transform_streaming_decision(true, &HeaderMap::new());
+        assert!(requested_streaming_decision.use_streaming);
+        assert!(requested_streaming_decision
+            .response_sse_aggregation
+            .is_none());
+
+        let non_stream_decision = codex_chat_transform_streaming_decision(false, &HeaderMap::new());
+        assert!(!non_stream_decision.use_streaming);
+        assert_eq!(
+            non_stream_decision.response_sse_aggregation,
+            Some(UpstreamSseAggregationKind::ChatCompletions)
         );
     }
 

@@ -1604,6 +1604,17 @@ const FORBIDDEN_HANDLER_CODEX_STREAMING_DECISION_MARKERS: &[&str] = &[
     "response_headers_indicate_sse(response.headers())",
     "Some(UpstreamSseAggregationKind::ChatCompletions)",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_CLAUDE_STREAMING_DECISION_MARKERS: &[&str] = &[
+    "should_aggregate_codex_oauth_responses_sse(",
+    "should_use_claude_transform_streaming(",
+    "response_headers_indicate_sse(response_headers)",
+    "claude_transform_unlabeled_sse_aggregation(",
+    "Some(UpstreamSseAggregationKind::Responses)",
+];
+const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_STREAMING_DECISION_MARKERS: &[&str] = &[
+    "response_headers_indicate_sse(response_headers)",
+    "Some(UpstreamSseAggregationKind::ChatCompletions)",
+];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -5057,6 +5068,45 @@ fn handlers_delegate_codex_chat_streaming_decision_to_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_transform_streaming_decisions_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let claude_decision = function_slice(
+        &source,
+        "pub(crate) fn provider_claude_transform_streaming_decision",
+        "pub(crate) fn codex_chat_transform_streaming_decision",
+    );
+    let codex_decision = function_slice(
+        &source,
+        "pub(crate) fn codex_chat_transform_streaming_decision",
+        "pub(crate) use crate::proxy_core::api::domain::infer_claude_provider_kind",
+    );
+
+    assert!(
+        claude_decision.contains("core_claude_transform_streaming_decision("),
+        "Claude transform streaming decision must be delegated to proxy-core"
+    );
+    assert!(
+        codex_decision.contains("core_codex_chat_transform_streaming_decision("),
+        "Codex Chat transform streaming decision must be delegated to proxy-core"
+    );
+
+    for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CLAUDE_STREAMING_DECISION_MARKERS {
+        assert!(
+            !claude_decision.contains(marker),
+            "proxy_core_adapter must not locally compose Claude streaming decision marker `{marker}`"
+        );
+    }
+    for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_STREAMING_DECISION_MARKERS {
+        assert!(
+            !codex_decision.contains(marker),
+            "proxy_core_adapter must not locally compose Codex streaming decision marker `{marker}`"
+        );
+    }
+}
+
+#[test]
 fn response_pipeline_uses_core_sse_header_decision() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let hyper_client = fs::read_to_string(manifest_dir.join("src/proxy/hyper_client.rs"))
@@ -5076,8 +5126,9 @@ fn response_pipeline_uses_core_sse_header_decision() {
         "response_processor should delegate SSE detection to proxy-core"
     );
     assert!(
-        adapter.contains("response_headers_indicate_sse(response_headers)"),
-        "protocol transform handlers should route SSE detection through proxy_core_adapter"
+        adapter.contains("core_claude_transform_streaming_decision(")
+            && adapter.contains("core_codex_chat_transform_streaming_decision("),
+        "protocol transform adapter should delegate SSE-aware streaming decisions to proxy-core"
     );
 }
 

@@ -2729,15 +2729,16 @@ pub(crate) use crate::proxy_core::api::transforms::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
     anthropic_to_openai_responses_request, append_utf8_safe, build_gemini_upstream_url,
     chat_completion_to_response_with_context, claude_stream_usage_event_filter,
-    claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
-    create_codex_chat_to_responses_sse_stream_with_context,
+    claude_transform_streaming_decision as core_claude_transform_streaming_decision,
+    codex_chat_transform_streaming_decision as core_codex_chat_transform_streaming_decision,
+    codex_stream_usage_event_filter, create_codex_chat_to_responses_sse_stream_with_context,
     create_gemini_to_anthropic_sse_stream_with_callbacks,
     create_openai_chat_to_anthropic_sse_stream, create_openai_responses_to_anthropic_sse_stream,
     extract_anthropic_tool_schema_hints, gemini_response_to_anthropic_message_with_shadow,
     inspect_codex_chat_history_sse_block, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message, should_aggregate_codex_oauth_responses_sse,
-    should_preserve_reasoning_content_for_openai_chat, should_use_claude_transform_streaming,
-    take_sse_block, AnthropicToolSchemaHints,
+    openai_responses_to_anthropic_message, should_preserve_reasoning_content_for_openai_chat,
+    take_sse_block, AnthropicToolSchemaHints, ClaudeTransformStreamingDecision,
+    CodexChatTransformStreamingDecision,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::{
@@ -4464,66 +4465,25 @@ pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
     claude_api_format_needs_transform(provider_claude_api_format(provider))
 }
 
-pub(crate) struct ClaudeTransformStreamingDecision {
-    pub(crate) use_streaming: bool,
-    pub(crate) aggregate_codex_oauth_responses_sse: bool,
-    pub(crate) response_sse_aggregation: Option<UpstreamSseAggregationKind>,
-}
-
 pub(crate) fn provider_claude_transform_streaming_decision(
     provider: &Provider,
     requested_streaming: bool,
     response_headers: &HeaderMap,
     api_format: &str,
 ) -> ClaudeTransformStreamingDecision {
-    let is_codex_oauth = provider_is_codex_oauth(provider);
-    let aggregate_codex_oauth_responses_sse =
-        should_aggregate_codex_oauth_responses_sse(requested_streaming, api_format, is_codex_oauth);
-    let use_streaming = if aggregate_codex_oauth_responses_sse {
-        false
-    } else {
-        should_use_claude_transform_streaming(
-            requested_streaming,
-            response_headers_indicate_sse(response_headers),
-            api_format,
-            is_codex_oauth,
-        )
-    };
-    let response_sse_aggregation = if use_streaming {
-        None
-    } else if aggregate_codex_oauth_responses_sse {
-        Some(UpstreamSseAggregationKind::Responses)
-    } else {
-        claude_transform_unlabeled_sse_aggregation(api_format)
-    };
-
-    ClaudeTransformStreamingDecision {
-        use_streaming,
-        aggregate_codex_oauth_responses_sse,
-        response_sse_aggregation,
-    }
-}
-
-pub(crate) struct CodexChatTransformStreamingDecision {
-    pub(crate) use_streaming: bool,
-    pub(crate) response_sse_aggregation: Option<UpstreamSseAggregationKind>,
+    core_claude_transform_streaming_decision(
+        requested_streaming,
+        response_headers,
+        api_format,
+        provider_is_codex_oauth(provider),
+    )
 }
 
 pub(crate) fn codex_chat_transform_streaming_decision(
     requested_streaming: bool,
     response_headers: &HeaderMap,
 ) -> CodexChatTransformStreamingDecision {
-    let use_streaming = requested_streaming || response_headers_indicate_sse(response_headers);
-    let response_sse_aggregation = if use_streaming {
-        None
-    } else {
-        Some(UpstreamSseAggregationKind::ChatCompletions)
-    };
-
-    CodexChatTransformStreamingDecision {
-        use_streaming,
-        response_sse_aggregation,
-    }
+    core_codex_chat_transform_streaming_decision(requested_streaming, response_headers)
 }
 
 pub(crate) use crate::proxy_core::api::domain::infer_claude_provider_kind;
