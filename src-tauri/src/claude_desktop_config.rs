@@ -205,11 +205,7 @@ pub fn is_official_provider(provider: &Provider) -> bool {
 }
 
 pub fn provider_mode(provider: &Provider) -> ClaudeDesktopMode {
-    provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.claude_desktop_mode.clone())
-        .unwrap_or(ClaudeDesktopMode::Direct)
+    crate::proxy_core_adapter::provider_claude_desktop_mode(provider)
 }
 
 pub fn get_or_create_gateway_token(db: &Database) -> Result<String, AppError> {

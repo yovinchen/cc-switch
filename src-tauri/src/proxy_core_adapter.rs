@@ -10766,7 +10766,9 @@ pub(crate) fn provider_claude_desktop_status_facts(
     }
 }
 
-fn provider_claude_desktop_mode(provider: &Provider) -> crate::provider::ClaudeDesktopMode {
+pub(crate) fn provider_claude_desktop_mode(
+    provider: &Provider,
+) -> crate::provider::ClaudeDesktopMode {
     provider
         .meta
         .as_ref()
