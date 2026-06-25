@@ -4850,6 +4850,53 @@ fn claude_desktop_config_delegates_proxy_route_projection_to_adapter() {
 }
 
 #[test]
+fn claude_desktop_config_delegates_proxy_request_route_lookup_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let request_mapping_slice = function_slice(
+        &source,
+        "pub fn map_proxy_request_model(",
+        "fn normalize_mimo_anthropic_thinking_history(",
+    );
+
+    assert!(
+        request_mapping_slice.contains("claude_desktop_proxy_request_upstream_model(")
+            && request_mapping_slice.contains("ClaudeDesktopProxyRouteInput"),
+        "claude_desktop_config should delegate proxy request route lookup to proxy_core_adapter/core"
+    );
+
+    let forbidden_markers = [
+        "strip_one_m_suffix_for_route_lookup",
+        "legacy_raw_route_upstream_model",
+        "is_compatible_opus_route_alias",
+        "claude_role_keyword",
+        "LEGACY_OPUS_ROUTE_ID",
+        "ONE_M_CONTEXT_MARKER",
+        "is_claude_safe_model_id(",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(request_mapping_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/claude_desktop_config.rs map_proxy_request_model:{} contains request route lookup policy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "claude_desktop_config must keep proxy request route lookup policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

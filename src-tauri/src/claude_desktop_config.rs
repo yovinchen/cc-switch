@@ -35,7 +35,6 @@ const MIMO_TOOL_CALL_THINKING_PLACEHOLDER: &str = "tool call";
 pub const ONE_M_CONTEXT_MARKER: &str = "[1m]";
 
 const CURRENT_OPUS_ROUTE_ID: &str = "claude-opus-4-8";
-const LEGACY_OPUS_ROUTE_ID: &str = "claude-opus-4-7";
 
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -534,111 +533,50 @@ pub fn map_proxy_request_model(mut body: Value, provider: &Provider) -> Result<V
                 "Claude Desktop request is missing the model field",
             )
         })?;
-    let requested = strip_one_m_suffix_for_route_lookup(&requested_raw);
 
     let routes = proxy_model_routes(provider)?;
-    let upstream_model = routes
+    let raw_routes = provider
+        .meta
+        .as_ref()
+        .into_iter()
+        .flat_map(|meta| meta.claude_desktop_model_routes.iter())
+        .map(
+            |(route_id, route)| crate::proxy_core_adapter::ClaudeDesktopProxyRouteInput {
+                route_id,
+                upstream_model: &route.model,
+                label_override: route.label_override.as_deref(),
+                supports_1m: route.supports_1m.unwrap_or(false),
+            },
+        );
+    let core_routes = routes
         .iter()
-        .find(|r| r.route_id == requested)
-        .or_else(|| {
-            routes
-                .iter()
-                .find(|r| is_compatible_opus_route_alias(&r.route_id, requested))
-        })
-        .map(|route| route.upstream_model.clone())
-        .or_else(|| legacy_raw_route_upstream_model(provider, requested))
-        .or_else(|| {
-            // 角色关键词回落:Claude Desktop 的部分调用(如子 agent)会请求带发布
-            // 日期后缀的完整官方名(claude-haiku-4-5-20251001),与 manifest 暴露的
-            // 简短 route_id(claude-haiku-4-5)不精确相等。按 opus/haiku/fable/sonnet
-            // 归类到同档已配置路由,对齐 Claude Code model_mapper 的宽松匹配。
-            // 匹配前已剥离本地 [1m] 标记；这里仍只对 Claude Desktop 认可的
-            // 安全模型名回落，避免非 Claude route 被误映射。
-            if !is_claude_safe_model_id(requested) {
-                return None;
-            }
-            let role = claude_role_keyword(requested)?;
-            routes
-                .iter()
-                .find(|route| claude_role_keyword(&route.route_id) == Some(role))
-                // 老用户只配了 Sonnet/Opus/Haiku 三档时，fable 请求降级到 opus 档，
-                // 与官方安全分类器的降级方向一致，避免 route_unknown 硬错误。
-                // 用户一旦显式配置 fable 档，上面的精确角色匹配会优先命中。
-                .or_else(|| {
-                    (role == "fable")
-                        .then(|| {
-                            routes
-                                .iter()
-                                .find(|route| claude_role_keyword(&route.route_id) == Some("opus"))
-                        })
-                        .flatten()
-                })
-                .map(|route| route.upstream_model.clone())
-        })
-        .ok_or_else(|| {
-            AppError::localized(
-                "claude_desktop.provider.route_unknown",
-                format!("Claude Desktop 模型路由未配置: {requested_raw}"),
-                format!("Claude Desktop model route is not configured: {requested_raw}"),
-            )
-        })?;
+        .map(
+            |route| crate::proxy_core_adapter::ClaudeDesktopResolvedProxyRoute {
+                route_id: route.route_id.clone(),
+                upstream_model: route.upstream_model.clone(),
+                label_override: route.label_override.clone(),
+                supports_1m: route.supports_1m,
+            },
+        )
+        .collect::<Vec<_>>();
+    let upstream_model = crate::proxy_core_adapter::claude_desktop_proxy_request_upstream_model(
+        &requested_raw,
+        &core_routes,
+        raw_routes,
+    )
+    .ok_or_else(|| {
+        AppError::localized(
+            "claude_desktop.provider.route_unknown",
+            format!("Claude Desktop 模型路由未配置: {requested_raw}"),
+            format!("Claude Desktop model route is not configured: {requested_raw}"),
+        )
+    })?;
 
     body["model"] = json!(upstream_model);
     if provider_should_normalize_mimo_anthropic_thinking_history(provider, &upstream_model) {
         normalize_mimo_anthropic_thinking_history(&mut body);
     }
     Ok(body)
-}
-
-fn strip_one_m_suffix_for_route_lookup(model: &str) -> &str {
-    let trimmed = model.trim();
-    let marker = ONE_M_CONTEXT_MARKER.as_bytes();
-    let bytes = trimmed.as_bytes();
-    if bytes.len() >= marker.len()
-        && bytes[bytes.len() - marker.len()..].eq_ignore_ascii_case(marker)
-    {
-        return trimmed[..trimmed.len() - marker.len()].trim_end();
-    }
-    trimmed
-}
-
-fn legacy_raw_route_upstream_model(provider: &Provider, requested: &str) -> Option<String> {
-    provider
-        .meta
-        .as_ref()?
-        .claude_desktop_model_routes
-        .iter()
-        .find(|(route_id, _)| route_id.trim() == requested)
-        .and_then(|(_, route)| {
-            let upstream_model = route.model.trim();
-            (!upstream_model.is_empty()).then(|| upstream_model.to_string())
-        })
-}
-
-fn is_compatible_opus_route_alias(route_id: &str, requested: &str) -> bool {
-    matches!(
-        (route_id, requested),
-        (CURRENT_OPUS_ROUTE_ID, LEGACY_OPUS_ROUTE_ID)
-            | (LEGACY_OPUS_ROUTE_ID, CURRENT_OPUS_ROUTE_ID)
-    )
-}
-
-/// 按角色关键词(opus / haiku / fable / sonnet)归类一个 Claude 模型名/route_id。
-/// 仅在命中明确角色词时返回 Some,未知模型返回 None(不回落,保持精确报错语义)。
-/// 与前端 `routeRoleFromId` 同序(opus → haiku → fable → sonnet)。
-fn claude_role_keyword(model: &str) -> Option<&'static str> {
-    let normalized = model.to_ascii_lowercase();
-    if normalized.contains("opus") {
-        Some("opus")
-    } else if normalized.contains("haiku") {
-        Some("haiku")
-    } else if normalized.contains("fable") {
-        Some("fable")
-    } else if normalized.contains("sonnet") {
-        Some("sonnet")
-    } else {
-        None
-    }
 }
 
 fn normalize_mimo_anthropic_thinking_history(body: &mut Value) {

@@ -2667,7 +2667,8 @@ pub(crate) use crate::proxy_core::api::auth::{
 };
 pub(crate) use crate::proxy_core::api::auth::{
     claude_desktop_model_id_is_profile_safe, claude_desktop_proxy_model_routes,
-    ClaudeDesktopProxyRouteInput, ClaudeDesktopResolvedProxyRoute,
+    claude_desktop_proxy_request_upstream_model, ClaudeDesktopProxyRouteInput,
+    ClaudeDesktopResolvedProxyRoute,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,

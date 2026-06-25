@@ -8,9 +8,11 @@ pub const CLAUDE_DESKTOP_MODEL_CREATED_AT: &str = "2024-01-01T00:00:00Z";
 const CLAUDE_ROUTE_PREFIX: &str = "claude-";
 const ANTHROPIC_CLAUDE_ROUTE_PREFIX: &str = "anthropic/claude-";
 const ONE_M_CONTEXT_MARKER: &str = "[1m]";
+const CURRENT_OPUS_ROUTE_ID: &str = "claude-opus-4-8";
+const LEGACY_OPUS_ROUTE_ID: &str = "claude-opus-4-7";
 const DEFAULT_PROXY_ROUTE_IDS: &[&str] = &[
     "claude-sonnet-4-6",
-    "claude-opus-4-8",
+    CURRENT_OPUS_ROUTE_ID,
     "claude-haiku-4-5",
     "claude-fable-5",
 ];
@@ -195,6 +197,25 @@ pub fn claude_desktop_proxy_model_routes<'a>(
     result
 }
 
+pub fn claude_desktop_proxy_request_upstream_model<'a>(
+    requested_model: &str,
+    routes: &[ClaudeDesktopResolvedProxyRoute],
+    raw_routes: impl IntoIterator<Item = ClaudeDesktopProxyRouteInput<'a>>,
+) -> Option<String> {
+    let requested = strip_one_m_suffix_for_route_lookup(requested_model);
+    routes
+        .iter()
+        .find(|route| route.route_id == requested)
+        .or_else(|| {
+            routes
+                .iter()
+                .find(|route| is_compatible_opus_route_alias(&route.route_id, requested))
+        })
+        .map(|route| route.upstream_model.clone())
+        .or_else(|| legacy_raw_route_upstream_model(raw_routes, requested))
+        .or_else(|| proxy_route_role_fallback_upstream_model(routes, requested))
+}
+
 fn next_catalog_safe_route_id(
     existing: &[ClaudeDesktopResolvedProxyRoute],
     reserved: &std::collections::HashSet<String>,
@@ -213,6 +234,78 @@ fn next_catalog_safe_route_id(
             return route_id;
         }
         index += 1;
+    }
+}
+
+fn strip_one_m_suffix_for_route_lookup(model: &str) -> &str {
+    let trimmed = model.trim();
+    let marker = ONE_M_CONTEXT_MARKER.as_bytes();
+    let bytes = trimmed.as_bytes();
+    if bytes.len() >= marker.len()
+        && bytes[bytes.len() - marker.len()..].eq_ignore_ascii_case(marker)
+    {
+        return trimmed[..trimmed.len() - marker.len()].trim_end();
+    }
+    trimmed
+}
+
+fn legacy_raw_route_upstream_model<'a>(
+    raw_routes: impl IntoIterator<Item = ClaudeDesktopProxyRouteInput<'a>>,
+    requested: &str,
+) -> Option<String> {
+    raw_routes
+        .into_iter()
+        .find(|route| route.route_id.trim() == requested)
+        .and_then(|route| {
+            let upstream_model = route.upstream_model.trim();
+            (!upstream_model.is_empty()).then(|| upstream_model.to_string())
+        })
+}
+
+fn is_compatible_opus_route_alias(route_id: &str, requested: &str) -> bool {
+    matches!(
+        (route_id, requested),
+        (CURRENT_OPUS_ROUTE_ID, LEGACY_OPUS_ROUTE_ID)
+            | (LEGACY_OPUS_ROUTE_ID, CURRENT_OPUS_ROUTE_ID)
+    )
+}
+
+fn proxy_route_role_fallback_upstream_model(
+    routes: &[ClaudeDesktopResolvedProxyRoute],
+    requested: &str,
+) -> Option<String> {
+    if !claude_desktop_model_id_is_profile_safe(requested) {
+        return None;
+    }
+
+    let role = claude_role_keyword(requested)?;
+    routes
+        .iter()
+        .find(|route| claude_role_keyword(&route.route_id) == Some(role))
+        .or_else(|| {
+            (role == "fable")
+                .then(|| {
+                    routes
+                        .iter()
+                        .find(|route| claude_role_keyword(&route.route_id) == Some("opus"))
+                })
+                .flatten()
+        })
+        .map(|route| route.upstream_model.clone())
+}
+
+fn claude_role_keyword(model: &str) -> Option<&'static str> {
+    let normalized = model.to_ascii_lowercase();
+    if normalized.contains("opus") {
+        Some("opus")
+    } else if normalized.contains("haiku") {
+        Some("haiku")
+    } else if normalized.contains("fable") {
+        Some("fable")
+    } else if normalized.contains("sonnet") {
+        Some("sonnet")
+    } else {
+        None
     }
 }
 
@@ -395,7 +488,8 @@ mod tests {
         claude_desktop_provider_unavailable_error_message,
         claude_desktop_proxy_has_base_url_and_key, claude_desktop_proxy_model_routes,
         claude_desktop_proxy_provider_config_validation_issue,
-        claude_desktop_routes_support_1m_by_default, validate_claude_desktop_gateway_bearer_header,
+        claude_desktop_proxy_request_upstream_model, claude_desktop_routes_support_1m_by_default,
+        validate_claude_desktop_gateway_bearer_header,
         validate_claude_desktop_gateway_bearer_value, ClaudeDesktopDirectProviderValidationIssue,
         ClaudeDesktopGatewayAuthError, ClaudeDesktopModelListResponse,
         ClaudeDesktopModelRouteInput, ClaudeDesktopProviderValidationInput,
@@ -587,6 +681,95 @@ mod tests {
         assert_eq!(routes[0].upstream_model, "upstream-a");
         assert_eq!(routes[0].label_override.as_deref(), Some("First"));
         assert!(!routes[0].supports_1m);
+    }
+
+    #[test]
+    fn proxy_request_upstream_model_maps_exact_one_m_legacy_and_opus_aliases() {
+        let raw_routes = [
+            ClaudeDesktopProxyRouteInput {
+                route_id: "claude-sonnet-4-6",
+                upstream_model: "upstream-sonnet",
+                label_override: None,
+                supports_1m: true,
+            },
+            ClaudeDesktopProxyRouteInput {
+                route_id: "claude-opus-4-8",
+                upstream_model: "upstream-opus",
+                label_override: None,
+                supports_1m: true,
+            },
+            ClaudeDesktopProxyRouteInput {
+                route_id: "claude-old",
+                upstream_model: "legacy-upstream",
+                label_override: None,
+                supports_1m: false,
+            },
+        ];
+        let routes = claude_desktop_proxy_model_routes(raw_routes);
+
+        assert_eq!(
+            claude_desktop_proxy_request_upstream_model(
+                " claude-sonnet-4-6 [1M] ",
+                &routes,
+                raw_routes
+            )
+            .as_deref(),
+            Some("upstream-sonnet")
+        );
+        assert_eq!(
+            claude_desktop_proxy_request_upstream_model("claude-old", &routes, raw_routes)
+                .as_deref(),
+            Some("legacy-upstream")
+        );
+        assert_eq!(
+            claude_desktop_proxy_request_upstream_model("claude-opus-4-7", &routes, raw_routes)
+                .as_deref(),
+            Some("upstream-opus")
+        );
+    }
+
+    #[test]
+    fn proxy_request_upstream_model_maps_role_aliases_without_mapping_unknown_models() {
+        let raw_routes = [
+            ClaudeDesktopProxyRouteInput {
+                route_id: "claude-sonnet-4-6",
+                upstream_model: "upstream-sonnet",
+                label_override: None,
+                supports_1m: true,
+            },
+            ClaudeDesktopProxyRouteInput {
+                route_id: "claude-opus-4-8",
+                upstream_model: "upstream-opus",
+                label_override: None,
+                supports_1m: true,
+            },
+            ClaudeDesktopProxyRouteInput {
+                route_id: "claude-haiku-4-5",
+                upstream_model: "upstream-haiku",
+                label_override: None,
+                supports_1m: true,
+            },
+        ];
+        let routes = claude_desktop_proxy_model_routes(raw_routes);
+
+        assert_eq!(
+            claude_desktop_proxy_request_upstream_model(
+                "claude-haiku-4-5-20251001",
+                &routes,
+                raw_routes
+            )
+            .as_deref(),
+            Some("upstream-haiku")
+        );
+        assert_eq!(
+            claude_desktop_proxy_request_upstream_model("claude-fable-5[1m]", &routes, raw_routes)
+                .as_deref(),
+            Some("upstream-opus")
+        );
+        assert_eq!(
+            claude_desktop_proxy_request_upstream_model("gpt-5[1m]", &routes, raw_routes),
+            None
+        );
     }
 
     #[test]
