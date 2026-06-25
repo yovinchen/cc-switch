@@ -1149,6 +1149,14 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_GEMINI_LIVE_JSON_POLICY_MARKERS: &[&str] = &[
     "\"env\": gemini_env_value_from_env_json",
     "\"env\": settings.get(\"env\")",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_GEMINI_LIVE_CONFIG_POLICY_MARKERS: &[&str] = &[
+    "pub(crate) enum GeminiLiveConfigIssue",
+    "Some(config) if config.is_object()",
+    "Some(config) if config.is_null()",
+    "GeminiLiveConfigIssue::InvalidType",
+    "merged.as_object_mut()",
+    "merged_obj.insert(",
+];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
     "ProviderKind::CodexOAuth",
@@ -3134,6 +3142,39 @@ fn proxy_core_adapter_delegates_gemini_live_json_policy_to_core() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter must keep Gemini live env/config JSON shape policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_gemini_live_config_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let production_source = production_lines(&source)
+        .map(|(_, line)| line)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        production_source.contains("core_gemini_live_config_object_from_settings")
+            && production_source.contains("pub(crate) use crate::proxy_core::api::ports::gemini_live_settings_to_write"),
+        "proxy_core_adapter should delegate Gemini live config selection/merge policy to core"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_GEMINI_LIVE_CONFIG_POLICY_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!("line {}: {}", line_index + 1, marker));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Gemini live config selection/merge policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }

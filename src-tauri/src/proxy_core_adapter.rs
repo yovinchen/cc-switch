@@ -301,6 +301,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     gemini_env_json_from_map as core_gemini_env_json_from_map,
     gemini_env_parse_issue_spec as core_gemini_env_parse_issue_spec,
     gemini_env_string_map_from_settings as core_gemini_env_string_map_from_settings,
+    gemini_live_config_object_from_settings as core_gemini_live_config_object_from_settings,
     gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
     is_local_proxy_url as core_is_local_proxy_url,
     launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings,
@@ -352,7 +353,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
     validate_gemini_settings_basic as core_validate_gemini_settings_basic,
     validate_gemini_settings_strict as core_validate_gemini_settings_strict,
-    GeminiAuthType, GeminiAuthTypeInput, GeminiEnvParseIssue,
+    GeminiAuthType, GeminiAuthTypeInput, GeminiEnvParseIssue, GeminiLiveConfigIssue,
     GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, LocalizedErrorSpec,
     CodexCredentialParts, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
     ProviderCredentialIssue, ProviderCredentialValues as CoreProviderCredentialValues,
@@ -4350,41 +4351,13 @@ pub(crate) fn validate_provider_gemini_settings_strict(
     validate_gemini_settings_strict(&provider.settings_config)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GeminiLiveConfigIssue {
-    InvalidType,
-}
-
 pub(crate) fn provider_gemini_live_config_object(
     provider: &Provider,
 ) -> Result<Option<&Value>, GeminiLiveConfigIssue> {
-    match provider.settings_config.get("config") {
-        Some(config) if config.is_object() => Ok(Some(config)),
-        Some(config) if config.is_null() => Ok(None),
-        Some(_) => Err(GeminiLiveConfigIssue::InvalidType),
-        None => Ok(None),
-    }
+    core_gemini_live_config_object_from_settings(&provider.settings_config)
 }
 
-pub(crate) fn gemini_live_settings_to_write(
-    existing_settings: Option<Value>,
-    provider_config: Option<&Value>,
-) -> Option<Value> {
-    match provider_config {
-        Some(config_value) => {
-            let mut merged = existing_settings.unwrap_or_else(|| json!({}));
-            if let (Some(merged_obj), Some(config_obj)) =
-                (merged.as_object_mut(), config_value.as_object())
-            {
-                for (key, value) in config_obj {
-                    merged_obj.insert(key.clone(), value.clone());
-                }
-            }
-            Some(merged)
-        }
-        None => existing_settings,
-    }
-}
+pub(crate) use crate::proxy_core::api::ports::gemini_live_settings_to_write;
 
 pub(crate) fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
     if provider_gemini_api_key(provider)

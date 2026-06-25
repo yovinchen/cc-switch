@@ -1424,6 +1424,42 @@ pub fn gemini_live_backup_from_effective_settings(settings: &Value) -> Value {
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeminiLiveConfigIssue {
+    InvalidType,
+}
+
+pub fn gemini_live_config_object_from_settings(
+    settings: &Value,
+) -> Result<Option<&Value>, GeminiLiveConfigIssue> {
+    match settings.get("config") {
+        Some(config) if config.is_object() => Ok(Some(config)),
+        Some(config) if config.is_null() => Ok(None),
+        Some(_) => Err(GeminiLiveConfigIssue::InvalidType),
+        None => Ok(None),
+    }
+}
+
+pub fn gemini_live_settings_to_write(
+    existing_settings: Option<Value>,
+    provider_config: Option<&Value>,
+) -> Option<Value> {
+    match provider_config {
+        Some(config_value) => {
+            let mut merged = existing_settings.unwrap_or_else(|| json!({}));
+            if let (Some(merged_obj), Some(config_obj)) =
+                (merged.as_object_mut(), config_value.as_object())
+            {
+                for (key, value) in config_obj {
+                    merged_obj.insert(key.clone(), value.clone());
+                }
+            }
+            Some(merged)
+        }
+        None => existing_settings,
+    }
+}
+
 pub fn codex_live_auth_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
     config
         .get("auth")
@@ -5530,9 +5566,11 @@ mod tests {
         gemini_env_map_from_settings, gemini_env_parse_issue_spec,
         gemini_env_string_map_from_settings, gemini_env_value_from_env_json,
         gemini_live_backup_from_effective_settings,
-        gemini_live_settings_from_env_json_and_config, parse_gemini_env_file,
-        parse_gemini_env_file_strict, serialize_gemini_env_file, GeminiAuthType,
-        GeminiAuthTypeInput, GeminiEnvParseIssue,
+        gemini_live_config_object_from_settings,
+        gemini_live_settings_from_env_json_and_config, gemini_live_settings_to_write,
+        parse_gemini_env_file, parse_gemini_env_file_strict, serialize_gemini_env_file,
+        GeminiAuthType, GeminiAuthTypeInput, GeminiEnvParseIssue,
+        GeminiLiveConfigIssue,
         gemini_settings_validation_issue_spec, gemini_common_config_snippet_from_settings,
         gemini_live_config_has_proxy_placeholder, is_local_proxy_url,
         common_config_settings_mutation_issue_message,
@@ -8115,6 +8153,51 @@ GEMINI_API_KEY=sk-test123
                 "config": {"mcpServers": {}}
             })),
             json!({"env": {}})
+        );
+    }
+
+    #[test]
+    fn gemini_live_config_helpers_preserve_config_merge_contract() {
+        assert_eq!(
+            gemini_live_config_object_from_settings(&json!({"config": {"mcpServers": {}}}))
+                .expect("config object")
+                .and_then(Value::as_object)
+                .map(|obj| obj.contains_key("mcpServers")),
+            Some(true)
+        );
+        assert!(
+            gemini_live_config_object_from_settings(&json!({"config": Value::Null}))
+                .expect("null config should preserve live file")
+                .is_none()
+        );
+        assert_eq!(
+            gemini_live_config_object_from_settings(&json!({"config": "not-object"})),
+            Err(GeminiLiveConfigIssue::InvalidType)
+        );
+        assert_eq!(
+            gemini_live_settings_to_write(
+                Some(json!({
+                    "mcpServers": {"existing": {}},
+                    "security": {"auth": {"selectedType": "oauth-personal"}}
+                })),
+                Some(&json!({
+                    "security": {"auth": {"selectedType": "api-key"}},
+                    "ui": {"theme": "dark"}
+                })),
+            ),
+            Some(json!({
+                "mcpServers": {"existing": {}},
+                "security": {"auth": {"selectedType": "api-key"}},
+                "ui": {"theme": "dark"}
+            }))
+        );
+        assert_eq!(
+            gemini_live_settings_to_write(Some(json!({"mcpServers": {}})), None),
+            Some(json!({"mcpServers": {}}))
+        );
+        assert_eq!(
+            gemini_live_settings_to_write(None, Some(&json!({"ui": {"theme": "dark"}}))),
+            Some(json!({"ui": {"theme": "dark"}}))
         );
     }
 
