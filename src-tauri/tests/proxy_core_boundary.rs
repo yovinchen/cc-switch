@@ -932,6 +932,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn extract_hermes_stream_check_base_url(",
     "fn extract_opencode_stream_check_npm(",
     "fn resolve_opencode_stream_check_base_url(",
+    "fn additive_stream_check_base_url_missing_error_spec(",
     "fn opencode_live_provider_fragment_has_provider_fields(",
     "fn channel_health_reset_from_parts(",
     "fn stream_check_result_to_channel_reachability(",
@@ -4177,6 +4178,33 @@ fn production_stream_check_command_delegates_proxy_target_filter_to_adapter() {
         "stream_check_all_providers command must delegate proxy-target filter source projection to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_additive_stream_check_error_specs_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "fn missing_stream_check_base_url_error",
+        "pub(crate) fn stream_check_proxy_target_ids_from_sources",
+    );
+
+    assert!(
+        function.contains("core_additive_stream_check_base_url_missing_error_spec("),
+        "stream-check missing base URL errors must be delegated to proxy-core"
+    );
+    for marker in [
+        "opencode_base_url_missing",
+        "openclaw_base_url_missing",
+        "hermes_base_url_missing",
+    ] {
+        assert!(
+            !function.contains(marker),
+            "proxy_core_adapter must not own additive stream-check error marker `{marker}`"
+        );
+    }
 }
 
 #[test]

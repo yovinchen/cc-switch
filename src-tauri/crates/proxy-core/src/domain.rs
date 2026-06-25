@@ -251,6 +251,43 @@ pub fn additive_provider_stream_check_base_url_from_settings(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdditiveStreamCheckBaseUrlErrorSpec {
+    pub key: &'static str,
+    pub zh: &'static str,
+    pub en: &'static str,
+}
+
+pub fn additive_stream_check_base_url_missing_error_spec(
+    app: &AppKind,
+) -> Option<AdditiveStreamCheckBaseUrlErrorSpec> {
+    match app {
+        AppKind::Custom(name) if name.eq_ignore_ascii_case("opencode") => {
+            Some(AdditiveStreamCheckBaseUrlErrorSpec {
+                key: "opencode_base_url_missing",
+                zh: "OpenCode 供应商缺少 options.baseURL，且当前 SDK 包没有默认端点",
+                en: "OpenCode provider is missing `options.baseURL` and the SDK package has no default endpoint",
+            })
+        }
+        AppKind::Custom(name) if name.eq_ignore_ascii_case("openclaw") => {
+            Some(AdditiveStreamCheckBaseUrlErrorSpec {
+                key: "openclaw_base_url_missing",
+                zh: "OpenClaw 供应商缺少 baseUrl",
+                en: "OpenClaw provider is missing `baseUrl`",
+            })
+        }
+        AppKind::Custom(name) if name.eq_ignore_ascii_case("hermes") => {
+            Some(AdditiveStreamCheckBaseUrlErrorSpec {
+                key: "hermes_base_url_missing",
+                zh: "Hermes 供应商缺少 base_url",
+                en: "Hermes provider is missing `base_url`",
+            })
+        }
+        AppKind::Claude | AppKind::ClaudeDesktop | AppKind::Codex | AppKind::Gemini => None,
+        AppKind::Custom(_) => None,
+    }
+}
+
 pub fn opencode_default_base_url_for_npm(npm: Option<&str>) -> Option<&'static str> {
     match npm {
         Some("@ai-sdk/openai") => Some("https://api.openai.com/v1"),
@@ -2903,6 +2940,50 @@ mod tests {
                 &AppKind::Claude,
                 &serde_json::json!({"baseUrl": "https://ignored.example.com"}),
             ),
+            None
+        );
+    }
+
+    #[test]
+    fn additive_stream_check_base_url_missing_error_spec_preserves_host_contract() {
+        assert_eq!(
+            additive_stream_check_base_url_missing_error_spec(&AppKind::Custom(
+                "opencode".to_string()
+            )),
+            Some(AdditiveStreamCheckBaseUrlErrorSpec {
+                key: "opencode_base_url_missing",
+                zh: "OpenCode 供应商缺少 options.baseURL，且当前 SDK 包没有默认端点",
+                en: "OpenCode provider is missing `options.baseURL` and the SDK package has no default endpoint",
+            })
+        );
+        assert_eq!(
+            additive_stream_check_base_url_missing_error_spec(&AppKind::Custom(
+                "openclaw".to_string()
+            )),
+            Some(AdditiveStreamCheckBaseUrlErrorSpec {
+                key: "openclaw_base_url_missing",
+                zh: "OpenClaw 供应商缺少 baseUrl",
+                en: "OpenClaw provider is missing `baseUrl`",
+            })
+        );
+        assert_eq!(
+            additive_stream_check_base_url_missing_error_spec(&AppKind::Custom(
+                "hermes".to_string()
+            )),
+            Some(AdditiveStreamCheckBaseUrlErrorSpec {
+                key: "hermes_base_url_missing",
+                zh: "Hermes 供应商缺少 base_url",
+                en: "Hermes provider is missing `base_url`",
+            })
+        );
+        assert_eq!(
+            additive_stream_check_base_url_missing_error_spec(&AppKind::Claude),
+            None
+        );
+        assert_eq!(
+            additive_stream_check_base_url_missing_error_spec(&AppKind::Custom(
+                "unknown".to_string()
+            )),
             None
         );
     }

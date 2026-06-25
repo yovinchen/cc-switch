@@ -651,7 +651,7 @@
 640. stream check 的配置 DTO/默认值/camelCase 序列化契约已迁入 `proxy-core::StreamCheckConfig`：host 只 re-export 同名配置并继续负责 reqwest 探测与 provider 覆盖合并。
 641. stream check 的结果 DTO/历史字段兼容契约已迁入 `proxy-core::StreamCheckResult`：host service 不再定义重复 response struct，commands/DAO/handler 通过同名 re-export 保持现有调用路径。
 642. stream check result 到 channel reachability result 的投影已迁入 `proxy-core::channel_reachability_result_from_stream_check_result`：adapter 只保留边界包装，不再逐字段手写转换。
-643. OpenCode/OpenClaw/Hermes 的 stream-check base URL 解析策略已迁入 `proxy-core::domain`：core 统一识别 `options.baseURL`、`baseUrl`、`base_url` 与 OpenCode npm 默认端点，host 只负责 app 分支和本地化错误。
+643. OpenCode/OpenClaw/Hermes 的 stream-check base URL 解析策略已迁入 `proxy-core::domain`：core 统一识别 `options.baseURL`、`baseUrl`、`base_url` 与 OpenCode npm 默认端点，并维护缺失 base URL 的本地化错误规格；host 只负责 app 分支和错误类型包装。
 644. stream check 日志 status 落库值已改为复用 `ChannelReachabilityStatus::as_str()`：DAO 不再通过 enum debug 字符串手写 lower-case contract。
 645. `AppType -> AppKind` 转换已委托给 `proxy-core::AppKind::from(&str)`：host adapter 不再重复维护 Claude/Codex/Gemini 与累加模式应用的 app-kind match。
 646. channel health 的 success/failure 状态推进规则已迁入 `proxy-core::channel_health_update_from_input`：DAO 只读取当前失败数并写入 core 计算出的 healthy/degraded/unhealthy、时间戳和 disabled reason。
@@ -1341,7 +1341,7 @@
 本轮继续把 OpenClaw live write 的 typed/raw/reject 决策收敛到 `proxy-core::ports`：core 维护 typed parse 成功、raw fallback 和 reject 文案策略；adapter 继续负责把 `Provider.settings_config` 反序列化为宿主 `OpenClawProviderConfig`，service 继续负责实际写入 live config。
 本轮继续把 OpenCode live provider fragment 提取和 live write typed/raw/reject 决策收敛到 `proxy-core::ports`：core 维护 full config 中 `provider.{id}` 片段选择、raw fallback 和 reject 文案策略；adapter 继续负责宿主 `OpenCodeProviderConfig` 反序列化，service 继续负责实际写入 live config。
 本轮继续把非 Codex provider credential value 组装收敛到 `proxy-core::ports`：core 维护 Claude/Gemini/OpenCode/OpenClaw/Hermes 的缺字段分类、Gemini 默认 base URL 和 additive app 空 base URL fallback；adapter 继续保留 Codex auth/config.toml 合并、base_url regex 兼容解析和宿主 `Provider` 投影。
-本轮继续把 additive app 的 stream-check base URL 分发收敛到 `proxy-core::domain` 与 `proxy_core_adapter::stream_check_provider_base_url`：core 维护 OpenCode npm fallback、OpenClaw `baseUrl` 与 Hermes `base_url` 纯解析，service 只调用统一入口并保留 reachability 探测职责。
+本轮继续把 additive app 的 stream-check base URL 分发收敛到 `proxy-core::domain` 与 `proxy_core_adapter::stream_check_provider_base_url`：core 维护 OpenCode npm fallback、OpenClaw `baseUrl`、Hermes `base_url` 纯解析和缺失 base URL 错误规格，service 只调用统一入口并保留 reachability 探测职责。
 本轮继续把 Gemini provider settings 基础结构校验收敛到 `proxy-core::ports::validate_gemini_settings_basic`：core 维护 `env`/`config` 字段形状和本地化错误规格，`gemini_config` 与 `ProviderService` 只通过 adapter 复用同一校验入口。
 本轮继续把 Gemini settings 的 env map 与 JSON settings 双向投影收敛到 `proxy-core::ports`：core 维护纯 HashMap/JSON 转换和非字符串值过滤，`gemini_config` 仅保留兼容函数名并委托 adapter。
 本轮继续把 Gemini settings 严格切换校验收敛到 `proxy-core::ports::validate_gemini_settings_strict`：core 维护 OAuth 空 env 放行、非空 env 必须含 `GEMINI_API_KEY` 和本地化错误规格，host 只保留 AppError 映射。

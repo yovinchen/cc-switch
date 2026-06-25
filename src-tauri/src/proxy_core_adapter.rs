@@ -1738,7 +1738,10 @@ pub(crate) use crate::proxy_core::api::domain::{
     provider_account_ref, provider_metadata_from_input,
 };
 
-use crate::proxy_core::api::domain::additive_provider_stream_check_base_url_from_settings as core_additive_provider_stream_check_base_url_from_settings;
+use crate::proxy_core::api::domain::{
+    additive_provider_stream_check_base_url_from_settings as core_additive_provider_stream_check_base_url_from_settings,
+    additive_stream_check_base_url_missing_error_spec as core_additive_stream_check_base_url_missing_error_spec,
+};
 use crate::proxy_core::api::ports::{
     apply_claude_common_config_to_settings as core_apply_claude_common_config_to_settings,
     apply_gemini_common_config_to_settings as core_apply_gemini_common_config_to_settings,
@@ -4595,23 +4598,12 @@ pub(crate) fn stream_check_provider_base_url(
 }
 
 fn missing_stream_check_base_url_error(app_type: &AppType) -> AppError {
-    match app_type {
-        AppType::OpenCode => AppError::localized(
-            "opencode_base_url_missing",
-            "OpenCode 供应商缺少 options.baseURL，且当前 SDK 包没有默认端点",
-            "OpenCode provider is missing `options.baseURL` and the SDK package has no default endpoint",
-        ),
-        AppType::OpenClaw => AppError::localized(
-            "openclaw_base_url_missing",
-            "OpenClaw 供应商缺少 baseUrl",
-            "OpenClaw provider is missing `baseUrl`",
-        ),
-        AppType::Hermes => AppError::localized(
-            "hermes_base_url_missing",
-            "Hermes 供应商缺少 base_url",
-            "Hermes provider is missing `base_url`",
-        ),
-        _ => AppError::Message("base_url 为空".to_string()),
+    if let Some(spec) =
+        core_additive_stream_check_base_url_missing_error_spec(&AppKind::from(app_type))
+    {
+        AppError::localized(spec.key, spec.zh, spec.en)
+    } else {
+        AppError::Message("base_url 为空".to_string())
     }
 }
 
@@ -22307,6 +22299,42 @@ command = "latest-command"
                 .expect("Hermes base URL"),
             "https://hermes.example"
         );
+
+        let missing_opencode = Provider::with_id(
+            "opencode-missing".to_string(),
+            "OpenCode Missing".to_string(),
+            json!({
+                "npm": "@ai-sdk/openai-compatible",
+                "options": {}
+            }),
+            None,
+        );
+        assert!(matches!(
+            stream_check_provider_base_url(&AppType::OpenCode, &missing_opencode),
+            Err(AppError::Localized { key, .. }) if key == "opencode_base_url_missing"
+        ));
+
+        let missing_openclaw = Provider::with_id(
+            "openclaw-missing".to_string(),
+            "OpenClaw Missing".to_string(),
+            json!({}),
+            None,
+        );
+        assert!(matches!(
+            stream_check_provider_base_url(&AppType::OpenClaw, &missing_openclaw),
+            Err(AppError::Localized { key, .. }) if key == "openclaw_base_url_missing"
+        ));
+
+        let missing_hermes = Provider::with_id(
+            "hermes-missing".to_string(),
+            "Hermes Missing".to_string(),
+            json!({}),
+            None,
+        );
+        assert!(matches!(
+            stream_check_provider_base_url(&AppType::Hermes, &missing_hermes),
+            Err(AppError::Localized { key, .. }) if key == "hermes_base_url_missing"
+        ));
     }
 
     #[test]
