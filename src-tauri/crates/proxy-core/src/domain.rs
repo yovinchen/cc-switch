@@ -1537,17 +1537,12 @@ pub fn auth_provider_proxy_request_from_context(
     )
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum ProxyBody {
+    #[default]
     Empty,
     Json(Value),
     Bytes(Bytes),
-}
-
-impl Default for ProxyBody {
-    fn default() -> Self {
-        Self::Empty
-    }
 }
 
 impl ProxyBody {
@@ -1565,7 +1560,9 @@ impl ProxyBody {
 pub type ProxyByteStream =
     Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static>>;
 
+#[derive(Default)]
 pub enum ProxyResponseBody {
+    #[default]
     Empty,
     Json(Value),
     Bytes(Bytes),
@@ -1607,12 +1604,6 @@ impl ProxyResponseBody {
             Self::Bytes(body) => Ok(ProxyTransportResponseBody::Bytes(body)),
             Self::Stream(stream) => Ok(ProxyTransportResponseBody::Stream(stream)),
         }
-    }
-}
-
-impl Default for ProxyResponseBody {
-    fn default() -> Self {
-        Self::Empty
     }
 }
 

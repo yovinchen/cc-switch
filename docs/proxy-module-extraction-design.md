@@ -1427,6 +1427,8 @@
 1007. Channel key runtime lookup 已从 DAO enabled-key convenience selector 改为 adapter-owned source：adapter 读取 raw key record，投影为 core runtime candidate 并调用 core selection policy，DAO 的 enabled selector 降为测试便捷入口。
 1008. `proxy_core_host` 测试中的 client model catalog raw 投影直连 core 已改为经 `proxy_core_adapter` re-export 接入，host/core 边界测试重新覆盖该入口。
 1009. Usage script credential fallback helper 的一行 adapter facade 已删除，改为 re-export `proxy-core` port，provider usage service 继续经 adapter 入口消费同一凭据解析策略。
+1010. `src-tauri` 已声明 Cargo workspace 并纳入 `crates/proxy-core`，独立代理模块测试复用主 `Cargo.lock` 与 workspace target，避免 path crate 单独测试生成游离构建产物。
+1011. `proxy-core` 纳入 workspace 后进入主 crate `cargo clippy --all-targets` 门禁，已清理 core 内部等价 clippy warning，保证迁移后的独立模块与宿主共享静态检查口径。
 
 ## 背景
 

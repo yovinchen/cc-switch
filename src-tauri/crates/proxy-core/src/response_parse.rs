@@ -146,7 +146,7 @@ where
     F: FnMut() -> String,
 {
     match serde_json::from_slice::<Value>(body) {
-        Ok(value) => return Ok(UpstreamJsonBody::json(value)),
+        Ok(value) => Ok(UpstreamJsonBody::json(value)),
         Err(parse_error) => {
             let body_str = String::from_utf8_lossy(body);
             if body_looks_like_sse(&body_str) {

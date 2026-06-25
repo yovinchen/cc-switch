@@ -148,7 +148,7 @@ pub fn apply_channel_param_overrides_to_url(url: &str, param_overrides: &Value) 
         .filter(|pair| !pair.is_empty())
         .filter(|pair| {
             let existing_key = pair.split_once('=').map_or(*pair, |(key, _)| key);
-            !override_keys.iter().any(|key| *key == existing_key)
+            !override_keys.contains(&existing_key)
         })
         .map(ToString::to_string)
         .collect::<Vec<_>>();

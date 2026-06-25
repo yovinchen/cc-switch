@@ -13,6 +13,9 @@ pub const CODEX_OAUTH_AUTH_PROVIDER: &str = "codex_oauth";
 pub const GITHUB_COPILOT_AUTH_PLACEHOLDER: &str = "copilot_placeholder";
 pub const CODEX_OAUTH_AUTH_PLACEHOLDER: &str = "codex_oauth_placeholder";
 
+pub type ManagedAccountRuntimeResultFuture<'a, T, E> = BoxFuture<'a, Result<T, E>>;
+pub type CodexOAuthResolution = (ProviderAuthInfo, Option<String>);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManagedAccountAuthRuntime {
     GitHubCopilot,
@@ -192,7 +195,7 @@ pub trait ManagedAccountRuntimeSource: Send + Sync {
         &'a self,
         account_id: Option<String>,
         runtime: ManagedAccountAuthRuntime,
-    ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), Self::Error>>;
+    ) -> ManagedAccountRuntimeResultFuture<'a, CodexOAuthResolution, Self::Error>;
 
     fn resolve_copilot_api_endpoint<'a>(
         &'a self,

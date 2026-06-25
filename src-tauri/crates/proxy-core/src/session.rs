@@ -23,10 +23,6 @@ impl ClientFormat {
             ClientFormat::OpenAI
         } else if path.contains("/v1internal/") && path.contains("generateContent") {
             ClientFormat::GeminiCli
-        } else if (path.contains("/v1beta/") || path.contains("/v1/"))
-            && path.contains("generateContent")
-        {
-            ClientFormat::Gemini
         } else if path.contains("generateContent") {
             ClientFormat::Gemini
         } else {

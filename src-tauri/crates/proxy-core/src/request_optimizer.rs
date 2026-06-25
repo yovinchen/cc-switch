@@ -124,11 +124,11 @@ pub fn apply_bedrock_pre_send_optimizers(
     BedrockPreSendOptimizationReport { thinking, cache }
 }
 
-pub fn resolve_copilot_warmup_model_override<'a>(
+pub fn resolve_copilot_warmup_model_override(
     warmup_downgrade_enabled: bool,
     is_warmup_request: bool,
-    warmup_model: &'a str,
-) -> Option<&'a str> {
+    warmup_model: &str,
+) -> Option<&str> {
     (warmup_downgrade_enabled && is_warmup_request).then_some(warmup_model)
 }
 

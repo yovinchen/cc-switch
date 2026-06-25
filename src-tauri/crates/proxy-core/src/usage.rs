@@ -393,11 +393,7 @@ impl TokenUsage {
 
     /// 从 Codex API 非流式响应解析
     pub fn from_codex_response(body: &Value) -> Option<Self> {
-        let usage = body.get("usage");
-        if usage.is_none() {
-            return None;
-        }
-        let usage = usage?;
+        let usage = body.get("usage")?;
 
         let input_tokens = usage.get("input_tokens").and_then(|v| v.as_u64());
         let output_tokens = usage.get("output_tokens").and_then(|v| v.as_u64());
@@ -935,6 +931,9 @@ impl NonStreamingResponseUsageRecord {
     }
 }
 
+type StreamUsageParser = fn(&[Value]) -> Option<TokenUsage>;
+type StreamModelExtractor = fn(&[Value], &str) -> String;
+
 pub fn transformed_response_usage(
     body: &Value,
     format: TransformedResponseUsageFormat,
@@ -966,10 +965,7 @@ pub fn transformed_streaming_response_usage(
     request_model: &str,
     outbound_model: Option<&str>,
 ) -> Option<TransformedResponseUsage> {
-    let (stream_parser, model_extractor): (
-        fn(&[Value]) -> Option<TokenUsage>,
-        fn(&[Value], &str) -> String,
-    ) = match format {
+    let (stream_parser, model_extractor): (StreamUsageParser, StreamModelExtractor) = match format {
         TransformedResponseUsageFormat::Claude => (
             TokenUsage::from_claude_stream_events,
             claude_stream_model_extractor,
