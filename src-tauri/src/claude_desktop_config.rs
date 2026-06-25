@@ -510,17 +510,11 @@ fn apply_provider_to_paths_inner(
         ClaudeDesktopMode::Proxy => {
             let base_url = proxy_gateway_base_url_from_db(db)?;
             let api_key = get_or_create_gateway_token(db)?;
-            let routes = proxy_model_routes(provider)?;
-            let model_specs = routes
-                .iter()
-                .map(
-                    |route| crate::proxy_core_adapter::ClaudeDesktopGatewayProfileModelSpec {
-                        name: route.route_id.clone(),
-                        label_override: route.label_override.clone(),
-                        supports_1m: route.supports_1m,
-                    },
+            let model_specs =
+                crate::proxy_core_adapter::provider_claude_desktop_proxy_gateway_profile_model_specs(
+                    provider,
                 )
-                .collect::<Vec<_>>();
+                .map_err(proxy_route_issue_to_error)?;
             crate::proxy_core_adapter::claude_desktop_gateway_profile(
                 &base_url,
                 &api_key,

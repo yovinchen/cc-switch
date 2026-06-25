@@ -10778,6 +10778,21 @@ pub(crate) fn provider_claude_desktop_proxy_model_routes(
     Ok(result)
 }
 
+pub(crate) fn provider_claude_desktop_proxy_gateway_profile_model_specs(
+    provider: &Provider,
+) -> Result<Vec<ClaudeDesktopGatewayProfileModelSpec>, ClaudeDesktopProviderProxyRouteIssue> {
+    provider_claude_desktop_proxy_model_routes(provider).map(|routes| {
+        routes
+            .into_iter()
+            .map(|route| ClaudeDesktopGatewayProfileModelSpec {
+                name: route.route_id,
+                label_override: route.label_override,
+                supports_1m: route.supports_1m,
+            })
+            .collect()
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ClaudeDesktopProviderProxyRequestBodyIssue {
     Routes(ClaudeDesktopProviderProxyRouteIssue),
