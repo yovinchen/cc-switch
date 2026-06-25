@@ -1199,6 +1199,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn forwarder_provider_auth_headers(",
     "fn forwarder_provider_upstream_url(",
     "fn forwarder_provider_adapter_for_app(",
+    "fn provider_adapter_name_is_claude(",
     "fn forwarder_is_codex_oauth_provider(",
     "fn forwarder_bedrock_env_flag(",
     "fn forwarder_custom_user_agent_header(",

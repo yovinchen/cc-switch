@@ -4226,10 +4226,6 @@ pub(crate) fn provider_gemini_auth_headers(
 
 pub(crate) use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;
 
-pub(crate) fn provider_adapter_name_is_claude(adapter_name: &str) -> bool {
-    adapter_name == "Claude"
-}
-
 pub(crate) type ForwarderAdapterHandle = dyn ProviderAdapter;
 
 pub(crate) struct ForwarderAdapterContext {
@@ -7810,7 +7806,7 @@ impl ForwarderAdapterFacts {
         let adapter_name = adapter.name();
         Self {
             adapter_name,
-            is_claude_adapter: provider_adapter_name_is_claude(adapter_name),
+            is_claude_adapter: adapter_name == "Claude",
         }
     }
 }
@@ -20856,8 +20852,6 @@ command = "latest-command"
 
     #[test]
     fn claude_api_format_adapter_projects_transform_gate() {
-        assert!(provider_adapter_name_is_claude("Claude"));
-        assert!(!provider_adapter_name_is_claude("Codex"));
         let mut provider =
             Provider::with_id("claude".to_string(), "Claude".to_string(), json!({}), None);
         provider.meta = Some(ProviderMeta {

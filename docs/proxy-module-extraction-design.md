@@ -1018,6 +1018,8 @@
 
 forwarder 的 Claude 请求阶段 normalization 与 transform 一跳 wrapper `forwarder_claude_normalize_anthropic_messages` / `forwarder_claude_transform_request_for_api_format` 已删除；request/protocol source 直接复用 provider 级 Claude helper。
 
+forwarder adapter facts 的 Claude 名称判定不再保留 `provider_adapter_name_is_claude` 单行 helper；`ForwarderAdapterFacts::from_adapter` 在唯一语义归属点直接从 adapter name 投影 `is_claude_adapter`。
+
 本轮继续把 Gemini live settings 的 env/config 组装与 env-only backup JSON contract 收敛到 `proxy-core::ports::{gemini_live_settings_from_env_json_and_config,gemini_live_backup_from_effective_settings}`；host adapter 只 re-export core helper 供 live write/backup 流程使用。
 
 本轮继续把 Gemini live provider `config` 对象选择与 settings.json 顶层 merge 写入 contract 收敛到 `proxy-core::ports::{gemini_live_config_object_from_settings,gemini_live_settings_to_write}`；host adapter 只负责从 `Provider.settings_config` 投影输入。
@@ -1198,7 +1200,7 @@ forwarder 的 Codex app gate 与 Responses->Chat provider predicate 一跳 wrapp
 本轮继续把 Codex proxy error facts/kind 的 `ProxyError` 投影收敛到 `proxy_core_adapter`，`error_mapper` 不再直接引用 `CodexProxyErrorKind` 或组装 `CodexProxyHostErrorFacts`。
 本轮继续把 forward failure 的 `ProxyError -> ForwardFailureKind` 投影收敛到 `proxy_core_adapter`，并把 raw message 与 display message 的选择策略下移到 `proxy-core::forward_failure_message_from_proxy_status`；`error_mapper` 不再直接引用 `ForwardFailureKind` 或调用 core forward-failure 分类入口。
 本轮继续把 forwarder 的 Claude Desktop route 模型映射收敛到 `proxy_core_adapter::apply_forward_request_model_mapping_from_provider`，forwarder 不再直接调用 `claude_desktop_config`。
-本轮继续把 forwarder 的 Claude provider adapter 名称判定收敛到 `proxy_core_adapter::provider_adapter_name_is_claude`，forwarder 不再手写 `adapter.name() == "Claude"`。
+本轮曾把 forwarder 的 Claude provider adapter 名称判定收敛到 `proxy_core_adapter::provider_adapter_name_is_claude`，forwarder 不再手写 `adapter.name() == "Claude"`；后续 `ForwarderAdapterFacts::from_adapter` 成为唯一归属点后该单行 helper 已删除。
 forwarder 的 Claude 默认 api_format 一跳 wrapper `forwarder_claude_api_format` 已删除；Copilot vendor 分流入口继续保留在 `proxy_core_adapter::resolve_forwarder_claude_api_format`，forwarder 仍不直接读取 provider Claude api format。
 本轮继续把 forwarder 的 Claude api_format transform gate 收敛到 `proxy_core_adapter::forwarder_claude_transform_required`，forwarder 不再直接调用 core transform gate。
 本轮继续把 Copilot fingerprint header 常量提升到 adapter，`proxy_core_adapter` 不再反向引用 `providers::copilot_auth` 常量。
@@ -1469,6 +1471,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1051. forwarder Codex Responses→Chat gate 删除 `forwarder_should_convert_codex_responses_to_chat` 一跳 wrapper；request source transform plan 直接组合 Codex app gate 与 provider 级 endpoint predicate。
 1052. forwarder Claude normalize 删除 `forwarder_claude_normalize_anthropic_messages` 一跳 wrapper；request source 直接调用 provider 级 normalize helper，body policy 行为由 request-source 单测覆盖。
 1053. forwarder Claude request transform 删除 `forwarder_claude_transform_request_for_api_format` 一跳 wrapper；protocol state source 直接调用 provider 级 transform helper，session id 与 Gemini shadow 传递逻辑保持在 source 内。
+1054. forwarder adapter facts 删除 `provider_adapter_name_is_claude` 单行 helper；`ForwarderAdapterFacts::from_adapter` 在 adapter context 边界内直接投影 Claude adapter fact，boundary forbidden marker 防止 helper 复活。
 
 ## 背景
 
