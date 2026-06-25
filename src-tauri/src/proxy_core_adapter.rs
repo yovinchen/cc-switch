@@ -332,6 +332,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_switch_dispatch_for_app as core_provider_switch_dispatch,
     provider_switch_requires_takeover_lock as core_provider_switch_requires_takeover_lock,
     provider_switch_should_mark_live_config_managed as core_provider_switch_should_mark_live_config_managed,
+    required_provider_base_url as core_required_provider_base_url,
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
     proxy_hot_switch_should_refresh_codex_live_from_backup as core_proxy_hot_switch_should_refresh_codex_live_from_backup,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active as core_proxy_hot_switch_should_sync_claude_live_while_proxy_active,
@@ -3410,20 +3411,16 @@ pub(crate) fn provider_codex_base_url(provider: &Provider) -> Option<String> {
     core_codex_base_url_from_settings(&provider.settings_config)
 }
 
-fn missing_provider_base_url_message(provider_name: &str) -> String {
-    format!("{provider_name} Provider 缺少 base_url 配置")
-}
-
 pub(crate) fn required_codex_provider_base_url(provider: &Provider) -> Result<String, String> {
-    provider_codex_base_url(provider).ok_or_else(|| missing_provider_base_url_message("Codex"))
+    core_required_provider_base_url("Codex", provider_codex_base_url(provider))
 }
 
 pub(crate) fn required_gemini_provider_base_url(provider: &Provider) -> Result<String, String> {
-    provider_gemini_base_url(provider).ok_or_else(|| missing_provider_base_url_message("Gemini"))
+    core_required_provider_base_url("Gemini", provider_gemini_base_url(provider))
 }
 
 pub(crate) fn required_claude_provider_base_url(provider: &Provider) -> Result<String, String> {
-    provider_claude_base_url(provider).ok_or_else(|| missing_provider_base_url_message("Claude"))
+    core_required_provider_base_url("Claude", provider_claude_base_url(provider))
 }
 
 pub(crate) fn codex_config_text_from_settings(settings: &Value) -> Option<&str> {

@@ -2504,6 +2504,17 @@ pub fn codex_base_url_from_settings(settings_config: &Value) -> Option<String> {
     None
 }
 
+pub fn missing_provider_base_url_message(provider_name: &str) -> String {
+    format!("{provider_name} Provider 缺少 base_url 配置")
+}
+
+pub fn required_provider_base_url(
+    provider_name: &str,
+    base_url: Option<String>,
+) -> Result<String, String> {
+    base_url.ok_or_else(|| missing_provider_base_url_message(provider_name))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClaudeEnvCredentials<'a> {
     pub api_key: Option<&'a str>,
@@ -5536,6 +5547,7 @@ mod tests {
         provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
         provider_live_sync_scope_for_app,
         provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
+        required_provider_base_url,
         provider_should_sync_to_live, provider_supports_legacy_common_config_migration,
         provider_switch_backfill_source_id, provider_switch_dispatch_for_app,
         provider_switch_requires_takeover_lock,
@@ -7206,6 +7218,19 @@ mod tests {
                 "config": "base_url = \"https://config.example/v1/\""
             })),
             Some("https://config.example/v1".to_string())
+        );
+    }
+
+    #[test]
+    fn required_provider_base_url_preserves_missing_message_contract() {
+        assert_eq!(
+            required_provider_base_url("Codex", Some("https://codex.example/v1".to_string()))
+                .as_deref(),
+            Ok("https://codex.example/v1")
+        );
+        assert_eq!(
+            required_provider_base_url("Gemini", None).unwrap_err(),
+            "Gemini Provider 缺少 base_url 配置"
         );
     }
 

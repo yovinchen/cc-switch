@@ -1367,6 +1367,7 @@
 979. 自定义 endpoint URL key 归一化与空 URL 本地化 issue spec 已迁入 `proxy-core::management_api`；host adapter 只 re-export URL key helper 并把 core issue spec 映射为 `AppError::localized`。
 980. Codex provider credential value 的 base_url 解析与 `CodexBaseUrlMissing/Invalid` 分类已迁入 `proxy-core::ports::provider_codex_credential_values_from_parts`；host adapter 只提取 auth/config 文本并投影为 `CodexCredentialParts`。
 981. Codex provider base URL 从 `settings_config.base_url/baseURL/config` 的提取与尾斜杠归一化已迁入 `proxy-core::ports::codex_base_url_from_settings`；host adapter 只传入 provider settings。
+982. required provider base URL 的缺失错误文案与 `Option<String> -> Result<String, String>` 包装已迁入 `proxy-core::ports::required_provider_base_url`；host adapter 只提供 provider label 与各 provider base URL。
 
 ## 背景
 

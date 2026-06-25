@@ -1137,6 +1137,11 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_BASE_URL_POLICY_MARKERS: &[&str] = &[
     "base_url = \\\"",
     "base_url = '",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_REQUIRED_BASE_URL_POLICY_MARKERS: &[&str] = &[
+    "fn missing_provider_base_url_message",
+    "Provider 缺少 base_url 配置",
+    ".ok_or_else(",
+];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
     "ProviderKind::CodexOAuth",
@@ -3041,7 +3046,7 @@ fn proxy_core_adapter_delegates_codex_base_url_policy_to_core() {
     let slice = function_slice(
         &source,
         "pub(crate) fn provider_codex_base_url",
-        "fn missing_provider_base_url_message",
+        "pub(crate) fn required_codex_provider_base_url",
     );
     assert!(
         slice.contains("core_codex_base_url_from_settings"),
@@ -3058,6 +3063,36 @@ fn proxy_core_adapter_delegates_codex_base_url_policy_to_core() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter must keep Codex base URL settings/config parsing in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_required_provider_base_url_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    let slice = function_slice(
+        &source,
+        "pub(crate) fn required_codex_provider_base_url",
+        "pub(crate) fn codex_config_text_from_settings",
+    );
+    assert!(
+        slice.matches("core_required_provider_base_url").count() == 3,
+        "proxy_core_adapter should delegate required provider base URL errors to core for Codex/Gemini/Claude"
+    );
+
+    let mut violations = Vec::new();
+    for marker in FORBIDDEN_PROXY_CORE_ADAPTER_REQUIRED_BASE_URL_POLICY_MARKERS {
+        if slice.contains(marker) {
+            violations.push(*marker);
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep required provider base URL error policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }
