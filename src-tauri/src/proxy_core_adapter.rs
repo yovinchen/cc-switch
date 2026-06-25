@@ -137,10 +137,6 @@ pub(crate) use crate::proxy_core::api::errors::{
     proxy_error_http_status_code, proxy_error_response_body, upstream_proxy_error_response_body,
 };
 
-pub(crate) fn error_message_with_context(context: &str, error: impl std::fmt::Display) -> String {
-    crate::proxy_core::api::errors::error_message_with_context(context, &error.to_string())
-}
-
 pub(crate) fn proxy_error_status_code(error: &ProxyError) -> u16 {
     proxy_error_http_status_code(proxy_error_status_kind(error))
 }
@@ -169,25 +165,28 @@ pub(crate) fn proxy_error_display_message(error: &ProxyError) -> String {
 }
 
 pub(crate) use crate::proxy_core::api::errors::{
-    selected_provider_display_name_for_error, selected_provider_missing_from_source_message,
-    selected_provider_not_applied_message, unselected_provider_fallback_id,
+    config_error_with_context as core_config_error_with_context,
+    internal_error_with_context as core_internal_error_with_context,
+    invalid_request_error as core_invalid_request_error, selected_provider_display_name_for_error,
+    selected_provider_missing_from_source_message, selected_provider_not_applied_message,
+    unselected_provider_fallback_id,
 };
 
 pub(crate) fn app_error(context: &str, error: AppError) -> ProxyCoreError {
-    ProxyCoreError::Config(error_message_with_context(context, error))
+    core_config_error_with_context(context, error)
 }
 
 pub(crate) fn app_write_error(context: &str, error: AppError) -> ProxyCoreError {
     match error {
         AppError::InvalidInput(message) => {
-            ProxyCoreError::InvalidRequest(AppError::InvalidInput(message).to_string())
+            core_invalid_request_error(AppError::InvalidInput(message))
         }
         other => app_error(context, other),
     }
 }
 
 pub(crate) fn usage_error(context: &str, error: AppError) -> ProxyCoreError {
-    ProxyCoreError::Internal(error_message_with_context(context, error))
+    core_internal_error_with_context(context, error)
 }
 
 pub(crate) fn app_error_from_proxy_core_error(error: ProxyCoreError) -> AppError {
@@ -13552,7 +13551,10 @@ mod tests {
             502
         );
         assert_eq!(
-            error_message_with_context("load config", "disk failed"),
+            crate::proxy_core::api::errors::error_message_with_context(
+                "load config",
+                "disk failed"
+            ),
             "load config: disk failed"
         );
         assert_eq!(

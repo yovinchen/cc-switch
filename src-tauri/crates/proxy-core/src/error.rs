@@ -167,6 +167,18 @@ pub fn error_message_with_context(context: &str, error: &str) -> String {
     format!("{context}: {error}")
 }
 
+pub fn config_error_with_context(context: &str, error: impl std::fmt::Display) -> ProxyCoreError {
+    ProxyCoreError::Config(error_message_with_context(context, &error.to_string()))
+}
+
+pub fn invalid_request_error(message: impl std::fmt::Display) -> ProxyCoreError {
+    ProxyCoreError::InvalidRequest(message.to_string())
+}
+
+pub fn internal_error_with_context(context: &str, error: impl std::fmt::Display) -> ProxyCoreError {
+    ProxyCoreError::Internal(error_message_with_context(context, &error.to_string()))
+}
+
 pub fn selected_provider_missing_from_source_message(provider_id: &str, source: &str) -> String {
     format!("selected provider is missing from {source}: {provider_id}")
 }
@@ -394,6 +406,19 @@ mod tests {
             error_message_with_context("load app proxy config", "database unavailable"),
             "load app proxy config: database unavailable"
         );
+        assert!(matches!(
+            config_error_with_context("load app proxy config", "database unavailable"),
+            ProxyCoreError::Config(message)
+                if message == "load app proxy config: database unavailable"
+        ));
+        assert!(matches!(
+            internal_error_with_context("record usage", "database unavailable"),
+            ProxyCoreError::Internal(message) if message == "record usage: database unavailable"
+        ));
+        assert!(matches!(
+            invalid_request_error("invalid payload"),
+            ProxyCoreError::InvalidRequest(message) if message == "invalid payload"
+        ));
     }
 
     #[test]
