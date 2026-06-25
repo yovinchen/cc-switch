@@ -1431,6 +1431,7 @@
 1011. `proxy-core` 纳入 workspace 后进入主 crate `cargo clippy --all-targets` 门禁，已清理 core 内部等价 clippy warning，保证迁移后的独立模块与宿主共享静态检查口径。
 1012. Forwarder attempt runtime 的最大尝试次数日志和 legacy 单 provider circuit-breaker bypass 决策已迁入 `proxy-core::forward_failure`，host adapter 只投影 `ForwardAttempt` 数量/channel 事实并继续执行 router permit。
 1013. 自定义 User-Agent 的 trim、空值忽略和 `HeaderValue` 校验规则已迁入 `proxy-core::request_headers::parse_custom_user_agent`，provider/model-fetch/stream-check/forwarder 路径继续经 `proxy_core_adapter` 共享同一解析入口。
+1014. Stream check 的 provider override 配置合并与 probe result 到 `StreamCheckResult` 的成功/失败/degraded envelope 构造已迁入 `proxy-core::ports`，host `StreamCheckService` 只保留 reqwest 探测、timestamp 注入和 provider override 投影。
 
 ## 背景
 

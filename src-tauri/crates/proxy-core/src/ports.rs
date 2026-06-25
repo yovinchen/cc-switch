@@ -4680,6 +4680,29 @@ impl Default for StreamCheckConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StreamCheckConfigOverride {
+    pub timeout_secs: Option<u64>,
+    pub max_retries: Option<u32>,
+    pub degraded_threshold_ms: Option<u64>,
+}
+
+pub fn merge_stream_check_config(
+    global: &StreamCheckConfig,
+    provider_override: Option<StreamCheckConfigOverride>,
+) -> StreamCheckConfig {
+    match provider_override {
+        Some(provider_override) => StreamCheckConfig {
+            timeout_secs: provider_override.timeout_secs.unwrap_or(global.timeout_secs),
+            max_retries: provider_override.max_retries.unwrap_or(global.max_retries),
+            degraded_threshold_ms: provider_override
+                .degraded_threshold_ms
+                .unwrap_or(global.degraded_threshold_ms),
+        },
+        None => global.clone(),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamCheckResult {
@@ -4735,6 +4758,41 @@ pub fn channel_reachability_result_from_stream_check_result(
         tested_at: result.tested_at,
         retry_count: result.retry_count,
     })
+}
+
+pub fn stream_check_result_from_probe_result(
+    result: Result<u16, String>,
+    response_time_ms: u64,
+    degraded_threshold_ms: u64,
+    tested_at: i64,
+) -> StreamCheckResult {
+    match result {
+        Ok(status) => StreamCheckResult {
+            status: channel_reachability_status_from_latency(
+                response_time_ms,
+                degraded_threshold_ms,
+            ),
+            success: true,
+            message: "Reachable".to_string(),
+            response_time_ms: Some(response_time_ms),
+            http_status: Some(status),
+            model_used: String::new(),
+            tested_at,
+            retry_count: 0,
+            error_category: None,
+        },
+        Err(message) => StreamCheckResult {
+            status: ChannelReachabilityStatus::Failed,
+            success: false,
+            message,
+            response_time_ms: Some(response_time_ms),
+            http_status: None,
+            model_used: String::new(),
+            tested_at,
+            retry_count: 0,
+            error_category: None,
+        },
+    }
 }
 
 pub fn plan_channel_test(
@@ -6235,7 +6293,8 @@ mod tests {
         ChannelRouteCandidate, ChannelReachabilityResult, ChannelReachabilityStatus,
         ChannelRouteRejected, ChannelRouteSource, ChannelTestInput, ChannelTestPlan,
         ChannelTestResponse, ClientModelCatalogResponse, should_retry_channel_reachability_failure,
-        select_enabled_channel_key_runtime_candidate,
+        merge_stream_check_config, select_enabled_channel_key_runtime_candidate,
+        stream_check_result_from_probe_result,
         CopilotOptimizerConfig, CurrentRouteChannelTargetInput,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget,
         CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
@@ -6276,7 +6335,7 @@ mod tests {
         sanitize_claude_settings_for_live, usage_script_credentials_from_parts,
         validate_gemini_settings_basic, validate_gemini_settings_strict,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
-        StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
+        StreamCheckConfig, StreamCheckConfigOverride, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
         DEFAULT_PROXY_LISTEN_PORT, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
         plan_channel_test, provider_health_update_from_input,
     };
@@ -6706,6 +6765,23 @@ mod tests {
                 "degradedThresholdMs": 6000
             })
         );
+        let global = StreamCheckConfig::default();
+        assert_eq!(merge_stream_check_config(&global, None), global);
+        assert_eq!(
+            merge_stream_check_config(
+                &global,
+                Some(StreamCheckConfigOverride {
+                    timeout_secs: Some(20),
+                    max_retries: None,
+                    degraded_threshold_ms: Some(3_000),
+                }),
+            ),
+            StreamCheckConfig {
+                timeout_secs: 20,
+                max_retries: global.max_retries,
+                degraded_threshold_ms: 3_000,
+            }
+        );
         let stream_check = StreamCheckResult {
             status: ChannelReachabilityStatus::Degraded,
             success: true,
@@ -6738,6 +6814,30 @@ mod tests {
         assert_eq!(reachability.http_status, Some(403));
         assert_eq!(reachability.tested_at, 1_771_000_000);
         assert_eq!(reachability.retry_count, 1);
+
+        for status in [200u16, 401, 403, 404, 429, 500, 503] {
+            let result =
+                stream_check_result_from_probe_result(Ok(status), 100, 1_500, 1_771_000_003);
+            assert!(result.success, "status {status} should be reachable");
+            assert_eq!(result.status, ChannelReachabilityStatus::Operational);
+            assert_eq!(result.http_status, Some(status));
+            assert!(result.model_used.is_empty());
+            assert!(result.error_category.is_none());
+            assert_eq!(result.tested_at, 1_771_000_003);
+        }
+        let slow_result =
+            stream_check_result_from_probe_result(Ok(200), 3_000, 1_500, 1_771_000_004);
+        assert_eq!(slow_result.status, ChannelReachabilityStatus::Degraded);
+        let failed_result = stream_check_result_from_probe_result(
+            Err("Connection failed: refused".to_string()),
+            5,
+            1_500,
+            1_771_000_005,
+        );
+        assert!(!failed_result.success);
+        assert_eq!(failed_result.status, ChannelReachabilityStatus::Failed);
+        assert_eq!(failed_result.http_status, None);
+        assert_eq!(failed_result.message, "Connection failed: refused");
 
         let result = ChannelReachabilityResult::from_input(ChannelReachabilityInput {
             success: false,

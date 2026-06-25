@@ -2633,9 +2633,9 @@ pub(crate) use crate::proxy_core::api::management::channel_not_found_error;
 pub(crate) use crate::proxy_core::api::management::{
     channel_health_update_from_input, channel_reachability_probe_error,
     channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
-    channel_reachability_status_from_latency, channel_test_app_type_error,
-    channel_test_provider_not_found_error, provider_health_update_from_input,
-    should_retry_channel_reachability_failure, AppChannelListQuery, AppChannelManagementRequest,
+    channel_test_app_type_error, channel_test_provider_not_found_error, merge_stream_check_config,
+    provider_health_update_from_input, should_retry_channel_reachability_failure,
+    stream_check_result_from_probe_result, AppChannelListQuery, AppChannelManagementRequest,
     AppChannelResponse, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
     ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelHealthUpdateInput, ChannelKeyDeleteResponse, ChannelKeyPathRequest,
@@ -2647,7 +2647,7 @@ pub(crate) use crate::proxy_core::api::management::{
     HealthCheckRequest, HealthCheckResponse, ManagementAppPathRequest, ProviderHealthUpdateInput,
     ProviderListResponse, ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest,
     ProxyStatusRequest, ProxyStatusResponse, RouteGroupListResponse, RouteResolveManagementRequest,
-    CHANNEL_HEALTH_UNKNOWN_STATUS,
+    StreamCheckConfigOverride, CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;
@@ -10901,6 +10901,17 @@ pub(crate) fn provider_stream_check_test_config(
         .as_ref()
         .and_then(|meta| meta.test_config.as_ref())
         .filter(|config| config.enabled)
+}
+
+pub(crate) fn provider_stream_check_config_override(
+    provider: &Provider,
+) -> Option<StreamCheckConfigOverride> {
+    let config = provider_stream_check_test_config(provider)?;
+    Some(StreamCheckConfigOverride {
+        timeout_secs: config.timeout_secs,
+        max_retries: config.max_retries,
+        degraded_threshold_ms: config.degraded_threshold_ms,
+    })
 }
 
 pub(crate) fn provider_is_full_url(provider: &Provider) -> bool {

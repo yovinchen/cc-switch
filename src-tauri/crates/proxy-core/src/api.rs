@@ -65,10 +65,11 @@ pub mod management {
         channel_reachability_result_from_stream_check_result,
         channel_reachability_probe_error, channel_reachability_status_from_latency,
         channel_record_from_input, channel_test_app_type_error,
-        channel_test_provider_not_found_error, plan_channel_test,
+        channel_test_provider_not_found_error, merge_stream_check_config, plan_channel_test,
         provider_health_update_from_input, select_enabled_channel_key_runtime_candidate,
-        should_retry_channel_reachability_failure, AppChannelListQuery, AppChannelResponse,
-        AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
+        should_retry_channel_reachability_failure, stream_check_result_from_probe_result,
+        AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery,
+        AppSummaryInput, ChannelDeleteResponse,
         CHANNEL_HEALTH_UNKNOWN_STATUS, ChannelHealthResetResponse, ChannelHealthUpdate,
         ChannelHealthUpdateInput, ChannelKeyDeleteResponse, ChannelKeyRecord,
         ChannelKeyRecordInput, ChannelKeyRecordResponse, ChannelKeyRuntimeCandidate,
@@ -86,7 +87,7 @@ pub mod management {
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse, StreamCheckConfig,
-        StreamCheckResult, RouteResolveRequest, RouteResolveResponse,
+        StreamCheckConfigOverride, StreamCheckResult, RouteResolveRequest, RouteResolveResponse,
     };
 }
 

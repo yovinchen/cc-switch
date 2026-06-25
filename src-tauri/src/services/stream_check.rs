@@ -24,9 +24,9 @@ use crate::app_config::AppType;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    channel_reachability_status_from_latency, provider_custom_user_agent_header,
-    provider_stream_check_test_config, should_retry_channel_reachability_failure,
-    stream_check_provider_base_url,
+    merge_stream_check_config, provider_custom_user_agent_header,
+    provider_stream_check_config_override, should_retry_channel_reachability_failure,
+    stream_check_provider_base_url, stream_check_result_from_probe_result,
 };
 
 pub use crate::proxy_core_adapter::{
@@ -94,18 +94,7 @@ impl StreamCheckService {
 
     /// 合并供应商单独配置（`meta.testConfig`，仅当 `enabled`）与全局配置。
     fn merge_provider_config(provider: &Provider, global: &StreamCheckConfig) -> StreamCheckConfig {
-        let tc = provider_stream_check_test_config(provider);
-
-        match tc {
-            Some(tc) => StreamCheckConfig {
-                timeout_secs: tc.timeout_secs.unwrap_or(global.timeout_secs),
-                max_retries: tc.max_retries.unwrap_or(global.max_retries),
-                degraded_threshold_ms: tc
-                    .degraded_threshold_ms
-                    .unwrap_or(global.degraded_threshold_ms),
-            },
-            None => global.clone(),
-        }
+        merge_stream_check_config(global, provider_stream_check_config_override(provider))
     }
 
     /// 单次连通性探测。
@@ -186,34 +175,12 @@ impl StreamCheckService {
         degraded_threshold_ms: u64,
     ) -> StreamCheckResult {
         let tested_at = chrono::Utc::now().timestamp();
-        match result {
-            Ok(status) => StreamCheckResult {
-                status: Self::determine_status(response_time, degraded_threshold_ms),
-                success: true,
-                message: "Reachable".to_string(),
-                response_time_ms: Some(response_time),
-                http_status: Some(status),
-                model_used: String::new(),
-                tested_at,
-                retry_count: 0,
-                error_category: None,
-            },
-            Err(e) => StreamCheckResult {
-                status: HealthStatus::Failed,
-                success: false,
-                message: e.to_string(),
-                response_time_ms: Some(response_time),
-                http_status: None,
-                model_used: String::new(),
-                tested_at,
-                retry_count: 0,
-                error_category: None,
-            },
-        }
-    }
-
-    fn determine_status(latency_ms: u64, threshold: u64) -> HealthStatus {
-        channel_reachability_status_from_latency(latency_ms, threshold)
+        stream_check_result_from_probe_result(
+            result.map_err(|error| error.to_string()),
+            response_time,
+            degraded_threshold_ms,
+            tested_at,
+        )
     }
 
     fn should_retry(msg: &str) -> bool {
@@ -262,15 +229,15 @@ mod tests {
     #[test]
     fn test_determine_status() {
         assert_eq!(
-            StreamCheckService::determine_status(1000, 1500),
+            stream_check_result_from_probe_result(Ok(200), 1000, 1500, 0).status,
             HealthStatus::Operational
         );
         assert_eq!(
-            StreamCheckService::determine_status(1500, 1500),
+            stream_check_result_from_probe_result(Ok(200), 1500, 1500, 0).status,
             HealthStatus::Operational
         );
         assert_eq!(
-            StreamCheckService::determine_status(1501, 1500),
+            stream_check_result_from_probe_result(Ok(200), 1501, 1500, 0).status,
             HealthStatus::Degraded
         );
     }

@@ -5308,6 +5308,31 @@ fn production_stream_check_delegates_provider_adapters_to_adapter() {
         }
     }
 
+    let merge_config_slice =
+        function_slice(&source, "fn merge_provider_config", "async fn check_once");
+    let build_result_slice = function_slice(&source, "fn build_result", "fn should_retry");
+    assert!(
+        source.contains("merge_stream_check_config(")
+            && source.contains("stream_check_result_from_probe_result("),
+        "stream_check should delegate config merging and result construction to proxy_core_adapter/core helpers"
+    );
+    assert!(
+        merge_config_slice.contains("merge_stream_check_config(")
+            && merge_config_slice.contains("provider_stream_check_config_override(provider)")
+            && !merge_config_slice.contains("timeout_secs:")
+            && !merge_config_slice.contains("max_retries:")
+            && !merge_config_slice.contains("degraded_threshold_ms:"),
+        "merge_provider_config should only project provider overrides into the core config merge helper"
+    );
+    assert!(
+        build_result_slice.contains("stream_check_result_from_probe_result(")
+            && !build_result_slice.contains("status:")
+            && !build_result_slice.contains("success:")
+            && !build_result_slice.contains("message:")
+            && !build_result_slice.contains("channel_reachability_status_from_latency(")
+            && !build_result_slice.contains("HealthStatus::Failed"),
+        "build_result should delegate StreamCheckResult envelope policy to core"
+    );
     assert!(
         violations.is_empty(),
         "stream_check must resolve provider adapter facts through proxy_core_adapter helpers:\n{}",
