@@ -4325,17 +4325,13 @@ pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
     )
 }
 
-pub(crate) fn forwarder_claude_api_format(provider: &Provider) -> &'static str {
-    provider_claude_api_format(provider)
-}
-
 pub(crate) fn resolve_forwarder_claude_api_format(
     provider: &Provider,
     is_copilot: bool,
     copilot_model_vendor: Option<&str>,
 ) -> String {
     resolve_claude_forward_api_format(
-        forwarder_claude_api_format(provider),
+        provider_claude_api_format(provider),
         is_copilot,
         copilot_model_vendor,
     )
@@ -8369,7 +8365,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         let adapter_facts = input.adapter.facts();
         let fallback_claude_api_format = adapter_facts
             .is_claude_adapter
-            .then(|| forwarder_claude_api_format(input.provider));
+            .then(|| provider_claude_api_format(input.provider));
         let provider_transform_required = input.resolved_claude_api_format.is_none()
             && input.adapter.provider_transform_required(input.provider);
 
@@ -21012,7 +21008,7 @@ command = "latest-command"
             missing_base_url,
             ProxyError::ConfigError(message) if message == "Codex Provider 缺少 base_url 配置"
         ));
-        assert_eq!(forwarder_claude_api_format(&provider), "openai_chat");
+        assert_eq!(provider_claude_api_format(&provider), "openai_chat");
         assert_eq!(
             resolve_forwarder_claude_api_format(&provider, true, Some("OpenAI")),
             "openai_responses"

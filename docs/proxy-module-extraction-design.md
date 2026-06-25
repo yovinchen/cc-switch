@@ -1200,7 +1200,7 @@ Codex Responses→Chat 上游模型覆写与 reasoning options 解析已由 forw
 本轮继续把 forward failure 的 `ProxyError -> ForwardFailureKind` 投影收敛到 `proxy_core_adapter`，并把 raw message 与 display message 的选择策略下移到 `proxy-core::forward_failure_message_from_proxy_status`；`error_mapper` 不再直接引用 `ForwardFailureKind` 或调用 core forward-failure 分类入口。
 本轮继续把 forwarder 的 Claude Desktop route 模型映射收敛到 `proxy_core_adapter::apply_forward_request_model_mapping_from_provider`，forwarder 不再直接调用 `claude_desktop_config`。
 本轮继续把 forwarder 的 Claude provider adapter 名称判定收敛到 `proxy_core_adapter::provider_adapter_name_is_claude`，forwarder 不再手写 `adapter.name() == "Claude"`。
-本轮继续把 forwarder 的 Claude 默认 api_format 与 Copilot vendor 分流入口收敛到 `proxy_core_adapter::{forwarder_claude_api_format,resolve_forwarder_claude_api_format}`，forwarder 不再直接读取 provider Claude api format。
+forwarder 的 Claude 默认 api_format 一跳 wrapper `forwarder_claude_api_format` 已删除；Copilot vendor 分流入口继续保留在 `proxy_core_adapter::resolve_forwarder_claude_api_format`，forwarder 仍不直接读取 provider Claude api format。
 本轮继续把 forwarder 的 Claude api_format transform gate 收敛到 `proxy_core_adapter::forwarder_claude_transform_required`，forwarder 不再直接调用 core transform gate。
 本轮继续把 Copilot fingerprint header 常量提升到 adapter，`proxy_core_adapter` 不再反向引用 `providers::copilot_auth` 常量。
 本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
@@ -1457,6 +1457,7 @@ Codex Responses→Chat 上游模型覆写与 reasoning options 解析已由 forw
 1037. provider model catalog 原始值删除 `provider_model_catalog_raw_value` 单字段 getter；backfill/takeover source 在已持有 host `Provider` 的位置直接读取 `settings_config["modelCatalog"]`，避免为中转宿主暴露一层无状态 getter。
 1038. Codex responses-to-chat forwarder source 删除 `forwarder_apply_codex_chat_upstream_model` / `forwarder_codex_chat_reasoning_options` 两个一跳 wrapper；request source 直接调用 provider 级 adapter API，避免在中转 forwarder 内部复制额外命名层。
 1039. Gemini provider API key/base URL 删除 `provider_gemini_api_key` / `provider_gemini_base_url` 单字段 getter；保留 auth/base-url 对外入口，但 adapter 内部直接使用 core settings extractor 读取 `Provider.settings_config`。
+1040. Claude forwarder api_format 删除 `forwarder_claude_api_format` 一跳 wrapper；request source 和 `resolve_forwarder_claude_api_format` 直接复用 provider 级 adapter API，Copilot vendor 分流策略保持不变。
 
 ## 背景
 
