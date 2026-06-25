@@ -325,6 +325,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_app_has_current_provider as core_provider_app_has_current_provider,
     provider_codex_credential_values_from_parts as core_provider_codex_credential_values_from_parts,
     provider_credential_issue_spec,
+    provider_default_live_import_category_from_parts as core_provider_default_live_import_category_from_parts,
     provider_default_live_import_settings as core_provider_default_live_import_settings,
     provider_delete_is_current_provider as core_provider_delete_is_current_provider,
     provider_initial_live_config_managed_marker as core_provider_initial_live_config_managed_marker,
@@ -3432,19 +3433,6 @@ fn provider_codex_config_text(provider: &Provider) -> Option<&str> {
     codex_config_text_from_settings(&provider.settings_config)
 }
 
-pub(crate) fn provider_codex_imported_live_category(provider: &Provider) -> &'static str {
-    let config_text = provider_codex_config_text(provider);
-    let auth = provider.settings_config.get("auth");
-    let has_provider_key = crate::codex_config::extract_codex_api_key(auth, config_text).is_some();
-    let has_login_material = auth.is_some_and(crate::codex_config::codex_auth_has_login_material);
-
-    if has_login_material && !has_provider_key {
-        "official"
-    } else {
-        "custom"
-    }
-}
-
 pub(crate) fn provider_from_default_live_settings(
     app_type: &AppType,
     settings_config: Value,
@@ -3455,12 +3443,19 @@ pub(crate) fn provider_from_default_live_settings(
         settings_config,
         None,
     );
+    let codex_config_has_provider_key = if matches!(app_type, AppType::Codex) {
+        provider_codex_config_text(&provider)
+            .and_then(crate::codex_config::extract_codex_experimental_bearer_token)
+            .is_some()
+    } else {
+        false
+    };
     provider.category = Some(
-        if matches!(app_type, AppType::Codex) {
-            provider_codex_imported_live_category(&provider)
-        } else {
-            "custom"
-        }
+        core_provider_default_live_import_category_from_parts(
+            &AppKind::from(app_type),
+            provider.settings_config.get("auth"),
+            codex_config_has_provider_key,
+        )
         .to_string(),
     );
 
@@ -16786,10 +16781,6 @@ base_url = "https://api.openai.com/v1"
             }),
             None,
         );
-        assert_eq!(
-            provider_codex_imported_live_category(&official_live_provider),
-            "official"
-        );
         let imported_official_provider = provider_from_default_live_settings(
             &AppType::Codex,
             official_live_provider.settings_config.clone(),
@@ -16808,10 +16799,6 @@ base_url = "https://api.openai.com/v1"
                 "config": ""
             }),
             None,
-        );
-        assert_eq!(
-            provider_codex_imported_live_category(&api_key_live_provider),
-            "custom"
         );
         let imported_custom_provider = provider_from_default_live_settings(
             &AppType::Codex,
@@ -16836,10 +16823,11 @@ experimental_bearer_token = "bearer-token"
             }),
             None,
         );
-        assert_eq!(
-            provider_codex_imported_live_category(&bearer_live_provider),
-            "custom"
+        let imported_bearer_provider = provider_from_default_live_settings(
+            &AppType::Codex,
+            bearer_live_provider.settings_config.clone(),
         );
+        assert_eq!(imported_bearer_provider.category.as_deref(), Some("custom"));
         let parts =
             provider_codex_live_settings_parts(&official_live_provider).expect("codex live parts");
         assert_eq!(parts.category, None);

@@ -2101,6 +2101,8 @@ provider adapter 仍负责 CC Switch 默认 fallback 的 provider settings 到 h
 
 随后又把 provider settings validation 的 app 分派和 localized issue spec 收进 `proxy-core::ports`：core 基于 `AppKind + settings` 决定 Claude/OpenCode/OpenClaw/Hermes 是否要求 JSON object，并复用 Codex validation parts 输出 Codex config 文本；host 仍只负责执行 ClaudeDesktop/Gemini 这类宿主专属校验和实际 TOML 语义校验。
 
+本轮再把默认 Live 导入时的 provider category 决策收进 `proxy-core::ports`：core 根据 Codex auth 登录材料、provider key 事实和 app kind 统一产出 `official/custom`，adapter 仅负责提取 CC Switch/Codex 专属 config.toml bearer-token 事实并创建本地 `Provider`。这让外部中转宿主可以复用相同 category 策略，同时避免 core 复制 Codex reserved model provider id 解析细节。
+
 ### Model catalog 接口
 
 `GET /v1/models` 已从 `handlers::handle_models` 直读 Codex 配置文件迁出。当前端口分两类模型视图：

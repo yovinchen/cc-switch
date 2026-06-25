@@ -2605,6 +2605,66 @@ pub fn codex_auth_object_value_from_settings(settings_config: &Value) -> Option<
     Some(auth)
 }
 
+pub fn codex_auth_has_api_key(auth: &Value) -> bool {
+    auth.get("OPENAI_API_KEY")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|key| !key.is_empty())
+}
+
+pub fn codex_auth_has_login_material(auth: &Value) -> bool {
+    let Some(settings) = auth.as_object() else {
+        return false;
+    };
+
+    settings.iter().any(|(key, value)| {
+        if key == "auth_mode" {
+            return false;
+        }
+
+        if key == "OPENAI_API_KEY" {
+            return value
+                .as_str()
+                .map(str::trim)
+                .is_some_and(|token| !token.is_empty());
+        }
+
+        match value {
+            Value::Null => false,
+            Value::String(text) => !text.trim().is_empty(),
+            Value::Array(items) => !items.is_empty(),
+            Value::Object(map) => !map.is_empty(),
+            _ => true,
+        }
+    })
+}
+
+pub fn codex_imported_live_category_from_parts(
+    auth: Option<&Value>,
+    config_has_provider_key: bool,
+) -> &'static str {
+    let has_provider_key = config_has_provider_key || auth.is_some_and(codex_auth_has_api_key);
+    let has_login_material = auth.is_some_and(codex_auth_has_login_material);
+
+    if has_login_material && !has_provider_key {
+        "official"
+    } else {
+        "custom"
+    }
+}
+
+pub fn provider_default_live_import_category_from_parts(
+    app: &AppKind,
+    codex_auth: Option<&Value>,
+    codex_config_has_provider_key: bool,
+) -> &'static str {
+    if matches!(app, AppKind::Codex) {
+        codex_imported_live_category_from_parts(codex_auth, codex_config_has_provider_key)
+    } else {
+        "custom"
+    }
+}
+
 pub struct CodexProviderLiveWriteParts<'a> {
     pub category: Option<&'a str>,
     pub auth: &'a Value,
@@ -5902,9 +5962,11 @@ mod tests {
         CodexCredentialParts, CodexLiveSettingsIssue, CodexLiveSnapshotIssue,
         CodexLiveTakeoverMatchFacts, CodexProviderLiveWriteIssue,
         CodexProviderValidationIssue,
+        codex_auth_has_api_key, codex_auth_has_login_material,
         codex_auth_object_value_from_settings,
         codex_base_url_from_config_toml, codex_base_url_from_settings,
         codex_config_has_base_url_matching, codex_config_text_from_settings,
+        codex_imported_live_category_from_parts,
         codex_live_auth_has_proxy_placeholder, codex_live_settings_parts_from_settings,
         codex_live_snapshot_parts_from_settings, codex_model_from_config_toml,
         codex_provider_live_write_parts_from_settings,
@@ -5934,6 +5996,7 @@ mod tests {
         live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
         live_token_sync_app_label, normalize_claude_models_in_value,
         normalize_provider_settings_for_storage, provider_default_live_import_settings,
+        provider_default_live_import_category_from_parts,
         openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
         openclaw_common_config_snippet_from_settings, openclaw_live_write_action_decision,
         openclaw_live_write_config_decision,
@@ -7771,6 +7834,52 @@ wire_api = "chat"
             codex_provider_validation_parts_from_settings(&json!({"auth": {}, "config": 42})),
             Err(CodexProviderValidationIssue::ConfigInvalidType)
         ));
+    }
+
+    #[test]
+    fn codex_default_live_import_category_uses_auth_and_provider_key_facts() {
+        let official_auth = json!({
+            "tokens": {"id_token": "id-token"},
+            "auth_mode": "chatgpt"
+        });
+        assert!(!codex_auth_has_api_key(&official_auth));
+        assert!(codex_auth_has_login_material(&official_auth));
+        assert_eq!(
+            codex_imported_live_category_from_parts(Some(&official_auth), false),
+            "official"
+        );
+        assert_eq!(
+            provider_default_live_import_category_from_parts(
+                &AppKind::Codex,
+                Some(&official_auth),
+                false
+            ),
+            "official"
+        );
+
+        let api_key_auth = json!({"OPENAI_API_KEY": " sk-test "});
+        assert!(codex_auth_has_api_key(&api_key_auth));
+        assert!(codex_auth_has_login_material(&api_key_auth));
+        assert_eq!(
+            codex_imported_live_category_from_parts(Some(&api_key_auth), false),
+            "custom"
+        );
+        assert_eq!(
+            codex_imported_live_category_from_parts(Some(&official_auth), true),
+            "custom"
+        );
+        assert_eq!(
+            codex_imported_live_category_from_parts(Some(&json!({"auth_mode": "chatgpt"})), false),
+            "custom"
+        );
+        assert_eq!(
+            provider_default_live_import_category_from_parts(
+                &AppKind::Claude,
+                Some(&official_auth),
+                false
+            ),
+            "custom"
+        );
     }
 
     #[test]
