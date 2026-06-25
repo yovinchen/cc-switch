@@ -999,6 +999,8 @@
 本轮继续把 Gemini live provider `config` 对象选择与 settings.json 顶层 merge 写入 contract 收敛到 `proxy-core::ports::{gemini_live_config_object_from_settings,gemini_live_settings_to_write}`；host adapter 只负责从 `Provider.settings_config` 投影输入。
 
 本轮继续删除 proxy event/server event payload 的 adapter 私有 passthrough helper；`proxy_core_adapter` 的消息构造直接消费 `proxy-core::events::{build_proxy_events_connected_payload,build_proxy_events_lagged_payload,build_server_started_event_payload,build_server_stopped_event_payload}`，payload shape 继续由 core 单测覆盖。
+
+本轮继续把 Codex provider `config` 文本读取、config TOML `wire_api`/`model` 投影与 active provider `base_url` 匹配收敛到 `proxy-core::ports::{codex_config_text_from_settings,codex_wire_api_from_config_toml,codex_model_from_config_toml,codex_config_has_base_url_matching}`；host adapter 不再维护 TOML value 解析、live takeover base_url 匹配或 legacy projection duplicate extractor。
 本轮继续把 forwarder 的 Claude/ClaudeAuth rectifier gate 收敛到 `proxy_core_adapter::forwarder_uses_anthropic_rectifiers`；provider 级 rectifier 判定不再作为 forwarder 的生产直接依赖。
 本轮继续把 forwarder 的 Codex Responses→Chat 上游模型覆写与 reasoning options 解析收敛到 `proxy_core_adapter::{forwarder_apply_codex_chat_upstream_model, forwarder_codex_chat_reasoning_options}`；provider 级 Codex chat helper 不再作为 forwarder 的生产直接依赖。
 本轮继续把 forwarder 的 Codex OAuth header-casing fact 收敛到 `proxy_core_adapter::forwarder_is_codex_oauth_provider`；provider 级 Codex OAuth 判定不再作为 forwarder 的生产直接依赖。

@@ -2537,6 +2537,98 @@ pub fn codex_base_url_from_config_toml(
     }
 }
 
+fn toml_string_value_from_assignment(line: &str, key: &str) -> Option<String> {
+    let line = line.trim_start();
+    if line.starts_with('#') {
+        return None;
+    }
+
+    let rest = line.strip_prefix(key)?.trim_start();
+    let value = rest.strip_prefix('=')?.trim_start();
+    let quote = value
+        .chars()
+        .next()
+        .filter(|quote| matches!(quote, '"' | '\''))?;
+    let value = &value[quote.len_utf8()..];
+    let end = value.find(quote)?;
+    Some(value[..end].to_string())
+}
+
+fn toml_table_header(line: &str) -> Option<String> {
+    let line = line.trim();
+    if !line.starts_with('[') || line.starts_with("[[") || !line.ends_with(']') {
+        return None;
+    }
+
+    Some(line[1..line.len() - 1].trim().to_string())
+}
+
+fn toml_top_level_string_value(config_toml: &str, key: &str) -> Option<String> {
+    for line in config_toml.lines() {
+        if toml_table_header(line).is_some() {
+            return None;
+        }
+        if let Some(value) = toml_string_value_from_assignment(line, key) {
+            return Some(value);
+        }
+    }
+
+    None
+}
+
+fn codex_active_model_provider_string_value(config_toml: &str, key: &str) -> Option<String> {
+    let active_provider = toml_top_level_string_value(config_toml, "model_provider")?;
+    let provider_table = format!("model_providers.{active_provider}");
+    let mut current_table = None;
+    for line in config_toml.lines() {
+        if let Some(table) = toml_table_header(line) {
+            current_table = Some(table);
+            continue;
+        }
+        if current_table.as_deref() == Some(provider_table.as_str()) {
+            if let Some(value) = toml_string_value_from_assignment(line, key) {
+                return Some(value);
+            }
+        }
+    }
+
+    None
+}
+
+pub fn codex_config_text_from_settings(settings_config: &Value) -> Option<&str> {
+    settings_config.get("config").and_then(Value::as_str)
+}
+
+pub fn codex_wire_api_from_config_toml(config_toml: &str) -> Option<String> {
+    codex_active_model_provider_string_value(config_toml, "wire_api")
+        .or_else(|| toml_top_level_string_value(config_toml, "wire_api"))
+}
+
+pub fn codex_model_from_config_toml(config_toml: &str) -> Option<String> {
+    toml_top_level_string_value(config_toml, "model").and_then(|model| {
+        let model = model.trim();
+        if model.is_empty() {
+            None
+        } else {
+            Some(model.to_string())
+        }
+    })
+}
+
+pub fn codex_config_has_base_url_matching(
+    config_toml: &str,
+    mut predicate: impl FnMut(&str) -> bool,
+) -> bool {
+    if let Some(base_url) = codex_active_model_provider_string_value(config_toml, "base_url") {
+        if predicate(&base_url) {
+            return true;
+        }
+    }
+
+    toml_top_level_string_value(config_toml, "base_url")
+        .is_some_and(|base_url| predicate(&base_url))
+}
+
 pub fn codex_base_url_from_settings(settings_config: &Value) -> Option<String> {
     for key in ["base_url", "baseURL"] {
         if let Some(url) = settings_config.get(key).and_then(Value::as_str) {
@@ -5559,7 +5651,10 @@ mod tests {
         ClaudeTakeoverProviderFacts,
         CodexCredentialParts, CodexLiveTakeoverMatchFacts,
         codex_base_url_from_config_toml, codex_base_url_from_settings,
-        codex_live_auth_has_proxy_placeholder, codex_takeover_toml_config_patch,
+        codex_config_has_base_url_matching, codex_config_text_from_settings,
+        codex_live_auth_has_proxy_placeholder, codex_model_from_config_toml,
+        codex_takeover_toml_config_patch,
+        codex_wire_api_from_config_toml,
         CodexTakeoverTomlConfigPatch,
         detect_gemini_auth_type, ensure_codex_takeover_auth_placeholder,
         gemini_contains_packycode_keyword, gemini_env_json_from_map,
@@ -7276,6 +7371,59 @@ mod tests {
             })),
             Some("https://config.example/v1".to_string())
         );
+    }
+
+    #[test]
+    fn codex_config_toml_helpers_project_wire_api_model_and_config_text() {
+        let provider_config = r#"
+model_provider = "custom"
+model = " gpt-5.4 "
+wire_api = "responses"
+
+[model_providers.custom]
+wire_api = "chat"
+"#;
+        assert_eq!(
+            codex_wire_api_from_config_toml(provider_config).as_deref(),
+            Some("chat")
+        );
+        assert_eq!(
+            codex_model_from_config_toml(provider_config).as_deref(),
+            Some("gpt-5.4")
+        );
+        assert_eq!(
+            codex_wire_api_from_config_toml("wire_api = 'openai_chat'").as_deref(),
+            Some("openai_chat")
+        );
+        assert_eq!(
+            codex_wire_api_from_config_toml(
+                "model_provider = \"missing\"\nwire_api = \"responses\"\n"
+            )
+            .as_deref(),
+            Some("responses")
+        );
+        assert!(codex_config_has_base_url_matching(
+            "model_provider = \"custom\"\nbase_url = \"https://top.example/v1\"\n\n[model_providers.custom]\nbase_url = \"http://127.0.0.1:15721/v1\"\n",
+            |url| url == "http://127.0.0.1:15721/v1"
+        ));
+        assert!(codex_config_has_base_url_matching(
+            "model_provider = \"missing\"\nbase_url = \"http://127.0.0.1:15721/v1\"\n",
+            |url| url == "http://127.0.0.1:15721/v1"
+        ));
+        assert!(!codex_config_has_base_url_matching(
+            "base_url = \"https://api.example/v1\"",
+            |url| url == "http://127.0.0.1:15721/v1"
+        ));
+        assert_eq!(codex_model_from_config_toml("model = \"   \""), None);
+        assert_eq!(
+            codex_config_text_from_settings(&json!({"config": "model = \"gpt-5\""})),
+            Some("model = \"gpt-5\"")
+        );
+        assert_eq!(
+            codex_config_text_from_settings(&json!({"config": 42})),
+            None
+        );
+        assert_eq!(codex_config_text_from_settings(&json!({})), None);
     }
 
     #[test]

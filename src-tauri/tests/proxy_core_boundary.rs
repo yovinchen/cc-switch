@@ -1141,6 +1141,16 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_BASE_URL_POLICY_MARKERS: &[&str] = &[
     "base_url = \\\"",
     "base_url = '",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_CONFIG_TOML_POLICY_MARKERS: &[&str] = &[
+    "fn codex_wire_api_from_toml(",
+    "fn codex_model_from_toml(",
+    "fn extract_codex_wire_api(",
+    "fn extract_codex_model(",
+    "fn codex_config_has_base_url_matching(",
+    "parse::<toml::Value>()",
+    ".get(\"model_provider\")",
+    ".get(\"wire_api\")",
+];
 const FORBIDDEN_PROXY_CORE_ADAPTER_REQUIRED_BASE_URL_POLICY_MARKERS: &[&str] = &[
     "fn missing_provider_base_url_message",
     "Provider 缺少 base_url 配置",
@@ -3082,6 +3092,41 @@ fn proxy_core_adapter_delegates_codex_base_url_policy_to_core() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter must keep Codex base URL settings/config parsing in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_codex_config_toml_projection_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let production_source = production_lines(&source)
+        .map(|(_, line)| line)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        production_source.contains("core_codex_config_text_from_settings")
+            && production_source.contains("core_codex_wire_api_from_config_toml")
+            && production_source.contains("core_codex_model_from_config_toml")
+            && production_source.contains("core_codex_config_has_base_url_matching"),
+        "proxy_core_adapter should delegate Codex config text/wire_api/model/base_url projection to core"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_CONFIG_TOML_POLICY_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!("line {}: {}", line_index + 1, marker));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Codex config TOML projection policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }

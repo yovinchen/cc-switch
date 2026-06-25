@@ -311,6 +311,10 @@ pub(crate) use crate::proxy_core::api::ports::{
     live_token_sync_app_label as core_live_token_sync_app_label,
     normalize_provider_settings_for_storage as core_normalize_provider_settings_for_storage,
     codex_base_url_from_settings as core_codex_base_url_from_settings,
+    codex_config_has_base_url_matching as core_codex_config_has_base_url_matching,
+    codex_config_text_from_settings as core_codex_config_text_from_settings,
+    codex_model_from_config_toml as core_codex_model_from_config_toml,
+    codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_additive_update_route_for_app as core_provider_additive_update_route,
     provider_app_has_current_provider as core_provider_app_has_current_provider,
@@ -3411,7 +3415,7 @@ pub(crate) fn required_claude_provider_base_url(provider: &Provider) -> Result<S
 }
 
 pub(crate) fn codex_config_text_from_settings(settings: &Value) -> Option<&str> {
-    settings.get("config").and_then(Value::as_str)
+    core_codex_config_text_from_settings(settings)
 }
 
 fn provider_codex_config_text(provider: &Provider) -> Option<&str> {
@@ -3802,35 +3806,6 @@ pub(crate) fn provider_settings_validation_parts<'a>(
     Ok(ProviderSettingsValidationParts::default())
 }
 
-fn codex_wire_api_from_toml(config_text: &str) -> Option<String> {
-    let doc = config_text.parse::<toml::Value>().ok()?;
-
-    if let Some(active_provider) = doc.get("model_provider").and_then(|value| value.as_str()) {
-        if let Some(wire_api) = doc
-            .get("model_providers")
-            .and_then(|providers| providers.get(active_provider))
-            .and_then(|provider| provider.get("wire_api"))
-            .and_then(|value| value.as_str())
-        {
-            return Some(wire_api.to_string());
-        }
-    }
-
-    doc.get("wire_api")
-        .and_then(|value| value.as_str())
-        .map(ToString::to_string)
-}
-
-fn codex_model_from_toml(config_text: &str) -> Option<String> {
-    let doc = config_text.parse::<toml::Value>().ok()?;
-
-    doc.get("model")
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|model| !model.is_empty())
-        .map(ToString::to_string)
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CodexBackupProjectionIssue {
     InvalidTargetSettings,
@@ -3975,7 +3950,9 @@ pub(crate) fn provider_codex_uses_chat_completions(provider: &Provider) -> bool 
                     .get("apiFormat")
                     .and_then(Value::as_str)
             }),
-        config_text.and_then(codex_wire_api_from_toml).as_deref(),
+        config_text
+            .and_then(core_codex_wire_api_from_config_toml)
+            .as_deref(),
         provider
             .settings_config
             .get("base_url")
@@ -4011,7 +3988,8 @@ pub(crate) fn provider_codex_upstream_model(provider: &Provider) -> Option<Strin
         .settings_config
         .get("model")
         .and_then(Value::as_str);
-    let config_model = provider_codex_config_text(provider).and_then(codex_model_from_toml);
+    let config_model =
+        provider_codex_config_text(provider).and_then(core_codex_model_from_config_toml);
     resolve_codex_provider_upstream_model(settings_model, config_model.as_deref())
 }
 
@@ -6183,8 +6161,8 @@ pub(crate) fn legacy_provider_projection_input(
 
     LegacyProviderProjectionInput {
         api_format,
-        codex_wire_api: config_text.and_then(extract_codex_wire_api),
-        codex_model: config_text.and_then(extract_codex_model),
+        codex_wire_api: config_text.and_then(core_codex_wire_api_from_config_toml),
+        codex_model: config_text.and_then(core_codex_model_from_config_toml),
         codex_catalog_models,
         env,
         claude_desktop_model_routes,
@@ -6313,32 +6291,6 @@ fn proxy_channel_model_record_from_legacy(
         request_overrides: route.request_overrides,
         response_overrides: route.response_overrides,
     }
-}
-
-fn extract_codex_wire_api(config_text: &str) -> Option<String> {
-    let doc = config_text.parse::<toml::Value>().ok()?;
-    if let Some(active_provider) = doc.get("model_provider").and_then(|value| value.as_str()) {
-        if let Some(wire_api) = doc
-            .get("model_providers")
-            .and_then(|providers| providers.get(active_provider))
-            .and_then(|provider| provider.get("wire_api"))
-            .and_then(|value| value.as_str())
-        {
-            return Some(wire_api.to_string());
-        }
-    }
-    doc.get("wire_api")
-        .and_then(|value| value.as_str())
-        .map(ToString::to_string)
-}
-
-fn extract_codex_model(config_text: &str) -> Option<String> {
-    let doc = config_text.parse::<toml::Value>().ok()?;
-    doc.get("model")
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|model| !model.is_empty())
-        .map(ToString::to_string)
 }
 
 impl From<&AppType> for AppKind {
@@ -11034,7 +10986,7 @@ pub(crate) fn live_takeover_config_matches_proxy_for_app(
                 .get("config")
                 .and_then(Value::as_str)
                 .is_some_and(|config_text| {
-                    codex_config_has_base_url_matching(config_text, |url| {
+                    core_codex_config_has_base_url_matching(config_text, |url| {
                         proxy_urls_match(url, codex_proxy_base_url)
                     })
                 }),
@@ -11054,34 +11006,6 @@ pub(crate) fn live_takeover_config_matches_proxy_for_app(
 
 fn proxy_urls_match(actual: &str, expected: &str) -> bool {
     core_proxy_urls_match(actual, expected)
-}
-
-fn codex_config_has_base_url_matching(config_text: &str, predicate: impl Fn(&str) -> bool) -> bool {
-    let Ok(doc) = toml::from_str::<toml::Value>(config_text) else {
-        return false;
-    };
-
-    let active_provider = doc
-        .get("model_provider")
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|id| !id.is_empty());
-
-    if let Some(provider_id) = active_provider {
-        if doc
-            .get("model_providers")
-            .and_then(|value| value.get(provider_id))
-            .and_then(|value| value.get("base_url"))
-            .and_then(|value| value.as_str())
-            .is_some_and(&predicate)
-        {
-            return true;
-        }
-    }
-
-    doc.get("base_url")
-        .and_then(|value| value.as_str())
-        .is_some_and(predicate)
 }
 
 fn launch_env_vars_from_provider_settings(
