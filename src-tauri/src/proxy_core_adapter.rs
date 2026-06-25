@@ -4880,13 +4880,6 @@ pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat(
     should_preserve_reasoning_content_for_openai_chat(&provider.settings_config, body)
 }
 
-pub(crate) fn circuit_breaker_config_from_router_config_result(
-    result: Result<AppProxyConfig, AppError>,
-) -> CircuitBreakerConfig {
-    let config = result.ok();
-    circuit_breaker_config_from_app_config(config.as_ref())
-}
-
 pub(crate) async fn router_app_proxy_config_from_config_source(
     source: &(dyn ProxyConfigSource + Send + Sync),
     app_type: &str,
@@ -4903,16 +4896,20 @@ pub(crate) async fn circuit_breaker_config_from_router_config_source(
     source: &(dyn ProxyConfigSource + Send + Sync),
     app_type: &str,
 ) -> CircuitBreakerConfig {
-    circuit_breaker_config_from_router_config_result(
-        router_app_proxy_config_from_config_source(source, app_type).await,
-    )
+    let config = router_app_proxy_config_from_config_source(source, app_type)
+        .await
+        .ok();
+    circuit_breaker_config_from_app_config(config.as_ref())
 }
 
-pub(crate) fn circuit_failure_threshold_from_router_config_result(
-    result: Result<AppProxyConfig, AppError>,
+pub(crate) async fn circuit_failure_threshold_from_router_config_source(
+    source: &(dyn ProxyConfigSource + Send + Sync),
+    app_type: &str,
     fallback: u32,
 ) -> u32 {
-    let config = result.ok();
+    let config = router_app_proxy_config_from_config_source(source, app_type)
+        .await
+        .ok();
     circuit_failure_threshold_from_app_config(config.as_ref(), fallback)
 }
 
@@ -4980,17 +4977,6 @@ pub(crate) fn auto_failover_enabled_from_router_config_result(
     decision.enabled
 }
 
-pub(crate) async fn circuit_failure_threshold_from_router_config_source(
-    source: &(dyn ProxyConfigSource + Send + Sync),
-    app_type: &str,
-    fallback: u32,
-) -> u32 {
-    circuit_failure_threshold_from_router_config_result(
-        router_app_proxy_config_from_config_source(source, app_type).await,
-        fallback,
-    )
-}
-
 pub(crate) async fn auto_failover_enabled_from_router_config_source(
     source: &(dyn ProxyConfigSource + Send + Sync),
     app_type: &str,
@@ -5001,26 +4987,23 @@ pub(crate) async fn auto_failover_enabled_from_router_config_source(
     )
 }
 
-pub(crate) fn proxy_takeover_status_from_config_results(
-    claude: Result<AppProxyConfig, AppError>,
-    codex: Result<AppProxyConfig, AppError>,
-    gemini: Result<AppProxyConfig, AppError>,
-) -> ProxyTakeoverStatus {
-    proxy_takeover_status_from_enabled_options(
-        claude.ok().map(|config| config.enabled),
-        codex.ok().map(|config| config.enabled),
-        gemini.ok().map(|config| config.enabled),
-        None,
-        None,
-    )
-}
-
 pub(crate) async fn proxy_takeover_status_from_db(db: &Database) -> ProxyTakeoverStatus {
-    proxy_takeover_status_from_config_results(
-        db.get_proxy_config_for_app(AppType::Claude.as_str()).await,
-        db.get_proxy_config_for_app(AppType::Codex.as_str()).await,
-        db.get_proxy_config_for_app(AppType::Gemini.as_str()).await,
-    )
+    let claude = db
+        .get_proxy_config_for_app(AppType::Claude.as_str())
+        .await
+        .ok()
+        .map(|config| config.enabled);
+    let codex = db
+        .get_proxy_config_for_app(AppType::Codex.as_str())
+        .await
+        .ok()
+        .map(|config| config.enabled);
+    let gemini = db
+        .get_proxy_config_for_app(AppType::Gemini.as_str())
+        .await
+        .ok()
+        .map(|config| config.enabled);
+    proxy_takeover_status_from_enabled_options(claude, codex, gemini, None, None)
 }
 
 #[derive(Debug, Clone)]
@@ -15747,26 +15730,18 @@ base_url = "https://api.openai.com/v1"
         custom_breaker_app_config.circuit_failure_threshold = 7;
         custom_breaker_app_config.circuit_timeout_seconds = 45;
         let projected_breaker_config =
-            circuit_breaker_config_from_router_config_result(Ok(custom_breaker_app_config.clone()));
+            circuit_breaker_config_from_app_config(Some(&custom_breaker_app_config));
         assert_eq!(projected_breaker_config.failure_threshold, 7);
         assert_eq!(projected_breaker_config.timeout_seconds, 45);
         assert_eq!(
-            circuit_breaker_config_from_router_config_result(Err(AppError::Config(
-                "missing proxy_config".to_string(),
-            ))),
+            circuit_breaker_config_from_app_config(None),
             CircuitBreakerConfig::default()
         );
         assert_eq!(
-            circuit_failure_threshold_from_router_config_result(Ok(custom_breaker_app_config), 9,),
+            circuit_failure_threshold_from_app_config(Some(&custom_breaker_app_config), 9,),
             7
         );
-        assert_eq!(
-            circuit_failure_threshold_from_router_config_result(
-                Err(AppError::Config("missing proxy_config".to_string())),
-                9,
-            ),
-            9
-        );
+        assert_eq!(circuit_failure_threshold_from_app_config(None, 9), 9);
         let enabled_policy = response_runtime_policy_from_app_proxy_config(&app_config);
         assert_eq!(enabled_policy.max_retries, 3);
         assert_eq!(enabled_policy.timeout.non_streaming_timeout, 600);
@@ -18173,10 +18148,12 @@ base_url = "https://api.openai.com/v1"
             circuit_error_rate_threshold: 0.6,
             circuit_min_requests: 10,
         };
-        let takeover_from_config = proxy_takeover_status_from_config_results(
-            Ok(app_config("claude", true)),
-            Err(AppError::Config("missing codex config".to_string())),
-            Ok(app_config("gemini", true)),
+        let takeover_from_config = proxy_takeover_status_from_enabled_options(
+            Some(app_config("claude", true).enabled),
+            None,
+            Some(app_config("gemini", true).enabled),
+            None,
+            None,
         );
         assert!(takeover_from_config.claude);
         assert!(!takeover_from_config.codex);
