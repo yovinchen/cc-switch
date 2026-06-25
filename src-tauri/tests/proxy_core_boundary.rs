@@ -1035,6 +1035,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn additive_stream_check_base_url_missing_error_spec(",
     "fn opencode_live_provider_fragment_has_provider_fields(",
     "fn channel_health_reset_from_parts(",
+    "fn channel_health_reset_from_plan(",
     "fn stream_check_result_to_channel_reachability(",
     "fn channel_reachability_status_from_latency(",
     "fn should_retry_channel_reachability_failure(",

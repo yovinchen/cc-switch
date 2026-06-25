@@ -9841,10 +9841,6 @@ pub(crate) fn channel_health_reset_plan_from_lookup(
     })
 }
 
-pub(crate) fn channel_health_reset_from_plan(plan: ChannelHealthResetPlan) -> ChannelHealthReset {
-    channel_health_reset_from_parts(plan.channel_id, plan.app_type.as_str())
-}
-
 pub(crate) struct ChannelHealthAttemptDbUpdate {
     pub(crate) channel_id: String,
     pub(crate) success: bool,
@@ -9895,7 +9891,10 @@ pub(crate) async fn reset_channel_health_with_router_source(
         .reset_channel_breaker(&reset_plan.channel_id, &reset_plan.app_type)
         .await
         .map_err(|error| app_error("reset channel health", error))?;
-    Ok(channel_health_reset_from_plan(reset_plan))
+    Ok(channel_health_reset_from_parts(
+        reset_plan.channel_id,
+        reset_plan.app_type.as_str(),
+    ))
 }
 
 #[derive(Clone)]
@@ -22782,7 +22781,8 @@ command = "latest-command"
                 .expect("reset plan");
         assert_eq!(reset_plan.channel_id, "channel-a");
         assert_eq!(reset_plan.app_type, "claude");
-        let reset = channel_health_reset_from_plan(reset_plan);
+        let reset =
+            channel_health_reset_from_parts(reset_plan.channel_id, reset_plan.app_type.as_str());
         assert_eq!(reset.channel_id, "channel-a");
         assert_eq!(reset.app, AppKind::Claude);
         let missing = channel_health_reset_plan_from_lookup("missing-channel", None)

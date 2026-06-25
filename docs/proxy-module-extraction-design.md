@@ -1448,6 +1448,7 @@
 1028. channel-key runtime lookup 已删除 adapter-local `channel_key_value_from_runtime_candidate` 一行 facade；CC Switch runtime source 直接消费 core-selected `ChannelKeyRuntimeCandidate` 并投影 key value，减少中转宿主复制无意义 wrapper 的机会。
 1029. channel-auth missing key 错误不再经由 adapter-local `channel_key_auth_error` 别名；host runtime source 直接使用 `proxy-core::provider_auth::channel_auth_profile_missing_key_error`，避免中转宿主复制纯错误包装函数。
 1030. channel reachability probe 删除 `channel_test_app_type_from_probe_request` / `channel_test_provider_from_probe_source` 两个 adapter-local wrapper；DB-backed probe source 直接 parse host app type 并调用 core error helper，把中转宿主需要复制的 surface 缩到实际 IO 边界。
+1031. channel health reset 删除 `channel_health_reset_from_plan` 一行 DTO wrapper；host health source 保留 DB lookup/router reset plan，但直接调用 `proxy-core::ports::channel_health_reset_from_parts` 构造对外响应。
 
 ## 背景
 
