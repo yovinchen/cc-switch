@@ -910,6 +910,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn route_plan_from_request(",
     "fn route_plan_provider_ids(",
     "fn route_plan_provider_match(",
+    "fn usage_script_credentials(",
     "fn forwarding_requires_runtime_error_message(",
     "fn forwarding_requires_runtime_error(",
     "fn route_plan_no_matching_host_providers_error_message(",
