@@ -48,6 +48,10 @@ pub fn unsupported_app_kind_error_message(error: &str) -> String {
     format!("unsupported app kind: {error}")
 }
 
+pub fn unsupported_app_kind_config_error(error: impl std::fmt::Display) -> ProxyCoreError {
+    ProxyCoreError::Config(unsupported_app_kind_error_message(&error.to_string()))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
@@ -1813,6 +1817,11 @@ mod tests {
             unsupported_app_kind_error_message("invalid app: openclaw"),
             "unsupported app kind: invalid app: openclaw"
         );
+        assert!(matches!(
+            unsupported_app_kind_config_error("invalid app: openclaw"),
+            ProxyCoreError::Config(message)
+                if message == "unsupported app kind: invalid app: openclaw"
+        ));
     }
 
     #[test]

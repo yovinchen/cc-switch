@@ -1405,6 +1405,7 @@
 985. forwarding runtime 缺失与 route plan provider mismatch 的 `ProxyCoreError` 构造已迁入 `proxy-core::routing`；host adapter 不再手写这些 core error variant，只负责转发 core constructor。
 986. Claude Desktop model-list provider selection 的失败/无可用 provider 错误 contract 已迁入 `proxy-core::claude_desktop_gateway_auth`；adapter 只负责把 router/provider loader 结果交给 core error constructor。
 987. channel test/reachability probe 的 provider-not-found 与 probe failure `ProxyCoreError` 构造已迁入 `proxy-core::ports`；adapter 只负责查询宿主 provider 与执行 stream check。
+988. unsupported `AppKind -> AppType` 的 config error 构造已迁入 `proxy-core::domain`；adapter 不再保留 app-kind 错误文案 wrapper。
 
 ## 背景
 

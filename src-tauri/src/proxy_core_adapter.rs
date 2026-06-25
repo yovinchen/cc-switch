@@ -1801,7 +1801,7 @@ pub(crate) type ProviderSpec = crate::proxy_core::api::domain::ProviderSpec;
 pub(crate) type ProxyCoreProviderSpec = crate::proxy_core::api::domain::ProviderSpec;
 
 pub(crate) use crate::proxy_core::api::domain::{
-    provider_account_ref, provider_metadata_from_input,
+    provider_account_ref, provider_metadata_from_input, unsupported_app_kind_config_error,
 };
 
 use crate::proxy_core::api::domain::{
@@ -6308,7 +6308,7 @@ pub(crate) fn app_type_option_from_proxy_core_app(app: &AppKind) -> Option<AppTy
 pub(crate) fn app_type_from_proxy_core_app(app: &AppKind) -> ProxyCoreResult<AppType> {
     app.as_str()
         .parse::<AppType>()
-        .map_err(|error| ProxyCoreError::Config(unsupported_app_kind_error_message(error)))
+        .map_err(unsupported_app_kind_config_error)
 }
 
 pub(crate) struct JsonProxyRequestInput {
@@ -6391,10 +6391,6 @@ pub(crate) fn forward_runtime_request_from_proxy_request(
         body,
         session_result,
     })
-}
-
-pub(crate) fn unsupported_app_kind_error_message(error: impl std::fmt::Display) -> String {
-    crate::proxy_core::api::domain::unsupported_app_kind_error_message(&error.to_string())
 }
 
 #[allow(dead_code)]
@@ -12917,7 +12913,9 @@ mod tests {
                     && message.contains("unknown-app")
         ));
         assert_eq!(
-            unsupported_app_kind_error_message("invalid app: openclaw"),
+            crate::proxy_core::api::domain::unsupported_app_kind_error_message(
+                "invalid app: openclaw"
+            ),
             "unsupported app kind: invalid app: openclaw"
         );
 
