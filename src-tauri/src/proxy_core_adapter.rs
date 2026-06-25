@@ -2735,6 +2735,7 @@ pub(crate) use crate::proxy_core::api::transforms::{
     append_utf8_safe, build_gemini_upstream_url, chat_completion_to_response_with_context,
     claude_request_transform_for_api_format,
     claude_response_to_anthropic_message_for_api_format, claude_stream_usage_event_filter,
+    claude_provider_transform_required as core_claude_provider_transform_required,
     claude_transform_streaming_decision as core_claude_transform_streaming_decision,
     codex_chat_transform_streaming_decision as core_codex_chat_transform_streaming_decision,
     codex_stream_usage_event_filter, create_claude_to_anthropic_sse_stream_for_api_format,
@@ -4465,11 +4466,10 @@ pub(crate) fn stream_check_proxy_target_ids_from_db(
 }
 
 pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
-    if provider_claude_kind(provider).needs_transform() {
-        return true;
-    }
-
-    claude_api_format_needs_transform(provider_claude_api_format(provider))
+    core_claude_provider_transform_required(
+        provider_claude_kind(provider).needs_transform(),
+        provider_claude_api_format(provider),
+    )
 }
 
 pub(crate) fn provider_claude_transform_streaming_decision(
@@ -10161,6 +10161,7 @@ pub(crate) fn rewrite_codex_responses_endpoint_to_chat(endpoint: &str) -> (Strin
         .into_parts()
 }
 
+#[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::claude_api_format_needs_transform;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::resolve_gemini_native_url;

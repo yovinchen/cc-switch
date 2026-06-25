@@ -5319,6 +5319,47 @@ fn proxy_core_adapter_delegates_claude_request_format_dispatch_to_core() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_claude_transform_gate_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let gate_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_needs_claude_transform",
+        "pub(crate) fn provider_claude_transform_streaming_decision",
+    );
+
+    assert!(
+        gate_slice.contains("core_claude_provider_transform_required("),
+        "Claude transform gate must delegate provider-kind/api-format policy to proxy-core"
+    );
+
+    let forbidden_markers = [
+        "return true",
+        "claude_api_format_needs_transform(provider_claude_api_format(provider))",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(gate_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs Claude transform gate:{} contains host-local marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Claude transform gate policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

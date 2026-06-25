@@ -1496,6 +1496,13 @@ pub fn claude_api_format_needs_transform(api_format: &str) -> bool {
     )
 }
 
+pub fn claude_provider_transform_required(
+    provider_kind_requires_transform: bool,
+    api_format: &str,
+) -> bool {
+    provider_kind_requires_transform || claude_api_format_needs_transform(api_format)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClaudeResponsesPromptCacheLog {
     pub provider_id: String,
@@ -6008,6 +6015,16 @@ mod tests {
         assert!(claude_api_format_needs_transform("openai_responses"));
         assert!(claude_api_format_needs_transform("gemini_native"));
         assert!(!claude_api_format_needs_transform("unknown"));
+    }
+
+    #[test]
+    fn claude_provider_transform_required_combines_provider_kind_and_api_format_policy() {
+        assert!(claude_provider_transform_required(true, "anthropic"));
+        assert!(claude_provider_transform_required(false, "openai_chat"));
+        assert!(claude_provider_transform_required(false, "openai_responses"));
+        assert!(claude_provider_transform_required(false, "gemini_native"));
+        assert!(!claude_provider_transform_required(false, "anthropic"));
+        assert!(!claude_provider_transform_required(false, "unknown"));
     }
 
     #[test]
