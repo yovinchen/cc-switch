@@ -4261,14 +4261,14 @@ impl ForwarderAdapterContext {
     }
 
     fn provider_auth_info(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
-        forwarder_provider_auth_info(self.adapter(), provider)
+        self.adapter().extract_auth(provider)
     }
 
     fn provider_auth_headers(
         &self,
         auth: &ProviderAuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
-        forwarder_provider_auth_headers(self.adapter(), auth)
+        self.adapter().get_auth_headers(auth)
     }
 
     pub(crate) fn provider_url_facts(
@@ -4403,20 +4403,6 @@ pub(crate) fn stream_check_proxy_target_ids_from_db(
         current_provider_id,
         failover_provider_ids,
     )
-}
-
-pub(crate) fn forwarder_provider_auth_info(
-    adapter: &ForwarderAdapterHandle,
-    provider: &Provider,
-) -> Option<ProviderAuthInfo> {
-    adapter.extract_auth(provider)
-}
-
-pub(crate) fn forwarder_provider_auth_headers(
-    adapter: &ForwarderAdapterHandle,
-    auth: &ProviderAuthInfo,
-) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
-    adapter.get_auth_headers(auth)
 }
 
 pub(crate) fn forwarder_provider_upstream_url(
@@ -18674,13 +18660,14 @@ reasoning = "medium"
             json!({"apiKey": "sk-forwarder-auth"}),
             None,
         );
-        let forwarder_auth = forwarder_provider_auth_info(&codex_adapter, &codex_provider)
+        let forwarder_auth = codex_adapter
+            .extract_auth(&codex_provider)
             .expect("codex forwarder auth info");
         assert_eq!(forwarder_auth.api_key, "sk-forwarder-auth");
         assert_eq!(forwarder_auth.strategy, ProviderAuthStrategy::Bearer);
-        let forwarder_auth_headers =
-            forwarder_provider_auth_headers(&codex_adapter, &forwarder_auth)
-                .expect("codex forwarder auth headers");
+        let forwarder_auth_headers = codex_adapter
+            .get_auth_headers(&forwarder_auth)
+            .expect("codex forwarder auth headers");
         assert_eq!(forwarder_auth_headers.len(), 1);
         assert_eq!(forwarder_auth_headers[0].0, http::header::AUTHORIZATION);
         assert_eq!(
@@ -18694,7 +18681,7 @@ reasoning = "medium"
             json!({}),
             None,
         );
-        assert!(forwarder_provider_auth_info(&codex_adapter, &missing_auth).is_none());
+        assert!(codex_adapter.extract_auth(&missing_auth).is_none());
     }
 
     #[test]
