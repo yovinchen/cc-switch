@@ -1020,6 +1020,8 @@ forwarder 的 Claude 请求阶段 normalization 与 transform 一跳 wrapper `fo
 
 forwarder adapter facts 的 Claude 名称判定不再保留 `provider_adapter_name_is_claude` 单行 helper；`ForwarderAdapterFacts::from_adapter` 在唯一语义归属点直接从 adapter name 投影 `is_claude_adapter`。
 
+channel-key auth profile 的 test-only DB convenience helper `apply_channel_auth_profile_providers_from_db` 与 borrowed runtime source 已删除；host 回归测试和 forward runtime 均显式消费 `ChannelKeyRuntimeSource` 注入契约。
+
 本轮继续把 Gemini live settings 的 env/config 组装与 env-only backup JSON contract 收敛到 `proxy-core::ports::{gemini_live_settings_from_env_json_and_config,gemini_live_backup_from_effective_settings}`；host adapter 只 re-export core helper 供 live write/backup 流程使用。
 
 本轮继续把 Gemini live provider `config` 对象选择与 settings.json 顶层 merge 写入 contract 收敛到 `proxy-core::ports::{gemini_live_config_object_from_settings,gemini_live_settings_to_write}`；host adapter 只负责从 `Provider.settings_config` 投影输入。
@@ -1472,6 +1474,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1052. forwarder Claude normalize 删除 `forwarder_claude_normalize_anthropic_messages` 一跳 wrapper；request source 直接调用 provider 级 normalize helper，body policy 行为由 request-source 单测覆盖。
 1053. forwarder Claude request transform 删除 `forwarder_claude_transform_request_for_api_format` 一跳 wrapper；protocol state source 直接调用 provider 级 transform helper，session id 与 Gemini shadow 传递逻辑保持在 source 内。
 1054. forwarder adapter facts 删除 `provider_adapter_name_is_claude` 单行 helper；`ForwarderAdapterFacts::from_adapter` 在 adapter context 边界内直接投影 Claude adapter fact，boundary forbidden marker 防止 helper 复活。
+1055. channel-key auth profile 删除 cfg(test) DB convenience helper 与 borrowed runtime source；host 测试改为构造 `CcSwitchChannelKeyRuntimeSource` 后调用 `apply_channel_auth_profile_providers_from_source`，boundary 反向禁止 DB helper 回流。
 
 ## 背景
 
@@ -2189,7 +2192,7 @@ pub trait AuthProvider: Send + Sync {
 }
 ```
 
-本轮已把 `proxy-core` 端口签名从单独的 `auth_profile` 参数推进到 `app + provider + channel + request` 上下文；`CcSwitchAuthProvider` 会把 app/provider/channel 事实放入 `AuthInfo.metadata`，外部中转实现因此可以按 channel 选择不同 key、账号或 token runtime。生产 header 组装也已让 `ForwarderAuthSource` 先调用 core `AuthProvider`：如果外部实现返回显式 `AuthInfo.headers`，默认 source 会直接使用这些 header；如果返回空 headers，则继续走 CC Switch 现有 provider adapter 与 managed-account fallback。channel-key 注入仍由 `apply_channel_auth_profile_providers_from_db` 在生成 `ForwardAttempt` 后处理；已补 DB-backed 回归测试，证明相同 `key_ref` 在不同 channel 下会按 `channel_id` 各自取 key，不会全局串用。
+本轮已把 `proxy-core` 端口签名从单独的 `auth_profile` 参数推进到 `app + provider + channel + request` 上下文；`CcSwitchAuthProvider` 会把 app/provider/channel 事实放入 `AuthInfo.metadata`，外部中转实现因此可以按 channel 选择不同 key、账号或 token runtime。生产 header 组装也已让 `ForwarderAuthSource` 先调用 core `AuthProvider`：如果外部实现返回显式 `AuthInfo.headers`，默认 source 会直接使用这些 header；如果返回空 headers，则继续走 CC Switch 现有 provider adapter 与 managed-account fallback。channel-key 注入已改为在生成 `ForwardAttempt` 后通过 `ChannelKeyRuntimeSource` 处理；DB-backed 回归测试证明相同 `key_ref` 在不同 channel 下会按 `channel_id` 各自取 key，不会全局串用。
 
 provider adapter 仍负责 CC Switch 默认 fallback 的 provider settings 到 header 转换，但 token 刷新和宿主账号状态读取不在 provider adapter 内完成。channel 可以指向同一个 provider 的不同 key/auth profile，必须避免把一个 channel 的 key 泄漏到另一个 channel。下一步是把 managed-account token 刷新、channel-key 轮询/随机和失败回退继续收敛到宿主可替换端口，直到 forwarder 不再需要理解 CC Switch 的 provider settings 鉴权细节。
 
@@ -2199,7 +2202,7 @@ provider adapter 仍负责 CC Switch 默认 fallback 的 provider settings 到 h
 
 随后又把 `ChannelKeyRuntimeSource` 接入 `ProxyServices` 容器：core service catalog 现在显式包含 channel-key runtime source，CC Switch services 持有 DB-backed source 实现。外部中转宿主在组装独立 proxy module 时可以和 `AuthProvider`、`ProviderSource`、`ChannelSource` 一样注入自己的 key runtime，而不是依赖 CC Switch adapter 的辅助函数。
 
-本轮继续让 `CcSwitchForwardPipeline` 持有并传递 `ChannelKeyRuntimeSource`：host forward runtime 生成 `ForwardAttempt` 时走 source-injected helper，DB helper 只作为兼容包装保留。这样后续把 forward pipeline 抽到独立中转宿主时，可以直接替换 channel key runtime，而不用把 CC Switch 的数据库读取路径带过去。
+本轮继续让 `CcSwitchForwardPipeline` 持有并传递 `ChannelKeyRuntimeSource`：host forward runtime 生成 `ForwardAttempt` 时走 source-injected helper，DB convenience helper 已删除。这样后续把 forward pipeline 抽到独立中转宿主时，可以直接替换 channel key runtime，而不用把 CC Switch 的数据库读取路径带过去。
 
 本轮继续把 managed-account token runtime 的日志/错误文案 contract 收进 `proxy-core::managed_account_auth`：core 统一生成 Copilot/Codex OAuth 的无 AppHandle、指定/默认账号取 token、成功和失败文本；`src/proxy/managed_account_auth.rs` 只保留 Tauri state 读取和 token 获取调用。这让外部中转宿主可以复用相同 runtime 反馈 contract，而不复制 CC Switch 桌面 host 的中文文案分支。
 

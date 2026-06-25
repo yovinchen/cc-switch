@@ -6706,21 +6706,9 @@ pub(crate) fn required_forward_attempts_from_plan(
     Ok(attempts)
 }
 
-#[cfg(test)]
-pub(crate) struct CcSwitchBorrowedChannelKeyRuntimeSource<'a> {
-    db: &'a Database,
-}
-
 #[derive(Clone)]
 pub(crate) struct CcSwitchChannelKeyRuntimeSource {
     db: Arc<Database>,
-}
-
-#[cfg(test)]
-pub(crate) fn channel_key_runtime_source_from_db(
-    db: &Database,
-) -> CcSwitchBorrowedChannelKeyRuntimeSource<'_> {
-    CcSwitchBorrowedChannelKeyRuntimeSource { db }
 }
 
 pub(crate) fn channel_key_runtime_source_from_database(
@@ -6739,17 +6727,6 @@ fn load_channel_key_value_from_database(
         .map_err(|error| app_error("load channel auth key", error))?;
     let selected_key = select_enabled_proxy_channel_key_runtime_candidate(key);
     Ok(selected_key.map(|key| key.key_value))
-}
-
-#[cfg(test)]
-impl ChannelKeyRuntimeSource for CcSwitchBorrowedChannelKeyRuntimeSource<'_> {
-    fn load_channel_key_value(
-        &self,
-        channel_id: &str,
-        key_ref: &str,
-    ) -> ProxyCoreResult<Option<String>> {
-        load_channel_key_value_from_database(self.db, channel_id, key_ref)
-    }
 }
 
 impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource {
@@ -6815,22 +6792,6 @@ pub(crate) fn apply_channel_auth_profile_providers_from_source(
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-pub(crate) fn apply_channel_auth_profile_providers_from_db(
-    db: &Database,
-    app_type: &AppType,
-    providers: &IndexMap<String, Provider>,
-    attempts: &mut [ForwardAttempt],
-) -> ProxyCoreResult<()> {
-    let channel_key_runtime_source = channel_key_runtime_source_from_db(db);
-    apply_channel_auth_profile_providers_from_source(
-        app_type,
-        providers,
-        attempts,
-        &channel_key_runtime_source,
-    )
 }
 
 pub(crate) fn required_forward_attempts_from_sources(

@@ -10,8 +10,9 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::hyper_client::ProxyResponse;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    apply_channel_auth_profile_providers_from_db, client_model_catalog_from_optional_raw,
-    forward_attempts_from_plan, forward_result_to_proxy_result, host_providers_for_plan,
+    apply_channel_auth_profile_providers_from_source, channel_key_runtime_source_from_database,
+    client_model_catalog_from_optional_raw, forward_attempts_from_plan,
+    forward_result_to_proxy_result, host_providers_for_plan,
     management_route_response_from_router_source, provider_router_from_database, AppKind,
     AuthProfileRef, AuthProvider, CcSwitchAuthProvider, CcSwitchProxyRuntime, ChannelAttemptResult,
     ChannelQuery, ChannelSpec, GeminiShadowStore, ProviderSpec, ProxyCoreEvent, ProxyRequest,
@@ -41,9 +42,9 @@ mod tests {
         ProxyConfig, ProxyCoreChannelOverrides as ChannelOverrides, ProxyCoreError,
         ProxyCoreEventType, ProxyCoreInterfaceKind as InterfaceKind,
         ProxyCoreModelCapabilities as ModelCapabilities, ProxyCoreModelRoute as ModelRoute,
-        ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyEngine, ProxyResponseBody,
-        ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy, RouteResolveRequest,
-        RouteSelection, UsageRecord, UsageTokens,
+        ProxyCoreResult, ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyEngine,
+        ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy,
+        RouteResolveRequest, RouteSelection, UsageRecord, UsageTokens,
     };
     use bytes::Bytes;
     use futures::StreamExt;
@@ -187,6 +188,21 @@ mod tests {
         }
     }
 
+    fn apply_channel_auth_profile_providers_with_runtime_source(
+        db: &Arc<Database>,
+        app_type: &AppType,
+        providers: &IndexMap<String, Provider>,
+        attempts: &mut [crate::proxy::route_attempt::ForwardAttempt],
+    ) -> ProxyCoreResult<()> {
+        let channel_key_runtime_source = channel_key_runtime_source_from_database(db.clone());
+        apply_channel_auth_profile_providers_from_source(
+            app_type,
+            providers,
+            attempts,
+            &channel_key_runtime_source,
+        )
+    }
+
     #[test]
     fn channel_provider_auth_profile_sets_auth_provider_without_changing_route_provider() {
         let route_provider = Provider::with_id(
@@ -210,8 +226,8 @@ mod tests {
 
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
-        let db = Database::memory().expect("memory db");
-        apply_channel_auth_profile_providers_from_db(
+        let db = Arc::new(Database::memory().expect("memory db"));
+        apply_channel_auth_profile_providers_with_runtime_source(
             &db,
             &AppType::Claude,
             &providers,
@@ -248,8 +264,8 @@ mod tests {
 
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
-        let db = Database::memory().expect("memory db");
-        apply_channel_auth_profile_providers_from_db(
+        let db = Arc::new(Database::memory().expect("memory db"));
+        apply_channel_auth_profile_providers_with_runtime_source(
             &db,
             &AppType::Claude,
             &providers,
@@ -284,8 +300,8 @@ mod tests {
 
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
-        let db = Database::memory().expect("memory db");
-        apply_channel_auth_profile_providers_from_db(
+        let db = Arc::new(Database::memory().expect("memory db"));
+        apply_channel_auth_profile_providers_with_runtime_source(
             &db,
             &AppType::Claude,
             &providers,
@@ -311,8 +327,8 @@ mod tests {
         plan.selection.channel.auth_profile = Some(AuthProfileRef::new("channel-key:manual"));
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
-        let db = Database::memory().expect("memory db");
-        let error = apply_channel_auth_profile_providers_from_db(
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let error = apply_channel_auth_profile_providers_with_runtime_source(
             &db,
             &AppType::Claude,
             &providers,
@@ -330,7 +346,7 @@ mod tests {
 
     #[test]
     fn channel_key_auth_profile_sets_auth_key_without_changing_route_provider() {
-        let db = Database::memory().expect("memory db");
+        let db = Arc::new(Database::memory().expect("memory db"));
         save_claude_provider(&db);
         db.create_proxy_channel(ProxyChannelWriteRequest {
             id: Some("channel-auth-key".to_string()),
@@ -360,7 +376,7 @@ mod tests {
 
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
-        apply_channel_auth_profile_providers_from_db(
+        apply_channel_auth_profile_providers_with_runtime_source(
             &db,
             &AppType::Claude,
             &providers,
@@ -400,7 +416,7 @@ mod tests {
         )
         .expect("disable channel key");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
-        let error = apply_channel_auth_profile_providers_from_db(
+        let error = apply_channel_auth_profile_providers_with_runtime_source(
             &db,
             &AppType::Claude,
             &providers,
@@ -417,7 +433,7 @@ mod tests {
 
     #[test]
     fn channel_key_auth_profile_keeps_same_key_ref_scoped_per_channel() {
-        let db = Database::memory().expect("memory db");
+        let db = Arc::new(Database::memory().expect("memory db"));
         save_claude_provider(&db);
 
         for (channel_id, key_value) in [
@@ -462,7 +478,7 @@ mod tests {
             ));
         }
 
-        apply_channel_auth_profile_providers_from_db(
+        apply_channel_auth_profile_providers_with_runtime_source(
             &db,
             &AppType::Claude,
             &providers,
