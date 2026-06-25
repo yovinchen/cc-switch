@@ -1201,6 +1201,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn forwarder_provider_adapter_for_app(",
     "fn forwarder_is_codex_oauth_provider(",
     "fn forwarder_bedrock_env_flag(",
+    "fn forwarder_custom_user_agent_header(",
     "fn apply_provider_model_mapping(",
     "fn claude_takeover_client_model_for_upstream(",
     "fn claude_takeover_default_display_name(",

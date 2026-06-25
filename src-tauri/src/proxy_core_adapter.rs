@@ -8631,8 +8631,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         } else {
             None
         };
-        let custom_user_agent =
-            forwarder_custom_user_agent_header(input.provider, input.is_copilot);
+        let custom_user_agent = provider_custom_user_agent_header(input.provider, input.is_copilot);
 
         let ordered_headers = build_upstream_request_headers(UpstreamRequestHeadersInput {
             inbound_headers: input.inbound_headers,
@@ -10847,13 +10846,6 @@ pub(crate) fn provider_custom_user_agent_header(
 
 pub(crate) fn model_fetch_custom_user_agent_header(raw: Option<&str>) -> Option<http::HeaderValue> {
     parse_custom_user_agent(raw).ok().flatten()
-}
-
-pub(crate) fn forwarder_custom_user_agent_header(
-    provider: &Provider,
-    is_copilot: bool,
-) -> Option<http::HeaderValue> {
-    provider_custom_user_agent_header(provider, is_copilot)
 }
 
 pub(crate) fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
@@ -14444,12 +14436,16 @@ base_url = "https://api.openai.com/v1"
     #[test]
     fn forwarder_request_source_builds_upstream_parts_from_adapter_context() {
         let source = default_forwarder_request_source();
-        let provider = Provider::with_id(
+        let mut provider = Provider::with_id(
             "headers".to_string(),
             "Headers".to_string(),
             json!({}),
             None,
         );
+        provider.meta = Some(ProviderMeta {
+            custom_user_agent: Some("cc-switch-test/2.0".to_string()),
+            ..ProviderMeta::default()
+        });
         let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
         let mut inbound_headers = HeaderMap::new();
         inbound_headers.insert(
@@ -14487,6 +14483,13 @@ base_url = "https://api.openai.com/v1"
                 .get("anthropic-beta")
                 .and_then(|value| value.to_str().ok()),
             Some("claude-code-20250219,other-beta")
+        );
+        assert_eq!(
+            request_parts
+                .ordered_headers
+                .get(http::header::USER_AGENT)
+                .and_then(|value| value.to_str().ok()),
+            Some("cc-switch-test/2.0")
         );
         let serialized_body: Value =
             serde_json::from_slice(&request_parts.body).expect("serialized body");
@@ -22790,9 +22793,6 @@ command = "latest-command"
                 .expect("model fetch custom user agent");
         assert!(model_fetch_custom_user_agent_header(Some("   ")).is_none());
         assert!(model_fetch_custom_user_agent_header(Some("bad\nua")).is_none());
-        let forwarder_user_agent =
-            forwarder_custom_user_agent_header(&provider, false).expect("custom user agent");
-        let forwarder_copilot_user_agent = forwarder_custom_user_agent_header(&provider, true);
         assert_eq!(provider_bedrock_env_flag(&provider), Some("1"));
         let mut codex_provider = Provider::with_id(
             "codex-oauth".to_string(),
@@ -22852,11 +22852,6 @@ command = "latest-command"
             model_fetch_user_agent,
             http::HeaderValue::from_static("cc-switch-model-fetch/1.0")
         );
-        assert_eq!(
-            forwarder_user_agent,
-            http::HeaderValue::from_static("cc-switch-test/1.0")
-        );
-        assert!(forwarder_copilot_user_agent.is_none());
         assert!(provider_is_github_copilot_upstream(
             &Provider::with_id("plain".to_string(), "Plain".to_string(), json!({}), None,),
             "https://api.githubcopilot.com"

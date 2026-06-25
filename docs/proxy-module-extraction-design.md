@@ -1029,7 +1029,7 @@
 Codex Responses→Chat 上游模型覆写与 reasoning options 解析已由 forwarder request source 直接复用 provider 级 adapter API；此前的 `forwarder_apply_codex_chat_upstream_model` / `forwarder_codex_chat_reasoning_options` 一跳 wrapper 已删除。
 forwarder 的 Codex OAuth header-casing fact 一跳 wrapper `forwarder_is_codex_oauth_provider` 已删除；request source 直接复用 provider 级 Codex OAuth 判定，`forwarder.rs` 仍只通过 source 获取 header policy。
 forwarder 的 Bedrock pre-send optimizer provider env fact 一跳 wrapper `forwarder_bedrock_env_flag` 已删除；request source 直接复用 provider 级 env 投影 helper，`forwarder.rs` 仍只通过 source 执行 optimizer gate。
-本轮继续把 forwarder 的 custom User-Agent header provider fact 收敛到 `proxy_core_adapter::forwarder_custom_user_agent_header`；request header 组装不再直接消费 provider 级 UA 投影 helper。
+forwarder 的 custom User-Agent header provider fact 一跳 wrapper `forwarder_custom_user_agent_header` 已删除；request source 直接复用 provider 级 UA 投影 helper，`forwarder.rs` 仍只通过 source 获取 upstream header parts。
 forwarder provider URL facts 内部的 full URL 与 GitHub Copilot upstream 一跳 wrapper 已删除；adapter context 直接复用 `provider_is_full_url` / `provider_is_github_copilot_upstream`，`forwarder.rs` 仍只消费注入后的 URL facts。
 本轮继续把 forwarder 的 media prevention text-only provider 图片替换 fact 收敛到 `proxy-core::request_media::apply_forwarder_media_prevention_from_facts`；media 预防式降级不再直接消费 provider 级模型能力投影 helper。
 forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_provider_transform_required` / `forwarder_provider_transform_request` 已删除；adapter context 内部直接调用 trait，`forwarder.rs` 仍只通过 request source 执行 transform 策略。
@@ -1464,6 +1464,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1046. forwarder provider upstream URL 删除 `forwarder_provider_upstream_url` 一跳 wrapper；adapter context 直接调用 trait object 的 `build_url`，forwarder 仍经 request source 获取最终 URL plan。
 1047. forwarder provider adapter registry 删除 `forwarder_provider_adapter_for_app` 一跳 wrapper；adapter context factory 和 stream check fallback 直接调用 provider registry，forwarder 仍只消费 context/source 入口。
 1048. forwarder provider facts 删除 `forwarder_is_codex_oauth_provider` / `forwarder_bedrock_env_flag` 两个一跳 wrapper；request source 直接调用 provider 级 fact helper，forwarder 仍只消费 source 组装结果。
+1049. forwarder custom User-Agent 删除 `forwarder_custom_user_agent_header` 一跳 wrapper；request source 直接调用 provider 级 UA helper，并用 request-parts 单测锁住最终 `user-agent` header。
 
 ## 背景
 
