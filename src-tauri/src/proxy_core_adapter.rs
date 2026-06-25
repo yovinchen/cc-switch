@@ -8082,7 +8082,7 @@ pub(crate) struct ForwarderAppMediaPreventionInput<'a> {
 
 pub(crate) struct ForwarderMediaRetryPlanInput<'a> {
     pub(crate) app: &'a str,
-    pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
+    pub(crate) adapter: &'a ForwarderAdapterContext,
     pub(crate) provider: &'a Provider,
     pub(crate) already_retried: bool,
     pub(crate) provider_body: &'a Value,
@@ -8607,6 +8607,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         &self,
         input: ForwarderMediaRetryPlanInput<'_>,
     ) -> Option<ForwarderMediaRetryPlan> {
+        let adapter_facts = input.adapter.facts();
         let unsupported_image_error = match input.error {
             ProxyError::UpstreamError { status, body } => {
                 is_unsupported_image_error(*status, body.as_deref())
@@ -8615,7 +8616,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         };
 
         let retry_plan = forwarder_media_retry_plan_from_facts(ForwarderMediaRetryPlanFacts {
-            adapter_name: input.adapter_facts.adapter_name,
+            adapter_name: adapter_facts.adapter_name,
             rectifier_enabled: input.config.enabled,
             request_media_fallback: input.config.request_media_fallback,
             already_retried: input.already_retried,
@@ -14628,10 +14629,7 @@ base_url = "https://api.openai.com/v1"
     fn forwarder_request_source_projects_media_retry_plan() {
         let source = default_forwarder_request_source();
         let provider = Provider::with_id("media".to_string(), "Media".to_string(), json!({}), None);
-        let adapter_facts = ForwarderAdapterFacts {
-            adapter_name: "Claude",
-            is_claude_adapter: true,
-        };
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
         let config = RectifierConfig::default();
         let provider_body = json!({
             "model": "vision-rejecting-model",
@@ -14652,7 +14650,7 @@ base_url = "https://api.openai.com/v1"
         let plan = source
             .media_retry_plan(ForwarderMediaRetryPlanInput {
                 app: "claude",
-                adapter_facts: &adapter_facts,
+                adapter: &adapter,
                 provider: &provider,
                 already_retried: false,
                 provider_body: &provider_body,
@@ -14673,7 +14671,7 @@ base_url = "https://api.openai.com/v1"
         assert!(source
             .media_retry_plan(ForwarderMediaRetryPlanInput {
                 app: "claude",
-                adapter_facts: &adapter_facts,
+                adapter: &adapter,
                 provider: &provider,
                 already_retried: false,
                 provider_body: &provider_body,

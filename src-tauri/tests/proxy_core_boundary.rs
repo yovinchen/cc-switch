@@ -8408,14 +8408,6 @@ fn production_forwarder_uses_request_source_resource() {
             ),
         ),
         (
-            "ForwarderMediaRetryPlanInput",
-            function_slice(
-                &adapter_source,
-                "pub(crate) struct ForwarderMediaRetryPlanInput",
-                "pub(crate) struct ForwarderThinkingSignatureRectifierInput",
-            ),
-        ),
-        (
             "ForwarderRequestPartsInput",
             function_slice(
                 &adapter_source,
@@ -8454,6 +8446,17 @@ fn production_forwarder_uses_request_source_resource() {
         claude_api_format_input_slice.contains("adapter: &'a ForwarderAdapterContext")
             && !claude_api_format_input_slice.contains("adapter_facts: &'a ForwarderAdapterFacts"),
         "ForwarderClaudeApiFormatInput must use ForwarderAdapterContext instead of detached adapter facts"
+    );
+    let media_retry_plan_input_slice = function_slice(
+        &adapter_source,
+        "pub(crate) struct ForwarderMediaRetryPlanInput",
+        "pub(crate) struct ForwarderThinkingSignatureRectifierInput",
+    );
+    assert!(
+        media_retry_plan_input_slice.contains("adapter: &'a ForwarderAdapterContext")
+            && !media_retry_plan_input_slice
+                .contains("adapter_facts: &'a ForwarderAdapterFacts"),
+        "ForwarderMediaRetryPlanInput must use ForwarderAdapterContext instead of detached adapter facts"
     );
     let prepared_request_inputs = [
         (

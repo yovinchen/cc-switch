@@ -33,8 +33,6 @@ use crate::proxy_core_adapter::{
     ForwarderUpstreamRequestLogInput, ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,
     OptimizerConfig, RectifierConfig, ResolvedChannelAttempt,
 };
-#[cfg(test)]
-use crate::proxy_core_adapter::ForwarderAdapterFacts;
 use crate::{app_config::AppType, provider::Provider};
 use http::Extensions;
 use serde_json::Value;
@@ -439,7 +437,7 @@ impl RequestForwarder {
                         self.request_source
                             .media_retry_plan(ForwarderMediaRetryPlanInput {
                                 app: app_type_str,
-                                adapter_facts: adapter.facts(),
+                                adapter: &adapter,
                                 provider,
                                 already_retried: media_rectifier_retried,
                                 provider_body: &provider_body,
@@ -1958,20 +1956,17 @@ mod tests {
 
     fn media_retry_should_trigger_for_test(
         fwd: &RequestForwarder,
-        adapter_name: &'static str,
+        app_type: &AppType,
         already_retried: bool,
         provider_body: &Value,
         error: &ProxyError,
     ) -> bool {
         let provider = provider_with_settings(json!({}));
-        let adapter_facts = ForwarderAdapterFacts {
-            adapter_name,
-            is_claude_adapter: adapter_name == "Claude",
-        };
+        let adapter = fwd.request_source.adapter_context_for_app(app_type);
         fwd.request_source
             .media_retry_plan(ForwarderMediaRetryPlanInput {
-                app: "claude",
-                adapter_facts: &adapter_facts,
+                app: app_type.as_str(),
+                adapter: &adapter,
                 provider: &provider,
                 already_retried,
                 provider_body,
@@ -2062,7 +2057,7 @@ mod tests {
         let body = body_with_image("any-model");
         assert!(media_retry_should_trigger_for_test(
             &fwd,
-            "Claude",
+            &AppType::Claude,
             false,
             &body,
             &image_unsupported_error()
@@ -2082,7 +2077,11 @@ mod tests {
         };
 
         assert!(media_retry_should_trigger_for_test(
-            &fwd, "Codex", false, &body, &error
+            &fwd,
+            &AppType::Codex,
+            false,
+            &body,
+            &error
         ));
     }
 
@@ -2096,7 +2095,7 @@ mod tests {
         let body = body_with_image("any-model");
         assert!(!media_retry_should_trigger_for_test(
             &fwd,
-            "Claude",
+            &AppType::Claude,
             false,
             &body,
             &image_unsupported_error()
@@ -2112,7 +2111,7 @@ mod tests {
         let body = body_with_image("any-model");
         assert!(!media_retry_should_trigger_for_test(
             &fwd,
-            "Claude",
+            &AppType::Claude,
             false,
             &body,
             &image_unsupported_error()
@@ -2129,7 +2128,7 @@ mod tests {
         let body = body_with_image("any-model");
         assert!(media_retry_should_trigger_for_test(
             &fwd,
-            "Claude",
+            &AppType::Claude,
             false,
             &body,
             &image_unsupported_error()
