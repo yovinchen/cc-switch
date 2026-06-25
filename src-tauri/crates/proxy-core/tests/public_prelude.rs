@@ -1838,3 +1838,77 @@ fn external_host_can_use_route_resolve_contracts_from_prelude() {
     assert_eq!(source, ChannelRouteSource::MaterializedChannels);
     assert_eq!(source.as_str(), "materialized_channels");
 }
+
+#[test]
+fn external_host_can_use_claude_transform_contracts_from_prelude() {
+    let request = claude_request_transform_for_api_format(
+        json!({
+            "model": "claude-sonnet",
+            "stream": true,
+            "messages": [{"role": "user", "content": "hello"}]
+        }),
+        "openai_chat",
+        ClaudeApiFormatRequestTransformContext {
+            provider_id: "relay-a",
+            responses_prompt_cache_key: None,
+            responses_prompt_cache_key_source: ClaudePromptCacheKeySource::None,
+            chat_prompt_cache_key: Some("cache-a"),
+            is_codex_oauth: false,
+            codex_fast_mode_enabled: false,
+            preserve_reasoning_content: false,
+            shadow_store: None,
+            session_id: None,
+        },
+    )
+    .expect("request transform");
+    let request_output: ClaudeApiFormatRequestTransformOutput = request;
+    assert_eq!(request_output.request["prompt_cache_key"], "cache-a");
+    assert_eq!(
+        request_output.request["stream_options"]["include_usage"],
+        true
+    );
+
+    let response: ClaudeApiFormatResponseTransformOutput =
+        claude_response_to_anthropic_message_for_api_format(
+            &json!({
+                "id": "chatcmpl_1",
+                "model": "relay-chat",
+                "choices": [{
+                    "message": {"role": "assistant", "content": "hi"},
+                    "finish_reason": "stop"
+                }]
+            }),
+            "openai_chat",
+            None,
+            None,
+            None,
+            None,
+            || "toolu_unused".to_string(),
+        )
+        .expect("response transform");
+    assert_eq!(response.response["content"][0]["text"], "hi");
+
+    let mut body = json!({
+        "thinking": {"type": "disabled"},
+        "output_config": {"effort": "max"},
+        "messages": []
+    });
+    assert!(normalize_claude_anthropic_messages(
+        &mut body,
+        &json!({"base_url": "https://api.deepseek.com/anthropic"}),
+        "anthropic"
+    ));
+    assert!(body.get("output_config").is_none());
+
+    let _hints: Option<AnthropicToolSchemaHints> = None;
+    let _shadow = GeminiShadowStore::default();
+    let _stream_context = ClaudeApiFormatSseTransformContext {
+        shadow_store: None,
+        provider_id: None,
+        session_id: None,
+        tool_schema_hints: None,
+        synthesize_gemini_tool_call_id: || "toolu_stream".to_string(),
+        on_rectified_tool_name: |_name: &str| {},
+    };
+    let _chunk = Bytes::from_static(b"data: [DONE]\n\n");
+}
