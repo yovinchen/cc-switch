@@ -6644,16 +6644,6 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
     DEFAULT_CODEX_MODEL_CONTEXT_WINDOW as CODEX_DEFAULT_MODEL_CONTEXT_WINDOW,
 };
 
-pub(crate) fn provider_model_catalog_from_provider(
-    provider_id: &str,
-    provider: Option<&Provider>,
-) -> ModelCatalog {
-    provider_model_catalog_from_settings(
-        provider_id,
-        provider.map(|provider| &provider.settings_config),
-    )
-}
-
 pub(crate) fn provider_model_catalog_from_db_source(
     db: &Database,
     app: &AppKind,
@@ -6662,9 +6652,9 @@ pub(crate) fn provider_model_catalog_from_db_source(
     let provider = db
         .get_provider_by_id(provider_id, app.as_str())
         .map_err(|error| app_error("load model catalog", error))?;
-    Ok(provider_model_catalog_from_provider(
+    Ok(provider_model_catalog_from_settings(
         provider_id,
-        provider.as_ref(),
+        provider.as_ref().map(|provider| &provider.settings_config),
     ))
 }
 
@@ -20218,7 +20208,8 @@ command = "latest-command"
             None,
         );
         assert_eq!(
-            provider_model_catalog_from_provider("provider-a", Some(&provider)).models,
+            provider_model_catalog_from_settings("provider-a", Some(&provider.settings_config),)
+                .models,
             provider_catalog.models
         );
         assert_eq!(
