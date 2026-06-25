@@ -179,6 +179,10 @@ pub fn claude_desktop_provider_selection_error(error: impl std::fmt::Display) ->
     ProxyCoreError::Internal(format!("select claude desktop provider: {error}"))
 }
 
+pub fn claude_desktop_gateway_token_error(error: impl std::fmt::Display) -> ProxyCoreError {
+    ProxyCoreError::Auth(error.to_string())
+}
+
 pub fn claude_desktop_provider_unavailable_error_message() -> &'static str {
     "no available claude desktop provider"
 }
@@ -255,7 +259,8 @@ fn is_false(value: &bool) -> bool {
 mod tests {
     use super::{
         claude_desktop_direct_provider_validation_issue, claude_desktop_proxy_has_base_url_and_key,
-        claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
+        claude_desktop_gateway_token_error, claude_desktop_provider_selection_error,
+        claude_desktop_provider_unavailable_error,
         claude_desktop_provider_unavailable_error_message,
         claude_desktop_proxy_provider_config_validation_issue,
         claude_desktop_routes_support_1m_by_default, validate_claude_desktop_gateway_bearer_header,
@@ -473,6 +478,10 @@ mod tests {
             claude_desktop_provider_unavailable_error(),
             ProxyCoreError::Unavailable(message)
                 if message == "no available claude desktop provider"
+        ));
+        assert!(matches!(
+            claude_desktop_gateway_token_error("token store failed"),
+            ProxyCoreError::Auth(message) if message == "token store failed"
         ));
     }
 

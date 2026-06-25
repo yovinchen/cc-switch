@@ -897,6 +897,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn claude_api_format_from_metadata(",
     "fn extract_gemini_model_from_path(",
     "fn validate_claude_desktop_gateway_bearer_header(",
+    "fn claude_desktop_gateway_token_error(",
     "fn proxy_event_envelope_to_sse_spec(",
     "fn apply_route_candidate_circuit_availability(",
     "fn route_candidate_channel_circuit_keys(",
@@ -3938,6 +3939,7 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
         source.contains("claude_desktop_proxy_has_base_url_and_key(")
             && source.contains("claude_desktop_direct_provider_validation_issue(")
             && source.contains("claude_desktop_proxy_provider_config_validation_issue(")
+            && source.contains("claude_desktop_gateway_token_error")
             && source.contains("claude_desktop_provider_selection_error")
             && source.contains("claude_desktop_provider_unavailable_error"),
         "proxy_core_adapter should delegate Claude Desktop provider validation policy to core"

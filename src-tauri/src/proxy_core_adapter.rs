@@ -665,7 +665,8 @@ pub(crate) type ClaudeDesktopModelListResponse =
 pub(crate) type ClaudeDesktopModelRouteInput =
     crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
 pub(crate) use crate::proxy_core::api::auth::{
-    claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
+    claude_desktop_gateway_token_error, claude_desktop_provider_selection_error,
+    claude_desktop_provider_unavailable_error,
 };
 pub(crate) type ProxyCoreResponse = crate::proxy_core::api::transport::ProxyCoreResponse;
 pub(crate) type RequestBodyJsonParseError =
@@ -1673,7 +1674,7 @@ impl ClaudeDesktopGatewayAuthSource for CcSwitchClaudeDesktopGatewayAuthSource {
     fn load_gateway_token<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<String>> {
         Box::pin(async move {
             crate::claude_desktop_config::get_or_create_gateway_token(self.db.as_ref())
-                .map_err(|error| ProxyCoreError::Auth(error.to_string()))
+                .map_err(claude_desktop_gateway_token_error)
         })
     }
 }
