@@ -98,6 +98,24 @@ impl ProviderSource for ExternalRelayServices {
         Box::pin(async { Ok(Some("relay-a".to_string())) })
     }
 
+    fn active_route_target<'a>(
+        &'a self,
+        _app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<CurrentRouteTarget>>> {
+        Box::pin(async {
+            Ok(Some(CurrentRouteTarget {
+                app_type: "claude".to_string(),
+                provider_name: "Relay A".to_string(),
+                provider_id: "relay-a".to_string(),
+                channel_id: Some("channel-a".to_string()),
+                channel_name: Some("Channel A".to_string()),
+                interface_kind: Some("anthropic".to_string()),
+                public_model: Some("sonnet".to_string()),
+                upstream_model: Some("relay-sonnet".to_string()),
+            }))
+        })
+    }
+
     fn route_candidate_provider_ids<'a>(
         &'a self,
         _app: &'a AppKind,
@@ -726,6 +744,55 @@ fn external_host_can_use_provider_list_contracts_from_prelude() {
     assert!(from_source.providers[0].current);
     assert!(from_source.providers[0].in_failover_queue);
     assert!(from_source.providers[0].route_candidate);
+}
+
+#[test]
+fn external_host_can_use_current_route_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+
+    let response: CurrentRouteResponse<CurrentRouteTarget> = futures::executor::block_on(
+        engine.current_route_response(
+            ManagementAppPathRequest::from_path("claude").expect("current route request"),
+        ),
+    )
+    .expect("current route response");
+    let configured: &CurrentRouteProviderSummary = response
+        .configured_provider
+        .as_ref()
+        .expect("configured provider");
+    let target = response.target.as_ref().expect("active target");
+    let from_source: CurrentRouteResponse<CurrentRouteTarget> =
+        ManagementAppPathRequest::from_path("codex")
+            .expect("source request")
+            .current_route_response_from_source(CurrentRouteSource::new(
+                None,
+                Some(CurrentRouteProviderSummaryInput::new(
+                    "relay-c",
+                    "Relay C",
+                    Some("official".to_string()),
+                )),
+            ));
+
+    assert_eq!(response.app_type, "claude");
+    assert!(response.active);
+    assert_eq!(target.channel_id.as_deref(), Some("channel-a"));
+    assert_eq!(target.upstream_model.as_deref(), Some("relay-sonnet"));
+    assert_eq!(configured.id, "relay-a");
+    assert_eq!(configured.name, "Relay A");
+    assert_eq!(from_source.app_type, "codex");
+    assert!(!from_source.active);
+    assert!(from_source.target.is_none());
+    assert_eq!(
+        from_source.configured_provider.as_ref().map(|provider| {
+            (
+                provider.id.as_str(),
+                provider.name.as_str(),
+                provider.category.as_deref(),
+            )
+        }),
+        Some(("relay-c", "Relay C", Some("official")))
+    );
 }
 
 #[test]
