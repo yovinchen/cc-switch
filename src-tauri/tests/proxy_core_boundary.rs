@@ -942,6 +942,10 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn proxy_switch_should_hot_switch(",
     "fn proxy_takeover_marked_state_is_reusable(",
     "fn proxy_takeover_should_restore_existing_backup_before_retakeover(",
+    "fn codex_restored_live_settings_parts(",
+    "fn provider_settings_validation_issue_spec(",
+    "fn provider_live_config_presence_error_policy(",
+    "fn provider_delete_is_current_provider(",
     "fn channel_route_candidate_from_selection(",
     "fn resolved_channel_attempt_from_candidate(",
     "fn resolved_channel_attempt_from_selection(",
@@ -3400,7 +3404,7 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
     for marker in [
         "codex_auth_object_value_from_settings(",
         "core_codex_provider_live_write_parts_from_settings(",
-        "core_codex_restored_live_settings_parts(",
+        "codex_restored_live_settings_parts",
         "core_codex_live_settings_parts_from_settings(",
         "core_codex_live_snapshot_parts_from_settings(",
         "core_codex_auth_has_oauth_login_material(",
@@ -3433,15 +3437,22 @@ fn proxy_core_adapter_delegates_provider_settings_validation_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let production_source = production_lines(&source)
+        .map(|(_, line)| line)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        production_source.contains("provider_settings_validation_issue_spec"),
+        "proxy_core_adapter should expose provider settings validation issue specs through the core re-export"
+    );
     let slice = function_slice(
         &source,
-        "pub(crate) fn provider_settings_validation_issue_spec",
+        "pub(crate) fn provider_settings_validation_parts",
         "pub(crate) enum CodexBackupProjectionIssue",
     );
 
     assert!(
-        slice.contains("core_provider_settings_validation_issue_spec(")
-            && slice.contains("core_provider_settings_validation_parts_from_settings(")
+        slice.contains("core_provider_settings_validation_parts_from_settings(")
             && slice.contains("AppKind::from(app_type)"),
         "proxy_core_adapter should delegate provider settings validation policy to core"
     );

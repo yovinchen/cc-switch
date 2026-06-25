@@ -1420,6 +1420,7 @@
 1000. runtime active targets 写入的同签名纯函数 facade 已从 adapter 移除，`ProxyRuntimeStatus` 的 active target 排序规则直接由 core port re-export 提供。
 1001. Codex settings 中 `auth` object 与 config text 读取的纯 accessor facade 已从 adapter 移除；adapter 继续 re-export core ports，Provider 级 API key/base URL 投影仍留在宿主边界。
 1002. takeover/hot-switch 的纯 bool 状态策略 facade 已从 adapter 移除；带 `AppType` 的 hot-switch helper 仍留在 adapter 负责 `AppKind` 投影。
+1003. Codex restored live settings parts、provider validation issue spec、live-config presence policy、delete-current-provider 判断的值级 facade 已从 adapter 移除，改为 re-export core ports。
 
 ## 背景
 

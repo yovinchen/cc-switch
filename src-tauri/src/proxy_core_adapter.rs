@@ -323,7 +323,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     codex_model_from_config_toml as core_codex_model_from_config_toml,
     codex_provider_backfill_parts_from_settings as core_codex_provider_backfill_parts_from_settings,
     codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
-    codex_restored_live_settings_parts as core_codex_restored_live_settings_parts,
+    codex_restored_live_settings_parts,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_additive_update_route_for_app as core_provider_additive_update_route,
@@ -332,18 +332,18 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_credential_issue_spec,
     provider_default_live_import_category_from_parts as core_provider_default_live_import_category_from_parts,
     provider_default_live_import_settings as core_provider_default_live_import_settings,
-    provider_delete_is_current_provider as core_provider_delete_is_current_provider,
+    provider_delete_is_current_provider,
     provider_initial_live_config_managed_marker as core_provider_initial_live_config_managed_marker,
     provider_key_change_policy_issue_for_app as core_provider_key_change_policy_issue,
     provider_key_change_policy_issue_message,
-    provider_live_config_presence_error_policy as core_provider_live_config_presence_error_policy,
+    provider_live_config_presence_error_policy,
     provider_live_removal_target_for_app as core_provider_live_removal_target,
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
     provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
     provider_omo_variant_for_app_category as core_provider_omo_variant_for_category,
     provider_non_codex_credential_values_from_settings as core_provider_non_codex_credential_values_from_settings,
-    provider_settings_validation_issue_spec as core_provider_settings_validation_issue_spec,
+    provider_settings_validation_issue_spec,
     provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
     provider_switch_backfill_source_id as core_provider_switch_backfill_source_id,
@@ -372,10 +372,10 @@ pub(crate) use crate::proxy_core::api::ports::{
     validate_gemini_settings_basic as core_validate_gemini_settings_basic,
     validate_gemini_settings_strict as core_validate_gemini_settings_strict,
     GeminiAuthType, GeminiAuthTypeInput, GeminiEnvParseIssue, GeminiLiveConfigIssue,
-    GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, LocalizedErrorSpec,
+    GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue,
     CodexCredentialParts, CodexLiveSettingsIssue, CodexLiveSettingsParts,
     CodexLiveSnapshotIssue, CodexLiveSnapshotParts, CodexProviderLiveWriteIssue,
-    CodexProviderBackfillParts, CodexProviderLiveWriteParts, CodexRestoredLiveSettingsParts,
+    CodexProviderBackfillParts, CodexProviderLiveWriteParts,
     ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderCredentialIssue,
     ProviderCredentialValues as CoreProviderCredentialValues, ProviderKeyChangePolicyIssue,
     ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
@@ -2135,12 +2135,6 @@ pub(crate) fn should_skip_provider_legacy_common_config_migration(
     )
 }
 
-pub(crate) fn provider_live_config_presence_error_policy(
-    live_config_managed: Option<bool>,
-) -> ProviderLiveConfigPresenceErrorPolicy {
-    core_provider_live_config_presence_error_policy(live_config_managed)
-}
-
 pub(crate) fn provider_key_change_policy_issue(
     app_type: &AppType,
     existing_provider: Option<&Provider>,
@@ -2213,14 +2207,6 @@ pub(crate) fn provider_live_removal_target(
     app_type: &AppType,
 ) -> Option<ProviderLiveRemovalTarget> {
     core_provider_live_removal_target(&AppKind::from(app_type))
-}
-
-pub(crate) fn provider_delete_is_current_provider(
-    provider_id: &str,
-    local_current: Option<&str>,
-    db_current: Option<&str>,
-) -> bool {
-    core_provider_delete_is_current_provider(provider_id, local_current, db_current)
 }
 
 pub(crate) fn provider_switch_backfill_source_id<'a>(
@@ -3654,12 +3640,6 @@ pub(crate) fn apply_codex_unified_session_bucket_for_provider(
     )
 }
 
-pub(crate) fn codex_restored_live_settings_parts(
-    settings: &Value,
-) -> CodexRestoredLiveSettingsParts<'_> {
-    core_codex_restored_live_settings_parts(settings)
-}
-
 pub(crate) fn provider_codex_live_settings_parts(
     provider: &Provider,
 ) -> Result<CodexLiveSettingsParts<'_>, CodexLiveSettingsIssue> {
@@ -3676,13 +3656,6 @@ pub(crate) fn provider_codex_live_snapshot_parts(
         &provider.settings_config,
         provider.category.as_deref(),
     )
-}
-
-pub(crate) fn provider_settings_validation_issue_spec(
-    issue: ProviderSettingsValidationIssue,
-    provider_id: &str,
-) -> LocalizedErrorSpec {
-    core_provider_settings_validation_issue_spec(issue, provider_id)
 }
 
 pub(crate) fn provider_settings_validation_parts<'a>(
