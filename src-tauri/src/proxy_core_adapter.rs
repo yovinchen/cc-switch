@@ -4259,6 +4259,10 @@ impl ForwarderAdapterContext {
     ) -> Result<Value, ProxyError> {
         forwarder_provider_transform_request(self.adapter(), body, provider)
     }
+
+    fn provider_upstream_url(&self, base_url: &str, endpoint: &str) -> String {
+        forwarder_provider_upstream_url(self.adapter(), base_url, endpoint)
+    }
 }
 
 pub(crate) fn forwarder_provider_adapter_name(adapter: &ForwarderAdapterHandle) -> &'static str {
@@ -8528,11 +8532,9 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
                 channel_param_overrides: input.channel_param_overrides,
             },
             |base_url, effective_endpoint| {
-                forwarder_provider_upstream_url(
-                    input.adapter.adapter(),
-                    base_url,
-                    effective_endpoint,
-                )
+                input
+                    .adapter
+                    .provider_upstream_url(base_url, effective_endpoint)
             },
         )
     }

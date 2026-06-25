@@ -8613,6 +8613,12 @@ fn production_forwarder_uses_request_source_resource() {
             && !request_impl_slice.contains("forwarder_provider_transform_required("),
         "default ForwarderRequestSource implementation must use ForwarderAdapterContext for provider transform facts/actions"
     );
+    assert!(
+        request_impl_slice.contains(".provider_upstream_url(base_url, effective_endpoint)")
+            && !request_impl_slice.contains("forwarder_provider_upstream_url(")
+            && !request_impl_slice.contains("input.adapter.adapter()"),
+        "default ForwarderRequestSource implementation must use ForwarderAdapterContext for upstream URL assembly"
+    );
     let request_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderRequestSource",
