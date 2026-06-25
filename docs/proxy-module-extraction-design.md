@@ -746,7 +746,7 @@
 731. channel health reset 管理路由的 reset source 组装已新增 `proxy_core_adapter::channel_health_reset_source_from_response`：handler 不再直接调用 `ChannelHealthResetSource`。
 732. health/status/app list 基础管理路由已继续收敛：health/status 直接调用 core request response helper，app list 走 `ProxyEngine::app_list_response`，handler 不再直接调用这些 response source DTO。
 733. provider list/current route 管理路由的 source 组装已新增 `proxy_core_adapter::provider_list_source_from_providers` 与 `current_route_source_from_provider`：handler 不再直接调用 provider/current route source DTO 或 ProviderSpec summary 投影。
-734. host 生产路径的 `ProxyEngine` 构造入口已新增 `proxy_core_adapter::proxy_engine_from_services`：`ProxyState` 和 forwarder 的 materialized route planning 不再直接调用 `ProxyEngine::new`。
+734. host 生产路径的 `ProxyEngine` 构造入口先前收敛到 `proxy_core_adapter::proxy_engine_from_services`，使 `ProxyState` 和 forwarder 的 materialized route planning 不再散落直连 `ProxyEngine::new`；后续 1059 已删除该一跳 facade，由 adapter 所有权边界内的 `ProxyState::proxy_engine` 直接构造 engine。
 735. `proxy_core_boundary` 已新增生产代码 `ProxyEngine::new` 禁用扫描：除 `proxy_core_adapter.rs` 外，host 生产源码必须通过 adapter 构造 core engine，测试模块中的直接实例化仍可用于验证 services。
 736. `RequestForwarder` 已删除旧的 self-planning 兼容入口：`RequestContext::create_forwarder`、`RequestForwarder::new`、`forward_with_retry` 和 `build_forward_attempts` 不再存在，forwarder 只接收 `ProxyEngine`/host pipeline 预规划的 attempts。
 737. `RequestContext` 已删除旧 forwarder planning 遗留字段：不再保存 providers 链、currentProviderId、session_client_provided 或 rectifier/optimizer/copilot optimizer 配置，只保留响应处理和 usage/error 仍需要的请求事实。
@@ -1075,6 +1075,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续把 `CcSwitchChannelSource` 的 channel key/model 子资源 DB 操作与 `ChannelKeyRecord`/`ChannelModelRecord` 投影收敛到 adapter-owned source wrapper。
 本轮补齐 `proxy-core::api::prelude` 的外部接入烟测所需 channel 构造 contract；独立 integration test 只经 public prelude 构造 `ProxyEngine`、实现 `ProxyServices` 并调用 `handle`，锁住外部 host 直接集成中转模块的最小可用路径。
 本轮加固 `proxy_core_host.rs` 兼容壳边界：文件在 `mod tests` 之前只允许 `#[cfg(test)]` 保护的 import/re-export，防止旧 host 模块重新承载生产 services/runtime 装配。
+本轮删除 adapter 内部 `proxy_engine_from_services` 一跳构造 facade；`ProxyState::proxy_engine` 在 adapter 所有权边界内直接调用 `ProxyEngine::new`，保留“生产 host 只能经 adapter 构造 engine”的边界测试。
 本轮继续把 `CcSwitchChannelSource` 的 route/materialized channel record list 读取与 `ChannelRecord` 投影收敛到 adapter-owned source wrapper。
 本轮继续把 `CcSwitchChannelSource` 的 legacy channel migration preview/materialize DB 操作与 response input 投影收敛到 adapter-owned source wrapper，host services 只装配 channel source。
 本轮继续把 `CcSwitchRoutePolicySource` 的 failover queue DB 读取与 `RoutePolicy` 投影迁入 adapter-owned source，host services 只装配 source。
@@ -1482,6 +1483,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1056. Codex media-prevention app gate 新增 core helper `should_apply_forwarder_media_prevention_for_app`；request source 只投影 `AppType -> AppKind` 后调用 core policy，boundary 禁止 adapter-local `AppType::Codex` gate 回流。
 1057. `proxy-core::api::prelude` 补齐外部 channel 构造 helper 与 `ChannelAttemptPlan` 导出；新增 `tests/public_prelude.rs` 作为 crate 外集成烟测，只通过 public prelude 构造 services/engine 并调用 `ProxyEngine::handle`，验证独立中转模块最小集成路径。
 1058. `proxy_core_host.rs` 新增兼容壳边界测试：`mod tests` 前只允许 `#[cfg(test)]` import/re-export，生产 services/runtime 装配继续归属 `proxy_core_adapter`，旧 host 模块保持 test-only。
+1059. 删除 `proxy_engine_from_services` 一跳构造 helper；`ProxyState::proxy_engine` 直接在 adapter 边界内调用 `ProxyEngine::new`，新增 boundary marker 防止无语义 constructor facade 回流。
 
 ## 背景
 

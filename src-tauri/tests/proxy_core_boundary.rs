@@ -11567,6 +11567,18 @@ fn production_host_constructs_proxy_engine_through_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_excludes_proxy_engine_constructor_facade() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        !source.contains("fn proxy_engine_from_services"),
+        "proxy_core_adapter should construct ProxyEngine at the owning call site instead of keeping a one-hop constructor facade"
+    );
+}
+
+#[test]
 fn proxy_core_adapter_uses_grouped_api_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");

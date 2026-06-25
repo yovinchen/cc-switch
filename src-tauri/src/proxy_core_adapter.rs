@@ -112,7 +112,7 @@ pub struct ProxyState {
 
 impl ProxyState {
     pub(crate) fn proxy_engine(&self) -> ProxyEngine<CcSwitchProxyRuntimeServices> {
-        proxy_engine_from_services(self.proxy_core_services.clone())
+        ProxyEngine::new(self.proxy_core_services.clone())
     }
 }
 
@@ -3451,13 +3451,6 @@ impl ProxyEventSink for CcSwitchEventSink {
             Ok(())
         })
     }
-}
-
-pub(crate) fn proxy_engine_from_services<S>(services: Arc<S>) -> ProxyEngine<S>
-where
-    S: ProxyServices + ?Sized,
-{
-    ProxyEngine::new(services)
 }
 
 pub(crate) fn provider_codex_auth_headers(
