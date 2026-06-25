@@ -1446,6 +1446,7 @@
 1026. 旧 Copilot/Codex OAuth Tauri 命令复用的 account/device-code/status DTO 已迁入 `proxy-core::managed_account_auth`；host `copilot_auth`/`codex_oauth_auth` 只保留本地账号存储到 core DTO 的投影。
 1027. 旧 Copilot/Codex OAuth status 的 `authenticated` 与兼容 `username` 组装规则已迁入 `proxy-core::managed_account_auth`；host manager 只提供账号列表、默认账号、迁移错误和默认 token 过期事实。
 1028. channel-key runtime lookup 已删除 adapter-local `channel_key_value_from_runtime_candidate` 一行 facade；CC Switch runtime source 直接消费 core-selected `ChannelKeyRuntimeCandidate` 并投影 key value，减少中转宿主复制无意义 wrapper 的机会。
+1029. channel-auth missing key 错误不再经由 adapter-local `channel_key_auth_error` 别名；host runtime source 直接使用 `proxy-core::provider_auth::channel_auth_profile_missing_key_error`，避免中转宿主复制纯错误包装函数。
 
 ## 背景
 

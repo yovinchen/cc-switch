@@ -4709,10 +4709,6 @@ pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderA
     }
 }
 
-pub(crate) fn channel_key_auth_error(channel_id: &str, key_ref: &str) -> ProxyCoreError {
-    channel_auth_profile_missing_key_error(channel_id, key_ref)
-}
-
 pub(crate) fn provider_with_channel_auth_key(
     app_type: &AppType,
     provider: &Provider,
@@ -6970,7 +6966,10 @@ pub(crate) fn apply_channel_auth_profile_providers_from_source(
                 let Some(key_value) =
                     channel_key_runtime_source.load_channel_key_value(&channel_id, &key_ref)?
                 else {
-                    return Err(channel_key_auth_error(&channel_id, &key_ref));
+                    return Err(channel_auth_profile_missing_key_error(
+                        &channel_id,
+                        &key_ref,
+                    ));
                 };
                 attempt.set_auth_provider(provider_with_channel_auth_key(
                     app_type,
@@ -13153,7 +13152,7 @@ mod tests {
             ChannelAuthProfileAction::Ignore
         ));
         assert!(matches!(
-            channel_key_auth_error("channel-a", "primary"),
+            channel_auth_profile_missing_key_error("channel-a", "primary"),
             ProxyCoreError::Auth(message)
                 if message.contains("channel_id=channel-a")
                     && message.contains("key_ref=primary")

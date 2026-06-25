@@ -926,6 +926,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn channel_test_provider_not_found_error(",
     "fn channel_reachability_probe_error(",
     "fn channel_auth_profile_missing_key_error(",
+    "fn channel_key_auth_error(",
     "fn channel_key_value_from_runtime_candidate(",
     "fn gemini_env_json_from_map(",
     "fn gemini_env_string_map_from_settings(",
