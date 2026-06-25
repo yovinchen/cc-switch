@@ -4224,6 +4224,17 @@ impl ForwarderAdapterContext {
     pub(crate) fn facts(&self) -> &ForwarderAdapterFacts {
         &self.facts
     }
+
+    fn provider_auth_info(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
+        forwarder_provider_auth_info(self.adapter(), provider)
+    }
+
+    fn provider_auth_headers(
+        &self,
+        auth: &ProviderAuthInfo,
+    ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
+        forwarder_provider_auth_headers(self.adapter(), auth)
+    }
 }
 
 pub(crate) fn forwarder_provider_adapter_name(adapter: &ForwarderAdapterHandle) -> &'static str {
@@ -7806,9 +7817,7 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
                 AuthProviderHeaderResolution::Explicit(headers) => headers,
                 AuthProviderHeaderResolution::Fallback => {
                     let auth_provider = input.attempt.auth_provider();
-                    if let Some(mut auth) =
-                        forwarder_provider_auth_info(input.adapter.adapter(), auth_provider)
-                    {
+                    if let Some(mut auth) = input.adapter.provider_auth_info(auth_provider) {
                         let managed_auth = self
                             .managed_account_runtime_source
                             .resolve_auth_for_provider(auth_provider, auth)
@@ -7818,7 +7827,7 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
                             managed_auth.should_send_codex_oauth_session_headers;
                         codex_oauth_account_id = managed_auth.codex_oauth_account_id;
 
-                        forwarder_provider_auth_headers(input.adapter.adapter(), &auth)?
+                        input.adapter.provider_auth_headers(&auth)?
                     } else {
                         Vec::new()
                     }

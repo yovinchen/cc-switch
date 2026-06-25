@@ -7433,6 +7433,28 @@ fn production_forwarder_uses_auth_source_resource() {
         !auth_trait_slice.contains("prepare_copilot_auth_optimization"),
         "ForwarderAuthSource trait must not expose direct Copilot auth override helper"
     );
+    let auth_source_forbidden_markers = [
+        "forwarder_provider_auth_info(",
+        "forwarder_provider_auth_headers(",
+    ];
+    let mut auth_source_violations = Vec::new();
+    for (line_index, line) in production_lines(auth_impl_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in auth_source_forbidden_markers {
+            if code.contains(marker) {
+                auth_source_violations.push(format!(
+                    "src/proxy_core_adapter.rs ForwarderAuthSource impl:{} contains direct provider adapter auth marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+    assert!(
+        auth_source_violations.is_empty(),
+        "ForwarderAuthSource must use ForwarderAdapterContext for provider adapter auth fallback:\n{}",
+        auth_source_violations.join("\n")
+    );
 
     let impl_forbidden_markers = [
         "forwarder_provider_auth_info(",
