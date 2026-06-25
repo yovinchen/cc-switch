@@ -1449,6 +1449,12 @@ const FORBIDDEN_RESPONSE_PROCESSOR_STREAM_ORCHESTRATION_MARKERS: &[&str] = &[
     "tokio::time::timeout(duration, stream.next())",
     "push_passthrough_bytes(",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_SSE_PASSTHROUGH_POLICY_MARKERS: &[&str] = &[
+    "SseEventScanner",
+    "SsePassthroughEventKind",
+    "push_passthrough_bytes(",
+    "已接收上游流式首包",
+];
 const FORBIDDEN_RESPONSE_PROCESSOR_BODY_DECODE_PROJECTION_MARKERS: &[&str] = &[
     "已接收上游响应体",
     "decode_response_body(",
@@ -4416,6 +4422,31 @@ fn proxy_core_adapter_delegates_response_log_projection_to_core() {
         assert!(
             !function.contains(marker),
             "proxy_core_adapter must not locally format response log projection marker `{marker}`"
+        );
+    }
+}
+
+#[test]
+fn proxy_core_adapter_delegates_sse_passthrough_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn create_logged_passthrough_stream",
+        "pub(crate) trait ProxyServiceRuntimeResources",
+    );
+
+    assert!(
+        function.contains("SsePassthroughStreamState::new()")
+            && function.contains(".inspect_chunk("),
+        "proxy_core_adapter must use proxy-core SSE passthrough state for chunk policy"
+    );
+
+    for marker in FORBIDDEN_PROXY_CORE_ADAPTER_SSE_PASSTHROUGH_POLICY_MARKERS {
+        assert!(
+            !function.contains(marker),
+            "proxy_core_adapter must not locally project SSE passthrough policy marker `{marker}`"
         );
     }
 }

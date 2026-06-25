@@ -1,5 +1,6 @@
 use crate::{
     error::{ProxyCoreError, ProxyCoreResult},
+    response_timeout::StreamingTimeoutPhase,
     response_transform::extract_reasoning_field_text,
 };
 use serde_json::{json, Value};
@@ -111,6 +112,92 @@ impl SsePassthroughEvent {
             SsePassthroughEventKind::Collect | SsePassthroughEventKind::Data => {
                 format!("[{tag}] <<< SSE 数据: {}", self.data)
             }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SsePassthroughEventAction {
+    pub log_message: String,
+    pub usage_event: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SsePassthroughChunkInspection {
+    pub first_chunk_log_message: Option<String>,
+    pub event_actions: Vec<SsePassthroughEventAction>,
+}
+
+pub fn sse_passthrough_first_chunk_log_message(tag: &str, bytes_len: usize) -> String {
+    format!("[{tag}] 已接收上游流式首包: bytes={bytes_len}")
+}
+
+#[derive(Debug)]
+pub struct SsePassthroughStreamState {
+    scanner: SseEventScanner,
+    awaiting_first_chunk: bool,
+}
+
+impl Default for SsePassthroughStreamState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SsePassthroughStreamState {
+    pub fn new() -> Self {
+        Self {
+            scanner: SseEventScanner::new(),
+            awaiting_first_chunk: true,
+        }
+    }
+
+    pub fn timeout_phase(&self) -> StreamingTimeoutPhase {
+        if self.awaiting_first_chunk {
+            StreamingTimeoutPhase::FirstByte
+        } else {
+            StreamingTimeoutPhase::Idle
+        }
+    }
+
+    pub fn inspect_chunk<F>(
+        &mut self,
+        bytes: &[u8],
+        tag: &str,
+        inspect_sse_events: bool,
+        should_collect: F,
+    ) -> SsePassthroughChunkInspection
+    where
+        F: FnMut(&str) -> bool,
+    {
+        let first_chunk_log_message = self
+            .awaiting_first_chunk
+            .then(|| sse_passthrough_first_chunk_log_message(tag, bytes.len()));
+        self.awaiting_first_chunk = false;
+
+        let event_actions = if inspect_sse_events {
+            self.scanner
+                .push_passthrough_bytes(bytes, should_collect)
+                .into_iter()
+                .map(|event| {
+                    let log_message = event.log_message(tag);
+                    let usage_event = match event.kind {
+                        SsePassthroughEventKind::Collect => event.parsed,
+                        SsePassthroughEventKind::Done | SsePassthroughEventKind::Data => None,
+                    };
+                    SsePassthroughEventAction {
+                        log_message,
+                        usage_event,
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        SsePassthroughChunkInspection {
+            first_chunk_log_message,
+            event_actions,
         }
     }
 }
@@ -667,12 +754,14 @@ fn merge_tool_call_delta(
 
 #[cfg(test)]
 mod tests {
+    use crate::response_timeout::StreamingTimeoutPhase;
+
     use crate::response_transform::openai_chat_to_anthropic_message;
 
     use super::{
         append_utf8_safe, chat_sse_to_response_value, responses_sse_to_response_value,
         strip_sse_field, take_sse_block, SseEventScanner, SsePassthroughEventKind,
-        SseUsageAccumulator,
+        SsePassthroughStreamState, SseUsageAccumulator,
     };
     use serde_json::{json, Value};
     use std::time::{Duration, Instant};
@@ -768,6 +857,47 @@ mod tests {
         assert_eq!(events[0].kind, SsePassthroughEventKind::Done);
         assert!(events[0].parsed.is_none());
         assert_eq!(events[0].log_message("REQ-1"), "[REQ-1] <<< SSE: [DONE]");
+    }
+
+    #[test]
+    fn passthrough_stream_state_projects_first_chunk_and_collect_actions() {
+        let mut state = SsePassthroughStreamState::new();
+
+        assert_eq!(state.timeout_phase(), StreamingTimeoutPhase::FirstByte);
+
+        let inspection =
+            state.inspect_chunk(b"data: {\"usage\":true}\n\n", "REQ-1", true, |_| true);
+
+        assert_eq!(
+            inspection.first_chunk_log_message,
+            Some("[REQ-1] 已接收上游流式首包: bytes=22".to_string())
+        );
+        assert_eq!(inspection.event_actions.len(), 1);
+        assert_eq!(
+            inspection.event_actions[0].log_message,
+            "[REQ-1] <<< SSE 事件: {\"usage\":true}"
+        );
+        assert_eq!(
+            inspection.event_actions[0].usage_event,
+            Some(json!({"usage": true}))
+        );
+        assert_eq!(state.timeout_phase(), StreamingTimeoutPhase::Idle);
+    }
+
+    #[test]
+    fn passthrough_stream_state_skips_event_scanning_when_disabled() {
+        let mut state = SsePassthroughStreamState::new();
+
+        let inspection = state.inspect_chunk(b"data: {\"usage\":true}\n\n", "REQ-1", false, |_| {
+            panic!("collector predicate should not be called")
+        });
+
+        assert_eq!(
+            inspection.first_chunk_log_message,
+            Some("[REQ-1] 已接收上游流式首包: bytes=22".to_string())
+        );
+        assert!(inspection.event_actions.is_empty());
+        assert_eq!(state.timeout_phase(), StreamingTimeoutPhase::Idle);
     }
 
     #[test]

@@ -1162,10 +1162,8 @@ pub(crate) type ForwarderTransformPlanFacts<'a> =
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig;
 pub(crate) type StreamingTimeoutConfig = crate::proxy_core::api::config::StreamingTimeoutConfig;
-pub(crate) type StreamingTimeoutPhase = crate::proxy_core::api::transport::StreamingTimeoutPhase;
-pub(crate) type SseEventScanner = crate::proxy_core::api::transforms::SseEventScanner;
-pub(crate) type SsePassthroughEventKind =
-    crate::proxy_core::api::transforms::SsePassthroughEventKind;
+pub(crate) type SsePassthroughStreamState =
+    crate::proxy_core::api::transforms::SsePassthroughStreamState;
 pub(crate) type SseUsageAccumulator = crate::proxy_core::api::transforms::SseUsageAccumulator;
 pub(crate) type GlobalProxyConfig = crate::proxy_core::api::ports::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::api::config::AppProxyConfig;
@@ -9221,21 +9219,16 @@ where
 {
     async_stream::stream! {
         let _conn_guard = connection_guard;
-        let mut sse_scanner = SseEventScanner::new();
+        let mut passthrough_state = SsePassthroughStreamState::new();
         let mut collector = usage_collector;
         let mut finish_guard = collector.clone().map(SseUsageFinishGuard::new);
         let inspect_sse_events =
             collector.is_some() || log::log_enabled!(log::Level::Debug);
-        let mut is_first_chunk = true;
 
         tokio::pin!(stream);
 
         loop {
-            let timeout_phase = if is_first_chunk {
-                StreamingTimeoutPhase::FirstByte
-            } else {
-                StreamingTimeoutPhase::Idle
-            };
+            let timeout_phase = passthrough_state.timeout_phase();
             let timeout_duration = timeout_config.duration_for_phase(timeout_phase);
 
             let chunk_result = match timeout_duration {
@@ -9259,32 +9252,27 @@ where
 
             match chunk_result {
                 Some(Ok(bytes)) => {
-                    if is_first_chunk {
-                        log::debug!(
-                            "[{tag}] 已接收上游流式首包: bytes={}",
-                            bytes.len()
-                        );
-                    }
-                    is_first_chunk = false;
-                    if inspect_sse_events {
-                        let events = sse_scanner.push_passthrough_bytes(&bytes, |data| {
+                    let inspection = passthrough_state.inspect_chunk(
+                        &bytes,
+                        tag,
+                        inspect_sse_events,
+                        |data| {
                             collector
                                 .as_ref()
                                 .map(|collector| collector.should_collect(data))
                                 .unwrap_or(false)
-                        });
-
-                        for event in events {
-                            let log_message = event.log_message(tag);
-                            if event.kind == SsePassthroughEventKind::Collect {
-                                if let (Some(collector), Some(json_value)) =
-                                    (&collector, event.parsed)
-                                {
-                                    collector.push(json_value).await;
-                                }
-                            }
-                            log::debug!("{log_message}");
+                        },
+                    );
+                    if let Some(message) = inspection.first_chunk_log_message {
+                        log::debug!("{message}");
+                    }
+                    for event in inspection.event_actions {
+                        if let (Some(collector), Some(json_value)) =
+                            (&collector, event.usage_event)
+                        {
+                            collector.push(json_value).await;
                         }
+                        log::debug!("{}", event.log_message);
                     }
 
                     yield Ok(bytes);
