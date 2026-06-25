@@ -926,6 +926,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn channel_test_provider_not_found_error(",
     "fn channel_reachability_probe_error(",
     "fn channel_auth_profile_missing_key_error(",
+    "fn channel_key_value_from_runtime_candidate(",
     "fn gemini_env_json_from_map(",
     "fn gemini_env_string_map_from_settings(",
     "fn parse_gemini_env_file(",
@@ -2307,8 +2308,8 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core_adapter() {
     assert!(
         function.contains(".get_proxy_channel_key(")
             && function.contains("select_enabled_proxy_channel_key_runtime_candidate(")
-            && function.contains("channel_key_value_from_runtime_candidate("),
-        "channel key runtime source must load raw DB key records and delegate enabled-key selection to the core adapter"
+            && function.contains("selected_key.map(|key| key.key_value)"),
+        "channel key runtime source must load raw DB key records, delegate enabled-key selection to core, and project the selected runtime key"
     );
     assert!(
         !function.contains(".get_enabled_proxy_channel_key("),
@@ -7102,8 +7103,8 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     assert!(
         runtime_source_lookup.contains(".get_proxy_channel_key(")
             && runtime_source_lookup.contains("select_enabled_proxy_channel_key_runtime_candidate(")
-            && runtime_source_lookup.contains("channel_key_value_from_runtime_candidate("),
-        "CC Switch channel key runtime lookup helper should own raw DB lookup, core selection, and key value projection"
+            && runtime_source_lookup.contains("selected_key.map(|key| key.key_value)"),
+        "CC Switch channel key runtime lookup helper should own raw DB lookup, core selection, and selected key projection"
     );
     assert!(
         borrowed_runtime_source_impl.contains("load_channel_key_value_from_database(")

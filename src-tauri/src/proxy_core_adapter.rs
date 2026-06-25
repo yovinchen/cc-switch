@@ -4713,12 +4713,6 @@ pub(crate) fn channel_key_auth_error(channel_id: &str, key_ref: &str) -> ProxyCo
     channel_auth_profile_missing_key_error(channel_id, key_ref)
 }
 
-pub(crate) fn channel_key_value_from_runtime_candidate(
-    key: Option<ChannelKeyRuntimeCandidate>,
-) -> Option<String> {
-    key.map(|key| key.key_value)
-}
-
 pub(crate) fn provider_with_channel_auth_key(
     app_type: &AppType,
     provider: &Provider,
@@ -6916,7 +6910,7 @@ fn load_channel_key_value_from_database(
         .get_proxy_channel_key(channel_id, key_ref)
         .map_err(|error| app_error("load channel auth key", error))?;
     let selected_key = select_enabled_proxy_channel_key_runtime_candidate(key);
-    Ok(channel_key_value_from_runtime_candidate(selected_key))
+    Ok(selected_key.map(|key| key.key_value))
 }
 
 #[cfg(test)]
