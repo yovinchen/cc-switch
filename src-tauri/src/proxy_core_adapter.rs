@@ -4390,14 +4390,6 @@ pub(crate) fn stream_check_proxy_target_ids_from_db(
     )
 }
 
-pub(crate) fn forwarder_claude_normalize_anthropic_messages(
-    body: &mut Value,
-    provider: &Provider,
-    api_format: &str,
-) -> bool {
-    provider_claude_normalize_anthropic_messages(body, provider, api_format)
-}
-
 pub(crate) fn forwarder_claude_transform_request_for_api_format(
     body: Value,
     provider: &Provider,
@@ -8249,7 +8241,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             return;
         };
 
-        forwarder_claude_normalize_anthropic_messages(input.body, input.provider, api_format);
+        provider_claude_normalize_anthropic_messages(input.body, input.provider, api_format);
         apply_forwarder_media_prevention_with_log(ForwarderMediaPreventionInput {
             body: input.body,
             provider: input.provider,
@@ -20930,12 +20922,7 @@ command = "latest-command"
                 .expect("codex passthrough transform"),
             passthrough_adapter_body
         );
-        let mut passthrough_body = json!({"model": "claude-3-5-sonnet"});
-        assert!(!forwarder_claude_normalize_anthropic_messages(
-            &mut passthrough_body,
-            &provider,
-            "openai_chat"
-        ));
+        let passthrough_body = json!({"model": "claude-3-5-sonnet"});
         assert_eq!(
             forwarder_claude_transform_request_for_api_format(
                 passthrough_body.clone(),

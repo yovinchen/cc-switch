@@ -1204,6 +1204,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn forwarder_custom_user_agent_header(",
     "fn forwarder_uses_anthropic_rectifiers(",
     "fn forwarder_should_convert_codex_responses_to_chat(",
+    "fn forwarder_claude_normalize_anthropic_messages(",
     "fn apply_provider_model_mapping(",
     "fn claude_takeover_client_model_for_upstream(",
     "fn claude_takeover_default_display_name(",
