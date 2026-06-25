@@ -858,6 +858,57 @@ fn external_host_can_use_app_channel_contracts_from_prelude() {
 }
 
 #[test]
+fn external_host_can_use_app_model_catalog_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+    let query: AppModelListQuery = serde_json::from_value(json!({
+        "interface": "anthropic",
+        "group": "default"
+    }))
+    .expect("model catalog query");
+    let request = AppModelCatalogRequest::from_parts("claude", query)
+        .expect("model catalog request");
+
+    let catalog: RoutableModelList =
+        futures::executor::block_on(engine.list_model_catalog_for_request(request))
+            .expect("model catalog");
+    let helper_request = AppModelCatalogRequest::from_parts(
+        "codex",
+        serde_json::from_value(json!({ "group": "research" })).expect("helper query"),
+    )
+    .expect("helper request");
+    let from_source: RoutableModelList =
+        helper_request.response_from_source(AppModelCatalogSource::new(vec![RoutableModel {
+            public_model: "gpt-5.4".to_string(),
+            upstream_model: "gpt-5.4".to_string(),
+            pricing_model: None,
+            app: AppKind::Codex,
+            provider_id: "relay-b".to_string(),
+            provider_name: "Relay B".to_string(),
+            channel_id: "channel-b".to_string(),
+            channel_name: "Channel B".to_string(),
+            interface: InterfaceKind::OpenAiResponses,
+            groups: vec!["research".to_string()],
+            priority: 50,
+            weight: 2,
+            capabilities: ModelCapabilities::default(),
+        }]));
+
+    assert_eq!(catalog.app_type, "claude");
+    assert_eq!(catalog.route_group.as_deref(), Some("default"));
+    assert_eq!(catalog.interface_kind.as_deref(), Some("anthropic_messages"));
+    assert_eq!(catalog.models.len(), 1);
+    assert_eq!(catalog.models[0].public_model, "sonnet");
+    assert_eq!(catalog.models[0].upstream_model, "relay-sonnet");
+    assert_eq!(catalog.models[0].provider_id, "relay-a");
+    assert_eq!(catalog.models[0].channel_id, "channel-a");
+    assert_eq!(from_source.app_type, "codex");
+    assert_eq!(from_source.route_group.as_deref(), Some("research"));
+    assert_eq!(from_source.models[0].interface, InterfaceKind::OpenAiResponses);
+    assert_eq!(from_source.models[0].groups.as_slice(), ["research"]);
+}
+
+#[test]
 fn external_host_can_use_provider_list_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);

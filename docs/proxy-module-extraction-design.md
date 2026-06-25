@@ -1533,6 +1533,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1091. crate 外 public prelude smoke 已覆盖 `/proxy/v1/apps/{app}/routes/current` 管理 contract：外部宿主只依赖 prelude 即可构造 `CurrentRouteSource`/`CurrentRouteProviderSummaryInput`，调用 `ProxyEngine::current_route_response`，并完整命名 `CurrentRouteResponse<CurrentRouteTarget>` 与 configured provider summary 字段。
 1092. crate 外 public prelude smoke 已覆盖 `/proxy/v1/groups` 管理 contract：外部宿主只依赖 prelude 即可构造 `GroupListRequest`、`GroupListChannelSource`/`GroupListChannelRecordInput` 与 `RouteGroupSourceInput`，调用 `ProxyEngine::group_list_response`，并完整命名 `RouteGroupListResponse` 与 `RouteGroupSummary` 字段类型。
 1093. crate 外 public prelude smoke 已覆盖 `/proxy/v1/apps/{app}/channels` 管理 contract：外部宿主只依赖 prelude 即可构造 `AppChannelManagementRequest`/`AppChannelManagementPlan`/`AppChannelListSource`，调用 `ProxyEngine::app_channel_response`，并完整命名普通 channel list 与 route dry-run 两种 `AppChannelResponse` 分支。
+1094. crate 外 public prelude smoke 已覆盖 `/proxy/v1/apps/{app}/models` 管理 contract：外部宿主只依赖 prelude 即可构造 `AppModelCatalogRequest`/`AppModelCatalogSource`、调用 `ProxyEngine::list_model_catalog_for_request`，并完整命名 `RoutableModelList`、`RoutableModel` 与 `ModelCapabilities` 字段类型。
 
 ## 背景
 

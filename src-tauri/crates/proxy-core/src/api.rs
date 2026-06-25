@@ -100,7 +100,7 @@ pub mod logging {
 
 pub mod model_catalog {
     pub use crate::copilot_model_map::*;
-    pub use crate::domain::RoutableModelList;
+    pub use crate::domain::{ModelCapabilities, RoutableModel, RoutableModelList};
     pub use crate::model_fetch::*;
     pub use crate::model_mapping::*;
     pub use crate::ports::{ClientModelCatalogResponse, ModelCatalog};
@@ -390,7 +390,8 @@ pub mod prelude {
         RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
     };
     pub use super::model_catalog::{
-        ClientModelCatalogResponse, FetchedModel, ModelCatalog, RoutableModelList,
+        ClientModelCatalogResponse, FetchedModel, ModelCapabilities, ModelCatalog, RoutableModel,
+        RoutableModelList,
     };
     pub use super::ports::CurrentRouteTarget;
     pub use super::ports::{
