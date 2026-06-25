@@ -121,6 +121,7 @@ pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
     )
 }
 
+#[cfg(test)]
 pub(crate) type ClaudeDesktopGatewayAuthError =
     crate::proxy_core::api::auth::ClaudeDesktopGatewayAuthError;
 
@@ -1643,6 +1644,26 @@ impl AuthProvider for CcSwitchAuthProvider {
     }
 }
 
+#[derive(Clone)]
+struct CcSwitchClaudeDesktopGatewayAuthSource {
+    db: Arc<Database>,
+}
+
+impl CcSwitchClaudeDesktopGatewayAuthSource {
+    fn new(db: Arc<Database>) -> Self {
+        Self { db }
+    }
+}
+
+impl ClaudeDesktopGatewayAuthSource for CcSwitchClaudeDesktopGatewayAuthSource {
+    fn load_gateway_token<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<String>> {
+        Box::pin(async move {
+            crate::claude_desktop_config::get_or_create_gateway_token(self.db.as_ref())
+                .map_err(|error| ProxyCoreError::Auth(error.to_string()))
+        })
+    }
+}
+
 pub(crate) type AttemptEventChannel<'a> = crate::proxy_core::api::events::AttemptEventChannel<'a>;
 pub(crate) type AttemptEventPayloadInput<'a> =
     crate::proxy_core::api::events::AttemptEventPayloadInput<'a>;
@@ -2609,9 +2630,11 @@ pub(crate) use crate::proxy_core::api::auth::ManagedAccountAuthError;
 pub(crate) use crate::proxy_core::api::auth::{
     channel_auth_profile_missing_key_error_message, extract_claude_auth_key_from_settings,
     is_gemini_oauth_key_shape, parse_gemini_oauth_credentials, resolve_management_auth_decision,
-    settings_config_with_channel_auth_key_for_app, validate_claude_desktop_gateway_bearer_header,
-    validate_management_bearer_header, ManagementAuthDecision,
+    settings_config_with_channel_auth_key_for_app, validate_management_bearer_header,
+    ManagementAuthDecision,
 };
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::auth::validate_claude_desktop_gateway_bearer_header;
 pub(crate) use crate::proxy_core::api::auth::{
     managed_account_app_handle_unavailable_error_message,
     managed_account_app_handle_unavailable_log_message,
@@ -2675,7 +2698,7 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
 pub(crate) use crate::proxy_core::api::ports::{
     channel_health_reset_from_parts, AppSummaryConfig, AuthProvider, ChannelHealthReset,
     ChannelHealthStore, ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource,
-    ForwardPipeline,
+    ClaudeDesktopGatewayAuthSource, ForwardPipeline,
     ModelCatalogProvider, ProviderHealthStore, ProviderSource, ProxyConfigSource, ProxyEventSink,
     ProxyServices, RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
 };
@@ -9583,6 +9606,7 @@ pub(crate) struct CcSwitchProxyServices<R> {
     health_store: CcSwitchChannelHealthStore,
     reachability_probe: CcSwitchChannelReachabilityProbe,
     auth_provider: CcSwitchAuthProvider,
+    claude_desktop_gateway_auth_source: CcSwitchClaudeDesktopGatewayAuthSource,
     channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource,
     model_catalog: CcSwitchModelCatalogProvider,
     runtime_status_source: Arc<dyn RuntimeStatusSource + Send + Sync>,
@@ -9617,6 +9641,9 @@ impl<R> CcSwitchProxyServices<R> {
             health_store: CcSwitchChannelHealthStore::new(db.clone(), router.clone()),
             reachability_probe: CcSwitchChannelReachabilityProbe::new(db.clone()),
             auth_provider: CcSwitchAuthProvider,
+            claude_desktop_gateway_auth_source: CcSwitchClaudeDesktopGatewayAuthSource::new(
+                db.clone(),
+            ),
             channel_key_runtime_source: channel_key_runtime_source.clone(),
             model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), router.clone()),
             runtime_status_source: Arc::new(DefaultRuntimeStatusSource),
@@ -9648,6 +9675,9 @@ where
             health_store: CcSwitchChannelHealthStore::new(db.clone(), provider_router.clone()),
             reachability_probe: CcSwitchChannelReachabilityProbe::new(db.clone()),
             auth_provider: CcSwitchAuthProvider,
+            claude_desktop_gateway_auth_source: CcSwitchClaudeDesktopGatewayAuthSource::new(
+                db.clone(),
+            ),
             channel_key_runtime_source: channel_key_runtime_source.clone(),
             model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), provider_router.clone()),
             runtime_status_source: Arc::new(CcSwitchRuntimeStatusSource::new(
@@ -9699,6 +9729,12 @@ where
 
     fn auth_provider(&self) -> &(dyn AuthProvider + Send + Sync) {
         &self.auth_provider
+    }
+
+    fn claude_desktop_gateway_auth_source(
+        &self,
+    ) -> &(dyn ClaudeDesktopGatewayAuthSource + Send + Sync) {
+        &self.claude_desktop_gateway_auth_source
     }
 
     fn channel_key_runtime_source(&self) -> &(dyn ChannelKeyRuntimeSource + Send + Sync) {

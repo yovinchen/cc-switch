@@ -551,7 +551,7 @@ pub async fn handle_claude_desktop_messages(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    validate_claude_desktop_gateway_auth(&state, request.headers())?;
+    validate_claude_desktop_gateway_auth(&state, request.headers()).await?;
     handle_messages_for_app(
         state,
         request,
@@ -567,7 +567,7 @@ pub async fn handle_claude_desktop_models(
     State(state): State<ProxyState>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<ClaudeDesktopModelListResponse>, ProxyError> {
-    validate_claude_desktop_gateway_auth(&state, &headers)?;
+    validate_claude_desktop_gateway_auth(&state, &headers).await?;
     let response = state
         .proxy_engine()
         .claude_desktop_model_list_response()

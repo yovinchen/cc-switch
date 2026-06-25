@@ -254,7 +254,8 @@ pub mod ports {
         ProxyConfig, ProxyConfigSource, ProxyCoreEvent, ProxyCoreEventType, ProxyEventSink,
         ProxyGlobalConfig, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServerInfo,
         ProxyServerStartedStatusInput, ProxyServices, ProxyTakeoverStatus, RectifierConfig,
-        RectifierConfigSpec, RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
+        RectifierConfigSpec, RoutePolicySource, RouteResolver, RuntimeStatusSource,
+        ClaudeDesktopGatewayAuthSource, UsageSink,
     };
 }
 
@@ -373,7 +374,8 @@ pub mod prelude {
         ChannelReachabilityProbe, ChannelSource, ForwardPipeline, ModelCatalogProvider,
         ProviderAttemptResult,
         ProviderHealthStore, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
-        ProxyRuntimeStatus, RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
+        ProxyRuntimeStatus, RoutePolicySource, RouteResolver, RuntimeStatusSource,
+        ClaudeDesktopGatewayAuthSource, UsageSink,
     };
     pub use super::routing::{ChannelQuery, ChannelSpec, DEFAULT_ROUTE_GROUP};
     pub use super::transport::{
@@ -676,6 +678,12 @@ mod tests {
             }
         }
 
+        impl ClaudeDesktopGatewayAuthSource for StubServices {
+            fn load_gateway_token<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<String>> {
+                Box::pin(async { Ok("gateway-token".to_string()) })
+            }
+        }
+
         impl UsageSink for StubServices {
             fn record_usage<'a>(
                 &'a self,
@@ -746,6 +754,12 @@ mod tests {
             }
 
             fn runtime_status_source(&self) -> &(dyn RuntimeStatusSource + Send + Sync) {
+                self
+            }
+
+            fn claude_desktop_gateway_auth_source(
+                &self,
+            ) -> &(dyn ClaudeDesktopGatewayAuthSource + Send + Sync) {
                 self
             }
 

@@ -4,8 +4,10 @@ use super::domain::{
     RouteRequest,
     DEFAULT_ROUTE_GROUP,
 };
-use super::claude_desktop_gateway_auth::ClaudeDesktopModelListResponse;
-use super::error::ProxyCoreResult;
+use super::claude_desktop_gateway_auth::{
+    validate_claude_desktop_gateway_bearer_header, ClaudeDesktopModelListResponse,
+};
+use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::management_api::{
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest, AppListRequest,
     AppListSource, AppModelCatalogRequest, ChannelCreateRequest, ChannelCreateSource,
@@ -36,6 +38,7 @@ use serde_json::{json, to_value};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use http::HeaderMap;
 
 #[derive(Debug, Default)]
 pub struct ProxyRuntimeState {
@@ -127,6 +130,20 @@ where
 
     pub async fn runtime_status(&self) -> ProxyCoreResult<ProxyRuntimeStatus> {
         self.services.runtime_status_source().load_status().await
+    }
+
+    pub async fn validate_claude_desktop_gateway_auth(
+        &self,
+        headers: &HeaderMap,
+    ) -> ProxyCoreResult<()> {
+        let expected_token = self
+            .services
+            .claude_desktop_gateway_auth_source()
+            .load_gateway_token()
+            .await?;
+
+        validate_claude_desktop_gateway_bearer_header(headers, &expected_token)
+            .map_err(|error| ProxyCoreError::Auth(error.message().to_string()))
     }
 
     pub async fn plan_route(&self, request: &ProxyRequest) -> ProxyCoreResult<RoutePlan> {
@@ -698,6 +715,7 @@ mod tests {
         ChannelKeyRuntimeSource, ChannelModelRecordInput, ChannelMigrationMaterializeInput,
         ChannelMigrationPreviewInput, ChannelReachabilityProbe, ChannelReachabilityResult,
         ChannelRecordInput, ChannelRouteSource, ChannelSource,
+        ClaudeDesktopGatewayAuthSource,
         ChannelTestProbeRequest, ForwardPipeline, ModelCatalog, ModelCatalogProvider,
         ProviderSource, ProxyAppConfig, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
         ProxyChannelModelWriteRequest,
@@ -707,7 +725,7 @@ mod tests {
         RoutePolicySource, RouteResolver, RouteResolveRequest, UsageSink,
     };
     use futures::future::BoxFuture;
-    use http::{Method, StatusCode};
+    use http::{HeaderMap, Method, StatusCode};
     use std::sync::Mutex;
 
     #[derive(Default)]
@@ -731,6 +749,7 @@ mod tests {
         queried_materialized_channel_apps: Mutex<Vec<Option<String>>>,
         queried_claude_desktop_model_apps: Mutex<Vec<String>>,
         runtime_status: Mutex<ProxyRuntimeStatus>,
+        claude_desktop_gateway_token: Mutex<Option<String>>,
     }
 
     impl ProxyServices for TestServices {
@@ -778,6 +797,12 @@ mod tests {
             self
         }
 
+        fn claude_desktop_gateway_auth_source(
+            &self,
+        ) -> &(dyn ClaudeDesktopGatewayAuthSource + Send + Sync) {
+            self
+        }
+
         fn usage_sink(&self) -> &(dyn UsageSink + Send + Sync) {
             self
         }
@@ -821,6 +846,18 @@ mod tests {
                 .expect("runtime status mutex")
                 .clone();
             Box::pin(async move { Ok(status) })
+        }
+    }
+
+    impl ClaudeDesktopGatewayAuthSource for TestServices {
+        fn load_gateway_token<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<String>> {
+            let token = self
+                .claude_desktop_gateway_token
+                .lock()
+                .expect("claude desktop gateway token mutex")
+                .clone()
+                .unwrap_or_else(|| "gateway-token".to_string());
+            Box::pin(async move { Ok(token) })
         }
     }
 
@@ -1673,6 +1710,35 @@ mod tests {
         assert_eq!(response.status.address, "127.0.0.1");
         assert_eq!(response.status.port, 15721);
         assert_eq!(response.status.total_requests, 42);
+    }
+
+    #[test]
+    fn claude_desktop_gateway_auth_uses_token_source() {
+        let services = Arc::new(TestServices::default());
+        *services
+            .claude_desktop_gateway_token
+            .lock()
+            .expect("claude desktop gateway token mutex") = Some("gateway-token".to_string());
+        let engine = ProxyEngine::new(services);
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            http::header::AUTHORIZATION,
+            http::HeaderValue::from_static("Bearer gateway-token"),
+        );
+
+        futures::executor::block_on(engine.validate_claude_desktop_gateway_auth(&headers))
+            .expect("valid gateway bearer");
+
+        let error = futures::executor::block_on(
+            engine.validate_claude_desktop_gateway_auth(&HeaderMap::new()),
+        )
+        .expect_err("missing bearer should fail");
+
+        assert!(matches!(
+            error,
+            ProxyCoreError::Auth(message)
+                if message == "Claude Desktop gateway 缺少 Authorization 头"
+        ));
     }
 
     #[test]

@@ -32,6 +32,9 @@ pub trait ProxyServices: Send + Sync {
     fn channel_key_runtime_source(&self) -> &(dyn ChannelKeyRuntimeSource + Send + Sync);
     fn model_catalog(&self) -> &(dyn ModelCatalogProvider + Send + Sync);
     fn runtime_status_source(&self) -> &(dyn RuntimeStatusSource + Send + Sync);
+    fn claude_desktop_gateway_auth_source(
+        &self,
+    ) -> &(dyn ClaudeDesktopGatewayAuthSource + Send + Sync);
     fn usage_sink(&self) -> &(dyn UsageSink + Send + Sync);
     fn event_sink(&self) -> &(dyn ProxyEventSink + Send + Sync);
     fn forward_pipeline(&self) -> &(dyn ForwardPipeline + Send + Sync);
@@ -710,6 +713,10 @@ pub struct ProxyRuntimeStatus {
 
 pub trait RuntimeStatusSource: Send + Sync {
     fn load_status<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeStatus>>;
+}
+
+pub trait ClaudeDesktopGatewayAuthSource: Send + Sync {
+    fn load_gateway_token<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<String>>;
 }
 
 pub fn proxy_runtime_status_stopped() -> ProxyRuntimeStatus {

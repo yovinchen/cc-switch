@@ -1785,6 +1785,49 @@ fn proxy_server_status_delegates_to_proxy_engine_runtime_status() {
 }
 
 #[test]
+fn claude_desktop_gateway_auth_delegates_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/auth_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read auth_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) async fn validate_claude_desktop_gateway_auth",
+        "}",
+    );
+
+    assert!(
+        function.contains(".proxy_engine()")
+            && function.contains(".validate_claude_desktop_gateway_auth(headers)"),
+        "Claude Desktop gateway auth adapter must delegate token lookup and bearer validation to ProxyEngine"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in [
+            "state.db",
+            "claude_desktop_config",
+            "get_or_create_gateway_token",
+            "validate_claude_desktop_gateway_bearer_header",
+        ] {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/auth_adapter.rs validate_claude_desktop_gateway_auth:{} contains gateway auth source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Claude Desktop gateway auth token source must stay behind ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn provider_list_handler_delegates_sources_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");

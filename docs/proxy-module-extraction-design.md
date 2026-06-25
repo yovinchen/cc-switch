@@ -622,6 +622,7 @@
 608. 模型目录服务层删除 `services::model_fetch` 与 `services::codex_oauth_models` 纯转发 facade，Tauri commands 直接调用 `model_fetch_transport` 这个 host reqwest adapter；URL 规划、请求契约、失败映射与响应解析继续由 `proxy-core::model_fetch` 维护。
 609. stream check 的延迟状态判定与 timeout-like retry 判定已迁入 `proxy-core` 的 channel reachability contract；host `StreamCheckService` 保留 reqwest 探测、provider base URL 提取和现有 DTO/DAO 兼容映射。
 610. `RoutePlan` 的 selection 迭代规则已收敛到 `proxy-core::route_plan_selections`：多候选使用 `selections`，空列表时回退 primary `selection`；host `route_attempt` 只负责把 core selection 映射为 `ForwardAttempt`。
+611. Claude Desktop gateway 的 token 读取与 bearer 校验已继续下沉到 `proxy-core::ClaudeDesktopGatewayAuthSource` 与 `ProxyEngine::validate_claude_desktop_gateway_auth`；host `proxy::auth_adapter` 不再直接读取 DB 或调用 `claude_desktop_config`，只负责把 core auth error 映射到 HTTP 错误。
 611. `ProxyServer::start` 级 runtime smoke 已扩展到 `/proxy/v1/route/resolve`：真实本机端口启动后创建 materialized channel，再通过 HTTP dry-run 验证 source、candidate channel id 与 upstream model，覆盖 router 之外的 runtime 管理 API 路径。
 612. host/core 边界测试继续收紧 `proxy_core_adapter`：adapter 中直接访问 `crate::proxy_core::` 时必须走 `proxy_core::api` 分组集成面，防止后续迁移重新依赖 core 内部文件布局。
 613. `ProxyServer::start` 级 runtime smoke 已继续扩展到 `/proxy/v1/groups?appType=claude`：真实本机端口创建 channel 后通过 HTTP 验证 group source、默认组、channelCount 与 appTypes 聚合，覆盖 route group 对外查询接口不只停留在 router unit test。

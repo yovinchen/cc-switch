@@ -12,8 +12,8 @@ use crate::proxy_core_adapter::{
     codex_proxy_error_response_from_proxy_error as core_codex_proxy_error_response,
     log_unlabeled_sse_fallback_event, parse_upstream_json_or_unlabeled_sse,
     proxy_core_error_from_status_kind, proxy_error_display_message, proxy_error_status_code,
-    upstream_response_parse_failure_log_message, ClaudeDesktopGatewayAuthError,
-    ManagementAuthError, ProxyCoreError, ProxyCoreResponse, ProxyCoreResult,
+    upstream_response_parse_failure_log_message, ManagementAuthError, ProxyCoreError,
+    ProxyCoreResponse, ProxyCoreResult,
     UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
     UpstreamSseAggregationKind,
 };
@@ -84,12 +84,6 @@ pub(crate) fn management_api_error_to_proxy_error(error: ProxyCoreError) -> Prox
 }
 
 pub(crate) fn management_auth_error_to_proxy_error(error: ManagementAuthError) -> ProxyError {
-    ProxyError::AuthError(error.message().to_string())
-}
-
-pub(crate) fn claude_desktop_gateway_auth_error_to_proxy_error(
-    error: ClaudeDesktopGatewayAuthError,
-) -> ProxyError {
     ProxyError::AuthError(error.message().to_string())
 }
 
@@ -421,17 +415,6 @@ mod tests {
 
         assert!(
             matches!(error, ProxyError::AuthError(message) if message == "Missing management bearer token")
-        );
-    }
-
-    #[test]
-    fn test_claude_desktop_gateway_auth_error_bridge_maps_to_auth_error() {
-        let error = claude_desktop_gateway_auth_error_to_proxy_error(
-            ClaudeDesktopGatewayAuthError::MissingAuthorizationHeader,
-        );
-
-        assert!(
-            matches!(error, ProxyError::AuthError(message) if message == "Claude Desktop gateway 缺少 Authorization 头")
         );
     }
 
