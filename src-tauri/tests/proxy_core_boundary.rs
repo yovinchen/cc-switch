@@ -5259,8 +5259,13 @@ fn claude_desktop_config_delegates_profile_stale_model_detection_to_adapter() {
         status_slice.contains("claude_desktop_profile_has_unsafe_model_ids("),
         "claude_desktop_config should delegate Claude Desktop profile stale model detection to proxy_core_adapter/core"
     );
+    assert!(
+        status_slice.contains("claude_desktop_profile_gateway_base_url("),
+        "claude_desktop_config should delegate Claude Desktop profile gateway base URL extraction to proxy_core_adapter/core"
+    );
 
     let forbidden_markers = [
+        "\"inferenceGatewayBaseUrl\"",
         "\"inferenceModels\"",
         "is_claude_safe_model_id(",
         "!is_claude_safe_model_id",

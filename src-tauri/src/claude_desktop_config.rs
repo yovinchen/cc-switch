@@ -135,10 +135,8 @@ pub fn get_status(db: &Database, proxy_running: bool) -> Result<ClaudeDesktopSta
     let applied_id = read_applied_id(&paths.meta_path);
     let configured = paths.profile_path.exists() || meta_has_profile_entry(&paths.meta_path);
     let profile = read_json_or_empty(&paths.profile_path).unwrap_or_else(|_| json!({}));
-    let actual_base_url = profile
-        .get("inferenceGatewayBaseUrl")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+    let actual_base_url =
+        crate::proxy_core_adapter::claude_desktop_profile_gateway_base_url(&profile);
     let stale_raw_models =
         crate::proxy_core_adapter::claude_desktop_profile_has_unsafe_model_ids(&profile);
     let gateway_token_configured = db

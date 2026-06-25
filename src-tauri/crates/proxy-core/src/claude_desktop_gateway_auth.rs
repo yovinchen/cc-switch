@@ -425,6 +425,13 @@ pub fn claude_desktop_profile_has_unsafe_model_ids(profile: &Value) -> bool {
         })
 }
 
+pub fn claude_desktop_profile_gateway_base_url(profile: &Value) -> Option<String> {
+    profile
+        .get("inferenceGatewayBaseUrl")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
 pub fn claude_desktop_proxy_model_routes<'a>(
     routes: impl IntoIterator<Item = ClaudeDesktopProxyRouteInput<'a>>,
 ) -> Vec<ClaudeDesktopResolvedProxyRoute> {
@@ -957,7 +964,8 @@ mod tests {
         claude_desktop_direct_provider_validation_issue, claude_desktop_gateway_profile,
         claude_desktop_gateway_token_error, claude_desktop_meta_applied_id,
         claude_desktop_meta_has_profile_entry, claude_desktop_meta_with_profile_entry,
-        claude_desktop_model_id_is_profile_safe, claude_desktop_profile_has_unsafe_model_ids,
+        claude_desktop_model_id_is_profile_safe, claude_desktop_profile_gateway_base_url,
+        claude_desktop_profile_has_unsafe_model_ids,
         claude_desktop_provider_models_are_profile_safe, claude_desktop_provider_selection_error,
         claude_desktop_provider_unavailable_error,
         claude_desktop_provider_unavailable_error_message, claude_desktop_proxy_gateway_base_url,
@@ -1302,6 +1310,23 @@ mod tests {
                 "kimi-k2"
             ]
         })));
+    }
+
+    #[test]
+    fn profile_gateway_base_url_reads_string_contract_only() {
+        assert_eq!(
+            claude_desktop_profile_gateway_base_url(&json!({
+                "inferenceGatewayBaseUrl": "http://127.0.0.1:15721/claude-desktop"
+            }))
+            .as_deref(),
+            Some("http://127.0.0.1:15721/claude-desktop")
+        );
+        assert_eq!(
+            claude_desktop_profile_gateway_base_url(&json!({
+                "inferenceGatewayBaseUrl": 15721
+            })),
+            None
+        );
     }
 
     #[test]
