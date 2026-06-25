@@ -5605,6 +5605,25 @@ pub struct AppChannelListQuery {
 }
 
 impl AppChannelListQuery {
+    pub fn list() -> Self {
+        Self::default()
+    }
+
+    pub fn route(
+        requested_model: impl Into<String>,
+        interface_kind: impl Into<String>,
+        route_group: impl Into<String>,
+    ) -> Self {
+        Self {
+            requested_model: Some(requested_model.into()),
+            model: None,
+            interface_kind: Some(interface_kind.into()),
+            interface_alias: None,
+            route_group: Some(route_group.into()),
+            group: None,
+        }
+    }
+
     pub fn has_route_filters(&self) -> bool {
         self.requested_model.is_some()
             || self.model.is_some()
@@ -5638,6 +5657,15 @@ pub struct AppModelListQuery {
 }
 
 impl AppModelListQuery {
+    pub fn new(interface_kind: Option<String>, route_group: Option<String>) -> Self {
+        Self {
+            interface_kind,
+            interface_alias: None,
+            route_group,
+            group: None,
+        }
+    }
+
     pub fn route_group(&self) -> Option<String> {
         self.route_group
             .as_deref()
@@ -5665,6 +5693,16 @@ pub struct ChannelListQuery {
 }
 
 impl ChannelListQuery {
+    pub fn all() -> Self {
+        Self::default()
+    }
+
+    pub fn for_app(app_type: impl Into<String>) -> Self {
+        Self {
+            app_type: Some(app_type.into()),
+        }
+    }
+
     pub fn app_type(&self) -> Option<String> {
         self.app_type
             .as_deref()
@@ -5681,6 +5719,16 @@ pub struct GroupListQuery {
 }
 
 impl GroupListQuery {
+    pub fn all() -> Self {
+        Self::default()
+    }
+
+    pub fn for_app(app_type: impl Into<String>) -> Self {
+        Self {
+            app_type: Some(app_type.into()),
+        }
+    }
+
     pub fn app_type(&self) -> Option<String> {
         self.app_type
             .as_deref()

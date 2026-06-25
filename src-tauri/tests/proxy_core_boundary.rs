@@ -1669,6 +1669,8 @@ fn proxy_core_external_example_uses_public_prelude_only() {
         "tauri::",
         "rusqlite",
         "sqlx",
+        "http::",
+        "serde_json::",
     ];
 
     assert!(

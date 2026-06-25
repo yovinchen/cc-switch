@@ -525,6 +525,61 @@ mod tests {
     }
 
     #[test]
+    fn prelude_exposes_management_query_builders() {
+        use prelude::*;
+
+        let channel_list =
+            ChannelListRequest::from_query(ChannelListQuery::for_app(" claude "))
+                .expect("channel list request");
+        let channel_all =
+            ChannelListRequest::from_query(ChannelListQuery::all()).expect("all channels request");
+        let group_list =
+            GroupListRequest::from_query(GroupListQuery::for_app(" codex "))
+                .expect("group list request");
+        let group_all =
+            GroupListRequest::from_query(GroupListQuery::all()).expect("all groups request");
+        let model_query = AppModelListQuery::new(
+            Some("anthropic".to_string()),
+            Some("premium".to_string()),
+        );
+        let model_request =
+            AppModelCatalogRequest::from_parts("claude", model_query).expect("model request");
+        let app_channel_list =
+            AppChannelManagementRequest::from_parts("claude", AppChannelListQuery::list())
+                .expect("app channel list request");
+        let app_channel_route = AppChannelManagementRequest::from_parts(
+            "claude",
+            AppChannelListQuery::route("sonnet", "anthropic", "premium"),
+        )
+        .expect("app channel route request");
+
+        assert_eq!(channel_list.app_type(), Some("claude"));
+        assert_eq!(channel_all.app_type(), None);
+        assert_eq!(group_list.app_type, Some("codex".to_string()));
+        assert_eq!(group_all.app_type, None);
+        assert_eq!(
+            model_request
+                .interface_kind
+                .as_ref()
+                .map(InterfaceKind::as_str),
+            Some("anthropic_messages")
+        );
+        assert_eq!(model_request.route_group.as_deref(), Some("premium"));
+        assert!(matches!(
+            app_channel_list.plan(),
+            AppChannelManagementPlan::List { .. }
+        ));
+        match app_channel_route.plan() {
+            AppChannelManagementPlan::Route(route) => {
+                assert_eq!(route.requested_model.as_deref(), Some("sonnet"));
+                assert_eq!(route.interface_kind.as_deref(), Some("anthropic"));
+                assert_eq!(route.route_group.as_deref(), Some("premium"));
+            }
+            AppChannelManagementPlan::List { .. } => panic!("expected route plan"),
+        }
+    }
+
+    #[test]
     fn prelude_exposes_model_catalog_contracts() {
         use prelude::*;
 

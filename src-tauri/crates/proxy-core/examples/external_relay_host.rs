@@ -29,10 +29,9 @@ async fn run() -> ProxyCoreResult<()> {
         )?)
         .await?;
     let channels = engine
-        .channel_list_response(ChannelListRequest::from_query(
-            serde_json::from_value(json!({ "appType": "claude" }))
-                .map_err(|error| ProxyCoreError::InvalidRequest(error.to_string()))?,
-        )?)
+        .channel_list_response(ChannelListRequest::from_query(ChannelListQuery::for_app(
+            "claude",
+        ))?)
         .await?;
 
     let mut request = ProxyRequest::new(
