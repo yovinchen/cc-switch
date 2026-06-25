@@ -4794,6 +4794,54 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let classification_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_kind_from_provider(",
+        "pub(crate) fn provider_uses_anthropic_rectifiers",
+    );
+
+    assert!(
+        classification_slice.contains("core_classify_provider_managed_auth(")
+            && classification_slice.contains("ProviderManagedAuthFacts"),
+        "proxy_core_adapter must delegate managed-provider classification to proxy-core"
+    );
+
+    let forbidden_markers = [
+        "core_provider_kind_is_codex_oauth(",
+        "core_provider_kind_is_github_copilot(",
+        "core_provider_kind_uses_managed_account_auth(",
+        "provider_kind_is_codex_oauth(",
+        "provider_kind_is_github_copilot(",
+        "provider_kind_uses_managed_account_auth(",
+        "githubcopilot.com",
+        "chatgpt.com/backend-api/codex",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(classification_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs managed provider classification:{} contains host-local marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep managed provider classification in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_mimo_thinking_normalization_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

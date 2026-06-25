@@ -612,29 +612,70 @@ pub fn managed_account_id_for_auth_provider(
     None
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProviderManagedAuthFacts<'a> {
+    pub provider_kind: Option<&'a ProviderKind>,
+    pub anthropic_base_url: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ProviderManagedAuthClassification {
+    pub uses_managed_account: bool,
+    pub is_github_copilot: bool,
+    pub is_codex_oauth: bool,
+}
+
+pub fn classify_provider_managed_auth(
+    facts: ProviderManagedAuthFacts<'_>,
+) -> ProviderManagedAuthClassification {
+    let is_github_copilot = matches!(facts.provider_kind, Some(ProviderKind::GitHubCopilot))
+        || facts
+            .anthropic_base_url
+            .map(|base_url| base_url.contains("githubcopilot.com"))
+            .unwrap_or(false);
+    let is_codex_oauth = matches!(facts.provider_kind, Some(ProviderKind::CodexOAuth));
+    let uses_managed_account = is_github_copilot
+        || is_codex_oauth
+        || facts
+            .anthropic_base_url
+            .map(|base_url| base_url.contains("chatgpt.com/backend-api/codex"))
+            .unwrap_or(false);
+
+    ProviderManagedAuthClassification {
+        uses_managed_account,
+        is_github_copilot,
+        is_codex_oauth,
+    }
+}
+
 pub fn provider_kind_uses_managed_account_auth(
     provider_kind: Option<&ProviderKind>,
     anthropic_base_url: Option<&str>,
 ) -> bool {
-    provider_kind_is_github_copilot(provider_kind, anthropic_base_url)
-        || provider_kind_is_codex_oauth(provider_kind)
-        || anthropic_base_url
-            .map(|base_url| base_url.contains("chatgpt.com/backend-api/codex"))
-            .unwrap_or(false)
+    classify_provider_managed_auth(ProviderManagedAuthFacts {
+        provider_kind,
+        anthropic_base_url,
+    })
+    .uses_managed_account
 }
 
 pub fn provider_kind_is_github_copilot(
     provider_kind: Option<&ProviderKind>,
     anthropic_base_url: Option<&str>,
 ) -> bool {
-    matches!(provider_kind, Some(ProviderKind::GitHubCopilot))
-        || anthropic_base_url
-            .map(|base_url| base_url.contains("githubcopilot.com"))
-            .unwrap_or(false)
+    classify_provider_managed_auth(ProviderManagedAuthFacts {
+        provider_kind,
+        anthropic_base_url,
+    })
+    .is_github_copilot
 }
 
 pub fn provider_kind_is_codex_oauth(provider_kind: Option<&ProviderKind>) -> bool {
-    matches!(provider_kind, Some(ProviderKind::CodexOAuth))
+    classify_provider_managed_auth(ProviderManagedAuthFacts {
+        provider_kind,
+        anthropic_base_url: None,
+    })
+    .is_codex_oauth
 }
 
 pub fn managed_provider_auth_info_for_provider_kind(
@@ -1013,6 +1054,7 @@ pub fn headers_contain_proxy_auth_placeholder(headers: &HeaderMap) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
+        classify_provider_managed_auth,
         codex_oauth_access_token_expires_at_ms, codex_oauth_device_code_expires_at_ms,
         codex_oauth_device_code_expires_in_secs, codex_oauth_device_code_request_failure,
         codex_oauth_device_auth_token_request_body, codex_oauth_device_auth_token_url,
@@ -1053,7 +1095,7 @@ mod tests {
         CodexOAuthDevicePollStatusKind, CopilotOAuthPollErrorKind, ManagedAccountAuthError,
         ManagedAccountAuthPlan, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
         ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAccountRuntimeSource,
-        CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER,
+        ProviderManagedAuthFacts, CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER,
         GITHUB_COPILOT_AUTH_PLACEHOLDER, GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
     };
     use futures::{executor::block_on, future::BoxFuture};
@@ -1952,6 +1994,33 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn classifies_provider_managed_auth_facts() {
+        let copilot = classify_provider_managed_auth(ProviderManagedAuthFacts {
+            provider_kind: Some(&ProviderKind::GitHubCopilot),
+            anthropic_base_url: None,
+        });
+        assert!(copilot.uses_managed_account);
+        assert!(copilot.is_github_copilot);
+        assert!(!copilot.is_codex_oauth);
+
+        let codex_oauth = classify_provider_managed_auth(ProviderManagedAuthFacts {
+            provider_kind: Some(&ProviderKind::CodexOAuth),
+            anthropic_base_url: None,
+        });
+        assert!(codex_oauth.uses_managed_account);
+        assert!(!codex_oauth.is_github_copilot);
+        assert!(codex_oauth.is_codex_oauth);
+
+        let codex_oauth_url = classify_provider_managed_auth(ProviderManagedAuthFacts {
+            provider_kind: Some(&ProviderKind::Claude),
+            anthropic_base_url: Some("https://chatgpt.com/backend-api/codex/responses"),
+        });
+        assert!(codex_oauth_url.uses_managed_account);
+        assert!(!codex_oauth_url.is_github_copilot);
+        assert!(!codex_oauth_url.is_codex_oauth);
     }
 
     #[test]

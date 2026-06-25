@@ -2632,6 +2632,7 @@ pub(crate) use crate::proxy_core::api::auth::{
     settings_config_with_channel_auth_key_for_app,
 };
 pub(crate) use crate::proxy_core::api::auth::{
+    classify_provider_managed_auth as core_classify_provider_managed_auth,
     codex_oauth_access_token_expires_at_ms, codex_oauth_authorization_code_form,
     codex_oauth_device_auth_token_request_body, codex_oauth_device_auth_token_url,
     codex_oauth_device_auth_usercode_url, codex_oauth_device_code_expires_at_ms,
@@ -2653,9 +2654,6 @@ pub(crate) use crate::proxy_core::api::auth::{
     managed_auth_account_from_parts, managed_auth_device_code_response_from_parts,
     managed_auth_fallback_default_account_id, managed_auth_status_from_parts,
     managed_provider_auth_info_for_provider_kind as core_managed_provider_auth_info_for_provider_kind,
-    provider_kind_is_codex_oauth as core_provider_kind_is_codex_oauth,
-    provider_kind_is_github_copilot as core_provider_kind_is_github_copilot,
-    provider_kind_uses_managed_account_auth as core_provider_kind_uses_managed_account_auth,
     resolve_copilot_dynamic_base_url_for_binding_with_runtime_source as resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source,
     resolve_copilot_live_model_for_binding_with_runtime_source as resolve_core_copilot_live_model_for_binding_with_runtime_source,
     resolve_copilot_model_vendor_for_binding_with_runtime_source as resolve_core_copilot_model_vendor_for_binding_with_runtime_source,
@@ -2664,8 +2662,8 @@ pub(crate) use crate::proxy_core::api::auth::{
     ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ManagedAccountBindingInput,
     ManagedAccountBindingSource, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
     ManagedAuthAccount, ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate,
-    ManagedAuthDeviceCodeResponse, ManagedAuthStatus, CODEX_OAUTH_AUTH_PROVIDER,
-    GITHUB_COPILOT_AUTH_PROVIDER,
+    ManagedAuthDeviceCodeResponse, ManagedAuthStatus, ProviderManagedAuthClassification,
+    ProviderManagedAuthFacts, CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
@@ -10299,31 +10297,27 @@ pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<Provide
         .map(ProviderKind::from)
 }
 
-pub(crate) fn provider_is_codex_oauth(provider: &Provider) -> bool {
+fn provider_managed_auth_classification(provider: &Provider) -> ProviderManagedAuthClassification {
     let provider_kind = provider_kind_from_provider(provider);
-    core_provider_kind_is_codex_oauth(provider_kind.as_ref())
+    core_classify_provider_managed_auth(ProviderManagedAuthFacts {
+        provider_kind: provider_kind.as_ref(),
+        anthropic_base_url: provider
+            .settings_config
+            .pointer("/env/ANTHROPIC_BASE_URL")
+            .and_then(Value::as_str),
+    })
+}
+
+pub(crate) fn provider_is_codex_oauth(provider: &Provider) -> bool {
+    provider_managed_auth_classification(provider).is_codex_oauth
 }
 
 pub(crate) fn provider_is_github_copilot(provider: &Provider) -> bool {
-    let provider_kind = provider_kind_from_provider(provider);
-    core_provider_kind_is_github_copilot(
-        provider_kind.as_ref(),
-        provider
-            .settings_config
-            .pointer("/env/ANTHROPIC_BASE_URL")
-            .and_then(Value::as_str),
-    )
+    provider_managed_auth_classification(provider).is_github_copilot
 }
 
 pub(crate) fn provider_uses_managed_account_auth(provider: &Provider) -> bool {
-    let provider_kind = provider_kind_from_provider(provider);
-    core_provider_kind_uses_managed_account_auth(
-        provider_kind.as_ref(),
-        provider
-            .settings_config
-            .pointer("/env/ANTHROPIC_BASE_URL")
-            .and_then(Value::as_str),
-    )
+    provider_managed_auth_classification(provider).uses_managed_account
 }
 
 pub(crate) fn provider_uses_anthropic_rectifiers(app_type: &AppType, provider: &Provider) -> bool {
