@@ -463,7 +463,7 @@ impl ProxyServer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::Provider;
+    use crate::provider::{ClaudeDesktopMode, ClaudeDesktopModelRoute, Provider, ProviderMeta};
     use crate::proxy_core_adapter::{
         management_route_response_from_router_source, CurrentRouteTarget, RouteResolveRequest,
     };
@@ -671,6 +671,115 @@ mod tests {
             body["error"]["message"],
             "认证失败: Claude Desktop gateway 缺少 Authorization 头"
         );
+    }
+
+    #[tokio::test]
+    async fn proxy_server_runtime_smoke_serves_claude_desktop_models_with_gateway_auth() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let mut provider = Provider::with_id(
+            "desktop-runtime".to_string(),
+            "Desktop Runtime".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://desktop-runtime.example.com",
+                    "ANTHROPIC_AUTH_TOKEN": "desktop-secret"
+                }
+            }),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            claude_desktop_mode: Some(ClaudeDesktopMode::Proxy),
+            api_format: Some("anthropic".to_string()),
+            claude_desktop_model_routes: std::collections::HashMap::from([
+                (
+                    "claude-sonnet-4-6".to_string(),
+                    ClaudeDesktopModelRoute {
+                        model: "runtime-sonnet".to_string(),
+                        label_override: None,
+                        supports_1m: Some(true),
+                    },
+                ),
+                (
+                    "claude-haiku-4-5".to_string(),
+                    ClaudeDesktopModelRoute {
+                        model: "runtime-haiku".to_string(),
+                        label_override: None,
+                        supports_1m: Some(false),
+                    },
+                ),
+            ]),
+            ..ProviderMeta::default()
+        });
+        db.save_provider("claude-desktop", &provider).unwrap();
+        db.set_current_provider("claude-desktop", "desktop-runtime")
+            .unwrap();
+        let gateway_token = crate::claude_desktop_config::get_or_create_gateway_token(db.as_ref())
+            .expect("gateway token");
+
+        let config = ProxyConfig {
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 0,
+            ..ProxyConfig::default()
+        };
+        let server = ProxyServer::new(config, db, None);
+        let info = server.start().await.expect("start proxy server");
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("reqwest client");
+        let base_url = format!("http://127.0.0.1:{}", info.port);
+
+        let smoke = async {
+            let rejected = client
+                .get(format!("{base_url}/claude-desktop/v1/models"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if rejected.status() != StatusCode::UNAUTHORIZED {
+                return Err(format!(
+                    "unauthenticated desktop models request was not rejected: {}",
+                    rejected.status()
+                ));
+            }
+
+            let accepted = client
+                .get(format!("{base_url}/claude-desktop/v1/models"))
+                .header(
+                    reqwest::header::AUTHORIZATION,
+                    format!("Bearer {gateway_token}"),
+                )
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if accepted.status() != StatusCode::OK {
+                return Err(format!(
+                    "authorized desktop models request was not accepted: {}",
+                    accepted.status()
+                ));
+            }
+            let models = accepted
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            let data = models["data"]
+                .as_array()
+                .ok_or_else(|| format!("desktop models missing data array: {models}"))?;
+            let sonnet = data.iter().find(|model| model["id"] == "claude-sonnet-4-6");
+            let haiku = data.iter().find(|model| model["id"] == "claude-haiku-4-5");
+            if data.len() != 2
+                || sonnet.is_none_or(|model| model["supports1m"] != true)
+                || haiku.is_none_or(|model| model.get("supports1m").is_some())
+            {
+                return Err(format!("unexpected desktop models body: {models}"));
+            }
+
+            Ok::<(), String>(())
+        }
+        .await;
+        let stop = server.stop().await;
+
+        assert!(stop.is_ok(), "stop proxy server: {stop:?}");
+        smoke.expect("runtime Claude Desktop models smoke");
     }
 
     #[tokio::test]

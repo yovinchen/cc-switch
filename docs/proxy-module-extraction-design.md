@@ -1522,6 +1522,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1080. 删除 `ProxyError::{TransformError,InvalidRequest,Internal}` 上过时的 dead-code allowance；这些错误变体已由 provider transform、core error bridge、handler/response adapter 等生产路径构造，继续作为 host/core 错误映射 surface，而不是预留兼容占位。
 1081. `/proxy/v1/channels/{channel_id}` 与 `/proxy/v1/channels/{channel_id}/models` 已补充 `ProxyServer::start` 级 runtime smoke：真实本机监听端口验证单 channel PATCH/GET、模型 PUT/GET，以及临时 channel DELETE，补齐外部中转管理面最小 CRUD contract。
 1082. 管理 API bearer 鉴权已补充 `ProxyServer::start` 级 runtime smoke：`0.0.0.0` public listener 下无 token 与错误 token 请求 `/proxy/v1/apps` 均返回 401，配置 token 的 bearer 请求返回 200，固定外部宿主暴露管理面时的安全 contract。
+1083. `/claude-desktop/v1/models` 已补充 `ProxyServer::start` 级 runtime smoke：内存 DB 配置 Claude Desktop gateway provider 与 gateway token 后，真实本机监听端口验证无 bearer 返回 401、有效 bearer 返回模型列表和 `supports1m` contract。
 
 ## 背景
 
