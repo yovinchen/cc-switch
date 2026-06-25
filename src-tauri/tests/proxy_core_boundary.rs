@@ -7528,6 +7528,11 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "pub(crate) enum ForwarderFailureDecision",
         "pub(crate) enum ForwarderRectifierRetryFailureDecision",
     );
+    let rectifier_retry_failure_decision_slice = function_slice(
+        &adapter_source,
+        "pub(crate) enum ForwarderRectifierRetryFailureDecision",
+        "pub(crate) type ForwarderRectifierRetryKind",
+    );
 
     assert!(
         struct_slice.contains("runtime_state_source"),
@@ -7590,6 +7595,11 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         failure_decision_slice.contains("Retryable")
             && !failure_decision_slice.contains("error_message"),
         "ForwarderFailureDecision must not carry formatted error messages back to RequestForwarder"
+    );
+    assert!(
+        rectifier_retry_failure_decision_slice.contains("ProviderFailure")
+            && !rectifier_retry_failure_decision_slice.contains("error_message"),
+        "ForwarderRectifierRetryFailureDecision must not carry formatted error messages back to RequestForwarder"
     );
     assert!(
         runtime_trait_slice.contains("emit_attempt_failed_for_error")

@@ -2474,7 +2474,7 @@ pub(crate) enum ForwarderFailureDecision {
     NonRetryable,
 }
 pub(crate) enum ForwarderRectifierRetryFailureDecision {
-    ProviderFailure { error_message: String },
+    ProviderFailure,
     ClientFailure,
 }
 pub(crate) type ForwarderRectifierRetryKind =
@@ -7165,7 +7165,7 @@ pub(crate) trait ForwarderRuntimeStateSource {
         &'a self,
         provider: &'a Provider,
         kind: ForwarderRectifierRetryKind,
-        error_message: &'a str,
+        error: &'a ProxyError,
     ) -> BoxFuture<'a, ()>;
     fn forward_failure_decision(&self, error: &ProxyError) -> ForwarderFailureDecision;
     fn log_retryable_forward_failure(
@@ -7349,14 +7349,15 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         &'a self,
         provider: &'a Provider,
         kind: ForwarderRectifierRetryKind,
-        error_message: &'a str,
+        error: &'a ProxyError,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
+            let error_message = error.to_string();
             record_forward_provider_rectifier_retry_failure_runtime_source(
                 self.status.as_ref(),
                 provider.name.as_str(),
                 forwarder_rectifier_retry_failure_label(kind),
-                error_message,
+                &error_message,
             )
             .await;
         })
@@ -7412,9 +7413,8 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         error: &ProxyError,
     ) -> ForwarderRectifierRetryFailureDecision {
         let failure = forward_failure_kind_from_proxy_error(error);
-        let error_message = error.to_string();
         if should_failover_after_rectifier_retry_failure(&failure) {
-            ForwarderRectifierRetryFailureDecision::ProviderFailure { error_message }
+            ForwarderRectifierRetryFailureDecision::ProviderFailure
         } else {
             ForwarderRectifierRetryFailureDecision::ClientFailure
         }
@@ -14940,9 +14940,7 @@ base_url = "https://api.openai.com/v1"
         match source.rectifier_retry_failure_decision(&ProxyError::Timeout(
             "upstream timed out".to_string(),
         )) {
-            ForwarderRectifierRetryFailureDecision::ProviderFailure { error_message } => {
-                assert_eq!(error_message, "超时: upstream timed out");
-            }
+            ForwarderRectifierRetryFailureDecision::ProviderFailure => {}
             ForwarderRectifierRetryFailureDecision::ClientFailure => {
                 panic!("timeout should fail over to the next provider")
             }
@@ -14952,9 +14950,7 @@ base_url = "https://api.openai.com/v1"
             status: 502,
             body: Some("bad gateway".to_string()),
         }) {
-            ForwarderRectifierRetryFailureDecision::ProviderFailure { error_message } => {
-                assert!(error_message.contains("上游错误 (状态码 502)"));
-            }
+            ForwarderRectifierRetryFailureDecision::ProviderFailure => {}
             ForwarderRectifierRetryFailureDecision::ClientFailure => {
                 panic!("5xx upstream error should fail over to the next provider")
             }
@@ -14964,7 +14960,7 @@ base_url = "https://api.openai.com/v1"
             status: 400,
             body: Some("invalid request".to_string()),
         }) {
-            ForwarderRectifierRetryFailureDecision::ProviderFailure { .. } => {
+            ForwarderRectifierRetryFailureDecision::ProviderFailure => {
                 panic!("client 400 should not fail over after rectifier retry")
             }
             ForwarderRectifierRetryFailureDecision::ClientFailure => {}
@@ -15166,14 +15162,17 @@ base_url = "https://api.openai.com/v1"
             .record_provider_rectifier_retry_failure(
                 &provider,
                 ForwarderRectifierRetryKind::ThinkingBudget,
-                "上游错误 (状态码 502): bad gateway",
+                &ProxyError::UpstreamError {
+                    status: 502,
+                    body: Some("bad gateway".to_string()),
+                },
             )
             .await;
         let status = source.status();
         let status = status.read().await;
         assert_eq!(
             status.last_error.as_deref(),
-            Some("Provider Relay budget 整流重试失败: 上游错误 (状态码 502): bad gateway")
+            Some("Provider Relay budget 整流重试失败: 上游错误 (状态码 502): Some(\"bad gateway\")")
         );
     }
 

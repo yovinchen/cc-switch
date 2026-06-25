@@ -247,7 +247,7 @@ impl RequestForwarder {
             .runtime_state_source
             .rectifier_retry_failure_decision(&retry_err)
         {
-            ForwarderRectifierRetryFailureDecision::ProviderFailure { error_message } => {
+            ForwarderRectifierRetryFailureDecision::ProviderFailure => {
                 self.record_failure_result(
                     request_id,
                     attempt,
@@ -260,7 +260,7 @@ impl RequestForwarder {
                     .record_provider_rectifier_retry_failure(
                         provider,
                         retry_kind,
-                        &error_message,
+                        &retry_err,
                     )
                     .await;
                 *last_error = Some(retry_err);
