@@ -1011,6 +1011,8 @@
 
 本轮还把 client model catalog 的 app source 选择收敛到 adapter，后续再把 ModelCatalogProvider 端口实现本身迁为 adapter-owned。
 
+本轮继续把 `/proxy/v1/apps/{app}/models` 的模型目录 envelope 收敛到 `proxy-core::management_api`：新增 `AppModelCatalogSource` 与 `AppModelCatalogRequest::response(_from_source)`，`ProxyEngine::list_model_catalog_for_request` 只负责读取 route-visible models facts，app/group/interface JSON envelope 由 management contract 统一生成，并经 `api::prelude` 暴露给外部中转集成。
+
 本轮继续把 forwarder 的 Claude 请求阶段 normalization 与 request transform 调用收敛到 `proxy_core_adapter::{forwarder_claude_normalize_anthropic_messages, forwarder_claude_transform_request_for_api_format}`；provider 级 Claude helper 不再作为 forwarder 的生产直接依赖。
 
 本轮继续把 Gemini live settings 的 env/config 组装与 env-only backup JSON contract 收敛到 `proxy-core::ports::{gemini_live_settings_from_env_json_and_config,gemini_live_backup_from_effective_settings}`；host adapter 只 re-export core helper 供 live write/backup 流程使用。

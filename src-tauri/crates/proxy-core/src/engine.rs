@@ -230,20 +230,14 @@ where
         &self,
         request: AppModelCatalogRequest,
     ) -> ProxyCoreResult<RoutableModelList> {
-        let AppModelCatalogRequest {
-            app,
-            app_type,
-            route_group,
-            interface_kind,
-        } = request;
-
-        self.list_model_catalog(
-            &app,
-            app_type,
-            route_group.as_deref(),
-            interface_kind.as_ref(),
-        )
-        .await
+        let models = self
+            .list_models(
+                &request.app,
+                request.route_group.as_deref(),
+                request.interface_kind.as_ref(),
+            )
+            .await?;
+        Ok(request.response(models))
     }
 
     pub async fn provider_list_source(

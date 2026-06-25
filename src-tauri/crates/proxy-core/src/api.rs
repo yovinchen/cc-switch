@@ -352,16 +352,17 @@ pub mod prelude {
     pub use super::events::{ProxyCoreEvent, ProxyCoreEventType};
     pub use super::management::{
         AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery,
-        ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
-        ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery,
-        ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-        ChannelModelRecord, ChannelModelsResponse, ChannelReachabilityResult, ChannelRecord,
-        ChannelRecordResponse, ChannelTestProbeRequest, ChannelTestResponse, CurrentRouteResponse,
-        GroupListQuery, HealthCheckResponse, ProviderListResponse, ProxyChannelKeyPatchRequest,
+        AppModelCatalogRequest, AppModelCatalogSource, ChannelDeleteResponse,
+        ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyRecord,
+        ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListResponse,
+        ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
+        ChannelModelsResponse, ChannelReachabilityResult, ChannelRecord, ChannelRecordResponse,
+        ChannelTestProbeRequest, ChannelTestResponse, CurrentRouteResponse, GroupListQuery,
+        HealthCheckResponse, ProviderListResponse, ProxyChannelKeyPatchRequest,
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-        ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse, RouteResolveRequest,
-        RouteResolveResponse,
+        ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse,
+        RouteResolveRequest, RouteResolveResponse,
     };
     pub use super::model_catalog::{
         ClientModelCatalogResponse, FetchedModel, ModelCatalog, RoutableModelList,
@@ -465,10 +466,16 @@ mod tests {
             Some("anthropic".to_string()),
             Vec::new(),
         );
+        let management_request =
+            AppModelCatalogRequest::from_parts("claude", AppModelListQuery::default())
+                .expect("request");
+        let management_response =
+            management_request.response_from_source(AppModelCatalogSource::new(Vec::new()));
 
         assert_eq!(client_response.raw["models"][0]["id"], "relay-sonnet");
         assert_eq!(routable.app_type, "claude");
         assert_eq!(routable.interface_kind.as_deref(), Some("anthropic"));
+        assert_eq!(management_response.app_type, "claude");
     }
 
     #[test]

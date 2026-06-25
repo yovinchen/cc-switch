@@ -1,4 +1,6 @@
-use super::domain::{AppKind, ChannelSpec, InterfaceKind, ProviderSpec};
+use super::domain::{
+    AppKind, ChannelSpec, InterfaceKind, ProviderSpec, RoutableModel, RoutableModelList,
+};
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
@@ -718,6 +720,17 @@ pub struct AppModelCatalogRequest {
     pub interface_kind: Option<InterfaceKind>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AppModelCatalogSource {
+    pub models: Vec<RoutableModel>,
+}
+
+impl AppModelCatalogSource {
+    pub fn new(models: Vec<RoutableModel>) -> Self {
+        Self { models }
+    }
+}
+
 impl AppModelCatalogRequest {
     pub fn from_parts(
         app_type: impl AsRef<str>,
@@ -732,6 +745,21 @@ impl AppModelCatalogRequest {
             route_group: query.route_group(),
             interface_kind: query.interface_kind(),
         })
+    }
+
+    pub fn response(&self, models: Vec<RoutableModel>) -> RoutableModelList {
+        RoutableModelList::new(
+            self.app_type.clone(),
+            self.route_group.clone(),
+            self.interface_kind
+                .as_ref()
+                .map(|interface| interface.as_str().to_string()),
+            models,
+        )
+    }
+
+    pub fn response_from_source(&self, source: AppModelCatalogSource) -> RoutableModelList {
+        self.response(source.models)
     }
 }
 
@@ -992,8 +1020,8 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 mod tests {
     use super::{
         AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
-        AppListRequest, AppListSource, AppModelCatalogRequest, ChannelCreateRequest,
-        ChannelCreateSource, ChannelDeleteSource, ChannelHealthResetSource,
+        AppListRequest, AppListSource, AppModelCatalogRequest, AppModelCatalogSource,
+        ChannelCreateRequest, ChannelCreateSource, ChannelDeleteSource, ChannelHealthResetSource,
         ChannelKeyDeleteSource, ChannelKeyPathRequest, ChannelKeyRecordSource, ChannelKeysSource,
         ChannelListPlan, ChannelListRequest, ChannelListSource, ChannelMigrationMaterializeSource,
         ChannelMigrationPreviewSource, ChannelModelsSource, ChannelPathRequest,
@@ -1525,6 +1553,32 @@ mod tests {
         assert_eq!(request.app_type, "claude");
         assert_eq!(request.route_group.as_deref(), Some("beta"));
         assert_eq!(request.interface_kind, Some(InterfaceKind::OpenAiResponses));
+    }
+
+    #[test]
+    fn app_model_catalog_request_wraps_model_response_envelope() {
+        let query = serde_json::from_value::<AppModelListQuery>(serde_json::json!({
+            "routeGroup": " default ",
+            "interfaceKind": "anthropic_messages"
+        }))
+        .expect("query");
+        let request = AppModelCatalogRequest::from_parts(" claude ", query).expect("request");
+
+        let response = request.response_from_source(AppModelCatalogSource::new(Vec::new()));
+
+        assert_eq!(response.app_type, "claude");
+        assert_eq!(response.route_group.as_deref(), Some("default"));
+        assert_eq!(
+            response.interface_kind.as_deref(),
+            Some("anthropic_messages")
+        );
+        assert!(response.models.is_empty());
+
+        let value = serde_json::to_value(&response).expect("serialize response");
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["routeGroup"], "default");
+        assert_eq!(value["interfaceKind"], "anthropic_messages");
+        assert_eq!(value["models"].as_array().map(Vec::len), Some(0));
     }
 
     #[test]
