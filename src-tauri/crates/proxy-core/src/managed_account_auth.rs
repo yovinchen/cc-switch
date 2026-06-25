@@ -1379,7 +1379,7 @@ mod tests {
 
     #[test]
     fn managed_auth_account_order_prefers_default_then_latest_then_login() {
-        let mut accounts = vec![
+        let mut accounts = [
             ManagedAuthAccountSortKey::new("acct-1", "zeta", 1_771_000_001),
             ManagedAuthAccountSortKey::new("acct-2", "alpha", 1_771_000_001),
             ManagedAuthAccountSortKey::new("acct-3", "beta", 1_771_000_002),
@@ -1395,7 +1395,7 @@ mod tests {
 
     #[test]
     fn managed_auth_account_order_uses_login_tie_break_without_default() {
-        let mut accounts = vec![
+        let mut accounts = [
             ManagedAuthAccountSortKey::new("acct-1", "zeta", 1_771_000_001),
             ManagedAuthAccountSortKey::new("acct-2", "alpha", 1_771_000_001),
         ];

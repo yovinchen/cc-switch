@@ -1674,6 +1674,35 @@ fn external_host_can_use_app_model_catalog_contracts_from_prelude() {
     assert_eq!(from_source.route_group.as_deref(), Some("research"));
     assert_eq!(from_source.models[0].interface, InterfaceKind::OpenAiResponses);
     assert_eq!(from_source.models[0].groups.as_slice(), ["research"]);
+
+    let client_catalog = client_model_catalog_from_routable_models(
+        "codex-route",
+        &from_source.models,
+        256_000,
+        &json!({
+            "slug": "template",
+            "display_name": "Template",
+            "model_messages": { "instructions_template": "template" }
+        }),
+    );
+    let client_raw_models = client_catalog
+        .raw
+        .get("models")
+        .and_then(Value::as_array)
+        .expect("client models");
+
+    assert_eq!(client_catalog.provider_id, "codex-route");
+    assert_eq!(client_catalog.models, vec!["gpt-5.4".to_string()]);
+    assert_eq!(
+        client_raw_models[0].get("slug").and_then(Value::as_str),
+        Some("gpt-5.4")
+    );
+    assert_eq!(
+        client_raw_models[0]
+            .get("context_window")
+            .and_then(Value::as_u64),
+        Some(256_000)
+    );
 }
 
 #[test]

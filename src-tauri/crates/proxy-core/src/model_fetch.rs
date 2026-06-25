@@ -1,3 +1,4 @@
+use crate::domain::RoutableModel;
 use crate::ports::ModelCatalog;
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
@@ -434,6 +435,16 @@ pub fn build_codex_model_catalog_from_settings(
     Some(codex_model_catalog_from_specs(&specs, template))
 }
 
+pub fn client_model_catalog_from_routable_models(
+    provider_id: impl Into<String>,
+    models: &[RoutableModel],
+    default_context_window: u64,
+    template: &Value,
+) -> ModelCatalog {
+    let specs = codex_catalog_model_specs_from_routable_models(models, default_context_window);
+    client_model_catalog_from_raw(provider_id, codex_model_catalog_from_specs(&specs, template))
+}
+
 pub fn has_codex_model_catalog_specs(settings: &Value) -> bool {
     !codex_catalog_model_specs(settings, DEFAULT_CODEX_MODEL_CONTEXT_WINDOW).is_empty()
 }
@@ -698,6 +709,39 @@ fn codex_catalog_model_specs(
     specs
 }
 
+fn codex_catalog_model_specs_from_routable_models(
+    models: &[RoutableModel],
+    default_context_window: u64,
+) -> Vec<CodexCatalogModelSpec> {
+    let default_context_window = positive_or_default_context_window(default_context_window);
+    let mut seen = HashSet::new();
+    let mut specs = Vec::new();
+
+    for model in models {
+        let public_model = model.public_model.trim();
+        if public_model.is_empty() || !seen.insert(public_model.to_string()) {
+            continue;
+        }
+
+        let context_window = parse_codex_positive_u64(
+            model
+                .capabilities
+                .raw
+                .get("contextWindow")
+                .or_else(|| model.capabilities.raw.get("context_window")),
+        )
+        .unwrap_or(default_context_window);
+
+        specs.push(CodexCatalogModelSpec {
+            model: public_model.to_string(),
+            display_name: public_model.to_string(),
+            context_window,
+        });
+    }
+
+    specs
+}
+
 fn parse_codex_positive_u64(value: Option<&Value>) -> Option<u64> {
     match value {
         Some(Value::Number(n)) => n.as_u64().filter(|v| *v > 0),
@@ -748,6 +792,7 @@ fn ends_with_version_segment(url: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{AppKind, InterfaceKind, ModelCapabilities};
     use serde_json::json;
     use std::collections::VecDeque;
     use std::sync::Mutex;
@@ -1195,7 +1240,7 @@ mod tests {
         let user_agent = http::HeaderValue::from_static("cc-switch-test");
         let transport = FakeOpenAiCompatibleModelsTransport::new([Ok(model_fetch_response(
             http::StatusCode::OK,
-            br#"{"data":[{"id":"gpt-4o","owned_by":"openai"}]}"#.to_vec(),
+            br#"{"data":[{"id":"gpt-4o","owned_by":"openai"}]}"#,
         ))]);
 
         let models = futures::executor::block_on(fetch_openai_compatible_models_with_transport(
@@ -1238,7 +1283,7 @@ mod tests {
             Ok(model_fetch_response(http::StatusCode::NOT_FOUND, "missing")),
             Ok(model_fetch_response(
                 http::StatusCode::OK,
-                br#"{"data":[{"id":"deepseek-chat"}]}"#.to_vec(),
+                br#"{"data":[{"id":"deepseek-chat"}]}"#,
             )),
         ]);
 
@@ -1273,7 +1318,7 @@ mod tests {
             Ok(model_fetch_response(http::StatusCode::UNAUTHORIZED, "bad key")),
             Ok(model_fetch_response(
                 http::StatusCode::OK,
-                br#"{"data":[{"id":"should-not-fetch"}]}"#.to_vec(),
+                br#"{"data":[{"id":"should-not-fetch"}]}"#,
             )),
         ]);
 
@@ -1388,7 +1433,7 @@ mod tests {
     fn fetch_codex_oauth_models_with_transport_sends_core_request_plan() {
         let transport = FakeCodexOAuthModelsTransport::new([Ok(model_fetch_response(
             http::StatusCode::OK,
-            br#"{"data":[{"id":"gpt-5.4","owned_by":"openai"}]}"#.to_vec(),
+            br#"{"data":[{"id":"gpt-5.4","owned_by":"openai"}]}"#,
         ))]);
 
         let models = futures::executor::block_on(fetch_codex_oauth_models_with_transport(
@@ -1774,6 +1819,52 @@ mod tests {
     }
 
     #[test]
+    fn client_model_catalog_from_routable_models_builds_codex_raw_catalog() {
+        let template = json!({
+            "slug": "template",
+            "display_name": "Template",
+            "model_messages": {
+                "instructions_template": "template"
+            }
+        });
+        let models = vec![
+            routable_model("gpt-public", "upstream-a", "channel-a", json!({"contextWindow": "64000"})),
+            routable_model("gpt-public", "upstream-b", "channel-b", json!({"contextWindow": 200000})),
+            routable_model("kimi", "kimi-upstream", "channel-c", json!({})),
+            routable_model("   ", "ignored", "channel-d", json!({})),
+        ];
+
+        let catalog =
+            client_model_catalog_from_routable_models("codex-route", &models, 128_000, &template);
+        let raw_models = catalog
+            .raw
+            .get("models")
+            .and_then(Value::as_array)
+            .expect("models array");
+
+        assert_eq!(catalog.provider_id, "codex-route");
+        assert_eq!(
+            catalog.models,
+            vec!["gpt-public".to_string(), "kimi".to_string()]
+        );
+        assert_eq!(raw_models.len(), 2);
+        assert_eq!(raw_models[0].get("slug").and_then(Value::as_str), Some("gpt-public"));
+        assert_eq!(
+            raw_models[0].get("context_window").and_then(Value::as_u64),
+            Some(64_000)
+        );
+        assert_eq!(raw_models[1].get("slug").and_then(Value::as_str), Some("kimi"));
+        assert_eq!(
+            raw_models[1].get("context_window").and_then(Value::as_u64),
+            Some(128_000)
+        );
+        assert_eq!(
+            raw_models[0].get("model_messages"),
+            template.get("model_messages")
+        );
+    }
+
+    #[test]
     fn simplify_codex_model_catalog_round_trips_user_input() {
         let catalog = r#"{
             "models": [
@@ -1859,5 +1950,28 @@ mod tests {
             .is_none(),
             "entries lacking slug are skipped; a fully-skipped catalog yields None"
         );
+    }
+
+    fn routable_model(
+        public_model: &str,
+        upstream_model: &str,
+        channel_id: &str,
+        capabilities: Value,
+    ) -> RoutableModel {
+        RoutableModel {
+            public_model: public_model.to_string(),
+            upstream_model: upstream_model.to_string(),
+            pricing_model: None,
+            app: AppKind::Codex,
+            provider_id: "relay-provider".to_string(),
+            provider_name: "Relay Provider".to_string(),
+            channel_id: channel_id.to_string(),
+            channel_name: format!("Channel {channel_id}"),
+            interface: InterfaceKind::OpenAiResponses,
+            groups: vec!["research".to_string()],
+            priority: 100,
+            weight: 1,
+            capabilities: ModelCapabilities { raw: capabilities },
+        }
     }
 }

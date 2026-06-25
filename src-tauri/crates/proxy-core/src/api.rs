@@ -405,8 +405,8 @@ pub mod prelude {
         RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
     };
     pub use super::model_catalog::{
-        ClientModelCatalogResponse, FetchedModel, ModelCapabilities, ModelCatalog, RoutableModel,
-        RoutableModelList,
+        client_model_catalog_from_routable_models, ClientModelCatalogResponse, FetchedModel,
+        ModelCapabilities, ModelCatalog, RoutableModel, RoutableModelList,
     };
     pub use super::ports::CurrentRouteTarget;
     pub use super::ports::{
