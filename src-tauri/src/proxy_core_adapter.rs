@@ -556,7 +556,8 @@ pub(crate) fn record_proxy_server_started_status(
 }
 
 pub(crate) use crate::proxy_core::api::ports::{
-    apply_proxy_runtime_uptime, record_proxy_server_stopped_status,
+    apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
+    record_proxy_server_stopped_status,
 };
 
 pub(crate) type ProxyRuntimeConfig = crate::proxy_core::api::config::ProxyRuntimeConfig;
@@ -821,13 +822,6 @@ pub(crate) fn current_route_target_from_provider(
             channel: None,
         },
     )
-}
-
-pub(crate) fn apply_proxy_runtime_active_targets(
-    status: &mut ProxyRuntimeStatus,
-    active_targets: impl IntoIterator<Item = CurrentRouteTarget>,
-) {
-    crate::proxy_core::api::ports::apply_proxy_runtime_active_targets(status, active_targets);
 }
 
 pub(crate) async fn record_proxy_server_started_runtime_source(

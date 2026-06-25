@@ -935,6 +935,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn forwarder_terminal_failure_status_message(",
     "fn forwarder_failure_log_line(",
     "fn forwarder_rectifier_retry_failure_label(",
+    "fn apply_proxy_runtime_active_targets(",
     "fn channel_route_candidate_from_selection(",
     "fn resolved_channel_attempt_from_candidate(",
     "fn resolved_channel_attempt_from_selection(",

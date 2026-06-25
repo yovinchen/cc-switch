@@ -1417,6 +1417,7 @@
 997. common-config snippet 错误文案和 OpenCode/OpenClaw common-config value 测试 helper 的纯函数 facade 已从 adapter 移除，改为直接 re-export core ports。
 998. common-config settings mutation 错误文案的纯函数 facade 已从 adapter 移除，生产 host 仍经 adapter re-export 接入 core ports。
 999. forwarder 终态状态文案、failure log line 和 rectifier retry label 的纯函数 facade 已从 adapter 移除；adapter 只保留 host `ProxyError` 到 core failure facts 的投影函数。
+1000. runtime active targets 写入的同签名纯函数 facade 已从 adapter 移除，`ProxyRuntimeStatus` 的 active target 排序规则直接由 core port re-export 提供。
 
 ## 背景
 
