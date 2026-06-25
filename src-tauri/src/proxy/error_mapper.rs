@@ -11,10 +11,10 @@ use crate::proxy_core_adapter::{
     codex_proxy_error_response_from_proxy_error as core_codex_proxy_error_response,
     log_unlabeled_sse_fallback_event, parse_upstream_json_or_unlabeled_sse,
     proxy_core_error_from_status_kind, proxy_error_status_kind,
-    upstream_response_parse_failure_log_message, CoreResponseBuildFailureContext,
-    CoreResponseTransformFailureContext, ProxyCoreError, ProxyCoreResponse, ProxyCoreResult,
-    UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
-    UpstreamSseAggregationKind,
+    upstream_response_parse_failure_log_message, upstream_send_error_projection,
+    CoreResponseBuildFailureContext, CoreResponseTransformFailureContext, ProxyCoreError,
+    ProxyCoreResponse, ProxyCoreResult, ProxyErrorStatusKind, UnlabeledSseFallbackLogContext,
+    UpstreamResponseParseFailureLogContext, UpstreamSendErrorInput, UpstreamSseAggregationKind,
 };
 use http::HeaderMap;
 use serde_json::Value;
@@ -43,12 +43,14 @@ pub(crate) fn forward_error_to_core_error(error: ForwardError) -> ProxyCoreError
 }
 
 pub(crate) fn reqwest_send_error_to_proxy_error(error: reqwest::Error) -> ProxyError {
-    if error.is_timeout() {
-        ProxyError::Timeout(format!("请求超时: {error}"))
-    } else if error.is_connect() {
-        ProxyError::ForwardFailed(format!("连接失败: {error}"))
-    } else {
-        ProxyError::ForwardFailed(error.to_string())
+    let projection = upstream_send_error_projection(UpstreamSendErrorInput {
+        is_timeout: error.is_timeout(),
+        is_connect: error.is_connect(),
+        message: error.to_string(),
+    });
+    match projection.status_kind {
+        ProxyErrorStatusKind::Timeout => ProxyError::Timeout(projection.message),
+        _ => ProxyError::ForwardFailed(projection.message),
     }
 }
 

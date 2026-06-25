@@ -1554,6 +1554,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1109. 外部宿主自定义 app namespace 已补充集成证据：`external_relay_host` example 现在注册 `opencode` 自定义 app、独立 provider/channel、OpenAI Chat interface、tools route group 和自定义模型目录；crate 外 public prelude smoke 也直接验证 `AppKind::Custom`、`ManagementAppPathRequest`、`AppModelCatalogRequest`、`AppChannelManagementRequest` 与 `RouteResolveManagementRequest` 均接受该 namespace，避免独立中转模块被固定在 CC Switch 内置 app 枚举上。
 1110. managed-account token runtime 继续向可替换 source 收口：`CcSwitchManagedAccountRuntimeSource` 现在拥有无 AppHandle、token 请求/成功/失败日志与 `ProxyError` 包装契约，`proxy::managed_account_auth` 只保留 Tauri state 读取和原始 token/account fact 获取；边界测试同步禁止 runtime text contract 回流到薄 helper 文件，外部中转宿主可替换 runtime source 而无需复制 CC Switch 的 Tauri state 包装。
 1111. Codex 客户端模型目录生成能力已先行收进 `proxy-core::model_fetch`：`client_model_catalog_from_routable_models` 可把 route-visible `RoutableModel` 列表转换为 Codex 兼容 raw catalog，并复用 capabilities 中的 `contextWindow/context_window`；crate 外 public prelude smoke 证明外部宿主可直接从 app model catalog 结果生成客户端模型目录。生产 `/v1/models` handler 尚未切换，后续可用该 helper 避免 host 重新拼装 raw catalog。
+1112. reqwest 上游发送失败的 timeout/connect/other 分类与兼容中文文案已迁入 `proxy-core::request_transport::upstream_send_error_projection`；host `error_mapper` 只负责把 `reqwest::Error` 投影为 `is_timeout/is_connect/message` fact 并映射回现有 `ProxyError` variant，新增 boundary 防止发送错误文案重新回流到 host。
 
 ## 背景
 

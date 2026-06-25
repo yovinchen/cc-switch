@@ -2044,6 +2044,33 @@ fn production_proxy_error_excludes_legacy_reqwest_category_helper() {
 }
 
 #[test]
+fn proxy_error_mapper_delegates_reqwest_send_error_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/error_mapper.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/error_mapper.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn reqwest_send_error_to_proxy_error",
+        "pub(crate) fn management_api_error_to_proxy_error",
+    );
+
+    assert!(
+        function.contains("upstream_send_error_projection(")
+            && function.contains("UpstreamSendErrorInput")
+            && function.contains("is_timeout: error.is_timeout()")
+            && function.contains("is_connect: error.is_connect()"),
+        "reqwest send error bridge must pass neutral facts into proxy-core"
+    );
+
+    for marker in ["请求超时", "连接失败"] {
+        assert!(
+            !function.contains(marker),
+            "reqwest send error bridge must not locally format upstream send error marker `{marker}`"
+        );
+    }
+}
+
+#[test]
 fn basic_health_status_handlers_use_management_contracts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");

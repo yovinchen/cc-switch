@@ -2470,6 +2470,7 @@ pub(crate) type UpstreamRequestHeadersInput<'a> =
     crate::proxy_core::api::transport::UpstreamRequestHeadersInput<'a>;
 pub(crate) type UpstreamSendPolicyInput =
     crate::proxy_core::api::transport::UpstreamSendPolicyInput;
+pub(crate) type UpstreamSendErrorInput = crate::proxy_core::api::transport::UpstreamSendErrorInput;
 pub(crate) type UpstreamTransportKind = crate::proxy_core::api::transport::UpstreamTransportKind;
 pub(crate) type ChannelRequestValidationError =
     crate::proxy_core::api::routing::ChannelRequestValidationError;
@@ -10271,6 +10272,8 @@ pub(crate) use crate::proxy_core::api::transport::is_streaming_upstream_request;
 pub(crate) use crate::proxy_core::api::transport::is_socks_proxy_url;
 
 pub(crate) use crate::proxy_core::api::transport::resolve_upstream_send_policy;
+
+pub(crate) use crate::proxy_core::api::transport::upstream_send_error_projection;
 
 pub(crate) use crate::proxy_core::api::transport::{
     get_content_encoding, response_headers_indicate_sse, response_headers_log_summary,

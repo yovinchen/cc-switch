@@ -1,4 +1,4 @@
-use crate::response_transform::claude_api_format_needs_transform;
+use crate::{error::ProxyErrorStatusKind, response_transform::claude_api_format_needs_transform};
 use http::HeaderMap;
 use serde_json::{Map, Value};
 use std::net::IpAddr;
@@ -43,6 +43,19 @@ pub struct UpstreamSendPolicyInput {
     pub request_is_streaming: bool,
     pub non_streaming_timeout: Duration,
     pub streaming_first_byte_timeout: Duration,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpstreamSendErrorInput {
+    pub is_timeout: bool,
+    pub is_connect: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpstreamSendErrorProjection {
+    pub status_kind: ProxyErrorStatusKind,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,9 +171,7 @@ pub fn resolve_upstream_request_transport_policy(
 
     UpstreamRequestTransportPolicy {
         is_streaming_request,
-        force_identity_encoding: needs_transform
-            || codex_responses_to_chat
-            || is_streaming_request,
+        force_identity_encoding: needs_transform || codex_responses_to_chat || is_streaming_request,
     }
 }
 
@@ -343,6 +354,29 @@ pub fn resolve_upstream_send_policy(input: UpstreamSendPolicyInput) -> UpstreamS
     }
 }
 
+pub fn upstream_send_error_projection(
+    input: UpstreamSendErrorInput,
+) -> UpstreamSendErrorProjection {
+    if input.is_timeout {
+        return UpstreamSendErrorProjection {
+            status_kind: ProxyErrorStatusKind::Timeout,
+            message: format!("请求超时: {}", input.message),
+        };
+    }
+
+    if input.is_connect {
+        return UpstreamSendErrorProjection {
+            status_kind: ProxyErrorStatusKind::ForwardFailed,
+            message: format!("连接失败: {}", input.message),
+        };
+    }
+
+    UpstreamSendErrorProjection {
+        status_kind: ProxyErrorStatusKind::ForwardFailed,
+        message: input.message,
+    }
+}
+
 pub fn mapped_channel_response_status(status: u16, mapping: &Value) -> Option<u16> {
     match mapping {
         Value::Array(entries) => entries
@@ -426,18 +460,20 @@ fn valid_status_code(value: u64) -> Option<u16> {
 #[cfg(test)]
 mod tests {
     use super::{
-        forwarder_request_body_transform_action_from_plan,
-        forwarder_protocol_preparation_from_transform_plan, forwarder_transform_plan_from_facts,
+        forwarder_protocol_preparation_from_transform_plan,
+        forwarder_request_body_transform_action_from_plan, forwarder_transform_plan_from_facts,
         invalid_explicit_proxy_url_message, invalid_mapped_channel_response_status_message,
         is_socks_proxy_url, is_streaming_upstream_request, mapped_channel_response_status,
         proxy_url_points_to_loopback_port, proxy_values_point_to_loopback_port,
         request_body_stream_flag, resolve_channel_response_status_mapping,
         resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-        validate_explicit_proxy_url, ForwarderProtocolPreparationInput,
-        ForwarderRequestBodyTransformAction, ForwarderTransformPlan, ForwarderTransformPlanFacts,
+        upstream_send_error_projection, validate_explicit_proxy_url,
+        ForwarderProtocolPreparationInput, ForwarderRequestBodyTransformAction,
+        ForwarderTransformPlan, ForwarderTransformPlanFacts, UpstreamSendErrorInput,
         UpstreamSendPolicyInput, UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT,
         STREAMING_REQWEST_REQUEST_TIMEOUT,
     };
+    use crate::error::ProxyErrorStatusKind;
     use http::{header::ACCEPT, HeaderMap, HeaderValue};
     use serde_json::json;
     use std::time::Duration;
@@ -508,14 +544,15 @@ mod tests {
             claude_api_format_for_transform: Some("openai_chat".to_string()),
             codex_responses_to_chat: false,
         };
-        let claude_preparation = forwarder_protocol_preparation_from_transform_plan(
-            ForwarderProtocolPreparationInput {
+        let claude_preparation =
+            forwarder_protocol_preparation_from_transform_plan(ForwarderProtocolPreparationInput {
                 transform_plan: &claude_plan,
-            },
-        );
+            });
         assert!(claude_preparation.should_transform_claude_request);
         assert_eq!(
-            claude_preparation.claude_api_format_for_transform.as_deref(),
+            claude_preparation
+                .claude_api_format_for_transform
+                .as_deref(),
             Some("openai_chat")
         );
         assert!(!claude_preparation.codex_chat_enrichment_enabled);
@@ -524,11 +561,10 @@ mod tests {
             codex_responses_to_chat: true,
             ..claude_plan
         };
-        let codex_preparation = forwarder_protocol_preparation_from_transform_plan(
-            ForwarderProtocolPreparationInput {
+        let codex_preparation =
+            forwarder_protocol_preparation_from_transform_plan(ForwarderProtocolPreparationInput {
                 transform_plan: &codex_bridge_plan,
-            },
-        );
+            });
         assert!(!codex_preparation.should_transform_claude_request);
         assert!(codex_preparation.claude_api_format_for_transform.is_none());
         assert!(codex_preparation.codex_chat_enrichment_enabled);
@@ -766,7 +802,10 @@ mod tests {
 
         assert_eq!(policy.transport, UpstreamTransportKind::PooledReqwest);
         assert_eq!(policy.base_timeout, Duration::from_secs(12));
-        assert_eq!(policy.reqwest_request_timeout, Some(Duration::from_secs(12)));
+        assert_eq!(
+            policy.reqwest_request_timeout,
+            Some(Duration::from_secs(12))
+        );
         assert_eq!(policy.streaming_header_timeout, None);
     }
 
@@ -837,6 +876,33 @@ mod tests {
             policy.streaming_header_timeout,
             Some(DEFAULT_UPSTREAM_SEND_TIMEOUT)
         );
+    }
+
+    #[test]
+    fn upstream_send_error_projection_preserves_host_contracts() {
+        let timeout = upstream_send_error_projection(UpstreamSendErrorInput {
+            is_timeout: true,
+            is_connect: true,
+            message: "upstream timed out".to_string(),
+        });
+        assert_eq!(timeout.status_kind, ProxyErrorStatusKind::Timeout);
+        assert_eq!(timeout.message, "请求超时: upstream timed out");
+
+        let connect = upstream_send_error_projection(UpstreamSendErrorInput {
+            is_timeout: false,
+            is_connect: true,
+            message: "dns lookup failed".to_string(),
+        });
+        assert_eq!(connect.status_kind, ProxyErrorStatusKind::ForwardFailed);
+        assert_eq!(connect.message, "连接失败: dns lookup failed");
+
+        let other = upstream_send_error_projection(UpstreamSendErrorInput {
+            is_timeout: false,
+            is_connect: false,
+            message: "invalid header value".to_string(),
+        });
+        assert_eq!(other.status_kind, ProxyErrorStatusKind::ForwardFailed);
+        assert_eq!(other.message, "invalid header value");
     }
 
     #[test]
