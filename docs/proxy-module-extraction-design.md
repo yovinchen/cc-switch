@@ -1442,6 +1442,7 @@
 1022. 托管账号统一命令的 `auth_provider` 白名单与 unsupported provider 错误文案已迁入 `proxy-core::managed_account_auth::ensure_managed_auth_provider`；Tauri `commands/auth.rs` 只消费 core validation 结果并分派到 Copilot/Codex OAuth manager。
 1023. 托管账号统一命令的 account/status/device-code response DTO 与默认账号标记规则已迁入 `proxy-core::managed_account_auth`；Tauri `commands/auth.rs` 只把 Copilot/Codex OAuth manager 返回的账号事实投影给 core response helper。
 1024. Copilot/Codex OAuth 托管账号的默认账号 fallback 与对外账号列表排序策略已迁入 `proxy-core::managed_account_auth`；host manager 只把本地账号存储投影为 core candidate/sort key，继续负责读写磁盘、token refresh 和 manager 状态锁。
+1025. Codex OAuth `id_token/access_token` claims 到 `account_id/email` 的提取优先级已迁入 `proxy-core::managed_account_auth`；host `codex_oauth_auth` 只保留 JWT payload 的 base64url decode 与 token HTTP/持久化流程。
 
 ## 背景
 

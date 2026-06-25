@@ -186,6 +186,77 @@ pub fn codex_oauth_missing_account_id_message() -> &'static str {
     "无法从 token 中提取 account_id"
 }
 
+#[derive(Debug, Clone, Default, serde::Deserialize, PartialEq, Eq)]
+pub struct CodexOAuthTokenClaims {
+    #[serde(default)]
+    pub chatgpt_account_id: Option<String>,
+    #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
+    pub organizations: Vec<CodexOAuthOrganizationClaim>,
+    #[serde(default, rename = "https://api.openai.com/auth")]
+    pub openai_auth: Option<CodexOAuthOpenAiAuthClaim>,
+}
+
+impl CodexOAuthTokenClaims {
+    pub fn account_id(&self) -> Option<String> {
+        self.chatgpt_account_id
+            .clone()
+            .or_else(|| {
+                self.openai_auth
+                    .as_ref()
+                    .and_then(|auth| auth.chatgpt_account_id.clone())
+            })
+            .or_else(|| {
+                self.organizations
+                    .first()
+                    .and_then(|organization| organization.id.clone())
+            })
+    }
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize, PartialEq, Eq)]
+pub struct CodexOAuthOrganizationClaim {
+    #[serde(default)]
+    pub id: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize, PartialEq, Eq)]
+pub struct CodexOAuthOpenAiAuthClaim {
+    #[serde(default)]
+    pub chatgpt_account_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CodexOAuthTokenIdentity {
+    pub account_id: Option<String>,
+    pub email: Option<String>,
+}
+
+pub fn codex_oauth_identity_from_token_claims(
+    id_claims: Option<&CodexOAuthTokenClaims>,
+    access_claims: Option<&CodexOAuthTokenClaims>,
+) -> CodexOAuthTokenIdentity {
+    let mut account_id = None;
+    let mut email = None;
+
+    if let Some(claims) = id_claims {
+        account_id = claims.account_id();
+        email = claims.email.clone();
+    }
+
+    if account_id.is_none() {
+        if let Some(claims) = access_claims {
+            account_id = claims.account_id();
+            if email.is_none() {
+                email = claims.email.clone();
+            }
+        }
+    }
+
+    CodexOAuthTokenIdentity { account_id, email }
+}
+
 pub fn unsupported_managed_auth_provider_message(auth_provider: &str) -> String {
     format!("Unsupported auth provider: {auth_provider}")
 }
@@ -865,7 +936,8 @@ mod tests {
         codex_oauth_device_verification_url, codex_oauth_authorization_code_form,
         codex_oauth_missing_account_id_message, codex_oauth_missing_pending_user_code_message,
         codex_oauth_missing_refresh_token_message, codex_oauth_pending_device_code_is_expired,
-        codex_oauth_poll_interval_secs, codex_oauth_refresh_failure, codex_oauth_refresh_token_form,
+        codex_oauth_identity_from_token_claims, codex_oauth_poll_interval_secs,
+        codex_oauth_refresh_failure, codex_oauth_refresh_token_form,
         codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon,
         codex_oauth_token_url,
         copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
@@ -874,7 +946,8 @@ mod tests {
         managed_auth_fallback_default_account_id,
         managed_auth_account_from_parts, managed_auth_device_code_response_from_parts,
         managed_auth_status_from_parts,
-        compare_managed_auth_account_order, ManagedAuthAccountSortKey,
+        compare_managed_auth_account_order, CodexOAuthOpenAiAuthClaim,
+        CodexOAuthOrganizationClaim, CodexOAuthTokenClaims, ManagedAuthAccountSortKey,
         ManagedAuthDefaultAccountCandidate,
         managed_account_app_handle_unavailable_error_message,
         managed_account_app_handle_unavailable_log_message,
@@ -1247,6 +1320,68 @@ mod tests {
             accounts.iter().map(|account| account.id).collect::<Vec<_>>(),
             vec!["acct-2", "acct-1"]
         );
+    }
+
+    #[test]
+    fn codex_oauth_token_claims_extract_account_id_by_priority() {
+        let direct = CodexOAuthTokenClaims {
+            chatgpt_account_id: Some("acct-direct".to_string()),
+            openai_auth: Some(CodexOAuthOpenAiAuthClaim {
+                chatgpt_account_id: Some("acct-namespaced".to_string()),
+            }),
+            organizations: vec![CodexOAuthOrganizationClaim {
+                id: Some("org-1".to_string()),
+            }],
+            ..Default::default()
+        };
+        assert_eq!(direct.account_id().as_deref(), Some("acct-direct"));
+
+        let namespaced = CodexOAuthTokenClaims {
+            openai_auth: Some(CodexOAuthOpenAiAuthClaim {
+                chatgpt_account_id: Some("acct-namespaced".to_string()),
+            }),
+            organizations: vec![CodexOAuthOrganizationClaim {
+                id: Some("org-1".to_string()),
+            }],
+            ..Default::default()
+        };
+        assert_eq!(namespaced.account_id().as_deref(), Some("acct-namespaced"));
+
+        let organization = CodexOAuthTokenClaims {
+            organizations: vec![CodexOAuthOrganizationClaim {
+                id: Some("org-1".to_string()),
+            }],
+            ..Default::default()
+        };
+        assert_eq!(organization.account_id().as_deref(), Some("org-1"));
+    }
+
+    #[test]
+    fn codex_oauth_identity_prefers_id_token_and_falls_back_to_access_token() {
+        let id_claims = CodexOAuthTokenClaims {
+            chatgpt_account_id: Some("acct-id".to_string()),
+            email: Some("id@example.com".to_string()),
+            ..Default::default()
+        };
+        let access_claims = CodexOAuthTokenClaims {
+            chatgpt_account_id: Some("acct-access".to_string()),
+            email: Some("access@example.com".to_string()),
+            ..Default::default()
+        };
+
+        let identity =
+            codex_oauth_identity_from_token_claims(Some(&id_claims), Some(&access_claims));
+        assert_eq!(identity.account_id.as_deref(), Some("acct-id"));
+        assert_eq!(identity.email.as_deref(), Some("id@example.com"));
+
+        let id_email_only = CodexOAuthTokenClaims {
+            email: Some("id@example.com".to_string()),
+            ..Default::default()
+        };
+        let identity =
+            codex_oauth_identity_from_token_claims(Some(&id_email_only), Some(&access_claims));
+        assert_eq!(identity.account_id.as_deref(), Some("acct-access"));
+        assert_eq!(identity.email.as_deref(), Some("id@example.com"));
     }
 
     impl ManagedAccountRuntimeSource for StaticManagedRuntimeSource {

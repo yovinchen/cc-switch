@@ -33,12 +33,14 @@ use crate::proxy_core_adapter::{
     codex_oauth_device_code_expires_in_secs, codex_oauth_device_code_request_failure,
     codex_oauth_device_poll_failure, codex_oauth_device_poll_status_kind,
     codex_oauth_device_usercode_request_body, codex_oauth_device_verification_url,
-    codex_oauth_missing_account_id_message, codex_oauth_missing_pending_user_code_message,
-    codex_oauth_missing_refresh_token_message, codex_oauth_pending_device_code_is_expired,
-    codex_oauth_poll_interval_secs, codex_oauth_refresh_failure, codex_oauth_refresh_token_form,
+    codex_oauth_identity_from_token_claims, codex_oauth_missing_account_id_message,
+    codex_oauth_missing_pending_user_code_message, codex_oauth_missing_refresh_token_message,
+    codex_oauth_pending_device_code_is_expired, codex_oauth_poll_interval_secs,
+    codex_oauth_refresh_failure, codex_oauth_refresh_token_form,
     codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon, codex_oauth_token_url,
     compare_managed_auth_account_order, managed_auth_fallback_default_account_id,
-    CodexOAuthDevicePollStatusKind, ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate,
+    CodexOAuthDevicePollStatusKind, CodexOAuthTokenClaims, ManagedAuthAccountSortKey,
+    ManagedAuthDefaultAccountCandidate,
 };
 
 /// User-Agent
@@ -114,31 +116,6 @@ struct OAuthTokenResponse {
     id_token: Option<String>,
     #[serde(default)]
     expires_in: Option<i64>,
-}
-
-/// 解析后的 JWT claims（仅关心 chatgpt_account_id 等字段）
-#[derive(Debug, Clone, Default, Deserialize)]
-struct IdTokenClaims {
-    #[serde(default)]
-    chatgpt_account_id: Option<String>,
-    #[serde(default)]
-    email: Option<String>,
-    #[serde(default)]
-    organizations: Vec<OrgClaim>,
-    #[serde(default, rename = "https://api.openai.com/auth")]
-    openai_auth: Option<OpenAiAuthClaim>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-struct OrgClaim {
-    #[serde(default)]
-    id: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-struct OpenAiAuthClaim {
-    #[serde(default)]
-    chatgpt_account_id: Option<String>,
 }
 
 /// 缓存的 access_token（含过期时间）
@@ -890,7 +867,7 @@ pub struct CodexOAuthStatus {
 // ==================== 工具函数 ====================
 
 /// 解析 JWT 中的 claims
-fn parse_jwt_claims(token: &str) -> Option<IdTokenClaims> {
+fn parse_jwt_claims(token: &str) -> Option<CodexOAuthTokenClaims> {
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
         return None;
@@ -901,44 +878,12 @@ fn parse_jwt_claims(token: &str) -> Option<IdTokenClaims> {
 
 /// 从 token 响应中提取 (account_id, email)
 fn extract_identity_from_tokens(tokens: &OAuthTokenResponse) -> (Option<String>, Option<String>) {
-    let mut account_id: Option<String> = None;
-    let mut email: Option<String> = None;
+    let id_claims = tokens.id_token.as_deref().and_then(parse_jwt_claims);
+    let access_claims = parse_jwt_claims(&tokens.access_token);
+    let identity =
+        codex_oauth_identity_from_token_claims(id_claims.as_ref(), access_claims.as_ref());
 
-    if let Some(id_token) = tokens.id_token.as_deref() {
-        if let Some(claims) = parse_jwt_claims(id_token) {
-            account_id = claims
-                .chatgpt_account_id
-                .clone()
-                .or_else(|| {
-                    claims
-                        .openai_auth
-                        .as_ref()
-                        .and_then(|a| a.chatgpt_account_id.clone())
-                })
-                .or_else(|| claims.organizations.first().and_then(|o| o.id.clone()));
-            email = claims.email.clone();
-        }
-    }
-
-    if account_id.is_none() {
-        if let Some(claims) = parse_jwt_claims(&tokens.access_token) {
-            account_id = claims
-                .chatgpt_account_id
-                .clone()
-                .or_else(|| {
-                    claims
-                        .openai_auth
-                        .as_ref()
-                        .and_then(|a| a.chatgpt_account_id.clone())
-                })
-                .or_else(|| claims.organizations.first().and_then(|o| o.id.clone()));
-            if email.is_none() {
-                email = claims.email.clone();
-            }
-        }
-    }
-
-    (account_id, email)
+    (identity.account_id, identity.email)
 }
 
 #[cfg(test)]

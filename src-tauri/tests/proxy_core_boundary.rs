@@ -1072,6 +1072,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn codex_oauth_missing_pending_user_code_message(",
     "fn codex_oauth_missing_refresh_token_message(",
     "fn codex_oauth_missing_account_id_message(",
+    "fn codex_oauth_identity_from_token_claims(",
     "fn unsupported_managed_auth_provider_message(",
     "fn ensure_managed_auth_provider(",
     "fn managed_auth_fallback_default_account_id(",
@@ -7820,6 +7821,7 @@ fn production_codex_oauth_auth_delegates_device_poll_contract_to_core() {
         "async fn refresh_with_token",
         "    // ==================== Token 获取",
     );
+    let identity_slice = function_slice(&source, "fn extract_identity_from_tokens", "#[cfg(test)]");
 
     for marker in [
         "const TOKEN_REFRESH_BUFFER_MS",
@@ -7842,6 +7844,9 @@ fn production_codex_oauth_auth_delegates_device_poll_contract_to_core() {
         "响应缺少 refresh_token",
         "无法从 token 中提取 account_id",
         "{status} - {text}",
+        "struct IdTokenClaims",
+        "struct OrgClaim",
+        "struct OpenAiAuthClaim",
     ] {
         assert!(
             !source.contains(marker),
@@ -7858,6 +7863,18 @@ fn production_codex_oauth_auth_delegates_device_poll_contract_to_core() {
         assert!(
             !poll_slice.contains(marker),
             "poll_for_token should not own Codex OAuth device poll status policy marker `{marker}`"
+        );
+    }
+
+    for marker in [
+        "claims.openai_auth",
+        "claims.organizations.first()",
+        "let mut account_id",
+        ".or_else(||",
+    ] {
+        assert!(
+            !identity_slice.contains(marker),
+            "extract_identity_from_tokens should not own Codex OAuth identity fallback marker `{marker}`"
         );
     }
 
@@ -7889,8 +7906,10 @@ fn production_codex_oauth_auth_delegates_device_poll_contract_to_core() {
             && refresh_slice.contains("codex_oauth_token_url(")
             && refresh_slice.contains("codex_oauth_refresh_failure(")
             && token_slice.contains("codex_oauth_token_is_expiring_soon(")
-            && valid_token_slice.contains("codex_oauth_access_token_expires_at_ms("),
-        "codex_oauth_auth.rs should delegate request, timing, and device poll status contracts to core"
+            && valid_token_slice.contains("codex_oauth_access_token_expires_at_ms(")
+            && source.contains("CodexOAuthTokenClaims")
+            && identity_slice.contains("codex_oauth_identity_from_token_claims("),
+        "codex_oauth_auth.rs should delegate request, timing, device poll status, and token identity contracts to core"
     );
 }
 
