@@ -5054,11 +5054,23 @@ fn claude_desktop_config_delegates_proxy_gateway_origin_to_adapter() {
         "claude_desktop_config should delegate proxy gateway origin formatting to proxy_core_adapter/core"
     );
     assert!(
+        gateway_url_slice.contains("claude_desktop_proxy_gateway_base_url("),
+        "claude_desktop_config should delegate Claude Desktop gateway endpoint formatting to proxy_core_adapter/core"
+    );
+    assert!(
         !source.contains("fn proxy_origin_from_parts("),
         "claude_desktop_config should not keep a duplicate proxy origin formatter"
     );
 
-    let forbidden_markers = ["\"0.0.0.0\"", "\"::\"", "connect_host", "starts_with('[')"];
+    let forbidden_markers = [
+        "\"0.0.0.0\"",
+        "\"::\"",
+        "connect_host",
+        "starts_with('[')",
+        "CLAUDE_DESKTOP_PROXY_PREFIX",
+        "\"/claude-desktop\"",
+        "format!(\"{proxy_origin}",
+    ];
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(gateway_url_slice) {
         let code = line.split("//").next().unwrap_or_default();
@@ -5075,7 +5087,7 @@ fn claude_desktop_config_delegates_proxy_gateway_origin_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "claude_desktop_config must keep proxy origin formatting in proxy-core:\n{}",
+        "claude_desktop_config must keep proxy origin and endpoint formatting in proxy-core:\n{}",
         violations.join("\n")
     );
 }

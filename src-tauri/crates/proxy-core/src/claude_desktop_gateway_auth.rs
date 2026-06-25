@@ -10,6 +10,7 @@ const ANTHROPIC_CLAUDE_ROUTE_PREFIX: &str = "anthropic/claude-";
 const ONE_M_CONTEXT_MARKER: &str = "[1m]";
 const CURRENT_OPUS_ROUTE_ID: &str = "claude-opus-4-8";
 const LEGACY_OPUS_ROUTE_ID: &str = "claude-opus-4-7";
+const CLAUDE_DESKTOP_PROXY_PREFIX: &str = "/claude-desktop";
 const DEFAULT_PROXY_ROUTE_SPECS: &[ClaudeDesktopDefaultProxyRouteSpec] = &[
     ClaudeDesktopDefaultProxyRouteSpec {
         route_id: "claude-sonnet-4-6",
@@ -195,6 +196,10 @@ pub fn claude_desktop_routes_support_1m_by_default(provider_type: Option<&str>) 
 
 pub fn claude_desktop_default_proxy_routes() -> &'static [ClaudeDesktopDefaultProxyRouteSpec] {
     DEFAULT_PROXY_ROUTE_SPECS
+}
+
+pub fn claude_desktop_proxy_gateway_base_url(proxy_origin: &str) -> String {
+    format!("{proxy_origin}{CLAUDE_DESKTOP_PROXY_PREFIX}")
 }
 
 pub fn claude_desktop_suggested_proxy_routes(
@@ -910,7 +915,7 @@ mod tests {
         claude_desktop_model_id_is_profile_safe, claude_desktop_profile_has_unsafe_model_ids,
         claude_desktop_provider_models_are_profile_safe, claude_desktop_provider_selection_error,
         claude_desktop_provider_unavailable_error,
-        claude_desktop_provider_unavailable_error_message,
+        claude_desktop_provider_unavailable_error_message, claude_desktop_proxy_gateway_base_url,
         claude_desktop_proxy_has_base_url_and_key, claude_desktop_proxy_model_routes,
         claude_desktop_proxy_provider_config_validation_issue,
         claude_desktop_proxy_request_upstream_model, claude_desktop_routes_support_1m_by_default,
@@ -925,6 +930,14 @@ mod tests {
     use crate::error::ProxyCoreError;
     use http::{HeaderMap, HeaderValue};
     use serde_json::{json, Value};
+
+    #[test]
+    fn proxy_gateway_base_url_appends_claude_desktop_endpoint() {
+        assert_eq!(
+            claude_desktop_proxy_gateway_base_url("http://127.0.0.1:15721"),
+            "http://127.0.0.1:15721/claude-desktop"
+        );
+    }
 
     #[test]
     fn gateway_bearer_value_accepts_existing_scheme_variants() {

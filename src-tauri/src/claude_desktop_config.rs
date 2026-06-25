@@ -27,7 +27,6 @@ const CONFIG_FILE: &str = "claude_desktop_config.json";
 #[cfg(any(target_os = "macos", windows, test))]
 const CONFIG_LIBRARY_DIR: &str = "configLibrary";
 const GATEWAY_TOKEN_SETTING_KEY: &str = "claude_desktop_gateway_token";
-const CLAUDE_DESKTOP_PROXY_PREFIX: &str = "/claude-desktop";
 const MIMO_REDACTED_THINKING_PLACEHOLDER: &str = "[redacted thinking]";
 const MIMO_TOOL_CALL_THINKING_PLACEHOLDER: &str = "tool call";
 
@@ -586,7 +585,7 @@ pub fn proxy_gateway_base_url_from_db(db: &Database) -> Result<String, AppError>
             "Claude Desktop 代理地址需要真实监听端口；请先启动本地代理或使用固定端口".to_string(),
         )
     })?;
-    Ok(format!("{proxy_origin}{CLAUDE_DESKTOP_PROXY_PREFIX}"))
+    Ok(crate::proxy_core_adapter::claude_desktop_proxy_gateway_base_url(&proxy_origin))
 }
 
 fn apply_provider_to_paths(

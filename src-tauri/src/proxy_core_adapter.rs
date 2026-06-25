@@ -2673,11 +2673,11 @@ pub(crate) use crate::proxy_core::api::auth::{
     claude_desktop_direct_gateway_credentials, claude_desktop_direct_inference_model_specs,
     claude_desktop_gateway_profile, claude_desktop_meta_applied_id,
     claude_desktop_meta_has_profile_entry, claude_desktop_meta_with_profile_entry,
-    claude_desktop_profile_has_unsafe_model_ids, claude_desktop_proxy_model_routes,
-    claude_desktop_proxy_request_upstream_model, ClaudeDesktopDirectGatewayCredentialIssue,
-    ClaudeDesktopDirectGatewayCredentials, ClaudeDesktopDirectModelRouteIssue,
-    ClaudeDesktopGatewayProfileModelSpec, ClaudeDesktopProxyRouteInput,
-    ClaudeDesktopResolvedProxyRoute,
+    claude_desktop_profile_has_unsafe_model_ids, claude_desktop_proxy_gateway_base_url,
+    claude_desktop_proxy_model_routes, claude_desktop_proxy_request_upstream_model,
+    ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectGatewayCredentials,
+    ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopGatewayProfileModelSpec,
+    ClaudeDesktopProxyRouteInput, ClaudeDesktopResolvedProxyRoute,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
