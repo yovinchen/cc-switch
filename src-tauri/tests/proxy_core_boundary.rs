@@ -8398,7 +8398,7 @@ fn production_forwarder_uses_request_source_resource() {
             && protocol_preparation_slice.contains("codex_chat_enrichment_enabled: bool"),
         "ForwarderProtocolPreparation must expose protocol-preparation decisions"
     );
-    let adapter_fact_inputs = [
+    let adapter_context_inputs = [
         (
             "ForwarderUpstreamRequestLogInput",
             function_slice(
@@ -8416,10 +8416,11 @@ fn production_forwarder_uses_request_source_resource() {
             ),
         ),
     ];
-    for (input_name, input_slice) in adapter_fact_inputs {
+    for (input_name, input_slice) in adapter_context_inputs {
         assert!(
-            input_slice.contains("adapter_facts: &'a ForwarderAdapterFacts"),
-            "{input_name} must carry the cohesive adapter facts"
+            input_slice.contains("adapter: &'a ForwarderAdapterContext")
+                && !input_slice.contains("adapter_facts: &'a ForwarderAdapterFacts"),
+            "{input_name} must use ForwarderAdapterContext instead of detached adapter facts"
         );
         assert!(
             !input_slice.contains("adapter_name: &'a str")

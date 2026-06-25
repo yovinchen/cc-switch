@@ -7932,7 +7932,7 @@ pub(crate) struct ForwarderPreparedRequest {
 }
 
 pub(crate) struct ForwarderUpstreamRequestLogInput<'a> {
-    pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
+    pub(crate) adapter: &'a ForwarderAdapterContext,
     pub(crate) url: &'a str,
     pub(crate) prepared_request: &'a ForwarderPreparedRequest,
 }
@@ -8132,7 +8132,7 @@ pub(crate) struct ForwarderRequestPartsInput<'a> {
     pub(crate) auth_headers: &'a [(http::HeaderName, http::HeaderValue)],
     pub(crate) channel_header_overrides: Option<&'a Value>,
     pub(crate) is_copilot: bool,
-    pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
+    pub(crate) adapter: &'a ForwarderAdapterContext,
     pub(crate) resolved_claude_api_format: Option<&'a str>,
     pub(crate) codex_oauth_session_headers: &'a [(http::HeaderName, http::HeaderValue)],
 }
@@ -8767,7 +8767,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     }
 
     fn log_upstream_request(&self, input: ForwarderUpstreamRequestLogInput<'_>) {
-        let tag = input.adapter_facts.adapter_name;
+        let tag = input.adapter.facts().adapter_name;
         let url = input.url;
         let request_model = &input.prepared_request.body_model_label;
 
@@ -8787,9 +8787,10 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         &self,
         input: ForwarderRequestPartsInput<'_>,
     ) -> Result<ForwarderUpstreamRequestParts, ProxyError> {
+        let adapter_facts = input.adapter.facts();
         let upstream_host = upstream_host_header_from_url(input.url);
         let should_send_anthropic_headers = should_send_anthropic_request_headers(
-            input.adapter_facts.adapter_name,
+            adapter_facts.adapter_name,
             input.resolved_claude_api_format,
         );
         let anthropic_beta_value = if should_send_anthropic_headers {
@@ -8826,7 +8827,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             .map_err(|error| ProxyError::AuthError(error.to_string()))?;
 
         let preserve_exact_header_case = should_preserve_exact_request_header_case(
-            input.adapter_facts.adapter_name,
+            adapter_facts.adapter_name,
             forwarder_is_codex_oauth_provider(input.provider),
             input.is_copilot,
             input.resolved_claude_api_format,
@@ -14679,6 +14680,58 @@ base_url = "https://api.openai.com/v1"
                 config: &config,
             })
             .is_none());
+    }
+
+    #[test]
+    fn forwarder_request_source_builds_upstream_parts_from_adapter_context() {
+        let source = default_forwarder_request_source();
+        let provider = Provider::with_id(
+            "headers".to_string(),
+            "Headers".to_string(),
+            json!({}),
+            None,
+        );
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let mut inbound_headers = HeaderMap::new();
+        inbound_headers.insert(
+            "anthropic-beta",
+            http::HeaderValue::from_static("other-beta"),
+        );
+        let prepared_request = ForwarderPreparedRequest {
+            body: json!({ "model": "claude-3", "messages": [] }),
+            request_is_streaming: false,
+            force_identity_encoding: false,
+            body_model_label: "claude-3".to_string(),
+            outbound_model: None,
+        };
+
+        let request_parts = source
+            .build_upstream_request_parts(ForwarderRequestPartsInput {
+                method: &http::Method::POST,
+                url: "https://upstream.example/v1/messages",
+                inbound_headers: &inbound_headers,
+                provider: &provider,
+                prepared_request: &prepared_request,
+                auth_headers: &[],
+                channel_header_overrides: None,
+                is_copilot: false,
+                adapter: &adapter,
+                resolved_claude_api_format: Some("anthropic"),
+                codex_oauth_session_headers: &[],
+            })
+            .expect("request parts");
+
+        assert!(request_parts.preserve_exact_header_case);
+        assert_eq!(
+            request_parts
+                .ordered_headers
+                .get("anthropic-beta")
+                .and_then(|value| value.to_str().ok()),
+            Some("claude-code-20250219,other-beta")
+        );
+        let serialized_body: Value =
+            serde_json::from_slice(&request_parts.body).expect("serialized body");
+        assert_eq!(serialized_body, prepared_request.body);
     }
 
     #[test]

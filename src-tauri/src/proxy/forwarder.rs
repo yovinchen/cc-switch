@@ -846,7 +846,6 @@ impl RequestForwarder {
                 is_full_url,
             })
             .await;
-        let adapter_facts = *adapter.facts();
         let resolved_claude_api_format = self
             .request_source
             .resolve_claude_api_format_for_adapter(ForwarderClaudeApiFormatInput {
@@ -983,13 +982,13 @@ impl RequestForwarder {
                         .channel()
                         .map(|channel| &channel.header_overrides),
                     is_copilot,
-                    adapter_facts: &adapter_facts,
+                    adapter,
                     resolved_claude_api_format: resolved_claude_api_format.as_deref(),
                     codex_oauth_session_headers: &codex_oauth_session_headers,
                 })?;
         self.request_source
             .log_upstream_request(ForwarderUpstreamRequestLogInput {
-                adapter_facts: &adapter_facts,
+                adapter,
                 url: &url,
                 prepared_request: &prepared_request,
             });
