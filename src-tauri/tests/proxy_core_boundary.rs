@@ -1732,23 +1732,29 @@ fn proxy_error_mapper_delegates_forward_failure_projection_to_adapter() {
 }
 
 #[test]
-fn proxy_error_mapper_delegates_display_message_policy_to_adapter() {
+fn proxy_error_mapper_excludes_status_and_display_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/error_mapper.rs");
     let source = fs::read_to_string(&path).expect("read error_mapper.rs");
-    let function = function_slice(
+    let policy_surface = function_slice(
         &source,
-        "pub fn get_error_message",
+        "use serde_json::Value;",
         "pub(crate) fn proxy_core_error_to_proxy_error",
     );
 
-    assert!(
-        function.contains("proxy_error_display_message(error)"),
-        "Proxy error mapper must delegate display-message policy to proxy_core_adapter"
-    );
-
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(function) {
+    for marker in [
+        "pub fn map_proxy_error_to_status",
+        "pub fn get_error_message",
+    ] {
+        if source.contains(marker) {
+            violations.push(format!(
+                "src/proxy/error_mapper.rs keeps pure error policy facade `{marker}`"
+            ));
+        }
+    }
+
+    for (line_index, line) in production_lines(policy_surface) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_ERROR_MAPPER_DISPLAY_MESSAGE_MARKERS {
             if code.contains(marker) {
@@ -1763,7 +1769,7 @@ fn proxy_error_mapper_delegates_display_message_policy_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "Proxy error mapper must not locally maintain ProxyError display messages:\n{}",
+        "Proxy error mapper must not locally maintain status or display-message policy facades:\n{}",
         violations.join("\n")
     );
 }

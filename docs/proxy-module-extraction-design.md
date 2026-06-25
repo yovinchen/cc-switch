@@ -1081,6 +1081,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续把 `ForwardAttempt::from_provider` 收成 test-only 构造器；生产 `ForwardAttempt` 只能从 `ProxyEngine` route selection 转成 channel-aware attempt，避免 provider-only fallback 构造路径回流。
 本轮继续删除 `ForwardError` 中未被 core error bridge 使用的 host `Provider` payload，并移除 `RequestForwarder` 预规划生产入口上的过时 dead-code allowance；forwarder 错误 surface 只保留 neutral `ProxyError` 分类事实。
 本轮继续把 `CcSwitchProxyServices::new` / `with_event_bus`、`DefaultRuntimeStatusSource` 与 `CcSwitchForwardPipeline::without_runtime` 收成 test-only；生产服务容器只暴露 runtime-backed `with_runtime` 构造路径。
+本轮继续删除 `proxy/error_mapper.rs` 中 `map_proxy_error_to_status` 与 `get_error_message` 两个纯策略 facade；错误状态码和展示文案测试直接调用 adapter 暴露的 core contract，error mapper 只保留桥接与响应构造职责。
 本轮继续把 `CcSwitchChannelSource` 的 route/materialized channel record list 读取与 `ChannelRecord` 投影收敛到 adapter-owned source wrapper。
 本轮继续把 `CcSwitchChannelSource` 的 legacy channel migration preview/materialize DB 操作与 response input 投影收敛到 adapter-owned source wrapper，host services 只装配 channel source。
 本轮继续把 `CcSwitchRoutePolicySource` 的 failover queue DB 读取与 `RoutePolicy` 投影迁入 adapter-owned source，host services 只装配 source。
@@ -1494,6 +1495,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1062. `ForwardAttempt::from_provider` 改为 `#[cfg(test)]`；生产 attempt 构造只保留 `from_core_selection` 路径，新增 boundary marker 防止 provider-only `ForwardAttempt` fallback 构造器重新进入生产 surface。
 1063. 删除 `ForwardError.provider` host payload 与 forwarder 预规划入口上的过时 `#[allow(dead_code)]`：`forward_error_to_core_error` 只消费 `ProxyError` 分类，新增 boundary marker 防止 host `Provider` 实体重新挂回 forward error surface。
 1064. `CcSwitchProxyServices` 的 no-runtime test fixture 构造链改为 `#[cfg(test)]`：`new`、`with_event_bus`、`DefaultRuntimeStatusSource` 和 `CcSwitchForwardPipeline::without_runtime` 不再属于生产 surface，生产服务容器只通过 `with_runtime` 装配可用 host runtime。
+1065. 删除 `proxy/error_mapper.rs` 的 `map_proxy_error_to_status` 与 `get_error_message` dead-code facade；状态码和展示文案行为继续由 `proxy_core_adapter` 暴露的 core contract 测试覆盖，新增 boundary marker 防止纯错误策略 wrapper 回流。
 
 ## 背景
 

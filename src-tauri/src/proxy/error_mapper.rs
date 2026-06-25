@@ -10,36 +10,13 @@ use crate::proxy_core_adapter::{
 use crate::proxy_core_adapter::{
     codex_proxy_error_response_from_proxy_error as core_codex_proxy_error_response,
     log_unlabeled_sse_fallback_event, parse_upstream_json_or_unlabeled_sse,
-    proxy_core_error_from_status_kind, proxy_error_display_message, proxy_error_status_code,
-    proxy_error_status_kind, upstream_response_parse_failure_log_message, ProxyCoreError,
-    ProxyCoreResponse, ProxyCoreResult, UnlabeledSseFallbackLogContext,
-    UpstreamResponseParseFailureLogContext, UpstreamSseAggregationKind,
+    proxy_core_error_from_status_kind, proxy_error_status_kind,
+    upstream_response_parse_failure_log_message, ProxyCoreError, ProxyCoreResponse,
+    ProxyCoreResult, UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
+    UpstreamSseAggregationKind,
 };
 use http::HeaderMap;
 use serde_json::Value;
-
-/// 将 ProxyError 映射到 HTTP 状态码
-///
-/// 映射规则：
-/// - 上游错误：直接使用上游返回的状态码
-/// - 超时：504 Gateway Timeout
-/// - 连接失败：502 Bad Gateway
-/// - 无可用 Provider：503 Service Unavailable
-/// - 重试耗尽：503 Service Unavailable
-/// - 认证错误：401 Unauthorized
-/// - 配置/请求错误：400 Bad Request
-/// - 转换错误：422 Unprocessable Entity
-/// - 其他错误：500 Internal Server Error
-#[allow(dead_code)]
-pub fn map_proxy_error_to_status(error: &ProxyError) -> u16 {
-    proxy_error_status_code(error)
-}
-
-/// 将 ProxyError 转换为用户友好的错误消息
-#[allow(dead_code)]
-pub fn get_error_message(error: &ProxyError) -> String {
-    proxy_error_display_message(error)
-}
 
 pub(crate) fn proxy_core_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
     match error {
@@ -240,58 +217,59 @@ pub(crate) fn codex_proxy_error_response(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core_adapter::{proxy_error_display_message, proxy_error_status_code};
 
     #[test]
-    fn test_map_upstream_error() {
+    fn adapter_status_contract_maps_upstream_error() {
         let error = ProxyError::UpstreamError {
             status: 401,
             body: Some("Unauthorized".to_string()),
         };
-        assert_eq!(map_proxy_error_to_status(&error), 401);
+        assert_eq!(proxy_error_status_code(&error), 401);
     }
 
     #[test]
-    fn test_map_timeout_error() {
+    fn adapter_status_contract_maps_timeout_error() {
         let error = ProxyError::Timeout("Request timeout".to_string());
-        assert_eq!(map_proxy_error_to_status(&error), 504);
+        assert_eq!(proxy_error_status_code(&error), 504);
     }
 
     #[test]
-    fn test_map_connection_error() {
+    fn adapter_status_contract_maps_connection_error() {
         let error = ProxyError::ForwardFailed("Connection refused".to_string());
-        assert_eq!(map_proxy_error_to_status(&error), 502);
+        assert_eq!(proxy_error_status_code(&error), 502);
     }
 
     #[test]
-    fn test_map_no_provider_error() {
+    fn adapter_status_contract_maps_no_provider_error() {
         let error = ProxyError::NoAvailableProvider;
-        assert_eq!(map_proxy_error_to_status(&error), 503);
+        assert_eq!(proxy_error_status_code(&error), 503);
     }
 
     #[test]
-    fn test_map_status_matches_proxy_error_response_semantics() {
+    fn adapter_status_contract_matches_proxy_error_response_semantics() {
         assert_eq!(
-            map_proxy_error_to_status(&ProxyError::AuthError("bad token".to_string())),
+            proxy_error_status_code(&ProxyError::AuthError("bad token".to_string())),
             401
         );
         assert_eq!(
-            map_proxy_error_to_status(&ProxyError::ConfigError("bad config".to_string())),
+            proxy_error_status_code(&ProxyError::ConfigError("bad config".to_string())),
             400
         );
         assert_eq!(
-            map_proxy_error_to_status(&ProxyError::InvalidRequest("bad request".to_string())),
+            proxy_error_status_code(&ProxyError::InvalidRequest("bad request".to_string())),
             400
         );
         assert_eq!(
-            map_proxy_error_to_status(&ProxyError::TransformError("bad transform".to_string())),
+            proxy_error_status_code(&ProxyError::TransformError("bad transform".to_string())),
             422
         );
         assert_eq!(
-            map_proxy_error_to_status(&ProxyError::StreamIdleTimeout(30)),
+            proxy_error_status_code(&ProxyError::StreamIdleTimeout(30)),
             504
         );
         assert_eq!(
-            map_proxy_error_to_status(&ProxyError::UpstreamError {
+            proxy_error_status_code(&ProxyError::UpstreamError {
                 status: 42,
                 body: None
             }),
@@ -300,12 +278,12 @@ mod tests {
     }
 
     #[test]
-    fn test_get_error_message() {
+    fn adapter_display_contract_maps_upstream_error_message() {
         let error = ProxyError::UpstreamError {
             status: 500,
             body: Some("Internal Server Error".to_string()),
         };
-        let msg = get_error_message(&error);
+        let msg = proxy_error_display_message(&error);
         assert!(msg.contains("上游错误"));
         assert!(msg.contains("500"));
         assert!(msg.contains("Internal Server Error"));
