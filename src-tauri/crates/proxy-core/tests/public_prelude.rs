@@ -915,6 +915,16 @@ fn external_host_can_use_management_auth_contracts_from_prelude() {
 }
 
 #[test]
+fn external_host_can_use_health_check_contracts_from_prelude() {
+    let request = HealthCheckRequest::new();
+    let response: HealthCheckResponse =
+        request.response_from_source(HealthCheckSource::new("2026-06-26T00:00:00Z"));
+
+    assert_eq!(response.status, "healthy");
+    assert_eq!(response.timestamp, "2026-06-26T00:00:00Z");
+}
+
+#[test]
 fn external_host_can_use_runtime_status_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
