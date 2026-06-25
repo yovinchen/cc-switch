@@ -7026,6 +7026,25 @@ fn proxy_core_adapter_delegates_live_backup_snapshot_policy_to_core() {
 }
 
 #[test]
+fn production_provider_live_excludes_legacy_snapshot_restore_surface() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/provider/live.rs");
+    let source = fs::read_to_string(&path).expect("read services/provider/live.rs");
+
+    for marker in [
+        "pub(crate) enum LiveSnapshot",
+        "impl LiveSnapshot",
+        "pub(crate) fn restore(&self)",
+        "crate::config::write_text_file(",
+    ] {
+        assert!(
+            !source.contains(marker),
+            "services/provider/live.rs must not retain legacy live snapshot restore marker `{marker}`"
+        );
+    }
+}
+
+#[test]
 fn proxy_core_adapter_delegates_live_takeover_match_app_dispatch_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
