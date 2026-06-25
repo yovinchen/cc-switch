@@ -123,6 +123,10 @@ pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
 pub(crate) type ClaudeDesktopGatewayAuthError =
     crate::proxy_core::api::auth::ClaudeDesktopGatewayAuthError;
 
+pub(crate) use crate::proxy_core::api::auth::{
+    ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
+};
+
 pub(crate) type ProxyErrorStatusKind = crate::proxy_core::api::errors::ProxyErrorStatusKind;
 
 pub(crate) use crate::proxy_core::api::errors::{
@@ -11217,124 +11221,52 @@ pub(crate) fn provider_claude_models_are_claude_safe(provider: &Provider) -> boo
 }
 
 pub(crate) fn provider_claude_desktop_routes_support_1m_by_default(provider: &Provider) -> bool {
-    !matches!(
+    crate::proxy_core::api::auth::claude_desktop_routes_support_1m_by_default(
         provider
             .meta
             .as_ref()
             .and_then(|meta| meta.provider_type.as_deref()),
-        Some("github_copilot") | Some("codex_oauth")
     )
 }
 
 pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key(provider: &Provider) -> bool {
-    let settings = &provider.settings_config;
-    let env = settings.get("env");
-    let has_base_url = env
-        .and_then(|value| value.get("ANTHROPIC_BASE_URL"))
-        .or_else(|| settings.get("base_url"))
-        .or_else(|| settings.get("baseURL"))
-        .or_else(|| settings.get("apiEndpoint"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-
-    if provider_is_typed_managed_oauth_proxy(provider) {
-        return has_base_url;
-    }
-
-    let has_key = env
-        .and_then(|value| {
-            [
-                "ANTHROPIC_AUTH_TOKEN",
-                "ANTHROPIC_API_KEY",
-                "OPENROUTER_API_KEY",
-                "OPENAI_API_KEY",
-                "GEMINI_API_KEY",
-            ]
-            .into_iter()
-            .find_map(|key| value.get(key))
-        })
-        .or_else(|| settings.get("apiKey"))
-        .or_else(|| settings.get("api_key"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-
-    has_base_url && has_key
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ClaudeDesktopDirectProviderValidationIssue {
-    SettingsNotObject,
-    ApiFormatUnsupported,
-    ProxyModeUnsupported,
-    ManagedProviderTypeUnsupported,
-    FullUrlUnsupported,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ClaudeDesktopProxyProviderConfigValidationIssue {
-    SettingsNotObject,
-    ApiFormatUnsupported(String),
+    crate::proxy_core::api::auth::claude_desktop_proxy_has_base_url_and_key(
+        claude_desktop_provider_validation_input(provider),
+    )
 }
 
 pub(crate) fn provider_claude_desktop_direct_validation_issue(
     provider: &Provider,
 ) -> Option<ClaudeDesktopDirectProviderValidationIssue> {
-    if !provider.settings_config.is_object() {
-        return Some(ClaudeDesktopDirectProviderValidationIssue::SettingsNotObject);
-    }
-
-    let meta = provider.meta.as_ref()?;
-    if let Some(api_format) = meta.api_format.as_deref() {
-        if !api_format.trim().is_empty() && api_format != "anthropic" {
-            return Some(ClaudeDesktopDirectProviderValidationIssue::ApiFormatUnsupported);
-        }
-    }
-
-    if matches!(
-        meta.claude_desktop_mode.as_ref(),
-        Some(crate::provider::ClaudeDesktopMode::Proxy)
-    ) {
-        return Some(ClaudeDesktopDirectProviderValidationIssue::ProxyModeUnsupported);
-    }
-
-    if matches!(
-        meta.provider_type.as_deref(),
-        Some("github_copilot") | Some("codex_oauth")
-    ) {
-        return Some(ClaudeDesktopDirectProviderValidationIssue::ManagedProviderTypeUnsupported);
-    }
-
-    if meta.is_full_url == Some(true) {
-        return Some(ClaudeDesktopDirectProviderValidationIssue::FullUrlUnsupported);
-    }
-
-    None
+    crate::proxy_core::api::auth::claude_desktop_direct_provider_validation_issue(
+        claude_desktop_provider_validation_input(provider),
+    )
 }
 
 pub(crate) fn provider_claude_desktop_proxy_config_validation_issue(
     provider: &Provider,
 ) -> Option<ClaudeDesktopProxyProviderConfigValidationIssue> {
-    if !provider.settings_config.is_object() {
-        return Some(ClaudeDesktopProxyProviderConfigValidationIssue::SettingsNotObject);
-    }
+    crate::proxy_core::api::auth::claude_desktop_proxy_provider_config_validation_issue(
+        claude_desktop_provider_validation_input(provider),
+    )
+}
 
-    let meta = provider.meta.as_ref()?;
-    if let Some(api_format) = meta.api_format.as_deref() {
-        if !matches!(
-            api_format,
-            "" | "anthropic" | "openai_chat" | "openai_responses" | "gemini_native"
-        ) {
-            return Some(
-                ClaudeDesktopProxyProviderConfigValidationIssue::ApiFormatUnsupported(
-                    api_format.to_string(),
-                ),
-            );
-        }
+fn claude_desktop_provider_validation_input(
+    provider: &Provider,
+) -> crate::proxy_core::api::auth::ClaudeDesktopProviderValidationInput<'_> {
+    let meta = provider.meta.as_ref();
+    crate::proxy_core::api::auth::ClaudeDesktopProviderValidationInput {
+        settings_config: &provider.settings_config,
+        api_format: meta.and_then(|meta| meta.api_format.as_deref()),
+        claude_desktop_mode_is_proxy: meta.is_some_and(|meta| {
+            matches!(
+                meta.claude_desktop_mode.as_ref(),
+                Some(crate::provider::ClaudeDesktopMode::Proxy)
+            )
+        }),
+        provider_type: meta.and_then(|meta| meta.provider_type.as_deref()),
+        is_full_url: meta.and_then(|meta| meta.is_full_url).unwrap_or(false),
     }
-
-    None
 }
 
 pub(crate) fn provider_should_normalize_mimo_anthropic_thinking_history(
@@ -11384,14 +11316,6 @@ fn provider_has_mimo_endpoint(provider: &Provider) -> bool {
 fn is_mimo_identifier(value: &str) -> bool {
     let value = value.to_ascii_lowercase();
     value.contains("mimo") || value.contains("xiaomimimo")
-}
-
-fn provider_is_typed_managed_oauth_proxy(provider: &Provider) -> bool {
-    provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.provider_type.as_deref())
-        .is_some_and(|provider_type| matches!(provider_type, "github_copilot" | "codex_oauth"))
 }
 
 pub(crate) fn provider_stream_check_test_config(

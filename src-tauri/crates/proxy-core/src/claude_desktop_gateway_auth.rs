@@ -1,5 +1,6 @@
 use http::HeaderMap;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 pub const CLAUDE_DESKTOP_MODEL_CREATED_AT: &str = "2024-01-01T00:00:00Z";
 
@@ -13,9 +14,7 @@ pub enum ClaudeDesktopGatewayAuthError {
 impl ClaudeDesktopGatewayAuthError {
     pub fn message(self) -> &'static str {
         match self {
-            Self::MissingAuthorizationHeader => {
-                "Claude Desktop gateway 缺少 Authorization 头"
-            }
+            Self::MissingAuthorizationHeader => "Claude Desktop gateway 缺少 Authorization 头",
             Self::InvalidAuthorizationHeader => "Authorization 头格式无效",
             Self::InvalidToken => "Claude Desktop gateway token 无效",
         }
@@ -56,6 +55,128 @@ pub fn validate_claude_desktop_gateway_bearer_header(
     validate_claude_desktop_gateway_bearer_value(value, expected_token)
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ClaudeDesktopProviderValidationInput<'a> {
+    pub settings_config: &'a Value,
+    pub api_format: Option<&'a str>,
+    pub claude_desktop_mode_is_proxy: bool,
+    pub provider_type: Option<&'a str>,
+    pub is_full_url: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaudeDesktopDirectProviderValidationIssue {
+    SettingsNotObject,
+    ApiFormatUnsupported,
+    ProxyModeUnsupported,
+    ManagedProviderTypeUnsupported,
+    FullUrlUnsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaudeDesktopProxyProviderConfigValidationIssue {
+    SettingsNotObject,
+    ApiFormatUnsupported(String),
+}
+
+pub fn claude_desktop_routes_support_1m_by_default(provider_type: Option<&str>) -> bool {
+    !is_managed_oauth_provider_type(provider_type)
+}
+
+pub fn claude_desktop_proxy_has_base_url_and_key(
+    input: ClaudeDesktopProviderValidationInput<'_>,
+) -> bool {
+    let settings = input.settings_config;
+    let env = settings.get("env");
+    let has_base_url = env
+        .and_then(|value| value.get("ANTHROPIC_BASE_URL"))
+        .or_else(|| settings.get("base_url"))
+        .or_else(|| settings.get("baseURL"))
+        .or_else(|| settings.get("apiEndpoint"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+
+    if is_managed_oauth_provider_type(input.provider_type) {
+        return has_base_url;
+    }
+
+    let has_key = env
+        .and_then(|value| {
+            [
+                "ANTHROPIC_AUTH_TOKEN",
+                "ANTHROPIC_API_KEY",
+                "OPENROUTER_API_KEY",
+                "OPENAI_API_KEY",
+                "GEMINI_API_KEY",
+            ]
+            .into_iter()
+            .find_map(|key| value.get(key))
+        })
+        .or_else(|| settings.get("apiKey"))
+        .or_else(|| settings.get("api_key"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+
+    has_base_url && has_key
+}
+
+pub fn claude_desktop_direct_provider_validation_issue(
+    input: ClaudeDesktopProviderValidationInput<'_>,
+) -> Option<ClaudeDesktopDirectProviderValidationIssue> {
+    if !input.settings_config.is_object() {
+        return Some(ClaudeDesktopDirectProviderValidationIssue::SettingsNotObject);
+    }
+
+    if let Some(api_format) = input.api_format {
+        if !api_format.trim().is_empty() && api_format != "anthropic" {
+            return Some(ClaudeDesktopDirectProviderValidationIssue::ApiFormatUnsupported);
+        }
+    }
+
+    if input.claude_desktop_mode_is_proxy {
+        return Some(ClaudeDesktopDirectProviderValidationIssue::ProxyModeUnsupported);
+    }
+
+    if is_managed_oauth_provider_type(input.provider_type) {
+        return Some(ClaudeDesktopDirectProviderValidationIssue::ManagedProviderTypeUnsupported);
+    }
+
+    if input.is_full_url {
+        return Some(ClaudeDesktopDirectProviderValidationIssue::FullUrlUnsupported);
+    }
+
+    None
+}
+
+pub fn claude_desktop_proxy_provider_config_validation_issue(
+    input: ClaudeDesktopProviderValidationInput<'_>,
+) -> Option<ClaudeDesktopProxyProviderConfigValidationIssue> {
+    if !input.settings_config.is_object() {
+        return Some(ClaudeDesktopProxyProviderConfigValidationIssue::SettingsNotObject);
+    }
+
+    if let Some(api_format) = input.api_format {
+        if !matches!(
+            api_format,
+            "" | "anthropic" | "openai_chat" | "openai_responses" | "gemini_native"
+        ) {
+            return Some(
+                ClaudeDesktopProxyProviderConfigValidationIssue::ApiFormatUnsupported(
+                    api_format.to_string(),
+                ),
+            );
+        }
+    }
+
+    None
+}
+
+fn is_managed_oauth_provider_type(provider_type: Option<&str>) -> bool {
+    matches!(provider_type, Some("github_copilot") | Some("codex_oauth"))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClaudeDesktopModelRouteInput {
     pub route_id: String,
@@ -77,11 +198,7 @@ pub struct ClaudeDesktopModelListItem {
     pub object_type: String,
     pub id: String,
     pub created_at: String,
-    #[serde(
-        default,
-        rename = "supports1m",
-        skip_serializing_if = "is_false"
-    )]
+    #[serde(default, rename = "supports1m", skip_serializing_if = "is_false")]
     pub supports_1m: bool,
 }
 
@@ -123,20 +240,21 @@ fn is_false(value: &bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
-        validate_claude_desktop_gateway_bearer_header,
-        validate_claude_desktop_gateway_bearer_value, ClaudeDesktopGatewayAuthError,
+        claude_desktop_direct_provider_validation_issue, claude_desktop_proxy_has_base_url_and_key,
+        claude_desktop_proxy_provider_config_validation_issue,
+        claude_desktop_routes_support_1m_by_default, validate_claude_desktop_gateway_bearer_header,
+        validate_claude_desktop_gateway_bearer_value, ClaudeDesktopDirectProviderValidationIssue,
+        ClaudeDesktopGatewayAuthError, ClaudeDesktopModelListResponse,
+        ClaudeDesktopModelRouteInput, ClaudeDesktopProviderValidationInput,
+        ClaudeDesktopProxyProviderConfigValidationIssue,
     };
     use http::{HeaderMap, HeaderValue};
     use serde_json::json;
 
     #[test]
     fn gateway_bearer_value_accepts_existing_scheme_variants() {
-        validate_claude_desktop_gateway_bearer_value(
-            Some("Bearer gateway-token"),
-            "gateway-token",
-        )
-        .expect("valid bearer");
+        validate_claude_desktop_gateway_bearer_value(Some("Bearer gateway-token"), "gateway-token")
+            .expect("valid bearer");
         validate_claude_desktop_gateway_bearer_value(
             Some("bearer gateway-token "),
             "gateway-token",
@@ -151,8 +269,11 @@ mod tests {
             ClaudeDesktopGatewayAuthError::MissingAuthorizationHeader
         );
         assert_eq!(
-            validate_claude_desktop_gateway_bearer_value(Some("Basic gateway-token"), "gateway-token")
-                .unwrap_err(),
+            validate_claude_desktop_gateway_bearer_value(
+                Some("Basic gateway-token"),
+                "gateway-token"
+            )
+            .unwrap_err(),
             ClaudeDesktopGatewayAuthError::InvalidToken
         );
         assert_eq!(
@@ -176,6 +297,147 @@ mod tests {
             validate_claude_desktop_gateway_bearer_header(&HeaderMap::new(), "gateway-token")
                 .unwrap_err(),
             ClaudeDesktopGatewayAuthError::MissingAuthorizationHeader
+        );
+    }
+
+    #[test]
+    fn provider_routes_disable_default_1m_for_managed_oauth_kinds() {
+        assert!(claude_desktop_routes_support_1m_by_default(None));
+        assert!(claude_desktop_routes_support_1m_by_default(Some("claude")));
+        assert!(!claude_desktop_routes_support_1m_by_default(Some(
+            "github_copilot"
+        )));
+        assert!(!claude_desktop_routes_support_1m_by_default(Some(
+            "codex_oauth"
+        )));
+    }
+
+    #[test]
+    fn proxy_credentials_allow_typed_oauth_without_static_key() {
+        let proxy_settings = json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://relay.example.com",
+                "ANTHROPIC_AUTH_TOKEN": "sk-provider"
+            }
+        });
+        assert!(claude_desktop_proxy_has_base_url_and_key(
+            ClaudeDesktopProviderValidationInput {
+                settings_config: &proxy_settings,
+                api_format: None,
+                claude_desktop_mode_is_proxy: false,
+                provider_type: None,
+                is_full_url: false,
+            }
+        ));
+
+        let missing_key_settings = json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://relay.example.com"
+            }
+        });
+        assert!(!claude_desktop_proxy_has_base_url_and_key(
+            ClaudeDesktopProviderValidationInput {
+                settings_config: &missing_key_settings,
+                api_format: None,
+                claude_desktop_mode_is_proxy: false,
+                provider_type: None,
+                is_full_url: false,
+            }
+        ));
+        assert!(claude_desktop_proxy_has_base_url_and_key(
+            ClaudeDesktopProviderValidationInput {
+                settings_config: &missing_key_settings,
+                api_format: None,
+                claude_desktop_mode_is_proxy: false,
+                provider_type: Some("codex_oauth"),
+                is_full_url: false,
+            }
+        ));
+    }
+
+    #[test]
+    fn provider_validation_reports_existing_issue_order() {
+        let settings = json!({});
+        let non_object = json!(null);
+
+        assert_eq!(
+            claude_desktop_direct_provider_validation_issue(ClaudeDesktopProviderValidationInput {
+                settings_config: &non_object,
+                api_format: None,
+                claude_desktop_mode_is_proxy: false,
+                provider_type: None,
+                is_full_url: false,
+            }),
+            Some(ClaudeDesktopDirectProviderValidationIssue::SettingsNotObject)
+        );
+        assert_eq!(
+            claude_desktop_proxy_provider_config_validation_issue(
+                ClaudeDesktopProviderValidationInput {
+                    settings_config: &non_object,
+                    api_format: None,
+                    claude_desktop_mode_is_proxy: false,
+                    provider_type: None,
+                    is_full_url: false,
+                }
+            ),
+            Some(ClaudeDesktopProxyProviderConfigValidationIssue::SettingsNotObject)
+        );
+
+        assert_eq!(
+            claude_desktop_direct_provider_validation_issue(ClaudeDesktopProviderValidationInput {
+                settings_config: &settings,
+                api_format: Some("openai_chat"),
+                claude_desktop_mode_is_proxy: false,
+                provider_type: None,
+                is_full_url: false,
+            }),
+            Some(ClaudeDesktopDirectProviderValidationIssue::ApiFormatUnsupported)
+        );
+        assert_eq!(
+            claude_desktop_direct_provider_validation_issue(ClaudeDesktopProviderValidationInput {
+                settings_config: &settings,
+                api_format: Some("anthropic"),
+                claude_desktop_mode_is_proxy: true,
+                provider_type: None,
+                is_full_url: false,
+            }),
+            Some(ClaudeDesktopDirectProviderValidationIssue::ProxyModeUnsupported)
+        );
+        assert_eq!(
+            claude_desktop_direct_provider_validation_issue(ClaudeDesktopProviderValidationInput {
+                settings_config: &settings,
+                api_format: Some("anthropic"),
+                claude_desktop_mode_is_proxy: false,
+                provider_type: Some("github_copilot"),
+                is_full_url: false,
+            }),
+            Some(ClaudeDesktopDirectProviderValidationIssue::ManagedProviderTypeUnsupported)
+        );
+        assert_eq!(
+            claude_desktop_direct_provider_validation_issue(ClaudeDesktopProviderValidationInput {
+                settings_config: &settings,
+                api_format: Some("anthropic"),
+                claude_desktop_mode_is_proxy: false,
+                provider_type: None,
+                is_full_url: true,
+            }),
+            Some(ClaudeDesktopDirectProviderValidationIssue::FullUrlUnsupported)
+        );
+        assert_eq!(
+            claude_desktop_proxy_provider_config_validation_issue(
+                ClaudeDesktopProviderValidationInput {
+                    settings_config: &settings,
+                    api_format: Some("unsupported_wire"),
+                    claude_desktop_mode_is_proxy: false,
+                    provider_type: None,
+                    is_full_url: false,
+                }
+            ),
+            Some(
+                ClaudeDesktopProxyProviderConfigValidationIssue::ApiFormatUnsupported(
+                    "unsupported_wire".to_string()
+                )
+            )
         );
     }
 

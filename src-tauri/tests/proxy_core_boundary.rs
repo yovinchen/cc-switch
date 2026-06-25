@@ -3298,6 +3298,84 @@ fn proxy_core_adapter_delegates_response_build_context_policy_to_core() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        source.contains("ClaudeDesktopProviderValidationInput"),
+        "proxy_core_adapter should project Provider facts into the core Claude Desktop validation input"
+    );
+    assert!(
+        source.contains("claude_desktop_proxy_has_base_url_and_key(")
+            && source.contains("claude_desktop_direct_provider_validation_issue(")
+            && source.contains("claude_desktop_proxy_provider_config_validation_issue("),
+        "proxy_core_adapter should delegate Claude Desktop provider validation policy to core"
+    );
+    assert!(
+        !source.contains("enum ClaudeDesktopDirectProviderValidationIssue")
+            && !source.contains("enum ClaudeDesktopProxyProviderConfigValidationIssue"),
+        "proxy_core_adapter must re-export Claude Desktop validation issue types from core"
+    );
+
+    let policy_slices = [
+        function_slice(
+            &source,
+            "pub(crate) fn provider_claude_desktop_routes_support_1m_by_default",
+            "pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key",
+        ),
+        function_slice(
+            &source,
+            "pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key",
+            "pub(crate) fn provider_claude_desktop_direct_validation_issue",
+        ),
+        function_slice(
+            &source,
+            "pub(crate) fn provider_claude_desktop_direct_validation_issue",
+            "pub(crate) fn provider_claude_desktop_proxy_config_validation_issue",
+        ),
+        function_slice(
+            &source,
+            "pub(crate) fn provider_claude_desktop_proxy_config_validation_issue",
+            "fn claude_desktop_provider_validation_input",
+        ),
+    ];
+    let forbidden_markers = [
+        "\"ANTHROPIC_AUTH_TOKEN\"",
+        "\"ANTHROPIC_API_KEY\"",
+        "\"OPENROUTER_API_KEY\"",
+        "\"OPENAI_API_KEY\"",
+        "\"GEMINI_API_KEY\"",
+        "Some(\"github_copilot\") | Some(\"codex_oauth\")",
+        "\"openai_chat\" | \"openai_responses\" | \"gemini_native\"",
+        "settings_config.is_object()",
+    ];
+
+    let mut violations = Vec::new();
+    for slice in policy_slices {
+        for (line_index, line) in production_lines(slice) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in forbidden_markers {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/proxy_core_adapter.rs:{} contains Claude Desktop provider policy marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Claude Desktop provider key/api_format/provider_type policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn handlers_delegate_response_parse_failure_logging_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");
