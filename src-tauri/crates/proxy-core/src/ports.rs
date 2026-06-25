@@ -2434,6 +2434,56 @@ pub struct ProviderCredentialValues {
     pub base_url: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodexCredentialParts {
+    pub api_key: Option<String>,
+    pub config_toml: Option<String>,
+}
+
+pub fn provider_codex_credential_values_from_parts(
+    parts: CodexCredentialParts,
+) -> Result<ProviderCredentialValues, ProviderCredentialIssue> {
+    let api_key = parts
+        .api_key
+        .ok_or(ProviderCredentialIssue::CodexApiKeyMissing)?;
+    let config_toml = parts.config_toml.as_deref().unwrap_or("");
+    let base_url = codex_base_url_from_config_toml(config_toml)?;
+
+    Ok(ProviderCredentialValues { api_key, base_url })
+}
+
+pub fn codex_base_url_from_config_toml(
+    config_toml: &str,
+) -> Result<String, ProviderCredentialIssue> {
+    let mut search = config_toml;
+    let mut saw_invalid_base_url_assignment = false;
+    while let Some(index) = search.find("base_url") {
+        let after_key = &search[index + "base_url".len()..];
+        let assignment = after_key.trim_start();
+        let Some(value) = assignment.strip_prefix('=') else {
+            search = after_key;
+            continue;
+        };
+        let value = value.trim_start();
+        let Some(quote) = value.chars().next().filter(|quote| matches!(quote, '"' | '\'')) else {
+            saw_invalid_base_url_assignment = true;
+            search = after_key;
+            continue;
+        };
+        let value = &value[quote.len_utf8()..];
+        let Some(end) = value.find(quote) else {
+            return Err(ProviderCredentialIssue::CodexBaseUrlInvalid);
+        };
+        return Ok(value[..end].to_string());
+    }
+
+    if saw_invalid_base_url_assignment || config_toml.contains("base_url") {
+        Err(ProviderCredentialIssue::CodexBaseUrlInvalid)
+    } else {
+        Err(ProviderCredentialIssue::CodexBaseUrlMissing)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClaudeEnvCredentials<'a> {
     pub api_key: Option<&'a str>,
@@ -5423,9 +5473,9 @@ mod tests {
         claude_takeover_auth_policy_from_provider_facts,
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
         ClaudeTakeoverProviderFacts,
-        CodexLiveTakeoverMatchFacts,
+        CodexCredentialParts, CodexLiveTakeoverMatchFacts,
         codex_live_auth_has_proxy_placeholder, codex_takeover_toml_config_patch,
-        CodexTakeoverTomlConfigPatch,
+        CodexTakeoverTomlConfigPatch, codex_base_url_from_config_toml,
         detect_gemini_auth_type, ensure_codex_takeover_auth_placeholder,
         gemini_contains_packycode_keyword, gemini_env_json_from_map,
         gemini_env_map_from_settings, gemini_env_parse_issue_spec,
@@ -5457,7 +5507,7 @@ mod tests {
         proxy_runtime_config_from_proxy_config, provider_additive_live_write_action_for_app,
         provider_additive_update_route_for_app,
         provider_app_has_current_provider, provider_category_is_official,
-        provider_credential_issue_spec,
+        provider_codex_credential_values_from_parts, provider_credential_issue_spec,
         provider_non_codex_common_config_snippet_from_settings,
         provider_non_codex_credential_values_from_settings,
         provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
@@ -7079,6 +7129,43 @@ mod tests {
                 "api": {"chat": "/v1/chat/completions"},
                 "models": {"fast": "claude-sonnet"}
             })
+        );
+    }
+
+    #[test]
+    fn codex_provider_credential_values_parse_config_toml_base_url() {
+        assert_eq!(
+            provider_codex_credential_values_from_parts(CodexCredentialParts {
+                api_key: Some("sk-test".to_string()),
+                config_toml: Some(
+                    "model = \"gpt-5\"\nbase_url = \"https://codex.example/v1\"\n".to_string()
+                ),
+            }),
+            Ok(ProviderCredentialValues {
+                api_key: "sk-test".to_string(),
+                base_url: "https://codex.example/v1".to_string(),
+            })
+        );
+        assert_eq!(
+            codex_base_url_from_config_toml(
+                "not_base_url = true\nbase_url = 'https://single.example/v1'"
+            ),
+            Ok("https://single.example/v1".to_string())
+        );
+        assert_eq!(
+            provider_codex_credential_values_from_parts(CodexCredentialParts {
+                api_key: None,
+                config_toml: Some("base_url = \"https://codex.example/v1\"".to_string()),
+            }),
+            Err(ProviderCredentialIssue::CodexApiKeyMissing)
+        );
+        assert_eq!(
+            codex_base_url_from_config_toml("model = \"gpt-5\""),
+            Err(ProviderCredentialIssue::CodexBaseUrlMissing)
+        );
+        assert_eq!(
+            codex_base_url_from_config_toml("base_url = https://codex.example/v1"),
+            Err(ProviderCredentialIssue::CodexBaseUrlInvalid)
         );
     }
 

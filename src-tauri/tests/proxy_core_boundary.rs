@@ -1122,6 +1122,13 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_CUSTOM_ENDPOINT_URL_POLICY_MARKERS: &[&str] =
     "\"URL 不能为空\"",
     "\"URL cannot be empty\"",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_CREDENTIAL_POLICY_MARKERS: &[&str] = &[
+    "Regex::new(",
+    "base_url\\s*=",
+    "config_toml.contains(\"base_url\")",
+    "CodexBaseUrlMissing",
+    "CodexBaseUrlInvalid",
+];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
     "ProviderKind::CodexOAuth",
@@ -2982,6 +2989,37 @@ fn proxy_core_adapter_delegates_custom_endpoint_url_policy_to_core() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter must keep custom endpoint URL policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    let slice = function_slice(
+        &source,
+        "pub(crate) fn provider_credential_values",
+        "pub(crate) struct OpenCodeLiveProviderFragment",
+    );
+    assert!(
+        slice.contains("core_provider_codex_credential_values_from_parts")
+            && slice.contains("CodexCredentialParts"),
+        "proxy_core_adapter should delegate Codex credential value policy to core"
+    );
+
+    let mut violations = Vec::new();
+    for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_CREDENTIAL_POLICY_MARKERS {
+        if slice.contains(marker) {
+            violations.push(*marker);
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Codex credential base_url parsing/error policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }

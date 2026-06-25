@@ -49,7 +49,6 @@ use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
 use http::{HeaderMap, Method};
 use indexmap::IndexMap;
-use regex::Regex;
 use rust_decimal::Decimal;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -313,6 +312,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_additive_update_route_for_app as core_provider_additive_update_route,
     provider_app_has_current_provider as core_provider_app_has_current_provider,
+    provider_codex_credential_values_from_parts as core_provider_codex_credential_values_from_parts,
     provider_credential_issue_spec,
     provider_default_live_import_settings as core_provider_default_live_import_settings,
     provider_delete_is_current_provider as core_provider_delete_is_current_provider,
@@ -352,7 +352,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     validate_gemini_settings_strict as core_validate_gemini_settings_strict,
     GeminiAuthType, GeminiAuthTypeInput, GeminiEnvParseIssue,
     GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, LocalizedErrorSpec,
-    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
+    CodexCredentialParts, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
     ProviderCredentialIssue, ProviderCredentialValues as CoreProviderCredentialValues,
     ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
     ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
@@ -2163,20 +2163,10 @@ pub(crate) fn provider_credential_values(
                 .ok_or(ProviderCredentialIssue::CodexAuthMissing)?;
             let config_toml =
                 codex_config_text_from_settings(&provider.settings_config).unwrap_or("");
-            let api_key = codex_api_key_from_auth_and_config(Some(auth), Some(config_toml))
-                .ok_or(ProviderCredentialIssue::CodexApiKeyMissing)?;
-            let base_url = if config_toml.contains("base_url") {
-                let re = Regex::new(r#"base_url\s*=\s*["']([^"']+)["']"#)
-                    .expect("static Codex base_url regex must compile");
-                re.captures(config_toml)
-                    .and_then(|caps| caps.get(1))
-                    .map(|m| m.as_str().to_string())
-                    .ok_or(ProviderCredentialIssue::CodexBaseUrlInvalid)?
-            } else {
-                return Err(ProviderCredentialIssue::CodexBaseUrlMissing);
-            };
-
-            Ok(ProviderCredentialValues { api_key, base_url })
+            core_provider_codex_credential_values_from_parts(CodexCredentialParts {
+                api_key: codex_api_key_from_auth_and_config(Some(auth), Some(config_toml)),
+                config_toml: Some(config_toml.to_string()),
+            })
         }
         AppType::Claude
         | AppType::ClaudeDesktop
