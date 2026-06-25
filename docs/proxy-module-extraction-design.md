@@ -1032,8 +1032,7 @@ Codex Responses→Chat 上游模型覆写与 reasoning options 解析已由 forw
 本轮继续把 forwarder 的 custom User-Agent header provider fact 收敛到 `proxy_core_adapter::forwarder_custom_user_agent_header`；request header 组装不再直接消费 provider 级 UA 投影 helper。
 forwarder provider URL facts 内部的 full URL 与 GitHub Copilot upstream 一跳 wrapper 已删除；adapter context 直接复用 `provider_is_full_url` / `provider_is_github_copilot_upstream`，`forwarder.rs` 仍只消费注入后的 URL facts。
 本轮继续把 forwarder 的 media prevention text-only provider 图片替换 fact 收敛到 `proxy-core::request_media::apply_forwarder_media_prevention_from_facts`；media 预防式降级不再直接消费 provider 级模型能力投影 helper。
-本轮继续把 forwarder 的 provider adapter transform gate 收敛到 `proxy_core_adapter::forwarder_provider_transform_required`；forwarder 不再直接调用 `ProviderAdapter::needs_transform`。
-本轮继续把 forwarder 的 provider adapter request transform 调用收敛到 `proxy_core_adapter::forwarder_provider_transform_request`；forwarder 不再直接调用 `ProviderAdapter::transform_request`。
+forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_provider_transform_required` / `forwarder_provider_transform_request` 已删除；adapter context 内部直接调用 trait，`forwarder.rs` 仍只通过 request source 执行 transform 策略。
 本轮继续把 usage sink 的计费配置 lookup 输入收敛到 adapter，host 不再直接拆 `UsageRecord` 的 app/provider 字段。
 本轮还把 core event 到 host event bus 的投影+分发入口收敛到 adapter，后续再把 event sink 端口实现本身收敛为 adapter-owned source wrapper。
 本轮继续把 `CcSwitchForwardPipeline` 本身迁为 adapter-owned optional runtime wrapper，runtime 缺失判断和 host forward runtime 调度都在 adapter wrapper 内完成；host services 只持有 `CcSwitchForwardPipeline<CcSwitchProxyRuntime>` 并保留 `HostForwardRuntime for CcSwitchProxyRuntime` 作为 DB/router/Tauri 资源装配点。
@@ -1460,6 +1459,7 @@ forwarder provider adapter name 的一跳 wrapper `forwarder_provider_adapter_na
 1040. Claude forwarder api_format 删除 `forwarder_claude_api_format` 一跳 wrapper；request source 和 `resolve_forwarder_claude_api_format` 直接复用 provider 级 adapter API，Copilot vendor 分流策略保持不变。
 1041. forwarder provider URL facts 删除 `forwarder_is_full_url_provider` / `forwarder_is_github_copilot_upstream` 两个一跳 wrapper；adapter context 在已持有 provider/base_url 的位置直接调用 provider 级事实投影。
 1042. forwarder provider adapter facts 删除 `forwarder_provider_adapter_name` 一跳 wrapper；adapter context 构造 facts 时直接读取 trait object name，外部 forwarder 仍只拿到聚合后的 adapter facts。
+1043. forwarder provider transform 删除 `forwarder_provider_transform_required` / `forwarder_provider_transform_request` 两个一跳 wrapper；adapter context 直接调用 trait object 的 transform gate/request，外部 forwarder 仍经 request source。
 
 ## 背景
 

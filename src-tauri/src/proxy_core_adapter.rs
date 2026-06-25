@@ -4284,7 +4284,7 @@ impl ForwarderAdapterContext {
     }
 
     fn provider_transform_required(&self, provider: &Provider) -> bool {
-        forwarder_provider_transform_required(self.adapter(), provider)
+        self.adapter().needs_transform(provider)
     }
 
     fn transform_provider_request(
@@ -4292,7 +4292,7 @@ impl ForwarderAdapterContext {
         body: Value,
         provider: &Provider,
     ) -> Result<Value, ProxyError> {
-        forwarder_provider_transform_request(self.adapter(), body, provider)
+        self.adapter().transform_request(body, provider)
     }
 
     fn provider_upstream_url(&self, base_url: &str, endpoint: &str) -> String {
@@ -4331,13 +4331,6 @@ pub(crate) fn resolve_forwarder_claude_api_format(
         is_copilot,
         copilot_model_vendor,
     )
-}
-
-pub(crate) fn forwarder_provider_transform_required(
-    adapter: &ForwarderAdapterHandle,
-    provider: &Provider,
-) -> bool {
-    adapter.needs_transform(provider)
 }
 
 pub(crate) fn forwarder_provider_base_url(
@@ -4438,14 +4431,6 @@ pub(crate) fn forwarder_provider_upstream_url(
     endpoint: &str,
 ) -> String {
     adapter.build_url(base_url, endpoint)
-}
-
-pub(crate) fn forwarder_provider_transform_request(
-    adapter: &ForwarderAdapterHandle,
-    body: Value,
-    provider: &Provider,
-) -> Result<Value, ProxyError> {
-    adapter.transform_request(body, provider)
 }
 
 pub(crate) fn forwarder_claude_normalize_anthropic_messages(
@@ -21001,22 +20986,13 @@ command = "latest-command"
             resolve_forwarder_claude_api_format(&provider, true, Some("OpenAI")),
             "openai_responses"
         );
-        assert!(forwarder_provider_transform_required(
-            &claude_adapter,
-            &provider
-        ));
-        assert!(!forwarder_provider_transform_required(
-            &codex_adapter,
-            &provider
-        ));
+        assert!(claude_adapter.needs_transform(&provider));
+        assert!(!codex_adapter.needs_transform(&provider));
         let passthrough_adapter_body = json!({"model": "gpt-4.1"});
         assert_eq!(
-            forwarder_provider_transform_request(
-                &codex_adapter,
-                passthrough_adapter_body.clone(),
-                &provider
-            )
-            .expect("codex passthrough transform"),
+            codex_adapter
+                .transform_request(passthrough_adapter_body.clone(), &provider)
+                .expect("codex passthrough transform"),
             passthrough_adapter_body
         );
         let mut passthrough_body = json!({"model": "claude-3-5-sonnet"});

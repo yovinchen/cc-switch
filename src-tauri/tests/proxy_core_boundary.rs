@@ -1192,6 +1192,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn forwarder_is_full_url_provider(",
     "fn forwarder_is_github_copilot_upstream(",
     "fn forwarder_provider_adapter_name(",
+    "fn forwarder_provider_transform_required(",
+    "fn forwarder_provider_transform_request(",
     "fn apply_provider_model_mapping(",
     "fn claude_takeover_client_model_for_upstream(",
     "fn claude_takeover_default_display_name(",
