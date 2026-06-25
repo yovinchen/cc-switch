@@ -1016,7 +1016,7 @@
 
 本轮继续把 `/proxy/v1/apps/{app}/models` 的模型目录 envelope 收敛到 `proxy-core::management_api`：新增 `AppModelCatalogSource` 与 `AppModelCatalogRequest::response(_from_source)`，`ProxyEngine::list_model_catalog_for_request` 只负责读取 route-visible models facts，app/group/interface JSON envelope 由 management contract 统一生成，并经 `api::prelude` 暴露给外部中转集成。
 
-forwarder 的 Claude 请求阶段 normalization 一跳 wrapper `forwarder_claude_normalize_anthropic_messages` 已删除；request source 直接复用 provider 级 normalize helper，transform 调用仍暂经 `forwarder_claude_transform_request_for_api_format`。
+forwarder 的 Claude 请求阶段 normalization 与 transform 一跳 wrapper `forwarder_claude_normalize_anthropic_messages` / `forwarder_claude_transform_request_for_api_format` 已删除；request/protocol source 直接复用 provider 级 Claude helper。
 
 本轮继续把 Gemini live settings 的 env/config 组装与 env-only backup JSON contract 收敛到 `proxy-core::ports::{gemini_live_settings_from_env_json_and_config,gemini_live_backup_from_effective_settings}`；host adapter 只 re-export core helper 供 live write/backup 流程使用。
 
@@ -1468,6 +1468,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1050. forwarder Anthropic rectifier gate 删除 `forwarder_uses_anthropic_rectifiers` 一跳 wrapper；request source 直接调用 provider 级 rectifier gate helper，forwarder 仍只消费 source 判定结果。
 1051. forwarder Codex Responses→Chat gate 删除 `forwarder_should_convert_codex_responses_to_chat` 一跳 wrapper；request source transform plan 直接组合 Codex app gate 与 provider 级 endpoint predicate。
 1052. forwarder Claude normalize 删除 `forwarder_claude_normalize_anthropic_messages` 一跳 wrapper；request source 直接调用 provider 级 normalize helper，body policy 行为由 request-source 单测覆盖。
+1053. forwarder Claude request transform 删除 `forwarder_claude_transform_request_for_api_format` 一跳 wrapper；protocol state source 直接调用 provider 级 transform helper，session id 与 Gemini shadow 传递逻辑保持在 source 内。
 
 ## 背景
 

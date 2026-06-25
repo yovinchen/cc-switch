@@ -4390,22 +4390,6 @@ pub(crate) fn stream_check_proxy_target_ids_from_db(
     )
 }
 
-pub(crate) fn forwarder_claude_transform_request_for_api_format(
-    body: Value,
-    provider: &Provider,
-    api_format: &str,
-    session_id: Option<&str>,
-    shadow_store: Option<&GeminiShadowStore>,
-) -> Result<Value, String> {
-    provider_claude_transform_request_for_api_format(
-        body,
-        provider,
-        api_format,
-        session_id,
-        shadow_store,
-    )
-}
-
 pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
     if provider_claude_kind(provider).needs_transform() {
         return true;
@@ -7394,7 +7378,7 @@ impl ForwarderProtocolStateSource for CcSwitchForwarderProtocolStateSource {
         let api_format = input.api_format.unwrap_or("anthropic");
         let session_id = input.session_client_provided.then_some(input.session_id);
 
-        forwarder_claude_transform_request_for_api_format(
+        provider_claude_transform_request_for_api_format(
             input.body,
             input.provider,
             api_format,
@@ -20924,7 +20908,7 @@ command = "latest-command"
         );
         let passthrough_body = json!({"model": "claude-3-5-sonnet"});
         assert_eq!(
-            forwarder_claude_transform_request_for_api_format(
+            provider_claude_transform_request_for_api_format(
                 passthrough_body.clone(),
                 &provider,
                 "anthropic",
