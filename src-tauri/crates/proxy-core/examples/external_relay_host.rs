@@ -1,16 +1,19 @@
 use cc_switch_proxy_core::api::prelude::*;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
-struct DemoRelayHost;
+struct DemoRelayHost {
+    usage: Mutex<Vec<UsageRecord>>,
+    events: Mutex<Vec<ProxyCoreEvent>>,
+}
 
 fn main() -> ProxyCoreResult<()> {
     futures::executor::block_on(run())
 }
 
 async fn run() -> ProxyCoreResult<()> {
-    let services = Arc::new(DemoRelayHost);
-    let engine = ProxyEngine::new(services);
+    let services = Arc::new(DemoRelayHost::default());
+    let engine = ProxyEngine::new(services.clone());
 
     let status = engine
         .proxy_status_response(ProxyStatusRequest::new())
@@ -43,6 +46,16 @@ async fn run() -> ProxyCoreResult<()> {
     request.route_group = Some("premium".to_string());
 
     let forwarded = engine.handle(request).await?;
+    let usage_count = services
+        .usage
+        .lock()
+        .expect("usage mutex")
+        .len();
+    let event_count = services
+        .events
+        .lock()
+        .expect("events mutex")
+        .len();
     let selected = route
         .candidates
         .first()
@@ -53,11 +66,13 @@ async fn run() -> ProxyCoreResult<()> {
         .ok_or_else(|| ProxyCoreError::Unavailable("missing listed channel".to_string()))?;
 
     println!(
-        "relay host ready: running={} route={} channel_base={} upstream={}",
+        "relay host ready: running={} route={} channel_base={} upstream={} usage_records={} events={}",
         status.status.running,
         selected.channel_id,
         listed.base_url,
-        forwarded.outbound_model.as_deref().unwrap_or("unknown")
+        forwarded.outbound_model.as_deref().unwrap_or("unknown"),
+        usage_count,
+        event_count
     );
 
     Ok(())
@@ -514,14 +529,20 @@ impl ManagementAuthSource for DemoRelayHost {
 }
 
 impl UsageSink for DemoRelayHost {
-    fn record_usage<'a>(&'a self, _record: UsageRecord) -> BoxFuture<'a, ProxyCoreResult<()>> {
-        Box::pin(async { Ok(()) })
+    fn record_usage<'a>(&'a self, record: UsageRecord) -> BoxFuture<'a, ProxyCoreResult<()>> {
+        Box::pin(async move {
+            self.usage.lock().expect("usage mutex").push(record);
+            Ok(())
+        })
     }
 }
 
 impl ProxyEventSink for DemoRelayHost {
-    fn emit_event<'a>(&'a self, _event: ProxyCoreEvent) -> BoxFuture<'a, ProxyCoreResult<()>> {
-        Box::pin(async { Ok(()) })
+    fn emit_event<'a>(&'a self, event: ProxyCoreEvent) -> BoxFuture<'a, ProxyCoreResult<()>> {
+        Box::pin(async move {
+            self.events.lock().expect("events mutex").push(event);
+            Ok(())
+        })
     }
 }
 
