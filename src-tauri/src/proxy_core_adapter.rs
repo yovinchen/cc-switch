@@ -6849,13 +6849,6 @@ pub(crate) fn attach_codex_model_catalog_from_provider(
     root.insert("modelCatalog".to_string(), model_catalog);
 }
 
-pub(crate) fn client_model_catalog_from_optional_raw(
-    app: &AppKind,
-    raw: Option<Value>,
-) -> ModelCatalog {
-    crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw(app.as_str(), raw)
-}
-
 pub(crate) fn client_model_catalog_raw_from_source(
     source: ClientModelCatalogSource,
 ) -> Option<Value> {
@@ -6870,7 +6863,10 @@ pub(crate) fn client_model_catalog_raw_from_source(
 pub(crate) fn client_model_catalog_from_app_source(app: &AppKind) -> ProxyCoreResult<ModelCatalog> {
     let source = client_model_catalog_source_for_app(app.as_str());
     let raw = client_model_catalog_raw_from_source(source);
-    Ok(client_model_catalog_from_optional_raw(app, raw))
+    Ok(crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw(
+        app.as_str(),
+        raw,
+    ))
 }
 
 #[derive(Clone)]
@@ -20593,8 +20589,8 @@ command = "latest-command"
             Some(&json!({ "models": [] }))
         );
 
-        let client_catalog = client_model_catalog_from_optional_raw(
-            &AppKind::Codex,
+        let client_catalog = crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw(
+            AppKind::Codex.as_str(),
             Some(json!({
                 "models": [
                     {"id": " gpt-5 "},

@@ -1410,6 +1410,7 @@
 990. Claude Desktop gateway token 加载失败的 auth error 构造已迁入 `proxy-core::claude_desktop_gateway_auth`；adapter 只负责调用宿主 token store 并把错误交给 core constructor。
 991. channel test probe 的 app type 解析失败 `InvalidRequest` 构造已迁入 `proxy-core::ports`；adapter 只负责执行宿主 `AppType` parse 并传递错误。
 992. AppError 桥接使用的 generic config/internal/invalid-request `ProxyCoreError` 构造已迁入 `proxy-core::error`；adapter 保留宿主错误类型分派但不再直接 new core error variant。
+993. client model catalog raw 到 `ModelCatalog` 的纯投影 facade 已从 adapter 移除；host 测试和 adapter 内部直接调用 `proxy-core::model_fetch` 的 stable API，adapter 仅保留 Codex active config 读取这类宿主 I/O。
 
 ## 背景
 

@@ -738,8 +738,8 @@ mod tests {
 
     #[test]
     fn model_catalog_from_raw_extracts_supported_client_model_ids() {
-        let catalog = crate::proxy_core_adapter::client_model_catalog_from_optional_raw(
-            &AppKind::Codex,
+        let catalog = crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw(
+            AppKind::Codex.as_str(),
             Some(json!({
                 "models": [
                     {"id": " gpt-5 "},
