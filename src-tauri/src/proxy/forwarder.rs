@@ -15,23 +15,23 @@ use crate::proxy_core_adapter::{
     ActiveConnectionGuard, CopilotOptimizerConfig, FailoverSwitchSchedulerRef,
     ForwarderAdapterContext, ForwarderAnthropicRectifierGateInput,
     ForwarderAppMediaPreventionInput, ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput,
-    ForwarderAttemptBodyInput, ForwarderAttemptRuntimeSourceRef,
-    ForwarderAuthHeadersInput, ForwarderAuthSourceRef, ForwarderChannelResponseStatusInput,
-    ForwarderClaudeBodyPolicyInput, ForwarderClaudeApiFormatInput, ForwarderClaudeProtocolTransformInput,
-    ForwarderCodexChatProtocolEnrichmentInput,
-    ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
-    ForwarderCopilotRequestOptimizationGateInput, ForwarderFailureDecision,
-    ForwarderMaybeCopilotAuthOptimizationInput, ForwarderMediaRetryPlanInput,
-    ForwarderProtocolPreparationInput, ForwarderProtocolStateSourceRef,
-    ForwarderProviderRequestBodyInput, ForwarderProviderUrlFacts,
-    ForwarderRectifierRetryFailureDecision,
-    ForwarderRectifierRetryKind, ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
+    ForwarderAttemptBodyInput, ForwarderAttemptRuntimeSourceRef, ForwarderAuthHeadersInput,
+    ForwarderAuthSourceRef, ForwarderChannelResponseStatusInput, ForwarderClaudeApiFormatInput,
+    ForwarderClaudeBodyPolicyInput, ForwarderClaudeProtocolTransformInput,
+    ForwarderCodexChatProtocolEnrichmentInput, ForwarderCopilotDynamicBaseUrlInput,
+    ForwarderCopilotLiveModelInput, ForwarderCopilotRequestOptimizationGateInput,
+    ForwarderFailureDecision, ForwarderMaybeCopilotAuthOptimizationInput,
+    ForwarderMediaRetryPlanInput, ForwarderProtocolPreparationInput,
+    ForwarderProtocolStateSourceRef, ForwarderProviderRequestBodyInput, ForwarderProviderUrlFacts,
+    ForwarderRectifierRetryFailureDecision, ForwarderRectifierRetryKind,
+    ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
     ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan, ForwarderRequestSourceRef,
-    ForwarderResponseFinalizationInput, ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef,
-    ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
-    ForwarderRuntimeConfig, ForwarderTransformPlanInput, ForwarderTransportSourceRef,
-    ForwarderUpstreamRequestLogInput, ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,
-    OptimizerConfig, RectifierConfig, ResolvedChannelAttempt,
+    ForwarderResponseFinalizationInput, ForwarderResponseSourceRef, ForwarderRuntimeConfig,
+    ForwarderRuntimeStateSourceRef, ForwarderThinkingBudgetRectifierInput,
+    ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
+    ForwarderTransportSourceRef, ForwarderUpstreamRequestLogInput,
+    ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput, OptimizerConfig, RectifierConfig,
+    ResolvedChannelAttempt,
 };
 use crate::{app_config::AppType, provider::Provider};
 use http::Extensions;
@@ -257,11 +257,7 @@ impl RequestForwarder {
                 )
                 .await;
                 self.runtime_state_source
-                    .record_provider_rectifier_retry_failure(
-                        provider,
-                        retry_kind,
-                        &retry_err,
-                    )
+                    .record_provider_rectifier_retry_failure(provider, retry_kind, &retry_err)
                     .await;
                 *last_error = Some(retry_err);
                 *last_provider = Some(provider.clone());
@@ -890,24 +886,23 @@ impl RequestForwarder {
         let effective_endpoint = url_plan.effective_endpoint;
         let url = url_plan.url;
 
-        let claude_transformed_body =
-            if protocol_preparation.should_transform_claude_request {
-                Some(
-                    self.protocol_state_source
-                        .transform_claude_request(ForwarderClaudeProtocolTransformInput {
-                            body: mapped_body.clone(),
-                            provider,
-                            api_format: protocol_preparation
-                                .claude_api_format_for_transform
-                                .as_deref(),
-                            session_id: &self.session_id,
-                            session_client_provided: self.session_client_provided,
-                        })
-                        .map_err(ProxyError::TransformError)?,
-                )
-            } else {
-                None
-            };
+        let claude_transformed_body = if protocol_preparation.should_transform_claude_request {
+            Some(
+                self.protocol_state_source
+                    .transform_claude_request(ForwarderClaudeProtocolTransformInput {
+                        body: mapped_body.clone(),
+                        provider,
+                        api_format: protocol_preparation
+                            .claude_api_format_for_transform
+                            .as_deref(),
+                        session_id: &self.session_id,
+                        session_client_provided: self.session_client_provided,
+                    })
+                    .map_err(ProxyError::TransformError)?,
+            )
+        } else {
+            None
+        };
 
         self.protocol_state_source
             .enrich_codex_chat_request(ForwarderCodexChatProtocolEnrichmentInput {
@@ -1007,12 +1002,12 @@ impl RequestForwarder {
             })
             .await?;
 
-        let response = self
-            .response_source
-            .apply_channel_response_status_mapping(ForwarderChannelResponseStatusInput {
+        let response = self.response_source.apply_channel_response_status_mapping(
+            ForwarderChannelResponseStatusInput {
                 response,
                 channel: attempt.channel(),
-            })?;
+            },
+        )?;
 
         let response = self
             .response_source

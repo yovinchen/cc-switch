@@ -188,11 +188,7 @@ pub(crate) async fn resolve_codex_oauth(
             let error = error.to_string();
             log::error!(
                 "{}",
-                managed_account_token_failure_log_message(
-                    runtime,
-                    account_id.as_deref(),
-                    &error
-                )
+                managed_account_token_failure_log_message(runtime, account_id.as_deref(), &error)
             );
             Err(ProxyError::AuthError(
                 managed_account_token_failure_error_message(runtime, &error),

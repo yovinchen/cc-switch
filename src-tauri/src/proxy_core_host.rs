@@ -38,11 +38,12 @@ mod tests {
     use crate::proxy_core_adapter::{
         proxy_response_to_core_response, ChannelStatus, ProviderKind, ProxyBody,
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,
-        ProxyCoreChannelOverrides as ChannelOverrides, ProxyCoreError, ProxyCoreEventType,
-        ProxyCoreInterfaceKind as InterfaceKind, ProxyCoreModelCapabilities as ModelCapabilities,
-        ProxyCoreModelRoute as ModelRoute, ProxyCoreUpstreamEndpoint as UpstreamEndpoint,
-        ProxyConfig, ProxyEngine, ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt,
-        RetryPolicy, RouteResolveRequest, RouteSelection, UsageRecord, UsageTokens,
+        ProxyConfig, ProxyCoreChannelOverrides as ChannelOverrides, ProxyCoreError,
+        ProxyCoreEventType, ProxyCoreInterfaceKind as InterfaceKind,
+        ProxyCoreModelCapabilities as ModelCapabilities, ProxyCoreModelRoute as ModelRoute,
+        ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyEngine, ProxyResponseBody,
+        ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy, RouteResolveRequest,
+        RouteSelection, UsageRecord, UsageTokens,
     };
     use bytes::Bytes;
     use futures::StreamExt;

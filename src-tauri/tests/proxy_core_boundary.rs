@@ -804,8 +804,10 @@ const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_DAO_MARKERS: &[&str] = &[
     "ProviderRouterChannelModelRecord",
     "channel_route_records(",
 ];
-const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_SOURCE_ADAPTER_MARKERS: &[&str] =
-    &["db: Arc<Database>", "router_channel_route_inputs_from_db_source("];
+const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_SOURCE_ADAPTER_MARKERS: &[&str] = &[
+    "db: Arc<Database>",
+    "router_channel_route_inputs_from_db_source(",
+];
 const FORBIDDEN_PROVIDER_ROUTER_HEALTH_STORE_ADAPTER_MARKERS: &[&str] = &[
     "record_provider_health_result_from_router_db(",
     "record_provider_health_attempt_from_router_db(",
@@ -3286,9 +3288,8 @@ fn proxy_core_adapter_delegates_custom_endpoint_url_policy_to_core() {
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
 
     assert!(
-        source.contains(
-            "pub(crate) use crate::proxy_core::api::management::custom_endpoint_url_key"
-        ),
+        source
+            .contains("pub(crate) use crate::proxy_core::api::management::custom_endpoint_url_key"),
         "proxy_core_adapter should expose the core custom endpoint URL key helper"
     );
 
@@ -3505,7 +3506,8 @@ fn proxy_core_adapter_delegates_default_live_import_category_to_core() {
     );
 
     assert!(
-        slice.matches("core_provider_default_live_import_category_from_parts")
+        slice
+            .matches("core_provider_default_live_import_category_from_parts")
             .count()
             >= 1,
         "proxy_core_adapter should delegate default live import category decisions to core"
@@ -3631,7 +3633,9 @@ fn proxy_core_adapter_delegates_gemini_live_config_policy_to_core() {
 
     assert!(
         production_source.contains("core_gemini_live_config_object_from_settings")
-            && production_source.contains("pub(crate) use crate::proxy_core::api::ports::gemini_live_settings_to_write"),
+            && production_source.contains(
+                "pub(crate) use crate::proxy_core::api::ports::gemini_live_settings_to_write"
+            ),
         "proxy_core_adapter should delegate Gemini live config selection/merge policy to core"
     );
 
@@ -6566,7 +6570,11 @@ fn proxy_core_adapter_delegates_live_placeholder_app_dispatch_to_core() {
         "proxy_core_adapter should only project the host TOML bearer-token fact for Codex"
     );
 
-    for marker in ["AppType::Claude =>", "AppType::Codex =>", "AppType::Gemini =>"] {
+    for marker in [
+        "AppType::Claude =>",
+        "AppType::Codex =>",
+        "AppType::Gemini =>",
+    ] {
         assert!(
             !function.contains(marker),
             "proxy_core_adapter must not keep app-specific placeholder dispatch marker `{marker}`"
@@ -7128,7 +7136,11 @@ fn production_forwarder_uses_managed_auth_runtime_source_resource() {
     let source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let struct_slice = function_slice(
+        &source,
+        "pub struct RequestForwarder",
+        "impl RequestForwarder",
+    );
     let auth_source_slice = function_slice(
         &adapter_source,
         "struct CcSwitchForwarderAuthSource",
@@ -7147,7 +7159,8 @@ fn production_forwarder_uses_managed_auth_runtime_source_resource() {
         "RequestForwarder must depend on auth/request sources instead of holding managed-account runtime directly"
     );
     assert!(
-        auth_source_slice.contains("managed_account_runtime_source: ManagedAccountRuntimeSourceRef")
+        auth_source_slice
+            .contains("managed_account_runtime_source: ManagedAccountRuntimeSourceRef")
             && request_source_slice
                 .contains("managed_account_runtime_source: ManagedAccountRuntimeSourceRef"),
         "Forwarder auth/request sources must own managed-account runtime reads"
@@ -7615,7 +7628,8 @@ fn production_forwarder_uses_auth_source_resource() {
         "ForwarderAuthHeadersInput must not carry managed-account runtime source through RequestForwarder"
     );
     assert!(
-        auth_source_slice.contains("managed_account_runtime_source: ManagedAccountRuntimeSourceRef"),
+        auth_source_slice
+            .contains("managed_account_runtime_source: ManagedAccountRuntimeSourceRef"),
         "ForwarderAuthSource must own managed-account runtime source for auth resolution"
     );
     assert!(
@@ -7623,8 +7637,7 @@ fn production_forwarder_uses_auth_source_resource() {
         "ForwarderAuthSource must own the core AuthProvider for route-context auth resolution"
     );
     assert!(
-        auth_impl_slice.contains(".auth_provider")
-            && auth_impl_slice.contains(".resolve_auth("),
+        auth_impl_slice.contains(".auth_provider") && auth_impl_slice.contains(".resolve_auth("),
         "ForwarderAuthSource must call core AuthProvider before assembling upstream auth headers"
     );
     assert!(
@@ -7820,8 +7833,7 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     );
     assert!(
         runtime_trait_slice.contains("emit_attempt_failed_for_error")
-            && runtime_trait_slice
-                .contains("error: &ProxyError"),
+            && runtime_trait_slice.contains("error: &ProxyError"),
         "ForwarderRuntimeStateSource must own attempt-failed error message projection"
     );
     assert!(

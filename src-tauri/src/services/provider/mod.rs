@@ -28,15 +28,14 @@ use crate::proxy_core_adapter::{
     provider_switch_backfill_source_id, provider_switch_dispatch,
     provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
     provider_takeover_live_sync_target,
-    validate_provider_gemini_settings,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
     should_block_proxy_switch_to_provider, should_reapply_codex_official_live_for_provider,
-    should_skip_provider_legacy_common_config_migration, CommonConfigSnippetIssue,
-    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderCredentialIssue,
-    ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
-    ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
-    ProviderTakeoverLiveSyncTarget,
+    should_skip_provider_legacy_common_config_migration, validate_provider_gemini_settings,
+    CommonConfigSnippetIssue, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
+    ProviderCredentialIssue, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
+    ProviderLiveSyncScope, ProviderOmoVariant, ProviderSettingsValidationIssue,
+    ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -2294,9 +2293,7 @@ impl ProviderService {
                     crate::codex_config::validate_config_toml(cfg_text)?;
                 }
             }
-            AppType::Gemini => {
-                validate_provider_gemini_settings(provider)?
-            }
+            AppType::Gemini => validate_provider_gemini_settings(provider)?,
             AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {}
         }
 

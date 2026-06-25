@@ -235,7 +235,6 @@ impl StreamCheckService {
     fn custom_user_agent(provider: &Provider) -> Option<HeaderValue> {
         provider_custom_user_agent_header(provider, false)
     }
-
 }
 
 #[cfg(test)]

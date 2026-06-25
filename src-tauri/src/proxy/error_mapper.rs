@@ -13,8 +13,7 @@ use crate::proxy_core_adapter::{
     log_unlabeled_sse_fallback_event, parse_upstream_json_or_unlabeled_sse,
     proxy_core_error_from_status_kind, proxy_error_display_message, proxy_error_status_code,
     upstream_response_parse_failure_log_message, ProxyCoreError, ProxyCoreResponse,
-    ProxyCoreResult,
-    UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
+    ProxyCoreResult, UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
     UpstreamSseAggregationKind,
 };
 use http::HeaderMap;
