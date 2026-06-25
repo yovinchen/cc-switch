@@ -78,6 +78,21 @@ fn channel_record(groups: Vec<String>) -> ChannelRecord {
     }
 }
 
+fn channel_model_record(
+    public_model: impl Into<String>,
+    upstream_model: impl Into<String>,
+) -> ChannelModelRecord {
+    channel_model_record_from_input(ChannelModelRecordInput {
+        channel_id: "channel-a".to_string(),
+        public_model: public_model.into(),
+        upstream_model: upstream_model.into(),
+        capabilities: json!({ "streaming": true }),
+        pricing_model: Some("relay-standard".to_string()),
+        request_overrides: json!({}),
+        response_overrides: json!({}),
+    })
+}
+
 impl ProxyConfigSource for ExternalRelayServices {
     fn list_apps<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<Vec<AppKind>>> {
         Box::pin(async { Ok(vec![AppKind::Claude]) })
@@ -263,6 +278,45 @@ impl ChannelSource for ExternalRelayServices {
     ) -> BoxFuture<'a, ProxyCoreResult<bool>> {
         let deleted = channel_id == "channel-a";
         Box::pin(async move { Ok(deleted) })
+    }
+
+    fn list_channel_model_records<'a>(
+        &'a self,
+        channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<Vec<ChannelModelRecord>>>> {
+        let models =
+            (channel_id == "channel-a").then(|| vec![channel_model_record("sonnet", "relay-sonnet")]);
+        Box::pin(async move { Ok(models) })
+    }
+
+    fn replace_channel_model_records<'a>(
+        &'a self,
+        channel_id: &'a str,
+        request: ProxyChannelModelsReplaceRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<Vec<ChannelModelRecord>>>> {
+        let channel_id = channel_id.to_string();
+        Box::pin(async move {
+            if channel_id != "channel-a" {
+                return Ok(None);
+            }
+
+            let models = request
+                .models
+                .into_iter()
+                .map(|model| {
+                    channel_model_record_from_input(ChannelModelRecordInput {
+                        channel_id: channel_id.clone(),
+                        public_model: model.public_model,
+                        upstream_model: model.upstream_model,
+                        capabilities: model.capabilities,
+                        pricing_model: model.pricing_model,
+                        request_overrides: model.request_overrides,
+                        response_overrides: model.response_overrides,
+                    })
+                })
+                .collect();
+            Ok(Some(models))
+        })
     }
 }
 
@@ -1026,6 +1080,63 @@ fn external_host_can_use_channel_crud_contracts_from_prelude() {
     assert!(delete_response.deleted);
     assert_eq!(helper_delete.channel_id, "channel-a");
     assert!(!helper_delete.deleted);
+}
+
+#[test]
+fn external_host_can_use_channel_model_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+    let path = ChannelPathRequest::from_path("channel-a").expect("channel path");
+
+    let list_response: ChannelModelsResponse<ChannelModelRecord> =
+        futures::executor::block_on(engine.channel_models_response(path.clone()))
+            .expect("channel models response");
+    let replace_response: ChannelModelsResponse<ChannelModelRecord> =
+        futures::executor::block_on(engine.replace_channel_models_response(
+            path.clone(),
+            ProxyChannelModelsReplaceRequest {
+                models: vec![ProxyChannelModelWriteRequest {
+                    public_model: "haiku".to_string(),
+                    upstream_model: "relay-haiku".to_string(),
+                    capabilities: json!({ "contextWindow": 200000 }),
+                    pricing_model: Some("relay-fast".to_string()),
+                    request_overrides: json!({ "temperature": 0.2 }),
+                    response_overrides: json!({ "stream": true }),
+                }],
+            },
+        ))
+        .expect("replace channel models response");
+    let helper_response: ChannelModelsResponse<ChannelModelRecord> = path
+        .models_response_from_source(ChannelModelsSource::new(Some(vec![channel_model_record(
+            "source-model",
+            "relay-source-model",
+        )])))
+        .expect("helper channel models response");
+
+    assert_eq!(list_response.channel_id, "channel-a");
+    assert_eq!(list_response.models.len(), 1);
+    assert_eq!(list_response.models[0].public_model, "sonnet");
+    assert_eq!(list_response.models[0].upstream_model, "relay-sonnet");
+
+    assert_eq!(replace_response.channel_id, "channel-a");
+    assert_eq!(replace_response.models.len(), 1);
+    assert_eq!(replace_response.models[0].public_model, "haiku");
+    assert_eq!(replace_response.models[0].upstream_model, "relay-haiku");
+    assert_eq!(
+        replace_response.models[0].pricing_model.as_deref(),
+        Some("relay-fast")
+    );
+    assert_eq!(
+        replace_response.models[0].capabilities,
+        json!({ "contextWindow": 200000 })
+    );
+
+    assert_eq!(helper_response.channel_id, "channel-a");
+    assert_eq!(helper_response.models[0].public_model, "source-model");
+    assert_eq!(
+        helper_response.models[0].upstream_model,
+        "relay-source-model"
+    );
 }
 
 #[test]
