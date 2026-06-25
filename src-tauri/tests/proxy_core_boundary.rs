@@ -1074,6 +1074,9 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn codex_oauth_missing_account_id_message(",
     "fn unsupported_managed_auth_provider_message(",
     "fn ensure_managed_auth_provider(",
+    "fn managed_auth_account_from_parts(",
+    "fn managed_auth_status_from_parts(",
+    "fn managed_auth_device_code_response_from_parts(",
     "fn copilot_token_is_expiring_soon(",
     "fn copilot_oauth_poll_error_kind(",
     "fn codex_default_model_context_window(",
@@ -5309,18 +5312,29 @@ fn managed_auth_commands_delegate_provider_validation_to_core() {
         "const AUTH_PROVIDER_",
         "fn ensure_auth_provider(",
         "Unsupported auth provider:",
+        "pub struct ManagedAuthAccount",
+        "pub struct ManagedAuthStatus",
+        "pub struct ManagedAuthDeviceCodeResponse",
+        "provider: provider.to_string()",
+        "is_default: default_account_id",
     ] {
         assert!(
             !source.contains(marker),
-            "commands/auth.rs should not own managed-auth provider validation marker `{marker}`"
+            "commands/auth.rs should not own managed-auth command contract marker `{marker}`"
         );
     }
 
     assert!(
         source.contains("ensure_managed_auth_provider(")
             && source.contains("GITHUB_COPILOT_AUTH_PROVIDER")
-            && source.contains("CODEX_OAUTH_AUTH_PROVIDER"),
-        "commands/auth.rs should consume core managed-auth provider validation through proxy_core_adapter"
+            && source.contains("CODEX_OAUTH_AUTH_PROVIDER")
+            && source.contains("ManagedAuthAccount")
+            && source.contains("ManagedAuthStatus")
+            && source.contains("ManagedAuthDeviceCodeResponse")
+            && source.contains("managed_auth_account_from_parts(")
+            && source.contains("managed_auth_status_from_parts(")
+            && source.contains("managed_auth_device_code_response_from_parts("),
+        "commands/auth.rs should consume core managed-auth command contracts through proxy_core_adapter"
     );
 }
 

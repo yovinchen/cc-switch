@@ -197,6 +197,91 @@ pub fn ensure_managed_auth_provider(auth_provider: &str) -> Result<&'static str,
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct ManagedAuthAccount {
+    pub id: String,
+    pub provider: String,
+    pub login: String,
+    pub avatar_url: Option<String>,
+    pub authenticated_at: i64,
+    pub is_default: bool,
+    pub github_domain: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct ManagedAuthStatus {
+    pub provider: String,
+    pub authenticated: bool,
+    pub default_account_id: Option<String>,
+    pub migration_error: Option<String>,
+    pub accounts: Vec<ManagedAuthAccount>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct ManagedAuthDeviceCodeResponse {
+    pub provider: String,
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    pub expires_in: u64,
+    pub interval: u64,
+}
+
+pub fn managed_auth_account_from_parts(
+    provider: &str,
+    id: String,
+    login: String,
+    avatar_url: Option<String>,
+    authenticated_at: i64,
+    github_domain: String,
+    default_account_id: Option<&str>,
+) -> ManagedAuthAccount {
+    let is_default = default_account_id == Some(id.as_str());
+    ManagedAuthAccount {
+        id,
+        provider: provider.to_string(),
+        login,
+        avatar_url,
+        authenticated_at,
+        is_default,
+        github_domain,
+    }
+}
+
+pub fn managed_auth_status_from_parts(
+    provider: &str,
+    authenticated: bool,
+    default_account_id: Option<String>,
+    migration_error: Option<String>,
+    accounts: Vec<ManagedAuthAccount>,
+) -> ManagedAuthStatus {
+    ManagedAuthStatus {
+        provider: provider.to_string(),
+        authenticated,
+        default_account_id,
+        migration_error,
+        accounts,
+    }
+}
+
+pub fn managed_auth_device_code_response_from_parts(
+    provider: &str,
+    device_code: String,
+    user_code: String,
+    verification_uri: String,
+    expires_in: u64,
+    interval: u64,
+) -> ManagedAuthDeviceCodeResponse {
+    ManagedAuthDeviceCodeResponse {
+        provider: provider.to_string(),
+        device_code,
+        user_code,
+        verification_uri,
+        expires_in,
+        interval,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManagedAccountAuthRuntime {
     GitHubCopilot,
@@ -725,6 +810,8 @@ mod tests {
         copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
         ensure_managed_auth_provider, headers_contain_proxy_auth_placeholder,
         is_managed_account_upstream_url,
+        managed_auth_account_from_parts, managed_auth_device_code_response_from_parts,
+        managed_auth_status_from_parts,
         managed_account_app_handle_unavailable_error_message,
         managed_account_app_handle_unavailable_log_message,
         managed_account_token_failure_error_message, managed_account_token_failure_log_message,
@@ -977,6 +1064,72 @@ mod tests {
             ensure_managed_auth_provider("unknown").unwrap_err(),
             "Unsupported auth provider: unknown"
         );
+    }
+
+    #[test]
+    fn managed_auth_command_response_contracts_mark_defaults_and_provider() {
+        let account = managed_auth_account_from_parts(
+            "github_copilot",
+            "acct-1".to_string(),
+            "octo".to_string(),
+            Some("https://avatar.example/octo.png".to_string()),
+            1_771_000_000,
+            "github.com".to_string(),
+            Some("acct-1"),
+        );
+
+        assert_eq!(account.provider, "github_copilot");
+        assert_eq!(account.id, "acct-1");
+        assert!(account.is_default);
+        assert_eq!(
+            account.avatar_url.as_deref(),
+            Some("https://avatar.example/octo.png")
+        );
+
+        let status = managed_auth_status_from_parts(
+            "github_copilot",
+            true,
+            Some("acct-1".to_string()),
+            Some("legacy warning".to_string()),
+            vec![account.clone()],
+        );
+        assert_eq!(status.provider, "github_copilot");
+        assert!(status.authenticated);
+        assert_eq!(status.default_account_id.as_deref(), Some("acct-1"));
+        assert_eq!(status.migration_error.as_deref(), Some("legacy warning"));
+        assert_eq!(status.accounts, vec![account]);
+
+        let device = managed_auth_device_code_response_from_parts(
+            "codex_oauth",
+            "device-1".to_string(),
+            "USER-1".to_string(),
+            "https://auth.example/device".to_string(),
+            900,
+            8,
+        );
+        assert_eq!(device.provider, "codex_oauth");
+        assert_eq!(device.device_code, "device-1");
+        assert_eq!(device.user_code, "USER-1");
+        assert_eq!(device.verification_uri, "https://auth.example/device");
+        assert_eq!(device.expires_in, 900);
+        assert_eq!(device.interval, 8);
+    }
+
+    #[test]
+    fn managed_auth_command_account_contract_marks_non_default() {
+        let account = managed_auth_account_from_parts(
+            "codex_oauth",
+            "acct-2".to_string(),
+            "ChatGPT".to_string(),
+            None,
+            1_771_000_000,
+            "github.com".to_string(),
+            Some("acct-1"),
+        );
+
+        assert_eq!(account.provider, "codex_oauth");
+        assert!(!account.is_default);
+        assert_eq!(account.avatar_url, None);
     }
 
     impl ManagedAccountRuntimeSource for StaticManagedRuntimeSource {

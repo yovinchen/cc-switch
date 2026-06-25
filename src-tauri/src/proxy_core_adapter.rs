@@ -2643,6 +2643,8 @@ pub(crate) use crate::proxy_core::api::auth::{
     managed_account_id_for_auth_provider as core_managed_account_id_for_auth_provider,
     managed_account_token_failure_error_message, managed_account_token_failure_log_message,
     managed_account_token_request_log_message, managed_account_token_success_log_message,
+    managed_auth_account_from_parts, managed_auth_device_code_response_from_parts,
+    managed_auth_status_from_parts,
     managed_provider_auth_info_for_provider_kind as core_managed_provider_auth_info_for_provider_kind,
     provider_kind_is_codex_oauth as core_provider_kind_is_codex_oauth,
     provider_kind_is_github_copilot as core_provider_kind_is_github_copilot,
@@ -2653,7 +2655,8 @@ pub(crate) use crate::proxy_core::api::auth::{
     resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
     CodexOAuthDevicePollStatusKind, CopilotOAuthPollErrorKind, ManagedAccountAuthResolution,
     ManagedAccountAuthRuntime, ManagedAccountBindingInput, ManagedAccountBindingSource,
-    ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, CODEX_OAUTH_AUTH_PROVIDER,
+    ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagedAuthAccount,
+    ManagedAuthDeviceCodeResponse, ManagedAuthStatus, CODEX_OAUTH_AUTH_PROVIDER,
     GITHUB_COPILOT_AUTH_PROVIDER,
 };
 pub(crate) use crate::proxy_core::api::config::{

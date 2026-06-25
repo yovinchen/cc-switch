@@ -5,67 +5,40 @@ use crate::commands::copilot::CopilotAuthState;
 use crate::proxy::codex_oauth_auth::CodexOAuthError;
 use crate::proxy::copilot_auth::{CopilotAuthError, GitHubAccount, GitHubDeviceCodeResponse};
 use crate::proxy_core_adapter::{
-    ensure_managed_auth_provider, CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
+    ensure_managed_auth_provider, managed_auth_account_from_parts,
+    managed_auth_device_code_response_from_parts, managed_auth_status_from_parts,
+    ManagedAuthAccount, ManagedAuthDeviceCodeResponse, ManagedAuthStatus,
+    CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
 };
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ManagedAuthAccount {
-    pub id: String,
-    pub provider: String,
-    pub login: String,
-    pub avatar_url: Option<String>,
-    pub authenticated_at: i64,
-    pub is_default: bool,
-    pub github_domain: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ManagedAuthStatus {
-    pub provider: String,
-    pub authenticated: bool,
-    pub default_account_id: Option<String>,
-    pub migration_error: Option<String>,
-    pub accounts: Vec<ManagedAuthAccount>,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ManagedAuthDeviceCodeResponse {
-    pub provider: String,
-    pub device_code: String,
-    pub user_code: String,
-    pub verification_uri: String,
-    pub expires_in: u64,
-    pub interval: u64,
-}
 
 fn map_account(
     provider: &str,
     account: GitHubAccount,
     default_account_id: Option<&str>,
 ) -> ManagedAuthAccount {
-    ManagedAuthAccount {
-        is_default: default_account_id == Some(account.id.as_str()),
-        id: account.id,
-        provider: provider.to_string(),
-        login: account.login,
-        avatar_url: account.avatar_url,
-        authenticated_at: account.authenticated_at,
-        github_domain: account.github_domain,
-    }
+    managed_auth_account_from_parts(
+        provider,
+        account.id,
+        account.login,
+        account.avatar_url,
+        account.authenticated_at,
+        account.github_domain,
+        default_account_id,
+    )
 }
 
 fn map_device_code_response(
     provider: &str,
     response: GitHubDeviceCodeResponse,
 ) -> ManagedAuthDeviceCodeResponse {
-    ManagedAuthDeviceCodeResponse {
-        provider: provider.to_string(),
-        device_code: response.device_code,
-        user_code: response.user_code,
-        verification_uri: response.verification_uri,
-        expires_in: response.expires_in,
-        interval: response.interval,
-    }
+    managed_auth_device_code_response_from_parts(
+        provider,
+        response.device_code,
+        response.user_code,
+        response.verification_uri,
+        response.expires_in,
+        response.interval,
+    )
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -184,37 +157,37 @@ pub async fn auth_get_status(
             let auth_manager = copilot_state.0.read().await;
             let status = auth_manager.get_status().await;
             let default_account_id = status.default_account_id.clone();
-            Ok(ManagedAuthStatus {
-                provider: auth_provider.to_string(),
-                authenticated: status.authenticated,
-                default_account_id: default_account_id.clone(),
-                migration_error: status.migration_error,
-                accounts: status
+            Ok(managed_auth_status_from_parts(
+                auth_provider,
+                status.authenticated,
+                default_account_id.clone(),
+                status.migration_error,
+                status
                     .accounts
                     .into_iter()
                     .map(|account| {
                         map_account(auth_provider, account, default_account_id.as_deref())
                     })
                     .collect(),
-            })
+            ))
         }
         CODEX_OAUTH_AUTH_PROVIDER => {
             let auth_manager = codex_state.0.read().await;
             let status = auth_manager.get_status().await;
             let default_account_id = status.default_account_id.clone();
-            Ok(ManagedAuthStatus {
-                provider: auth_provider.to_string(),
-                authenticated: status.authenticated,
-                default_account_id: default_account_id.clone(),
-                migration_error: None,
-                accounts: status
+            Ok(managed_auth_status_from_parts(
+                auth_provider,
+                status.authenticated,
+                default_account_id.clone(),
+                None,
+                status
                     .accounts
                     .into_iter()
                     .map(|account| {
                         map_account(auth_provider, account, default_account_id.as_deref())
                     })
                     .collect(),
-            })
+            ))
         }
         _ => unreachable!(),
     }
