@@ -1881,6 +1881,28 @@ pub fn should_normalize_anthropic_tool_thinking_history(
         || settings_config_reasoning_vendor_endpoint(settings_config)
 }
 
+pub fn normalize_claude_anthropic_messages(
+    body: &mut Value,
+    settings_config: &Value,
+    api_format: &str,
+) -> bool {
+    if api_format.trim() != "anthropic" {
+        return false;
+    }
+
+    let mut changed = if should_normalize_anthropic_tool_thinking_history(
+        settings_config,
+        body,
+        api_format,
+    ) {
+        normalize_anthropic_tool_thinking_history(body)
+    } else {
+        false
+    };
+    changed |= normalize_deepseek_thinking_disabled_strip_effort(body, settings_config);
+    changed
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct MimoAnthropicThinkingNormalizationInput<'a> {
     pub settings_config: &'a Value,
@@ -6409,6 +6431,44 @@ mod tests {
         assert!(!should_normalize_anthropic_tool_thinking_history(
             &settings,
             &body,
+            "openai_chat"
+        ));
+    }
+
+    #[test]
+    fn normalize_claude_anthropic_messages_combines_tool_and_deepseek_rules() {
+        let settings = json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic"
+            }
+        });
+        let mut body = json!({
+            "model": "deepseek-v4-pro",
+            "thinking": {"type": "disabled"},
+            "output_config": {"effort": "max"},
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    {"type": "tool_use", "id": "toolu_1", "name": "Read", "input": {}}
+                ]
+            }]
+        });
+
+        assert!(normalize_claude_anthropic_messages(
+            &mut body,
+            &settings,
+            "anthropic"
+        ));
+        assert!(body.get("output_config").is_none());
+        assert_eq!(
+            body["messages"][0]["content"][0]["thinking"],
+            ANTHROPIC_TOOL_THINKING_PLACEHOLDER
+        );
+
+        let mut non_anthropic_body = body.clone();
+        assert!(!normalize_claude_anthropic_messages(
+            &mut non_anthropic_body,
+            &settings,
             "openai_chat"
         ));
     }

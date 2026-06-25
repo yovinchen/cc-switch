@@ -5254,6 +5254,50 @@ fn proxy_core_adapter_delegates_claude_request_format_dispatch_to_core() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let normalize_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_claude_normalize_anthropic_messages",
+        "#[cfg(test)]\npub(crate) use crate::proxy_core::api::transport::inject_openai_stream_include_usage;",
+    );
+
+    assert!(
+        normalize_slice.contains("normalize_claude_anthropic_messages("),
+        "Claude message normalization composition must be delegated to proxy-core"
+    );
+
+    let forbidden_markers = [
+        "api_format.trim()",
+        "provider_should_normalize_anthropic_tool_thinking_history(",
+        "normalize_anthropic_tool_thinking_history(",
+        "provider_normalize_deepseek_thinking_disabled_strip_effort(",
+        "normalize_deepseek_thinking_disabled_strip_effort(",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(normalize_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs Claude message normalization:{} contains host-local marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Claude message normalization composition in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

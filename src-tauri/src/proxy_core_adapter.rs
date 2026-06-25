@@ -10088,44 +10088,22 @@ pub(crate) fn apply_channel_provider_overrides(
 
 pub(crate) use crate::proxy_core::api::transforms::{
     build_codex_tool_context_from_request as codex_tool_context_from_request,
-    normalize_anthropic_tool_thinking_history, normalize_codex_chat_error_body,
-    normalize_deepseek_thinking_disabled_strip_effort,
-    should_normalize_anthropic_tool_thinking_history,
+    normalize_claude_anthropic_messages, normalize_codex_chat_error_body,
 };
-
-pub(crate) fn provider_should_normalize_anthropic_tool_thinking_history(
-    provider: &Provider,
-    body: &Value,
-    api_format: &str,
-) -> bool {
-    should_normalize_anthropic_tool_thinking_history(&provider.settings_config, body, api_format)
-}
-
-pub(crate) fn provider_normalize_deepseek_thinking_disabled_strip_effort(
-    provider: &Provider,
-    body: &mut Value,
-) -> bool {
-    normalize_deepseek_thinking_disabled_strip_effort(body, &provider.settings_config)
-}
 
 pub(crate) fn provider_claude_normalize_anthropic_messages(
     body: &mut Value,
     provider: &Provider,
     api_format: &str,
 ) -> bool {
-    if api_format.trim() != "anthropic" {
-        return false;
-    }
-
-    let mut changed =
-        if provider_should_normalize_anthropic_tool_thinking_history(provider, body, api_format) {
-            normalize_anthropic_tool_thinking_history(body)
-        } else {
-            false
-        };
-    changed |= provider_normalize_deepseek_thinking_disabled_strip_effort(provider, body);
-    changed
+    normalize_claude_anthropic_messages(body, &provider.settings_config, api_format)
 }
+
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transforms::{
+    normalize_anthropic_tool_thinking_history, normalize_deepseek_thinking_disabled_strip_effort,
+    should_normalize_anthropic_tool_thinking_history,
+};
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::inject_openai_stream_include_usage;
