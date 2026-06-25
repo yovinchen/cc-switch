@@ -4856,6 +4856,102 @@ fn provider_command_delegates_claude_desktop_route_suggestions_to_adapter() {
 }
 
 #[test]
+fn provider_command_delegates_claude_desktop_import_decision_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/commands/provider.rs");
+    let source = fs::read_to_string(&path).expect("read commands/provider.rs");
+    let import_slice = function_slice(
+        &source,
+        "pub fn import_claude_desktop_providers_from_claude(",
+        "pub fn ensure_claude_desktop_official_provider(",
+    );
+
+    assert!(
+        import_slice.contains("provider_claude_desktop_import_decision(")
+            && import_slice.contains("ClaudeDesktopProviderImportDecision::Direct")
+            && import_slice.contains("ClaudeDesktopProviderImportDecision::Proxy")
+            && import_slice.contains("ClaudeDesktopProviderImportDecision::Skip"),
+        "commands/provider should delegate Claude Desktop import mode/route decision to proxy_core_adapter"
+    );
+
+    let forbidden_markers = [
+        "is_compatible_direct_provider(",
+        "provider_claude_models_are_claude_safe(",
+        "suggested_claude_desktop_routes(provider)",
+        "provider_claude_desktop_suggested_proxy_routes(",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_MODEL",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(import_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/commands/provider.rs import_claude_desktop_providers_from_claude:{} contains import decision policy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "commands/provider must keep Claude Desktop import decision policy in proxy_core_adapter/core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_owns_claude_desktop_import_decision_policy() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let import_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_claude_desktop_import_decision(",
+        "pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key(",
+    );
+
+    assert!(
+        import_slice.contains("provider_claude_desktop_direct_importable(")
+            && import_slice.contains("provider_claude_desktop_suggested_proxy_routes(")
+            && import_slice.contains("ClaudeDesktopProviderImportDecision::Direct")
+            && import_slice.contains("ClaudeDesktopProviderImportDecision::Proxy")
+            && import_slice.contains("ClaudeDesktopProviderImportDecision::Skip"),
+        "proxy_core_adapter should own Claude Desktop import direct/proxy/skip projection"
+    );
+
+    let forbidden_markers = [
+        "validate_direct_provider(",
+        "is_compatible_direct_provider(",
+        "crate::claude_desktop_config",
+        "state.db",
+        "save_provider(",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(import_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs provider_claude_desktop_import_decision:{} contains host-owned import marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Claude Desktop import policy free of command/db/file side effects:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn claude_desktop_config_delegates_proxy_route_projection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/claude_desktop_config.rs");

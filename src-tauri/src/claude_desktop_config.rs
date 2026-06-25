@@ -198,6 +198,7 @@ pub fn default_proxy_routes() -> Vec<ClaudeDesktopDefaultRoute> {
         .collect()
 }
 
+#[cfg(test)]
 pub fn is_compatible_direct_provider(provider: &Provider) -> bool {
     validate_direct_provider(provider).is_ok()
 }

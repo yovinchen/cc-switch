@@ -10693,6 +10693,48 @@ pub(crate) fn provider_claude_desktop_suggested_proxy_routes(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ClaudeDesktopProviderImportDecision {
+    Direct,
+    Proxy(std::collections::HashMap<String, crate::provider::ClaudeDesktopModelRoute>),
+    Skip,
+}
+
+pub(crate) fn provider_claude_desktop_import_decision(
+    provider: &Provider,
+) -> ClaudeDesktopProviderImportDecision {
+    if provider_claude_desktop_direct_importable(provider) {
+        return ClaudeDesktopProviderImportDecision::Direct;
+    }
+
+    provider_claude_desktop_suggested_proxy_routes(provider)
+        .map(ClaudeDesktopProviderImportDecision::Proxy)
+        .unwrap_or(ClaudeDesktopProviderImportDecision::Skip)
+}
+
+fn provider_claude_desktop_direct_importable(provider: &Provider) -> bool {
+    if provider_claude_desktop_direct_validation_issue(provider).is_some()
+        || !provider_claude_models_are_claude_safe(provider)
+        || claude_desktop_direct_gateway_credentials(&provider.settings_config).is_err()
+    {
+        return false;
+    }
+
+    let route_inputs = provider
+        .meta
+        .as_ref()
+        .into_iter()
+        .flat_map(|meta| meta.claude_desktop_model_routes.iter())
+        .map(|(route_id, route)| ClaudeDesktopProxyRouteInput {
+            route_id,
+            upstream_model: &route.model,
+            label_override: route.label_override.as_deref(),
+            supports_1m: route.supports_1m.unwrap_or(false),
+        });
+
+    claude_desktop_direct_inference_model_specs(route_inputs).is_ok()
+}
+
 pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key(provider: &Provider) -> bool {
     crate::proxy_core::api::auth::claude_desktop_proxy_has_base_url_and_key(
         claude_desktop_provider_validation_input(provider),
@@ -19595,6 +19637,56 @@ command = "latest-command"
             &openai_provider,
             "mimo-v2.5-pro"
         ));
+    }
+
+    #[test]
+    fn claude_desktop_import_decision_selects_direct_proxy_and_skip() {
+        let direct_provider = Provider::with_id(
+            "direct".to_string(),
+            "Direct".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
+                    "ANTHROPIC_AUTH_TOKEN": "sk-direct"
+                }
+            }),
+            None,
+        );
+        assert_eq!(
+            provider_claude_desktop_import_decision(&direct_provider),
+            ClaudeDesktopProviderImportDecision::Direct
+        );
+
+        let proxy_provider = Provider::with_id(
+            "proxy".to_string(),
+            "Proxy".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "kimi-k2"
+                }
+            }),
+            None,
+        );
+        let ClaudeDesktopProviderImportDecision::Proxy(routes) =
+            provider_claude_desktop_import_decision(&proxy_provider)
+        else {
+            panic!("expected proxy import decision");
+        };
+        assert_eq!(
+            routes.get("claude-sonnet-4-6").expect("sonnet route").model,
+            "kimi-k2"
+        );
+
+        let skipped_provider = Provider::with_id(
+            "skip".to_string(),
+            "Skip".to_string(),
+            json!({"env": {}}),
+            None,
+        );
+        assert_eq!(
+            provider_claude_desktop_import_decision(&skipped_provider),
+            ClaudeDesktopProviderImportDecision::Skip
+        );
     }
 
     #[test]

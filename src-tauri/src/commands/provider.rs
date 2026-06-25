@@ -5,9 +5,11 @@ use crate::app_config::AppType;
 use crate::commands::copilot::CopilotAuthState;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
+#[cfg(test)]
+use crate::proxy_core_adapter::provider_claude_desktop_suggested_proxy_routes;
 use crate::proxy_core_adapter::{
-    provider_claude_desktop_suggested_proxy_routes, provider_claude_models_are_claude_safe,
-    provider_github_copilot_managed_account_id, provider_usage_script,
+    provider_claude_desktop_import_decision, provider_github_copilot_managed_account_id,
+    provider_usage_script, ClaudeDesktopProviderImportDecision,
 };
 use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, SpeedtestService, SwitchResult,
@@ -193,15 +195,15 @@ pub fn import_claude_desktop_providers_from_claude(
         desktop_provider.in_failover_queue = false;
         let meta = desktop_provider.meta.get_or_insert_with(Default::default);
 
-        if crate::claude_desktop_config::is_compatible_direct_provider(provider)
-            && provider_claude_models_are_claude_safe(provider)
-        {
-            meta.claude_desktop_mode = Some(ClaudeDesktopMode::Direct);
-        } else if let Some(routes) = suggested_claude_desktop_routes(provider) {
-            meta.claude_desktop_mode = Some(ClaudeDesktopMode::Proxy);
-            meta.claude_desktop_model_routes = routes;
-        } else {
-            continue;
+        match provider_claude_desktop_import_decision(provider) {
+            ClaudeDesktopProviderImportDecision::Direct => {
+                meta.claude_desktop_mode = Some(ClaudeDesktopMode::Direct);
+            }
+            ClaudeDesktopProviderImportDecision::Proxy(routes) => {
+                meta.claude_desktop_mode = Some(ClaudeDesktopMode::Proxy);
+                meta.claude_desktop_model_routes = routes;
+            }
+            ClaudeDesktopProviderImportDecision::Skip => continue,
         }
 
         state
@@ -235,6 +237,7 @@ pub fn ensure_claude_desktop_official_provider(state: State<'_, AppState>) -> Re
         .map_err(|e| e.to_string())
 }
 
+#[cfg(test)]
 pub(crate) fn suggested_claude_desktop_routes(
     provider: &Provider,
 ) -> Option<std::collections::HashMap<String, crate::provider::ClaudeDesktopModelRoute>> {
