@@ -11273,49 +11273,16 @@ pub(crate) fn provider_should_normalize_mimo_anthropic_thinking_history(
     provider: &Provider,
     upstream_model: &str,
 ) -> bool {
-    if !provider_uses_anthropic_messages_format(provider) {
-        return false;
-    }
-
-    is_mimo_identifier(upstream_model) || provider_has_mimo_endpoint(provider)
-}
-
-fn provider_uses_anthropic_messages_format(provider: &Provider) -> bool {
-    let api_format = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.api_format.as_deref())
-        .or_else(|| {
-            provider
-                .settings_config
-                .get("api_format")
-                .and_then(Value::as_str)
-        })
-        .map(str::trim)
-        .unwrap_or("anthropic");
-
-    api_format.is_empty() || api_format == "anthropic"
-}
-
-fn provider_has_mimo_endpoint(provider: &Provider) -> bool {
-    let settings = &provider.settings_config;
-    [
-        settings
-            .get("env")
-            .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
-            .and_then(Value::as_str),
-        settings.get("base_url").and_then(Value::as_str),
-        settings.get("baseURL").and_then(Value::as_str),
-        settings.get("apiEndpoint").and_then(Value::as_str),
-    ]
-    .into_iter()
-    .flatten()
-    .any(is_mimo_identifier)
-}
-
-fn is_mimo_identifier(value: &str) -> bool {
-    let value = value.to_ascii_lowercase();
-    value.contains("mimo") || value.contains("xiaomimimo")
+    crate::proxy_core::api::transforms::should_normalize_mimo_anthropic_thinking_history(
+        crate::proxy_core::api::transforms::MimoAnthropicThinkingNormalizationInput {
+            settings_config: &provider.settings_config,
+            api_format: provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.api_format.as_deref()),
+            upstream_model,
+        },
+    )
 }
 
 pub(crate) fn provider_stream_check_test_config(

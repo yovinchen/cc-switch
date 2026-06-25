@@ -911,6 +911,9 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn should_normalize_anthropic_tool_thinking_history(",
     "fn normalize_anthropic_tool_thinking_history(",
     "fn normalize_deepseek_thinking_disabled_strip_effort(",
+    "fn provider_uses_anthropic_messages_format(",
+    "fn provider_has_mimo_endpoint(",
+    "fn is_mimo_identifier(",
     "fn inject_openai_stream_include_usage(",
     "fn resolve_gemini_native_url(",
     "fn claude_api_format_needs_transform(",
@@ -3371,6 +3374,53 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter must keep Claude Desktop provider key/api_format/provider_type policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_mimo_thinking_normalization_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    let slice = function_slice(
+        &source,
+        "pub(crate) fn provider_should_normalize_mimo_anthropic_thinking_history",
+        "pub(crate) fn provider_stream_check_test_config",
+    );
+
+    let delegates_to_core = slice.contains("MimoAnthropicThinkingNormalizationInput")
+        && slice.contains(
+            "crate::proxy_core::api::transforms::should_normalize_mimo_anthropic_thinking_history(",
+        );
+    assert!(
+        delegates_to_core,
+        "proxy_core_adapter should project Provider facts into the core MiMo thinking normalization gate"
+    );
+
+    let forbidden_markers = [
+        "provider_uses_anthropic_messages_format(",
+        "provider_has_mimo_endpoint(",
+        "is_mimo_identifier(",
+        "\"api_format\"",
+        "\"ANTHROPIC_BASE_URL\"",
+        "\"base_url\"",
+        "\"baseURL\"",
+        "\"apiEndpoint\"",
+        "xiaomimimo",
+        ".contains(\"mimo\")",
+    ];
+    let mut violations = Vec::new();
+    for marker in forbidden_markers {
+        if slice.contains(marker) {
+            violations.push(marker);
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep MiMo endpoint/model/api_format policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }

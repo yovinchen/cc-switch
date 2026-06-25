@@ -1609,6 +1609,45 @@ pub fn should_normalize_anthropic_tool_thinking_history(
         || settings_config_reasoning_vendor_endpoint(settings_config)
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct MimoAnthropicThinkingNormalizationInput<'a> {
+    pub settings_config: &'a Value,
+    pub api_format: Option<&'a str>,
+    pub upstream_model: &'a str,
+}
+
+pub fn should_normalize_mimo_anthropic_thinking_history(
+    input: MimoAnthropicThinkingNormalizationInput<'_>,
+) -> bool {
+    if !uses_anthropic_messages_api_format(input.settings_config, input.api_format) {
+        return false;
+    }
+
+    is_mimo_vendor_identifier(input.upstream_model)
+        || settings_config_mimo_endpoint(input.settings_config)
+}
+
+fn uses_anthropic_messages_api_format(settings_config: &Value, api_format: Option<&str>) -> bool {
+    let api_format = api_format
+        .or_else(|| settings_config.get("api_format").and_then(Value::as_str))
+        .map(str::trim)
+        .unwrap_or("anthropic");
+
+    api_format.is_empty() || api_format == "anthropic"
+}
+
+fn settings_config_mimo_endpoint(settings_config: &Value) -> bool {
+    settings_config_endpoint_candidates(settings_config)
+        .into_iter()
+        .flatten()
+        .any(is_mimo_vendor_identifier)
+}
+
+fn is_mimo_vendor_identifier(value: &str) -> bool {
+    let value = value.to_ascii_lowercase();
+    value.contains("mimo")
+}
+
 fn settings_config_reasoning_vendor_endpoint(settings_config: &Value) -> bool {
     settings_config_endpoint_candidates(settings_config)
     .into_iter()
@@ -5875,6 +5914,49 @@ mod tests {
             &settings,
             &body,
             "openai_chat"
+        ));
+    }
+
+    #[test]
+    fn mimo_thinking_history_normalization_gate_uses_anthropic_format_and_mimo_facts() {
+        assert!(should_normalize_mimo_anthropic_thinking_history(
+            MimoAnthropicThinkingNormalizationInput {
+                settings_config: &json!({}),
+                api_format: None,
+                upstream_model: "mimo-v2.5-pro",
+            }
+        ));
+        assert!(should_normalize_mimo_anthropic_thinking_history(
+            MimoAnthropicThinkingNormalizationInput {
+                settings_config: &json!({"baseURL": "https://api.xiaomimimo.com/anthropic"}),
+                api_format: None,
+                upstream_model: "claude-sonnet-4-6",
+            }
+        ));
+        assert!(should_normalize_mimo_anthropic_thinking_history(
+            MimoAnthropicThinkingNormalizationInput {
+                settings_config: &json!({}),
+                api_format: Some(""),
+                upstream_model: "mimo-v2.5-pro",
+            }
+        ));
+
+        assert!(!should_normalize_mimo_anthropic_thinking_history(
+            MimoAnthropicThinkingNormalizationInput {
+                settings_config: &json!({"baseURL": "https://api.xiaomimimo.com/anthropic"}),
+                api_format: Some("openai_chat"),
+                upstream_model: "mimo-v2.5-pro",
+            }
+        ));
+        assert!(!should_normalize_mimo_anthropic_thinking_history(
+            MimoAnthropicThinkingNormalizationInput {
+                settings_config: &json!({
+                    "api_format": "openai_chat",
+                    "baseURL": "https://api.xiaomimimo.com/anthropic"
+                }),
+                api_format: None,
+                upstream_model: "mimo-v2.5-pro",
+            }
         ));
     }
 

@@ -1363,6 +1363,7 @@
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 977. Claude Desktop gateway 的 provider 可用性、1M 默认能力、API format 支持范围、managed OAuth 直连禁用和 proxy 模式 Base URL/API Key 校验规则已迁入 `proxy-core::claude_desktop_gateway_auth`；host adapter 只把 `Provider.settings_config` 与 `Provider.meta` 投影为 `ClaudeDesktopProviderValidationInput`。
+978. MiMo Anthropic thinking history normalization gate 已迁入 `proxy-core::response_transform::should_normalize_mimo_anthropic_thinking_history`；host adapter 只投影 provider settings/meta 与 upstream model。
 
 ## 背景
 
