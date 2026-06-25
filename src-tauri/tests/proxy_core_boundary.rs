@@ -10789,6 +10789,62 @@ fn production_lib_does_not_compile_proxy_core_host_compat_module() {
 }
 
 #[test]
+fn proxy_core_host_compat_surface_stays_test_only() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_host.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
+    let lines: Vec<&str> = source.lines().collect();
+    let test_module_start = lines
+        .windows(2)
+        .position(|window| {
+            window[0].trim() == "#[cfg(test)]" && window[1].trim_start().starts_with("mod tests")
+        })
+        .expect("proxy_core_host.rs should contain a cfg(test) tests module");
+
+    let mut pending_test_cfg = false;
+    let mut in_test_gated_item = false;
+    let mut violations = Vec::new();
+
+    for (line_index, line) in lines.iter().take(test_module_start).enumerate() {
+        let code = line.split("//").next().unwrap_or_default().trim();
+        if code.is_empty() {
+            continue;
+        }
+
+        if in_test_gated_item {
+            if code.ends_with(';') {
+                in_test_gated_item = false;
+            }
+            continue;
+        }
+
+        if code == "#[cfg(test)]" {
+            pending_test_cfg = true;
+            continue;
+        }
+
+        let is_compat_import = code.starts_with("use ") || code.starts_with("pub(crate) use ");
+        if pending_test_cfg && is_compat_import {
+            pending_test_cfg = false;
+            in_test_gated_item = !code.ends_with(';');
+            continue;
+        }
+
+        violations.push(format!(
+            "src/proxy_core_host.rs:{} contains non-test-only compat surface `{}`",
+            line_index + 1,
+            code
+        ));
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_host.rs must remain a test-only compatibility shell; production services belong in proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_proxy_server_delegates_runtime_state_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/server.rs");
