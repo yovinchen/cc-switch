@@ -78,6 +78,22 @@ fn channel_record(groups: Vec<String>) -> ChannelRecord {
     }
 }
 
+fn channel_key_record(
+    key_ref: impl Into<String>,
+    status: impl Into<String>,
+    priority: i64,
+    weight: u32,
+) -> ChannelKeyRecord {
+    channel_key_record_from_input(ChannelKeyRecordInput {
+        channel_id: "channel-a".to_string(),
+        key_ref: key_ref.into(),
+        status: status.into(),
+        priority,
+        weight,
+        last_failure_at: None,
+    })
+}
+
 fn channel_model_record(
     public_model: impl Into<String>,
     upstream_model: impl Into<String>,
@@ -277,6 +293,68 @@ impl ChannelSource for ExternalRelayServices {
         channel_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<bool>> {
         let deleted = channel_id == "channel-a";
+        Box::pin(async move { Ok(deleted) })
+    }
+
+    fn list_channel_key_records<'a>(
+        &'a self,
+        channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<Vec<ChannelKeyRecord>>>> {
+        let keys =
+            (channel_id == "channel-a").then(|| vec![channel_key_record("primary", "enabled", 10, 1)]);
+        Box::pin(async move { Ok(keys) })
+    }
+
+    fn upsert_channel_key_record<'a>(
+        &'a self,
+        channel_id: &'a str,
+        key_ref: &'a str,
+        request: ProxyChannelKeyWriteRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelKeyRecord>>> {
+        let channel_id = channel_id.to_string();
+        let key_ref = key_ref.to_string();
+        Box::pin(async move {
+            if channel_id != "channel-a" {
+                return Ok(None);
+            }
+
+            Ok(Some(channel_key_record(
+                key_ref,
+                request.status,
+                request.priority,
+                request.weight,
+            )))
+        })
+    }
+
+    fn update_channel_key_record<'a>(
+        &'a self,
+        channel_id: &'a str,
+        key_ref: &'a str,
+        patch: ProxyChannelKeyPatchRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelKeyRecord>>> {
+        let channel_id = channel_id.to_string();
+        let key_ref = key_ref.to_string();
+        Box::pin(async move {
+            if channel_id != "channel-a" {
+                return Ok(None);
+            }
+
+            Ok(Some(channel_key_record(
+                key_ref,
+                patch.status.unwrap_or_else(|| "enabled".to_string()),
+                patch.priority.unwrap_or(10),
+                patch.weight.unwrap_or(1),
+            )))
+        })
+    }
+
+    fn delete_channel_key_record<'a>(
+        &'a self,
+        channel_id: &'a str,
+        key_ref: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<bool>> {
+        let deleted = channel_id == "channel-a" && key_ref == "primary";
         Box::pin(async move { Ok(deleted) })
     }
 
@@ -1079,6 +1157,79 @@ fn external_host_can_use_channel_crud_contracts_from_prelude() {
     assert_eq!(delete_response.channel_id, "channel-a");
     assert!(delete_response.deleted);
     assert_eq!(helper_delete.channel_id, "channel-a");
+    assert!(!helper_delete.deleted);
+}
+
+#[test]
+fn external_host_can_use_channel_key_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+    let channel_path = ChannelPathRequest::from_path("channel-a").expect("channel path");
+    let key_path = ChannelKeyPathRequest::from_path("channel-a", "primary").expect("key path");
+
+    let keys_response: ChannelKeysResponse<ChannelKeyRecord> =
+        futures::executor::block_on(engine.channel_keys_response(channel_path.clone()))
+            .expect("channel keys response");
+    let helper_keys: ChannelKeysResponse<ChannelKeyRecord> = channel_path
+        .keys_response_from_source(ChannelKeysSource::new(Some(vec![channel_key_record(
+            "helper", "enabled", 3, 2,
+        )])))
+        .expect("helper keys response");
+
+    let upsert_response: ChannelKeyRecordResponse<ChannelKeyRecord> =
+        futures::executor::block_on(engine.upsert_channel_key_response(
+            key_path.clone(),
+            ProxyChannelKeyWriteRequest {
+                key_value: "sk-relay".to_string(),
+                status: "enabled".to_string(),
+                priority: 20,
+                weight: 4,
+            },
+        ))
+        .expect("upsert key response");
+    let update_response: ChannelKeyRecordResponse<ChannelKeyRecord> =
+        futures::executor::block_on(engine.update_channel_key_response(
+            key_path.clone(),
+            ProxyChannelKeyPatchRequest {
+                key_value: Some("sk-new".to_string()),
+                status: Some("disabled".to_string()),
+                priority: Some(30),
+                weight: Some(5),
+            },
+        ))
+        .expect("update key response");
+    let helper_record: ChannelKeyRecordResponse<ChannelKeyRecord> = key_path
+        .record_response_from_source(ChannelKeyRecordSource::new(Some(channel_key_record(
+            "source", "enabled", 7, 1,
+        ))))
+        .expect("helper key record response");
+
+    let delete_response: ChannelKeyDeleteResponse =
+        futures::executor::block_on(engine.delete_channel_key_response(key_path.clone()))
+            .expect("delete key response");
+    let helper_delete: ChannelKeyDeleteResponse =
+        key_path.delete_response_from_source(ChannelKeyDeleteSource::new(false));
+
+    assert_eq!(keys_response.channel_id, "channel-a");
+    assert_eq!(keys_response.keys.len(), 1);
+    assert_eq!(keys_response.keys[0].key_ref, "primary");
+    assert_eq!(keys_response.keys[0].status, "enabled");
+    assert_eq!(helper_keys.keys[0].key_ref, "helper");
+    assert_eq!(helper_keys.keys[0].weight, 2);
+
+    assert_eq!(upsert_response.key.key_ref, "primary");
+    assert_eq!(upsert_response.key.priority, 20);
+    assert_eq!(upsert_response.key.weight, 4);
+    assert_eq!(update_response.key.status, "disabled");
+    assert_eq!(update_response.key.priority, 30);
+    assert_eq!(update_response.key.weight, 5);
+    assert_eq!(helper_record.key.key_ref, "source");
+    assert_eq!(helper_record.key.priority, 7);
+
+    assert_eq!(delete_response.channel_id, "channel-a");
+    assert_eq!(delete_response.key_ref, "primary");
+    assert!(delete_response.deleted);
+    assert_eq!(helper_delete.key_ref, "primary");
     assert!(!helper_delete.deleted);
 }
 
