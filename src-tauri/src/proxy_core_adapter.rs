@@ -301,9 +301,9 @@ pub(crate) use crate::proxy_core::api::ports::{
     CodexLiveTakeoverMatchFacts,
     detect_gemini_auth_type as core_detect_gemini_auth_type,
     ensure_codex_takeover_auth_placeholder as core_ensure_codex_takeover_auth_placeholder,
-    gemini_env_json_from_map as core_gemini_env_json_from_map,
+    gemini_env_json_from_map,
     gemini_env_parse_issue_spec as core_gemini_env_parse_issue_spec,
-    gemini_env_string_map_from_settings as core_gemini_env_string_map_from_settings,
+    gemini_env_string_map_from_settings,
     gemini_live_config_object_from_settings as core_gemini_live_config_object_from_settings,
     gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
     is_local_proxy_url as core_is_local_proxy_url,
@@ -350,6 +350,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_switch_dispatch_for_app as core_provider_switch_dispatch,
     provider_switch_requires_takeover_lock as core_provider_switch_requires_takeover_lock,
     provider_switch_should_mark_live_config_managed as core_provider_switch_should_mark_live_config_managed,
+    parse_gemini_env_file,
     required_provider_base_url as core_required_provider_base_url,
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
     proxy_hot_switch_should_refresh_codex_live_from_backup as core_proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -368,6 +369,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     should_skip_manual_default_live_import as core_should_skip_manual_default_live_import,
     should_skip_provider_legacy_common_config_migration as core_should_skip_provider_legacy_common_config_migration,
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
+    serialize_gemini_env_file,
     validate_gemini_settings_basic as core_validate_gemini_settings_basic,
     validate_gemini_settings_strict as core_validate_gemini_settings_strict,
     GeminiAuthType, GeminiAuthTypeInput, GeminiEnvParseIssue, GeminiLiveConfigIssue,
@@ -4180,27 +4182,11 @@ pub(crate) fn provider_gemini_env_map(
     ))
 }
 
-pub(crate) fn gemini_env_json_from_map(env_map: &HashMap<String, String>) -> Value {
-    core_gemini_env_json_from_map(env_map)
-}
-
-pub(crate) fn gemini_env_string_map_from_settings(settings: &Value) -> HashMap<String, String> {
-    core_gemini_env_string_map_from_settings(settings)
-}
-
-pub(crate) fn parse_gemini_env_file(content: &str) -> HashMap<String, String> {
-    crate::proxy_core::api::ports::parse_gemini_env_file(content)
-}
-
 pub(crate) fn parse_gemini_env_file_strict(
     content: &str,
 ) -> Result<HashMap<String, String>, AppError> {
     crate::proxy_core::api::ports::parse_gemini_env_file_strict(content)
         .map_err(gemini_env_parse_issue_to_app_error)
-}
-
-pub(crate) fn serialize_gemini_env_file(env_map: &HashMap<String, String>) -> String {
-    crate::proxy_core::api::ports::serialize_gemini_env_file(env_map)
 }
 
 pub(crate) fn gemini_env_parse_issue_to_app_error(issue: GeminiEnvParseIssue) -> AppError {
