@@ -39,8 +39,8 @@ use crate::proxy_core_adapter::{
     codex_oauth_refresh_failure, codex_oauth_refresh_token_form,
     codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon, codex_oauth_token_url,
     compare_managed_auth_account_order, managed_auth_fallback_default_account_id,
-    CodexOAuthDevicePollStatusKind, CodexOAuthTokenClaims, ManagedAuthAccountSortKey,
-    ManagedAuthDefaultAccountCandidate,
+    CodexOAuthDevicePollStatusKind, CodexOAuthStatus, CodexOAuthTokenClaims,
+    ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate,
 };
 
 /// User-Agent
@@ -853,15 +853,6 @@ impl CodexOAuthManager {
 
         Ok(())
     }
-}
-
-/// Codex OAuth 状态摘要
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CodexOAuthStatus {
-    pub accounts: Vec<GitHubAccount>,
-    pub default_account_id: Option<String>,
-    pub authenticated: bool,
-    pub username: Option<String>,
 }
 
 // ==================== 工具函数 ====================

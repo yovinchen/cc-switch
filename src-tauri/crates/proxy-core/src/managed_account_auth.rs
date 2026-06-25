@@ -359,6 +359,43 @@ pub struct ManagedAuthDeviceCodeResponse {
     pub interval: u64,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct GitHubDeviceCodeResponse {
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    pub expires_in: u64,
+    pub interval: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct GitHubAccount {
+    pub id: String,
+    pub login: String,
+    pub avatar_url: Option<String>,
+    pub authenticated_at: i64,
+    #[serde(default = "crate::copilot_model_map::default_copilot_github_domain")]
+    pub github_domain: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct CopilotAuthStatus {
+    pub accounts: Vec<GitHubAccount>,
+    pub default_account_id: Option<String>,
+    pub migration_error: Option<String>,
+    pub authenticated: bool,
+    pub username: Option<String>,
+    pub expires_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct CodexOAuthStatus {
+    pub accounts: Vec<GitHubAccount>,
+    pub default_account_id: Option<String>,
+    pub authenticated: bool,
+    pub username: Option<String>,
+}
+
 pub fn managed_auth_account_from_parts(
     provider: &str,
     id: String,
@@ -946,9 +983,9 @@ mod tests {
         managed_auth_fallback_default_account_id,
         managed_auth_account_from_parts, managed_auth_device_code_response_from_parts,
         managed_auth_status_from_parts,
-        compare_managed_auth_account_order, CodexOAuthOpenAiAuthClaim,
-        CodexOAuthOrganizationClaim, CodexOAuthTokenClaims, ManagedAuthAccountSortKey,
-        ManagedAuthDefaultAccountCandidate,
+        compare_managed_auth_account_order, CodexOAuthOpenAiAuthClaim, CodexOAuthOrganizationClaim,
+        CodexOAuthStatus, CodexOAuthTokenClaims, CopilotAuthStatus, GitHubAccount,
+        GitHubDeviceCodeResponse, ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate,
         managed_account_app_handle_unavailable_error_message,
         managed_account_app_handle_unavailable_log_message,
         managed_account_token_failure_error_message, managed_account_token_failure_log_message,
@@ -1382,6 +1419,66 @@ mod tests {
             codex_oauth_identity_from_token_claims(Some(&id_email_only), Some(&access_claims));
         assert_eq!(identity.account_id.as_deref(), Some("acct-access"));
         assert_eq!(identity.email.as_deref(), Some("id@example.com"));
+    }
+
+    #[test]
+    fn legacy_managed_auth_account_dto_defaults_public_github_domain() {
+        let account: GitHubAccount = serde_json::from_value(serde_json::json!({
+            "id": "12345",
+            "login": "octo",
+            "avatar_url": null,
+            "authenticated_at": 1_771_000_000
+        }))
+        .expect("github account dto");
+
+        assert_eq!(account.id, "12345");
+        assert_eq!(account.github_domain, "github.com");
+    }
+
+    #[test]
+    fn legacy_managed_auth_device_code_response_contract_roundtrips() {
+        let response = GitHubDeviceCodeResponse {
+            device_code: "device-1".to_string(),
+            user_code: "USER-1".to_string(),
+            verification_uri: "https://github.com/login/device".to_string(),
+            expires_in: 900,
+            interval: 8,
+        };
+
+        let value = serde_json::to_value(&response).expect("serialize device code");
+        assert_eq!(value["device_code"], "device-1");
+        assert_eq!(value["user_code"], "USER-1");
+        assert_eq!(value["verification_uri"], "https://github.com/login/device");
+        assert_eq!(value["expires_in"], 900);
+        assert_eq!(value["interval"], 8);
+    }
+
+    #[test]
+    fn legacy_managed_auth_status_contracts_share_account_dto() {
+        let account = GitHubAccount {
+            id: "acct-1".to_string(),
+            login: "octo".to_string(),
+            avatar_url: None,
+            authenticated_at: 1_771_000_000,
+            github_domain: "github.com".to_string(),
+        };
+        let copilot = CopilotAuthStatus {
+            accounts: vec![account.clone()],
+            default_account_id: Some("acct-1".to_string()),
+            migration_error: None,
+            authenticated: true,
+            username: Some("octo".to_string()),
+            expires_at: Some(1_771_003_600),
+        };
+        let codex = CodexOAuthStatus {
+            accounts: vec![account],
+            default_account_id: Some("acct-1".to_string()),
+            authenticated: true,
+            username: Some("octo".to_string()),
+        };
+
+        assert_eq!(copilot.accounts[0].id, codex.accounts[0].id);
+        assert_eq!(copilot.default_account_id, codex.default_account_id);
     }
 
     impl ManagedAccountRuntimeSource for StaticManagedRuntimeSource {

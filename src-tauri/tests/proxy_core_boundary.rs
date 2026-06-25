@@ -5384,6 +5384,42 @@ fn production_managed_auth_account_selection_delegates_to_core() {
 }
 
 #[test]
+fn production_managed_auth_legacy_command_dtos_delegate_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let copilot_path = manifest_dir.join("src/proxy/copilot_auth.rs");
+    let copilot_source = fs::read_to_string(&copilot_path).expect("read copilot_auth.rs");
+    let codex_path = manifest_dir.join("src/proxy/codex_oauth_auth.rs");
+    let codex_source = fs::read_to_string(&codex_path).expect("read codex_oauth_auth.rs");
+
+    for marker in [
+        "pub struct GitHubDeviceCodeResponse",
+        "pub struct GitHubAccount",
+        "pub struct CopilotAuthStatus",
+    ] {
+        assert!(
+            !copilot_source.contains(marker),
+            "copilot_auth.rs should not own legacy managed-auth command DTO marker `{marker}`"
+        );
+    }
+    assert!(
+        !codex_source.contains("pub struct CodexOAuthStatus"),
+        "codex_oauth_auth.rs should not own Codex OAuth status DTO"
+    );
+
+    assert!(
+        copilot_source.contains("CopilotAuthStatus")
+            && copilot_source.contains("GitHubAccount")
+            && copilot_source.contains("GitHubDeviceCodeResponse")
+            && copilot_source.contains("pub use crate::proxy_core_adapter"),
+        "copilot_auth.rs should re-export legacy managed-auth command DTOs from proxy_core_adapter"
+    );
+    assert!(
+        codex_source.contains("CodexOAuthStatus"),
+        "codex_oauth_auth.rs should consume the core Codex OAuth status DTO"
+    );
+}
+
+#[test]
 fn model_fetch_command_delegates_user_agent_parsing_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/commands/model_fetch.rs");

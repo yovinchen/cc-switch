@@ -40,6 +40,7 @@ use crate::proxy_core_adapter::{
 const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;
 
 pub use crate::proxy_core_adapter::CopilotUsageResponse;
+pub use crate::proxy_core_adapter::{CopilotAuthStatus, GitHubAccount, GitHubDeviceCodeResponse};
 
 /// Copilot 认证错误
 #[derive(Debug, thiserror::Error)]
@@ -93,21 +94,6 @@ impl From<std::io::Error> for CopilotAuthError {
     }
 }
 
-/// GitHub 设备码响应
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GitHubDeviceCodeResponse {
-    /// 设备码（用于轮询）
-    pub device_code: String,
-    /// 用户码（显示给用户）
-    pub user_code: String,
-    /// 验证 URL
-    pub verification_uri: String,
-    /// 过期时间（秒）
-    pub expires_in: u64,
-    /// 轮询间隔（秒）
-    pub interval: u64,
-}
-
 /// GitHub OAuth Token 响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct GitHubOAuthResponse {
@@ -152,22 +138,6 @@ pub struct GitHubUser {
     pub avatar_url: Option<String>,
 }
 
-/// GitHub 账号（公开信息，返回给前端）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GitHubAccount {
-    /// GitHub 用户 ID（字符串形式，作为唯一标识）
-    pub id: String,
-    /// GitHub 用户名
-    pub login: String,
-    /// 头像 URL
-    pub avatar_url: Option<String>,
-    /// 认证时间戳
-    pub authenticated_at: i64,
-    /// GitHub 域名（github.com 或 GHES 域名）
-    #[serde(default = "crate::proxy_core_adapter::default_copilot_github_domain")]
-    pub github_domain: String,
-}
-
 impl From<&GitHubAccountData> for GitHubAccount {
     fn from(data: &GitHubAccountData) -> Self {
         GitHubAccount {
@@ -178,23 +148,6 @@ impl From<&GitHubAccountData> for GitHubAccount {
             github_domain: data.github_domain.clone(),
         }
     }
-}
-
-/// Copilot 认证状态（支持多账号）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CopilotAuthStatus {
-    /// 所有已认证的账号
-    pub accounts: Vec<GitHubAccount>,
-    /// 默认账号 ID（显式状态，避免依赖 HashMap 顺序）
-    pub default_account_id: Option<String>,
-    /// 旧认证数据迁移失败时的状态消息（用于前端提示）
-    pub migration_error: Option<String>,
-    /// 是否已认证（向后兼容：有任意账号即为 true）
-    pub authenticated: bool,
-    /// GitHub 用户名（向后兼容：第一个账号的用户名）
-    pub username: Option<String>,
-    /// Copilot 令牌过期时间（向后兼容：第一个账号的过期时间）
-    pub expires_at: Option<i64>,
 }
 
 /// 账号数据（内部存储结构）
