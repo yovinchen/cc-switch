@@ -1813,7 +1813,6 @@ use crate::proxy_core::api::domain::{
 use crate::proxy_core::api::ports::{
     apply_claude_common_config_to_settings as core_apply_claude_common_config_to_settings,
     apply_gemini_common_config_to_settings as core_apply_gemini_common_config_to_settings,
-    common_config_settings_mutation_issue_message as core_common_config_settings_mutation_issue_message,
     contains_claude_common_config_snippet as core_contains_claude_common_config_snippet,
     contains_gemini_common_config_snippet as core_contains_gemini_common_config_snippet,
     openclaw_live_write_action_decision as core_openclaw_live_write_action_decision,
@@ -1834,6 +1833,7 @@ use crate::proxy_core::api::ports::{
     OpenCodeLiveWriteActionDecision as CoreOpenCodeLiveWriteActionDecision,
     OpenCodeLiveWriteConfigDecision as CoreOpenCodeLiveWriteConfigDecision,
 };
+pub(crate) use crate::proxy_core::api::ports::common_config_settings_mutation_issue_message;
 #[cfg(test)]
 use crate::proxy_core::api::ports::provider_category_is_official as core_provider_category_is_official;
 #[cfg(test)]
@@ -5848,12 +5848,6 @@ pub(crate) fn provider_common_config_storage_normalization_requires_snippet(
         .and_then(|meta| meta.common_config_enabled);
 
     core_provider_common_config_storage_normalization_requires_snippet(explicit_enabled)
-}
-
-pub(crate) fn common_config_settings_mutation_issue_message(
-    issue: CommonConfigSettingsMutationIssue,
-) -> String {
-    core_common_config_settings_mutation_issue_message(issue)
 }
 
 pub(crate) fn apply_common_config_to_settings(

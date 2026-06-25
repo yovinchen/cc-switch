@@ -930,6 +930,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn common_config_snippet_issue_message(",
     "fn openclaw_common_config_value_from_settings(",
     "fn opencode_common_config_value_from_settings(",
+    "fn common_config_settings_mutation_issue_message(",
     "fn channel_route_candidate_from_selection(",
     "fn resolved_channel_attempt_from_candidate(",
     "fn resolved_channel_attempt_from_selection(",
