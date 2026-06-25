@@ -883,9 +883,11 @@ pub(crate) async fn proxy_runtime_status_from_runtime_sources(
     status
 }
 
+#[cfg(test)]
 #[derive(Clone, Default)]
 struct DefaultRuntimeStatusSource;
 
+#[cfg(test)]
 impl RuntimeStatusSource for DefaultRuntimeStatusSource {
     fn load_status<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeStatus>> {
         Box::pin(async { Ok(ProxyRuntimeStatus::default()) })
@@ -8945,6 +8947,7 @@ pub(crate) struct CcSwitchForwardPipeline<R> {
 }
 
 impl<R> CcSwitchForwardPipeline<R> {
+    #[cfg(test)]
     pub(crate) fn without_runtime(
         channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource,
     ) -> Self {
@@ -9235,7 +9238,6 @@ pub(crate) trait ProxyServiceRuntimeResources:
 }
 
 #[derive(Clone)]
-#[allow(dead_code)]
 pub(crate) struct CcSwitchProxyServices<R> {
     config: CcSwitchConfigSource,
     providers: CcSwitchProviderSource,
@@ -9255,16 +9257,18 @@ pub(crate) struct CcSwitchProxyServices<R> {
     forward_pipeline: CcSwitchForwardPipeline<R>,
 }
 
-#[allow(dead_code)]
 impl<R> CcSwitchProxyServices<R> {
+    #[cfg(test)]
     pub(crate) fn new(db: Arc<Database>) -> Self {
         Self::with_optional_event_bus(db, None)
     }
 
+    #[cfg(test)]
     pub(crate) fn with_event_bus(db: Arc<Database>, events: Arc<ProxyEventBus>) -> Self {
         Self::with_optional_event_bus(db, Some(events))
     }
 
+    #[cfg(test)]
     fn with_optional_event_bus(db: Arc<Database>, events: Option<Arc<ProxyEventBus>>) -> Self {
         let router = Arc::new(provider_router_from_database(db.clone()));
         let channel_key_runtime_source = channel_key_runtime_source_from_database(db.clone());

@@ -7111,7 +7111,7 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     let services_struct = function_slice(
         &source,
         "pub(crate) struct CcSwitchProxyServices",
-        "#[allow(dead_code)]\nimpl<R> CcSwitchProxyServices",
+        "impl<R> CcSwitchProxyServices",
     );
     let services_impl = function_slice(
         &source,
@@ -10269,6 +10269,82 @@ fn production_proxy_core_host_delegates_auth_provider_source_to_adapter() {
     assert!(
         violations.is_empty(),
         "production proxy_core_host must delegate auth provider profile projection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_services_excludes_test_constructor_surface() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let services_slice = function_slice(
+        &source,
+        "pub(crate) struct CcSwitchProxyServices",
+        "impl<R> ProxyServices for CcSwitchProxyServices",
+    );
+    let lines: Vec<&str> = services_slice.lines().collect();
+
+    let mut violations = Vec::new();
+    for marker in [
+        "pub(crate) fn new(db: Arc<Database>) -> Self {",
+        "pub(crate) fn with_event_bus(db: Arc<Database>, events: Arc<ProxyEventBus>) -> Self {",
+        "fn with_optional_event_bus(db: Arc<Database>, events: Option<Arc<ProxyEventBus>>) -> Self {",
+    ] {
+        for (line_index, line) in lines.iter().enumerate() {
+            if line.trim() != marker {
+                continue;
+            }
+
+            let previous = line_index
+                .checked_sub(1)
+                .and_then(|index| lines.get(index))
+                .map(|line| line.trim())
+                .unwrap_or_default();
+            if previous != "#[cfg(test)]" {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs CcSwitchProxyServices:{} keeps test service constructor in production: `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    for (line_index, line) in production_lines(services_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        if code.contains("#[allow(dead_code)]") {
+            violations.push(format!(
+                "src/proxy_core_adapter.rs service container:{} keeps dead-code allowance",
+                line_index + 1
+            ));
+        }
+    }
+
+    if !source
+        .contains("#[cfg(test)]\n#[derive(Clone, Default)]\nstruct DefaultRuntimeStatusSource;")
+    {
+        violations.push(
+            "src/proxy_core_adapter.rs keeps default runtime status source outside test cfg"
+                .to_string(),
+        );
+    }
+    if !source.contains("#[cfg(test)]\nimpl RuntimeStatusSource for DefaultRuntimeStatusSource") {
+        violations.push(
+            "src/proxy_core_adapter.rs keeps default runtime status source impl outside test cfg"
+                .to_string(),
+        );
+    }
+    if !source.contains("    #[cfg(test)]\n    pub(crate) fn without_runtime(") {
+        violations.push(
+            "src/proxy_core_adapter.rs keeps no-runtime forward pipeline constructor outside test cfg"
+                .to_string(),
+        );
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production proxy service container should expose only runtime-backed construction:\n{}",
         violations.join("\n")
     );
 }
