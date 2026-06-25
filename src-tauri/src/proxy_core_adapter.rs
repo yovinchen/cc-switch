@@ -4303,13 +4303,7 @@ impl ForwarderAdapterContext {
 pub(crate) fn forwarder_provider_adapter_context_for_app(
     app_type: &AppType,
 ) -> ForwarderAdapterContext {
-    ForwarderAdapterContext::new(forwarder_provider_adapter_for_app(app_type))
-}
-
-pub(crate) fn forwarder_provider_adapter_for_app(
-    app_type: &AppType,
-) -> Box<ForwarderAdapterHandle> {
-    get_adapter(app_type)
+    ForwarderAdapterContext::new(get_adapter(app_type))
 }
 
 pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
@@ -4346,7 +4340,7 @@ pub(crate) fn stream_check_provider_base_url(
             .ok_or_else(|| missing_stream_check_base_url_error(app_type))
         }
         _ => {
-            let adapter = forwarder_provider_adapter_for_app(app_type);
+            let adapter = get_adapter(app_type);
             adapter
                 .extract_base_url(provider)
                 .map_err(|e| AppError::Message(format!("Failed to extract base_url: {e}")))

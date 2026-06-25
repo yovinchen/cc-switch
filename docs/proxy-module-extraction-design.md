@@ -1209,7 +1209,7 @@ forwarder provider adapter base URL 的一跳 wrapper `forwarder_provider_base_u
 forwarder provider adapter auth info/header 的一跳 wrapper `forwarder_provider_auth_info` / `forwarder_provider_auth_headers` 已删除；adapter context 内部直接调用 trait object，`forwarder.rs` 仍通过 auth source 获取 fallback auth。
 forwarder provider adapter upstream URL 的一跳 wrapper `forwarder_provider_upstream_url` 已删除；adapter context 内部直接调用 trait object，`forwarder.rs` 仍通过 request source 获取 URL plan。
 forwarder provider adapter name 的一跳 wrapper `forwarder_provider_adapter_name` 已删除；`ForwarderAdapterFacts` 在 adapter context 内直接从 trait object 读取 name，`forwarder.rs` 仍只消费 facts。
-本轮继续把 forwarder 的 provider adapter registry 入口收敛到 `proxy_core_adapter::forwarder_provider_adapter_for_app`，forwarder 不再直接调用 provider 模块的 `get_adapter`。
+forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapter_for_app` 已删除；adapter context factory 和 stream check fallback 在 adapter 边界内直接调用 provider registry，`forwarder.rs` 仍不直接调用 provider 模块。
 本轮继续把 forwarder 暴露在函数签名里的 provider adapter trait 收敛为 `proxy_core_adapter::ForwarderAdapterHandle`，forwarder 不再直接导入 `providers::ProviderAdapter`。
 本轮继续把模型列表命令层的 `FetchedModel` DTO 入口收敛到 `proxy_core_adapter::FetchedModel`，`model_fetch_transport` 不再作为命令层 DTO re-export，只保留 core model catalog transport port 的 reqwest 执行实现。
 本轮继续把模型列表命令层的自定义 User-Agent 解析入口收敛到 `proxy_core_adapter::model_fetch_custom_user_agent_header`，命令不再直接调用 provider 模块的 schema helper。
@@ -1462,6 +1462,7 @@ forwarder provider adapter name 的一跳 wrapper `forwarder_provider_adapter_na
 1044. forwarder provider base URL 删除 `forwarder_provider_base_url` 一跳 wrapper；adapter context 和 stream check fallback 直接调用 trait object 的 `extract_base_url`，forwarder 仍经 URL facts。
 1045. forwarder provider auth fallback 删除 `forwarder_provider_auth_info` / `forwarder_provider_auth_headers` 两个一跳 wrapper；adapter context 直接调用 trait object 的 auth/header 方法，forwarder 仍经 auth source。
 1046. forwarder provider upstream URL 删除 `forwarder_provider_upstream_url` 一跳 wrapper；adapter context 直接调用 trait object 的 `build_url`，forwarder 仍经 request source 获取最终 URL plan。
+1047. forwarder provider adapter registry 删除 `forwarder_provider_adapter_for_app` 一跳 wrapper；adapter context factory 和 stream check fallback 直接调用 provider registry，forwarder 仍只消费 context/source 入口。
 
 ## 背景
 
