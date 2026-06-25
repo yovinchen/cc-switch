@@ -2540,8 +2540,7 @@ pub(crate) type ProxyCoreError = crate::proxy_core::api::errors::ProxyCoreError;
 #[cfg(test)]
 pub(crate) type ProxyCoreEventType = crate::proxy_core::api::events::ProxyCoreEventType;
 pub(crate) type AppKind = crate::proxy_core::api::domain::AppKind;
-pub(crate) type AppProviderAdapterKind =
-    crate::proxy_core::api::domain::AppProviderAdapterKind;
+pub(crate) type AppProviderAdapterKind = crate::proxy_core::api::domain::AppProviderAdapterKind;
 #[cfg(test)]
 pub(crate) type RetryPolicy = crate::proxy_core::api::domain::RetryPolicy;
 pub(crate) type RouteResolveRequest = crate::proxy_core::api::management::RouteResolveRequest;
@@ -2731,11 +2730,18 @@ pub(crate) use crate::proxy_core::api::routing::{
     provider_router_auto_failover_enabled_decision, route_policy_failover_provider_ids,
     RoutePolicy, RouteRequest,
 };
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transforms::{
+    anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
+    anthropic_to_openai_responses_request, canonical_json_string,
+    gemini_response_to_anthropic_message, openai_chat_to_anthropic_message,
+    openai_responses_to_anthropic_message, short_value_hash,
+};
 pub(crate) use crate::proxy_core::api::transforms::{
     append_utf8_safe, build_gemini_upstream_url, chat_completion_to_response_with_context,
-    claude_request_transform_for_api_format,
-    claude_response_to_anthropic_message_for_api_format, claude_stream_usage_event_filter,
     claude_provider_transform_required as core_claude_provider_transform_required,
+    claude_request_transform_for_api_format, claude_response_to_anthropic_message_for_api_format,
+    claude_stream_usage_event_filter,
     claude_transform_streaming_decision as core_claude_transform_streaming_decision,
     codex_chat_transform_streaming_decision as core_codex_chat_transform_streaming_decision,
     codex_stream_usage_event_filter, create_claude_to_anthropic_sse_stream_for_api_format,
@@ -2744,13 +2750,6 @@ pub(crate) use crate::proxy_core::api::transforms::{
     take_sse_block, AnthropicToolSchemaHints, ClaudeApiFormatRequestTransformContext,
     ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
     CodexChatTransformStreamingDecision,
-};
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::{
-    anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
-    anthropic_to_openai_responses_request, canonical_json_string,
-    gemini_response_to_anthropic_message, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message, short_value_hash,
 };
 pub(crate) use crate::proxy_core::api::transforms::{
     claude_api_format_from_metadata, CLAUDE_API_FORMAT_METADATA_KEY,
@@ -2807,16 +2806,24 @@ pub(crate) use crate::proxy_core::api::transport::{
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     request_body_filter_log_message, request_body_read_error_message,
     request_body_serialize_error_message, resolve_auth_provider_headers,
-    resolve_codex_provider_uses_chat_completions, sanitize_copilot_orphan_tool_results,
-    should_apply_bedrock_pre_send_optimizer, should_apply_forwarder_media_prevention_for_app,
-    should_convert_codex_responses_endpoint_to_chat, should_failover_after_rectifier_retry_failure,
+    sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
+    should_apply_forwarder_media_prevention_for_app, should_failover_after_rectifier_retry_failure,
     should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
     strip_copilot_thinking_blocks, supports_reasoning_effort, AuthProviderHeaderResolution,
-    ForwardUpstreamUrlPlan, ForwardUpstreamUrlPlanInput, ForwarderAttemptRuntimeDecisionInput,
+    CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan,
+    ForwardUpstreamUrlPlanInput, ForwarderAttemptRuntimeDecisionInput,
     ForwarderRectifierErrorInput, ForwarderRequestBodyTransformAction, UNSUPPORTED_IMAGE_MARKER,
 };
 pub(crate) use crate::proxy_core::api::transport::{
+    codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
+    codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required,
+};
+pub(crate) use crate::proxy_core::api::transport::{
     extract_gemini_model_from_path, request_model_for_forward,
+};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transport::{
+    resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback;
@@ -3915,10 +3922,16 @@ pub(crate) fn preserve_codex_oauth_auth_in_backup_for_configured_policy(
     preserve_codex_oauth_auth_in_backup_if_present(target_settings, existing_backup)
 }
 
-pub(crate) fn provider_codex_uses_chat_completions(provider: &Provider) -> bool {
+fn with_provider_codex_chat_completions_facts<T>(
+    provider: &Provider,
+    evaluate: impl FnOnce(CodexProviderChatCompletionsFacts<'_>) -> T,
+) -> T {
     let config_text = provider_codex_config_text(provider);
-    resolve_codex_provider_uses_chat_completions(
-        provider
+    let wire_api = config_text.and_then(core_codex_wire_api_from_config_toml);
+    let config_base_url = config_text.and_then(crate::codex_config::extract_codex_base_url);
+
+    evaluate(CodexProviderChatCompletionsFacts {
+        api_format: provider
             .meta
             .as_ref()
             .and_then(|meta| meta.api_format.as_deref())
@@ -3934,28 +3947,30 @@ pub(crate) fn provider_codex_uses_chat_completions(provider: &Provider) -> bool 
                     .get("apiFormat")
                     .and_then(Value::as_str)
             }),
-        config_text
-            .and_then(core_codex_wire_api_from_config_toml)
-            .as_deref(),
-        provider
+        wire_api: wire_api.as_deref(),
+        base_url: provider
             .settings_config
             .get("base_url")
             .or_else(|| provider.settings_config.get("baseURL"))
             .and_then(Value::as_str),
-        config_text
-            .and_then(crate::codex_config::extract_codex_base_url)
-            .as_deref(),
-    )
+        config_base_url: config_base_url.as_deref(),
+    })
+}
+
+pub(crate) fn provider_codex_uses_chat_completions(provider: &Provider) -> bool {
+    with_provider_codex_chat_completions_facts(provider, core_codex_provider_uses_chat_completions)
 }
 
 pub(crate) fn provider_should_convert_codex_responses_to_chat(
     provider: &Provider,
     endpoint: &str,
 ) -> bool {
-    should_convert_codex_responses_endpoint_to_chat(
-        provider_codex_uses_chat_completions(provider),
-        endpoint,
-    )
+    with_provider_codex_chat_completions_facts(provider, |provider_facts| {
+        core_codex_responses_to_chat_conversion_required(CodexResponsesToChatConversionFacts {
+            provider: provider_facts,
+            endpoint,
+        })
+    })
 }
 
 pub(crate) fn provider_codex_upstream_model(provider: &Provider) -> Option<String> {
@@ -6090,9 +6105,7 @@ pub(crate) fn proxy_core_app_kind_from_app_type(app_type: &AppType) -> ProxyCore
     AppKind::from(app_type)
 }
 
-pub(crate) fn provider_adapter_kind_for_app_type(
-    app_type: &AppType,
-) -> AppProviderAdapterKind {
+pub(crate) fn provider_adapter_kind_for_app_type(app_type: &AppType) -> AppProviderAdapterKind {
     crate::proxy_core::api::domain::provider_adapter_kind_for_app(&AppKind::from(app_type))
 }
 

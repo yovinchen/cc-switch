@@ -46,6 +46,20 @@ pub struct ForwardUpstreamUrlPlan {
     pub url: String,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CodexProviderChatCompletionsFacts<'a> {
+    pub api_format: Option<&'a str>,
+    pub wire_api: Option<&'a str>,
+    pub base_url: Option<&'a str>,
+    pub config_base_url: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CodexResponsesToChatConversionFacts<'a> {
+    pub provider: CodexProviderChatCompletionsFacts<'a>,
+    pub endpoint: &'a str,
+}
+
 pub fn claude_transform_endpoint_rewrite_input_from_body<'a>(
     endpoint: &'a str,
     api_format: &'a str,
@@ -472,27 +486,46 @@ pub fn should_convert_codex_responses_endpoint_to_chat(
     provider_uses_chat_completions && is_codex_responses_endpoint(endpoint)
 }
 
+pub fn codex_provider_uses_chat_completions(facts: CodexProviderChatCompletionsFacts<'_>) -> bool {
+    if let Some(api_format) = facts.api_format {
+        return is_codex_chat_wire_api(api_format);
+    }
+
+    if let Some(wire_api) = facts.wire_api {
+        return is_codex_chat_wire_api(wire_api);
+    }
+
+    if let Some(base_url) = facts.base_url {
+        return is_codex_chat_completions_url(base_url);
+    }
+
+    facts
+        .config_base_url
+        .map(is_codex_chat_completions_url)
+        .unwrap_or(false)
+}
+
+pub fn codex_responses_to_chat_conversion_required(
+    facts: CodexResponsesToChatConversionFacts<'_>,
+) -> bool {
+    should_convert_codex_responses_endpoint_to_chat(
+        codex_provider_uses_chat_completions(facts.provider),
+        facts.endpoint,
+    )
+}
+
 pub fn resolve_codex_provider_uses_chat_completions(
     api_format: Option<&str>,
     wire_api: Option<&str>,
     base_url: Option<&str>,
     config_base_url: Option<&str>,
 ) -> bool {
-    if let Some(api_format) = api_format {
-        return is_codex_chat_wire_api(api_format);
-    }
-
-    if let Some(wire_api) = wire_api {
-        return is_codex_chat_wire_api(wire_api);
-    }
-
-    if let Some(base_url) = base_url {
-        return is_codex_chat_completions_url(base_url);
-    }
-
-    config_base_url
-        .map(is_codex_chat_completions_url)
-        .unwrap_or(false)
+    codex_provider_uses_chat_completions(CodexProviderChatCompletionsFacts {
+        api_format,
+        wire_api,
+        base_url,
+        config_base_url,
+    })
 }
 
 pub fn request_model_for_forward(app: &AppKind, endpoint: &str, body: &Value) -> Option<String> {
@@ -542,7 +575,8 @@ mod tests {
     use super::{
         append_query_to_endpoint_path, append_query_to_full_url,
         apply_channel_param_overrides_to_url, build_claude_upstream_url, build_codex_upstream_url,
-        claude_transform_endpoint_rewrite_input_from_body, extract_gemini_model_from_path,
+        claude_transform_endpoint_rewrite_input_from_body, codex_provider_uses_chat_completions,
+        codex_responses_to_chat_conversion_required, extract_gemini_model_from_path,
         forward_upstream_url_plan, interface_kind_for_forward, invalid_upstream_url_error_message,
         is_codex_chat_completions_url, is_codex_chat_full_endpoint_base, is_codex_chat_wire_api,
         is_codex_responses_endpoint, is_github_copilot_upstream, is_origin_only_url,
@@ -551,7 +585,8 @@ mod tests {
         rewrite_claude_transform_endpoint, rewrite_codex_responses_endpoint_to_chat,
         should_convert_codex_responses_endpoint_to_chat, should_resolve_copilot_dynamic_endpoint,
         split_endpoint_and_query, strip_beta_query, strip_endpoint_prefix, AppKind,
-        ClaudeTransformEndpointRewriteInput, ForwardUpstreamUrlPlanInput,
+        ClaudeTransformEndpointRewriteInput, CodexProviderChatCompletionsFacts,
+        CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlanInput,
     };
     use crate::domain::CODEX_OAUTH_CLAUDE_BASE_URL;
     use serde_json::json;
@@ -824,6 +859,43 @@ mod tests {
             None,
             None,
             Some("https://relay.example.com/v1"),
+        ));
+    }
+
+    #[test]
+    fn resolves_codex_responses_to_chat_conversion_from_provider_facts() {
+        let chat_provider = CodexProviderChatCompletionsFacts {
+            api_format: None,
+            wire_api: Some("chat"),
+            base_url: Some("https://relay.example.com/v1/responses"),
+            config_base_url: None,
+        };
+
+        assert!(codex_provider_uses_chat_completions(chat_provider));
+        assert!(codex_responses_to_chat_conversion_required(
+            CodexResponsesToChatConversionFacts {
+                provider: chat_provider,
+                endpoint: "/v1/responses/compact?stream=true",
+            }
+        ));
+        assert!(!codex_responses_to_chat_conversion_required(
+            CodexResponsesToChatConversionFacts {
+                provider: chat_provider,
+                endpoint: "/chat/completions",
+            }
+        ));
+
+        let explicit_responses_provider = CodexProviderChatCompletionsFacts {
+            api_format: Some("openai_responses"),
+            wire_api: Some("chat"),
+            base_url: Some("https://relay.example.com/v1/chat/completions"),
+            config_base_url: None,
+        };
+        assert!(!codex_responses_to_chat_conversion_required(
+            CodexResponsesToChatConversionFacts {
+                provider: explicit_responses_provider,
+                endpoint: "/v1/responses",
+            }
         ));
     }
 

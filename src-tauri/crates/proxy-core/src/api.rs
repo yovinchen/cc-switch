@@ -421,8 +421,9 @@ pub mod prelude {
     };
     pub use super::routing::{ChannelQuery, ChannelSpec, DEFAULT_ROUTE_GROUP};
     pub use super::transport::{
-        ProxyBody, ProxyCoreResponse, ProxyResponseBody, ProxyTransportResponse,
-        ProxyTransportResponseBody,
+        codex_provider_uses_chat_completions, codex_responses_to_chat_conversion_required,
+        CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ProxyBody,
+        ProxyCoreResponse, ProxyResponseBody, ProxyTransportResponse, ProxyTransportResponseBody,
     };
     pub use super::transforms::{
         claude_request_transform_for_api_format,
@@ -541,6 +542,26 @@ mod tests {
             provider_adapter_kind_for_app(&AppKind::Custom("opencode".to_string())),
             AppProviderAdapterKind::Codex
         );
+    }
+
+    #[test]
+    fn prelude_exposes_codex_responses_to_chat_gate_contracts() {
+        use prelude::*;
+
+        let provider = CodexProviderChatCompletionsFacts {
+            api_format: None,
+            wire_api: Some("chat"),
+            base_url: Some("https://relay.example/v1"),
+            config_base_url: None,
+        };
+
+        assert!(codex_provider_uses_chat_completions(provider));
+        assert!(codex_responses_to_chat_conversion_required(
+            CodexResponsesToChatConversionFacts {
+                provider,
+                endpoint: "/v1/responses",
+            }
+        ));
     }
 
     #[test]

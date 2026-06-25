@@ -5360,6 +5360,49 @@ fn proxy_core_adapter_delegates_claude_transform_gate_to_core() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_codex_responses_to_chat_gate_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let gate_slice = function_slice(
+        &source,
+        "fn with_provider_codex_chat_completions_facts",
+        "pub(crate) fn provider_codex_upstream_model",
+    );
+
+    assert!(
+        gate_slice.contains("core_codex_provider_uses_chat_completions")
+            && gate_slice.contains("core_codex_responses_to_chat_conversion_required("),
+        "Codex Responses to Chat gate must delegate provider and endpoint policy to proxy-core"
+    );
+
+    let forbidden_markers = [
+        "resolve_codex_provider_uses_chat_completions(",
+        "should_convert_codex_responses_endpoint_to_chat(",
+        "provider_codex_uses_chat_completions(provider)",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(gate_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs Codex Responses to Chat gate:{} contains host-local marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Codex Responses to Chat conversion policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

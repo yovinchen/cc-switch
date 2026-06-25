@@ -1916,3 +1916,27 @@ fn external_host_can_use_claude_transform_contracts_from_prelude() {
     };
     let _chunk = Bytes::from_static(b"data: [DONE]\n\n");
 }
+
+#[test]
+fn external_host_can_use_codex_responses_to_chat_gate_from_prelude() {
+    let provider = CodexProviderChatCompletionsFacts {
+        api_format: None,
+        wire_api: Some("chat"),
+        base_url: Some("https://relay.example/v1"),
+        config_base_url: None,
+    };
+
+    assert!(codex_provider_uses_chat_completions(provider));
+    assert!(codex_responses_to_chat_conversion_required(
+        CodexResponsesToChatConversionFacts {
+            provider,
+            endpoint: "/v1/responses/compact?stream=true",
+        }
+    ));
+    assert!(!codex_responses_to_chat_conversion_required(
+        CodexResponsesToChatConversionFacts {
+            provider,
+            endpoint: "/chat/completions",
+        }
+    ));
+}
