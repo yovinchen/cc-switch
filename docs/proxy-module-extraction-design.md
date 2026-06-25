@@ -1543,6 +1543,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1101. crate 外 public prelude smoke 已覆盖 `/proxy/v1/events` 事件流 contract：外部宿主只依赖 prelude 即可构造 `ProxyEventEnvelope`、`ProxyEventSseSpec`、connected/lagged 控制事件 payload，并验证 `ProxyCoreEvent` 到外部 payload 的 request/channel 字段投影。
 1102. crate 外 public prelude smoke 已覆盖 `/proxy/v1/health` 管理 contract：外部宿主只依赖 prelude 即可构造 `HealthCheckRequest`、`HealthCheckSource` 与 `HealthCheckResponse`，用于实现独立中转宿主的最小存活检查入口。
 1103. boundary suite 已新增 `proxy-core` Cargo manifest 宿主依赖隔离检查：禁止独立代理核心 crate 引入 Tauri、SQLite/SQLx 或 CC Switch host crate 依赖，并确认其保持独立 lib crate manifest，防止后续迁移中宿主依赖回流。
+1104. `proxy-core` 已新增可编译的外部中转宿主 example：`external_relay_host` 只通过 public prelude 构造 `ProxyServices`、`ProxyEngine`、不同 app/interface/model/base_url 的 channel、管理路由解析、channel list 与一次真实 `handle` 转发路径；prelude 同步补齐 HTTP 基础类型、JSON 基础类型、route-plan helper 与 channel record input/helper，减少外部集成时对内部模块或额外底层 crate import 的依赖。
 
 ## 背景
 

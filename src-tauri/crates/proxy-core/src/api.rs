@@ -346,6 +346,8 @@ pub mod usage {
 
 pub mod prelude {
     pub use futures::future::BoxFuture;
+    pub use http::{header, HeaderMap, HeaderValue, Method, StatusCode};
+    pub use serde_json::{json, Value};
 
     pub use super::auth::{
         ClaudeDesktopModelListItem, ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
@@ -356,7 +358,7 @@ pub mod prelude {
         ResponseRuntimePolicy,
     };
     pub use super::domain::{
-        channel_spec_from_input, AppKind, AuthProfileRef, ChannelAttemptPlan,
+        build_route_plan, channel_spec_from_input, AppKind, AuthProfileRef, ChannelAttemptPlan,
         ChannelAttemptResult, ChannelSpecInput, InterfaceKind, ModelRoute, ModelRouteInput,
         ProviderKind, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan, RoutePolicy,
         RouteRequest, RouteSelection, UsageTokens,
@@ -374,6 +376,7 @@ pub mod prelude {
         AppChannelRouteResponse, AppListRequest, AppListResponse, AppListSource,
         AppModelListQuery, AppModelCatalogRequest, AppModelCatalogSource, AppSummary,
         AppSummaryInput, channel_key_record_from_input, channel_model_record_from_input,
+        channel_record_from_input,
         ChannelBreakerStatsResponse, ChannelBreakerStatsSource, ChannelCreateRequest,
         ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource,
         ChannelHealthResetResponse, ChannelHealthResetSource, ChannelKeyDeleteResponse,
@@ -385,7 +388,7 @@ pub mod prelude {
         ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource, ChannelModelRecord,
         ChannelModelRecordInput, ChannelModelsResponse, ChannelModelsSource, ChannelPathRequest,
         ChannelReachabilityInput, ChannelReachabilityResult, ChannelReachabilityStatus,
-        ChannelRecord,
+        ChannelRecord, ChannelRecordInput,
         ChannelRecordResponse, ChannelRecordSource, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
         ChannelTestInput, ChannelTestPlan, ChannelTestProbeRequest, ChannelTestResponse, CurrentRouteProviderSummary,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteSource,
@@ -474,6 +477,17 @@ mod tests {
         };
         let channel_list: ChannelListResponse<ChannelRecord> =
             ChannelListResponse::new(Vec::new());
+        let channel_record = channel_record_from_input(ChannelRecordInput {
+            id: "channel-a".to_string(),
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            name: "Relay A".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://relay.example/v1".to_string(),
+            interface_kind: "anthropic".to_string(),
+            source_kind: "manual".to_string(),
+            ..ChannelRecordInput::default()
+        });
         let test_request = ProxyChannelTestRequest {
             model: route_request.requested_model.clone(),
             interface_kind: route_request.interface_kind.clone(),
@@ -481,8 +495,33 @@ mod tests {
 
         assert_eq!(write_request.models[0].upstream_model, "relay-sonnet");
         assert!(channel_list.channels.is_empty());
+        assert_eq!(channel_record.base_url, "https://relay.example/v1");
         assert_eq!(test_request.requested_model(), Some("claude-sonnet"));
         assert_eq!(test_request.requested_interface(), Some("anthropic"));
+    }
+
+    #[test]
+    fn prelude_exposes_external_host_primitives() {
+        use prelude::*;
+
+        let method = Method::POST;
+        let status = StatusCode::OK;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer relay-token"),
+        );
+        let payload: Value = json!({ "model": "sonnet" });
+
+        assert_eq!(method.as_str(), "POST");
+        assert_eq!(status.as_u16(), 200);
+        assert_eq!(
+            headers
+                .get(header::AUTHORIZATION)
+                .expect("authorization header"),
+            "Bearer relay-token"
+        );
+        assert_eq!(payload["model"], "sonnet");
     }
 
     #[test]
