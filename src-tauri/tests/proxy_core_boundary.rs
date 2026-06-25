@@ -897,6 +897,13 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_ROUTER_CHANNEL_DTO_MARKERS: &[&str] = &[
     "ProviderRouterChannelModelRecord",
     "proxy_channel_route_inputs_to_core(",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_DTO_TRAIT_FACADE_MARKERS: &[&str] = &[
+    "trait ToProxyCoreProviderSpec",
+    "trait ToProxyCoreChannelSpec",
+    "trait ToProxyCoreModelRoute",
+    "trait ToProxyCoreChannelModelRecord",
+    "trait ToProxyCoreChannelRecord",
+];
 const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn error_message_with_context(",
     "fn request_model_from_body_for_context(",
@@ -3220,6 +3227,33 @@ fn proxy_core_adapter_excludes_router_channel_dto_bridge() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter should project DB channel records directly to route resolve inputs:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_excludes_dto_trait_facades() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_DTO_TRAIT_FACADE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains DTO trait facade marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter should project DTOs through direct functions instead of single-impl trait facades:\n{}",
         violations.join("\n")
     );
 }
