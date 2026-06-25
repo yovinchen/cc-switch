@@ -6545,7 +6545,7 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     let db_function = function_slice(
         &source,
         "pub(crate) fn apply_channel_auth_profile_providers_from_db",
-        "pub(crate) fn required_forward_attempts_from_db_sources",
+        "pub(crate) fn required_forward_attempts_from_sources",
     );
     let runtime_source_lookup = function_slice(
         &source,
@@ -6589,7 +6589,7 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "CC Switch ProxyServices implementation should return the channel key runtime source"
     );
     assert!(
-        source_function.contains("impl ChannelKeyRuntimeSource")
+        source_function.contains("dyn ChannelKeyRuntimeSource")
             && source_function.contains(".load_channel_key_value("),
         "auth profile application should consume the channel key runtime source contract"
     );
@@ -6607,6 +6607,88 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         borrowed_runtime_source_impl.contains("load_channel_key_value_from_database(")
             && owned_runtime_source_impl.contains("load_channel_key_value_from_database("),
         "borrowed and owned CC Switch channel key runtime sources should delegate through the shared lookup helper"
+    );
+}
+
+#[test]
+fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let pipeline_struct = function_slice(
+        &source,
+        "pub(crate) struct CcSwitchForwardPipeline",
+        "impl<R> CcSwitchForwardPipeline",
+    );
+    let pipeline_constructors = function_slice(
+        &source,
+        "impl<R> CcSwitchForwardPipeline",
+        "impl<R> ForwardPipeline for CcSwitchForwardPipeline",
+    );
+    let pipeline_impl = function_slice(
+        &source,
+        "impl<R> ForwardPipeline for CcSwitchForwardPipeline",
+        "type UsageCallbackWithTiming",
+    );
+    let host_runtime_trait = function_slice(
+        &source,
+        "pub(crate) trait HostForwardRuntime",
+        "impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime",
+    );
+    let host_runtime_impl = function_slice(
+        &source,
+        "impl HostForwardRuntime for CcSwitchProxyRuntime",
+        "pub(crate) fn forward_with_optional_host_runtime",
+    );
+    let optional_runtime_function = function_slice(
+        &source,
+        "pub(crate) fn forward_with_optional_host_runtime",
+        "pub(crate) use crate::proxy_core::api::routing::forwarding_requires_runtime_error_message",
+    );
+    let host_forward_function = function_slice(
+        &source,
+        "pub(crate) async fn forward_proxy_request_with_host_runtime",
+        "#[derive(Clone)]\npub(crate) struct CcSwitchForwardPipeline",
+    );
+    let attempt_source_function = function_slice(
+        &source,
+        "pub(crate) fn required_forward_attempts_from_sources",
+        "pub(crate) type FailoverSwitchSchedulerRef",
+    );
+
+    assert!(
+        pipeline_struct.contains("channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource"),
+        "CC Switch forward pipeline should own the DB-backed channel key runtime source"
+    );
+    assert!(
+        pipeline_constructors
+            .matches("channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource")
+            .count()
+            >= 2,
+        "CC Switch forward pipeline constructors should require an injected channel key runtime source"
+    );
+    assert!(
+        pipeline_impl.contains("&self.channel_key_runtime_source"),
+        "ForwardPipeline implementation should pass its channel key runtime source into host runtime dispatch"
+    );
+    assert!(
+        host_runtime_trait.contains("channel_key_runtime_source")
+            && host_runtime_impl.contains("channel_key_runtime_source"),
+        "HostForwardRuntime should receive channel key runtime source from the pipeline"
+    );
+    assert!(
+        optional_runtime_function
+            .contains(".forward_host(channel_key_runtime_source, request, plan)"),
+        "optional runtime dispatcher should forward the injected channel key runtime source"
+    );
+    assert!(
+        host_forward_function.contains("required_forward_attempts_from_sources(")
+            && !host_forward_function.contains("required_forward_attempts_from_db_sources("),
+        "host forward runtime should build attempts through source-injected auth profile handling"
+    );
+    assert!(
+        attempt_source_function.contains("apply_channel_auth_profile_providers_from_source("),
+        "required forward attempts source helper should delegate auth profile application through the source contract"
     );
 }
 

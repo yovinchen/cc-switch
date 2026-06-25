@@ -6798,6 +6798,7 @@ pub(crate) fn required_forward_attempts_from_plan(
     Ok(attempts)
 }
 
+#[cfg(test)]
 pub(crate) struct CcSwitchBorrowedChannelKeyRuntimeSource<'a> {
     db: &'a Database,
 }
@@ -6807,6 +6808,7 @@ pub(crate) struct CcSwitchChannelKeyRuntimeSource {
     db: Arc<Database>,
 }
 
+#[cfg(test)]
 pub(crate) fn channel_key_runtime_source_from_db(
     db: &Database,
 ) -> CcSwitchBorrowedChannelKeyRuntimeSource<'_> {
@@ -6830,6 +6832,7 @@ fn load_channel_key_value_from_database(
     Ok(channel_key_value_from_runtime_candidate(key))
 }
 
+#[cfg(test)]
 impl ChannelKeyRuntimeSource for CcSwitchBorrowedChannelKeyRuntimeSource<'_> {
     fn load_channel_key_value(
         &self,
@@ -6854,7 +6857,7 @@ pub(crate) fn apply_channel_auth_profile_providers_from_source(
     app_type: &AppType,
     providers: &IndexMap<String, Provider>,
     attempts: &mut [ForwardAttempt],
-    channel_key_runtime_source: impl ChannelKeyRuntimeSource,
+    channel_key_runtime_source: &(dyn ChannelKeyRuntimeSource + Send + Sync),
 ) -> ProxyCoreResult<()> {
     for attempt in attempts {
         let auth_profile_ref = attempt
@@ -6902,31 +6905,36 @@ pub(crate) fn apply_channel_auth_profile_providers_from_source(
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn apply_channel_auth_profile_providers_from_db(
     db: &Database,
     app_type: &AppType,
     providers: &IndexMap<String, Provider>,
     attempts: &mut [ForwardAttempt],
 ) -> ProxyCoreResult<()> {
+    let channel_key_runtime_source = channel_key_runtime_source_from_db(db);
     apply_channel_auth_profile_providers_from_source(
         app_type,
         providers,
         attempts,
-        channel_key_runtime_source_from_db(db),
+        &channel_key_runtime_source,
     )
 }
 
-pub(crate) fn required_forward_attempts_from_db_sources(
-    db: &Database,
+pub(crate) fn required_forward_attempts_from_sources(
     app_type: &AppType,
+    all_providers: &IndexMap<String, Provider>,
     plan: &RoutePlan,
+    channel_key_runtime_source: &(dyn ChannelKeyRuntimeSource + Send + Sync),
 ) -> ProxyCoreResult<Vec<ForwardAttempt>> {
-    let all_providers = db
-        .get_all_providers(app_type.as_str())
-        .map_err(|error| app_error("load host providers", error))?;
-    let providers = host_providers_for_plan(&all_providers, plan)?;
+    let providers = host_providers_for_plan(all_providers, plan)?;
     let mut attempts = required_forward_attempts_from_plan(app_type, &providers, plan)?;
-    apply_channel_auth_profile_providers_from_db(db, app_type, &all_providers, &mut attempts)?;
+    apply_channel_auth_profile_providers_from_source(
+        app_type,
+        all_providers,
+        &mut attempts,
+        channel_key_runtime_source,
+    )?;
     Ok(attempts)
 }
 
@@ -9129,12 +9137,14 @@ pub(crate) fn forwarder_runtime_host_resources_from_runtime(
 
 pub(crate) async fn forward_proxy_request_with_cc_switch_runtime(
     runtime: &CcSwitchProxyRuntime,
+    channel_key_runtime_source: &(dyn ChannelKeyRuntimeSource + Send + Sync),
     request: ProxyRequest,
     plan: RoutePlan,
 ) -> ProxyCoreResult<ProxyResult> {
     forward_proxy_request_with_host_runtime(
         &runtime.db,
         forwarder_runtime_host_resources_from_runtime(runtime),
+        channel_key_runtime_source,
         request,
         plan,
     )
@@ -9195,6 +9205,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
 pub(crate) async fn forward_proxy_request_with_host_runtime(
     db: &Database,
     resources: ForwarderRuntimeHostResources,
+    channel_key_runtime_source: &(dyn ChannelKeyRuntimeSource + Send + Sync),
     request: ProxyRequest,
     plan: RoutePlan,
 ) -> ProxyCoreResult<ProxyResult> {
@@ -9202,7 +9213,15 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
     let app_type = forward_request.app_type.clone();
     let forwarder_config = forwarder_runtime_config_from_db_sources(db, &app_type).await?;
     let current_provider_id = forward_current_provider_id_from_db_sources(db, &app_type);
-    let attempts = required_forward_attempts_from_db_sources(db, &app_type, &plan)?;
+    let all_providers = db
+        .get_all_providers(app_type.as_str())
+        .map_err(|error| app_error("load host providers", error))?;
+    let attempts = required_forward_attempts_from_sources(
+        &app_type,
+        &all_providers,
+        &plan,
+        channel_key_runtime_source,
+    )?;
 
     forward_with_preplanned_host_runtime(
         resources,
@@ -9218,19 +9237,27 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
 #[derive(Clone)]
 pub(crate) struct CcSwitchForwardPipeline<R> {
     runtime: Option<R>,
+    channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource,
 }
 
 impl<R> CcSwitchForwardPipeline<R> {
-    pub(crate) fn with_runtime(runtime: R) -> Self {
+    pub(crate) fn without_runtime(
+        channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource,
+    ) -> Self {
         Self {
-            runtime: Some(runtime),
+            runtime: None,
+            channel_key_runtime_source,
         }
     }
-}
 
-impl<R> Default for CcSwitchForwardPipeline<R> {
-    fn default() -> Self {
-        Self { runtime: None }
+    pub(crate) fn with_runtime(
+        runtime: R,
+        channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource,
+    ) -> Self {
+        Self {
+            runtime: Some(runtime),
+            channel_key_runtime_source,
+        }
     }
 }
 
@@ -9243,7 +9270,12 @@ where
         request: ProxyRequest,
         plan: RoutePlan,
     ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
-        forward_with_optional_host_runtime(self.runtime.as_ref(), request, plan)
+        forward_with_optional_host_runtime(
+            self.runtime.as_ref(),
+            &self.channel_key_runtime_source,
+            request,
+            plan,
+        )
     }
 }
 
@@ -9525,6 +9557,7 @@ impl<R> CcSwitchProxyServices<R> {
 
     fn with_optional_event_bus(db: Arc<Database>, events: Option<Arc<ProxyEventBus>>) -> Self {
         let router = Arc::new(provider_router_from_database(db.clone()));
+        let channel_key_runtime_source = channel_key_runtime_source_from_database(db.clone());
         Self {
             config: CcSwitchConfigSource::new(db.clone()),
             providers: CcSwitchProviderSource::new(
@@ -9538,11 +9571,11 @@ impl<R> CcSwitchProxyServices<R> {
             health_store: CcSwitchChannelHealthStore::new(db.clone(), router.clone()),
             reachability_probe: CcSwitchChannelReachabilityProbe::new(db.clone()),
             auth_provider: CcSwitchAuthProvider,
-            channel_key_runtime_source: channel_key_runtime_source_from_database(db.clone()),
+            channel_key_runtime_source: channel_key_runtime_source.clone(),
             model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), router.clone()),
             usage_sink: CcSwitchUsageSink::new(db.clone()),
             event_sink: CcSwitchEventSink::new(events),
-            forward_pipeline: CcSwitchForwardPipeline::default(),
+            forward_pipeline: CcSwitchForwardPipeline::without_runtime(channel_key_runtime_source),
         }
     }
 }
@@ -9554,6 +9587,7 @@ where
     pub(crate) fn with_runtime(runtime: R) -> Self {
         let db = runtime.db();
         let provider_router = runtime.provider_router();
+        let channel_key_runtime_source = channel_key_runtime_source_from_database(db.clone());
         Self {
             config: CcSwitchConfigSource::new(db.clone()),
             providers: CcSwitchProviderSource::new(
@@ -9567,11 +9601,14 @@ where
             health_store: CcSwitchChannelHealthStore::new(db.clone(), provider_router.clone()),
             reachability_probe: CcSwitchChannelReachabilityProbe::new(db.clone()),
             auth_provider: CcSwitchAuthProvider,
-            channel_key_runtime_source: channel_key_runtime_source_from_database(db.clone()),
+            channel_key_runtime_source: channel_key_runtime_source.clone(),
             model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), provider_router.clone()),
             usage_sink: CcSwitchUsageSink::new(db),
             event_sink: CcSwitchEventSink::new(Some(runtime.events())),
-            forward_pipeline: CcSwitchForwardPipeline::with_runtime(runtime),
+            forward_pipeline: CcSwitchForwardPipeline::with_runtime(
+                runtime,
+                channel_key_runtime_source,
+            ),
         }
     }
 }
@@ -9636,6 +9673,7 @@ where
 pub(crate) trait HostForwardRuntime {
     fn forward_host<'a>(
         &'a self,
+        channel_key_runtime_source: &'a (dyn ChannelKeyRuntimeSource + Send + Sync),
         request: ProxyRequest,
         plan: RoutePlan,
     ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>>;
@@ -9662,17 +9700,25 @@ impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime {
 impl HostForwardRuntime for CcSwitchProxyRuntime {
     fn forward_host<'a>(
         &'a self,
+        channel_key_runtime_source: &'a (dyn ChannelKeyRuntimeSource + Send + Sync),
         request: ProxyRequest,
         plan: RoutePlan,
     ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
-        Box::pin(
-            async move { forward_proxy_request_with_cc_switch_runtime(self, request, plan).await },
-        )
+        Box::pin(async move {
+            forward_proxy_request_with_cc_switch_runtime(
+                self,
+                channel_key_runtime_source,
+                request,
+                plan,
+            )
+            .await
+        })
     }
 }
 
 pub(crate) fn forward_with_optional_host_runtime<'a, R>(
     runtime: Option<&'a R>,
+    channel_key_runtime_source: &'a (dyn ChannelKeyRuntimeSource + Send + Sync),
     request: ProxyRequest,
     plan: RoutePlan,
 ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>>
@@ -9681,7 +9727,9 @@ where
 {
     Box::pin(async move {
         let runtime = runtime.ok_or_else(forwarding_runtime_unavailable_error)?;
-        runtime.forward_host(request, plan).await
+        runtime
+            .forward_host(channel_key_runtime_source, request, plan)
+            .await
     })
 }
 
@@ -13314,28 +13362,30 @@ mod tests {
             "channel-a",
             "provider:claude:provider-auth",
         );
+        let provider_runtime_source = TestChannelKeyRuntimeSource {
+            expected: None,
+            key_value: None,
+        };
         apply_channel_auth_profile_providers_from_source(
             &AppType::Claude,
             &providers,
             std::slice::from_mut(&mut provider_attempt),
-            TestChannelKeyRuntimeSource {
-                expected: None,
-                key_value: None,
-            },
+            &provider_runtime_source,
         )
         .expect("apply provider auth profile");
         assert_eq!(provider_attempt.auth_provider().id, "provider-auth");
 
         let mut channel_key_attempt =
             attempt_with_auth_ref(&route_provider, "channel-key", "channel-key:primary");
+        let channel_key_runtime_source = TestChannelKeyRuntimeSource {
+            expected: Some(("channel-key", "primary")),
+            key_value: Some("loaded-channel-key".to_string()),
+        };
         apply_channel_auth_profile_providers_from_source(
             &AppType::Claude,
             &providers,
             std::slice::from_mut(&mut channel_key_attempt),
-            TestChannelKeyRuntimeSource {
-                expected: Some(("channel-key", "primary")),
-                key_value: Some("loaded-channel-key".to_string()),
-            },
+            &channel_key_runtime_source,
         )
         .expect("apply channel key auth profile");
         assert_eq!(
