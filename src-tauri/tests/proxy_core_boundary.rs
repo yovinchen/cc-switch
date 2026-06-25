@@ -936,6 +936,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn forwarder_failure_log_line(",
     "fn forwarder_rectifier_retry_failure_label(",
     "fn apply_proxy_runtime_active_targets(",
+    "fn codex_auth_object_value_from_settings(",
+    "fn codex_config_text_from_settings(",
     "fn channel_route_candidate_from_selection(",
     "fn resolved_channel_attempt_from_candidate(",
     "fn resolved_channel_attempt_from_selection(",
@@ -3357,7 +3359,7 @@ fn proxy_core_adapter_delegates_codex_config_toml_projection_to_core() {
         .join("\n");
 
     assert!(
-        production_source.contains("core_codex_config_text_from_settings")
+        production_source.contains("codex_config_text_from_settings")
             && production_source.contains("core_codex_wire_api_from_config_toml")
             && production_source.contains("core_codex_model_from_config_toml")
             && production_source.contains("core_codex_config_has_base_url_matching"),
@@ -3392,7 +3394,7 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
         .join("\n");
 
     for marker in [
-        "core_codex_auth_object_value_from_settings(",
+        "codex_auth_object_value_from_settings(",
         "core_codex_provider_live_write_parts_from_settings(",
         "core_codex_restored_live_settings_parts(",
         "core_codex_live_settings_parts_from_settings(",
@@ -3525,7 +3527,7 @@ fn proxy_core_adapter_delegates_required_provider_base_url_policy_to_core() {
     let slice = function_slice(
         &source,
         "pub(crate) fn required_codex_provider_base_url",
-        "pub(crate) fn codex_config_text_from_settings",
+        "fn provider_codex_config_text",
     );
     assert!(
         slice.matches("core_required_provider_base_url").count() == 3,

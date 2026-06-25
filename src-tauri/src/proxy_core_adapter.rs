@@ -314,10 +314,10 @@ pub(crate) use crate::proxy_core::api::ports::{
     live_token_sync_app_label as core_live_token_sync_app_label,
     normalize_provider_settings_for_storage as core_normalize_provider_settings_for_storage,
     codex_auth_has_oauth_login_material as core_codex_auth_has_oauth_login_material,
-    codex_auth_object_value_from_settings as core_codex_auth_object_value_from_settings,
+    codex_auth_object_value_from_settings,
     codex_base_url_from_settings as core_codex_base_url_from_settings,
     codex_config_has_base_url_matching as core_codex_config_has_base_url_matching,
-    codex_config_text_from_settings as core_codex_config_text_from_settings,
+    codex_config_text_from_settings,
     codex_live_settings_parts_from_settings as core_codex_live_settings_parts_from_settings,
     codex_live_snapshot_parts_from_settings as core_codex_live_snapshot_parts_from_settings,
     codex_model_from_config_toml as core_codex_model_from_config_toml,
@@ -3497,10 +3497,6 @@ pub(crate) fn provider_codex_auth_info(provider: &Provider) -> Option<ProviderAu
     provider_codex_api_key(provider).map(core_codex_auth_info_from_api_key)
 }
 
-pub(crate) fn codex_auth_object_value_from_settings(settings: &Value) -> Option<&Value> {
-    core_codex_auth_object_value_from_settings(settings)
-}
-
 pub(crate) fn codex_api_key_from_auth_and_config(
     auth: Option<&Value>,
     config_text: Option<&str>,
@@ -3522,10 +3518,6 @@ pub(crate) fn required_gemini_provider_base_url(provider: &Provider) -> Result<S
 
 pub(crate) fn required_claude_provider_base_url(provider: &Provider) -> Result<String, String> {
     core_required_provider_base_url("Claude", provider_claude_base_url(provider))
-}
-
-pub(crate) fn codex_config_text_from_settings(settings: &Value) -> Option<&str> {
-    core_codex_config_text_from_settings(settings)
 }
 
 fn provider_codex_config_text(provider: &Provider) -> Option<&str> {
