@@ -41,6 +41,28 @@ const FORBIDDEN_PROXY_ERROR_MAPPER_FORWARD_FAILURE_PROJECTION_MARKERS: &[&str] =
     "forward_failure_kind_from_proxy_status(",
     "forward_failure_message(",
 ];
+const FORBIDDEN_PROXY_ERROR_MAPPER_DISPLAY_MESSAGE_MARKERS: &[&str] = &[
+    "ProxyError::UpstreamError",
+    "ProxyError::Timeout",
+    "ProxyError::ForwardFailed",
+    "ProxyError::NoAvailableProvider",
+    "ProxyError::AllProvidersCircuitOpen",
+    "ProxyError::NoProvidersConfigured",
+    "ProxyError::MaxRetriesExceeded",
+    "ProxyError::ProviderUnhealthy",
+    "ProxyError::DatabaseError",
+    "ProxyError::TransformError",
+    "上游错误",
+    "请求超时",
+    "转发失败",
+    "无可用 Provider",
+    "所有供应商已熔断",
+    "未配置供应商",
+    "所有 Provider 都失败",
+    "Provider 不健康",
+    "数据库错误",
+    "请求/响应转换错误",
+];
 const FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS: &[&str] = &[
     "rewrite_codex_responses_endpoint_to_chat(",
     "rewrite_claude_transform_endpoint(",
@@ -1428,6 +1450,43 @@ fn proxy_error_mapper_delegates_forward_failure_projection_to_adapter() {
 }
 
 #[test]
+fn proxy_error_mapper_delegates_display_message_policy_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/error_mapper.rs");
+    let source = fs::read_to_string(&path).expect("read error_mapper.rs");
+    let function = function_slice(
+        &source,
+        "pub fn get_error_message",
+        "pub(crate) fn proxy_core_error_to_proxy_error",
+    );
+
+    assert!(
+        function.contains("proxy_error_display_message(error)"),
+        "Proxy error mapper must delegate display-message policy to proxy_core_adapter"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_ERROR_MAPPER_DISPLAY_MESSAGE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/error_mapper.rs:{} contains display-message marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Proxy error mapper must not locally maintain ProxyError display messages:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_forward_failure_message_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
@@ -1450,6 +1509,45 @@ fn proxy_core_adapter_delegates_forward_failure_message_policy_to_core() {
         !function.contains("=> message.clone()") && !function.contains("_ => error.to_string()"),
         "adapter must not directly choose between raw host messages and display messages"
     );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_proxy_error_display_message_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn proxy_error_display_message",
+        "pub(crate) use crate::proxy_core::api::errors::",
+    );
+
+    assert!(
+        function.contains("proxy_error_display_message_from_status("),
+        "adapter must delegate ProxyError display-message selection to proxy-core"
+    );
+    assert!(
+        function.contains("proxy_error_status_kind(error)"),
+        "adapter should pass ProxyError status kind into the core display-message policy"
+    );
+
+    for marker in [
+        "上游错误",
+        "请求超时",
+        "转发失败",
+        "无可用 Provider",
+        "所有供应商已熔断",
+        "未配置供应商",
+        "所有 Provider 都失败",
+        "Provider 不健康",
+        "数据库错误",
+        "请求/响应转换错误",
+    ] {
+        assert!(
+            !function.contains(marker),
+            "adapter must not locally format ProxyError display text `{marker}`"
+        );
+    }
 }
 
 #[test]

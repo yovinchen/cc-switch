@@ -75,6 +75,33 @@ pub fn proxy_error_http_status_code(kind: ProxyErrorStatusKind) -> u16 {
     }
 }
 
+pub fn proxy_error_display_message_from_status(
+    kind: ProxyErrorStatusKind,
+    raw_message: &str,
+    upstream_body: Option<&str>,
+    display_message: &str,
+) -> String {
+    match kind {
+        ProxyErrorStatusKind::UpstreamError(status) => {
+            if let Some(body) = upstream_body {
+                format!("上游错误 ({status}): {body}")
+            } else {
+                format!("上游错误 ({status})")
+            }
+        }
+        ProxyErrorStatusKind::Timeout => format!("请求超时: {raw_message}"),
+        ProxyErrorStatusKind::ForwardFailed => format!("转发失败: {raw_message}"),
+        ProxyErrorStatusKind::NoAvailableProvider => "无可用 Provider".to_string(),
+        ProxyErrorStatusKind::AllProvidersCircuitOpen => "所有供应商已熔断，无可用渠道".to_string(),
+        ProxyErrorStatusKind::NoProvidersConfigured => "未配置供应商".to_string(),
+        ProxyErrorStatusKind::MaxRetriesExceeded => "所有 Provider 都失败，重试耗尽".to_string(),
+        ProxyErrorStatusKind::ProviderUnhealthy => format!("Provider 不健康: {raw_message}"),
+        ProxyErrorStatusKind::DatabaseError => format!("数据库错误: {raw_message}"),
+        ProxyErrorStatusKind::TransformError => format!("请求/响应转换错误: {raw_message}"),
+        _ => display_message.to_string(),
+    }
+}
+
 pub fn proxy_core_error_from_status_kind(
     kind: ProxyErrorStatusKind,
     message: impl Into<String>,
@@ -198,6 +225,109 @@ mod tests {
         assert_eq!(
             proxy_error_http_status_code(ProxyErrorStatusKind::UpstreamError(42)),
             StatusCode::BAD_GATEWAY.as_u16()
+        );
+    }
+
+    #[test]
+    fn proxy_error_display_messages_preserve_host_contract() {
+        assert_eq!(
+            proxy_error_display_message_from_status(
+                ProxyErrorStatusKind::UpstreamError(500),
+                "",
+                Some("Internal Server Error"),
+                "unused"
+            ),
+            "上游错误 (500): Internal Server Error"
+        );
+        assert_eq!(
+            proxy_error_display_message_from_status(
+                ProxyErrorStatusKind::Timeout,
+                "slow upstream",
+                None,
+                "unused"
+            ),
+            "请求超时: slow upstream"
+        );
+        assert_eq!(
+            proxy_error_display_message_from_status(
+                ProxyErrorStatusKind::ForwardFailed,
+                "connection refused",
+                None,
+                "unused"
+            ),
+            "转发失败: connection refused"
+        );
+        assert_eq!(
+            proxy_error_display_message_from_status(
+                ProxyErrorStatusKind::NoAvailableProvider,
+                "",
+                None,
+                "unused"
+            ),
+            "无可用 Provider"
+        );
+        assert_eq!(
+            proxy_error_display_message_from_status(
+                ProxyErrorStatusKind::AllProvidersCircuitOpen,
+                "",
+                None,
+                "unused"
+            ),
+            "所有供应商已熔断，无可用渠道"
+        );
+        assert_eq!(
+            proxy_error_display_message_from_status(
+                ProxyErrorStatusKind::NoProvidersConfigured,
+                "",
+                None,
+                "unused"
+            ),
+            "未配置供应商"
+        );
+        assert_eq!(
+            proxy_error_display_message_from_status(
+                ProxyErrorStatusKind::MaxRetriesExceeded,
+                "",
+                None,
+                "unused"
+            ),
+            "所有 Provider 都失败，重试耗尽"
+        );
+        assert_eq!(
+            proxy_error_display_message_from_status(
+                ProxyErrorStatusKind::ProviderUnhealthy,
+                "cooldown",
+                None,
+                "unused"
+            ),
+            "Provider 不健康: cooldown"
+        );
+        assert_eq!(
+            proxy_error_display_message_from_status(
+                ProxyErrorStatusKind::DatabaseError,
+                "locked",
+                None,
+                "unused"
+            ),
+            "数据库错误: locked"
+        );
+        assert_eq!(
+            proxy_error_display_message_from_status(
+                ProxyErrorStatusKind::TransformError,
+                "bad payload",
+                None,
+                "unused"
+            ),
+            "请求/响应转换错误: bad payload"
+        );
+        assert_eq!(
+            proxy_error_display_message_from_status(
+                ProxyErrorStatusKind::AuthError,
+                "bad token",
+                None,
+                "认证错误: bad token"
+            ),
+            "认证错误: bad token"
         );
     }
 

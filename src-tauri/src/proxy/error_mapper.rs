@@ -11,7 +11,7 @@ use crate::proxy_core_adapter::{
 use crate::proxy_core_adapter::{
     codex_proxy_error_response_from_proxy_error as core_codex_proxy_error_response,
     log_unlabeled_sse_fallback_event, parse_upstream_json_or_unlabeled_sse,
-    proxy_core_error_from_status_kind, proxy_error_http_status_code,
+    proxy_core_error_from_status_kind, proxy_error_display_message, proxy_error_status_code,
     upstream_response_parse_failure_log_message, ClaudeDesktopGatewayAuthError,
     ManagementAuthError, ProxyCoreError, ProxyCoreResponse, ProxyCoreResult,
     UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
@@ -32,31 +32,15 @@ use serde_json::Value;
 /// - 配置/请求错误：400 Bad Request
 /// - 转换错误：422 Unprocessable Entity
 /// - 其他错误：500 Internal Server Error
+#[allow(dead_code)]
 pub fn map_proxy_error_to_status(error: &ProxyError) -> u16 {
-    proxy_error_http_status_code(proxy_error_status_kind(error))
+    proxy_error_status_code(error)
 }
 
 /// 将 ProxyError 转换为用户友好的错误消息
+#[allow(dead_code)]
 pub fn get_error_message(error: &ProxyError) -> String {
-    match error {
-        ProxyError::UpstreamError { status, body } => {
-            if let Some(body) = body {
-                format!("上游错误 ({status}): {body}")
-            } else {
-                format!("上游错误 ({status})")
-            }
-        }
-        ProxyError::Timeout(msg) => format!("请求超时: {msg}"),
-        ProxyError::ForwardFailed(msg) => format!("转发失败: {msg}"),
-        ProxyError::NoAvailableProvider => "无可用 Provider".to_string(),
-        ProxyError::AllProvidersCircuitOpen => "所有供应商已熔断，无可用渠道".to_string(),
-        ProxyError::NoProvidersConfigured => "未配置供应商".to_string(),
-        ProxyError::MaxRetriesExceeded => "所有 Provider 都失败，重试耗尽".to_string(),
-        ProxyError::ProviderUnhealthy(msg) => format!("Provider 不健康: {msg}"),
-        ProxyError::DatabaseError(msg) => format!("数据库错误: {msg}"),
-        ProxyError::TransformError(msg) => format!("请求/响应转换错误: {msg}"),
-        _ => error.to_string(),
-    }
+    proxy_error_display_message(error)
 }
 
 pub(crate) fn proxy_core_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {

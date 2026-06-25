@@ -14,8 +14,7 @@ use crate::provider::{
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::error::{proxy_error_status_kind, ProxyError};
 use crate::proxy::error_mapper::{
-    forward_error_to_core_error, get_error_message, map_proxy_error_to_status,
-    proxy_core_error_to_proxy_error, reqwest_send_error_to_proxy_error,
+    forward_error_to_core_error, proxy_core_error_to_proxy_error, reqwest_send_error_to_proxy_error,
 };
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
@@ -127,12 +126,39 @@ pub(crate) type ClaudeDesktopGatewayAuthError =
 pub(crate) type ProxyErrorStatusKind = crate::proxy_core::api::errors::ProxyErrorStatusKind;
 
 pub(crate) use crate::proxy_core::api::errors::{
-    proxy_core_error_from_status_kind, proxy_error_http_status_code, proxy_error_response_body,
-    upstream_proxy_error_response_body,
+    proxy_core_error_from_status_kind, proxy_error_display_message_from_status,
+    proxy_error_http_status_code, proxy_error_response_body, upstream_proxy_error_response_body,
 };
 
 pub(crate) fn error_message_with_context(context: &str, error: impl std::fmt::Display) -> String {
     crate::proxy_core::api::errors::error_message_with_context(context, &error.to_string())
+}
+
+pub(crate) fn proxy_error_status_code(error: &ProxyError) -> u16 {
+    proxy_error_http_status_code(proxy_error_status_kind(error))
+}
+
+pub(crate) fn proxy_error_display_message(error: &ProxyError) -> String {
+    let raw_message = match error {
+        ProxyError::Timeout(message)
+        | ProxyError::ForwardFailed(message)
+        | ProxyError::ProviderUnhealthy(message)
+        | ProxyError::DatabaseError(message)
+        | ProxyError::TransformError(message) => message.as_str(),
+        _ => "",
+    };
+    let upstream_body = match error {
+        ProxyError::UpstreamError { body, .. } => body.as_deref(),
+        _ => None,
+    };
+    let display_message = error.to_string();
+
+    proxy_error_display_message_from_status(
+        proxy_error_status_kind(error),
+        raw_message,
+        upstream_body,
+        &display_message,
+    )
 }
 
 pub(crate) use crate::proxy_core::api::errors::{
@@ -10459,7 +10485,7 @@ pub(crate) fn codex_proxy_error_json_from_proxy_error(
     endpoint: &str,
     error: &ProxyError,
 ) -> Value {
-    let message = get_error_message(error);
+    let message = proxy_error_display_message(error);
     codex_proxy_error_json_from_host_facts(
         provider_name,
         request_model,
@@ -10474,7 +10500,7 @@ pub(crate) fn codex_proxy_error_response_from_proxy_error(
     endpoint: &str,
     error: &ProxyError,
 ) -> ProxyCoreResult<ProxyCoreResponse> {
-    let message = get_error_message(error);
+    let message = proxy_error_display_message(error);
     codex_proxy_error_response_from_host_facts(
         provider_name,
         request_model,
@@ -11723,8 +11749,8 @@ pub(crate) fn record_forward_error_usage(
         request_model: &ctx.request_model,
         outbound_model: ctx.outbound_model.as_deref(),
         route_context: ctx.usage_route_context.as_ref(),
-        status_code: map_proxy_error_to_status(error),
-        error_message: get_error_message(error),
+        status_code: proxy_error_status_code(error),
+        error_message: proxy_error_display_message(error),
         latency_ms: ctx.latency_ms(),
         is_streaming,
         session_id: &ctx.session_id,
