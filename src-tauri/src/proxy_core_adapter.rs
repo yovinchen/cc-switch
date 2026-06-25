@@ -2470,9 +2470,7 @@ pub(crate) type CodexProxyErrorKind = crate::proxy_core::api::transforms::CodexP
 pub(crate) type ForwardFailureKind = crate::proxy_core::api::transport::ForwardFailureKind;
 pub(crate) type ForwardFailureLog = crate::proxy_core::api::transport::ForwardFailureLog;
 pub(crate) enum ForwarderFailureDecision {
-    Retryable {
-        error_message: String,
-    },
+    Retryable,
     NonRetryable,
 }
 pub(crate) enum ForwarderRectifierRetryFailureDecision {
@@ -7139,12 +7137,12 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn emit_request_started(&self, request_id: &str, app_type: &str);
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
     fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
-    fn emit_attempt_failed(
+    fn emit_attempt_failed_for_error(
         &self,
         request_id: &str,
         app_type: &str,
         attempt: &ForwardAttempt,
-        error: &str,
+        error: &ProxyError,
     );
     fn record_active_route_target<'a>(
         &'a self,
@@ -7161,7 +7159,7 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn record_provider_failure<'a>(
         &'a self,
         provider: &'a Provider,
-        error_message: &'a str,
+        error: &'a ProxyError,
     ) -> BoxFuture<'a, ()>;
     fn record_provider_rectifier_retry_failure<'a>(
         &'a self,
@@ -7265,20 +7263,21 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         );
     }
 
-    fn emit_attempt_failed(
+    fn emit_attempt_failed_for_error(
         &self,
         request_id: &str,
         app_type: &str,
         attempt: &ForwardAttempt,
-        error: &str,
+        error: &ProxyError,
     ) {
+        let error_message = error.to_string();
         emit_attempt_event_source(
             self.events.as_ref(),
             request_id,
             app_type,
             attempt,
             AttemptEventPhase::Failed,
-            Some(error),
+            Some(&error_message),
         );
     }
 
@@ -7333,13 +7332,14 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
     fn record_provider_failure<'a>(
         &'a self,
         provider: &'a Provider,
-        error_message: &'a str,
+        error: &'a ProxyError,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
+            let error_message = error.to_string();
             record_forward_provider_failure_runtime_source(
                 self.status.as_ref(),
                 provider.name.as_str(),
-                error_message,
+                &error_message,
             )
             .await;
         })
@@ -7364,11 +7364,8 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
 
     fn forward_failure_decision(&self, error: &ProxyError) -> ForwarderFailureDecision {
         let failure = forward_failure_kind_from_proxy_error(error);
-        let error_message = error.to_string();
         match categorize_forward_failure(&failure) {
-            ForwardFailureCategory::Retryable => {
-                ForwarderFailureDecision::Retryable { error_message }
-            }
+            ForwardFailureCategory::Retryable => ForwarderFailureDecision::Retryable,
             ForwardFailureCategory::NonRetryable => ForwarderFailureDecision::NonRetryable,
         }
     }
@@ -7640,7 +7637,7 @@ pub(crate) trait ForwarderAttemptRuntimeSource {
         attempt: &'a ForwardAttempt,
         app_type: &'a str,
         used_half_open_permit: bool,
-        error_message: &'a str,
+        error: &'a ProxyError,
     ) -> BoxFuture<'a, ()>;
 
     fn release_attempt_permit_neutral<'a>(
@@ -7716,15 +7713,16 @@ impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
         attempt: &'a ForwardAttempt,
         app_type: &'a str,
         used_half_open_permit: bool,
-        error_message: &'a str,
+        error: &'a ProxyError,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
+            let error_message = error.to_string();
             record_forward_attempt_failure_runtime_source(
                 self.router.as_ref(),
                 attempt,
                 app_type,
                 used_half_open_permit,
-                error_message,
+                &error_message,
             )
             .await;
         })
@@ -15106,9 +15104,7 @@ base_url = "https://api.openai.com/v1"
         let non_retryable = source.forward_failure_decision(&non_retryable_error);
 
         match retryable {
-            ForwarderFailureDecision::Retryable { error_message } => {
-                assert_eq!(error_message, "超时: upstream timed out");
-            }
+            ForwarderFailureDecision::Retryable => {}
             ForwarderFailureDecision::NonRetryable => {
                 panic!("timeout should be retryable")
             }
@@ -15125,7 +15121,7 @@ base_url = "https://api.openai.com/v1"
         );
 
         match non_retryable {
-            ForwarderFailureDecision::Retryable { .. } => {
+            ForwarderFailureDecision::Retryable => {
                 panic!("client 400 should be non-retryable")
             }
             ForwarderFailureDecision::NonRetryable => {}
@@ -15152,7 +15148,10 @@ base_url = "https://api.openai.com/v1"
         let provider = Provider::with_id("relay".to_string(), "Relay".to_string(), json!({}), None);
 
         source
-            .record_provider_failure(&provider, "超时: upstream timed out")
+            .record_provider_failure(
+                &provider,
+                &ProxyError::Timeout("upstream timed out".to_string()),
+            )
             .await;
         {
             let status = source.status();
@@ -15224,11 +15223,16 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(succeeded.payload["channelId"], "channel-a");
         assert!(succeeded.payload.get("error").is_none());
 
-        source.emit_attempt_failed("req-1", "claude", &attempt, "upstream failed");
+        source.emit_attempt_failed_for_error(
+            "req-1",
+            "claude",
+            &attempt,
+            &ProxyError::ForwardFailed("upstream failed".to_string()),
+        );
         let failed = subscriber.recv().await.expect("failed event");
         assert_eq!(failed.event, "channel_failed");
         assert_eq!(failed.payload["channelId"], "channel-a");
-        assert_eq!(failed.payload["error"], "upstream failed");
+        assert_eq!(failed.payload["error"], "请求转发失败: upstream failed");
     }
 
     #[tokio::test]

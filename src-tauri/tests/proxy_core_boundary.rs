@@ -7523,6 +7523,11 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "impl CcSwitchForwarderRuntimeStateSource",
         "impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource",
     );
+    let failure_decision_slice = function_slice(
+        &adapter_source,
+        "pub(crate) enum ForwarderFailureDecision",
+        "pub(crate) enum ForwarderRectifierRetryFailureDecision",
+    );
 
     assert!(
         struct_slice.contains("runtime_state_source"),
@@ -7580,6 +7585,17 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     assert!(
         runtime_trait_slice.contains("fn forward_failure_decision(&self, error: &ProxyError)"),
         "ForwarderRuntimeStateSource failure classification must only depend on ProxyError"
+    );
+    assert!(
+        failure_decision_slice.contains("Retryable")
+            && !failure_decision_slice.contains("error_message"),
+        "ForwarderFailureDecision must not carry formatted error messages back to RequestForwarder"
+    );
+    assert!(
+        runtime_trait_slice.contains("emit_attempt_failed_for_error")
+            && runtime_trait_slice
+                .contains("error: &ProxyError"),
+        "ForwarderRuntimeStateSource must own attempt-failed error message projection"
     );
     assert!(
         impl_slice.contains("log_rectifier_retry_success(")

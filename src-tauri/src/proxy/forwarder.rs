@@ -204,13 +204,13 @@ impl RequestForwarder {
         attempt: &ForwardAttempt,
         app_type: &str,
         used_half_open_permit: bool,
-        error_msg: String,
+        error: &ProxyError,
     ) {
         self.attempt_runtime_source
-            .record_failure(attempt, app_type, used_half_open_permit, &error_msg)
+            .record_failure(attempt, app_type, used_half_open_permit, error)
             .await;
         self.runtime_state_source
-            .emit_attempt_failed(request_id, app_type, attempt, &error_msg);
+            .emit_attempt_failed_for_error(request_id, app_type, attempt, error);
     }
 
     async fn release_attempt_permit_neutral(
@@ -253,7 +253,7 @@ impl RequestForwarder {
                     attempt,
                     app_type_str,
                     used_half_open_permit,
-                    error_message.clone(),
+                    &retry_err,
                 )
                 .await;
                 self.runtime_state_source
@@ -695,21 +695,19 @@ impl RequestForwarder {
                     let failure_decision = self.runtime_state_source.forward_failure_decision(&e);
 
                     match failure_decision {
-                        ForwarderFailureDecision::Retryable {
-                            error_message,
-                        } => {
+                        ForwarderFailureDecision::Retryable => {
                             // 可重试：真正的 provider 故障 → 记录失败并更新熔断器/DB 健康度
                             self.record_failure_result(
                                 request_id,
                                 attempt,
                                 app_type_str,
                                 used_half_open_permit,
-                                error_message.clone(),
+                                &e,
                             )
                             .await;
 
                             self.runtime_state_source
-                                .record_provider_failure(provider, &error_message)
+                                .record_provider_failure(provider, &e)
                                 .await;
 
                             self.runtime_state_source.log_retryable_forward_failure(
