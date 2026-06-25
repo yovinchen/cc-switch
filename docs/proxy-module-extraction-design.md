@@ -1404,6 +1404,7 @@
 984. 管理 API bearer 鉴权的 adapter 测试 facade 已删除；测试直接调用 `proxy-core::management_auth` 决策函数，避免 `proxy_core_adapter` 继续作为纯策略重导出层。
 985. forwarding runtime 缺失与 route plan provider mismatch 的 `ProxyCoreError` 构造已迁入 `proxy-core::routing`；host adapter 不再手写这些 core error variant，只负责转发 core constructor。
 986. Claude Desktop model-list provider selection 的失败/无可用 provider 错误 contract 已迁入 `proxy-core::claude_desktop_gateway_auth`；adapter 只负责把 router/provider loader 结果交给 core error constructor。
+987. channel test/reachability probe 的 provider-not-found 与 probe failure `ProxyCoreError` 构造已迁入 `proxy-core::ports`；adapter 只负责查询宿主 provider 与执行 stream check。
 
 ## 背景
 

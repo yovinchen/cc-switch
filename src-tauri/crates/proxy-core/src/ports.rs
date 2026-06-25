@@ -4522,6 +4522,16 @@ impl ChannelTestProbeRequest {
     }
 }
 
+pub fn channel_test_provider_not_found_error(
+    request: &ChannelTestProbeRequest,
+) -> ProxyCoreError {
+    ProxyCoreError::Config(request.provider_not_found_message())
+}
+
+pub fn channel_reachability_probe_error(error: impl std::fmt::Display) -> ProxyCoreError {
+    ProxyCoreError::Internal(error.to_string())
+}
+
 impl ChannelTestContext {
     pub fn from_channel(channel: &ChannelSpec, request: &ProxyChannelTestRequest) -> Self {
         let model = request.requested_model().map(str::to_string);
@@ -6209,7 +6219,8 @@ mod tests {
         should_skip_provider_legacy_common_config_migration,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
         channel_key_record_from_input, channel_key_runtime_candidate_from_input,
-        channel_reachability_status_from_latency, channel_record_from_input, ChannelDeleteResponse,
+        channel_reachability_probe_error, channel_reachability_status_from_latency,
+        channel_record_from_input, channel_test_provider_not_found_error, ChannelDeleteResponse,
         ChannelHealthUpdateInput, CHANNEL_HEALTH_UNKNOWN_STATUS,
         ChannelKeyRecordInput, ChannelKeyRuntimeCandidateInput, ChannelListQuery,
         ChannelListResponse, ChannelReachabilityInput, ChannelMigrationMaterializeInput,
@@ -6239,7 +6250,7 @@ mod tests {
         ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
-        ProxyRuntimeStatus, ProxyStatusResponse, ProxyTakeoverStatus,
+        ProxyCoreError, ProxyRuntimeStatus, ProxyStatusResponse, ProxyTakeoverStatus,
         ForwardCurrentProviderStatusInput, ForwardFailureStatusInput,
         ForwardProviderFailureStatusInput, ForwardProviderRectifierRetryFailureStatusInput,
         ForwardRequestStartedStatusInput, ForwardSuccessStatusInput, ForwardSuccessStatusUpdate,
@@ -6642,6 +6653,15 @@ mod tests {
             probe.provider_not_found_message(),
             "provider not found for channel channel-a: provider-a"
         );
+        assert!(matches!(
+            channel_test_provider_not_found_error(&probe),
+            ProxyCoreError::Config(message)
+                if message == "provider not found for channel channel-a: provider-a"
+        ));
+        assert!(matches!(
+            channel_reachability_probe_error("probe failed"),
+            ProxyCoreError::Internal(message) if message == "probe failed"
+        ));
     }
 
     #[test]

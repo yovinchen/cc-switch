@@ -2685,10 +2685,12 @@ use crate::proxy_core::api::events::{
 pub(crate) use crate::proxy_core::api::management::channel_not_found_error;
 pub(crate) use crate::proxy_core::api::management::{
     channel_health_update_from_input,
+    channel_reachability_probe_error,
     channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
-    channel_reachability_status_from_latency, provider_health_update_from_input,
-    should_retry_channel_reachability_failure, AppChannelListQuery, AppChannelManagementRequest,
-    AppChannelResponse, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
+    channel_reachability_status_from_latency, channel_test_provider_not_found_error,
+    provider_health_update_from_input, should_retry_channel_reachability_failure,
+    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppListRequest,
+    AppListResponse, AppModelCatalogRequest, AppModelListQuery,
     ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelHealthUpdateInput, ChannelKeyDeleteResponse, ChannelKeyPathRequest,
     ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
@@ -12787,11 +12789,7 @@ pub(crate) fn channel_test_provider_from_probe_source(
     request: &ChannelTestProbeRequest,
     provider: Option<Provider>,
 ) -> ProxyCoreResult<Provider> {
-    provider.ok_or_else(|| ProxyCoreError::Config(request.provider_not_found_message()))
-}
-
-pub(crate) fn channel_reachability_probe_error(error: impl std::fmt::Display) -> ProxyCoreError {
-    ProxyCoreError::Internal(error.to_string())
+    provider.ok_or_else(|| channel_test_provider_not_found_error(request))
 }
 
 pub(crate) async fn probe_channel_reachability_from_db_source(
