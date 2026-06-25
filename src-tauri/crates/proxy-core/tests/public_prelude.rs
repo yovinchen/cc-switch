@@ -231,6 +231,18 @@ impl ModelCatalogProvider for ExternalRelayServices {
     ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
         self.load_catalog(app, "client")
     }
+
+    fn load_claude_desktop_model_routes<'a>(
+        &'a self,
+        _app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Vec<ClaudeDesktopModelRouteInput>>> {
+        Box::pin(async {
+            Ok(vec![
+                ClaudeDesktopModelRouteInput::new("claude-sonnet-4-6", true),
+                ClaudeDesktopModelRouteInput::new("claude-haiku-4-5", false),
+            ])
+        })
+    }
 }
 
 impl RuntimeStatusSource for ExternalRelayServices {
@@ -442,4 +454,29 @@ fn external_host_can_construct_engine_and_handle_request_from_prelude() {
     assert_eq!(usage[0].request_model, "sonnet");
     assert_eq!(usage[0].outbound_model, "relay-sonnet");
     assert_eq!(usage[0].tokens.output_tokens, 5);
+}
+
+#[test]
+fn external_host_can_use_gateway_model_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+    let mut headers = http::HeaderMap::new();
+    headers.insert(
+        http::header::AUTHORIZATION,
+        http::HeaderValue::from_static("Bearer gateway-token"),
+    );
+
+    futures::executor::block_on(engine.validate_claude_desktop_gateway_auth(&headers))
+        .expect("gateway auth");
+    let response: ClaudeDesktopModelListResponse =
+        futures::executor::block_on(engine.claude_desktop_model_list_response())
+            .expect("desktop model list");
+
+    assert_eq!(response.data.len(), 2);
+    assert_eq!(response.first_id.as_deref(), Some("claude-sonnet-4-6"));
+    assert_eq!(response.last_id.as_deref(), Some("claude-haiku-4-5"));
+    assert_eq!(response.data[0].id, "claude-sonnet-4-6");
+    assert!(response.data[0].supports_1m);
+    assert_eq!(response.data[1].id, "claude-haiku-4-5");
+    assert!(!response.data[1].supports_1m);
 }

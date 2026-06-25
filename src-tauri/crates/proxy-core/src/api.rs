@@ -346,7 +346,10 @@ pub mod usage {
 pub mod prelude {
     pub use futures::future::BoxFuture;
 
-    pub use super::auth::{ClaudeDesktopModelRouteInput, ProviderAuthInfo, ProviderAuthStrategy};
+    pub use super::auth::{
+        ClaudeDesktopModelListItem, ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
+        ProviderAuthInfo, ProviderAuthStrategy,
+    };
     pub use super::config::{
         AppSummaryConfig, ProxyAppConfig, ProxyGlobalConfig, ProxyRuntimeConfig,
         ResponseRuntimePolicy,
