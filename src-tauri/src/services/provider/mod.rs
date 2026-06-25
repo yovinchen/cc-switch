@@ -138,7 +138,6 @@ mod tests {
     use tempfile::TempDir;
 
     struct TempHome {
-        #[allow(dead_code)]
         dir: TempDir,
         original_home: Option<String>,
         #[cfg(windows)]

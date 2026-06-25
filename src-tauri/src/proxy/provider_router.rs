@@ -485,8 +485,7 @@ mod tests {
     use tempfile::TempDir;
 
     struct TempHome {
-        #[allow(dead_code)]
-        dir: TempDir,
+        _dir: TempDir,
         original_home: Option<String>,
         original_userprofile: Option<String>,
         original_test_home: Option<String>,
@@ -505,7 +504,7 @@ mod tests {
             crate::settings::reload_settings().expect("reload settings");
 
             Self {
-                dir,
+                _dir: dir,
                 original_home,
                 original_userprofile,
                 original_test_home,
