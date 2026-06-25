@@ -112,23 +112,6 @@ impl From<crate::proxy_core_adapter::ClaudeDesktopResolvedProxyRoute> for Resolv
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct InferenceModelSpec {
-    name: String,
-    label_override: Option<String>,
-    supports_1m: bool,
-}
-
-impl From<crate::proxy_core_adapter::ClaudeDesktopDirectInferenceModelSpec> for InferenceModelSpec {
-    fn from(spec: crate::proxy_core_adapter::ClaudeDesktopDirectInferenceModelSpec) -> Self {
-        Self {
-            name: spec.name,
-            label_override: spec.label_override,
-            supports_1m: spec.supports_1m,
-        }
-    }
-}
-
 pub fn apply_provider(db: &Database, provider: &Provider) -> Result<(), AppError> {
     let paths = current_platform_paths()?;
     apply_provider_to_paths(db, provider, &paths)
@@ -233,21 +216,6 @@ pub fn provider_mode(provider: &Provider) -> ClaudeDesktopMode {
         .as_ref()
         .and_then(|meta| meta.claude_desktop_mode.clone())
         .unwrap_or(ClaudeDesktopMode::Direct)
-}
-
-fn inference_model_json(spec: &InferenceModelSpec) -> Value {
-    if spec.supports_1m || spec.label_override.is_some() {
-        let mut item = json!({ "name": spec.name });
-        if let Some(label_override) = spec.label_override.as_deref() {
-            item["labelOverride"] = json!(label_override);
-        }
-        if spec.supports_1m {
-            item["supports1m"] = json!(true);
-        }
-        item
-    } else {
-        Value::String(spec.name.clone())
-    }
 }
 
 pub fn get_or_create_gateway_token(db: &Database) -> Result<String, AppError> {
@@ -417,7 +385,9 @@ pub fn validate_provider(provider: &Provider) -> Result<(), AppError> {
     }
 }
 
-fn direct_inference_model_specs(provider: &Provider) -> Result<Vec<InferenceModelSpec>, AppError> {
+fn direct_inference_model_specs(
+    provider: &Provider,
+) -> Result<Vec<crate::proxy_core_adapter::ClaudeDesktopGatewayProfileModelSpec>, AppError> {
     let Some(routes) = provider
         .meta
         .as_ref()
@@ -434,7 +404,12 @@ fn direct_inference_model_specs(provider: &Provider) -> Result<Vec<InferenceMode
             supports_1m: route.supports_1m.unwrap_or(false),
         },
     ))
-    .map(|specs| specs.into_iter().map(InferenceModelSpec::from).collect())
+    .map(|specs| {
+        specs
+            .into_iter()
+            .map(crate::proxy_core_adapter::ClaudeDesktopGatewayProfileModelSpec::from)
+            .collect()
+    })
     .map_err(direct_model_route_issue_to_error)
 }
 
@@ -661,7 +636,7 @@ fn apply_provider_to_paths_inner(
         ClaudeDesktopMode::Direct => {
             let credentials = direct_gateway_credentials(provider)?;
             let model_specs = direct_inference_model_specs(provider)?;
-            build_gateway_profile(
+            crate::proxy_core_adapter::claude_desktop_gateway_profile(
                 &credentials.base_url,
                 &credentials.api_key,
                 (!model_specs.is_empty()).then_some(model_specs.as_slice()),
@@ -673,13 +648,19 @@ fn apply_provider_to_paths_inner(
             let routes = proxy_model_routes(provider)?;
             let model_specs = routes
                 .iter()
-                .map(|route| InferenceModelSpec {
-                    name: route.route_id.clone(),
-                    label_override: route.label_override.clone(),
-                    supports_1m: route.supports_1m,
-                })
+                .map(
+                    |route| crate::proxy_core_adapter::ClaudeDesktopGatewayProfileModelSpec {
+                        name: route.route_id.clone(),
+                        label_override: route.label_override.clone(),
+                        supports_1m: route.supports_1m,
+                    },
+                )
                 .collect::<Vec<_>>();
-            build_gateway_profile(&base_url, &api_key, Some(model_specs.as_slice()))
+            crate::proxy_core_adapter::claude_desktop_gateway_profile(
+                &base_url,
+                &api_key,
+                Some(model_specs.as_slice()),
+            )
         }
     };
 
@@ -702,28 +683,6 @@ fn restore_official_at_paths_inner(paths: &ClaudeDesktopPaths) -> Result<(), App
     write_meta(&paths.meta_path, None)?;
 
     Ok(())
-}
-
-fn build_gateway_profile(
-    base_url: &str,
-    api_key: &str,
-    model_specs: Option<&[InferenceModelSpec]>,
-) -> Value {
-    let mut profile = json!({
-        "coworkEgressAllowedHosts": ["*"],
-        "disableDeploymentModeChooser": true,
-        "inferenceGatewayApiKey": api_key,
-        "inferenceGatewayAuthScheme": "bearer",
-        "inferenceGatewayBaseUrl": base_url,
-        "inferenceProvider": "gateway"
-    });
-
-    if let Some(model_specs) = model_specs {
-        profile["inferenceModels"] =
-            Value::Array(model_specs.iter().map(inference_model_json).collect());
-    }
-
-    profile
 }
 
 fn read_json_or_empty(path: &Path) -> Result<Value, AppError> {

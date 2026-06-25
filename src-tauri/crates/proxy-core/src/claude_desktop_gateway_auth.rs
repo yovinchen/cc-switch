@@ -1,6 +1,6 @@
 use http::HeaderMap;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::error::ProxyCoreError;
 
@@ -110,6 +110,13 @@ pub struct ClaudeDesktopSuggestedProxyRoute {
     pub supports_1m: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaudeDesktopGatewayProfileModelSpec {
+    pub name: String,
+    pub label_override: Option<String>,
+    pub supports_1m: bool,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ClaudeDesktopProxyRouteInput<'a> {
     pub route_id: &'a str,
@@ -131,6 +138,16 @@ pub struct ClaudeDesktopDirectInferenceModelSpec {
     pub name: String,
     pub label_override: Option<String>,
     pub supports_1m: bool,
+}
+
+impl From<ClaudeDesktopDirectInferenceModelSpec> for ClaudeDesktopGatewayProfileModelSpec {
+    fn from(spec: ClaudeDesktopDirectInferenceModelSpec) -> Self {
+        Self {
+            name: spec.name,
+            label_override: spec.label_override,
+            supports_1m: spec.supports_1m,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,6 +228,32 @@ pub fn claude_desktop_suggested_proxy_routes(
     }
 
     routes
+}
+
+pub fn claude_desktop_gateway_profile(
+    base_url: &str,
+    api_key: &str,
+    model_specs: Option<&[ClaudeDesktopGatewayProfileModelSpec]>,
+) -> Value {
+    let mut profile = json!({
+        "coworkEgressAllowedHosts": ["*"],
+        "disableDeploymentModeChooser": true,
+        "inferenceGatewayApiKey": api_key,
+        "inferenceGatewayAuthScheme": "bearer",
+        "inferenceGatewayBaseUrl": base_url,
+        "inferenceProvider": "gateway"
+    });
+
+    if let Some(model_specs) = model_specs {
+        profile["inferenceModels"] = Value::Array(
+            model_specs
+                .iter()
+                .map(claude_desktop_gateway_profile_model_json)
+                .collect(),
+        );
+    }
+
+    profile
 }
 
 pub fn claude_desktop_model_id_is_profile_safe(model: &str) -> bool {
@@ -309,6 +352,21 @@ pub fn claude_desktop_proxy_model_routes<'a>(
     result.sort_by(|a, b| a.route_id.cmp(&b.route_id));
     result.dedup_by(|a, b| a.route_id == b.route_id);
     result
+}
+
+fn claude_desktop_gateway_profile_model_json(spec: &ClaudeDesktopGatewayProfileModelSpec) -> Value {
+    if spec.supports_1m || spec.label_override.is_some() {
+        let mut item = json!({ "name": spec.name });
+        if let Some(label_override) = spec.label_override.as_deref() {
+            item["labelOverride"] = json!(label_override);
+        }
+        if spec.supports_1m {
+            item["supports1m"] = json!(true);
+        }
+        item
+    } else {
+        Value::String(spec.name.clone())
+    }
 }
 
 fn add_suggested_proxy_route(
@@ -743,8 +801,9 @@ mod tests {
     use super::{
         claude_desktop_default_proxy_routes, claude_desktop_direct_gateway_credentials,
         claude_desktop_direct_inference_model_specs,
-        claude_desktop_direct_provider_validation_issue, claude_desktop_gateway_token_error,
-        claude_desktop_model_id_is_profile_safe, claude_desktop_profile_has_unsafe_model_ids,
+        claude_desktop_direct_provider_validation_issue, claude_desktop_gateway_profile,
+        claude_desktop_gateway_token_error, claude_desktop_model_id_is_profile_safe,
+        claude_desktop_profile_has_unsafe_model_ids,
         claude_desktop_provider_models_are_profile_safe, claude_desktop_provider_selection_error,
         claude_desktop_provider_unavailable_error,
         claude_desktop_provider_unavailable_error_message,
@@ -754,9 +813,10 @@ mod tests {
         claude_desktop_suggested_proxy_routes, validate_claude_desktop_gateway_bearer_header,
         validate_claude_desktop_gateway_bearer_value, ClaudeDesktopDirectGatewayCredentialIssue,
         ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopDirectProviderValidationIssue,
-        ClaudeDesktopGatewayAuthError, ClaudeDesktopModelListResponse,
-        ClaudeDesktopModelRouteInput, ClaudeDesktopProviderValidationInput,
-        ClaudeDesktopProxyProviderConfigValidationIssue, ClaudeDesktopProxyRouteInput,
+        ClaudeDesktopGatewayAuthError, ClaudeDesktopGatewayProfileModelSpec,
+        ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
+        ClaudeDesktopProviderValidationInput, ClaudeDesktopProxyProviderConfigValidationIssue,
+        ClaudeDesktopProxyRouteInput,
     };
     use crate::error::ProxyCoreError;
     use http::{HeaderMap, HeaderValue};
@@ -1383,6 +1443,56 @@ mod tests {
         assert_eq!(routes[0].upstream_model, "kimi-k2");
         assert_eq!(routes[0].label_override.as_deref(), Some("kimi-k2"));
         assert!(routes[0].supports_1m);
+    }
+
+    #[test]
+    fn gateway_profile_omits_inference_models_when_specs_absent() {
+        let profile =
+            claude_desktop_gateway_profile("https://gateway.example.com", "sk-test", None);
+
+        assert_eq!(profile["inferenceProvider"], json!("gateway"));
+        assert_eq!(
+            profile["inferenceGatewayBaseUrl"],
+            json!("https://gateway.example.com")
+        );
+        assert_eq!(profile["inferenceGatewayApiKey"], json!("sk-test"));
+        assert_eq!(profile["inferenceGatewayAuthScheme"], json!("bearer"));
+        assert_eq!(profile["disableDeploymentModeChooser"], json!(true));
+        assert_eq!(profile["coworkEgressAllowedHosts"], json!(["*"]));
+        assert!(profile.get("inferenceModels").is_none());
+    }
+
+    #[test]
+    fn gateway_profile_serializes_model_specs_with_optional_metadata() {
+        let specs = vec![
+            ClaudeDesktopGatewayProfileModelSpec {
+                name: "claude-sonnet-4-6".to_string(),
+                label_override: None,
+                supports_1m: true,
+            },
+            ClaudeDesktopGatewayProfileModelSpec {
+                name: "claude-haiku-4-5".to_string(),
+                label_override: Some("Haiku".to_string()),
+                supports_1m: false,
+            },
+            ClaudeDesktopGatewayProfileModelSpec {
+                name: "claude-opus-4-8".to_string(),
+                label_override: None,
+                supports_1m: false,
+            },
+        ];
+
+        let profile =
+            claude_desktop_gateway_profile("http://127.0.0.1:15721", "ccs-token", Some(&specs));
+
+        assert_eq!(
+            profile["inferenceModels"],
+            json!([
+                { "name": "claude-sonnet-4-6", "supports1m": true },
+                { "name": "claude-haiku-4-5", "labelOverride": "Haiku" },
+                "claude-opus-4-8"
+            ])
+        );
     }
 
     #[test]

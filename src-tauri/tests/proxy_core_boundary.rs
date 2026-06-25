@@ -5181,6 +5181,62 @@ fn claude_desktop_config_delegates_default_proxy_route_catalog_to_adapter() {
 }
 
 #[test]
+fn claude_desktop_config_delegates_gateway_profile_json_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let apply_slice = function_slice(
+        &source,
+        "fn apply_provider_to_paths_inner(",
+        "fn restore_official_at_paths_inner(",
+    );
+
+    assert!(
+        apply_slice.contains("claude_desktop_gateway_profile(")
+            && apply_slice.contains("ClaudeDesktopGatewayProfileModelSpec"),
+        "claude_desktop_config should delegate gateway profile JSON construction to proxy_core_adapter/core"
+    );
+    assert!(
+        !source.contains("fn build_gateway_profile(")
+            && !source.contains("fn inference_model_json(")
+            && !source.contains("struct InferenceModelSpec"),
+        "claude_desktop_config should not keep duplicate gateway profile JSON builders"
+    );
+
+    let forbidden_markers = [
+        "\"coworkEgressAllowedHosts\"",
+        "\"disableDeploymentModeChooser\"",
+        "\"inferenceGatewayApiKey\"",
+        "\"inferenceGatewayAuthScheme\"",
+        "\"inferenceGatewayBaseUrl\"",
+        "\"inferenceProvider\"",
+        "\"inferenceModels\"",
+        "\"labelOverride\"",
+        "\"supports1m\"",
+        "json!({",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(apply_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/claude_desktop_config.rs apply_provider_to_paths_inner:{} contains gateway profile JSON marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "claude_desktop_config must keep gateway profile JSON policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
