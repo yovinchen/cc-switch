@@ -20,14 +20,14 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     build_claude_upstream_url, provider_claude_api_format, provider_claude_auth_headers,
     provider_claude_auth_info, provider_claude_transform_request_for_api_format,
-    provider_claude_transform_response, provider_needs_claude_transform,
-    required_claude_provider_base_url, GeminiShadowStore, ProviderAuthInfo,
+    provider_needs_claude_transform, required_claude_provider_base_url, GeminiShadowStore,
+    ProviderAuthInfo,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    normalize_anthropic_tool_thinking_history, should_normalize_anthropic_tool_thinking_history,
-    ProviderAuthStrategy, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION, COPILOT_INTEGRATION_ID,
-    COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
+    normalize_anthropic_tool_thinking_history, provider_claude_transform_response,
+    should_normalize_anthropic_tool_thinking_history, ProviderAuthStrategy, COPILOT_API_VERSION,
+    COPILOT_EDITOR_VERSION, COPILOT_INTEGRATION_ID, COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
 };
 
 fn transform_claude_request_for_api_format(
@@ -112,10 +112,6 @@ impl ProviderAdapter for ClaudeAdapter {
             None,
             None,
         )
-    }
-
-    fn transform_response(&self, body: serde_json::Value) -> Result<serde_json::Value, ProxyError> {
-        provider_claude_transform_response(body).map_err(ProxyError::TransformError)
     }
 }
 
@@ -783,19 +779,17 @@ mod tests {
     }
 
     #[test]
-    fn test_transform_response_delegates_to_adapter() {
-        let adapter = ClaudeAdapter::new();
-        let transformed = adapter
-            .transform_response(json!({
-                "id": "chatcmpl_1",
-                "model": "chat-model",
-                "choices": [{
-                    "message": {"role": "assistant", "content": "Hi"},
-                    "finish_reason": "stop"
-                }],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 2}
-            }))
-            .unwrap();
+    fn test_transform_response_uses_adapter_contract() {
+        let transformed = provider_claude_transform_response(json!({
+            "id": "chatcmpl_1",
+            "model": "chat-model",
+            "choices": [{
+                "message": {"role": "assistant", "content": "Hi"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2}
+        }))
+        .unwrap();
 
         assert_eq!(transformed["content"][0]["text"], "Hi");
     }

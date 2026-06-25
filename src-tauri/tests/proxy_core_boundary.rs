@@ -1398,15 +1398,6 @@ const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_NORMALIZE_MARKERS: &[&str] = &[
     "provider_normalize_deepseek_thinking_disabled_strip_effort(",
     "api_format.trim()",
 ];
-const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_RESPONSE_TRANSFORM_MARKERS: &[&str] = &[
-    "gemini_response_to_anthropic_message(",
-    "openai_responses_to_anthropic_message(",
-    "openai_chat_to_anthropic_message(",
-    "synthesize_gemini_tool_call_id_with_uuid",
-    "rectified_tool_names",
-    "body.get(\"candidates\")",
-    "body.get(\"output\")",
-];
 const FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS: &[&str] = &[
     "state.config",
     ".config.read()",
@@ -3925,25 +3916,23 @@ fn production_claude_provider_adapter_delegates_message_normalization_to_adapter
 }
 
 #[test]
-fn production_claude_provider_adapter_delegates_response_transforms_to_adapter() {
+fn production_provider_adapter_excludes_response_transform_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/providers/claude.rs");
-    let source = fs::read_to_string(&path).expect("read claude provider adapter source");
-    let transform_response = function_slice(
-        &source,
-        "    fn transform_response(&self, body: serde_json::Value) -> Result<serde_json::Value, ProxyError>",
-        "}",
-    );
+    let files = [
+        "src/proxy/providers/adapter.rs",
+        "src/proxy/providers/claude.rs",
+    ];
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(transform_response) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_RESPONSE_TRANSFORM_MARKERS {
-            if code.contains(marker) {
+    for relative in files {
+        let path = manifest_dir.join(relative);
+        let source = fs::read_to_string(&path).unwrap_or_else(|_| panic!("read {relative}"));
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            if code.contains("fn transform_response(") {
                 violations.push(format!(
-                    "src/proxy/providers/claude.rs transform_response:{} contains response transform marker `{}`",
-                    line_index + 1,
-                    marker
+                    "{relative}:{} contains provider response transform surface",
+                    line_index + 1
                 ));
             }
         }
@@ -3951,7 +3940,7 @@ fn production_claude_provider_adapter_delegates_response_transforms_to_adapter()
 
     assert!(
         violations.is_empty(),
-        "Claude provider adapter must delegate response transform dispatch to proxy_core_adapter helpers:\n{}",
+        "Provider adapters must not expose response transform methods; response dispatch belongs to proxy_core_adapter/core:\n{}",
         violations.join("\n")
     );
 }

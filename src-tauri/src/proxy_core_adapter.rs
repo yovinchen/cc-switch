@@ -2723,14 +2723,16 @@ pub(crate) use crate::proxy_core::api::transforms::{
     create_codex_chat_to_responses_sse_stream_with_context,
     create_gemini_to_anthropic_sse_stream_with_callbacks,
     create_openai_chat_to_anthropic_sse_stream, create_openai_responses_to_anthropic_sse_stream,
-    extract_anthropic_tool_schema_hints, gemini_response_to_anthropic_message,
-    gemini_response_to_anthropic_message_with_shadow, inspect_codex_chat_history_sse_block,
-    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
-    should_aggregate_codex_oauth_responses_sse, should_preserve_reasoning_content_for_openai_chat,
-    should_use_claude_transform_streaming, take_sse_block, AnthropicToolSchemaHints,
+    extract_anthropic_tool_schema_hints, gemini_response_to_anthropic_message_with_shadow,
+    inspect_codex_chat_history_sse_block, openai_chat_to_anthropic_message,
+    openai_responses_to_anthropic_message, should_aggregate_codex_oauth_responses_sse,
+    should_preserve_reasoning_content_for_openai_chat, should_use_claude_transform_streaming,
+    take_sse_block, AnthropicToolSchemaHints,
 };
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::{canonical_json_string, short_value_hash};
+pub(crate) use crate::proxy_core::api::transforms::{
+    canonical_json_string, gemini_response_to_anthropic_message, short_value_hash,
+};
 pub(crate) use crate::proxy_core::api::transforms::{
     claude_api_format_from_metadata, CLAUDE_API_FORMAT_METADATA_KEY,
 };
@@ -4668,9 +4670,10 @@ pub(crate) fn provider_claude_transform_request_for_api_format(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn provider_claude_transform_response(body: Value) -> Result<Value, String> {
-    // ProviderAdapter::transform_response does not receive provider config, so detect
-    // structurally disjoint upstream response formats by their top-level fields.
+    // This test helper does not receive provider config, so detect structurally
+    // disjoint upstream response formats by their top-level fields.
     if body.get("candidates").is_some() || body.get("promptFeedback").is_some() {
         let output = gemini_response_to_anthropic_message(
             &body,
