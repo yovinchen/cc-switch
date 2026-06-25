@@ -79,7 +79,7 @@
 68. 上游请求有序 HeaderMap 组装、认证头替换位置、`accept-encoding: identity` 补齐、User-Agent 覆写、Anthropic/Copilot/Codex 会话头写入和默认 JSON content-type 补齐已迁入 `proxy-core::request_headers::build_upstream_request_headers`；host forwarder 只提供 auth/session/UA/upstream host 等宿主输入。
 69. 上游认证 header 的后处理规则已迁入 `proxy-core::request_headers::build_upstream_auth_headers`；Codex OAuth `chatgpt-account-id` 注入、Copilot optimizer 的 `x-initiator`/`x-interaction-type`/请求 ID 覆写和 `x-interaction-id` 追加由 core 统一处理，host forwarder 只负责通过宿主 manager 解析 token、账号和分类事实。
 70. Copilot 上游判定和动态 endpoint 替换条件已迁入 `proxy-core::request_url::{is_github_copilot_upstream, should_resolve_copilot_dynamic_endpoint, resolved_copilot_dynamic_base_url}`；host forwarder 只消费 `proxy::managed_account_auth` 返回的账号 endpoint 事实并把运行时事实交给 core 决策。
-71. provider 可重试失败、单 provider 失败、全部 provider 失败的日志 code/message 策略和上游错误摘要规则已迁入 `proxy-core::forward_failure`；`ProxyError` 到中立 `ForwardFailureKind` 的投影已收敛到 `proxy_core_adapter`，host forwarder 只消费分类结果并执行实际日志输出。
+71. provider 可重试失败、单 provider 失败、全部 provider 失败的日志 code/message 策略、上游错误摘要规则和 forward failure message 选择策略已迁入 `proxy-core::forward_failure`；`ProxyError` 到中立 `ForwardFailureKind` 的 host-only 事实投影已收敛到 `proxy_core_adapter`，host forwarder 只消费分类结果并执行实际日志输出。
 72. provider failover eligibility 与健康度污染边界已迁入 `proxy-core::forward_failure::categorize_forward_failure`；400/405/406/413/414/415/422/501 等客户端请求错误不再由 host forwarder 本地判定，`ProxyError -> ForwardFailureKind` 也不再由 `error_mapper` 持有。
 73. thinking/media rectifier 重试失败后的 provider/client 归因规则已迁入 `proxy-core::forward_failure::should_failover_after_rectifier_retry_failure`；timeout/forward failed/5xx 继续故障转移，其它整流后失败按客户端侧失败处理，host forwarder 只保留状态更新和 permit 释放。
 74. media fallback 的开关组合、预防式图片替换 gate、反应式图片重试 gate 和 Claude/Codex adapter 限制已迁入 `proxy-core::request_media`；host forwarder 继续负责 provider schema 图片能力读取、JSON 图片块替换和 `ProxyError` 到“上游不支持图片”事实的适配。
@@ -602,7 +602,7 @@
 591. `proxy-core` crate root 的 legacy flat `pub use *` 已移除，crate 内部改为从 owning module 显式 import；当前集成面以 `proxy_core::api` 分组为准，后续继续稳定 host-only port 边界并补 runtime smoke 验证。
 592. runtime route planning 的 channel 过滤、模型匹配、候选排序和 attempt plan 构造已下沉到 `proxy-core::build_route_plan`，adapter-owned `CcSwitchRouteResolver` 只保留 `RouteRequest`/management dry-run 委托；host 只装配 resolver。
 593. 上游 URL authority 到 Host header replacement 值的解析已下沉到 `proxy-core::upstream_host_header_from_url`；host forwarder 不再直接解析 `http::Uri`，只通过 adapter 调用 core helper 并继续把结果传入 header builder。
-594. `ProxyErrorStatusKind` 到 `ProxyCoreError`/`ForwardFailureKind` 的分类规则已下沉到 `proxy-core`；host `error_mapper` 只负责把 `ProxyError` 投影为 kind/message/body 事实，并继续保留 reqwest 与 Tauri-facing response 适配。
+594. `ProxyErrorStatusKind` 到 `ProxyCoreError`/`ForwardFailureKind` 的分类规则和 forward failure message 选择策略已下沉到 `proxy-core`；host `error_mapper`/adapter 只负责把 `ProxyError` 投影为 kind/raw-message/display-message/body 事实，并继续保留 reqwest 与 Tauri-facing response 适配。
 595. `/proxy/v1/channels` HTTP CRUD smoke 已扩展覆盖每个 channel 独立的 `authProfileRef`、base URL、interface、模型映射、weight、priority、health policy、header/param override、status mapping、tags 与 metadata；同一测试通过 `/proxy/v1/route/resolve` 验证候选 channel 继续携带独立 weight/priority 与模型映射。
 596. `proxy-core` 已新增独立 boundary integration test，自动扫描 crate `Cargo.toml` 与 `src/`，防止重新引入 `tauri`、SQLite client 或 `crate::database/settings/services` 等宿主依赖；`cargo test --manifest-path src-tauri/crates/proxy-core/Cargo.toml --target-dir /private/tmp/cc-switch-proxy-core-target --offline` 已验证 core crate 可独立测试。
 597. channel `paramOverrides` 已在最终上游 URL 构建后生效，同名 query 参数会被 channel 配置覆盖，scalar 值会做 query component encoding；channel `headerOverrides` 已接入上游请求 header 构建，并明确禁止覆盖 Host、认证 header 与 hop/tracing 类剥离 header。runtime `ForwardAttempt` 现在从完整 `RouteSelection` 保留 header/param overrides，管理 route candidate response 继续保持轻量且不暴露 override 内容。
@@ -1165,7 +1165,7 @@
 本轮继续把 global proxy 的显式代理 URL parse、scheme allowlist 和错误消息投影收敛到 `proxy_core_adapter::{validate_explicit_proxy_url,invalid_explicit_proxy_url_message}`，host HTTP client 只负责 reqwest proxy 构造和 client builder。
 本轮继续把 provider custom endpoints 的列表排序、URL key 归一化、空 URL 新增校验和 last-used mutation 收敛到 `proxy_core_adapter`，endpoint service 不再直接穿透 `Provider.meta.custom_endpoints`。
 本轮继续把 Codex proxy error facts/kind 的 `ProxyError` 投影收敛到 `proxy_core_adapter`，`error_mapper` 不再直接引用 `CodexProxyErrorKind` 或组装 `CodexProxyHostErrorFacts`。
-本轮继续把 forward failure 的 `ProxyError -> ForwardFailureKind` 投影收敛到 `proxy_core_adapter`，`error_mapper` 不再直接引用 `ForwardFailureKind` 或调用 core forward-failure 分类入口。
+本轮继续把 forward failure 的 `ProxyError -> ForwardFailureKind` 投影收敛到 `proxy_core_adapter`，并把 raw message 与 display message 的选择策略下移到 `proxy-core::forward_failure_message_from_proxy_status`；`error_mapper` 不再直接引用 `ForwardFailureKind` 或调用 core forward-failure 分类入口。
 本轮继续把 forwarder 的 Claude Desktop route 模型映射收敛到 `proxy_core_adapter::apply_forward_request_model_mapping_from_provider`，forwarder 不再直接调用 `claude_desktop_config`。
 本轮继续把 forwarder 的 Claude provider adapter 名称判定收敛到 `proxy_core_adapter::provider_adapter_name_is_claude`，forwarder 不再手写 `adapter.name() == "Claude"`。
 本轮继续把 forwarder 的 Claude 默认 api_format 与 Copilot vendor 分流入口收敛到 `proxy_core_adapter::{forwarder_claude_api_format,resolve_forwarder_claude_api_format}`，forwarder 不再直接读取 provider Claude api format。
@@ -1303,7 +1303,7 @@
 本轮继续把 max-attempt 停止原因文案收敛到 `proxy-core::forward_failure::build_forward_attempt_limit_reached_log`：默认 attempt runtime source 只负责加 app 前缀和写日志，不再维护尝试上限的宿主侧中文 payload。
 本轮继续把 media/signature/budget rectifier retry 的 kind、成功/失败文案、provider failure label 和 rectifier 错误消息选择策略收敛到 `proxy-core::forward_failure`：adapter 只保留 app 前缀兼容壳和 `ProxyError` 到 core input 的 host 映射，不再维护三类 retry payload 或上游 body/fallback 文本选择规则。
 本轮继续把 terminal/no-available forward failure 的 runtime status 文案收敛到 `proxy-core::forward_failure::{forwarder_no_available_provider_status_message,forwarder_terminal_failure_status_message}`：runtime state source 只负责写入状态，不再维护终态错误中文 payload。
-本轮继续把普通 forward failure 的 app/code 日志行格式收敛到 `proxy-core::forward_failure::forwarder_failure_log_line`：adapter 只保留调用兼容壳，不再维护 `[app] [FWD-*]` 拼接规则。
+本轮继续把普通 forward failure 的 app/code 日志行格式与错误消息选择收敛到 `proxy-core::forward_failure::{forwarder_failure_log_line,forward_failure_message_from_proxy_status}`：adapter 只保留调用兼容壳和 host `ProxyError` 事实投影，不再维护 `[app] [FWD-*]` 拼接规则或 message-kind 分支。
 本轮继续把 all-providers-circuit-open 的 FO-004 warning 日志行收敛到 `proxy-core::forward_failure::forwarder_all_providers_circuit_open_log_line`：provider selection failure adapter 只负责在 host 边界发出 warning，不再维护 `[FO-004] 所有供应商均已熔断` payload。
 本轮继续把 no-providers-configured 的 FO-005 warning 日志行收敛到 `proxy-core::forward_failure::forwarder_no_providers_configured_log_line`：provider selection failure adapter 保留 AppError 映射与日志副作用，不再维护 `[FO-005] 未配置供应商` payload。
 本轮继续把 failover switch 配置读取失败的 FO-002 warning 日志行收敛到 `proxy-core::provider_selection::failover_config_read_error_log_line`：adapter 仍负责读取 config、默认返回 false 和发 warning，不再维护 `[FO-002] 无法读取...跳过切换` payload。

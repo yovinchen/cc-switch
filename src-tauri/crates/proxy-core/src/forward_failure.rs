@@ -81,6 +81,21 @@ pub fn forward_failure_kind_from_proxy_status(
     }
 }
 
+pub fn forward_failure_message_from_proxy_status(
+    kind: ProxyErrorStatusKind,
+    raw_message: &str,
+    display_message: &str,
+) -> String {
+    match kind {
+        ProxyErrorStatusKind::Timeout
+        | ProxyErrorStatusKind::ForwardFailed
+        | ProxyErrorStatusKind::TransformError
+        | ProxyErrorStatusKind::ConfigError
+        | ProxyErrorStatusKind::AuthError => raw_message.to_string(),
+        _ => display_message.to_string(),
+    }
+}
+
 pub fn categorize_forward_failure(failure: &ForwardFailureKind) -> ForwardFailureCategory {
     match failure {
         ForwardFailureKind::Timeout(_)
@@ -306,6 +321,7 @@ mod tests {
         build_forward_attempt_limit_reached_log,
         build_retryable_forward_failure_log, build_terminal_forward_failure_log,
         categorize_forward_failure, forward_failure_kind_from_proxy_status,
+        forward_failure_message_from_proxy_status,
         forwarder_all_providers_circuit_open_log_line, forwarder_failure_log_line,
         forwarder_no_available_provider_status_message, forwarder_rectifier_error_message,
         forwarder_no_providers_configured_log_line,
@@ -604,6 +620,37 @@ mod tests {
             .as_deref(),
             Some("超时: upstream timed out")
         );
+    }
+
+    #[test]
+    fn forward_failure_message_from_proxy_status_preserves_raw_message_cases() {
+        for kind in [
+            ProxyErrorStatusKind::Timeout,
+            ProxyErrorStatusKind::ForwardFailed,
+            ProxyErrorStatusKind::TransformError,
+            ProxyErrorStatusKind::ConfigError,
+            ProxyErrorStatusKind::AuthError,
+        ] {
+            assert_eq!(
+                forward_failure_message_from_proxy_status(kind, "raw message", "display message"),
+                "raw message",
+                "{kind:?} should use the raw host message"
+            );
+        }
+
+        for kind in [
+            ProxyErrorStatusKind::UpstreamError(429),
+            ProxyErrorStatusKind::ProviderUnhealthy,
+            ProxyErrorStatusKind::DatabaseError,
+            ProxyErrorStatusKind::MaxRetriesExceeded,
+            ProxyErrorStatusKind::StreamIdleTimeout,
+        ] {
+            assert_eq!(
+                forward_failure_message_from_proxy_status(kind, "raw message", "display message"),
+                "display message",
+                "{kind:?} should use the host display message"
+            );
+        }
     }
 
     #[test]

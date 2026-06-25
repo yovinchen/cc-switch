@@ -2663,6 +2663,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
     AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
+    forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
     forwarder_all_providers_circuit_open_log_line,
     forwarder_failure_log_line as core_forwarder_failure_log_line,
     forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
@@ -10381,14 +10382,20 @@ pub(crate) fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> Forwa
 }
 
 fn forward_failure_message_from_proxy_error(error: &ProxyError) -> String {
-    match error {
+    let raw_message = match error {
         ProxyError::Timeout(message)
         | ProxyError::ForwardFailed(message)
         | ProxyError::TransformError(message)
         | ProxyError::ConfigError(message)
-        | ProxyError::AuthError(message) => message.clone(),
-        _ => error.to_string(),
-    }
+        | ProxyError::AuthError(message) => message.as_str(),
+        _ => "",
+    };
+    let display_message = error.to_string();
+    core_forward_failure_message_from_proxy_status(
+        proxy_error_status_kind(error),
+        raw_message,
+        &display_message,
+    )
 }
 
 pub(crate) use crate::proxy_core::api::routing::default_route_candidate_from_selection as channel_route_candidate_from_selection;

@@ -874,6 +874,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn resolved_channel_attempt_from_candidate(",
     "fn resolved_channel_attempt_from_selection(",
     "fn forward_failure_kind_from_proxy_status(",
+    "fn forward_failure_message_from_proxy_status(",
     "fn apply_channel_param_overrides_to_url(",
     "fn resolve_channel_response_status_mapping(",
     "fn should_transition_open_to_half_open(",
@@ -1423,6 +1424,31 @@ fn proxy_error_mapper_delegates_forward_failure_projection_to_adapter() {
         violations.is_empty(),
         "Proxy error mapper must delegate forward failure projection to proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_forward_failure_message_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "fn forward_failure_message_from_proxy_error",
+        "pub(crate) use crate::proxy_core::api::routing::default_route_candidate_from_selection",
+    );
+
+    assert!(
+        function.contains("core_forward_failure_message_from_proxy_status("),
+        "adapter must delegate forward failure message selection to proxy-core"
+    );
+    assert!(
+        function.contains("proxy_error_status_kind(error)"),
+        "adapter should pass ProxyError status kind into the core forward failure message policy"
+    );
+    assert!(
+        !function.contains("=> message.clone()") && !function.contains("_ => error.to_string()"),
+        "adapter must not directly choose between raw host messages and display messages"
     );
 }
 
