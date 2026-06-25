@@ -377,8 +377,9 @@ pub mod prelude {
         HealthCheckResponse, ProviderListResponse, ProxyChannelKeyPatchRequest,
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-        ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse,
-        RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
+        ProxyChannelWriteRequest, ProxyStatusRequest, ProxyStatusResponse, ProxyStatusSource,
+        RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
+        RouteResolveResponse,
     };
     pub use super::model_catalog::{
         ClientModelCatalogResponse, FetchedModel, ModelCatalog, RoutableModelList,

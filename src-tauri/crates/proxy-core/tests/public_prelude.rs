@@ -291,7 +291,32 @@ impl ModelCatalogProvider for ExternalRelayServices {
 
 impl RuntimeStatusSource for ExternalRelayServices {
     fn load_status<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeStatus>> {
-        Box::pin(async { Ok(ProxyRuntimeStatus::default()) })
+        Box::pin(async {
+            Ok(ProxyRuntimeStatus {
+                running: true,
+                address: "127.0.0.1".to_string(),
+                port: 4100,
+                active_connections: 2,
+                total_requests: 8,
+                success_requests: 6,
+                failed_requests: 2,
+                success_rate: 75.0,
+                uptime_seconds: 42,
+                current_provider: Some("Relay A".to_string()),
+                current_provider_id: Some("relay-a".to_string()),
+                active_targets: vec![CurrentRouteTarget {
+                    app_type: "claude".to_string(),
+                    provider_name: "Relay A".to_string(),
+                    provider_id: "relay-a".to_string(),
+                    channel_id: Some("channel-a".to_string()),
+                    channel_name: Some("Channel A".to_string()),
+                    interface_kind: Some("anthropic".to_string()),
+                    public_model: Some("sonnet".to_string()),
+                    upstream_model: Some("relay-sonnet".to_string()),
+                }],
+                ..ProxyRuntimeStatus::default()
+            })
+        })
     }
 }
 
@@ -557,6 +582,33 @@ fn external_host_can_use_management_auth_contracts_from_prelude() {
     );
     futures::executor::block_on(engine.validate_management_auth(&headers))
         .expect("management auth");
+}
+
+#[test]
+fn external_host_can_use_runtime_status_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+    let request = ProxyStatusRequest::new();
+
+    let response: ProxyStatusResponse<ProxyRuntimeStatus> =
+        futures::executor::block_on(engine.proxy_status_response(request))
+            .expect("proxy status response");
+    let status_source = ProxyStatusSource::new(response.status.clone());
+    let passthrough: ProxyStatusResponse<ProxyRuntimeStatus> =
+        ProxyStatusRequest::new().response_from_source(status_source);
+
+    assert!(response.status.running);
+    assert_eq!(response.status.address, "127.0.0.1");
+    assert_eq!(response.status.port, 4100);
+    assert_eq!(response.status.total_requests, 8);
+    assert_eq!(response.status.success_rate, 75.0);
+    assert_eq!(response.status.current_provider_id.as_deref(), Some("relay-a"));
+    assert_eq!(response.status.active_targets.len(), 1);
+    assert_eq!(
+        response.status.active_targets[0].channel_id.as_deref(),
+        Some("channel-a")
+    );
+    assert_eq!(passthrough.status, response.status);
 }
 
 #[test]
