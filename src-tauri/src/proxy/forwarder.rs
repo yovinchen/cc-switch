@@ -6,10 +6,9 @@ use super::hyper_client::ProxyResponse;
 use super::{error::ProxyError, route_attempt::ForwardAttempt};
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    build_codex_oauth_session_headers, forwarder_bedrock_env_flag,
-    forwarder_is_codex_oauth_provider, prepare_upstream_request_body_with_report,
-    provider_router_from_database, should_preserve_exact_request_header_case,
-    validate_managed_account_upstream_auth,
+    build_codex_oauth_session_headers, prepare_upstream_request_body_with_report,
+    provider_bedrock_env_flag, provider_is_codex_oauth, provider_router_from_database,
+    should_preserve_exact_request_header_case, validate_managed_account_upstream_auth,
 };
 use crate::proxy_core_adapter::{
     ActiveConnectionGuard, CopilotOptimizerConfig, FailoverSwitchSchedulerRef,
@@ -1099,7 +1098,7 @@ mod tests {
             }
         });
 
-        assert_eq!(forwarder_bedrock_env_flag(&provider), Some("1"));
+        assert_eq!(provider_bedrock_env_flag(&provider), Some("1"));
     }
 
     struct TestForwarder {
@@ -1554,25 +1553,25 @@ mod tests {
 
         assert!(should_preserve_exact_request_header_case(
             "Claude",
-            forwarder_is_codex_oauth_provider(&provider),
+            provider_is_codex_oauth(&provider),
             false,
             Some("anthropic"),
         ));
         assert!(!should_preserve_exact_request_header_case(
             "Claude",
-            forwarder_is_codex_oauth_provider(&provider),
+            provider_is_codex_oauth(&provider),
             false,
             Some("openai_responses"),
         ));
         assert!(!should_preserve_exact_request_header_case(
             "Codex",
-            forwarder_is_codex_oauth_provider(&provider),
+            provider_is_codex_oauth(&provider),
             false,
             None
         ));
         assert!(!should_preserve_exact_request_header_case(
             "Gemini",
-            forwarder_is_codex_oauth_provider(&provider),
+            provider_is_codex_oauth(&provider),
             false,
             None
         ));
@@ -1585,13 +1584,13 @@ mod tests {
 
         assert!(!should_preserve_exact_request_header_case(
             "Claude",
-            forwarder_is_codex_oauth_provider(&codex_oauth),
+            provider_is_codex_oauth(&codex_oauth),
             false,
             Some("openai_responses"),
         ));
         assert!(!should_preserve_exact_request_header_case(
             "Claude",
-            forwarder_is_codex_oauth_provider(&copilot),
+            provider_is_codex_oauth(&copilot),
             true,
             Some("openai_chat"),
         ));

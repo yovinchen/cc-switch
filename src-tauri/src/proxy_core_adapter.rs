@@ -8178,7 +8178,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     fn prepare_attempt_body(&self, input: ForwarderAttemptBodyInput<'_>) -> Value {
         if !should_apply_bedrock_pre_send_optimizer(
             input.config.enabled,
-            forwarder_bedrock_env_flag(input.provider),
+            provider_bedrock_env_flag(input.provider),
         ) {
             return input.body.clone();
         }
@@ -8656,7 +8656,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
 
         let preserve_exact_header_case = should_preserve_exact_request_header_case(
             adapter_facts.adapter_name,
-            forwarder_is_codex_oauth_provider(input.provider),
+            provider_is_codex_oauth(input.provider),
             input.is_copilot,
             input.resolved_claude_api_format,
         );
@@ -10367,10 +10367,6 @@ pub(crate) fn provider_is_codex_oauth(provider: &Provider) -> bool {
     core_provider_kind_is_codex_oauth(provider_kind.as_ref())
 }
 
-pub(crate) fn forwarder_is_codex_oauth_provider(provider: &Provider) -> bool {
-    provider_is_codex_oauth(provider)
-}
-
 pub(crate) fn provider_is_github_copilot(provider: &Provider) -> bool {
     let provider_kind = provider_kind_from_provider(provider);
     core_provider_kind_is_github_copilot(
@@ -10862,10 +10858,6 @@ pub(crate) fn forwarder_custom_user_agent_header(
 
 pub(crate) fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
     bedrock_env_flag_from_provider_settings(&provider.settings_config)
-}
-
-pub(crate) fn forwarder_bedrock_env_flag(provider: &Provider) -> Option<&str> {
-    provider_bedrock_env_flag(provider)
 }
 
 pub(crate) use crate::proxy_core::api::usage::{
@@ -22802,7 +22794,6 @@ command = "latest-command"
             forwarder_custom_user_agent_header(&provider, false).expect("custom user agent");
         let forwarder_copilot_user_agent = forwarder_custom_user_agent_header(&provider, true);
         assert_eq!(provider_bedrock_env_flag(&provider), Some("1"));
-        assert_eq!(forwarder_bedrock_env_flag(&provider), Some("1"));
         let mut codex_provider = Provider::with_id(
             "codex-oauth".to_string(),
             "Codex OAuth".to_string(),
@@ -22833,7 +22824,6 @@ command = "latest-command"
         let source_spec = provider_spec_from_source(&AppKind::Claude, Some(provider.clone()))
             .expect("provider spec")
             .expect("provider");
-        assert!(!forwarder_is_codex_oauth_provider(&provider));
         let source_specs =
             provider_specs_from_source(&AppKind::Claude, vec![provider]).expect("provider specs");
 
@@ -22872,7 +22862,6 @@ command = "latest-command"
             "https://api.githubcopilot.com"
         ));
         assert!(provider_is_codex_oauth(&codex_provider));
-        assert!(forwarder_is_codex_oauth_provider(&codex_provider));
         assert_eq!(
             provider_managed_account_id_for(&codex_provider, "codex_oauth").as_deref(),
             Some("codex-acct-1")
