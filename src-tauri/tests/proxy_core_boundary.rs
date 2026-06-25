@@ -1203,6 +1203,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn forwarder_bedrock_env_flag(",
     "fn forwarder_custom_user_agent_header(",
     "fn forwarder_uses_anthropic_rectifiers(",
+    "fn forwarder_should_convert_codex_responses_to_chat(",
     "fn apply_provider_model_mapping(",
     "fn claude_takeover_client_model_for_upstream(",
     "fn claude_takeover_default_display_name(",

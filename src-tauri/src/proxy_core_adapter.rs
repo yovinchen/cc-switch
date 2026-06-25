@@ -3879,15 +3879,6 @@ pub(crate) fn provider_should_convert_codex_responses_to_chat(
     )
 }
 
-pub(crate) fn forwarder_should_convert_codex_responses_to_chat(
-    app_type: &AppType,
-    provider: &Provider,
-    endpoint: &str,
-) -> bool {
-    matches!(app_type, AppType::Codex)
-        && provider_should_convert_codex_responses_to_chat(provider, endpoint)
-}
-
 pub(crate) fn provider_codex_upstream_model(provider: &Provider) -> Option<String> {
     let settings_model = provider
         .settings_config
@@ -8300,11 +8291,8 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     }
 
     fn transform_plan(&self, input: ForwarderTransformPlanInput<'_>) -> ForwarderTransformPlan {
-        let codex_responses_to_chat = forwarder_should_convert_codex_responses_to_chat(
-            input.app_type,
-            input.provider,
-            input.endpoint,
-        );
+        let codex_responses_to_chat = matches!(input.app_type, AppType::Codex)
+            && provider_should_convert_codex_responses_to_chat(input.provider, input.endpoint);
         let adapter_facts = input.adapter.facts();
         let fallback_claude_api_format = adapter_facts
             .is_claude_adapter
@@ -16926,16 +16914,6 @@ base_url = "https://api.openai.com/v1"
         );
         assert!(provider_codex_uses_chat_completions(&chat_provider));
         assert!(provider_should_convert_codex_responses_to_chat(
-            &chat_provider,
-            "/responses"
-        ));
-        assert!(forwarder_should_convert_codex_responses_to_chat(
-            &AppType::Codex,
-            &chat_provider,
-            "/responses"
-        ));
-        assert!(!forwarder_should_convert_codex_responses_to_chat(
-            &AppType::Claude,
             &chat_provider,
             "/responses"
         ));

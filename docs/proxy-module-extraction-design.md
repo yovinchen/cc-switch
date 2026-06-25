@@ -553,7 +553,7 @@
 539. route attempt 的 `RouteSelection -> ChannelRouteCandidate -> ResolvedChannelAttempt` 投影、channel provider override 和 request body model override 已迁入 `proxy_core_adapter`；`route_attempt` 模块只负责 host `ForwardAttempt` 组装和 attempt 顺序。
 540. Codex Responses handler 的 tool context 提取与 Chat error body normalization 已迁入 `proxy_core_adapter::{codex_tool_context_from_request,codex_chat_error_proxy_response}`；handler 只负责 Axum transport、`RequestContext` 和 transform 调度。
 541. provider settings 与 Claude Desktop route 到 request body model mapping 的投影已收敛到 `proxy_core_adapter::apply_forward_request_model_mapping_from_provider`；`RequestForwarder` 只负责 transport 准备和可选 debug 日志输出。
-542. Codex Responses -> Chat endpoint rewrite 与 Gemini Native URL build/resolve 投影已迁入 `proxy_core_adapter::{rewrite_codex_responses_endpoint_to_chat,resolve_gemini_native_url}`；forwarder 的 Codex app gate 与 Responses->Chat provider predicate 已收敛到 `proxy_core_adapter::forwarder_should_convert_codex_responses_to_chat`；`RequestForwarder` 保留 provider adapter URL fallback、full-url query 拼接和 transport 分支。
+542. Codex Responses -> Chat endpoint rewrite 与 Gemini Native URL build/resolve 投影已迁入 `proxy_core_adapter::{rewrite_codex_responses_endpoint_to_chat,resolve_gemini_native_url}`；forwarder 的 Codex app gate 与 Responses->Chat provider predicate 已收进 request source transform plan；`RequestForwarder` 保留 provider adapter URL fallback、full-url query 拼接和 transport 分支。
 543. Claude API format 是否需要 transform 的 predicate 已迁入 `proxy_core_adapter::claude_api_format_needs_transform`；`RequestForwarder` 只负责 provider adapter fallback 和 transform 分支调度。
 544. 上游请求 `anthropic-beta` 组装、ordered request headers 构建与 method-aware body serialization 已迁入 `proxy_core_adapter::{anthropic_beta_header_value,build_upstream_request_headers,serialize_upstream_request_body}`；`RequestForwarder` 只负责收集 upstream host、auth/session headers 和 managed-account 校验。
 545. `ProxyCoreError::Unavailable` 分类已迁入 `proxy_core_adapter::proxy_core_error_is_unavailable`；`RequestForwarder` 只保留 materialized route 不可用时降级为空 attempts 的行为。
@@ -1192,7 +1192,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续把 forwarder 对 Claude api_format、消息规范化和请求转换的调用改为直接消费 adapter helper，不再经由 provider 兼容函数绕回代理模块。
 本轮继续删除 provider 模块对 Claude api_format、消息规范化和请求转换兼容函数的 re-export，Claude provider 对外只保留 `ClaudeAdapter`。
 本轮继续把 forwarder 对 Codex Responses->Chat 判定、上游模型覆写和 reasoning options 的调用改为直接消费 adapter helper，并删除 provider 模块对应 re-export。
-本轮继续把 forwarder 的 Codex app gate 与 Responses->Chat provider predicate 收敛到 `proxy_core_adapter::forwarder_should_convert_codex_responses_to_chat`，转发器不再直接调用 provider-level Codex chat predicate。
+forwarder 的 Codex app gate 与 Responses->Chat provider predicate 一跳 wrapper `forwarder_should_convert_codex_responses_to_chat` 已删除；request source transform plan 直接组合 app gate 与 provider predicate。
 本轮继续把 global proxy 的显式代理 URL parse、scheme allowlist 和错误消息投影收敛到 `proxy_core_adapter::{validate_explicit_proxy_url,invalid_explicit_proxy_url_message}`，host HTTP client 只负责 reqwest proxy 构造和 client builder。
 本轮继续把 provider custom endpoints 的列表排序、URL key 归一化、空 URL 新增校验和 last-used mutation 收敛到 `proxy_core_adapter`，endpoint service 不再直接穿透 `Provider.meta.custom_endpoints`。
 本轮继续把 Codex proxy error facts/kind 的 `ProxyError` 投影收敛到 `proxy_core_adapter`，`error_mapper` 不再直接引用 `CodexProxyErrorKind` 或组装 `CodexProxyHostErrorFacts`。
@@ -1466,6 +1466,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1048. forwarder provider facts 删除 `forwarder_is_codex_oauth_provider` / `forwarder_bedrock_env_flag` 两个一跳 wrapper；request source 直接调用 provider 级 fact helper，forwarder 仍只消费 source 组装结果。
 1049. forwarder custom User-Agent 删除 `forwarder_custom_user_agent_header` 一跳 wrapper；request source 直接调用 provider 级 UA helper，并用 request-parts 单测锁住最终 `user-agent` header。
 1050. forwarder Anthropic rectifier gate 删除 `forwarder_uses_anthropic_rectifiers` 一跳 wrapper；request source 直接调用 provider 级 rectifier gate helper，forwarder 仍只消费 source 判定结果。
+1051. forwarder Codex Responses→Chat gate 删除 `forwarder_should_convert_codex_responses_to_chat` 一跳 wrapper；request source transform plan 直接组合 Codex app gate 与 provider 级 endpoint predicate。
 
 ## 背景
 
