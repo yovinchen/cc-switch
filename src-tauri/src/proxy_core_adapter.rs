@@ -356,8 +356,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     proxy_hot_switch_should_refresh_codex_live_from_backup as core_proxy_hot_switch_should_refresh_codex_live_from_backup,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active as core_proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_hot_switch_should_sync_codex_live_while_proxy_active as core_proxy_hot_switch_should_sync_codex_live_while_proxy_active,
-    proxy_live_config_owned_by_takeover as core_proxy_live_config_owned_by_takeover,
-    proxy_switch_should_hot_switch as core_proxy_switch_should_hot_switch,
+    proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
     proxy_urls_match as core_proxy_urls_match,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
@@ -1816,8 +1815,6 @@ use crate::proxy_core::api::ports::{
     opencode_live_write_config_decision as core_opencode_live_write_config_decision,
     provider_common_config_storage_normalization_requires_snippet as core_provider_common_config_storage_normalization_requires_snippet,
     provider_uses_common_config_from_parts as core_provider_uses_common_config_from_parts,
-    proxy_takeover_marked_state_is_reusable as core_proxy_takeover_marked_state_is_reusable,
-    proxy_takeover_should_restore_existing_backup_before_retakeover as core_proxy_takeover_should_restore_existing_backup_before_retakeover,
     remove_claude_common_config_from_settings as core_remove_claude_common_config_from_settings,
     remove_gemini_common_config_from_settings as core_remove_gemini_common_config_from_settings,
     should_emit_proxy_official_warning_for_provider_category as core_should_emit_proxy_official_warning_for_provider_category,
@@ -1828,6 +1825,10 @@ use crate::proxy_core::api::ports::{
     OpenCodeLiveWriteConfigDecision as CoreOpenCodeLiveWriteConfigDecision,
 };
 pub(crate) use crate::proxy_core::api::ports::common_config_settings_mutation_issue_message;
+pub(crate) use crate::proxy_core::api::ports::{
+    proxy_takeover_marked_state_is_reusable,
+    proxy_takeover_should_restore_existing_backup_before_retakeover,
+};
 #[cfg(test)]
 use crate::proxy_core::api::ports::provider_category_is_official as core_provider_category_is_official;
 #[cfg(test)]
@@ -5534,20 +5535,6 @@ pub(crate) fn should_block_proxy_switch_to_provider(
     )
 }
 
-pub(crate) fn proxy_live_config_owned_by_takeover(
-    has_live_backup: bool,
-    live_taken_over: bool,
-) -> bool {
-    core_proxy_live_config_owned_by_takeover(has_live_backup, live_taken_over)
-}
-
-pub(crate) fn proxy_switch_should_hot_switch(
-    proxy_config_takeover_enabled: bool,
-    live_taken_over: bool,
-) -> bool {
-    core_proxy_switch_should_hot_switch(proxy_config_takeover_enabled, live_taken_over)
-}
-
 pub(crate) fn proxy_hot_switch_should_refresh_codex_live_from_backup(
     app_type: &AppType,
     has_live_backup: bool,
@@ -6009,23 +5996,6 @@ pub(crate) fn normalize_provider_common_config_for_storage(
     };
 
     remove_common_config_from_settings(app_type, &provider.settings_config, snippet).map(Some)
-}
-
-pub(crate) fn proxy_takeover_marked_state_is_reusable(
-    has_live_backup: bool,
-    live_matches_current_proxy: bool,
-) -> bool {
-    core_proxy_takeover_marked_state_is_reusable(has_live_backup, live_matches_current_proxy)
-}
-
-pub(crate) fn proxy_takeover_should_restore_existing_backup_before_retakeover(
-    has_live_backup: bool,
-    live_matches_current_proxy: bool,
-) -> bool {
-    core_proxy_takeover_should_restore_existing_backup_before_retakeover(
-        has_live_backup,
-        live_matches_current_proxy,
-    )
 }
 
 #[cfg(test)]

@@ -1419,6 +1419,7 @@
 999. forwarder 终态状态文案、failure log line 和 rectifier retry label 的纯函数 facade 已从 adapter 移除；adapter 只保留 host `ProxyError` 到 core failure facts 的投影函数。
 1000. runtime active targets 写入的同签名纯函数 facade 已从 adapter 移除，`ProxyRuntimeStatus` 的 active target 排序规则直接由 core port re-export 提供。
 1001. Codex settings 中 `auth` object 与 config text 读取的纯 accessor facade 已从 adapter 移除；adapter 继续 re-export core ports，Provider 级 API key/base URL 投影仍留在宿主边界。
+1002. takeover/hot-switch 的纯 bool 状态策略 facade 已从 adapter 移除；带 `AppType` 的 hot-switch helper 仍留在 adapter 负责 `AppKind` 投影。
 
 ## 背景
 

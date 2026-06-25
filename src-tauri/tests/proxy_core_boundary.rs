@@ -938,6 +938,10 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn apply_proxy_runtime_active_targets(",
     "fn codex_auth_object_value_from_settings(",
     "fn codex_config_text_from_settings(",
+    "fn proxy_live_config_owned_by_takeover(",
+    "fn proxy_switch_should_hot_switch(",
+    "fn proxy_takeover_marked_state_is_reusable(",
+    "fn proxy_takeover_should_restore_existing_backup_before_retakeover(",
     "fn channel_route_candidate_from_selection(",
     "fn resolved_channel_attempt_from_candidate(",
     "fn resolved_channel_attempt_from_selection(",
@@ -6604,13 +6608,11 @@ fn proxy_core_adapter_delegates_hot_switch_takeover_policies_to_core() {
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
-        "pub(crate) fn proxy_live_config_owned_by_takeover",
+        "pub(crate) fn proxy_hot_switch_should_refresh_codex_live_from_backup",
         "pub(crate) fn toml_value_is_subset",
     );
 
     for marker in [
-        "core_proxy_live_config_owned_by_takeover(",
-        "core_proxy_switch_should_hot_switch(",
         "core_proxy_hot_switch_should_refresh_codex_live_from_backup(",
         "core_proxy_hot_switch_should_sync_codex_live_while_proxy_active(",
         "core_proxy_hot_switch_should_sync_claude_live_while_proxy_active(",
