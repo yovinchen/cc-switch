@@ -742,6 +742,8 @@ pub(crate) type CurrentRouteTarget = crate::proxy_core::api::ports::CurrentRoute
 
 pub(crate) type AxumResponseBuildErrorContext<'a> =
     crate::proxy_core::api::transport::ProxyResponseBuildErrorContext<'a>;
+pub(crate) type CoreResponseBuildFailureContext =
+    crate::proxy_core::api::transport::ProxyResponseBuildFailureContext;
 
 pub(crate) use crate::proxy_core::api::transport::{
     upstream_response_parse_failure_log_message, UpstreamResponseParseFailureLogContext,

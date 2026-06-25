@@ -11,9 +11,9 @@ use crate::proxy_core_adapter::{
     codex_proxy_error_response_from_proxy_error as core_codex_proxy_error_response,
     log_unlabeled_sse_fallback_event, parse_upstream_json_or_unlabeled_sse,
     proxy_core_error_from_status_kind, proxy_error_status_kind,
-    upstream_response_parse_failure_log_message, ProxyCoreError, ProxyCoreResponse,
-    ProxyCoreResult, UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
-    UpstreamSseAggregationKind,
+    upstream_response_parse_failure_log_message, CoreResponseBuildFailureContext, ProxyCoreError,
+    ProxyCoreResponse, ProxyCoreResult, UnlabeledSseFallbackLogContext,
+    UpstreamResponseParseFailureLogContext, UpstreamSseAggregationKind,
 };
 use http::HeaderMap;
 use serde_json::Value;
@@ -122,24 +122,6 @@ pub(crate) fn parse_codex_chat_upstream_json_or_unlabeled_sse(
         UpstreamResponseParseFailureLogContext::CodexChat,
         UnlabeledSseFallbackLogContext::CodexChat,
     )
-}
-
-pub(crate) enum CoreResponseBuildFailureContext {
-    ClaudeJson,
-    CodexResponses,
-    CodexResponsesError,
-    CodexProxyError,
-}
-
-impl CoreResponseBuildFailureContext {
-    fn log_prefix(&self) -> &'static str {
-        match self {
-            Self::ClaudeJson => "[Claude] 构造 JSON 响应失败",
-            Self::CodexResponses => "[Codex] 构造 Responses 响应失败",
-            Self::CodexResponsesError => "[Codex] 构造 Responses 错误体失败",
-            Self::CodexProxyError => "[Codex] 构造代理错误响应失败",
-        }
-    }
 }
 
 pub(crate) fn response_build_error_to_proxy_error(

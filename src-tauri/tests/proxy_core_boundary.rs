@@ -1474,12 +1474,26 @@ const FORBIDDEN_RESPONSE_BUILD_CONTEXT_LITERAL_MARKERS: &[&str] = &[
 const FORBIDDEN_PROXY_CORE_ADAPTER_RESPONSE_BUILD_CONTEXT_MARKERS: &[&str] = &[
     "enum AxumResponseBuildErrorContext",
     "impl AxumResponseBuildErrorContext",
+    "enum CoreResponseBuildFailureContext",
+    "impl CoreResponseBuildFailureContext",
     "构建流式响应失败",
     "构建响应失败",
     "构建 SSE 响应失败",
     "构建 Responses 响应失败",
     "构建 Responses 错误响应失败",
     "构建代理错误响应失败",
+    "构造 JSON 响应失败",
+    "构造 Responses 响应失败",
+    "构造 Responses 错误体失败",
+    "构造代理错误响应失败",
+];
+const FORBIDDEN_ERROR_MAPPER_RESPONSE_BUILD_FAILURE_CONTEXT_MARKERS: &[&str] = &[
+    "enum CoreResponseBuildFailureContext",
+    "impl CoreResponseBuildFailureContext",
+    "构造 JSON 响应失败",
+    "构造 Responses 响应失败",
+    "构造 Responses 错误体失败",
+    "构造代理错误响应失败",
 ];
 const FORBIDDEN_HANDLER_RESPONSE_PARSE_FAILURE_LOG_PROJECTION_MARKERS: &[&str] = &[
     "parse_upstream_json_or_unlabeled_sse(",
@@ -4383,6 +4397,10 @@ fn proxy_core_adapter_delegates_response_build_context_policy_to_core() {
         source.contains("ProxyResponseBuildErrorContext"),
         "proxy_core_adapter should expose the core response build context type"
     );
+    assert!(
+        source.contains("ProxyResponseBuildFailureContext"),
+        "proxy_core_adapter should expose the core response build failure context type"
+    );
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -4401,6 +4419,42 @@ fn proxy_core_adapter_delegates_response_build_context_policy_to_core() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter must delegate response build context message policy to proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn error_mapper_delegates_response_build_failure_context_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/error_mapper.rs");
+    let source = fs::read_to_string(&path).expect("read error_mapper.rs");
+
+    assert!(
+        source.contains("CoreResponseBuildFailureContext"),
+        "error_mapper should consume the core response build failure context"
+    );
+    assert!(
+        source.contains(".log_prefix()"),
+        "error_mapper should use proxy-core response build failure log prefixes"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_ERROR_MAPPER_RESPONSE_BUILD_FAILURE_CONTEXT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/error_mapper.rs:{} contains response build failure context marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "error_mapper must delegate response build failure context policy to proxy-core:\n{}",
         violations.join("\n")
     );
 }

@@ -37,6 +37,25 @@ impl ProxyResponseBuildErrorContext<'_> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProxyResponseBuildFailureContext {
+    ClaudeJson,
+    CodexResponses,
+    CodexResponsesError,
+    CodexProxyError,
+}
+
+impl ProxyResponseBuildFailureContext {
+    pub fn log_prefix(&self) -> &'static str {
+        match self {
+            Self::ClaudeJson => "[Claude] 构造 JSON 响应失败",
+            Self::CodexResponses => "[Codex] 构造 Responses 响应失败",
+            Self::CodexResponsesError => "[Codex] 构造 Responses 错误体失败",
+            Self::CodexProxyError => "[Codex] 构造代理错误响应失败",
+        }
+    }
+}
+
 /// Build a host-neutral response for a JSON body reconstructed by a transform.
 pub fn rebuilt_json_proxy_response(
     status: StatusCode,
@@ -148,6 +167,32 @@ mod tests {
 
         for (context, expected) in cases {
             assert_eq!(context.message(), expected);
+        }
+    }
+
+    #[test]
+    fn response_build_failure_context_log_prefixes_preserve_host_contracts() {
+        let cases = [
+            (
+                ProxyResponseBuildFailureContext::ClaudeJson,
+                "[Claude] 构造 JSON 响应失败",
+            ),
+            (
+                ProxyResponseBuildFailureContext::CodexResponses,
+                "[Codex] 构造 Responses 响应失败",
+            ),
+            (
+                ProxyResponseBuildFailureContext::CodexResponsesError,
+                "[Codex] 构造 Responses 错误体失败",
+            ),
+            (
+                ProxyResponseBuildFailureContext::CodexProxyError,
+                "[Codex] 构造代理错误响应失败",
+            ),
+        ];
+
+        for (context, expected) in cases {
+            assert_eq!(context.log_prefix(), expected);
         }
     }
 

@@ -3,14 +3,13 @@ use super::{
     error_mapper::{
         codex_proxy_error_body_build_error_to_proxy_error, codex_proxy_error_response,
         codex_responses_error_body_build_error_to_proxy_error, response_build_error_to_proxy_error,
-        CoreResponseBuildFailureContext,
     },
     hyper_client::ProxyResponse,
 };
 use crate::proxy_core_adapter::{
     codex_chat_error_proxy_response, rebuilt_json_proxy_response, request_body_read_error_message,
-    transformed_sse_proxy_response, AxumResponseBuildErrorContext, ProxyCoreResponse,
-    ProxyEventEnvelope, ProxyTransportResponse, ProxyTransportResponseBody,
+    transformed_sse_proxy_response, AxumResponseBuildErrorContext, CoreResponseBuildFailureContext,
+    ProxyCoreResponse, ProxyEventEnvelope, ProxyTransportResponse, ProxyTransportResponseBody,
 };
 use axum::response::sse::Event;
 use bytes::Bytes;
