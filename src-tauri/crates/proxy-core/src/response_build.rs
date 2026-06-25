@@ -11,6 +11,32 @@ use futures::Stream;
 use http::{HeaderMap, StatusCode};
 use serde_json::Value;
 
+pub enum ProxyResponseBuildErrorContext<'a> {
+    TaggedStreaming { tag: &'a str },
+    TaggedResponse { tag: &'a str },
+    ClaudeSse,
+    ClaudeResponse,
+    CodexSse,
+    CodexResponses,
+    CodexResponsesError,
+    CodexProxyError,
+}
+
+impl ProxyResponseBuildErrorContext<'_> {
+    pub fn message(&self) -> String {
+        match self {
+            Self::TaggedStreaming { tag } => format!("[{tag}] 构建流式响应失败"),
+            Self::TaggedResponse { tag } => format!("[{tag}] 构建响应失败"),
+            Self::ClaudeSse => "[Claude] 构建 SSE 响应失败".to_string(),
+            Self::ClaudeResponse => "[Claude] 构建响应失败".to_string(),
+            Self::CodexSse => "[Codex] 构建 SSE 响应失败".to_string(),
+            Self::CodexResponses => "[Codex] 构建 Responses 响应失败".to_string(),
+            Self::CodexResponsesError => "[Codex] 构建 Responses 错误响应失败".to_string(),
+            Self::CodexProxyError => "[Codex] 构建代理错误响应失败".to_string(),
+        }
+    }
+}
+
 /// Build a host-neutral response for a JSON body reconstructed by a transform.
 pub fn rebuilt_json_proxy_response(
     status: StatusCode,
@@ -84,6 +110,48 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn response_build_error_context_messages_preserve_host_contracts() {
+        let cases = [
+            (
+                ProxyResponseBuildErrorContext::TaggedStreaming { tag: "Usage" },
+                "[Usage] 构建流式响应失败",
+            ),
+            (
+                ProxyResponseBuildErrorContext::TaggedResponse { tag: "JSON" },
+                "[JSON] 构建响应失败",
+            ),
+            (
+                ProxyResponseBuildErrorContext::ClaudeSse,
+                "[Claude] 构建 SSE 响应失败",
+            ),
+            (
+                ProxyResponseBuildErrorContext::ClaudeResponse,
+                "[Claude] 构建响应失败",
+            ),
+            (
+                ProxyResponseBuildErrorContext::CodexSse,
+                "[Codex] 构建 SSE 响应失败",
+            ),
+            (
+                ProxyResponseBuildErrorContext::CodexResponses,
+                "[Codex] 构建 Responses 响应失败",
+            ),
+            (
+                ProxyResponseBuildErrorContext::CodexResponsesError,
+                "[Codex] 构建 Responses 错误响应失败",
+            ),
+            (
+                ProxyResponseBuildErrorContext::CodexProxyError,
+                "[Codex] 构建代理错误响应失败",
+            ),
+        ];
+
+        for (context, expected) in cases {
+            assert_eq!(context.message(), expected);
+        }
+    }
+
+    #[test]
     fn rebuilt_json_response_serializes_body_and_rebuilds_headers() {
         let mut headers = HeaderMap::new();
         headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/plain"));
@@ -93,8 +161,7 @@ mod tests {
         headers.insert("x-debug", HeaderValue::from_static("1"));
 
         let response =
-            rebuilt_json_proxy_response(StatusCode::CREATED, headers, json!({"ok": true}))
-                .unwrap();
+            rebuilt_json_proxy_response(StatusCode::CREATED, headers, json!({"ok": true})).unwrap();
 
         assert_eq!(response.status, StatusCode::CREATED);
         assert_eq!(
@@ -107,7 +174,9 @@ mod tests {
         assert!(!response.headers.contains_key("x-debug"));
 
         match response.body {
-            ProxyResponseBody::Bytes(body) => assert_eq!(body, Bytes::from_static(br#"{"ok":true}"#)),
+            ProxyResponseBody::Bytes(body) => {
+                assert_eq!(body, Bytes::from_static(br#"{"ok":true}"#))
+            }
             other => panic!("expected bytes body, got {other:?}"),
         }
     }

@@ -1219,6 +1219,16 @@ const FORBIDDEN_RESPONSE_BUILD_CONTEXT_LITERAL_MARKERS: &[&str] = &[
     "构建 Responses 错误响应失败",
     "构建代理错误响应失败",
 ];
+const FORBIDDEN_PROXY_CORE_ADAPTER_RESPONSE_BUILD_CONTEXT_MARKERS: &[&str] = &[
+    "enum AxumResponseBuildErrorContext",
+    "impl AxumResponseBuildErrorContext",
+    "构建流式响应失败",
+    "构建响应失败",
+    "构建 SSE 响应失败",
+    "构建 Responses 响应失败",
+    "构建 Responses 错误响应失败",
+    "构建代理错误响应失败",
+];
 const FORBIDDEN_HANDLER_RESPONSE_PARSE_FAILURE_LOG_PROJECTION_MARKERS: &[&str] = &[
     "parse_upstream_json_or_unlabeled_sse(",
     "response_body_parse_error_to_proxy_error(",
@@ -3251,6 +3261,38 @@ fn response_pipeline_delegates_axum_build_context_to_adapter() {
     assert!(
         violations.is_empty(),
         "response handlers must delegate Axum response build context projection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_response_build_context_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        source.contains("ProxyResponseBuildErrorContext"),
+        "proxy_core_adapter should expose the core response build context type"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_RESPONSE_BUILD_CONTEXT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains response build context marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must delegate response build context message policy to proxy-core:\n{}",
         violations.join("\n")
     );
 }

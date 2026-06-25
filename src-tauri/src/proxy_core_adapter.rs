@@ -672,31 +672,8 @@ pub(crate) type UsageRecordFailureLogContext =
     crate::proxy_core::api::usage::UsageRecordFailureLogContext;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::api::ports::CurrentRouteTarget;
 
-pub(crate) enum AxumResponseBuildErrorContext<'a> {
-    TaggedStreaming { tag: &'a str },
-    TaggedResponse { tag: &'a str },
-    ClaudeSse,
-    ClaudeResponse,
-    CodexSse,
-    CodexResponses,
-    CodexResponsesError,
-    CodexProxyError,
-}
-
-impl AxumResponseBuildErrorContext<'_> {
-    pub(crate) fn message(&self) -> String {
-        match self {
-            Self::TaggedStreaming { tag } => format!("[{tag}] 构建流式响应失败"),
-            Self::TaggedResponse { tag } => format!("[{tag}] 构建响应失败"),
-            Self::ClaudeSse => "[Claude] 构建 SSE 响应失败".to_string(),
-            Self::ClaudeResponse => "[Claude] 构建响应失败".to_string(),
-            Self::CodexSse => "[Codex] 构建 SSE 响应失败".to_string(),
-            Self::CodexResponses => "[Codex] 构建 Responses 响应失败".to_string(),
-            Self::CodexResponsesError => "[Codex] 构建 Responses 错误响应失败".to_string(),
-            Self::CodexProxyError => "[Codex] 构建代理错误响应失败".to_string(),
-        }
-    }
-}
+pub(crate) type AxumResponseBuildErrorContext<'a> =
+    crate::proxy_core::api::transport::ProxyResponseBuildErrorContext<'a>;
 
 pub(crate) use crate::proxy_core::api::transport::{
     upstream_response_parse_failure_log_message, UpstreamResponseParseFailureLogContext,
