@@ -7955,13 +7955,24 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
             && impl_slice.contains("max_attempts: self.max_attempts,"),
         "RequestForwarder must pass attempt allow facts as an input DTO"
     );
-    assert!(
-        adapter_source.contains("fn should_bypass_circuit_breaker"),
-        "default ForwarderAttemptRuntimeSource implementation must retain legacy circuit-breaker bypass projection"
+    let attempt_runtime_impl_slice = function_slice(
+        &adapter_source,
+        "impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource",
+        "pub(crate) fn forwarder_attempt_runtime_source_from_router",
     );
     assert!(
-        adapter_source.contains("fn attempt_limit_reached"),
-        "default ForwarderAttemptRuntimeSource implementation must retain max-attempt log-line projection"
+        !adapter_source.contains("fn should_bypass_circuit_breaker"),
+        "default ForwarderAttemptRuntimeSource implementation must not retain a private circuit-breaker bypass helper"
+    );
+    assert!(
+        !adapter_source.contains("fn attempt_limit_reached"),
+        "default ForwarderAttemptRuntimeSource implementation must not retain a private max-attempt helper"
+    );
+    assert!(
+        attempt_runtime_impl_slice
+            .contains("forwarder_should_bypass_circuit_breaker(input.attempts)")
+            && attempt_runtime_impl_slice.contains("forwarder_attempt_limit_reached_log_line("),
+        "default ForwarderAttemptRuntimeSource implementation should call the strategy helpers directly inside allow"
     );
     assert!(
         !impl_slice.contains("limit.log_line"),

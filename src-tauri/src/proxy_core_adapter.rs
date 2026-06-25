@@ -7612,19 +7612,6 @@ impl CcSwitchForwarderAttemptRuntimeSource {
     fn new(router: Arc<ProviderRouter>) -> Self {
         Self { router }
     }
-
-    fn should_bypass_circuit_breaker(&self, attempts: &[ForwardAttempt]) -> bool {
-        forwarder_should_bypass_circuit_breaker(attempts)
-    }
-
-    fn attempt_limit_reached(
-        &self,
-        app_type: &str,
-        attempted_providers: usize,
-        max_attempts: usize,
-    ) -> Option<String> {
-        forwarder_attempt_limit_reached_log_line(app_type, attempted_providers, max_attempts)
-    }
 }
 
 impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
@@ -7633,7 +7620,7 @@ impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
         input: ForwarderAttemptAllowInput<'a>,
     ) -> BoxFuture<'a, ForwarderAttemptAllowDecision> {
         Box::pin(async move {
-            if let Some(log_line) = self.attempt_limit_reached(
+            if let Some(log_line) = forwarder_attempt_limit_reached_log_line(
                 input.app_type,
                 input.attempted_providers,
                 input.max_attempts,
@@ -7642,7 +7629,7 @@ impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
                 return ForwarderAttemptAllowDecision::Stop;
             }
 
-            let bypass_circuit_breaker = self.should_bypass_circuit_breaker(input.attempts);
+            let bypass_circuit_breaker = forwarder_should_bypass_circuit_breaker(input.attempts);
             let permit = allow_forward_attempt_runtime_source(
                 self.router.as_ref(),
                 input.attempt,

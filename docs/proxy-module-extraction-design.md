@@ -532,6 +532,7 @@
 521. `/proxy/v1/channels/{channel_id}/test` 的 probe provider/base URL 输入投影已迁入 `proxy-core::ChannelTestProbeRequest`；host handler 只负责按 probe request 查 provider 并执行 `StreamCheckService`。
 522. `/proxy/v1/apps/{app}/routes/current` 的 active target/configured provider facts 已聚合为 `proxy-core::CurrentRouteSource`；host handler 只负责读取运行态 current target 和 DB configured provider。
 523. `/proxy/v1/apps/{app}/channels/migration/{preview,materialize}` 的 DB result facts 已聚合为 `proxy-core::{ChannelMigrationPreviewSource, ChannelMigrationMaterializeSource}`；host handler 只负责执行 legacy migration DB 调用。
+524. `CcSwitchForwarderAttemptRuntimeSource` 已删除私有 `should_bypass_circuit_breaker` / `attempt_limit_reached` 二次 helper；`allow` 直接调用 core/adapter 策略函数并返回结构化决策，避免默认 source 实现继续扩散内部投影层。
 524. `/proxy/v1/channels` 的 app filter 分支计划与 channel list facts 已迁入 `proxy-core::{ChannelListPlan, ChannelListSource}`；host handler 只负责执行 per-app/all-channel DB 查询。
 525. `/proxy/v1/apps` 的 app summary facts 已聚合为 `proxy-core::AppListSource`；host handler 只负责遍历 app 并读取 config/provider/channel facts。
 526. `/proxy/v1/channels/{channel_id}` 与 `/proxy/v1/channels/{channel_id}/models` 的 record/models/delete facts 已聚合为 `proxy-core::{ChannelRecordSource, ChannelModelsSource, ChannelDeleteSource}`；host handler 只负责执行 channel/model DB 操作。
