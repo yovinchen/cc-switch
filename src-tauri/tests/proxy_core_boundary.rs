@@ -6463,16 +6463,35 @@ fn proxy_core_adapter_delegates_custom_user_agent_policy_to_core() {
     let provider_path = manifest_dir.join("src/provider.rs");
     let provider_source = fs::read_to_string(&provider_path).expect("read provider.rs");
 
+    let provider_user_agent_slice = function_slice(
+        &adapter_source,
+        "pub(crate) fn provider_custom_user_agent_header(",
+        "pub(crate) fn model_fetch_custom_user_agent_header(",
+    );
+
     assert!(
-        adapter_source
-            .contains("pub(crate) use crate::proxy_core::api::transport::parse_custom_user_agent"),
-        "proxy_core_adapter should expose the core custom User-Agent parser"
+        adapter_source.contains("parse_custom_user_agent")
+            && adapter_source.contains("core_provider_custom_user_agent_header"),
+        "proxy_core_adapter should expose core custom User-Agent helpers"
+    );
+    assert!(
+        provider_user_agent_slice.contains("core_provider_custom_user_agent_header("),
+        "proxy_core_adapter should delegate provider custom User-Agent policy to core"
     );
     assert!(
         !adapter_source.contains("crate::provider::parse_custom_user_agent(")
             && !adapter_source.contains("HeaderValue::from_str("),
         "proxy_core_adapter must not own or call host-local custom User-Agent parsing policy"
     );
+    for marker in [
+        "if is_copilot",
+        ".custom_user_agent_header().ok().flatten()",
+    ] {
+        assert!(
+            !provider_user_agent_slice.contains(marker),
+            "proxy_core_adapter must not own provider custom User-Agent policy marker `{marker}`"
+        );
+    }
     assert!(
         provider_source.contains("crate::proxy_core_adapter::parse_custom_user_agent(raw)")
             && !provider_source.contains("HeaderValue::from_str("),

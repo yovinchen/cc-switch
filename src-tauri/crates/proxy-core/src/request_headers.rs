@@ -60,6 +60,17 @@ pub fn parse_custom_user_agent(
     }
 }
 
+pub fn provider_custom_user_agent_header(
+    raw: Option<&str>,
+    is_copilot: bool,
+) -> Result<Option<http::HeaderValue>, http::header::InvalidHeaderValue> {
+    if is_copilot {
+        return Ok(None);
+    }
+
+    parse_custom_user_agent(raw)
+}
+
 pub struct UpstreamRequestHeadersInput<'a> {
     pub inbound_headers: &'a http::HeaderMap,
     pub upstream_host: Option<&'a str>,
@@ -728,15 +739,15 @@ mod tests {
         build_copilot_auth_header_overrides_for_forwarder, build_copilot_auth_headers,
         build_gemini_auth_headers, build_gemini_provider_auth_headers, build_upstream_auth_headers,
         build_upstream_request_headers, claude_auth_header_kind_for_provider_strategy,
-        is_official_codex_client_user_agent, should_log_copilot_subagent_auth_override,
-        parse_custom_user_agent, should_preserve_exact_request_header_case,
+        is_official_codex_client_user_agent, parse_custom_user_agent,
+        provider_custom_user_agent_header, resolve_auth_provider_headers,
+        should_log_copilot_subagent_auth_override, should_preserve_exact_request_header_case,
         should_send_anthropic_request_headers, should_skip_copilot_fingerprint_request_header,
         should_strip_forwarded_request_header, upstream_host_header_from_url,
         AuthProviderHeaderResolution, ClaudeAuthHeaderKind, ClaudeProviderAuthHeadersInput,
-        CopilotAuthHeaderOverrideFacts,
-        CopilotAuthHeaderOverrides, CopilotAuthHeadersInput, UpstreamAuthHeadersInput,
-        UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
-        resolve_auth_provider_headers,
+        CopilotAuthHeaderOverrideFacts, CopilotAuthHeaderOverrides, CopilotAuthHeadersInput,
+        UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, CLAUDE_CODE_BETA,
+        DEFAULT_ANTHROPIC_VERSION,
     };
     use crate::error::ProxyCoreError;
     use crate::ports::AuthInfo;
@@ -756,6 +767,21 @@ mod tests {
 
         assert!(parse_custom_user_agent(Some("bad\nua")).is_err());
         assert!(parse_custom_user_agent(Some("bad\u{7f}ua")).is_err());
+    }
+
+    #[test]
+    fn provider_custom_user_agent_header_suppresses_copilot_upstream() {
+        let user_agent = provider_custom_user_agent_header(Some(" cc-switch/1.0 "), false)
+            .expect("valid user agent")
+            .expect("non-empty header");
+        assert_eq!(user_agent, HeaderValue::from_static("cc-switch/1.0"));
+
+        assert_eq!(
+            provider_custom_user_agent_header(Some(" cc-switch/1.0 "), true)
+                .expect("copilot suppresses user agent"),
+            None
+        );
+        assert!(provider_custom_user_agent_header(Some("bad\nua"), false).is_err());
     }
 
     #[test]
