@@ -739,16 +739,10 @@ fn restore_snapshots(snapshots: &[FileSnapshot]) -> Result<(), AppError> {
 }
 
 fn write_deployment_mode(path: &Path, mode: &str) -> Result<(), AppError> {
-    let mut value = read_json_or_empty(path)?;
-    if !value.is_object() {
-        value = json!({});
-    }
-    if let Some(obj) = value.as_object_mut() {
-        obj.insert(
-            "deploymentMode".to_string(),
-            Value::String(mode.to_string()),
-        );
-    }
+    let value = crate::proxy_core_adapter::claude_desktop_config_with_deployment_mode(
+        read_json_or_empty(path)?,
+        mode,
+    );
     write_json_file(path, &value)
 }
 
@@ -757,32 +751,15 @@ fn remove_cc_switch_enterprise_config(path: &Path) -> Result<(), AppError> {
         return Ok(());
     }
 
-    let mut value = read_json_or_empty(path)?;
-    let Some(obj) = value.as_object_mut() else {
-        return Ok(());
-    };
-    let Some(enterprise) = obj
-        .get_mut("enterpriseConfig")
-        .and_then(Value::as_object_mut)
-    else {
-        return Ok(());
-    };
-
-    for key in [
-        "disableDeploymentModeChooser",
-        "inferenceGatewayApiKey",
-        "inferenceGatewayAuthScheme",
-        "inferenceGatewayBaseUrl",
-        "inferenceProvider",
-    ] {
-        enterprise.remove(key);
+    if let Some(value) =
+        crate::proxy_core_adapter::claude_desktop_config_without_gateway_enterprise_config(
+            read_json_or_empty(path)?,
+        )
+    {
+        write_json_file(path, &value)?;
     }
 
-    if enterprise.is_empty() {
-        obj.remove("enterpriseConfig");
-    }
-
-    write_json_file(path, &value)
+    Ok(())
 }
 
 fn write_meta(path: &Path, applied_profile_id: Option<&str>) -> Result<(), AppError> {
@@ -1782,6 +1759,36 @@ mod tests {
             .expect("entries")
             .iter()
             .any(|entry| entry["id"] == json!(PROFILE_ID)));
+    }
+
+    #[test]
+    fn claude_desktop_restore_removes_gateway_enterprise_config_only() {
+        let temp = TempDir::new().expect("tempdir");
+        let paths = test_paths(temp.path());
+        write_json_file(
+            &paths.threep_config_path,
+            &json!({
+                "deploymentMode": "3p",
+                "enterpriseConfig": {
+                    "disableDeploymentModeChooser": true,
+                    "inferenceGatewayApiKey": "ccs-token",
+                    "inferenceGatewayAuthScheme": "bearer",
+                    "inferenceGatewayBaseUrl": "http://127.0.0.1:15721",
+                    "inferenceProvider": "gateway",
+                    "managedSetting": true
+                }
+            }),
+        )
+        .expect("seed 3p config");
+
+        restore_official_at_paths(&paths).expect("restore official");
+
+        let threep: Value = read_json_file(&paths.threep_config_path).expect("read 3p config");
+        assert_eq!(threep["deploymentMode"], json!("1p"));
+        assert_eq!(
+            threep["enterpriseConfig"],
+            json!({ "managedSetting": true })
+        );
     }
 
     #[test]

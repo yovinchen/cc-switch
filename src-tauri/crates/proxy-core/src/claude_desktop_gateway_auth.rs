@@ -256,6 +256,42 @@ pub fn claude_desktop_gateway_profile(
     profile
 }
 
+pub fn claude_desktop_config_with_deployment_mode(mut config: Value, mode: &str) -> Value {
+    if !config.is_object() {
+        config = json!({});
+    }
+    if let Some(obj) = config.as_object_mut() {
+        obj.insert(
+            "deploymentMode".to_string(),
+            Value::String(mode.to_string()),
+        );
+    }
+    config
+}
+
+pub fn claude_desktop_config_without_gateway_enterprise_config(mut config: Value) -> Option<Value> {
+    let obj = config.as_object_mut()?;
+    let enterprise = obj
+        .get_mut("enterpriseConfig")
+        .and_then(Value::as_object_mut)?;
+
+    for key in [
+        "disableDeploymentModeChooser",
+        "inferenceGatewayApiKey",
+        "inferenceGatewayAuthScheme",
+        "inferenceGatewayBaseUrl",
+        "inferenceProvider",
+    ] {
+        enterprise.remove(key);
+    }
+
+    if enterprise.is_empty() {
+        obj.remove("enterpriseConfig");
+    }
+
+    Some(config)
+}
+
 pub fn claude_desktop_model_id_is_profile_safe(model: &str) -> bool {
     let normalized = model.trim().to_ascii_lowercase();
     if normalized.contains(ONE_M_CONTEXT_MARKER) {
@@ -799,6 +835,8 @@ fn is_false(value: &bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
+        claude_desktop_config_with_deployment_mode,
+        claude_desktop_config_without_gateway_enterprise_config,
         claude_desktop_default_proxy_routes, claude_desktop_direct_gateway_credentials,
         claude_desktop_direct_inference_model_specs,
         claude_desktop_direct_provider_validation_issue, claude_desktop_gateway_profile,
@@ -820,7 +858,7 @@ mod tests {
     };
     use crate::error::ProxyCoreError;
     use http::{HeaderMap, HeaderValue};
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     #[test]
     fn gateway_bearer_value_accepts_existing_scheme_variants() {
@@ -1493,6 +1531,61 @@ mod tests {
                 "claude-opus-4-8"
             ])
         );
+    }
+
+    #[test]
+    fn config_with_deployment_mode_normalizes_non_object_and_preserves_fields() {
+        assert_eq!(
+            claude_desktop_config_with_deployment_mode(Value::String("bad".to_string()), "3p"),
+            json!({ "deploymentMode": "3p" })
+        );
+        assert_eq!(
+            claude_desktop_config_with_deployment_mode(json!({ "existing": true }), "1p"),
+            json!({ "existing": true, "deploymentMode": "1p" })
+        );
+    }
+
+    #[test]
+    fn config_without_gateway_enterprise_config_removes_gateway_keys_only() {
+        let cleaned = claude_desktop_config_without_gateway_enterprise_config(json!({
+            "enterpriseConfig": {
+                "disableDeploymentModeChooser": true,
+                "inferenceGatewayApiKey": "ccs-token",
+                "inferenceGatewayAuthScheme": "bearer",
+                "inferenceGatewayBaseUrl": "http://127.0.0.1:15721",
+                "inferenceProvider": "gateway",
+                "other": true
+            },
+            "top": "kept"
+        }))
+        .expect("enterprise config should be cleaned");
+
+        assert_eq!(
+            cleaned,
+            json!({
+                "enterpriseConfig": { "other": true },
+                "top": "kept"
+            })
+        );
+        assert!(claude_desktop_config_without_gateway_enterprise_config(json!([])).is_none());
+        assert!(
+            claude_desktop_config_without_gateway_enterprise_config(json!({ "other": true }))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn config_without_gateway_enterprise_config_removes_empty_enterprise_object() {
+        let cleaned = claude_desktop_config_without_gateway_enterprise_config(json!({
+            "enterpriseConfig": {
+                "inferenceGatewayApiKey": "ccs-token",
+                "inferenceGatewayBaseUrl": "http://127.0.0.1:15721"
+            },
+            "top": "kept"
+        }))
+        .expect("enterprise config should be cleaned");
+
+        assert_eq!(cleaned, json!({ "top": "kept" }));
     }
 
     #[test]

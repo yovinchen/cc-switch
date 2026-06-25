@@ -2668,13 +2668,14 @@ pub(crate) use crate::proxy_core::api::auth::{
     ProviderManagedAuthFacts, CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
 };
 pub(crate) use crate::proxy_core::api::auth::{
-    claude_desktop_default_proxy_routes, claude_desktop_direct_gateway_credentials,
-    claude_desktop_direct_inference_model_specs, claude_desktop_gateway_profile,
-    claude_desktop_profile_has_unsafe_model_ids, claude_desktop_proxy_model_routes,
-    claude_desktop_proxy_request_upstream_model, ClaudeDesktopDirectGatewayCredentialIssue,
-    ClaudeDesktopDirectGatewayCredentials, ClaudeDesktopDirectModelRouteIssue,
-    ClaudeDesktopGatewayProfileModelSpec, ClaudeDesktopProxyRouteInput,
-    ClaudeDesktopResolvedProxyRoute,
+    claude_desktop_config_with_deployment_mode,
+    claude_desktop_config_without_gateway_enterprise_config, claude_desktop_default_proxy_routes,
+    claude_desktop_direct_gateway_credentials, claude_desktop_direct_inference_model_specs,
+    claude_desktop_gateway_profile, claude_desktop_profile_has_unsafe_model_ids,
+    claude_desktop_proxy_model_routes, claude_desktop_proxy_request_upstream_model,
+    ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectGatewayCredentials,
+    ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopGatewayProfileModelSpec,
+    ClaudeDesktopProxyRouteInput, ClaudeDesktopResolvedProxyRoute,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,

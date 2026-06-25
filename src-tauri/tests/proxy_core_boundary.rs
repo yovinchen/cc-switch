@@ -5237,6 +5237,79 @@ fn claude_desktop_config_delegates_gateway_profile_json_to_adapter() {
 }
 
 #[test]
+fn claude_desktop_config_delegates_local_config_json_transforms_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let deployment_slice = function_slice(
+        &source,
+        "fn write_deployment_mode(",
+        "fn remove_cc_switch_enterprise_config(",
+    );
+    let cleanup_slice = function_slice(
+        &source,
+        "fn remove_cc_switch_enterprise_config(",
+        "fn write_meta(",
+    );
+
+    assert!(
+        deployment_slice.contains("claude_desktop_config_with_deployment_mode("),
+        "write_deployment_mode should delegate config object normalization and deploymentMode mutation to proxy_core_adapter/core"
+    );
+    assert!(
+        cleanup_slice.contains("claude_desktop_config_without_gateway_enterprise_config("),
+        "remove_cc_switch_enterprise_config should delegate enterprise gateway-key cleanup to proxy_core_adapter/core"
+    );
+
+    let mut violations = Vec::new();
+    for (slice_name, slice, forbidden_markers) in [
+        (
+            "write_deployment_mode",
+            deployment_slice,
+            &[
+                "\"deploymentMode\"",
+                "as_object_mut",
+                "Value::String",
+                "json!({",
+            ][..],
+        ),
+        (
+            "remove_cc_switch_enterprise_config",
+            cleanup_slice,
+            &[
+                "\"enterpriseConfig\"",
+                "\"disableDeploymentModeChooser\"",
+                "\"inferenceGatewayApiKey\"",
+                "\"inferenceGatewayAuthScheme\"",
+                "\"inferenceGatewayBaseUrl\"",
+                "\"inferenceProvider\"",
+                ".remove(",
+                "as_object_mut",
+            ][..],
+        ),
+    ] {
+        for (line_index, line) in production_lines(slice) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in forbidden_markers {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/claude_desktop_config.rs {slice_name}:{} contains local config JSON policy marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "claude_desktop_config must keep local config JSON mutation policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
