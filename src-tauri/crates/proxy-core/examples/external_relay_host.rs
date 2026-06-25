@@ -33,6 +33,15 @@ async fn run() -> ProxyCoreResult<()> {
             "claude",
         ))?)
         .await?;
+    let custom_catalog = engine
+        .list_model_catalog_for_request(AppModelCatalogRequest::from_parts(
+            "opencode",
+            AppModelListQuery::new(
+                Some(InterfaceKind::OpenAiChatCompletions.as_str().to_string()),
+                Some("tools".to_string()),
+            ),
+        )?)
+        .await?;
 
     let mut request = ProxyRequest::new(
         AppKind::Claude,
@@ -63,18 +72,28 @@ async fn run() -> ProxyCoreResult<()> {
         .channels
         .first()
         .ok_or_else(|| ProxyCoreError::Unavailable("missing listed channel".to_string()))?;
+    let custom_model = custom_catalog
+        .models
+        .first()
+        .ok_or_else(|| ProxyCoreError::Unavailable("missing custom model".to_string()))?;
 
     println!(
-        "relay host ready: running={} route={} channel_base={} upstream={} usage_records={} events={}",
+        "relay host ready: running={} route={} channel_base={} upstream={} custom_app={} custom_model={} usage_records={} events={}",
         status.status.running,
         selected.channel_id,
         listed.base_url,
         forwarded.outbound_model.as_deref().unwrap_or("unknown"),
+        custom_catalog.app_type,
+        custom_model.upstream_model,
         usage_count,
         event_count
     );
 
     Ok(())
+}
+
+fn opencode_app() -> AppKind {
+    AppKind::Custom("opencode".to_string())
 }
 
 fn provider_specs(app: &AppKind) -> Vec<ProviderSpec> {
@@ -90,6 +109,13 @@ fn provider_specs(app: &AppKind) -> Vec<ProviderSpec> {
             id: "relay-west".to_string(),
             name: "Relay West".to_string(),
             kind: ProviderKind::Codex,
+            account_ref: None,
+            metadata: Default::default(),
+        }],
+        AppKind::Custom(name) if name.eq_ignore_ascii_case("opencode") => vec![ProviderSpec {
+            id: "relay-tools".to_string(),
+            name: "Relay Tools".to_string(),
+            kind: ProviderKind::OpenRouter,
             account_ref: None,
             metadata: Default::default(),
         }],
@@ -135,6 +161,26 @@ fn channel_specs() -> Vec<ChannelSpec> {
             }],
             groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
             priority: 90,
+            weight: 1,
+            metadata: json!({ "tenant": "external-relay-demo" }),
+            ..ChannelSpecInput::default()
+        }),
+        channel_spec_from_input(ChannelSpecInput {
+            id: "opencode-tools".to_string(),
+            provider_id: "relay-tools".to_string(),
+            app_type: opencode_app().as_str().to_string(),
+            name: "OpenCode Tools".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://relay-tools.example/openai".to_string(),
+            interface_kind: InterfaceKind::OpenAiChatCompletions.as_str().to_string(),
+            models: vec![ModelRouteInput {
+                public_model: "toolsmith".to_string(),
+                upstream_model: "openrouter/toolsmith".to_string(),
+                pricing_model: Some("tools-standard".to_string()),
+                ..ModelRouteInput::default()
+            }],
+            groups: vec!["tools".to_string()],
+            priority: 80,
             weight: 1,
             metadata: json!({ "tenant": "external-relay-demo" }),
             ..ChannelSpecInput::default()
@@ -212,7 +258,7 @@ fn management_candidate(
 
 impl ProxyConfigSource for DemoRelayHost {
     fn list_apps<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<Vec<AppKind>>> {
-        Box::pin(async { Ok(vec![AppKind::Claude, AppKind::Codex]) })
+        Box::pin(async { Ok(vec![AppKind::Claude, AppKind::Codex, opencode_app()]) })
     }
 
     fn load_global<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyGlobalConfig>> {

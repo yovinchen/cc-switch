@@ -913,6 +913,67 @@ fn external_host_can_use_management_auth_contracts_from_prelude() {
 }
 
 #[test]
+fn external_host_can_use_custom_app_namespace_contracts_from_prelude() {
+    let app = AppKind::from("opencode");
+    let channel = channel_spec_from_input(ChannelSpecInput {
+        id: "opencode-tools".to_string(),
+        provider_id: "relay-tools".to_string(),
+        app_type: app.as_str().to_string(),
+        name: "OpenCode Tools".to_string(),
+        status: "enabled".to_string(),
+        base_url: "https://relay-tools.example/openai".to_string(),
+        interface_kind: InterfaceKind::OpenAiChatCompletions.as_str().to_string(),
+        models: vec![ModelRouteInput {
+            public_model: "toolsmith".to_string(),
+            upstream_model: "openrouter/toolsmith".to_string(),
+            ..ModelRouteInput::default()
+        }],
+        groups: vec!["tools".to_string()],
+        priority: 80,
+        weight: 1,
+        ..ChannelSpecInput::default()
+    });
+    let app_path = ManagementAppPathRequest::from_path(" opencode ").expect("app path");
+    let model_request = AppModelCatalogRequest::from_parts(
+        "opencode",
+        AppModelListQuery::new(
+            Some(InterfaceKind::OpenAiChatCompletions.as_str().to_string()),
+            Some("tools".to_string()),
+        ),
+    )
+    .expect("custom app model request");
+    let channel_request =
+        AppChannelManagementRequest::from_parts("opencode", AppChannelListQuery::list())
+            .expect("custom app channel list request");
+    let route_request = RouteResolveManagementRequest::from_body(RouteResolveRequest {
+        app_type: "opencode".to_string(),
+        requested_model: Some("toolsmith".to_string()),
+        interface_kind: Some(InterfaceKind::OpenAiChatCompletions.as_str().to_string()),
+        route_group: Some("tools".to_string()),
+    })
+    .expect("custom app route request");
+
+    assert_eq!(app, AppKind::Custom("opencode".to_string()));
+    assert_eq!(app.as_str(), "opencode");
+    assert_eq!(channel.app, app);
+    assert_eq!(channel.endpoint.base_url, "https://relay-tools.example/openai");
+    assert_eq!(channel.interface, InterfaceKind::OpenAiChatCompletions);
+    assert_eq!(channel.models[0].public_model, "toolsmith");
+    assert_eq!(app_path.app_type, "opencode");
+    assert_eq!(model_request.app, AppKind::Custom("opencode".to_string()));
+    assert_eq!(model_request.route_group.as_deref(), Some("tools"));
+    assert!(matches!(
+        channel_request.plan(),
+        AppChannelManagementPlan::List { app_type } if app_type == "opencode"
+    ));
+    assert_eq!(route_request.request.app_type, "opencode");
+    assert_eq!(
+        route_request.request.interface_kind.as_deref(),
+        Some("openai_chat_completions")
+    );
+}
+
+#[test]
 fn external_host_can_use_health_check_contracts_from_prelude() {
     let request = HealthCheckRequest::new();
     let response: HealthCheckResponse =
