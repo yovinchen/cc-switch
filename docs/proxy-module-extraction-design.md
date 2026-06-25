@@ -1520,6 +1520,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1078. `/proxy/v1/channels/{channel_id}/breakers/stats` 已补充 `ProxyServer::start` 级 runtime smoke：真实本机监听端口在 materialize channel、制造熔断、dry-run 阻断后，通过 HTTP stats 端点验证 open 状态与失败计数，再执行 reset 恢复。
 1079. `/proxy/v1/events` 已补充 `ProxyServer::start` 级 runtime smoke：真实本机监听端口通过 no-proxy reqwest 读取首个 SSE connected 事件，验证事件名与 `bufferSize` payload，固定外部集成方依赖的事件流启动 contract。
 1080. 删除 `ProxyError::{TransformError,InvalidRequest,Internal}` 上过时的 dead-code allowance；这些错误变体已由 provider transform、core error bridge、handler/response adapter 等生产路径构造，继续作为 host/core 错误映射 surface，而不是预留兼容占位。
+1081. `/proxy/v1/channels/{channel_id}` 与 `/proxy/v1/channels/{channel_id}/models` 已补充 `ProxyServer::start` 级 runtime smoke：真实本机监听端口验证单 channel PATCH/GET、模型 PUT/GET，以及临时 channel DELETE，补齐外部中转管理面最小 CRUD contract。
 
 ## 背景
 

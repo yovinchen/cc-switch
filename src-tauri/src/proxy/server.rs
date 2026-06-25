@@ -1004,6 +1004,113 @@ mod tests {
                 return Err(format!("unexpected created channel body: {created}"));
             }
 
+            let patch_channel_response = client
+                .patch(format!("{base_url}/proxy/v1/channels/{channel_id}"))
+                .json(&json!({
+                    "status": "enabled",
+                    "priority": 25,
+                    "weight": 75
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if patch_channel_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected patch channel status: {}",
+                    patch_channel_response.status()
+                ));
+            }
+            let patched_channel = patch_channel_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if patched_channel["id"] != channel_id
+                || patched_channel["priority"] != 25
+                || patched_channel["weight"] != 75
+                || patched_channel["authProfileRef"] != "channel-key:primary"
+            {
+                return Err(format!("unexpected patched channel body: {patched_channel}"));
+            }
+
+            let get_channel_response = client
+                .get(format!("{base_url}/proxy/v1/channels/{channel_id}"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if get_channel_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected get channel status: {}",
+                    get_channel_response.status()
+                ));
+            }
+            let fetched_channel = get_channel_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if fetched_channel["id"] != channel_id
+                || fetched_channel["name"] != "Runtime Relay"
+                || fetched_channel["models"].as_array().map(Vec::len) != Some(1)
+                || fetched_channel["models"][0]["publicModel"] != "runtime-public"
+            {
+                return Err(format!("unexpected fetched channel body: {fetched_channel}"));
+            }
+
+            let replace_models_response = client
+                .put(format!("{base_url}/proxy/v1/channels/{channel_id}/models"))
+                .json(&json!({
+                    "models": [{
+                        "publicModel": "runtime-public",
+                        "upstreamModel": "runtime-upstream"
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if replace_models_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected replace channel models status: {}",
+                    replace_models_response.status()
+                ));
+            }
+            let replaced_models = replace_models_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if replaced_models["channelId"] != channel_id
+                || replaced_models["models"].as_array().map(Vec::len) != Some(1)
+                || replaced_models["models"][0]["publicModel"] != "runtime-public"
+                || replaced_models["models"][0]["upstreamModel"] != "runtime-upstream"
+            {
+                return Err(format!(
+                    "unexpected replaced channel models body: {replaced_models}"
+                ));
+            }
+
+            let get_models_response = client
+                .get(format!("{base_url}/proxy/v1/channels/{channel_id}/models"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if get_models_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected get channel models status: {}",
+                    get_models_response.status()
+                ));
+            }
+            let fetched_models = get_models_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if fetched_models["channelId"] != channel_id
+                || fetched_models["models"].as_array().map(Vec::len) != Some(1)
+                || fetched_models["models"][0]["publicModel"] != "runtime-public"
+                || fetched_models["models"][0]["upstreamModel"] != "runtime-upstream"
+            {
+                return Err(format!(
+                    "unexpected fetched channel models body: {fetched_models}"
+                ));
+            }
+
             let test_response = client
                 .post(format!("{base_url}/proxy/v1/channels/{channel_id}/test"))
                 .json(&json!({
@@ -1403,6 +1510,59 @@ mod tests {
                 || deleted_key["deleted"] != true
             {
                 return Err(format!("unexpected delete key body: {deleted_key}"));
+            }
+
+            let delete_channel_create_response = client
+                .post(format!("{base_url}/proxy/v1/channels"))
+                .json(&json!({
+                    "providerId": "runtime-provider",
+                    "appType": "claude",
+                    "name": "Runtime Deletable Relay",
+                    "baseUrl": "https://delete-relay.example.com/v1",
+                    "interfaceKind": "anthropic_messages",
+                    "models": [{
+                        "publicModel": "delete-public",
+                        "upstreamModel": "delete-upstream"
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if delete_channel_create_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected delete-channel create status: {}",
+                    delete_channel_create_response.status()
+                ));
+            }
+            let delete_channel_created = delete_channel_create_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            let delete_channel_id = delete_channel_created["id"]
+                .as_str()
+                .ok_or_else(|| {
+                    format!("deletable channel missing id: {delete_channel_created}")
+                })?;
+
+            let delete_channel_response = client
+                .delete(format!("{base_url}/proxy/v1/channels/{delete_channel_id}"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if delete_channel_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected delete channel status: {}",
+                    delete_channel_response.status()
+                ));
+            }
+            let deleted_channel = delete_channel_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if deleted_channel["channelId"] != delete_channel_id
+                || deleted_channel["deleted"] != true
+            {
+                return Err(format!("unexpected delete channel body: {deleted_channel}"));
             }
 
             Ok::<(), String>(())
