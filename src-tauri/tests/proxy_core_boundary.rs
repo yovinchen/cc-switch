@@ -2220,29 +2220,41 @@ fn channel_key_and_model_handlers_delegate_sources_to_proxy_engine() {
 }
 
 #[test]
-fn proxy_channel_dao_delegates_runtime_key_selection_to_core_adapter() {
+fn proxy_channel_runtime_source_delegates_key_selection_to_core_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/database/dao/proxy_channels.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_channels.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let dao_path = manifest_dir.join("src/database/dao/proxy_channels.rs");
+    let dao_source = fs::read_to_string(&dao_path).expect("read proxy_channels.rs");
     let function = function_slice(
-        &source,
-        "pub(crate) fn get_enabled_proxy_channel_key",
-        "pub(crate) fn get_proxy_channel_app_type",
+        &adapter_source,
+        "fn load_channel_key_value_from_database",
+        "impl ChannelKeyRuntimeSource for CcSwitchBorrowedChannelKeyRuntimeSource",
     );
 
     assert!(
-        function.contains("select_enabled_proxy_channel_key_runtime_candidate("),
-        "get_enabled_proxy_channel_key must delegate runtime key selection to the core adapter"
+        function.contains(".get_proxy_channel_key(")
+            && function.contains("select_enabled_proxy_channel_key_runtime_candidate(")
+            && function.contains("channel_key_value_from_runtime_candidate("),
+        "channel key runtime source must load raw DB key records and delegate enabled-key selection to the core adapter"
+    );
+    assert!(
+        !function.contains(".get_enabled_proxy_channel_key("),
+        "channel key runtime source must not rely on the DAO test convenience selector"
+    );
+    assert!(
+        dao_source.contains("#[cfg(test)]\n    pub(crate) fn get_enabled_proxy_channel_key"),
+        "DAO enabled-key selector should remain test-only while production runtime selection lives in the adapter"
     );
 
     let forbidden_markers = ["key.status == \"enabled\"", "key.status != \"enabled\""];
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(function) {
+    for (line_index, line) in production_lines(&adapter_source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/database/dao/proxy_channels.rs get_enabled_proxy_channel_key:{} contains runtime key policy marker `{}`",
+                    "src/proxy_core_adapter.rs:{} contains runtime key policy marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -6793,9 +6805,10 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "DB-backed auth profile application should inject the channel key runtime source instead of inline DB lookup"
     );
     assert!(
-        runtime_source_lookup.contains(".get_enabled_proxy_channel_key(")
+        runtime_source_lookup.contains(".get_proxy_channel_key(")
+            && runtime_source_lookup.contains("select_enabled_proxy_channel_key_runtime_candidate(")
             && runtime_source_lookup.contains("channel_key_value_from_runtime_candidate("),
-        "CC Switch channel key runtime lookup helper should own DB lookup and key value projection"
+        "CC Switch channel key runtime lookup helper should own raw DB lookup, core selection, and key value projection"
     );
     assert!(
         borrowed_runtime_source_impl.contains("load_channel_key_value_from_database(")

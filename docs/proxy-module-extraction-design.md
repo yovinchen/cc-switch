@@ -1424,6 +1424,8 @@
 1004. local proxy URL 判断与 Codex takeover auth placeholder 的同签名值级 facade 已从 adapter 移除，改为 re-export core ports；带配置文本和 provider 投影的 takeover helper 保持在 adapter。
 1005. Claude/Gemini takeover env 字段应用与清理的同签名值级 facade 已从 adapter 移除，改为 re-export core ports；按 app/provider 组合 live takeover 的 helper 仍留在 adapter。
 1006. Claude takeover policy 写入 helper 的同签名 facade 已从 adapter 移除，改为 re-export core ports；provider facts 组装仍留在 adapter。
+1007. Channel key runtime lookup 已从 DAO enabled-key convenience selector 改为 adapter-owned source：adapter 读取 raw key record，投影为 core runtime candidate 并调用 core selection policy，DAO 的 enabled selector 降为测试便捷入口。
+1008. `proxy_core_host` 测试中的 client model catalog raw 投影直连 core 已改为经 `proxy_core_adapter` re-export 接入，host/core 边界测试重新覆盖该入口。
 
 ## 背景
 

@@ -2663,6 +2663,8 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogResponse, ClientModelCatalogSource,
     RoutableModelList,
 };
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;
 pub(crate) use crate::proxy_core::api::ports::{
     channel_health_reset_from_parts, AppSummaryConfig, AuthProvider, ChannelHealthReset,
     ChannelHealthStore, ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource,
@@ -6865,9 +6867,10 @@ fn load_channel_key_value_from_database(
     key_ref: &str,
 ) -> ProxyCoreResult<Option<String>> {
     let key = db
-        .get_enabled_proxy_channel_key(channel_id, key_ref)
+        .get_proxy_channel_key(channel_id, key_ref)
         .map_err(|error| app_error("load channel auth key", error))?;
-    Ok(channel_key_value_from_runtime_candidate(key))
+    let selected_key = select_enabled_proxy_channel_key_runtime_candidate(key);
+    Ok(channel_key_value_from_runtime_candidate(selected_key))
 }
 
 #[cfg(test)]

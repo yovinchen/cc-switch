@@ -15,11 +15,14 @@ use crate::proxy_core_adapter::{
     normalize_proxy_channel_model_write_request_fields,
     normalize_proxy_channel_models_replace_request_fields,
     normalize_proxy_channel_patch_request_fields, normalize_proxy_channel_write_request_fields,
-    normalize_required_channel_string, select_enabled_proxy_channel_key_runtime_candidate,
-    stable_channel_id, ChannelHealthUpdateInput, ChannelKeyRuntimeCandidate,
+    normalize_required_channel_string, stable_channel_id, ChannelHealthUpdateInput,
     ChannelRequestValidationError, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
     ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelWriteRequest, CHANNEL_HEALTH_UNKNOWN_STATUS,
+};
+#[cfg(test)]
+use crate::proxy_core_adapter::{
+    select_enabled_proxy_channel_key_runtime_candidate, ChannelKeyRuntimeCandidate,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
@@ -568,6 +571,15 @@ impl Database {
         Ok(Some(list_proxy_channel_keys_on_conn(&conn, channel_id)?))
     }
 
+    pub(crate) fn get_proxy_channel_key(
+        &self,
+        channel_id: &str,
+        key_ref: &str,
+    ) -> Result<Option<ProxyChannelKeyRecord>, AppError> {
+        let conn = lock_conn!(self.conn);
+        get_proxy_channel_key_on_conn(&conn, channel_id, key_ref)
+    }
+
     pub(crate) fn update_proxy_channel_key(
         &self,
         channel_id: &str,
@@ -633,14 +645,14 @@ impl Database {
         Ok(deleted > 0)
     }
 
+    #[cfg(test)]
     pub(crate) fn get_enabled_proxy_channel_key(
         &self,
         channel_id: &str,
         key_ref: &str,
     ) -> Result<Option<ChannelKeyRuntimeCandidate>, AppError> {
-        let conn = lock_conn!(self.conn);
         Ok(select_enabled_proxy_channel_key_runtime_candidate(
-            get_proxy_channel_key_on_conn(&conn, channel_id, key_ref)?,
+            self.get_proxy_channel_key(channel_id, key_ref)?,
         ))
     }
 

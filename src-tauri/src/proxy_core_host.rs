@@ -10,8 +10,8 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::hyper_client::ProxyResponse;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    apply_channel_auth_profile_providers_from_db, forward_attempts_from_plan,
-    forward_result_to_proxy_result, host_providers_for_plan,
+    apply_channel_auth_profile_providers_from_db, client_model_catalog_from_optional_raw,
+    forward_attempts_from_plan, forward_result_to_proxy_result, host_providers_for_plan,
     management_route_response_from_router_source, provider_router_from_database, AppKind,
     AuthProfileRef, AuthProvider, CcSwitchAuthProvider, CcSwitchProxyRuntime, ChannelAttemptResult,
     ChannelQuery, ChannelSpec, GeminiShadowStore, ProviderSpec, ProxyCoreEvent, ProxyRequest,
@@ -738,7 +738,7 @@ mod tests {
 
     #[test]
     fn model_catalog_from_raw_extracts_supported_client_model_ids() {
-        let catalog = crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw(
+        let catalog = client_model_catalog_from_optional_raw(
             AppKind::Codex.as_str(),
             Some(json!({
                 "models": [
