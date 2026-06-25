@@ -2531,7 +2531,9 @@ pub(crate) use crate::proxy_core::api::config::{
 pub(crate) use crate::proxy_core::api::domain::channel_matches_query;
 use crate::proxy_core::api::events::{
     attempt_event_name, build_attempt_event_payload, build_provider_switched_event_payload,
+    build_proxy_events_connected_payload, build_proxy_events_lagged_payload,
     build_proxy_official_warning_event_payload, build_request_started_event_payload,
+    build_server_started_event_payload, build_server_stopped_event_payload,
 };
 pub(crate) use crate::proxy_core::api::management::channel_not_found_error;
 pub(crate) use crate::proxy_core::api::management::{
@@ -2987,14 +2989,6 @@ const SERVER_STOPPED_EVENT: &str = crate::proxy_core::api::events::SERVER_STOPPE
 pub(crate) const AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE: &str =
     crate::proxy_core::api::routing::AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE;
 
-fn build_proxy_events_connected_payload(buffer_size: usize) -> Value {
-    crate::proxy_core::api::events::build_proxy_events_connected_payload(buffer_size)
-}
-
-fn build_proxy_events_lagged_payload(skipped: u64) -> Value {
-    crate::proxy_core::api::events::build_proxy_events_lagged_payload(skipped)
-}
-
 pub(crate) fn proxy_events_connected_message(buffer_size: usize) -> ProxyEventBusMessage {
     ProxyEventBusMessage {
         event_name: PROXY_EVENTS_CONNECTED_EVENT.to_string(),
@@ -3007,14 +3001,6 @@ pub(crate) fn proxy_events_lagged_message(skipped: u64) -> ProxyEventBusMessage 
         event_name: PROXY_EVENTS_LAGGED_EVENT.to_string(),
         payload: build_proxy_events_lagged_payload(skipped),
     }
-}
-
-fn build_server_started_event_payload(address: &str, port: u16) -> Value {
-    crate::proxy_core::api::events::build_server_started_event_payload(address, port)
-}
-
-fn build_server_stopped_event_payload() -> Value {
-    crate::proxy_core::api::events::build_server_stopped_event_payload()
 }
 
 pub(crate) fn server_started_event_message(address: &str, port: u16) -> ProxyEventBusMessage {
@@ -16579,8 +16565,6 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(REQUEST_STARTED_EVENT, "request_started");
         assert_eq!(SERVER_STARTED_EVENT, "server_started");
         assert_eq!(SERVER_STOPPED_EVENT, "server_stopped");
-        assert_eq!(build_proxy_events_connected_payload(256)["bufferSize"], 256);
-        assert_eq!(build_proxy_events_lagged_payload(3)["skipped"], 3);
         let connected = proxy_events_connected_message(256);
         assert_eq!(connected.event_name, "proxy_events_connected");
         assert_eq!(connected.payload["bufferSize"], 256);
@@ -16654,13 +16638,6 @@ base_url = "https://api.openai.com/v1"
             provider_switched_enabled.payload["source"],
             "failoverEnabled"
         );
-        assert_eq!(
-            build_server_started_event_payload("127.0.0.1", 15721),
-            json!({"address": "127.0.0.1", "port": 15721})
-        );
-        assert!(build_server_stopped_event_payload()
-            .as_object()
-            .is_some_and(|object| object.is_empty()));
         let server_started = server_started_event_message("127.0.0.1", 15721);
         assert_eq!(server_started.event_name, "server_started");
         assert_eq!(
