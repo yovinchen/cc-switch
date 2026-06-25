@@ -3138,6 +3138,71 @@ fn production_protocol_handlers_delegate_forward_core_error_usage_to_adapter() {
 }
 
 #[test]
+fn production_provider_adapter_registry_uses_core_app_policy() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/providers/mod.rs");
+    let source = fs::read_to_string(&path).expect("read provider adapter registry");
+    let get_adapter = function_slice(
+        &source,
+        "pub fn get_adapter(app_type: &AppType) -> Box<dyn ProviderAdapter> {",
+        "\n}\n\n#[cfg(test)]",
+    );
+
+    assert!(
+        get_adapter.contains("provider_adapter_kind_for_app_type(app_type)"),
+        "provider adapter registry must delegate app-to-adapter selection to proxy_core_adapter"
+    );
+
+    let forbidden_markers = [
+        "AppType::Claude",
+        "AppType::ClaudeDesktop",
+        "AppType::Codex",
+        "AppType::Gemini",
+        "AppType::OpenCode",
+        "AppType::OpenClaw",
+        "AppType::Hermes",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(get_adapter) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/providers/mod.rs get_adapter:{} contains host app branch marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider adapter registry must not reimplement app-to-adapter selection in host code:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_provider_adapter_selection_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_function = function_slice(
+        &source,
+        "pub(crate) fn provider_adapter_kind_for_app_type(",
+        "\n}\n\npub(crate) fn cc_switch_app_kinds()",
+    );
+
+    assert!(
+        adapter_function.contains(
+            "crate::proxy_core::api::domain::provider_adapter_kind_for_app(&AppKind::from(app_type))"
+        ),
+        "proxy_core_adapter must delegate app-to-adapter selection to proxy-core"
+    );
+}
+
+#[test]
 fn production_provider_adapters_delegate_base_url_errors_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let provider_paths = [

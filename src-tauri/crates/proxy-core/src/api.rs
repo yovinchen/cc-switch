@@ -359,10 +359,11 @@ pub mod prelude {
         ResponseRuntimePolicy,
     };
     pub use super::domain::{
-        build_route_plan, channel_spec_from_input, AppKind, AuthProfileRef, ChannelAttemptPlan,
-        ChannelAttemptResult, ChannelSpecInput, InterfaceKind, ModelRoute, ModelRouteInput,
-        ProviderKind, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan, RoutePolicy,
-        RouteRequest, RouteSelection, UsageTokens,
+        build_route_plan, channel_spec_from_input, provider_adapter_kind_for_app, AppKind,
+        AppProviderAdapterKind, AuthProfileRef, ChannelAttemptPlan, ChannelAttemptResult,
+        ChannelSpecInput, InterfaceKind, ModelRoute, ModelRouteInput, ProviderKind, ProviderSpec,
+        ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest, RouteSelection,
+        UsageTokens,
     };
     pub use super::engine::ProxyEngine;
     pub use super::errors::{ProxyCoreError, ProxyCoreResult};
@@ -532,6 +533,14 @@ mod tests {
             "Bearer relay-token"
         );
         assert_eq!(payload["model"], "sonnet");
+        assert_eq!(
+            provider_adapter_kind_for_app(&AppKind::ClaudeDesktop),
+            AppProviderAdapterKind::Claude
+        );
+        assert_eq!(
+            provider_adapter_kind_for_app(&AppKind::Custom("opencode".to_string())),
+            AppProviderAdapterKind::Codex
+        );
     }
 
     #[test]

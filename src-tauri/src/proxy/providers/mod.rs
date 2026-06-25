@@ -14,6 +14,7 @@ mod codex;
 mod gemini;
 
 use crate::app_config::AppType;
+use crate::proxy_core_adapter::{provider_adapter_kind_for_app_type, AppProviderAdapterKind};
 
 pub use adapter::ProviderAdapter;
 pub use claude::ClaudeAdapter;
@@ -22,14 +23,10 @@ pub use gemini::GeminiAdapter;
 
 /// 根据 AppType 获取对应的适配器
 pub fn get_adapter(app_type: &AppType) -> Box<dyn ProviderAdapter> {
-    match app_type {
-        AppType::Claude | AppType::ClaudeDesktop => Box::new(ClaudeAdapter::new()),
-        AppType::Codex => Box::new(CodexAdapter::new()),
-        AppType::Gemini => Box::new(GeminiAdapter::new()),
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
-            // These apps don't support proxy, fallback to Codex adapter
-            Box::new(CodexAdapter::new())
-        }
+    match provider_adapter_kind_for_app_type(app_type) {
+        AppProviderAdapterKind::Claude => Box::new(ClaudeAdapter::new()),
+        AppProviderAdapterKind::Codex => Box::new(CodexAdapter::new()),
+        AppProviderAdapterKind::Gemini => Box::new(GeminiAdapter::new()),
     }
 }
 

@@ -44,6 +44,21 @@ impl From<&str> for AppKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppProviderAdapterKind {
+    Claude,
+    Codex,
+    Gemini,
+}
+
+pub fn provider_adapter_kind_for_app(app: &AppKind) -> AppProviderAdapterKind {
+    match app {
+        AppKind::Claude | AppKind::ClaudeDesktop => AppProviderAdapterKind::Claude,
+        AppKind::Gemini => AppProviderAdapterKind::Gemini,
+        AppKind::Codex | AppKind::Custom(_) => AppProviderAdapterKind::Codex,
+    }
+}
+
 pub fn unsupported_app_kind_error_message(error: &str) -> String {
     format!("unsupported app kind: {error}")
 }
@@ -1813,6 +1828,30 @@ mod tests {
             ProxyCoreError::Config(message)
                 if message == "unsupported app kind: invalid app: openclaw"
         ));
+    }
+
+    #[test]
+    fn provider_adapter_kind_for_app_preserves_host_adapter_selection_policy() {
+        assert_eq!(
+            provider_adapter_kind_for_app(&AppKind::Claude),
+            AppProviderAdapterKind::Claude
+        );
+        assert_eq!(
+            provider_adapter_kind_for_app(&AppKind::ClaudeDesktop),
+            AppProviderAdapterKind::Claude
+        );
+        assert_eq!(
+            provider_adapter_kind_for_app(&AppKind::Codex),
+            AppProviderAdapterKind::Codex
+        );
+        assert_eq!(
+            provider_adapter_kind_for_app(&AppKind::Gemini),
+            AppProviderAdapterKind::Gemini
+        );
+        assert_eq!(
+            provider_adapter_kind_for_app(&AppKind::Custom("opencode".to_string())),
+            AppProviderAdapterKind::Codex
+        );
     }
 
     #[test]

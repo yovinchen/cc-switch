@@ -961,6 +961,10 @@ fn external_host_can_use_custom_app_namespace_contracts_from_prelude() {
 
     assert_eq!(app, AppKind::Custom("opencode".to_string()));
     assert_eq!(app.as_str(), "opencode");
+    assert_eq!(
+        provider_adapter_kind_for_app(&app),
+        AppProviderAdapterKind::Codex
+    );
     assert_eq!(channel.app, app);
     assert_eq!(
         channel.endpoint.base_url,

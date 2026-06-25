@@ -2540,6 +2540,8 @@ pub(crate) type ProxyCoreError = crate::proxy_core::api::errors::ProxyCoreError;
 #[cfg(test)]
 pub(crate) type ProxyCoreEventType = crate::proxy_core::api::events::ProxyCoreEventType;
 pub(crate) type AppKind = crate::proxy_core::api::domain::AppKind;
+pub(crate) type AppProviderAdapterKind =
+    crate::proxy_core::api::domain::AppProviderAdapterKind;
 #[cfg(test)]
 pub(crate) type RetryPolicy = crate::proxy_core::api::domain::RetryPolicy;
 pub(crate) type RouteResolveRequest = crate::proxy_core::api::management::RouteResolveRequest;
@@ -6086,6 +6088,12 @@ impl From<&AppType> for AppKind {
 
 pub(crate) fn proxy_core_app_kind_from_app_type(app_type: &AppType) -> ProxyCoreAppKind {
     AppKind::from(app_type)
+}
+
+pub(crate) fn provider_adapter_kind_for_app_type(
+    app_type: &AppType,
+) -> AppProviderAdapterKind {
+    crate::proxy_core::api::domain::provider_adapter_kind_for_app(&AppKind::from(app_type))
 }
 
 pub(crate) fn cc_switch_app_kinds() -> Vec<AppKind> {
