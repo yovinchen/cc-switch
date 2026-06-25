@@ -4715,6 +4715,7 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
     );
     assert!(
         source.contains("claude_desktop_proxy_has_base_url_and_key(")
+            && source.contains("claude_desktop_provider_models_are_profile_safe(")
             && source.contains("claude_desktop_direct_provider_validation_issue(")
             && source.contains("claude_desktop_proxy_provider_config_validation_issue(")
             && source.contains("claude_desktop_gateway_token_error")
@@ -4729,6 +4730,11 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
     );
 
     let policy_slices = [
+        function_slice(
+            &source,
+            "pub(crate) fn provider_claude_models_are_claude_safe",
+            "pub(crate) fn provider_claude_desktop_routes_support_1m_by_default",
+        ),
         function_slice(
             &source,
             "pub(crate) fn provider_claude_desktop_routes_support_1m_by_default",
@@ -4766,6 +4772,11 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
         "settings_config.is_object()",
         "\"select claude desktop provider:",
         "\"no available claude desktop provider\"",
+        "\"ANTHROPIC_MODEL\"",
+        "\"ANTHROPIC_DEFAULT_HAIKU_MODEL\"",
+        "\"ANTHROPIC_DEFAULT_SONNET_MODEL\"",
+        "\"ANTHROPIC_DEFAULT_OPUS_MODEL\"",
+        "crate::claude_desktop_config::is_claude_safe_model_id",
         "ProxyCoreError::Internal(",
         "ProxyCoreError::Unavailable(",
     ];

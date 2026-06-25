@@ -2621,6 +2621,7 @@ pub(crate) fn forwarder_rectifier_retry_failure_log_line(
 pub(crate) type ManagementAuthError = crate::proxy_core::api::auth::ManagementAuthError;
 pub(crate) type CircuitBreakerFailureDecision =
     crate::proxy_core::api::config::CircuitBreakerFailureDecision;
+pub(crate) use crate::proxy_core::api::auth::claude_desktop_model_id_is_profile_safe;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::auth::validate_claude_desktop_gateway_bearer_header;
 pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
@@ -10654,21 +10655,9 @@ fn launch_env_vars_from_provider_settings(
 }
 
 pub(crate) fn provider_claude_models_are_claude_safe(provider: &Provider) -> bool {
-    let Some(env) = provider_claude_env_settings(provider) else {
-        return true;
-    };
-
-    [
-        "ANTHROPIC_MODEL",
-        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-        "ANTHROPIC_DEFAULT_SONNET_MODEL",
-        "ANTHROPIC_DEFAULT_OPUS_MODEL",
-    ]
-    .into_iter()
-    .filter_map(|key| env.get(key).and_then(Value::as_str))
-    .map(str::trim)
-    .filter(|value| !value.is_empty())
-    .all(crate::claude_desktop_config::is_claude_safe_model_id)
+    crate::proxy_core::api::auth::claude_desktop_provider_models_are_profile_safe(
+        &provider.settings_config,
+    )
 }
 
 pub(crate) fn provider_claude_desktop_routes_support_1m_by_default(provider: &Provider) -> bool {

@@ -30,10 +30,6 @@ const CLAUDE_DESKTOP_PROXY_PREFIX: &str = "/claude-desktop";
 const MIMO_REDACTED_THINKING_PLACEHOLDER: &str = "[redacted thinking]";
 const MIMO_TOOL_CALL_THINKING_PLACEHOLDER: &str = "tool call";
 
-/// Claude Desktop 模型菜单识别的 route ID 前缀。
-pub const CLAUDE_ROUTE_PREFIX: &str = "claude-";
-/// 替代前缀（与前端 `ANTHROPIC_CLAUDE_ROUTE_PREFIX` 一致）。
-pub const ANTHROPIC_CLAUDE_ROUTE_PREFIX: &str = "anthropic/claude-";
 /// Claude Code env 中通过 `[1M]` 后缀声明 1M 上下文能力（匹配用 `eq_ignore_ascii_case`）。
 /// Claude Desktop schema 不接受此后缀，import 边界翻译为 `supports1m` 字段。
 pub const ONE_M_CONTEXT_MARKER: &str = "[1m]";
@@ -240,30 +236,7 @@ pub fn provider_mode(provider: &Provider) -> ClaudeDesktopMode {
 }
 
 pub fn is_claude_safe_model_id(model: &str) -> bool {
-    let normalized = model.trim().to_ascii_lowercase();
-    if normalized.contains(ONE_M_CONTEXT_MARKER) {
-        return false;
-    }
-
-    let Some(route_tail) = normalized
-        .strip_prefix(ANTHROPIC_CLAUDE_ROUTE_PREFIX)
-        .or_else(|| normalized.strip_prefix(CLAUDE_ROUTE_PREFIX))
-    else {
-        return false;
-    };
-
-    // 角色前缀后必须还有实际模型标识，拒绝 claude-sonnet- 这类退化值
-    // （否则会写入 profile 并触发 Claude Desktop fail-all 拒收整组）。
-    // Claude Desktop 1.12603.1+ 的 fail-all validator 角色白名单已纳入 fable
-    // （app.asar 内 ["sonnet","opus","haiku","fable","mythos"]），故 claude-fable-*
-    // 可安全写入 profile。mythos 官方未公开发布，暂不暴露给用户。
-    ["sonnet-", "opus-", "haiku-", "fable-"]
-        .iter()
-        .any(|prefix| {
-            route_tail
-                .strip_prefix(prefix)
-                .is_some_and(|rest| !rest.is_empty())
-        })
+    crate::proxy_core_adapter::claude_desktop_model_id_is_profile_safe(model)
 }
 
 fn inference_model_json(spec: &InferenceModelSpec) -> Value {

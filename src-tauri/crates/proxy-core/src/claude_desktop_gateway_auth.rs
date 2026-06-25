@@ -5,6 +5,9 @@ use serde_json::Value;
 use crate::error::ProxyCoreError;
 
 pub const CLAUDE_DESKTOP_MODEL_CREATED_AT: &str = "2024-01-01T00:00:00Z";
+const CLAUDE_ROUTE_PREFIX: &str = "claude-";
+const ANTHROPIC_CLAUDE_ROUTE_PREFIX: &str = "anthropic/claude-";
+const ONE_M_CONTEXT_MARKER: &str = "[1m]";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClaudeDesktopGatewayAuthError {
@@ -83,6 +86,46 @@ pub enum ClaudeDesktopProxyProviderConfigValidationIssue {
 
 pub fn claude_desktop_routes_support_1m_by_default(provider_type: Option<&str>) -> bool {
     !is_managed_oauth_provider_type(provider_type)
+}
+
+pub fn claude_desktop_model_id_is_profile_safe(model: &str) -> bool {
+    let normalized = model.trim().to_ascii_lowercase();
+    if normalized.contains(ONE_M_CONTEXT_MARKER) {
+        return false;
+    }
+
+    let Some(route_tail) = normalized
+        .strip_prefix(ANTHROPIC_CLAUDE_ROUTE_PREFIX)
+        .or_else(|| normalized.strip_prefix(CLAUDE_ROUTE_PREFIX))
+    else {
+        return false;
+    };
+
+    ["sonnet-", "opus-", "haiku-", "fable-"]
+        .iter()
+        .any(|prefix| {
+            route_tail
+                .strip_prefix(prefix)
+                .is_some_and(|rest| !rest.is_empty())
+        })
+}
+
+pub fn claude_desktop_provider_models_are_profile_safe(settings_config: &Value) -> bool {
+    let Some(env) = settings_config.get("env").and_then(Value::as_object) else {
+        return true;
+    };
+
+    [
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    ]
+    .into_iter()
+    .filter_map(|key| env.get(key).and_then(Value::as_str))
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+    .all(claude_desktop_model_id_is_profile_safe)
 }
 
 pub fn claude_desktop_proxy_has_base_url_and_key(
@@ -258,10 +301,11 @@ fn is_false(value: &bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        claude_desktop_direct_provider_validation_issue, claude_desktop_proxy_has_base_url_and_key,
-        claude_desktop_gateway_token_error, claude_desktop_provider_selection_error,
-        claude_desktop_provider_unavailable_error,
+        claude_desktop_direct_provider_validation_issue, claude_desktop_gateway_token_error,
+        claude_desktop_model_id_is_profile_safe, claude_desktop_provider_models_are_profile_safe,
+        claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
         claude_desktop_provider_unavailable_error_message,
+        claude_desktop_proxy_has_base_url_and_key,
         claude_desktop_proxy_provider_config_validation_issue,
         claude_desktop_routes_support_1m_by_default, validate_claude_desktop_gateway_bearer_header,
         validate_claude_desktop_gateway_bearer_value, ClaudeDesktopDirectProviderValidationIssue,
@@ -332,6 +376,60 @@ mod tests {
         assert!(!claude_desktop_routes_support_1m_by_default(Some(
             "codex_oauth"
         )));
+    }
+
+    #[test]
+    fn profile_safe_model_id_rejects_unsafe_claude_desktop_routes() {
+        assert!(!claude_desktop_model_id_is_profile_safe(
+            "claude-sonnet-4-6 [1m]"
+        ));
+        assert!(!claude_desktop_model_id_is_profile_safe(
+            "  claude-sonnet-4-6  [1M]  "
+        ));
+        assert!(!claude_desktop_model_id_is_profile_safe("claude-old"));
+        assert!(!claude_desktop_model_id_is_profile_safe(
+            "claude-3-5-sonnet-20241022"
+        ));
+        assert!(!claude_desktop_model_id_is_profile_safe(
+            "claude-deepseek-v4-pro"
+        ));
+        assert!(!claude_desktop_model_id_is_profile_safe("claude-gpt-5-4"));
+        assert!(!claude_desktop_model_id_is_profile_safe("claude-"));
+        assert!(!claude_desktop_model_id_is_profile_safe(
+            "anthropic/claude-"
+        ));
+        assert!(!claude_desktop_model_id_is_profile_safe("sonnet"));
+        assert!(!claude_desktop_model_id_is_profile_safe("sonnet-"));
+        assert!(!claude_desktop_model_id_is_profile_safe("claude-sonnet-"));
+        assert!(!claude_desktop_model_id_is_profile_safe("claude-opus-"));
+        assert!(!claude_desktop_model_id_is_profile_safe(
+            "anthropic/claude-haiku-"
+        ));
+        assert!(claude_desktop_model_id_is_profile_safe(
+            "  claude-sonnet-4-6  "
+        ));
+        assert!(claude_desktop_model_id_is_profile_safe(
+            "anthropic/claude-opus-4-8"
+        ));
+        assert!(claude_desktop_model_id_is_profile_safe("claude-fable-4-8"));
+    }
+
+    #[test]
+    fn provider_models_profile_safe_reads_claude_env_model_fields() {
+        assert!(claude_desktop_provider_models_are_profile_safe(&json!({})));
+        assert!(claude_desktop_provider_models_are_profile_safe(&json!({
+            "env": {
+                "ANTHROPIC_MODEL": " claude-sonnet-4-6 ",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "anthropic/claude-opus-4-8"
+            }
+        })));
+        assert!(!claude_desktop_provider_models_are_profile_safe(&json!({
+            "env": {
+                "ANTHROPIC_MODEL": "claude-sonnet-4-6",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-5[1m]"
+            }
+        })));
     }
 
     #[test]
