@@ -6655,22 +6655,14 @@ pub(crate) fn channel_spec_from_source_lookup(
     Ok(channel_spec_from_source(channel))
 }
 
-pub(crate) fn channel_route_source_for_materialized_records(
-    channels: &[ProxyChannelRecord],
-) -> ChannelRouteSource {
-    crate::proxy_core::api::management::channel_route_source_for_materialized_count(channels.len())
-}
-
-pub(crate) fn channel_route_should_load_legacy_projection(source: &ChannelRouteSource) -> bool {
-    source == &ChannelRouteSource::LegacyProjection
-}
-
 pub(crate) fn channel_route_records_from_sources(
     materialized_channels: Vec<ProxyChannelRecord>,
     load_legacy_projection: impl FnOnce() -> Result<ProxyChannelMigrationPreview, AppError>,
 ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
-    let source = channel_route_source_for_materialized_records(&materialized_channels);
-    if !channel_route_should_load_legacy_projection(&source) {
+    let source = crate::proxy_core::api::management::channel_route_source_for_materialized_count(
+        materialized_channels.len(),
+    );
+    if source != ChannelRouteSource::LegacyProjection {
         return Ok((materialized_channels, source));
     }
 
@@ -16311,12 +16303,14 @@ base_url = "https://api.openai.com/v1"
         )
         .expect("selected failover provider ids");
         assert_eq!(selected_failover, vec!["provider-b"]);
-        assert!(!channel_route_should_load_legacy_projection(
-            &ChannelRouteSource::MaterializedChannels
-        ));
-        assert!(channel_route_should_load_legacy_projection(
-            &ChannelRouteSource::LegacyProjection
-        ));
+        assert_eq!(
+            crate::proxy_core::api::management::channel_route_source_for_materialized_count(1),
+            ChannelRouteSource::MaterializedChannels
+        );
+        assert_eq!(
+            crate::proxy_core::api::management::channel_route_source_for_materialized_count(0),
+            ChannelRouteSource::LegacyProjection
+        );
         assert!(matches!(
             app_error_from_provider_selection_failure(
                 "claude",

@@ -903,6 +903,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn apply_route_candidate_circuit_availability(",
     "fn route_candidate_channel_circuit_keys(",
     "fn reject_unavailable_channel_ids(",
+    "fn channel_route_source_for_materialized_records(",
+    "fn channel_route_should_load_legacy_projection(",
     "fn unsupported_app_kind_error_message(",
     "fn unsupported_app_kind_config_error(",
     "fn route_plan_from_request(",

@@ -1412,6 +1412,7 @@
 992. AppError 桥接使用的 generic config/internal/invalid-request `ProxyCoreError` 构造已迁入 `proxy-core::error`；adapter 保留宿主错误类型分派但不再直接 new core error variant。
 993. client model catalog raw 到 `ModelCatalog` 的纯投影 facade 已从 adapter 移除；host 测试和 adapter 内部直接调用 `proxy-core::model_fetch` 的 stable API，adapter 仅保留 Codex active config 读取这类宿主 I/O。
 994. Codex 默认模型上下文窗口的函数 facade 已从 adapter 移除；生产 host 通过 adapter re-export 的 core 常量读取默认值，adapter 不再保留额外函数包装。
+995. materialized channel 数量到 route source 的一行 adapter helper 已移除；adapter 在唯一 source 选择点直接调用 `proxy-core::management` source 决策并保留 legacy fallback I/O。
 
 ## 背景
 
