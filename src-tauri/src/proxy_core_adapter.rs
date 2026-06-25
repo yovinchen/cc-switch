@@ -393,18 +393,6 @@ pub(crate) use crate::proxy_core::api::ports::{
 
 const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
 
-#[cfg(test)]
-pub(crate) fn management_auth_decision_from_proxy_config_sources(
-    config: &ProxyConfig,
-    fallback_token: Option<&str>,
-) -> Result<ManagementAuthDecision, ManagementAuthError> {
-    resolve_management_auth_decision(
-        &config.listen_address,
-        config.management_auth_token.as_deref(),
-        fallback_token,
-    )
-}
-
 #[derive(Clone)]
 struct CcSwitchManagementAuthSource {
     config: Arc<RwLock<ProxyConfig>>,
@@ -2655,10 +2643,6 @@ pub(crate) use crate::proxy_core::api::auth::{
     channel_auth_profile_missing_key_error_message, extract_claude_auth_key_from_settings,
     is_gemini_oauth_key_shape, parse_gemini_oauth_credentials,
     settings_config_with_channel_auth_key_for_app,
-};
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::auth::{
-    resolve_management_auth_decision, ManagementAuthDecision,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::auth::validate_claude_desktop_gateway_bearer_header;
@@ -15832,6 +15816,10 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn proxy_config_adapter_preserves_management_contracts() {
+        use crate::proxy_core::api::auth::{
+            resolve_management_auth_decision, ManagementAuthDecision,
+        };
+
         let proxy_config = serde_json::to_value(ProxyConfig::default()).expect("proxy config");
         assert_eq!(
             proxy_config.get("listen_address").and_then(Value::as_str),
@@ -15995,32 +15983,42 @@ base_url = "https://api.openai.com/v1"
         )
         .is_none());
 
-        let loopback_auth =
-            management_auth_decision_from_proxy_config_sources(&ProxyConfig::default(), None)
-                .expect("loopback auth decision");
+        let default_proxy_config = ProxyConfig::default();
+        let loopback_auth = resolve_management_auth_decision(
+            &default_proxy_config.listen_address,
+            default_proxy_config.management_auth_token.as_deref(),
+            None,
+        )
+        .expect("loopback auth decision");
         assert_eq!(loopback_auth, ManagementAuthDecision::AllowWithoutToken);
         let mut public_proxy_config = ProxyConfig {
             listen_address: "0.0.0.0".to_string(),
             ..ProxyConfig::default()
         };
         assert_eq!(
-            management_auth_decision_from_proxy_config_sources(&public_proxy_config, None)
-                .unwrap_err(),
+            resolve_management_auth_decision(
+                &public_proxy_config.listen_address,
+                public_proxy_config.management_auth_token.as_deref(),
+                None,
+            )
+            .unwrap_err(),
             ManagementAuthError::RequiredTokenMissing
         );
         assert_eq!(
-            management_auth_decision_from_proxy_config_sources(
-                &public_proxy_config,
-                Some("env-token")
+            resolve_management_auth_decision(
+                &public_proxy_config.listen_address,
+                public_proxy_config.management_auth_token.as_deref(),
+                Some("env-token"),
             )
             .expect("env fallback token"),
             ManagementAuthDecision::RequireToken("env-token".to_string())
         );
         public_proxy_config.management_auth_token = Some(" config-token ".to_string());
         assert_eq!(
-            management_auth_decision_from_proxy_config_sources(
-                &public_proxy_config,
-                Some("env-token")
+            resolve_management_auth_decision(
+                &public_proxy_config.listen_address,
+                public_proxy_config.management_auth_token.as_deref(),
+                Some("env-token"),
             )
             .expect("configured token"),
             ManagementAuthDecision::RequireToken("config-token".to_string())
