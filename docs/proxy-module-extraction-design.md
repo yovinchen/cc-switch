@@ -816,7 +816,7 @@
 801. proxy service 的接管策略 provider 判定已改为 `proxy_core_adapter::{provider_is_github_copilot,provider_is_codex_oauth}`：接管写配置仍负责占位符策略和模型字段合并，不再直接调用 `Provider::is_github_copilot()`/`Provider::is_codex_oauth()`。
 802. proxy service 的 managed-account 接管聚合判定已改为 `proxy_core_adapter::provider_uses_managed_account_auth`：服务层继续负责接管策略分支，不再直接调用 `Provider::uses_managed_account_auth()`。
 803. Codex history migration 的 Codex OAuth provider 过滤已改为 `proxy_core_adapter::provider_is_codex_oauth`：历史归桶与 provider template 迁移继续负责 state/config 改写，不再直接调用 `Provider::is_codex_oauth()`。
-804. Gemini provider adapter 的 API key 与 base URL 提取已改为 `proxy_core_adapter::{provider_gemini_api_key,provider_gemini_base_url}`：Gemini adapter 继续负责 auth strategy 与 URL 构造，不再直接传入 `Provider.settings_config`。
+804. Gemini provider adapter 的 API key 与 base URL 单字段 getter 已删除；Gemini adapter 继续通过 auth strategy/base URL 对外入口工作，adapter 内部直接调用 core settings extractor 读取 `Provider.settings_config`。
 805. Codex provider adapter 的 API key 与 base URL 提取已改为 `proxy_core_adapter::{provider_codex_api_key,provider_codex_base_url}`：Codex adapter 继续负责 auth header 与 upstream URL 构造，不再在 `extract_key`/`extract_base_url` 中直接穿透 `Provider.settings_config`。
 806. Codex provider adapter 的 chat-completions 判定、upstream model 与 catalog model ids 已改为 `proxy_core_adapter::{provider_codex_uses_chat_completions,provider_codex_upstream_model,provider_codex_catalog_model_ids}`：Codex adapter 保留 request body 改写时机，settings/meta/TOML 投影集中在 adapter。
 807. Codex Chat reasoning 的 provider meta override、base URL/config TOML 与 upstream model fallback 投影已改为 `proxy_core_adapter::provider_codex_chat_reasoning_profile`：Codex adapter 只从请求体传入 client model，并继续把 profile 转成请求参数。
@@ -1456,6 +1456,7 @@ Codex Responses→Chat 上游模型覆写与 reasoning options 解析已由 forw
 1036. Codex takeover model catalog 注入删除 `attach_codex_model_catalog_from_provider` 单调用点 mutation wrapper；takeover field applicator 直接投影 provider `modelCatalog`，值级合并继续复用 `codex_live_settings_with_model_catalog`。
 1037. provider model catalog 原始值删除 `provider_model_catalog_raw_value` 单字段 getter；backfill/takeover source 在已持有 host `Provider` 的位置直接读取 `settings_config["modelCatalog"]`，避免为中转宿主暴露一层无状态 getter。
 1038. Codex responses-to-chat forwarder source 删除 `forwarder_apply_codex_chat_upstream_model` / `forwarder_codex_chat_reasoning_options` 两个一跳 wrapper；request source 直接调用 provider 级 adapter API，避免在中转 forwarder 内部复制额外命名层。
+1039. Gemini provider API key/base URL 删除 `provider_gemini_api_key` / `provider_gemini_base_url` 单字段 getter；保留 auth/base-url 对外入口，但 adapter 内部直接使用 core settings extractor 读取 `Provider.settings_config`。
 
 ## 背景
 

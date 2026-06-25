@@ -1196,6 +1196,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn proxy_app_config_from_config_parts(",
     "fn proxy_runtime_config_from_config(",
     "fn proxy_runtime_config_from_config_source(",
+    "fn provider_gemini_api_key(",
+    "fn provider_gemini_base_url(",
     "fn auth_info_from_profile_ref(",
     "fn channel_auth_profile_missing_provider_warning(",
     "fn channel_auth_profile_resolution(",

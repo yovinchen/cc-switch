@@ -3540,7 +3540,10 @@ pub(crate) fn required_codex_provider_base_url(provider: &Provider) -> Result<St
 }
 
 pub(crate) fn required_gemini_provider_base_url(provider: &Provider) -> Result<String, String> {
-    core_required_provider_base_url("Gemini", provider_gemini_base_url(provider))
+    core_required_provider_base_url(
+        "Gemini",
+        extract_gemini_base_url_from_settings(&provider.settings_config),
+    )
 }
 
 pub(crate) fn required_claude_provider_base_url(provider: &Provider) -> Result<String, String> {
@@ -4122,15 +4125,7 @@ pub(crate) async fn forwarder_runtime_config_from_db_sources(
 
 pub(crate) use crate::proxy_core::api::auth::extract_gemini_api_key_from_settings;
 
-pub(crate) fn provider_gemini_api_key(provider: &Provider) -> Option<String> {
-    extract_gemini_api_key_from_settings(&provider.settings_config)
-}
-
 pub(crate) use crate::proxy_core::api::auth::extract_gemini_base_url_from_settings;
-
-pub(crate) fn provider_gemini_base_url(provider: &Provider) -> Option<String> {
-    extract_gemini_base_url_from_settings(&provider.settings_config)
-}
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::ports::gemini_env_value_from_env_json;
@@ -4206,7 +4201,7 @@ pub(crate) fn provider_gemini_live_config_object(
 pub(crate) use crate::proxy_core::api::ports::gemini_live_settings_to_write;
 
 pub(crate) fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
-    if provider_gemini_api_key(provider)
+    if extract_gemini_api_key_from_settings(&provider.settings_config)
         .as_deref()
         .map(is_gemini_oauth_key_shape)
         .unwrap_or(false)
@@ -4222,7 +4217,7 @@ pub(crate) fn provider_gemini_auth_strategy(provider: &Provider) -> ProviderAuth
 }
 
 pub(crate) fn provider_gemini_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
-    let key = provider_gemini_api_key(provider)?;
+    let key = extract_gemini_api_key_from_settings(&provider.settings_config)?;
     let strategy = provider_gemini_auth_strategy(provider);
     let credentials = parse_gemini_oauth_credentials(&key);
     Some(core_gemini_auth_info_from_api_key(
@@ -17336,11 +17331,11 @@ base_url = "https://api.openai.com/v1"
             None,
         );
         assert_eq!(
-            provider_gemini_api_key(&provider).as_deref(),
+            extract_gemini_api_key_from_settings(&provider.settings_config).as_deref(),
             Some("ya29.access-token")
         );
         assert_eq!(
-            provider_gemini_base_url(&provider).as_deref(),
+            extract_gemini_base_url_from_settings(&provider.settings_config).as_deref(),
             Some("https://generativelanguage.googleapis.com/v1beta")
         );
         assert_eq!(
