@@ -319,7 +319,8 @@ pub(crate) fn suggested_claude_desktop_routes(
             });
     }
 
-    for spec in crate::claude_desktop_config::DEFAULT_PROXY_ROUTES {
+    let default_proxy_routes = crate::claude_desktop_config::default_proxy_routes();
+    for spec in &default_proxy_routes {
         add_route(
             &mut routes,
             env,
@@ -331,7 +332,7 @@ pub(crate) fn suggested_claude_desktop_routes(
 
     // 三个 default env_key 全空时用 ANTHROPIC_MODEL 派生兜底路由。
     if routes.is_empty() {
-        let primary_route = crate::claude_desktop_config::DEFAULT_PROXY_ROUTES[0].route_id;
+        let primary_route = default_proxy_routes[0].route_id;
         add_route(
             &mut routes,
             env,

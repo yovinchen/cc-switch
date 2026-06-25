@@ -10,11 +10,29 @@ const ANTHROPIC_CLAUDE_ROUTE_PREFIX: &str = "anthropic/claude-";
 const ONE_M_CONTEXT_MARKER: &str = "[1m]";
 const CURRENT_OPUS_ROUTE_ID: &str = "claude-opus-4-8";
 const LEGACY_OPUS_ROUTE_ID: &str = "claude-opus-4-7";
-const DEFAULT_PROXY_ROUTE_IDS: &[&str] = &[
-    "claude-sonnet-4-6",
-    CURRENT_OPUS_ROUTE_ID,
-    "claude-haiku-4-5",
-    "claude-fable-5",
+const DEFAULT_PROXY_ROUTE_SPECS: &[ClaudeDesktopDefaultProxyRouteSpec] = &[
+    ClaudeDesktopDefaultProxyRouteSpec {
+        route_id: "claude-sonnet-4-6",
+        env_key: "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        supports_1m: true,
+    },
+    ClaudeDesktopDefaultProxyRouteSpec {
+        route_id: CURRENT_OPUS_ROUTE_ID,
+        env_key: "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        supports_1m: true,
+    },
+    ClaudeDesktopDefaultProxyRouteSpec {
+        route_id: "claude-haiku-4-5",
+        env_key: "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        supports_1m: true,
+    },
+    // Keep fable last so unsafe branded routes borrow the historical
+    // sonnet -> opus -> haiku safe catalog slots before using fable.
+    ClaudeDesktopDefaultProxyRouteSpec {
+        route_id: "claude-fable-5",
+        env_key: "ANTHROPIC_DEFAULT_FABLE_MODEL",
+        supports_1m: true,
+    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +93,13 @@ pub struct ClaudeDesktopProviderValidationInput<'a> {
     pub claude_desktop_mode_is_proxy: bool,
     pub provider_type: Option<&'a str>,
     pub is_full_url: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClaudeDesktopDefaultProxyRouteSpec {
+    pub route_id: &'static str,
+    pub env_key: &'static str,
+    pub supports_1m: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -141,6 +166,10 @@ pub enum ClaudeDesktopDirectGatewayCredentialIssue {
 
 pub fn claude_desktop_routes_support_1m_by_default(provider_type: Option<&str>) -> bool {
     !is_managed_oauth_provider_type(provider_type)
+}
+
+pub fn claude_desktop_default_proxy_routes() -> &'static [ClaudeDesktopDefaultProxyRouteSpec] {
+    DEFAULT_PROXY_ROUTE_SPECS
 }
 
 pub fn claude_desktop_model_id_is_profile_safe(model: &str) -> bool {
@@ -334,15 +363,18 @@ fn next_catalog_safe_route_id(
     existing: &[ClaudeDesktopResolvedProxyRoute],
     reserved: &std::collections::HashSet<String>,
 ) -> String {
-    if let Some(default_route) = DEFAULT_PROXY_ROUTE_IDS.iter().find(|route_id| {
-        !reserved.contains(**route_id) && !existing.iter().any(|route| route.route_id == **route_id)
+    if let Some(default_route) = DEFAULT_PROXY_ROUTE_SPECS.iter().find(|default_route| {
+        !reserved.contains(default_route.route_id)
+            && !existing
+                .iter()
+                .any(|route| route.route_id == default_route.route_id)
     }) {
-        return (*default_route).to_string();
+        return default_route.route_id.to_string();
     }
 
     let mut index = 2usize;
     loop {
-        let route_id = format!("{}-r{index}", DEFAULT_PROXY_ROUTE_IDS[0]);
+        let route_id = format!("{}-r{index}", DEFAULT_PROXY_ROUTE_SPECS[0].route_id);
         if !reserved.contains(&route_id) && !existing.iter().any(|route| route.route_id == route_id)
         {
             return route_id;
@@ -596,7 +628,8 @@ fn is_false(value: &bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        claude_desktop_direct_gateway_credentials, claude_desktop_direct_inference_model_specs,
+        claude_desktop_default_proxy_routes, claude_desktop_direct_gateway_credentials,
+        claude_desktop_direct_inference_model_specs,
         claude_desktop_direct_provider_validation_issue, claude_desktop_gateway_token_error,
         claude_desktop_model_id_is_profile_safe, claude_desktop_profile_has_unsafe_model_ids,
         claude_desktop_provider_models_are_profile_safe, claude_desktop_provider_selection_error,
@@ -1173,6 +1206,23 @@ mod tests {
             claude_desktop_gateway_token_error("token store failed"),
             ProxyCoreError::Auth(message) if message == "token store failed"
         ));
+    }
+
+    #[test]
+    fn default_proxy_routes_preserve_catalog_order_and_env_keys() {
+        let routes = claude_desktop_default_proxy_routes();
+        assert_eq!(
+            routes
+                .iter()
+                .map(|route| (route.route_id, route.env_key, route.supports_1m))
+                .collect::<Vec<_>>(),
+            vec![
+                ("claude-sonnet-4-6", "ANTHROPIC_DEFAULT_SONNET_MODEL", true,),
+                ("claude-opus-4-8", "ANTHROPIC_DEFAULT_OPUS_MODEL", true),
+                ("claude-haiku-4-5", "ANTHROPIC_DEFAULT_HAIKU_MODEL", true),
+                ("claude-fable-5", "ANTHROPIC_DEFAULT_FABLE_MODEL", true),
+            ]
+        );
     }
 
     #[test]

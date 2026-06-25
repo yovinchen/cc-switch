@@ -35,8 +35,6 @@ const MIMO_TOOL_CALL_THINKING_PLACEHOLDER: &str = "tool call";
 /// Claude Desktop schema 不接受此后缀，import 边界翻译为 `supports1m` 字段。
 pub const ONE_M_CONTEXT_MARKER: &str = "[1m]";
 
-const CURRENT_OPUS_ROUTE_ID: &str = "claude-opus-4-8";
-
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeDesktopDefaultRoute {
@@ -45,34 +43,6 @@ pub struct ClaudeDesktopDefaultRoute {
     #[serde(rename = "supports1m")]
     pub supports_1m: bool,
 }
-
-pub const DEFAULT_PROXY_ROUTES: &[ClaudeDesktopDefaultRoute] = &[
-    ClaudeDesktopDefaultRoute {
-        route_id: "claude-sonnet-4-6",
-        env_key: "ANTHROPIC_DEFAULT_SONNET_MODEL",
-        supports_1m: true,
-    },
-    ClaudeDesktopDefaultRoute {
-        route_id: CURRENT_OPUS_ROUTE_ID,
-        env_key: "ANTHROPIC_DEFAULT_OPUS_MODEL",
-        supports_1m: true,
-    },
-    ClaudeDesktopDefaultRoute {
-        route_id: "claude-haiku-4-5",
-        env_key: "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-        supports_1m: true,
-    },
-    // fable 置于末尾：next_catalog_safe_route_id 给非安全品牌 route 借用合法
-    // 角色名时仍按 sonnet→opus→haiku 顺序分配（向后兼容既有 catalog），不会把
-    // 无关品牌模型借用成 fable 顶配档名。UI 行序由前端 ROLE_ORDER 独立控制为
-    // Sonnet/Opus/Fable/Haiku（所有 proxy 路径都经 normalizeProxyRows 重排），
-    // 与此处物理顺序无关。
-    ClaudeDesktopDefaultRoute {
-        route_id: "claude-fable-5",
-        env_key: "ANTHROPIC_DEFAULT_FABLE_MODEL",
-        supports_1m: true,
-    },
-];
 
 #[derive(Debug, Clone)]
 struct ClaudeDesktopPaths {
@@ -239,7 +209,14 @@ pub fn get_config_library_path() -> Result<PathBuf, AppError> {
 }
 
 pub fn default_proxy_routes() -> Vec<ClaudeDesktopDefaultRoute> {
-    DEFAULT_PROXY_ROUTES.to_vec()
+    crate::proxy_core_adapter::claude_desktop_default_proxy_routes()
+        .iter()
+        .map(|route| ClaudeDesktopDefaultRoute {
+            route_id: route.route_id,
+            env_key: route.env_key,
+            supports_1m: route.supports_1m,
+        })
+        .collect()
 }
 
 pub fn is_compatible_direct_provider(provider: &Provider) -> bool {

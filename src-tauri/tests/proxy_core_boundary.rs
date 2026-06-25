@@ -5072,6 +5072,64 @@ fn claude_desktop_config_delegates_profile_stale_model_detection_to_adapter() {
 }
 
 #[test]
+fn claude_desktop_config_delegates_default_proxy_route_catalog_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let source_path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&source_path).expect("read claude_desktop_config.rs");
+    let command_path = manifest_dir.join("src/commands/provider.rs");
+    let command_source = fs::read_to_string(&command_path).expect("read commands/provider.rs");
+    let default_routes_slice = function_slice(
+        &source,
+        "pub fn default_proxy_routes(",
+        "pub fn is_compatible_direct_provider(",
+    );
+
+    assert!(
+        default_routes_slice.contains("claude_desktop_default_proxy_routes("),
+        "claude_desktop_config should delegate default proxy route catalog to proxy_core_adapter/core"
+    );
+    assert!(
+        !source.contains("DEFAULT_PROXY_ROUTES"),
+        "claude_desktop_config should not keep a duplicate DEFAULT_PROXY_ROUTES catalog"
+    );
+    assert!(
+        !command_source.contains("DEFAULT_PROXY_ROUTES"),
+        "commands/provider should consume default_proxy_routes instead of the old host constant"
+    );
+
+    let forbidden_markers = [
+        "\"claude-sonnet-4-6\"",
+        "\"claude-opus-4-8\"",
+        "\"claude-haiku-4-5\"",
+        "\"claude-fable-5\"",
+        "\"ANTHROPIC_DEFAULT_SONNET_MODEL\"",
+        "\"ANTHROPIC_DEFAULT_OPUS_MODEL\"",
+        "\"ANTHROPIC_DEFAULT_HAIKU_MODEL\"",
+        "\"ANTHROPIC_DEFAULT_FABLE_MODEL\"",
+        "CURRENT_OPUS_ROUTE_ID",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(default_routes_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/claude_desktop_config.rs default_proxy_routes:{} contains default route catalog marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "claude_desktop_config must keep default proxy route catalog in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
