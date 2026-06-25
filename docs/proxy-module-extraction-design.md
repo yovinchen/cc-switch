@@ -1408,6 +1408,7 @@
 988. unsupported `AppKind -> AppType` 的 config error 构造已迁入 `proxy-core::domain`；adapter 不再保留 app-kind 错误文案 wrapper。
 989. channel auth profile 缺失/禁用 key 的 auth error 构造已迁入 `proxy-core::provider_auth`；adapter 只负责把 channel/key ref 交给 core contract。
 990. Claude Desktop gateway token 加载失败的 auth error 构造已迁入 `proxy-core::claude_desktop_gateway_auth`；adapter 只负责调用宿主 token store 并把错误交给 core constructor。
+991. channel test probe 的 app type 解析失败 `InvalidRequest` 构造已迁入 `proxy-core::ports`；adapter 只负责执行宿主 `AppType` parse 并传递错误。
 
 ## 背景
 

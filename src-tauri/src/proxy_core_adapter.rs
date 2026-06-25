@@ -2688,9 +2688,10 @@ pub(crate) use crate::proxy_core::api::management::{
     channel_health_update_from_input,
     channel_reachability_probe_error,
     channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
-    channel_reachability_status_from_latency, channel_test_provider_not_found_error,
-    provider_health_update_from_input, should_retry_channel_reachability_failure,
-    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppListRequest,
+    channel_reachability_status_from_latency, channel_test_app_type_error,
+    channel_test_provider_not_found_error, provider_health_update_from_input,
+    should_retry_channel_reachability_failure, AppChannelListQuery, AppChannelManagementRequest,
+    AppChannelResponse, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery,
     ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelHealthUpdateInput, ChannelKeyDeleteResponse, ChannelKeyPathRequest,
@@ -12777,7 +12778,7 @@ pub(crate) fn channel_test_app_type_from_probe_request(
     request
         .app_type
         .parse::<AppType>()
-        .map_err(|error| ProxyCoreError::InvalidRequest(error.to_string()))
+        .map_err(channel_test_app_type_error)
 }
 
 pub(crate) fn channel_test_provider_from_probe_source(

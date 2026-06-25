@@ -4528,6 +4528,10 @@ pub fn channel_test_provider_not_found_error(
     ProxyCoreError::Config(request.provider_not_found_message())
 }
 
+pub fn channel_test_app_type_error(error: impl std::fmt::Display) -> ProxyCoreError {
+    ProxyCoreError::InvalidRequest(error.to_string())
+}
+
 pub fn channel_reachability_probe_error(error: impl std::fmt::Display) -> ProxyCoreError {
     ProxyCoreError::Internal(error.to_string())
 }
@@ -6220,8 +6224,9 @@ mod tests {
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
         channel_key_record_from_input, channel_key_runtime_candidate_from_input,
         channel_reachability_probe_error, channel_reachability_status_from_latency,
-        channel_record_from_input, channel_test_provider_not_found_error, ChannelDeleteResponse,
-        ChannelHealthUpdateInput, CHANNEL_HEALTH_UNKNOWN_STATUS,
+        channel_record_from_input, channel_test_app_type_error,
+        channel_test_provider_not_found_error, ChannelDeleteResponse, ChannelHealthUpdateInput,
+        CHANNEL_HEALTH_UNKNOWN_STATUS,
         ChannelKeyRecordInput, ChannelKeyRuntimeCandidateInput, ChannelListQuery,
         ChannelListResponse, ChannelReachabilityInput, ChannelMigrationMaterializeInput,
         ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
@@ -6657,6 +6662,10 @@ mod tests {
             channel_test_provider_not_found_error(&probe),
             ProxyCoreError::Config(message)
                 if message == "provider not found for channel channel-a: provider-a"
+        ));
+        assert!(matches!(
+            channel_test_app_type_error("invalid app type"),
+            ProxyCoreError::InvalidRequest(message) if message == "invalid app type"
         ));
         assert!(matches!(
             channel_reachability_probe_error("probe failed"),
