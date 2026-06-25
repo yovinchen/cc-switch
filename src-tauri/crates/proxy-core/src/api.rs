@@ -87,8 +87,9 @@ pub mod management {
         ProviderListResponse, ProviderSummary, ProviderSummaryInput, ProxyChannelKeyPatchRequest,
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-        ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse, StreamCheckConfig,
-        StreamCheckConfigOverride, StreamCheckResult, RouteResolveRequest, RouteResolveResponse,
+        ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse,
+        RouteGroupSourceInput, RouteGroupSummary, StreamCheckConfig, StreamCheckConfigOverride,
+        StreamCheckResult, RouteResolveRequest, RouteResolveResponse,
     };
 }
 
@@ -374,15 +375,16 @@ pub mod prelude {
         ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
         ChannelTestProbeRequest, ChannelTestResponse, CurrentRouteProviderSummary,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteSource,
-        GroupListQuery, channel_reachability_probe_error, channel_test_app_type_error,
+        GroupListChannelRecordInput, GroupListChannelSource, GroupListQuery, GroupListRequest,
+        channel_reachability_probe_error, channel_test_app_type_error,
         channel_test_provider_not_found_error,
         HealthCheckResponse, ManagementAppPathRequest, ProviderListResponse, ProviderListSource,
         ProviderSummary, ProviderSummaryInput, ProxyChannelKeyPatchRequest,
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyStatusRequest, ProxyStatusResponse, ProxyStatusSource,
-        RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
-        RouteResolveResponse,
+        RouteGroupListResponse, RouteGroupSourceInput, RouteGroupSummary,
+        RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
     };
     pub use super::model_catalog::{
         ClientModelCatalogResponse, FetchedModel, ModelCatalog, RoutableModelList,

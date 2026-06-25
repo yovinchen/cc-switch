@@ -50,6 +50,34 @@ fn channel_spec() -> ChannelSpec {
     })
 }
 
+fn channel_record(groups: Vec<String>) -> ChannelRecord {
+    ChannelRecord {
+        id: "channel-a".to_string(),
+        provider_id: "relay-a".to_string(),
+        app_type: "claude".to_string(),
+        name: "Channel A".to_string(),
+        status: "enabled".to_string(),
+        base_url: "https://relay.example/v1".to_string(),
+        interface_kind: "anthropic".to_string(),
+        auth_profile_ref: None,
+        groups,
+        priority: 100,
+        weight: 1,
+        retry_policy: json!({}),
+        health_policy: json!({}),
+        header_overrides: json!({}),
+        param_overrides: json!({}),
+        status_code_mapping: json!({}),
+        tags: Vec::new(),
+        metadata: json!({ "source": "public-prelude-smoke" }),
+        source_kind: "manual".to_string(),
+        source_endpoint_url: None,
+        models: Vec::new(),
+        needs_review: false,
+        review_reasons: Vec::new(),
+    }
+}
+
 impl ProxyConfigSource for ExternalRelayServices {
     fn list_apps<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<Vec<AppKind>>> {
         Box::pin(async { Ok(vec![AppKind::Claude]) })
@@ -144,32 +172,21 @@ impl ChannelSource for ExternalRelayServices {
         &'a self,
         _app: Option<&'a AppKind>,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<ChannelRecord>>> {
+        Box::pin(async { Ok(vec![channel_record(vec![DEFAULT_ROUTE_GROUP.to_string()])]) })
+    }
+
+    fn list_channel_records<'a>(
+        &'a self,
+        _app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<(ChannelRouteSource, Vec<ChannelRecord>)>> {
         Box::pin(async {
-            Ok(vec![ChannelRecord {
-                id: "channel-a".to_string(),
-                provider_id: "relay-a".to_string(),
-                app_type: "claude".to_string(),
-                name: "Channel A".to_string(),
-                status: "enabled".to_string(),
-                base_url: "https://relay.example/v1".to_string(),
-                interface_kind: "anthropic".to_string(),
-                auth_profile_ref: None,
-                groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
-                priority: 100,
-                weight: 1,
-                retry_policy: json!({}),
-                health_policy: json!({}),
-                header_overrides: json!({}),
-                param_overrides: json!({}),
-                status_code_mapping: json!({}),
-                tags: Vec::new(),
-                metadata: json!({ "source": "public-prelude-smoke" }),
-                source_kind: "manual".to_string(),
-                source_endpoint_url: None,
-                models: Vec::new(),
-                needs_review: false,
-                review_reasons: Vec::new(),
-            }])
+            Ok((
+                ChannelRouteSource::MaterializedChannels,
+                vec![channel_record(vec![
+                    DEFAULT_ROUTE_GROUP.to_string(),
+                    "premium".to_string(),
+                ])],
+            ))
         })
     }
 }
@@ -701,6 +718,53 @@ fn external_host_can_use_app_list_contracts_from_prelude() {
     assert!(from_source.apps[0].auto_failover_enabled);
     assert_eq!(from_source.apps[0].provider_count, 2);
     assert_eq!(from_source.apps[0].channel_count, 3);
+}
+
+#[test]
+fn external_host_can_use_group_list_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+    let query: GroupListQuery = serde_json::from_value(json!({ "appType": "claude" }))
+        .expect("group list query");
+    let request = GroupListRequest::from_query(query).expect("group list request");
+
+    let response: RouteGroupListResponse =
+        futures::executor::block_on(engine.group_list_response(request))
+            .expect("group list response");
+    let groups: &[RouteGroupSummary] = response.groups.as_slice();
+    let helper_request =
+        GroupListRequest::from_query(serde_json::from_value(json!({})).expect("empty query"))
+            .expect("helper request");
+    let source_input: RouteGroupSourceInput = helper_request.source_input(
+        "codex",
+        &ChannelRouteSource::LegacyProjection,
+        vec![Vec::new(), vec!["research".to_string()]],
+    );
+    let from_source: RouteGroupListResponse = helper_request.response(vec![source_input]);
+    let from_channel_source: RouteGroupListResponse =
+        GroupListRequest::from_query(serde_json::from_value(json!({})).expect("source query"))
+            .expect("source request")
+            .response_from_channel_sources(vec![GroupListChannelSource::from_record_inputs(
+                "gemini",
+                ChannelRouteSource::MaterializedChannels,
+                vec![GroupListChannelRecordInput::new(vec!["vision".to_string()])],
+            )]);
+
+    assert_eq!(response.app_type.as_deref(), Some("claude"));
+    assert_eq!(response.sources.as_slice(), ["materialized_channels"]);
+    assert_eq!(groups.len(), 2);
+    assert_eq!(groups[0].name, DEFAULT_ROUTE_GROUP);
+    assert_eq!(groups[0].app_types.as_slice(), ["claude"]);
+    assert_eq!(groups[0].channel_count, 1);
+    assert_eq!(groups[1].name, "premium");
+    assert_eq!(from_source.sources.as_slice(), ["legacy_projection"]);
+    assert_eq!(from_source.groups[0].name, DEFAULT_ROUTE_GROUP);
+    assert_eq!(from_source.groups[1].name, "research");
+    assert_eq!(
+        from_channel_source.groups[0].app_types.as_slice(),
+        ["gemini"]
+    );
+    assert_eq!(from_channel_source.groups[0].name, "vision");
 }
 
 #[test]
