@@ -4235,6 +4235,18 @@ impl ForwarderAdapterContext {
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
         forwarder_provider_auth_headers(self.adapter(), auth)
     }
+
+    fn provider_url_facts(
+        &self,
+        provider: &Provider,
+    ) -> Result<ForwarderProviderUrlFacts, ProxyError> {
+        let base_url = forwarder_provider_base_url(self.adapter(), provider)?;
+        Ok(ForwarderProviderUrlFacts {
+            is_full_url: forwarder_is_full_url_provider(provider),
+            is_copilot: forwarder_is_github_copilot_upstream(provider, &base_url),
+            base_url,
+        })
+    }
 }
 
 pub(crate) fn forwarder_provider_adapter_name(adapter: &ForwarderAdapterHandle) -> &'static str {
@@ -8351,12 +8363,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         &self,
         input: ForwarderProviderUrlFactsInput<'_>,
     ) -> Result<ForwarderProviderUrlFacts, ProxyError> {
-        let base_url = forwarder_provider_base_url(input.adapter.adapter(), input.provider)?;
-        Ok(ForwarderProviderUrlFacts {
-            is_full_url: forwarder_is_full_url_provider(input.provider),
-            is_copilot: forwarder_is_github_copilot_upstream(input.provider, &base_url),
-            base_url,
-        })
+        input.adapter.provider_url_facts(input.provider)
     }
 
     fn prepare_provider_request_body(

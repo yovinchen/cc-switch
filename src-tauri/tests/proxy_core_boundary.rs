@@ -8593,6 +8593,11 @@ fn production_forwarder_uses_request_source_resource() {
             && request_impl_slice.contains("apply_forwarder_media_prevention_with_log("),
         "default ForwarderRequestSource implementation should delegate media prevention to the adapter helper"
     );
+    assert!(
+        request_impl_slice.contains("input.adapter.provider_url_facts(input.provider)")
+            && !request_impl_slice.contains("forwarder_provider_base_url("),
+        "default ForwarderRequestSource implementation must use ForwarderAdapterContext for provider URL facts"
+    );
     let request_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderRequestSource",
