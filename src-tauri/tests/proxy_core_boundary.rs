@@ -7494,6 +7494,11 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "struct CcSwitchForwarderRuntimeStateSource",
         "impl CcSwitchForwarderRuntimeStateSource",
     );
+    let runtime_inherent_impl_slice = function_slice(
+        &adapter_source,
+        "impl CcSwitchForwarderRuntimeStateSource",
+        "impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource",
+    );
 
     assert!(
         struct_slice.contains("runtime_state_source"),
@@ -7510,17 +7515,30 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "ForwarderRuntimeStateSource trait must not expose runtime status or event bus read handles"
     );
     assert!(
-        adapter_source.contains("fn rectifier_retry_success_log_line")
-            && adapter_source.contains("fn rectifier_retry_failure_log_line"),
-        "default ForwarderRuntimeStateSource implementation must retain rectifier retry log-line projection"
+        adapter_source.contains("fn forwarder_rectifier_retry_success_log_line")
+            && adapter_source.contains("fn forwarder_rectifier_retry_failure_log_line"),
+        "adapter must retain rectifier retry log-line projection helpers"
     );
     assert!(
         adapter_source.contains("fn terminal_forward_failure_log_line_for_error"),
-        "default ForwarderRuntimeStateSource implementation must retain terminal failure log-line projection"
+        "adapter must retain terminal failure log-line projection helper"
     );
     assert!(
         adapter_source.contains("fn retryable_forward_failure_log_line"),
-        "default ForwarderRuntimeStateSource implementation must retain retryable failure log-line projection"
+        "adapter must retain retryable failure log-line projection helper"
+    );
+    assert!(
+        !runtime_inherent_impl_slice.contains("fn rectifier_retry_success_log_line")
+            && !runtime_inherent_impl_slice.contains("fn rectifier_retry_failure_log_line"),
+        "default ForwarderRuntimeStateSource implementation must not retain private rectifier log-line helpers"
+    );
+    assert!(
+        !runtime_inherent_impl_slice.contains("fn terminal_forward_failure_log_line_for_error"),
+        "default ForwarderRuntimeStateSource implementation must not retain private terminal failure log-line helper"
+    );
+    assert!(
+        !runtime_inherent_impl_slice.contains("fn retryable_forward_failure_log_line"),
+        "default ForwarderRuntimeStateSource implementation must not retain private retryable failure log-line helper"
     );
     assert!(
         !runtime_trait_slice.contains("rectifier_retry_success_log_line")

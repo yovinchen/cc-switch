@@ -2493,6 +2493,38 @@ pub(crate) fn forwarder_failure_log_line(app_type: &str, log: &ForwardFailureLog
     core_forwarder_failure_log_line(app_type, log)
 }
 
+pub(crate) fn terminal_forward_failure_log_line_for_error(
+    app_type: &str,
+    attempted_providers: usize,
+    total_providers: usize,
+    last_error: Option<&ProxyError>,
+) -> Option<String> {
+    let last_failure = last_error.map(forward_failure_kind_from_proxy_error);
+    build_terminal_forward_failure_log(
+        attempted_providers,
+        total_providers,
+        last_failure.as_ref(),
+    )
+    .map(|log| forwarder_failure_log_line(app_type, &log))
+}
+
+pub(crate) fn retryable_forward_failure_log_line(
+    app_type: &str,
+    error: &ProxyError,
+    provider: &Provider,
+    attempted_providers: usize,
+    total_providers: usize,
+) -> String {
+    let failure = forward_failure_kind_from_proxy_error(error);
+    let log = build_retryable_forward_failure_log(
+        provider.name.as_str(),
+        attempted_providers,
+        total_providers,
+        &failure,
+    );
+    forwarder_failure_log_line(app_type, &log)
+}
+
 pub(crate) fn forwarder_rectifier_retry_success_log_line(
     app_type: &str,
     kind: ForwarderRectifierRetryKind,
@@ -7135,56 +7167,6 @@ impl CcSwitchForwarderRuntimeStateSource {
         self.status.clone()
     }
 
-    fn rectifier_retry_success_log_line(
-        &self,
-        app_type: &str,
-        kind: ForwarderRectifierRetryKind,
-    ) -> String {
-        forwarder_rectifier_retry_success_log_line(app_type, kind)
-    }
-
-    fn rectifier_retry_failure_log_line(
-        &self,
-        app_type: &str,
-        kind: ForwarderRectifierRetryKind,
-        error: &ProxyError,
-    ) -> String {
-        forwarder_rectifier_retry_failure_log_line(app_type, kind, error)
-    }
-
-    fn terminal_forward_failure_log_line_for_error(
-        &self,
-        app_type: &str,
-        attempted_providers: usize,
-        total_providers: usize,
-        last_error: Option<&ProxyError>,
-    ) -> Option<String> {
-        let last_failure = last_error.map(forward_failure_kind_from_proxy_error);
-        build_terminal_forward_failure_log(
-            attempted_providers,
-            total_providers,
-            last_failure.as_ref(),
-        )
-        .map(|log| forwarder_failure_log_line(app_type, &log))
-    }
-
-    fn retryable_forward_failure_log_line(
-        &self,
-        app_type: &str,
-        error: &ProxyError,
-        provider: &Provider,
-        attempted_providers: usize,
-        total_providers: usize,
-    ) -> String {
-        let failure = forward_failure_kind_from_proxy_error(error);
-        let log = build_retryable_forward_failure_log(
-            provider.name.as_str(),
-            attempted_providers,
-            total_providers,
-            &failure,
-        );
-        forwarder_failure_log_line(app_type, &log)
-    }
 }
 
 impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
@@ -7336,7 +7318,7 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
     ) {
         log::warn!(
             "{}",
-            self.retryable_forward_failure_log_line(
+            retryable_forward_failure_log_line(
                 app_type,
                 error,
                 provider,
@@ -7353,7 +7335,7 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         total_providers: usize,
         last_error: Option<&ProxyError>,
     ) {
-        if let Some(log_line) = self.terminal_forward_failure_log_line_for_error(
+        if let Some(log_line) = terminal_forward_failure_log_line_for_error(
             app_type,
             attempted_providers,
             total_providers,
@@ -7381,7 +7363,7 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         app_type: &str,
         kind: ForwarderRectifierRetryKind,
     ) {
-        log::info!("{}", self.rectifier_retry_success_log_line(app_type, kind));
+        log::info!("{}", forwarder_rectifier_retry_success_log_line(app_type, kind));
     }
 
     fn log_rectifier_retry_failure(
@@ -7392,7 +7374,7 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
     ) {
         log::warn!(
             "{}",
-            self.rectifier_retry_failure_log_line(app_type, kind, error)
+            forwarder_rectifier_retry_failure_log_line(app_type, kind, error)
         );
     }
 
@@ -14940,22 +14922,17 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_runtime_state_source_projects_rectifier_retry_logs() {
-        let source = CcSwitchForwarderRuntimeStateSource::new(
-            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            Arc::new(RwLock::new(HashMap::new())),
-            Arc::new(ProxyEventBus::default()),
-        );
         let timeout = ProxyError::Timeout("upstream timed out".to_string());
 
         assert_eq!(
-            source.rectifier_retry_success_log_line(
+            forwarder_rectifier_retry_success_log_line(
                 "claude",
                 ForwarderRectifierRetryKind::MediaFallback,
             ),
             "[claude] [Media] Unsupported-image retry succeeded"
         );
         assert_eq!(
-            source.rectifier_retry_failure_log_line(
+            forwarder_rectifier_retry_failure_log_line(
                 "claude",
                 ForwarderRectifierRetryKind::ThinkingSignature,
                 &timeout,
@@ -14963,7 +14940,7 @@ base_url = "https://api.openai.com/v1"
             "[claude] [RECT-003] 整流重试仍失败: 超时: upstream timed out"
         );
         assert_eq!(
-            source.rectifier_retry_success_log_line(
+            forwarder_rectifier_retry_success_log_line(
                 "claude",
                 ForwarderRectifierRetryKind::ThinkingBudget,
             ),
@@ -15084,7 +15061,7 @@ base_url = "https://api.openai.com/v1"
             }
         }
         assert_eq!(
-            source.retryable_forward_failure_log_line(
+            retryable_forward_failure_log_line(
                 "claude",
                 &ProxyError::Timeout("upstream timed out".to_string()),
                 &provider,
@@ -15101,9 +15078,13 @@ base_url = "https://api.openai.com/v1"
             ForwarderFailureDecision::NonRetryable => {}
         }
 
-        let terminal_log_line = source
-            .terminal_forward_failure_log_line_for_error("claude", 2, 2, Some(&non_retryable_error))
-            .expect("terminal failure log for multi-provider attempts");
+        let terminal_log_line = terminal_forward_failure_log_line_for_error(
+            "claude",
+            2,
+            2,
+            Some(&non_retryable_error),
+        )
+        .expect("terminal failure log for multi-provider attempts");
         assert!(terminal_log_line.starts_with("[claude] [FWD-002] "));
         assert!(terminal_log_line.contains("上游 HTTP 400"));
     }
