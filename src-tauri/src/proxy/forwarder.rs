@@ -13,7 +13,7 @@ use crate::proxy_core_adapter::{
 };
 use crate::proxy_core_adapter::{
     ActiveConnectionGuard, CopilotOptimizerConfig, FailoverSwitchSchedulerRef,
-    ForwarderAdapterContext, ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
+    ForwarderAdapterContext, ForwarderAnthropicRectifierGateInput,
     ForwarderAppMediaPreventionInput, ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput,
     ForwarderAttemptBodyInput, ForwarderAttemptRuntimeSourceRef,
     ForwarderAuthHeadersInput, ForwarderAuthSourceRef, ForwarderChannelResponseStatusInput,
@@ -439,11 +439,7 @@ impl RequestForwarder {
                         self.request_source
                             .media_retry_plan(ForwarderMediaRetryPlanInput {
                                 app: app_type_str,
-                                adapter_facts: &self
-                                    .request_source
-                                    .adapter_facts(ForwarderAdapterFactsInput {
-                                        adapter: &adapter,
-                                    }),
+                                adapter_facts: adapter.facts(),
                                 provider,
                                 already_retried: media_rectifier_retried,
                                 provider_body: &provider_body,
@@ -854,9 +850,7 @@ impl RequestForwarder {
                 is_full_url,
             })
             .await;
-        let adapter_facts = self
-            .request_source
-            .adapter_facts(ForwarderAdapterFactsInput { adapter });
+        let adapter_facts = *adapter.facts();
         let resolved_claude_api_format = self
             .request_source
             .resolve_claude_api_format_for_adapter(ForwarderClaudeApiFormatInput {

@@ -8582,8 +8582,9 @@ fn production_forwarder_uses_request_source_resource() {
             && !request_trait_slice.contains("convert_codex_responses_to_chat_body")
             && !request_trait_slice.contains("codex_responses_to_chat_enabled")
             && !request_trait_slice.contains("optimize_copilot_request")
-            && !request_trait_slice.contains("apply_media_prevention"),
-        "ForwarderRequestSource trait must not expose internal request body model, provider transform, Codex bridge body/gate, Copilot optimizer, or media prevention helpers"
+            && !request_trait_slice.contains("apply_media_prevention")
+            && !request_trait_slice.contains("adapter_facts"),
+        "ForwarderRequestSource trait must not expose internal request body model, provider transform, Codex bridge body/gate, Copilot optimizer, media prevention, or adapter facts helpers"
     );
 
     let impl_forbidden_markers = [

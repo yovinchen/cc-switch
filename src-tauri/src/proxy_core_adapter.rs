@@ -7968,10 +7968,6 @@ pub(crate) struct ForwarderProviderUrlFacts {
     pub(crate) is_copilot: bool,
 }
 
-pub(crate) struct ForwarderAdapterFactsInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterContext,
-}
-
 #[derive(Clone, Copy)]
 pub(crate) struct ForwarderAdapterFacts {
     pub(crate) adapter_name: &'static str,
@@ -8125,8 +8121,6 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderProviderUrlFactsInput<'_>,
     ) -> Result<ForwarderProviderUrlFacts, ProxyError>;
-
-    fn adapter_facts(&self, input: ForwarderAdapterFactsInput<'_>) -> ForwarderAdapterFacts;
 
     fn prepare_provider_request_body(
         &self,
@@ -8354,10 +8348,6 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             is_copilot: forwarder_is_github_copilot_upstream(input.provider, &base_url),
             base_url,
         })
-    }
-
-    fn adapter_facts(&self, input: ForwarderAdapterFactsInput<'_>) -> ForwarderAdapterFacts {
-        *input.adapter.facts()
     }
 
     fn prepare_provider_request_body(
@@ -13707,17 +13697,12 @@ mod tests {
     }
 
     #[test]
-    fn forwarder_request_source_projects_adapter_facts() {
-        let source = default_forwarder_request_source();
+    fn forwarder_adapter_context_projects_adapter_facts() {
         let claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
         let codex_adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
 
-        let claude_facts = source.adapter_facts(ForwarderAdapterFactsInput {
-            adapter: &claude_adapter,
-        });
-        let codex_facts = source.adapter_facts(ForwarderAdapterFactsInput {
-            adapter: &codex_adapter,
-        });
+        let claude_facts = claude_adapter.facts();
+        let codex_facts = codex_adapter.facts();
 
         assert_eq!(claude_facts.adapter_name, "Claude");
         assert!(claude_facts.is_claude_adapter);
@@ -13770,12 +13755,8 @@ base_url = "https://api.openai.com/v1"
         let source = default_forwarder_request_source();
         let codex_adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
         let claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
-        let codex_adapter_facts = source.adapter_facts(ForwarderAdapterFactsInput {
-            adapter: &codex_adapter,
-        });
-        let claude_adapter_facts = source.adapter_facts(ForwarderAdapterFactsInput {
-            adapter: &claude_adapter,
-        });
+        let codex_adapter_facts = *codex_adapter.facts();
+        let claude_adapter_facts = *claude_adapter.facts();
         let provider = Provider::with_id(
             "codex-chat".to_string(),
             "Codex Chat".to_string(),
@@ -13962,12 +13943,8 @@ base_url = "https://api.openai.com/v1"
         let source = default_forwarder_request_source();
         let claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
         let codex_adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
-        let claude_adapter_facts = source.adapter_facts(ForwarderAdapterFactsInput {
-            adapter: &claude_adapter,
-        });
-        let codex_adapter_facts = source.adapter_facts(ForwarderAdapterFactsInput {
-            adapter: &codex_adapter,
-        });
+        let claude_adapter_facts = *claude_adapter.facts();
+        let codex_adapter_facts = *codex_adapter.facts();
         let mut claude_provider = Provider::with_id(
             "claude-provider".to_string(),
             "Claude Provider".to_string(),
