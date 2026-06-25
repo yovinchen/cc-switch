@@ -1495,6 +1495,12 @@ const FORBIDDEN_ERROR_MAPPER_RESPONSE_BUILD_FAILURE_CONTEXT_MARKERS: &[&str] = &
     "构造 Responses 错误体失败",
     "构造代理错误响应失败",
 ];
+const FORBIDDEN_ERROR_MAPPER_RESPONSE_TRANSFORM_FAILURE_CONTEXT_MARKERS: &[&str] = &[
+    "enum ResponseTransformFailureContext",
+    "impl ResponseTransformFailureContext",
+    "转换响应失败",
+    "Chat → Responses 响应转换失败",
+];
 const FORBIDDEN_HANDLER_RESPONSE_PARSE_FAILURE_LOG_PROJECTION_MARKERS: &[&str] = &[
     "parse_upstream_json_or_unlabeled_sse(",
     "response_body_parse_error_to_proxy_error(",
@@ -4455,6 +4461,42 @@ fn error_mapper_delegates_response_build_failure_context_policy_to_core() {
     assert!(
         violations.is_empty(),
         "error_mapper must delegate response build failure context policy to proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn error_mapper_delegates_response_transform_failure_context_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/error_mapper.rs");
+    let source = fs::read_to_string(&path).expect("read error_mapper.rs");
+
+    assert!(
+        source.contains("CoreResponseTransformFailureContext"),
+        "error_mapper should consume the core response transform failure context"
+    );
+    assert!(
+        source.contains(".log_prefix()"),
+        "error_mapper should use proxy-core response transform failure log prefixes"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_ERROR_MAPPER_RESPONSE_TRANSFORM_FAILURE_CONTEXT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/error_mapper.rs:{} contains response transform failure context marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "error_mapper must delegate response transform failure context policy to proxy-core:\n{}",
         violations.join("\n")
     );
 }

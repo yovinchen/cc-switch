@@ -11,9 +11,10 @@ use crate::proxy_core_adapter::{
     codex_proxy_error_response_from_proxy_error as core_codex_proxy_error_response,
     log_unlabeled_sse_fallback_event, parse_upstream_json_or_unlabeled_sse,
     proxy_core_error_from_status_kind, proxy_error_status_kind,
-    upstream_response_parse_failure_log_message, CoreResponseBuildFailureContext, ProxyCoreError,
-    ProxyCoreResponse, ProxyCoreResult, UnlabeledSseFallbackLogContext,
-    UpstreamResponseParseFailureLogContext, UpstreamSseAggregationKind,
+    upstream_response_parse_failure_log_message, CoreResponseBuildFailureContext,
+    CoreResponseTransformFailureContext, ProxyCoreError, ProxyCoreResponse, ProxyCoreResult,
+    UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
+    UpstreamSseAggregationKind,
 };
 use http::HeaderMap;
 use serde_json::Value;
@@ -144,22 +145,8 @@ pub(crate) fn codex_proxy_error_body_build_error_to_proxy_error(
     response_build_error_to_proxy_error(CoreResponseBuildFailureContext::CodexProxyError, error)
 }
 
-pub(crate) enum ResponseTransformFailureContext {
-    ClaudeResponse,
-    CodexChatToResponses,
-}
-
-impl ResponseTransformFailureContext {
-    fn log_prefix(&self) -> &'static str {
-        match self {
-            Self::ClaudeResponse => "[Claude] 转换响应失败",
-            Self::CodexChatToResponses => "[Codex] Chat → Responses 响应转换失败",
-        }
-    }
-}
-
 pub(crate) fn response_transform_error_to_proxy_error(
-    context: ResponseTransformFailureContext,
+    context: CoreResponseTransformFailureContext,
     error: String,
 ) -> ProxyError {
     log::error!("{}: {error}", context.log_prefix());
@@ -167,12 +154,15 @@ pub(crate) fn response_transform_error_to_proxy_error(
 }
 
 pub(crate) fn claude_response_transform_error_to_proxy_error(error: String) -> ProxyError {
-    response_transform_error_to_proxy_error(ResponseTransformFailureContext::ClaudeResponse, error)
+    response_transform_error_to_proxy_error(
+        CoreResponseTransformFailureContext::ClaudeResponse,
+        error,
+    )
 }
 
 pub(crate) fn codex_chat_to_responses_transform_error_to_proxy_error(error: String) -> ProxyError {
     response_transform_error_to_proxy_error(
-        ResponseTransformFailureContext::CodexChatToResponses,
+        CoreResponseTransformFailureContext::CodexChatToResponses,
         error,
     )
 }

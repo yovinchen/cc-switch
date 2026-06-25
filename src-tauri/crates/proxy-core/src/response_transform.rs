@@ -57,6 +57,21 @@ const EXTRA_CHAT_PASSTHROUGH_FIELDS: &[&str] = &[
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProxyResponseTransformFailureContext {
+    ClaudeResponse,
+    CodexChatToResponses,
+}
+
+impl ProxyResponseTransformFailureContext {
+    pub fn log_prefix(&self) -> &'static str {
+        match self {
+            Self::ClaudeResponse => "[Claude] 转换响应失败",
+            Self::CodexChatToResponses => "[Codex] Chat → Responses 响应转换失败",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClaudePromptCacheKeySource {
     Explicit,
     Session,
@@ -4485,6 +4500,24 @@ pub fn sanitize_anthropic_tool_use_input_json(name: &str, raw: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn response_transform_failure_context_log_prefixes_preserve_host_contracts() {
+        let cases = [
+            (
+                ProxyResponseTransformFailureContext::ClaudeResponse,
+                "[Claude] 转换响应失败",
+            ),
+            (
+                ProxyResponseTransformFailureContext::CodexChatToResponses,
+                "[Codex] Chat → Responses 响应转换失败",
+            ),
+        ];
+
+        for (context, expected) in cases {
+            assert_eq!(context.log_prefix(), expected);
+        }
+    }
 
     fn metadata_with_claude_api_format(value: &str) -> Value {
         let mut metadata = serde_json::Map::new();
