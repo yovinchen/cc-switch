@@ -310,6 +310,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     live_takeover_config_matches_proxy_for_app as core_live_takeover_config_matches_proxy_for_app,
     live_token_sync_app_label as core_live_token_sync_app_label,
     normalize_provider_settings_for_storage as core_normalize_provider_settings_for_storage,
+    codex_auth_has_oauth_login_material as core_codex_auth_has_oauth_login_material,
     codex_auth_object_value_from_settings as core_codex_auth_object_value_from_settings,
     codex_base_url_from_settings as core_codex_base_url_from_settings,
     codex_config_has_base_url_matching as core_codex_config_has_base_url_matching,
@@ -317,6 +318,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     codex_live_settings_parts_from_settings as core_codex_live_settings_parts_from_settings,
     codex_live_snapshot_parts_from_settings as core_codex_live_snapshot_parts_from_settings,
     codex_model_from_config_toml as core_codex_model_from_config_toml,
+    codex_provider_backfill_parts_from_settings as core_codex_provider_backfill_parts_from_settings,
     codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
     codex_restored_live_settings_parts as core_codex_restored_live_settings_parts,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
@@ -369,7 +371,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, LocalizedErrorSpec,
     CodexCredentialParts, CodexLiveSettingsIssue, CodexLiveSettingsParts,
     CodexLiveSnapshotIssue, CodexLiveSnapshotParts, CodexProviderLiveWriteIssue,
-    CodexProviderLiveWriteParts, CodexRestoredLiveSettingsParts,
+    CodexProviderBackfillParts, CodexProviderLiveWriteParts, CodexRestoredLiveSettingsParts,
     ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderCredentialIssue,
     ProviderCredentialValues as CoreProviderCredentialValues, ProviderKeyChangePolicyIssue,
     ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
@@ -3469,22 +3471,11 @@ pub(crate) fn codex_provider_live_write_parts<'a>(
     core_codex_provider_live_write_parts_from_settings(settings, provider.category.as_deref())
 }
 
-pub(crate) struct CodexProviderBackfillParts<'a> {
-    pub(crate) template_settings: &'a Value,
-    pub(crate) restore_provider_token: bool,
-    pub(crate) strip_unified_session_bucket: bool,
-}
-
 pub(crate) fn provider_codex_backfill_parts(provider: &Provider) -> CodexProviderBackfillParts<'_> {
-    CodexProviderBackfillParts {
-        template_settings: &provider.settings_config,
-        restore_provider_token:
-            crate::codex_config::should_restore_codex_provider_token_for_backfill(
-                provider.category.as_deref(),
-                &provider.settings_config,
-            ),
-        strip_unified_session_bucket: provider.category.as_deref() == Some("official"),
-    }
+    core_codex_provider_backfill_parts_from_settings(
+        provider.category.as_deref(),
+        &provider.settings_config,
+    )
 }
 
 pub(crate) fn restore_codex_settings_for_provider_backfill(
@@ -3706,7 +3697,7 @@ pub(crate) fn preserve_codex_oauth_auth_in_backup_if_present(
 ) -> Result<(), CodexBackupProjectionIssue> {
     let Some(existing_auth) = existing_backup
         .get("auth")
-        .filter(|auth| crate::codex_config::codex_auth_has_oauth_login_material(auth))
+        .filter(|auth| core_codex_auth_has_oauth_login_material(auth))
         .cloned()
     else {
         return Ok(());

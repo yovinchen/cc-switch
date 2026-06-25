@@ -1169,12 +1169,19 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_LIVE_SETTINGS_SHAPE_MARKERS: &[&str] = 
     ".ok_or(CodexProviderValidationIssue::NotObject)",
     ".ok_or(CodexProviderValidationIssue::MissingAuth)",
     "CodexProviderValidationIssue::ConfigInvalidType);",
+    "crate::codex_config::codex_auth_has_oauth_login_material",
 ];
 const FORBIDDEN_PROXY_CORE_ADAPTER_DEFAULT_LIVE_IMPORT_CATEGORY_MARKERS: &[&str] = &[
     "crate::codex_config::extract_codex_api_key(",
     "crate::codex_config::codex_auth_has_login_material",
     "has_login_material && !has_provider_key",
     "Some(\"official\")",
+];
+const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_BACKFILL_POLICY_MARKERS: &[&str] = &[
+    "pub(crate) struct CodexProviderBackfillParts",
+    "crate::codex_config::should_restore_codex_provider_token_for_backfill(",
+    "strip_unified_session_bucket: provider.category.as_deref() == Some(\"official\")",
+    "restore_provider_token:",
 ];
 const FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_SETTINGS_VALIDATION_MARKERS: &[&str] = &[
     "pub(crate) struct ProviderSettingsValidationParts",
@@ -3182,6 +3189,7 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
         "core_codex_restored_live_settings_parts(",
         "core_codex_live_settings_parts_from_settings(",
         "core_codex_live_snapshot_parts_from_settings(",
+        "core_codex_auth_has_oauth_login_material(",
     ] {
         assert!(
             production_source.contains(marker),
@@ -3266,6 +3274,36 @@ fn proxy_core_adapter_delegates_default_live_import_category_to_core() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter must keep default live import category policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_codex_backfill_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let slice = function_slice(
+        &source,
+        "pub(crate) fn provider_codex_backfill_parts",
+        "pub(crate) fn restore_codex_settings_for_provider_backfill",
+    );
+
+    assert!(
+        slice.contains("core_codex_provider_backfill_parts_from_settings("),
+        "proxy_core_adapter should delegate Codex provider backfill policy to core"
+    );
+
+    let mut violations = Vec::new();
+    for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_BACKFILL_POLICY_MARKERS {
+        if slice.contains(marker) {
+            violations.push(*marker);
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Codex provider backfill policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }
@@ -7964,10 +8002,13 @@ fn production_forwarder_uses_request_source_resource() {
         source.contains("transform_request_body"),
         "ForwarderRequestSource must own transformed request body selection"
     );
+    let has_transform_plan_alias = adapter_source.contains(
+        "pub(crate) type ForwarderTransformPlan = crate::proxy_core::api::transport::ForwarderTransformPlan;",
+    ) || adapter_source.contains(
+        "type ForwarderTransformPlan =\n    crate::proxy_core::api::transport::ForwarderTransformPlan",
+    );
     assert!(
-        adapter_source.contains(
-            "type ForwarderTransformPlan =\n    crate::proxy_core::api::transport::ForwarderTransformPlan"
-        ),
+        has_transform_plan_alias,
         "ForwarderTransformPlan DTO must be owned by proxy-core and exposed through an adapter alias"
     );
     let transform_plan_slice = function_slice(

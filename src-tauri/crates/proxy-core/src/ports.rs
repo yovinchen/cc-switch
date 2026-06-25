@@ -2639,6 +2639,26 @@ pub fn codex_auth_has_login_material(auth: &Value) -> bool {
     })
 }
 
+pub fn codex_auth_has_oauth_login_material(auth: &Value) -> bool {
+    let Some(settings) = auth.as_object() else {
+        return false;
+    };
+
+    settings.iter().any(|(key, value)| {
+        if key == "auth_mode" || key == "OPENAI_API_KEY" {
+            return false;
+        }
+
+        match value {
+            Value::Null => false,
+            Value::String(text) => !text.trim().is_empty(),
+            Value::Array(items) => !items.is_empty(),
+            Value::Object(map) => !map.is_empty(),
+            _ => true,
+        }
+    })
+}
+
 pub fn codex_imported_live_category_from_parts(
     auth: Option<&Value>,
     config_has_provider_key: bool,
@@ -2650,6 +2670,43 @@ pub fn codex_imported_live_category_from_parts(
         "official"
     } else {
         "custom"
+    }
+}
+
+pub struct CodexProviderBackfillParts<'a> {
+    pub template_settings: &'a Value,
+    pub restore_provider_token: bool,
+    pub strip_unified_session_bucket: bool,
+}
+
+pub fn should_restore_codex_provider_token_for_backfill_from_parts(
+    category: Option<&str>,
+    auth: Option<&Value>,
+) -> bool {
+    if category == Some("official") {
+        return false;
+    }
+
+    let Some(auth) = auth else {
+        return true;
+    };
+
+    let has_provider_api_key = codex_auth_has_api_key(auth);
+    let has_oauth_login = codex_auth_has_oauth_login_material(auth);
+    !has_oauth_login || has_provider_api_key
+}
+
+pub fn codex_provider_backfill_parts_from_settings<'a>(
+    category: Option<&str>,
+    template_settings: &'a Value,
+) -> CodexProviderBackfillParts<'a> {
+    CodexProviderBackfillParts {
+        template_settings,
+        restore_provider_token: should_restore_codex_provider_token_for_backfill_from_parts(
+            category,
+            template_settings.get("auth"),
+        ),
+        strip_unified_session_bucket: category == Some("official"),
     }
 }
 
@@ -5963,12 +6020,14 @@ mod tests {
         CodexLiveTakeoverMatchFacts, CodexProviderLiveWriteIssue,
         CodexProviderValidationIssue,
         codex_auth_has_api_key, codex_auth_has_login_material,
+        codex_auth_has_oauth_login_material,
         codex_auth_object_value_from_settings,
         codex_base_url_from_config_toml, codex_base_url_from_settings,
         codex_config_has_base_url_matching, codex_config_text_from_settings,
         codex_imported_live_category_from_parts,
         codex_live_auth_has_proxy_placeholder, codex_live_settings_parts_from_settings,
         codex_live_snapshot_parts_from_settings, codex_model_from_config_toml,
+        codex_provider_backfill_parts_from_settings,
         codex_provider_live_write_parts_from_settings,
         codex_provider_validation_parts_from_settings, codex_restored_live_settings_parts,
         codex_takeover_toml_config_patch,
@@ -6036,6 +6095,7 @@ mod tests {
         remove_gemini_common_config_from_settings,
         should_emit_proxy_official_warning_for_provider_category,
         should_reapply_codex_official_live_for_provider_category,
+        should_restore_codex_provider_token_for_backfill_from_parts,
         should_skip_manual_default_live_import, should_skip_startup_default_live_import,
         should_skip_provider_legacy_common_config_migration,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
@@ -7880,6 +7940,50 @@ wire_api = "chat"
             ),
             "custom"
         );
+    }
+
+    #[test]
+    fn codex_provider_backfill_policy_uses_category_and_auth_facts() {
+        let oauth_template = json!({
+            "auth": {
+                "tokens": {"access_token": "oauth-access"}
+            }
+        });
+        let api_key_template = json!({
+            "auth": {
+                "OPENAI_API_KEY": "sk-test"
+            }
+        });
+        assert!(codex_auth_has_oauth_login_material(
+            oauth_template.get("auth").expect("oauth auth")
+        ));
+        assert!(!should_restore_codex_provider_token_for_backfill_from_parts(
+            Some("custom"),
+            oauth_template.get("auth")
+        ));
+        assert!(should_restore_codex_provider_token_for_backfill_from_parts(
+            Some("custom"),
+            api_key_template.get("auth")
+        ));
+        assert!(should_restore_codex_provider_token_for_backfill_from_parts(
+            Some("custom"),
+            None
+        ));
+        assert!(!should_restore_codex_provider_token_for_backfill_from_parts(
+            Some("official"),
+            api_key_template.get("auth")
+        ));
+
+        let custom_parts =
+            codex_provider_backfill_parts_from_settings(Some("custom"), &api_key_template);
+        assert_eq!(custom_parts.template_settings, &api_key_template);
+        assert!(custom_parts.restore_provider_token);
+        assert!(!custom_parts.strip_unified_session_bucket);
+
+        let official_parts =
+            codex_provider_backfill_parts_from_settings(Some("official"), &api_key_template);
+        assert!(!official_parts.restore_provider_token);
+        assert!(official_parts.strip_unified_session_bucket);
     }
 
     #[test]

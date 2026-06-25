@@ -2103,6 +2103,8 @@ provider adapter 仍负责 CC Switch 默认 fallback 的 provider settings 到 h
 
 本轮再把默认 Live 导入时的 provider category 决策收进 `proxy-core::ports`：core 根据 Codex auth 登录材料、provider key 事实和 app kind 统一产出 `official/custom`，adapter 仅负责提取 CC Switch/Codex 专属 config.toml bearer-token 事实并创建本地 `Provider`。这让外部中转宿主可以复用相同 category 策略，同时避免 core 复制 Codex reserved model provider id 解析细节。
 
+本轮继续把 Codex provider backfill 的 restore/strip 决策收进 `proxy-core::ports`：core 基于 provider category 和 auth 事实决定是否回填 provider bearer token、是否剥离统一会话注入；adapter 仍只负责调用宿主 `codex_config` 执行实际 token/TOML mutation。OAuth 登录材料判定也统一走 core，避免外部中转宿主在迁移时复制 CC Switch adapter 里的 Codex 认证分支。
+
 ### Model catalog 接口
 
 `GET /v1/models` 已从 `handlers::handle_models` 直读 Codex 配置文件迁出。当前端口分两类模型视图：

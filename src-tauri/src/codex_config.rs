@@ -258,43 +258,6 @@ pub fn codex_auth_has_login_material(auth: &Value) -> bool {
     })
 }
 
-pub fn codex_auth_has_oauth_login_material(auth: &Value) -> bool {
-    let Some(obj) = auth.as_object() else {
-        return false;
-    };
-
-    obj.iter().any(|(key, value)| {
-        if key == "auth_mode" || key == "OPENAI_API_KEY" {
-            return false;
-        }
-
-        match value {
-            Value::Null => false,
-            Value::String(text) => !text.trim().is_empty(),
-            Value::Array(items) => !items.is_empty(),
-            Value::Object(map) => !map.is_empty(),
-            _ => true,
-        }
-    })
-}
-
-pub fn should_restore_codex_provider_token_for_backfill(
-    category: Option<&str>,
-    template_settings: &Value,
-) -> bool {
-    if category == Some("official") {
-        return false;
-    }
-
-    let Some(auth) = template_settings.get("auth") else {
-        return true;
-    };
-
-    let has_provider_api_key = extract_codex_auth_api_key(auth).is_some();
-    let has_oauth_login = codex_auth_has_oauth_login_material(auth);
-    !has_oauth_login || has_provider_api_key
-}
-
 fn extract_codex_top_level_u64(config_text: &str, field: &str) -> Option<u64> {
     let doc = config_text.parse::<toml::Value>().ok()?;
     doc.get(field)
@@ -1477,36 +1440,6 @@ experimental_bearer_token = "stale-table-key"
         assert_eq!(
             extract_codex_experimental_bearer_token(input).as_deref(),
             Some("top-level-key")
-        );
-    }
-
-    #[test]
-    fn should_not_restore_provider_token_for_oauth_only_template() {
-        let oauth_template = json!({
-            "auth": {
-                "auth_mode": "chatgpt",
-                "tokens": {
-                    "access_token": "oauth-access"
-                }
-            }
-        });
-        let api_key_template = json!({
-            "auth": {
-                "OPENAI_API_KEY": "sk-test"
-            }
-        });
-
-        assert!(
-            !should_restore_codex_provider_token_for_backfill(Some("custom"), &oauth_template),
-            "OAuth-only templates should not backfill bearer tokens into OPENAI_API_KEY"
-        );
-        assert!(
-            should_restore_codex_provider_token_for_backfill(Some("custom"), &api_key_template),
-            "custom API-key providers should still restore provider bearer tokens"
-        );
-        assert!(
-            !should_restore_codex_provider_token_for_backfill(Some("official"), &api_key_template),
-            "official providers should never restore third-party bearer tokens"
         );
     }
 
