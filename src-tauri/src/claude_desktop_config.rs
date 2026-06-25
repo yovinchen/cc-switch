@@ -763,68 +763,25 @@ fn remove_cc_switch_enterprise_config(path: &Path) -> Result<(), AppError> {
 }
 
 fn write_meta(path: &Path, applied_profile_id: Option<&str>) -> Result<(), AppError> {
-    let mut value = read_json_or_empty(path)?;
-    if !value.is_object() {
-        value = json!({});
-    }
-
-    let obj = value.as_object_mut().expect("just normalized to object");
-    let mut entries = obj
-        .get("entries")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-
-    entries.retain(|entry| entry.get("id").and_then(Value::as_str) != Some(PROFILE_ID));
-
-    match applied_profile_id {
-        Some(id) => {
-            entries.push(json!({
-                "id": PROFILE_ID,
-                "name": PROFILE_NAME
-            }));
-            obj.insert("appliedId".to_string(), Value::String(id.to_string()));
-        }
-        None => {
-            let should_clear_applied = obj
-                .get("appliedId")
-                .and_then(Value::as_str)
-                .is_some_and(|id| id == PROFILE_ID);
-            if should_clear_applied {
-                if let Some(next_id) = entries
-                    .iter()
-                    .find_map(|entry| entry.get("id").and_then(Value::as_str))
-                {
-                    obj.insert("appliedId".to_string(), Value::String(next_id.to_string()));
-                } else {
-                    obj.remove("appliedId");
-                }
-            }
-        }
-    }
-
-    obj.insert("entries".to_string(), Value::Array(entries));
+    let value = crate::proxy_core_adapter::claude_desktop_meta_with_profile_entry(
+        read_json_or_empty(path)?,
+        PROFILE_ID,
+        PROFILE_NAME,
+        applied_profile_id,
+    );
     write_json_file(path, &value)
 }
 
 fn read_applied_id(path: &Path) -> Option<String> {
-    read_json_or_empty(path).ok().and_then(|value| {
-        value
-            .get("appliedId")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-    })
+    read_json_or_empty(path)
+        .ok()
+        .and_then(|value| crate::proxy_core_adapter::claude_desktop_meta_applied_id(&value))
 }
 
 fn meta_has_profile_entry(path: &Path) -> bool {
-    read_json_or_empty(path)
-        .ok()
-        .and_then(|value| value.get("entries").and_then(Value::as_array).cloned())
-        .is_some_and(|entries| {
-            entries
-                .iter()
-                .any(|entry| entry.get("id").and_then(Value::as_str) == Some(PROFILE_ID))
-        })
+    read_json_or_empty(path).ok().is_some_and(|value| {
+        crate::proxy_core_adapter::claude_desktop_meta_has_profile_entry(&value, PROFILE_ID)
+    })
 }
 
 fn is_supported_platform() -> bool {

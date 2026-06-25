@@ -292,6 +292,71 @@ pub fn claude_desktop_config_without_gateway_enterprise_config(mut config: Value
     Some(config)
 }
 
+pub fn claude_desktop_meta_with_profile_entry(
+    mut meta: Value,
+    profile_id: &str,
+    profile_name: &str,
+    applied_profile_id: Option<&str>,
+) -> Value {
+    if !meta.is_object() {
+        meta = json!({});
+    }
+
+    let obj = meta.as_object_mut().expect("just normalized to object");
+    let mut entries = obj
+        .get("entries")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    entries.retain(|entry| entry.get("id").and_then(Value::as_str) != Some(profile_id));
+
+    match applied_profile_id {
+        Some(id) => {
+            entries.push(json!({
+                "id": profile_id,
+                "name": profile_name
+            }));
+            obj.insert("appliedId".to_string(), Value::String(id.to_string()));
+        }
+        None => {
+            let should_clear_applied = obj
+                .get("appliedId")
+                .and_then(Value::as_str)
+                .is_some_and(|id| id == profile_id);
+            if should_clear_applied {
+                if let Some(next_id) = entries
+                    .iter()
+                    .find_map(|entry| entry.get("id").and_then(Value::as_str))
+                {
+                    obj.insert("appliedId".to_string(), Value::String(next_id.to_string()));
+                } else {
+                    obj.remove("appliedId");
+                }
+            }
+        }
+    }
+
+    obj.insert("entries".to_string(), Value::Array(entries));
+    meta
+}
+
+pub fn claude_desktop_meta_applied_id(meta: &Value) -> Option<String> {
+    meta.get("appliedId")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+pub fn claude_desktop_meta_has_profile_entry(meta: &Value, profile_id: &str) -> bool {
+    meta.get("entries")
+        .and_then(Value::as_array)
+        .is_some_and(|entries| {
+            entries
+                .iter()
+                .any(|entry| entry.get("id").and_then(Value::as_str) == Some(profile_id))
+        })
+}
+
 pub fn claude_desktop_model_id_is_profile_safe(model: &str) -> bool {
     let normalized = model.trim().to_ascii_lowercase();
     if normalized.contains(ONE_M_CONTEXT_MARKER) {
@@ -840,8 +905,9 @@ mod tests {
         claude_desktop_default_proxy_routes, claude_desktop_direct_gateway_credentials,
         claude_desktop_direct_inference_model_specs,
         claude_desktop_direct_provider_validation_issue, claude_desktop_gateway_profile,
-        claude_desktop_gateway_token_error, claude_desktop_model_id_is_profile_safe,
-        claude_desktop_profile_has_unsafe_model_ids,
+        claude_desktop_gateway_token_error, claude_desktop_meta_applied_id,
+        claude_desktop_meta_has_profile_entry, claude_desktop_meta_with_profile_entry,
+        claude_desktop_model_id_is_profile_safe, claude_desktop_profile_has_unsafe_model_ids,
         claude_desktop_provider_models_are_profile_safe, claude_desktop_provider_selection_error,
         claude_desktop_provider_unavailable_error,
         claude_desktop_provider_unavailable_error_message,
@@ -1586,6 +1652,82 @@ mod tests {
         .expect("enterprise config should be cleaned");
 
         assert_eq!(cleaned, json!({ "top": "kept" }));
+    }
+
+    #[test]
+    fn meta_with_profile_entry_adds_or_replaces_profile_and_applied_id() {
+        let meta = claude_desktop_meta_with_profile_entry(
+            json!({
+                "appliedId": "old",
+                "entries": [
+                    { "id": "cc-switch", "name": "Old Name" },
+                    { "id": "other", "name": "Other" }
+                ]
+            }),
+            "cc-switch",
+            "CC Switch",
+            Some("cc-switch"),
+        );
+
+        assert_eq!(
+            claude_desktop_meta_applied_id(&meta).as_deref(),
+            Some("cc-switch")
+        );
+        assert!(claude_desktop_meta_has_profile_entry(&meta, "cc-switch"));
+        assert_eq!(
+            meta["entries"],
+            json!([
+                { "id": "other", "name": "Other" },
+                { "id": "cc-switch", "name": "CC Switch" }
+            ])
+        );
+        assert_eq!(
+            claude_desktop_meta_with_profile_entry(
+                Value::String("bad".to_string()),
+                "cc",
+                "CC",
+                Some("cc")
+            ),
+            json!({
+                "appliedId": "cc",
+                "entries": [{ "id": "cc", "name": "CC" }]
+            })
+        );
+    }
+
+    #[test]
+    fn meta_with_profile_entry_removes_profile_and_switches_applied_id() {
+        let meta = claude_desktop_meta_with_profile_entry(
+            json!({
+                "appliedId": "cc-switch",
+                "entries": [
+                    { "id": "cc-switch", "name": "CC Switch" },
+                    { "id": "other", "name": "Other" }
+                ]
+            }),
+            "cc-switch",
+            "CC Switch",
+            None,
+        );
+
+        assert_eq!(
+            claude_desktop_meta_applied_id(&meta).as_deref(),
+            Some("other")
+        );
+        assert!(!claude_desktop_meta_has_profile_entry(&meta, "cc-switch"));
+        assert_eq!(meta["entries"], json!([{ "id": "other", "name": "Other" }]));
+
+        let empty = claude_desktop_meta_with_profile_entry(
+            json!({
+                "appliedId": "cc-switch",
+                "entries": [{ "id": "cc-switch", "name": "CC Switch" }]
+            }),
+            "cc-switch",
+            "CC Switch",
+            None,
+        );
+        assert!(claude_desktop_meta_applied_id(&empty).is_none());
+        assert_eq!(empty["entries"], json!([]));
     }
 
     #[test]

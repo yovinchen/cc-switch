@@ -5310,6 +5310,79 @@ fn claude_desktop_config_delegates_local_config_json_transforms_to_adapter() {
 }
 
 #[test]
+fn claude_desktop_config_delegates_meta_json_policy_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let write_slice = function_slice(&source, "fn write_meta(", "fn read_applied_id(");
+    let applied_slice =
+        function_slice(&source, "fn read_applied_id(", "fn meta_has_profile_entry(");
+    let entry_slice = function_slice(
+        &source,
+        "fn meta_has_profile_entry(",
+        "fn is_supported_platform(",
+    );
+
+    assert!(
+        write_slice.contains("claude_desktop_meta_with_profile_entry("),
+        "write_meta should delegate appliedId/entries mutation to proxy_core_adapter/core"
+    );
+    assert!(
+        applied_slice.contains("claude_desktop_meta_applied_id("),
+        "read_applied_id should delegate appliedId parsing to proxy_core_adapter/core"
+    );
+    assert!(
+        entry_slice.contains("claude_desktop_meta_has_profile_entry("),
+        "meta_has_profile_entry should delegate entries lookup to proxy_core_adapter/core"
+    );
+
+    let mut violations = Vec::new();
+    for (slice_name, slice, forbidden_markers) in [
+        (
+            "write_meta",
+            write_slice,
+            &[
+                "\"appliedId\"",
+                "\"entries\"",
+                "as_object_mut",
+                "Value::Array",
+                "json!({",
+                "entries.retain",
+            ][..],
+        ),
+        (
+            "read_applied_id",
+            applied_slice,
+            &["\"appliedId\"", "Value::as_str"][..],
+        ),
+        (
+            "meta_has_profile_entry",
+            entry_slice,
+            &["\"entries\"", "Value::as_array", ".any("][..],
+        ),
+    ] {
+        for (line_index, line) in production_lines(slice) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in forbidden_markers {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/claude_desktop_config.rs {slice_name}:{} contains meta JSON policy marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "claude_desktop_config must keep meta JSON policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
