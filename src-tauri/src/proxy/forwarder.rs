@@ -13,7 +13,7 @@ use crate::proxy_core_adapter::{
 };
 use crate::proxy_core_adapter::{
     ActiveConnectionGuard, CopilotOptimizerConfig, FailoverSwitchSchedulerRef,
-    ForwarderAdapterFactsInput, ForwarderAdapterHandle, ForwarderAnthropicRectifierGateInput,
+    ForwarderAdapterContext, ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
     ForwarderAppMediaPreventionInput, ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput,
     ForwarderAttemptBodyInput, ForwarderAttemptRuntimeSourceRef,
     ForwarderAuthHeadersInput, ForwarderAuthSourceRef, ForwarderChannelResponseStatusInput,
@@ -336,8 +336,8 @@ impl RequestForwarder {
         extensions: Extensions,
         attempts: Vec<ForwardAttempt>,
     ) -> Result<ForwardResult, ForwardError> {
-        // 获取适配器
-        let adapter = self.request_source.adapter_for_app(app_type);
+        // 获取适配器上下文，底层 ProviderAdapter 保持在 adapter 边界内。
+        let adapter = self.request_source.adapter_context_for_app(app_type);
         let app_type_str = app_type.as_str();
 
         if attempts.is_empty() {
@@ -411,7 +411,7 @@ impl RequestForwarder {
                     &provider_body,
                     &headers,
                     &extensions,
-                    adapter.as_ref(),
+                    &adapter,
                 )
                 .await
             {
@@ -442,7 +442,7 @@ impl RequestForwarder {
                                 adapter_facts: &self
                                     .request_source
                                     .adapter_facts(ForwarderAdapterFactsInput {
-                                        adapter: adapter.as_ref(),
+                                        adapter: &adapter,
                                     }),
                                 provider,
                                 already_retried: media_rectifier_retried,
@@ -463,7 +463,7 @@ impl RequestForwarder {
                                 &media_retry.body,
                                 &headers,
                                 &extensions,
-                                adapter.as_ref(),
+                                &adapter,
                             )
                             .await
                         {
@@ -548,7 +548,7 @@ impl RequestForwarder {
                                         &provider_body,
                                         &headers,
                                         &extensions,
-                                        adapter.as_ref(),
+                                        &adapter,
                                     )
                                     .await
                                 {
@@ -634,7 +634,7 @@ impl RequestForwarder {
                                         &provider_body,
                                         &headers,
                                         &extensions,
-                                        adapter.as_ref(),
+                                        &adapter,
                                     )
                                     .await
                                 {
@@ -794,7 +794,7 @@ impl RequestForwarder {
         body: &Value,
         headers: &axum::http::HeaderMap,
         extensions: &Extensions,
-        adapter: &ForwarderAdapterHandle,
+        adapter: &ForwarderAdapterContext,
     ) -> Result<ForwarderUpstreamSuccess, ProxyError> {
         let provider = attempt.provider();
         let ForwarderProviderUrlFacts {

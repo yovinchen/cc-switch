@@ -113,7 +113,8 @@ const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS: &[&str] = &[".ge
 const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_URL_BUILD_MARKERS: &[&str] = &[".build_url("];
 const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_NAME_MARKERS: &[&str] = &[".name()"];
 const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_REGISTRY_MARKERS: &[&str] = &["get_adapter("];
-const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_TRAIT_MARKERS: &[&str] = &["ProviderAdapter"];
+const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_TRAIT_MARKERS: &[&str] =
+    &["ProviderAdapter", "ForwarderAdapterHandle"];
 const FORBIDDEN_FORWARDER_CHANNEL_STATUS_MAPPING_MARKERS: &[&str] = &[
     "mapped_channel_response_status(",
     "invalid_mapped_channel_response_status_message(",
@@ -4760,7 +4761,7 @@ fn production_forwarder_delegates_provider_adapter_registry_to_adapter() {
 }
 
 #[test]
-fn production_forwarder_uses_adapter_handle_without_provider_trait() {
+fn production_forwarder_uses_adapter_context_without_provider_trait() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
@@ -4781,7 +4782,7 @@ fn production_forwarder_uses_adapter_handle_without_provider_trait() {
 
     assert!(
         violations.is_empty(),
-        "forwarder must use proxy_core_adapter adapter handles without importing provider adapter traits:\n{}",
+        "forwarder must use proxy_core_adapter adapter context without importing provider adapter handles or traits:\n{}",
         violations.join("\n")
     );
 }

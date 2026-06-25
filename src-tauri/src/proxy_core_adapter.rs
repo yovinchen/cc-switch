@@ -4206,8 +4206,34 @@ pub(crate) fn provider_adapter_name_is_claude(adapter_name: &str) -> bool {
 
 pub(crate) type ForwarderAdapterHandle = dyn ProviderAdapter;
 
+pub(crate) struct ForwarderAdapterContext {
+    adapter: Box<ForwarderAdapterHandle>,
+    facts: ForwarderAdapterFacts,
+}
+
+impl ForwarderAdapterContext {
+    fn new(adapter: Box<ForwarderAdapterHandle>) -> Self {
+        let facts = ForwarderAdapterFacts::from_adapter(adapter.as_ref());
+        Self { adapter, facts }
+    }
+
+    fn adapter(&self) -> &ForwarderAdapterHandle {
+        self.adapter.as_ref()
+    }
+
+    pub(crate) fn facts(&self) -> &ForwarderAdapterFacts {
+        &self.facts
+    }
+}
+
 pub(crate) fn forwarder_provider_adapter_name(adapter: &ForwarderAdapterHandle) -> &'static str {
     adapter.name()
+}
+
+pub(crate) fn forwarder_provider_adapter_context_for_app(
+    app_type: &AppType,
+) -> ForwarderAdapterContext {
+    ForwarderAdapterContext::new(forwarder_provider_adapter_for_app(app_type))
 }
 
 pub(crate) fn forwarder_provider_adapter_for_app(
@@ -7693,7 +7719,7 @@ pub(crate) type ForwarderAuthSourceRef = Arc<dyn ForwarderAuthSource + Send + Sy
 pub(crate) type AuthProviderRef = Arc<dyn AuthProvider + Send + Sync>;
 
 pub(crate) struct ForwarderAuthHeadersInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) adapter: &'a ForwarderAdapterContext,
     pub(crate) app_type: &'a AppType,
     pub(crate) method: &'a Method,
     pub(crate) endpoint: &'a str,
@@ -7781,7 +7807,7 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
                 AuthProviderHeaderResolution::Fallback => {
                     let auth_provider = input.attempt.auth_provider();
                     if let Some(mut auth) =
-                        forwarder_provider_auth_info(input.adapter, auth_provider)
+                        forwarder_provider_auth_info(input.adapter.adapter(), auth_provider)
                     {
                         let managed_auth = self
                             .managed_account_runtime_source
@@ -7792,7 +7818,7 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
                             managed_auth.should_send_codex_oauth_session_headers;
                         codex_oauth_account_id = managed_auth.codex_oauth_account_id;
 
-                        forwarder_provider_auth_headers(input.adapter, &auth)?
+                        forwarder_provider_auth_headers(input.adapter.adapter(), &auth)?
                     } else {
                         Vec::new()
                     }
@@ -7932,7 +7958,7 @@ pub(crate) struct ForwarderProviderRequestBodyInput<'a> {
 }
 
 pub(crate) struct ForwarderProviderUrlFactsInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) adapter: &'a ForwarderAdapterContext,
     pub(crate) provider: &'a Provider,
 }
 
@@ -7943,12 +7969,23 @@ pub(crate) struct ForwarderProviderUrlFacts {
 }
 
 pub(crate) struct ForwarderAdapterFactsInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) adapter: &'a ForwarderAdapterContext,
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct ForwarderAdapterFacts {
     pub(crate) adapter_name: &'static str,
     pub(crate) is_claude_adapter: bool,
+}
+
+impl ForwarderAdapterFacts {
+    fn from_adapter(adapter: &ForwarderAdapterHandle) -> Self {
+        let adapter_name = forwarder_provider_adapter_name(adapter);
+        Self {
+            adapter_name,
+            is_claude_adapter: provider_adapter_name_is_claude(adapter_name),
+        }
+    }
 }
 
 pub(crate) struct ForwarderClaudeBodyPolicyInput<'a> {
@@ -7965,13 +8002,13 @@ pub(crate) struct ForwarderCodexResponsesToChatInput<'a> {
 }
 
 pub(crate) struct ForwarderProviderTransformInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) adapter: &'a ForwarderAdapterContext,
     pub(crate) body: Value,
     pub(crate) provider: &'a Provider,
 }
 
 pub(crate) struct ForwarderRequestBodyTransformInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) adapter: &'a ForwarderAdapterContext,
     pub(crate) body: Value,
     pub(crate) provider: &'a Provider,
     pub(crate) transform_plan: &'a ForwarderTransformPlan,
@@ -7985,7 +8022,7 @@ pub(crate) struct ForwarderRequestBodyTransform {
 
 pub(crate) struct ForwarderTransformPlanInput<'a> {
     pub(crate) app_type: &'a AppType,
-    pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) adapter: &'a ForwarderAdapterContext,
     pub(crate) endpoint: &'a str,
     pub(crate) provider: &'a Provider,
     pub(crate) resolved_claude_api_format: Option<&'a str>,
@@ -7993,7 +8030,7 @@ pub(crate) struct ForwarderTransformPlanInput<'a> {
 }
 
 pub(crate) struct ForwarderUpstreamUrlInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) adapter: &'a ForwarderAdapterContext,
     pub(crate) base_url: &'a str,
     pub(crate) endpoint: &'a str,
     pub(crate) is_full_url: bool,
@@ -8080,7 +8117,7 @@ pub(crate) struct ForwarderUpstreamRequestParts {
 }
 
 pub(crate) trait ForwarderRequestSource {
-    fn adapter_for_app(&self, app_type: &AppType) -> Box<ForwarderAdapterHandle>;
+    fn adapter_context_for_app(&self, app_type: &AppType) -> ForwarderAdapterContext;
 
     fn prepare_attempt_body(&self, input: ForwarderAttemptBodyInput<'_>) -> Value;
 
@@ -8180,7 +8217,7 @@ impl CcSwitchForwarderRequestSource {
         &self,
         input: ForwarderProviderTransformInput<'_>,
     ) -> Result<Value, ProxyError> {
-        forwarder_provider_transform_request(input.adapter, input.body, input.provider)
+        forwarder_provider_transform_request(input.adapter.adapter(), input.body, input.provider)
     }
 
     fn convert_codex_responses_to_chat_body(
@@ -8280,8 +8317,8 @@ fn apply_forwarder_media_prevention_with_log(
 }
 
 impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
-    fn adapter_for_app(&self, app_type: &AppType) -> Box<ForwarderAdapterHandle> {
-        forwarder_provider_adapter_for_app(app_type)
+    fn adapter_context_for_app(&self, app_type: &AppType) -> ForwarderAdapterContext {
+        forwarder_provider_adapter_context_for_app(app_type)
     }
 
     fn prepare_attempt_body(&self, input: ForwarderAttemptBodyInput<'_>) -> Value {
@@ -8311,7 +8348,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         &self,
         input: ForwarderProviderUrlFactsInput<'_>,
     ) -> Result<ForwarderProviderUrlFacts, ProxyError> {
-        let base_url = forwarder_provider_base_url(input.adapter, input.provider)?;
+        let base_url = forwarder_provider_base_url(input.adapter.adapter(), input.provider)?;
         Ok(ForwarderProviderUrlFacts {
             is_full_url: forwarder_is_full_url_provider(input.provider),
             is_copilot: forwarder_is_github_copilot_upstream(input.provider, &base_url),
@@ -8320,11 +8357,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     }
 
     fn adapter_facts(&self, input: ForwarderAdapterFactsInput<'_>) -> ForwarderAdapterFacts {
-        let adapter_name = forwarder_provider_adapter_name(input.adapter);
-        ForwarderAdapterFacts {
-            adapter_name,
-            is_claude_adapter: provider_adapter_name_is_claude(adapter_name),
-        }
+        *input.adapter.facts()
     }
 
     fn prepare_provider_request_body(
@@ -8443,7 +8476,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             .is_claude_adapter
             .then(|| forwarder_claude_api_format(input.provider));
         let provider_transform_required = input.resolved_claude_api_format.is_none()
-            && forwarder_provider_transform_required(input.adapter, input.provider);
+            && forwarder_provider_transform_required(input.adapter.adapter(), input.provider);
 
         forwarder_transform_plan_from_facts(ForwarderTransformPlanFacts {
             codex_responses_to_chat,
@@ -8475,7 +8508,11 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
                 channel_param_overrides: input.channel_param_overrides,
             },
             |base_url, effective_endpoint| {
-                forwarder_provider_upstream_url(input.adapter, base_url, effective_endpoint)
+                forwarder_provider_upstream_url(
+                    input.adapter.adapter(),
+                    base_url,
+                    effective_endpoint,
+                )
             },
         )
     }
@@ -13558,17 +13595,11 @@ mod tests {
     fn forwarder_request_source_selects_adapter_for_app() {
         let source = default_forwarder_request_source();
 
-        let claude_adapter = source.adapter_for_app(&AppType::Claude);
-        let fallback_adapter = source.adapter_for_app(&AppType::Hermes);
+        let claude_adapter = source.adapter_context_for_app(&AppType::Claude);
+        let fallback_adapter = source.adapter_context_for_app(&AppType::Hermes);
 
-        assert_eq!(
-            forwarder_provider_adapter_name(claude_adapter.as_ref()),
-            "Claude"
-        );
-        assert_eq!(
-            forwarder_provider_adapter_name(fallback_adapter.as_ref()),
-            "Codex"
-        );
+        assert_eq!(claude_adapter.facts().adapter_name, "Claude");
+        assert_eq!(fallback_adapter.facts().adapter_name, "Codex");
     }
 
     #[tokio::test]
@@ -13648,7 +13679,7 @@ mod tests {
     #[test]
     fn forwarder_request_source_projects_provider_url_facts() {
         let source = default_forwarder_request_source();
-        let adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
         let mut provider = Provider::with_id(
             "copilot-provider".to_string(),
             "Copilot Provider".to_string(),
@@ -13665,7 +13696,7 @@ mod tests {
 
         let facts = source
             .provider_url_facts(ForwarderProviderUrlFactsInput {
-                adapter: adapter.as_ref(),
+                adapter: &adapter,
                 provider: &provider,
             })
             .expect("provider URL facts");
@@ -13678,14 +13709,14 @@ mod tests {
     #[test]
     fn forwarder_request_source_projects_adapter_facts() {
         let source = default_forwarder_request_source();
-        let claude_adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
-        let codex_adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
+        let claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let codex_adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
 
         let claude_facts = source.adapter_facts(ForwarderAdapterFactsInput {
-            adapter: claude_adapter.as_ref(),
+            adapter: &claude_adapter,
         });
         let codex_facts = source.adapter_facts(ForwarderAdapterFactsInput {
-            adapter: codex_adapter.as_ref(),
+            adapter: &codex_adapter,
         });
 
         assert_eq!(claude_facts.adapter_name, "Claude");
@@ -13737,13 +13768,13 @@ base_url = "https://api.openai.com/v1"
     #[test]
     fn forwarder_request_source_projects_codex_responses_to_chat_gate() {
         let source = default_forwarder_request_source();
-        let codex_adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
-        let claude_adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let codex_adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
+        let claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
         let codex_adapter_facts = source.adapter_facts(ForwarderAdapterFactsInput {
-            adapter: codex_adapter.as_ref(),
+            adapter: &codex_adapter,
         });
         let claude_adapter_facts = source.adapter_facts(ForwarderAdapterFactsInput {
-            adapter: claude_adapter.as_ref(),
+            adapter: &claude_adapter,
         });
         let provider = Provider::with_id(
             "codex-chat".to_string(),
@@ -13764,7 +13795,7 @@ base_url = "https://api.openai.com/v1"
             source
                 .transform_plan(ForwarderTransformPlanInput {
                     app_type: &AppType::Codex,
-                    adapter: codex_adapter.as_ref(),
+                    adapter: &codex_adapter,
                     endpoint: "/responses",
                     provider: &provider,
                     resolved_claude_api_format: None,
@@ -13776,7 +13807,7 @@ base_url = "https://api.openai.com/v1"
             !source
                 .transform_plan(ForwarderTransformPlanInput {
                     app_type: &AppType::Claude,
-                    adapter: claude_adapter.as_ref(),
+                    adapter: &claude_adapter,
                     endpoint: "/responses",
                     provider: &provider,
                     resolved_claude_api_format: None,
@@ -13788,7 +13819,7 @@ base_url = "https://api.openai.com/v1"
             !source
                 .transform_plan(ForwarderTransformPlanInput {
                     app_type: &AppType::Codex,
-                    adapter: codex_adapter.as_ref(),
+                    adapter: &codex_adapter,
                     endpoint: "/chat/completions",
                     provider: &provider,
                     resolved_claude_api_format: None,
@@ -13801,7 +13832,7 @@ base_url = "https://api.openai.com/v1"
     #[test]
     fn forwarder_request_source_wraps_provider_transform_request() {
         let source = CcSwitchForwarderRequestSource::new(default_managed_account_runtime_source());
-        let adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
         let provider = Provider::with_id(
             "codex-provider".to_string(),
             "Codex Provider".to_string(),
@@ -13812,7 +13843,7 @@ base_url = "https://api.openai.com/v1"
 
         let transformed = source
             .transform_provider_request_body(ForwarderProviderTransformInput {
-                adapter: adapter.as_ref(),
+                adapter: &adapter,
                 body: body.clone(),
                 provider: &provider,
             })
@@ -13824,7 +13855,7 @@ base_url = "https://api.openai.com/v1"
     #[test]
     fn forwarder_request_source_transforms_request_body_and_tracks_outbound_model() {
         let source = default_forwarder_request_source();
-        let adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
         let provider = Provider::with_id(
             "provider-a".to_string(),
             "Provider A".to_string(),
@@ -13842,7 +13873,7 @@ base_url = "https://api.openai.com/v1"
 
         let passthrough = source
             .transform_request_body(ForwarderRequestBodyTransformInput {
-                adapter: adapter.as_ref(),
+                adapter: &adapter,
                 body: json!({"model": "mapped-model", "messages": []}),
                 provider: &provider,
                 transform_plan: &no_transform_plan,
@@ -13862,7 +13893,7 @@ base_url = "https://api.openai.com/v1"
         };
         let claude_transformed = source
             .transform_request_body(ForwarderRequestBodyTransformInput {
-                adapter: adapter.as_ref(),
+                adapter: &adapter,
                 body: json!({"model": "mapped-model", "messages": []}),
                 provider: &provider,
                 transform_plan: &claude_transform_plan,
@@ -13882,7 +13913,7 @@ base_url = "https://api.openai.com/v1"
     #[test]
     fn forwarder_request_source_prefers_codex_chat_bridge_over_claude_body() {
         let source = default_forwarder_request_source();
-        let adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
         let provider = Provider::with_id(
             "codex-chat".to_string(),
             "Codex Chat".to_string(),
@@ -13908,7 +13939,7 @@ base_url = "https://api.openai.com/v1"
 
         let transformed = source
             .transform_request_body(ForwarderRequestBodyTransformInput {
-                adapter: adapter.as_ref(),
+                adapter: &adapter,
                 body: json!({
                     "model": "client-model",
                     "instructions": "Stay concise.",
@@ -13929,13 +13960,13 @@ base_url = "https://api.openai.com/v1"
     #[test]
     fn forwarder_request_source_projects_transform_plan() {
         let source = default_forwarder_request_source();
-        let claude_adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
-        let codex_adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
+        let claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let codex_adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
         let claude_adapter_facts = source.adapter_facts(ForwarderAdapterFactsInput {
-            adapter: claude_adapter.as_ref(),
+            adapter: &claude_adapter,
         });
         let codex_adapter_facts = source.adapter_facts(ForwarderAdapterFactsInput {
-            adapter: codex_adapter.as_ref(),
+            adapter: &codex_adapter,
         });
         let mut claude_provider = Provider::with_id(
             "claude-provider".to_string(),
@@ -13950,7 +13981,7 @@ base_url = "https://api.openai.com/v1"
 
         let resolved_plan = source.transform_plan(ForwarderTransformPlanInput {
             app_type: &AppType::Claude,
-            adapter: claude_adapter.as_ref(),
+            adapter: &claude_adapter,
             endpoint: "/v1/messages",
             provider: &claude_provider,
             resolved_claude_api_format: Some("gemini_native"),
@@ -13971,7 +14002,7 @@ base_url = "https://api.openai.com/v1"
 
         let fallback_plan = source.transform_plan(ForwarderTransformPlanInput {
             app_type: &AppType::Claude,
-            adapter: claude_adapter.as_ref(),
+            adapter: &claude_adapter,
             endpoint: "/v1/messages",
             provider: &claude_provider,
             resolved_claude_api_format: None,
@@ -13992,7 +14023,7 @@ base_url = "https://api.openai.com/v1"
 
         let codex_plan = source.transform_plan(ForwarderTransformPlanInput {
             app_type: &AppType::Codex,
-            adapter: codex_adapter.as_ref(),
+            adapter: &codex_adapter,
             endpoint: "/v1/chat/completions",
             provider: &claude_provider,
             resolved_claude_api_format: None,
@@ -14048,7 +14079,7 @@ base_url = "https://api.openai.com/v1"
     #[test]
     fn forwarder_request_source_plans_codex_upstream_url() {
         let source = default_forwarder_request_source();
-        let adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
         let body = json!({});
         let param_overrides = json!({"api-version": "2026-06-21"});
         let transform_plan = ForwarderTransformPlan {
@@ -14061,7 +14092,7 @@ base_url = "https://api.openai.com/v1"
         };
 
         let plan = source.plan_upstream_url(ForwarderUpstreamUrlInput {
-            adapter: adapter.as_ref(),
+            adapter: &adapter,
             base_url: "https://api.openai.com/v1/chat/completions",
             endpoint: "/v1/responses?foo=bar&api-version=old",
             is_full_url: false,
@@ -14244,7 +14275,7 @@ base_url = "https://api.openai.com/v1"
             default_managed_account_runtime_source(),
             Arc::new(ChannelHeaderAuthProvider),
         );
-        let adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
         let provider = Provider::with_id(
             "provider-a".to_string(),
             "Provider A".to_string(),
@@ -14278,7 +14309,7 @@ base_url = "https://api.openai.com/v1"
 
         let resolved = source
             .resolve_upstream_auth_headers(ForwarderAuthHeadersInput {
-                adapter: adapter.as_ref(),
+                adapter: &adapter,
                 app_type: &AppType::Claude,
                 method: &method,
                 endpoint: "/v1/messages",
@@ -14313,7 +14344,7 @@ base_url = "https://api.openai.com/v1"
         let source = forwarder_auth_source_from_managed_account_runtime_source(Arc::new(
             StaticManagedAuthResolutionSource,
         ));
-        let adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
         let provider = provider_with_managed_account_binding("codex_oauth", "codex-acct");
         let attempt = ForwardAttempt::from_provider(provider);
         let method = Method::POST;
@@ -14322,7 +14353,7 @@ base_url = "https://api.openai.com/v1"
 
         let without_client_session = source
             .resolve_upstream_auth_headers(ForwarderAuthHeadersInput {
-                adapter: adapter.as_ref(),
+                adapter: &adapter,
                 app_type: &AppType::Claude,
                 method: &method,
                 endpoint: "/v1/messages",
@@ -14342,7 +14373,7 @@ base_url = "https://api.openai.com/v1"
 
         let with_client_session = source
             .resolve_upstream_auth_headers(ForwarderAuthHeadersInput {
-                adapter: adapter.as_ref(),
+                adapter: &adapter,
                 app_type: &AppType::Claude,
                 method: &method,
                 endpoint: "/v1/messages",
@@ -14388,7 +14419,7 @@ base_url = "https://api.openai.com/v1"
         let source = forwarder_auth_source_from_managed_account_runtime_source(Arc::new(
             StaticManagedAuthResolutionSource,
         ));
-        let adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
         let provider = provider_with_managed_account_binding("github_copilot", "copilot-acct");
         let attempt = ForwardAttempt::from_provider(provider);
         let method = Method::POST;
@@ -14397,7 +14428,7 @@ base_url = "https://api.openai.com/v1"
 
         let resolved = source
             .resolve_upstream_auth_headers(ForwarderAuthHeadersInput {
-                adapter: adapter.as_ref(),
+                adapter: &adapter,
                 app_type: &AppType::Claude,
                 method: &method,
                 endpoint: "/v1/messages",
@@ -21142,14 +21173,15 @@ command = "latest-command"
         let codex_adapter = crate::proxy::providers::CodexAdapter::new();
         assert_eq!(forwarder_provider_adapter_name(&claude_adapter), "Claude");
         assert_eq!(forwarder_provider_adapter_name(&codex_adapter), "Codex");
-        let forwarder_claude_adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let forwarder_claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
         assert_eq!(
-            forwarder_provider_adapter_name(forwarder_claude_adapter.as_ref()),
+            forwarder_claude_adapter.facts().adapter_name,
             "Claude"
         );
-        let forwarder_fallback_adapter = forwarder_provider_adapter_for_app(&AppType::Hermes);
+        let forwarder_fallback_adapter =
+            forwarder_provider_adapter_context_for_app(&AppType::Hermes);
         assert_eq!(
-            forwarder_provider_adapter_name(forwarder_fallback_adapter.as_ref()),
+            forwarder_fallback_adapter.facts().adapter_name,
             "Codex"
         );
         let codex_provider = Provider::with_id(
