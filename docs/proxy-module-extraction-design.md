@@ -1523,6 +1523,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1081. `/proxy/v1/channels/{channel_id}` 与 `/proxy/v1/channels/{channel_id}/models` 已补充 `ProxyServer::start` 级 runtime smoke：真实本机监听端口验证单 channel PATCH/GET、模型 PUT/GET，以及临时 channel DELETE，补齐外部中转管理面最小 CRUD contract。
 1082. 管理 API bearer 鉴权已补充 `ProxyServer::start` 级 runtime smoke：`0.0.0.0` public listener 下无 token 与错误 token 请求 `/proxy/v1/apps` 均返回 401，配置 token 的 bearer 请求返回 200，固定外部宿主暴露管理面时的安全 contract。
 1083. `/claude-desktop/v1/models` 已补充 `ProxyServer::start` 级 runtime smoke：内存 DB 配置 Claude Desktop gateway provider 与 gateway token 后，真实本机监听端口验证无 bearer 返回 401、有效 bearer 返回模型列表和 `supports1m` contract。
+1084. 稳定管理接口表已将 `/proxy/v1/groups` 修正为 GET-only：当前 route group 是 `proxy_channels.groups_json` 的聚合视图，创建和变更入口统一走 channel create/patch 的 `groups` 字段，不再误导外部中转宿主实现独立 group create API。
 
 ## 背景
 
@@ -2357,7 +2358,7 @@ CC Switch 桌面宿主通过 adapter-owned `CcSwitchModelCatalogProvider::load_c
 | `/proxy/v1/channels/{channel_id}/test` | POST | 使用指定模型和接口测试该 channel |
 | `/proxy/v1/channels/{channel_id}/breakers/stats` | GET | 查询 channel 运行时熔断器统计 |
 | `/proxy/v1/channels/{channel_id}/breakers/reset` | POST | 重置 channel 熔断器 |
-| `/proxy/v1/groups` | GET/POST | route group 列表和创建 |
+| `/proxy/v1/groups` | GET | route group 列表；group 由 channel create/patch 的 `groups` 字段声明和变更 |
 | `/proxy/v1/route/resolve` | POST | dry-run 路由解析，返回候选 channel 和淘汰原因 |
 | `/proxy/v1/apps/{app}/routes/current` | GET | 当前实际 route/provider/channel |
 | `/proxy/v1/events` | GET | SSE 事件流，供外部监控 |
