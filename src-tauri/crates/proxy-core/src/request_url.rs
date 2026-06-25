@@ -1,6 +1,6 @@
 use crate::{
     domain::{AppKind, ProviderKind, CODEX_OAUTH_CLAUDE_BASE_URL},
-    gemini_url::normalize_gemini_model_id,
+    gemini_url::{normalize_gemini_model_id, resolve_gemini_native_url},
 };
 use serde_json::Value;
 use std::fmt::Write as _;
@@ -24,6 +24,26 @@ pub struct ClaudeTransformEndpointRewriteInput<'a> {
     pub is_copilot: bool,
     pub gemini_model: Option<&'a str>,
     pub gemini_stream: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ForwardUpstreamUrlPlanInput<'a> {
+    pub base_url: &'a str,
+    pub endpoint: &'a str,
+    pub is_full_url: bool,
+    pub codex_responses_to_chat: bool,
+    pub use_claude_transform: bool,
+    pub is_copilot: bool,
+    pub claude_api_format: Option<&'a str>,
+    pub body: &'a Value,
+    pub channel_param_overrides: Option<&'a Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwardUpstreamUrlPlan {
+    pub effective_endpoint: String,
+    pub passthrough_query: Option<String>,
+    pub url: String,
 }
 
 pub fn claude_transform_endpoint_rewrite_input_from_body<'a>(
@@ -348,6 +368,51 @@ pub fn rewrite_claude_transform_endpoint(
     }
 }
 
+pub fn forward_upstream_url_plan(
+    input: ForwardUpstreamUrlPlanInput<'_>,
+    build_adapter_url: impl FnOnce(&str, &str) -> String,
+) -> ForwardUpstreamUrlPlan {
+    let (effective_endpoint, passthrough_query) = if input.codex_responses_to_chat {
+        rewrite_codex_responses_endpoint_to_chat(input.endpoint).into_parts()
+    } else if input.use_claude_transform {
+        let api_format = input.claude_api_format.unwrap_or("anthropic");
+        rewrite_claude_transform_endpoint(claude_transform_endpoint_rewrite_input_from_body(
+            input.endpoint,
+            api_format,
+            input.is_copilot,
+            input.body,
+        ))
+        .into_parts()
+    } else {
+        (
+            input.endpoint.to_string(),
+            split_endpoint_and_query(input.endpoint)
+                .1
+                .map(ToString::to_string),
+        )
+    };
+
+    let codex_chat_base_is_full_endpoint =
+        is_codex_chat_full_endpoint_base(input.codex_responses_to_chat, input.base_url);
+    let mut url = if matches!(input.claude_api_format, Some("gemini_native")) {
+        resolve_gemini_native_url(input.base_url, &effective_endpoint, input.is_full_url)
+    } else if input.is_full_url || codex_chat_base_is_full_endpoint {
+        append_query_to_full_url(input.base_url, passthrough_query.as_deref())
+    } else {
+        build_adapter_url(input.base_url, &effective_endpoint)
+    };
+
+    if let Some(param_overrides) = input.channel_param_overrides {
+        url = apply_channel_param_overrides_to_url(&url, param_overrides);
+    }
+
+    ForwardUpstreamUrlPlan {
+        effective_endpoint,
+        passthrough_query,
+        url,
+    }
+}
+
 pub fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
     let segments: Vec<&str> = endpoint.split('/').collect();
     segments
@@ -478,7 +543,7 @@ mod tests {
         append_query_to_endpoint_path, append_query_to_full_url,
         apply_channel_param_overrides_to_url, build_claude_upstream_url, build_codex_upstream_url,
         claude_transform_endpoint_rewrite_input_from_body, extract_gemini_model_from_path,
-        interface_kind_for_forward, invalid_upstream_url_error_message,
+        forward_upstream_url_plan, interface_kind_for_forward, invalid_upstream_url_error_message,
         is_codex_chat_completions_url, is_codex_chat_full_endpoint_base, is_codex_chat_wire_api,
         is_codex_responses_endpoint, is_github_copilot_upstream, is_origin_only_url,
         merge_query_params, request_model_for_forward,
@@ -486,7 +551,7 @@ mod tests {
         rewrite_claude_transform_endpoint, rewrite_codex_responses_endpoint_to_chat,
         should_convert_codex_responses_endpoint_to_chat, should_resolve_copilot_dynamic_endpoint,
         split_endpoint_and_query, strip_beta_query, strip_endpoint_prefix, AppKind,
-        ClaudeTransformEndpointRewriteInput,
+        ClaudeTransformEndpointRewriteInput, ForwardUpstreamUrlPlanInput,
     };
     use crate::domain::CODEX_OAUTH_CLAUDE_BASE_URL;
     use serde_json::json;
@@ -804,6 +869,65 @@ mod tests {
 
         assert_eq!(rewrite.endpoint, "/chat/completions?foo=bar");
         assert_eq!(rewrite.passthrough_query.as_deref(), Some("foo=bar"));
+    }
+
+    #[test]
+    fn plans_codex_chat_full_endpoint_url_with_channel_param_overrides() {
+        let plan = forward_upstream_url_plan(
+            ForwardUpstreamUrlPlanInput {
+                base_url: "https://api.openai.com/v1/chat/completions",
+                endpoint: "/v1/responses?foo=bar&api-version=old",
+                is_full_url: false,
+                codex_responses_to_chat: true,
+                use_claude_transform: false,
+                is_copilot: false,
+                claude_api_format: None,
+                body: &json!({}),
+                channel_param_overrides: Some(&json!({"api-version": "2026-06-21"})),
+            },
+            |base_url, effective_endpoint| format!("{base_url}{effective_endpoint}"),
+        );
+
+        assert_eq!(
+            plan.effective_endpoint,
+            "/chat/completions?foo=bar&api-version=old"
+        );
+        assert_eq!(
+            plan.passthrough_query.as_deref(),
+            Some("foo=bar&api-version=old")
+        );
+        assert_eq!(
+            plan.url,
+            "https://api.openai.com/v1/chat/completions?foo=bar&api-version=2026-06-21"
+        );
+    }
+
+    #[test]
+    fn plans_gemini_native_full_url_with_stream_query() {
+        let plan = forward_upstream_url_plan(
+            ForwardUpstreamUrlPlanInput {
+                base_url: "https://relay.example/custom/generate-content",
+                endpoint: "/v1/messages?beta=true",
+                is_full_url: true,
+                codex_responses_to_chat: false,
+                use_claude_transform: true,
+                is_copilot: false,
+                claude_api_format: Some("gemini_native"),
+                body: &json!({"model": "gemini-2.5-flash", "stream": true}),
+                channel_param_overrides: None,
+            },
+            |base_url, effective_endpoint| format!("{base_url}{effective_endpoint}"),
+        );
+
+        assert_eq!(
+            plan.effective_endpoint,
+            "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
+        );
+        assert_eq!(plan.passthrough_query.as_deref(), Some("alt=sse"));
+        assert_eq!(
+            plan.url,
+            "https://relay.example/custom/generate-content?alt=sse"
+        );
     }
 
     #[test]

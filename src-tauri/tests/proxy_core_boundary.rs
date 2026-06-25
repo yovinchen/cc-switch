@@ -3479,6 +3479,52 @@ fn production_forwarder_delegates_upstream_url_planning_to_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let impl_slice = function_slice(
+        &source,
+        "impl ForwarderRequestSource for CcSwitchForwarderRequestSource",
+        "pub(crate) fn anthropic_redacted_thinking_placeholder",
+    );
+    let function = function_slice(
+        impl_slice,
+        "fn plan_upstream_url(&self, input: ForwarderUpstreamUrlInput<'_>) -> ForwardUpstreamUrlPlan",
+        "fn prepare_copilot_request_optimization",
+    );
+
+    assert!(
+        function.contains("forward_upstream_url_plan("),
+        "ForwarderRequestSource should delegate upstream URL planning to proxy-core"
+    );
+
+    for marker in [
+        "pub(crate) struct ForwardUpstreamUrlPlanInput",
+        "pub(crate) struct ForwardUpstreamUrlPlan",
+        "pub(crate) fn forward_upstream_url_plan(",
+    ] {
+        assert!(
+            !source.contains(marker),
+            "proxy_core_adapter must not keep upstream URL plan policy marker `{marker}`"
+        );
+    }
+
+    for marker in [
+        "rewrite_claude_transform_endpoint(",
+        "append_query_to_full_url(",
+        "apply_channel_param_overrides_to_url(",
+        "is_codex_chat_full_endpoint_base(",
+        "resolve_gemini_native_url(",
+    ] {
+        assert!(
+            !function.contains(marker),
+            "ForwarderRequestSource::plan_upstream_url must not inline upstream URL policy marker `{marker}`"
+        );
+    }
+}
+
+#[test]
 fn production_forwarder_delegates_claude_provider_helpers_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");

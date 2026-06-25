@@ -2653,45 +2653,41 @@ pub(crate) use crate::proxy_core::api::transport::{
     UpstreamJsonBodySource, UpstreamSseAggregationKind,
 };
 pub(crate) use crate::proxy_core::api::transport::{
-    append_query_to_full_url, apply_bedrock_pre_send_optimizers,
-    apply_forwarder_media_prevention_from_facts, auth_provider_proxy_request_from_context,
-    apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
+    apply_bedrock_pre_send_optimizers, apply_forwarder_media_prevention_from_facts,
+    auth_provider_proxy_request_from_context, apply_copilot_warmup_model_override,
+    bedrock_env_flag_from_provider_settings,
     build_claude_provider_auth_headers, build_claude_upstream_url,
     build_codex_provider_auth_headers, build_codex_upstream_url,
     build_forward_attempt_limit_reached_log, build_gemini_provider_auth_headers,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     categorize_forward_failure,
-    classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
-    AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
+    classify_copilot_request, AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
     forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
-    forwarder_all_providers_circuit_open_log_line,
+    forward_upstream_url_plan, forwarder_all_providers_circuit_open_log_line,
     forwarder_failure_log_line as core_forwarder_failure_log_line,
     forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
     forwarder_no_available_provider_status_message as core_forwarder_no_available_provider_status_message,
     forwarder_no_providers_configured_log_line,
-    forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
     forwarder_rectifier_error_message as core_forwarder_rectifier_error_message,
     forwarder_rectifier_retry_failure_label as core_forwarder_rectifier_retry_failure_label,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
+    forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
     forwarder_terminal_failure_status_message as core_forwarder_terminal_failure_status_message,
     forwarder_transform_plan_from_facts, ForwarderRectifierErrorInput,
-    ForwarderRequestBodyTransformAction,
+    ForwarderRequestBodyTransformAction, ForwardUpstreamUrlPlan, ForwardUpstreamUrlPlanInput,
     invalid_upstream_url_error_message,
-    is_codex_chat_full_endpoint_base, is_openai_o_series, is_unsupported_image_error,
-    merge_copilot_tool_results,
+    is_openai_o_series, is_unsupported_image_error, merge_copilot_tool_results,
     prepare_optional_copilot_auth_optimization_for_forwarder,
     parse_json_request_body, parse_json_request_body_or_null,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     request_body_filter_log_message, request_body_read_error_message,
     request_body_serialize_error_message, resolve_codex_provider_uses_chat_completions,
     resolve_auth_provider_headers,
-    rewrite_claude_transform_endpoint, sanitize_copilot_orphan_tool_results,
-    should_apply_bedrock_pre_send_optimizer, should_convert_codex_responses_endpoint_to_chat,
-    should_failover_after_rectifier_retry_failure,
+    sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
+    should_convert_codex_responses_endpoint_to_chat, should_failover_after_rectifier_retry_failure,
     should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-    split_endpoint_and_query, strip_copilot_thinking_blocks, supports_reasoning_effort,
-    UNSUPPORTED_IMAGE_MARKER,
+    strip_copilot_thinking_blocks, supports_reasoning_effort, UNSUPPORTED_IMAGE_MARKER,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::build_claude_auth_headers;
@@ -2703,6 +2699,11 @@ pub(crate) use crate::proxy_core::api::transport::build_codex_bearer_auth_header
 pub(crate) use crate::proxy_core::api::transport::build_codex_oauth_session_headers;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::build_gemini_auth_headers;
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transport::{
+    append_query_to_full_url, claude_transform_endpoint_rewrite_input_from_body,
+    rewrite_claude_transform_endpoint,
+};
 pub(crate) use crate::proxy_core::api::transport::{
     extract_gemini_model_from_path, request_model_for_forward,
 };
@@ -10405,7 +10406,7 @@ pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_ca
 pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_selection;
 
 pub(crate) use crate::proxy_core::api::transport::{
-    apply_channel_param_overrides_to_url, resolve_channel_response_status_mapping,
+    resolve_channel_response_status_mapping,
 };
 
 pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_code;
@@ -10650,78 +10651,15 @@ pub(crate) fn apply_forward_request_model_mapping_from_provider(
     Ok(apply_provider_model_mapping_from_provider(body, provider))
 }
 
+#[cfg(test)]
 pub(crate) fn rewrite_codex_responses_endpoint_to_chat(endpoint: &str) -> (String, Option<String>) {
     crate::proxy_core::api::transport::rewrite_codex_responses_endpoint_to_chat(endpoint)
         .into_parts()
 }
 
-pub(crate) struct ForwardUpstreamUrlPlanInput<'a> {
-    pub(crate) base_url: &'a str,
-    pub(crate) endpoint: &'a str,
-    pub(crate) is_full_url: bool,
-    pub(crate) codex_responses_to_chat: bool,
-    pub(crate) use_claude_transform: bool,
-    pub(crate) is_copilot: bool,
-    pub(crate) claude_api_format: Option<&'a str>,
-    pub(crate) body: &'a Value,
-    pub(crate) channel_param_overrides: Option<&'a Value>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ForwardUpstreamUrlPlan {
-    pub(crate) effective_endpoint: String,
-    pub(crate) passthrough_query: Option<String>,
-    pub(crate) url: String,
-}
-
-pub(crate) fn forward_upstream_url_plan(
-    input: ForwardUpstreamUrlPlanInput<'_>,
-    build_adapter_url: impl FnOnce(&str, &str) -> String,
-) -> ForwardUpstreamUrlPlan {
-    let (effective_endpoint, passthrough_query) = if input.codex_responses_to_chat {
-        rewrite_codex_responses_endpoint_to_chat(input.endpoint)
-    } else if input.use_claude_transform {
-        let api_format = input.claude_api_format.unwrap_or("anthropic");
-        rewrite_claude_transform_endpoint(claude_transform_endpoint_rewrite_input_from_body(
-            input.endpoint,
-            api_format,
-            input.is_copilot,
-            input.body,
-        ))
-        .into_parts()
-    } else {
-        (
-            input.endpoint.to_string(),
-            split_endpoint_and_query(input.endpoint)
-                .1
-                .map(ToString::to_string),
-        )
-    };
-
-    let codex_chat_base_is_full_endpoint =
-        is_codex_chat_full_endpoint_base(input.codex_responses_to_chat, input.base_url);
-    let mut url = if matches!(input.claude_api_format, Some("gemini_native")) {
-        resolve_gemini_native_url(input.base_url, &effective_endpoint, input.is_full_url)
-    } else if input.is_full_url || codex_chat_base_is_full_endpoint {
-        append_query_to_full_url(input.base_url, passthrough_query.as_deref())
-    } else {
-        build_adapter_url(input.base_url, &effective_endpoint)
-    };
-
-    if let Some(param_overrides) = input.channel_param_overrides {
-        url = apply_channel_param_overrides_to_url(&url, param_overrides);
-    }
-
-    ForwardUpstreamUrlPlan {
-        effective_endpoint,
-        passthrough_query,
-        url,
-    }
-}
-
-pub(crate) use crate::proxy_core::api::transforms::{
-    claude_api_format_needs_transform, resolve_gemini_native_url,
-};
+pub(crate) use crate::proxy_core::api::transforms::claude_api_format_needs_transform;
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transforms::resolve_gemini_native_url;
 
 pub(crate) use crate::proxy_core::api::transport::{
     anthropic_beta_header_value, build_upstream_request_headers,
