@@ -2708,6 +2708,7 @@ pub(crate) use crate::proxy_core::api::transport::build_copilot_auth_headers;
 pub(crate) use crate::proxy_core::api::transport::build_gemini_auth_headers;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::interface_kind_for_forward;
+pub(crate) use crate::proxy_core::api::transport::parse_custom_user_agent;
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_endpoint_path, parse_upstream_json_or_unlabeled_sse,
     rebuilt_json_proxy_response, strip_endpoint_prefix, transformed_sse_proxy_response, ProxyBody,
@@ -10929,7 +10930,7 @@ pub(crate) fn provider_custom_user_agent_header(
 }
 
 pub(crate) fn model_fetch_custom_user_agent_header(raw: Option<&str>) -> Option<http::HeaderValue> {
-    crate::provider::parse_custom_user_agent(raw).ok().flatten()
+    parse_custom_user_agent(raw).ok().flatten()
 }
 
 pub(crate) fn forwarder_custom_user_agent_header(

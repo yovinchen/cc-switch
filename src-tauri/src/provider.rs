@@ -472,7 +472,7 @@ pub struct ProviderMeta {
     pub github_account_id: Option<String>,
 }
 
-/// 解析 Provider 级自定义 User-Agent 字符串（单一真理来源）。
+/// 解析 Provider 级自定义 User-Agent 字符串（兼容入口，策略由 proxy-core 维护）。
 ///
 /// 转发（forwarder）、流式检测（stream_check）、获取模型列表（model_fetch）三条路径
 /// 共用同一口径，避免出现"某条路径用了 UA、另一条没用 / 报错"的不一致。
@@ -490,10 +490,7 @@ pub struct ProviderMeta {
 pub fn parse_custom_user_agent(
     raw: Option<&str>,
 ) -> Result<Option<HeaderValue>, InvalidHeaderValue> {
-    match raw.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(ua) => HeaderValue::from_str(ua).map(Some),
-        None => Ok(None),
-    }
+    crate::proxy_core_adapter::parse_custom_user_agent(raw)
 }
 
 impl ProviderMeta {

@@ -51,6 +51,15 @@ const COPILOT_FINGERPRINT_REQUEST_HEADERS: &[&str] = &[
 pub const CLAUDE_CODE_BETA: &str = "claude-code-20250219";
 pub const DEFAULT_ANTHROPIC_VERSION: &str = "2023-06-01";
 
+pub fn parse_custom_user_agent(
+    raw: Option<&str>,
+) -> Result<Option<http::HeaderValue>, http::header::InvalidHeaderValue> {
+    match raw.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(user_agent) => http::HeaderValue::from_str(user_agent).map(Some),
+        None => Ok(None),
+    }
+}
+
 pub struct UpstreamRequestHeadersInput<'a> {
     pub inbound_headers: &'a http::HeaderMap,
     pub upstream_host: Option<&'a str>,
@@ -720,10 +729,11 @@ mod tests {
         build_gemini_auth_headers, build_gemini_provider_auth_headers, build_upstream_auth_headers,
         build_upstream_request_headers, claude_auth_header_kind_for_provider_strategy,
         is_official_codex_client_user_agent, should_log_copilot_subagent_auth_override,
-        should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-        should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
-        upstream_host_header_from_url, AuthProviderHeaderResolution, ClaudeAuthHeaderKind,
-        ClaudeProviderAuthHeadersInput, CopilotAuthHeaderOverrideFacts,
+        parse_custom_user_agent, should_preserve_exact_request_header_case,
+        should_send_anthropic_request_headers, should_skip_copilot_fingerprint_request_header,
+        should_strip_forwarded_request_header, upstream_host_header_from_url,
+        AuthProviderHeaderResolution, ClaudeAuthHeaderKind, ClaudeProviderAuthHeadersInput,
+        CopilotAuthHeaderOverrideFacts,
         CopilotAuthHeaderOverrides, CopilotAuthHeadersInput, UpstreamAuthHeadersInput,
         UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
         resolve_auth_provider_headers,
@@ -733,6 +743,20 @@ mod tests {
     use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
     use http::{header, HeaderMap, HeaderName, HeaderValue};
     use serde_json::json;
+
+    #[test]
+    fn parse_custom_user_agent_trims_blank_accepts_unicode_and_rejects_newline() {
+        assert_eq!(parse_custom_user_agent(None).unwrap(), None);
+        assert_eq!(parse_custom_user_agent(Some("   ")).unwrap(), None);
+
+        let user_agent = parse_custom_user_agent(Some(" cc-switch/1.0\t中文 "))
+            .expect("valid user agent")
+            .expect("non-empty header");
+        assert_eq!(user_agent.as_bytes(), "cc-switch/1.0\t中文".as_bytes());
+
+        assert!(parse_custom_user_agent(Some("bad\nua")).is_err());
+        assert!(parse_custom_user_agent(Some("bad\u{7f}ua")).is_err());
+    }
 
     #[test]
     fn preserves_exact_header_case_for_native_claude_or_unknown_claude_format() {

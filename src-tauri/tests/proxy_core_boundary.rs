@@ -5264,6 +5264,31 @@ fn model_fetch_command_delegates_user_agent_parsing_to_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_custom_user_agent_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let provider_path = manifest_dir.join("src/provider.rs");
+    let provider_source = fs::read_to_string(&provider_path).expect("read provider.rs");
+
+    assert!(
+        adapter_source
+            .contains("pub(crate) use crate::proxy_core::api::transport::parse_custom_user_agent"),
+        "proxy_core_adapter should expose the core custom User-Agent parser"
+    );
+    assert!(
+        !adapter_source.contains("crate::provider::parse_custom_user_agent(")
+            && !adapter_source.contains("HeaderValue::from_str("),
+        "proxy_core_adapter must not own or call host-local custom User-Agent parsing policy"
+    );
+    assert!(
+        provider_source.contains("crate::proxy_core_adapter::parse_custom_user_agent(raw)")
+            && !provider_source.contains("HeaderValue::from_str("),
+        "provider.rs should keep only a compatibility wrapper around the adapter/core User-Agent parser"
+    );
+}
+
+#[test]
 fn production_stream_check_delegates_provider_adapters_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/services/stream_check.rs");
