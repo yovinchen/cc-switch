@@ -25,10 +25,11 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::proxy_core_adapter::{
-    copilot_api_base, copilot_composite_account_id, copilot_github_client_id,
-    copilot_github_device_code_url, copilot_github_oauth_token_url, copilot_github_user_url,
-    copilot_token_url, copilot_usage_url, is_copilot_ghes_domain, normalize_github_domain,
-    parse_copilot_models_response_bytes, CopilotModel, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION,
+    copilot_api_base, copilot_api_endpoint_from_usage_or_default, copilot_composite_account_id,
+    copilot_github_client_id, copilot_github_device_code_url, copilot_github_oauth_token_url,
+    copilot_github_user_url, copilot_token_url, copilot_usage_response_endpoint, copilot_usage_url,
+    is_copilot_ghes_domain, normalize_github_domain, parse_copilot_models_response_bytes,
+    parse_copilot_usage_response_bytes, CopilotModel, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION,
     COPILOT_PLUGIN_VERSION, COPILOT_PUBLIC_GITHUB_DOMAIN, COPILOT_USER_AGENT,
 };
 
@@ -37,53 +38,7 @@ const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;
 /// Token 刷新提前量（秒）
 const TOKEN_REFRESH_BUFFER_SECONDS: i64 = 60;
 
-/// Copilot 使用量响应
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CopilotUsageResponse {
-    /// Copilot 计划类型
-    pub copilot_plan: String,
-    /// 配额重置日期
-    pub quota_reset_date: String,
-    /// 配额快照
-    pub quota_snapshots: QuotaSnapshots,
-    /// API 端点信息 (用于动态获取 API URL)
-    #[serde(default)]
-    pub endpoints: Option<CopilotEndpoints>,
-}
-
-/// Copilot API 端点信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CopilotEndpoints {
-    /// API 端点 URL
-    pub api: String,
-    /// Telemetry 端点 URL
-    #[serde(default)]
-    pub telemetry: Option<String>,
-}
-
-/// 配额快照
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QuotaSnapshots {
-    /// Chat 配额
-    pub chat: QuotaDetail,
-    /// Completions 配额
-    pub completions: QuotaDetail,
-    /// Premium 交互配额
-    pub premium_interactions: QuotaDetail,
-}
-
-/// 配额详情
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QuotaDetail {
-    /// 总配额
-    pub entitlement: i64,
-    /// 剩余配额
-    pub remaining: i64,
-    /// 剩余百分比
-    pub percent_remaining: f64,
-    /// 是否无限
-    pub unlimited: bool,
-}
+pub use crate::proxy_core_adapter::CopilotUsageResponse;
 
 /// Copilot 认证错误
 #[derive(Debug, thiserror::Error)]
@@ -804,15 +759,14 @@ impl CopilotAuthManager {
             )));
         }
 
-        let usage: CopilotUsageResponse = response
-            .json()
-            .await
+        let body = response.bytes().await?;
+        let usage = parse_copilot_usage_response_bytes(&body)
             .map_err(|e| CopilotAuthError::ParseError(e.to_string()))?;
 
         // 存储动态 API 端点（如果有）
-        if let Some(ref endpoints) = usage.endpoints {
+        if let Some(endpoint) = copilot_usage_response_endpoint(&usage) {
             let mut api_endpoints = self.api_endpoints.write().await;
-            api_endpoints.insert(account_id.to_string(), endpoints.api.clone());
+            api_endpoints.insert(account_id.to_string(), endpoint.to_string());
             // 使用 debug 级别避免在日志中暴露企业内部域名
             log::debug!("[CopilotAuth] 账号 {account_id} 已保存动态 API 端点");
         }
@@ -918,15 +872,11 @@ impl CopilotAuthManager {
             )));
         }
 
-        let usage: CopilotUsageResponse = response
-            .json()
-            .await
+        let body = response.bytes().await?;
+        let usage = parse_copilot_usage_response_bytes(&body)
             .map_err(|e| CopilotAuthError::ParseError(e.to_string()))?;
 
-        let endpoint = match usage.endpoints {
-            Some(endpoints) => endpoints.api.clone(),
-            None => copilot_api_base(&domain),
-        };
+        let endpoint = copilot_api_endpoint_from_usage_or_default(&usage, &domain);
 
         // 缓存端点（包括默认值），避免重复请求
         let mut api_endpoints = self.api_endpoints.write().await;

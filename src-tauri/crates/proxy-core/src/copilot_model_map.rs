@@ -36,6 +36,44 @@ struct CopilotModelsResponseItem {
     model_picker_enabled: bool,
 }
 
+/// Copilot usage/quota response returned by `/copilot_internal/user`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CopilotUsageResponse {
+    /// Copilot plan label.
+    pub copilot_plan: String,
+    /// Quota reset date reported by upstream.
+    pub quota_reset_date: String,
+    /// Quota snapshots grouped by feature.
+    pub quota_snapshots: QuotaSnapshots,
+    /// Optional dynamic API endpoints for this account.
+    #[serde(default)]
+    pub endpoints: Option<CopilotEndpoints>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CopilotEndpoints {
+    /// API endpoint URL.
+    pub api: String,
+    /// Optional telemetry endpoint URL.
+    #[serde(default)]
+    pub telemetry: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct QuotaSnapshots {
+    pub chat: QuotaDetail,
+    pub completions: QuotaDetail,
+    pub premium_interactions: QuotaDetail,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct QuotaDetail {
+    pub entitlement: i64,
+    pub remaining: i64,
+    pub percent_remaining: f64,
+    pub unlimited: bool,
+}
+
 /// 归一化客户端 model ID 为 Copilot upstream 接受的形式。
 /// 返回 `None` 表示无需变换（已归一化、非 Claude 4.x 系列、或空输入）。
 pub fn normalize_copilot_model_id(client_id: &str) -> Option<String> {
@@ -93,6 +131,10 @@ pub fn parse_copilot_models_response_bytes(body: &[u8]) -> Result<Vec<CopilotMod
             model_picker_enabled: model.model_picker_enabled,
         })
         .collect())
+}
+
+pub fn parse_copilot_usage_response_bytes(body: &[u8]) -> Result<CopilotUsageResponse, String> {
+    serde_json::from_slice(body).map_err(|e| e.to_string())
 }
 
 /// Normalize a GitHub or GHES domain entered for Copilot OAuth.
@@ -171,6 +213,21 @@ pub fn copilot_api_base(domain: &str) -> String {
     } else {
         format!("https://copilot-api.{domain}")
     }
+}
+
+pub fn copilot_api_endpoint_from_usage_or_default(
+    usage: &CopilotUsageResponse,
+    domain: &str,
+) -> String {
+    usage
+        .endpoints
+        .as_ref()
+        .map(|endpoints| endpoints.api.clone())
+        .unwrap_or_else(|| copilot_api_base(domain))
+}
+
+pub fn copilot_usage_response_endpoint(usage: &CopilotUsageResponse) -> Option<&str> {
+    usage.endpoints.as_ref().map(|endpoints| endpoints.api.as_str())
 }
 
 /// Build a stable Copilot account id.
@@ -461,6 +518,87 @@ mod tests {
                 vendor: "OpenAI".to_string(),
                 model_picker_enabled: true,
             }]
+        );
+    }
+
+    #[test]
+    fn parse_copilot_usage_response_preserves_quota_and_endpoint_contract() {
+        let body = br#"{
+            "copilot_plan": "business",
+            "quota_reset_date": "2026-07-01",
+            "quota_snapshots": {
+                "chat": {
+                    "entitlement": 1000,
+                    "remaining": 750,
+                    "percent_remaining": 75.0,
+                    "unlimited": false
+                },
+                "completions": {
+                    "entitlement": 500,
+                    "remaining": 500,
+                    "percent_remaining": 100.0,
+                    "unlimited": false
+                },
+                "premium_interactions": {
+                    "entitlement": 0,
+                    "remaining": 0,
+                    "percent_remaining": 0.0,
+                    "unlimited": true
+                }
+            },
+            "endpoints": {
+                "api": "https://copilot-api.enterprise.example.com",
+                "telemetry": "https://telemetry.enterprise.example.com"
+            }
+        }"#;
+
+        let usage = parse_copilot_usage_response_bytes(body).unwrap();
+
+        assert_eq!(usage.copilot_plan, "business");
+        assert_eq!(usage.quota_reset_date, "2026-07-01");
+        assert_eq!(usage.quota_snapshots.chat.remaining, 750);
+        assert_eq!(
+            copilot_usage_response_endpoint(&usage),
+            Some("https://copilot-api.enterprise.example.com")
+        );
+        assert_eq!(
+            copilot_api_endpoint_from_usage_or_default(&usage, "company.ghe.com"),
+            "https://copilot-api.enterprise.example.com"
+        );
+    }
+
+    #[test]
+    fn copilot_usage_endpoint_falls_back_to_domain_default() {
+        let usage = CopilotUsageResponse {
+            copilot_plan: "individual".to_string(),
+            quota_reset_date: "2026-07-01".to_string(),
+            quota_snapshots: QuotaSnapshots {
+                chat: QuotaDetail {
+                    entitlement: 1,
+                    remaining: 1,
+                    percent_remaining: 100.0,
+                    unlimited: false,
+                },
+                completions: QuotaDetail {
+                    entitlement: 1,
+                    remaining: 1,
+                    percent_remaining: 100.0,
+                    unlimited: false,
+                },
+                premium_interactions: QuotaDetail {
+                    entitlement: 1,
+                    remaining: 1,
+                    percent_remaining: 100.0,
+                    unlimited: false,
+                },
+            },
+            endpoints: None,
+        };
+
+        assert_eq!(copilot_usage_response_endpoint(&usage), None);
+        assert_eq!(
+            copilot_api_endpoint_from_usage_or_default(&usage, "company.ghe.com"),
+            "https://copilot-api.company.ghe.com"
         );
     }
 
