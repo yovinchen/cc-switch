@@ -3664,7 +3664,7 @@ pub(crate) fn restore_live_settings_for_provider_backfill(
     // switch-away backfill never erases it.
     settings = codex_live_settings_with_model_catalog(
         settings,
-        provider_model_catalog_raw_value(provider).cloned(),
+        provider.settings_config.get("modelCatalog").cloned(),
     );
 
     ProviderBackfillSettingsResult { settings, warnings }
@@ -3953,7 +3953,9 @@ pub(crate) fn apply_codex_takeover_fields_for_provider(
     let updated_config = codex_takeover_toml_config_for_provider(config_str, proxy_url, provider);
     config["config"] = json!(updated_config);
     if let Some(provider) = provider {
-        let model_catalog = provider_model_catalog_raw_value(provider)
+        let model_catalog = provider
+            .settings_config
+            .get("modelCatalog")
             .cloned()
             .unwrap_or_else(|| json!({ "models": [] }));
         if let Some(root) = config.as_object_mut() {
@@ -6691,10 +6693,6 @@ pub(crate) async fn claude_desktop_model_routes_from_router_source(
     let routes = crate::claude_desktop_config::proxy_model_routes(&provider)
         .map_err(|error| app_error("load claude desktop model routes", error))?;
     Ok(claude_desktop_model_routes_to_core_inputs(routes))
-}
-
-pub(crate) fn provider_model_catalog_raw_value(provider: &Provider) -> Option<&Value> {
-    provider.settings_config.get("modelCatalog")
 }
 
 pub(crate) fn codex_live_settings_with_model_catalog(
@@ -20217,13 +20215,9 @@ command = "latest-command"
             Err(ProxyCoreError::Internal(message))
                 if message == "select claude desktop provider: router failed"
         ));
-        assert_eq!(
-            provider_model_catalog_raw_value(&provider),
-            settings.get("modelCatalog")
-        );
         let mut live_config = codex_live_settings_with_model_catalog(
             json!({"auth": {}, "config": ""}),
-            provider_model_catalog_raw_value(&provider).cloned(),
+            provider.settings_config.get("modelCatalog").cloned(),
         );
         assert_eq!(
             live_config.get("modelCatalog"),
@@ -20255,7 +20249,9 @@ command = "latest-command"
             json!({"config": ""}),
             None,
         );
-        let fallback_model_catalog = provider_model_catalog_raw_value(&provider_without_catalog)
+        let fallback_model_catalog = provider_without_catalog
+            .settings_config
+            .get("modelCatalog")
             .cloned()
             .unwrap_or_else(|| json!({ "models": [] }));
         live_config =

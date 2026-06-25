@@ -832,7 +832,7 @@
 817. Claude Desktop proxy provider 的 credential shape 检测已改为 `proxy_core_adapter::provider_claude_desktop_proxy_has_base_url_and_key`：`claude_desktop_config` 继续负责本地化错误和模式验证，base URL/API key/settings/meta schema 读取集中在 adapter，typed OAuth provider 的无静态 key 放行语义保持精确。
 818. Claude Desktop 的 MiMo Anthropic thinking history normalize gate 已改为 `proxy_core_adapter::provider_should_normalize_mimo_anthropic_thinking_history`：`claude_desktop_config` 继续负责请求体改写，provider API format、MiMo 模型/endpoint 判定集中在 adapter。
 819. Claude Desktop direct/proxy provider 的配置兼容性 validation facts 已改为 `proxy_core_adapter::{provider_claude_desktop_direct_validation_issue,provider_claude_desktop_proxy_config_validation_issue}`：`claude_desktop_config` 继续负责本地化错误、route 校验与直连凭证提取，settings/meta schema 判定集中在 adapter。
-820. Codex switch-away backfill 的 DB-stored `modelCatalog` 原始值读取已改为 `proxy_core_adapter::provider_model_catalog_raw_value`：provider live backfill 继续负责写回策略，provider settings 内部字段投影集中在 adapter。
+820. Codex switch-away backfill 的 DB-stored `modelCatalog` 原始值读取已内联到 provider live backfill source：写回策略仍在 host 边界，provider settings 内部字段不再通过 adapter-local 单字段 getter 暴露。
 821. OpenClaw live 写入 fallback 的 raw provider shape 检测已改为 `proxy_core_adapter::provider_openclaw_has_live_provider_fields`：provider live 继续负责 typed parse/raw write 策略，`baseUrl`/`api`/`models` 字段存在性规则集中在 core/domain 与 adapter。
 822. Codex live 默认导入的 provider category 推断已改为 `proxy_core_adapter::provider_codex_imported_live_category`：provider live 继续负责导入与 DB 写入，`auth` 登录材料、`OPENAI_API_KEY` 与 TOML experimental bearer token 的官方/自定义分类规则集中在 adapter。
 823. legacy config sync 的 Codex live settings 结构校验与 `auth`/`config` 提取已改为 `proxy_core_adapter::provider_codex_live_settings_parts`：`services/config` 继续负责旧配置同步和中文错误消息，provider settings shape 读取集中在 adapter。
@@ -1454,6 +1454,7 @@
 1034. model catalog provider source 删除 `provider_model_catalog_from_provider` wrapper；DB source 直接把 host `Provider.settings_config` 投影给 `proxy-core::model_fetch::provider_model_catalog_from_settings`，避免为单字段投影保留额外 adapter API。
 1035. client model catalog source 删除 `client_model_catalog_raw_from_source` wrapper；adapter 仍按 core `ClientModelCatalogSource` 选择是否读取 Codex active catalog，但不再为一次 match 暴露额外 host API。
 1036. Codex takeover model catalog 注入删除 `attach_codex_model_catalog_from_provider` 单调用点 mutation wrapper；takeover field applicator 直接投影 provider `modelCatalog`，值级合并继续复用 `codex_live_settings_with_model_catalog`。
+1037. provider model catalog 原始值删除 `provider_model_catalog_raw_value` 单字段 getter；backfill/takeover source 在已持有 host `Provider` 的位置直接读取 `settings_config["modelCatalog"]`，避免为中转宿主暴露一层无状态 getter。
 
 ## 背景
 
