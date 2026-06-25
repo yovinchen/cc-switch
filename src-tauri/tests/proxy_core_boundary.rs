@@ -4805,6 +4805,51 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
 }
 
 #[test]
+fn claude_desktop_config_delegates_proxy_route_projection_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let projection_slice = function_slice(
+        &source,
+        "pub fn proxy_model_routes(",
+        "pub fn map_proxy_request_model(",
+    );
+
+    assert!(
+        projection_slice.contains("claude_desktop_proxy_model_routes(")
+            && projection_slice.contains("ClaudeDesktopProxyRouteInput"),
+        "claude_desktop_config should delegate proxy route projection to proxy_core_adapter/core"
+    );
+
+    let forbidden_markers = [
+        "next_catalog_safe_route_id",
+        "reserved_route_ids",
+        "dedup_by(|a, b| a.route_id == b.route_id)",
+        "DEFAULT_PROXY_ROUTES",
+        "is_claude_safe_model_id(",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(projection_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/claude_desktop_config.rs proxy_model_routes:{} contains route projection policy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "claude_desktop_config must keep proxy route projection policy in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

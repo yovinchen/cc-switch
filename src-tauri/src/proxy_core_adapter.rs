@@ -2621,7 +2621,6 @@ pub(crate) fn forwarder_rectifier_retry_failure_log_line(
 pub(crate) type ManagementAuthError = crate::proxy_core::api::auth::ManagementAuthError;
 pub(crate) type CircuitBreakerFailureDecision =
     crate::proxy_core::api::config::CircuitBreakerFailureDecision;
-pub(crate) use crate::proxy_core::api::auth::claude_desktop_model_id_is_profile_safe;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::auth::validate_claude_desktop_gateway_bearer_header;
 pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
@@ -2665,6 +2664,10 @@ pub(crate) use crate::proxy_core::api::auth::{
     ManagedAuthAccount, ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate,
     ManagedAuthDeviceCodeResponse, ManagedAuthStatus, ProviderManagedAuthClassification,
     ProviderManagedAuthFacts, CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
+};
+pub(crate) use crate::proxy_core::api::auth::{
+    claude_desktop_model_id_is_profile_safe, claude_desktop_proxy_model_routes,
+    ClaudeDesktopProxyRouteInput, ClaudeDesktopResolvedProxyRoute,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,

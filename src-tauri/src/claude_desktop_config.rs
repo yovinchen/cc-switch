@@ -120,6 +120,17 @@ pub struct ResolvedModelRoute {
     pub supports_1m: bool,
 }
 
+impl From<crate::proxy_core_adapter::ClaudeDesktopResolvedProxyRoute> for ResolvedModelRoute {
+    fn from(route: crate::proxy_core_adapter::ClaudeDesktopResolvedProxyRoute) -> Self {
+        Self {
+            route_id: route.route_id,
+            upstream_model: route.upstream_model,
+            label_override: route.label_override,
+            supports_1m: route.supports_1m,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct InferenceModelSpec {
     name: String,
@@ -486,45 +497,17 @@ pub fn proxy_model_routes(provider: &Provider) -> Result<Vec<ResolvedModelRoute>
             )
         })?;
 
-    let reserved_route_ids = routes
-        .keys()
-        .map(|route_id| route_id.trim())
-        .filter(|route_id| is_claude_safe_model_id(route_id))
-        .map(str::to_string)
-        .collect::<std::collections::HashSet<_>>();
-    let mut result = Vec::new();
-    let mut entries = routes.iter().collect::<Vec<_>>();
-    entries.sort_by_key(|(left, _)| *left);
-    for (route_id, route) in entries {
-        let supports_1m = route.supports_1m.unwrap_or(false);
-        let route_id = route_id.trim();
-        let upstream_model = route.model.trim();
-        if route_id.is_empty() || upstream_model.is_empty() {
-            continue;
-        }
-        let repaired_route_id = if is_claude_safe_model_id(route_id) {
-            route_id.to_string()
-        } else {
-            next_catalog_safe_route_id(&result, &reserved_route_ids)
-        };
-        result.push(ResolvedModelRoute {
-            route_id: repaired_route_id,
-            upstream_model: upstream_model.to_string(),
-            label_override: route
-                .label_override
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(str::to_string)
-                .or_else(|| {
-                    (!is_claude_safe_model_id(route_id)).then(|| upstream_model.to_string())
-                }),
-            supports_1m,
-        });
-    }
-
-    result.sort_by(|a, b| a.route_id.cmp(&b.route_id));
-    result.dedup_by(|a, b| a.route_id == b.route_id);
+    let result = crate::proxy_core_adapter::claude_desktop_proxy_model_routes(routes.iter().map(
+        |(route_id, route)| crate::proxy_core_adapter::ClaudeDesktopProxyRouteInput {
+            route_id,
+            upstream_model: &route.model,
+            label_override: route.label_override.as_deref(),
+            supports_1m: route.supports_1m.unwrap_or(false),
+        },
+    ))
+    .into_iter()
+    .map(ResolvedModelRoute::from)
+    .collect::<Vec<_>>();
 
     if result.is_empty() {
         return Err(AppError::localized(
@@ -535,32 +518,6 @@ pub fn proxy_model_routes(provider: &Provider) -> Result<Vec<ResolvedModelRoute>
     }
 
     Ok(result)
-}
-
-fn next_catalog_safe_route_id(
-    existing: &[ResolvedModelRoute],
-    reserved: &std::collections::HashSet<String>,
-) -> String {
-    if let Some(default_route) = DEFAULT_PROXY_ROUTES
-        .iter()
-        .map(|route| route.route_id)
-        .find(|route_id| {
-            !reserved.contains(*route_id)
-                && !existing.iter().any(|route| route.route_id == *route_id)
-        })
-    {
-        return default_route.to_string();
-    }
-
-    let mut index = 2usize;
-    loop {
-        let route_id = format!("{}-r{index}", DEFAULT_PROXY_ROUTES[0].route_id);
-        if !reserved.contains(&route_id) && !existing.iter().any(|route| route.route_id == route_id)
-        {
-            return route_id;
-        }
-        index += 1;
-    }
 }
 
 pub fn map_proxy_request_model(mut body: Value, provider: &Provider) -> Result<Value, AppError> {

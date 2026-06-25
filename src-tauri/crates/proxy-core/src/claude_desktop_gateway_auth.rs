@@ -8,6 +8,12 @@ pub const CLAUDE_DESKTOP_MODEL_CREATED_AT: &str = "2024-01-01T00:00:00Z";
 const CLAUDE_ROUTE_PREFIX: &str = "claude-";
 const ANTHROPIC_CLAUDE_ROUTE_PREFIX: &str = "anthropic/claude-";
 const ONE_M_CONTEXT_MARKER: &str = "[1m]";
+const DEFAULT_PROXY_ROUTE_IDS: &[&str] = &[
+    "claude-sonnet-4-6",
+    "claude-opus-4-8",
+    "claude-haiku-4-5",
+    "claude-fable-5",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClaudeDesktopGatewayAuthError {
@@ -69,6 +75,22 @@ pub struct ClaudeDesktopProviderValidationInput<'a> {
     pub is_full_url: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ClaudeDesktopProxyRouteInput<'a> {
+    pub route_id: &'a str,
+    pub upstream_model: &'a str,
+    pub label_override: Option<&'a str>,
+    pub supports_1m: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaudeDesktopResolvedProxyRoute {
+    pub route_id: String,
+    pub upstream_model: String,
+    pub label_override: Option<String>,
+    pub supports_1m: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaudeDesktopDirectProviderValidationIssue {
     SettingsNotObject,
@@ -126,6 +148,72 @@ pub fn claude_desktop_provider_models_are_profile_safe(settings_config: &Value) 
     .map(str::trim)
     .filter(|value| !value.is_empty())
     .all(claude_desktop_model_id_is_profile_safe)
+}
+
+pub fn claude_desktop_proxy_model_routes<'a>(
+    routes: impl IntoIterator<Item = ClaudeDesktopProxyRouteInput<'a>>,
+) -> Vec<ClaudeDesktopResolvedProxyRoute> {
+    let mut entries = routes.into_iter().collect::<Vec<_>>();
+    let reserved_route_ids = entries
+        .iter()
+        .map(|entry| entry.route_id.trim())
+        .filter(|route_id| claude_desktop_model_id_is_profile_safe(route_id))
+        .map(str::to_string)
+        .collect::<std::collections::HashSet<_>>();
+
+    let mut result = Vec::new();
+    entries.sort_by_key(|entry| entry.route_id);
+    for entry in entries {
+        let route_id = entry.route_id.trim();
+        let upstream_model = entry.upstream_model.trim();
+        if route_id.is_empty() || upstream_model.is_empty() {
+            continue;
+        }
+
+        let is_profile_safe = claude_desktop_model_id_is_profile_safe(route_id);
+        let repaired_route_id = if is_profile_safe {
+            route_id.to_string()
+        } else {
+            next_catalog_safe_route_id(&result, &reserved_route_ids)
+        };
+
+        result.push(ClaudeDesktopResolvedProxyRoute {
+            route_id: repaired_route_id,
+            upstream_model: upstream_model.to_string(),
+            label_override: entry
+                .label_override
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .or_else(|| (!is_profile_safe).then(|| upstream_model.to_string())),
+            supports_1m: entry.supports_1m,
+        });
+    }
+
+    result.sort_by(|a, b| a.route_id.cmp(&b.route_id));
+    result.dedup_by(|a, b| a.route_id == b.route_id);
+    result
+}
+
+fn next_catalog_safe_route_id(
+    existing: &[ClaudeDesktopResolvedProxyRoute],
+    reserved: &std::collections::HashSet<String>,
+) -> String {
+    if let Some(default_route) = DEFAULT_PROXY_ROUTE_IDS.iter().find(|route_id| {
+        !reserved.contains(**route_id) && !existing.iter().any(|route| route.route_id == **route_id)
+    }) {
+        return (*default_route).to_string();
+    }
+
+    let mut index = 2usize;
+    loop {
+        let route_id = format!("{}-r{index}", DEFAULT_PROXY_ROUTE_IDS[0]);
+        if !reserved.contains(&route_id) && !existing.iter().any(|route| route.route_id == route_id)
+        {
+            return route_id;
+        }
+        index += 1;
+    }
 }
 
 pub fn claude_desktop_proxy_has_base_url_and_key(
@@ -305,13 +393,13 @@ mod tests {
         claude_desktop_model_id_is_profile_safe, claude_desktop_provider_models_are_profile_safe,
         claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
         claude_desktop_provider_unavailable_error_message,
-        claude_desktop_proxy_has_base_url_and_key,
+        claude_desktop_proxy_has_base_url_and_key, claude_desktop_proxy_model_routes,
         claude_desktop_proxy_provider_config_validation_issue,
         claude_desktop_routes_support_1m_by_default, validate_claude_desktop_gateway_bearer_header,
         validate_claude_desktop_gateway_bearer_value, ClaudeDesktopDirectProviderValidationIssue,
         ClaudeDesktopGatewayAuthError, ClaudeDesktopModelListResponse,
         ClaudeDesktopModelRouteInput, ClaudeDesktopProviderValidationInput,
-        ClaudeDesktopProxyProviderConfigValidationIssue,
+        ClaudeDesktopProxyProviderConfigValidationIssue, ClaudeDesktopProxyRouteInput,
     };
     use crate::error::ProxyCoreError;
     use http::{HeaderMap, HeaderValue};
@@ -430,6 +518,75 @@ mod tests {
                 "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-5[1m]"
             }
         })));
+    }
+
+    #[test]
+    fn proxy_model_routes_repair_unsafe_routes_without_colliding() {
+        let routes = claude_desktop_proxy_model_routes([
+            ClaudeDesktopProxyRouteInput {
+                route_id: "claude-deepseek-v4-pro",
+                upstream_model: "deepseek-v4-pro",
+                label_override: None,
+                supports_1m: true,
+            },
+            ClaudeDesktopProxyRouteInput {
+                route_id: "claude-old",
+                upstream_model: "legacy-upstream",
+                label_override: Some("   "),
+                supports_1m: false,
+            },
+            ClaudeDesktopProxyRouteInput {
+                route_id: "claude-sonnet-4-6",
+                upstream_model: "claude-sonnet-4-6",
+                label_override: None,
+                supports_1m: false,
+            },
+            ClaudeDesktopProxyRouteInput {
+                route_id: " ",
+                upstream_model: "ignored-upstream",
+                label_override: Some("ignored"),
+                supports_1m: true,
+            },
+        ]);
+
+        assert_eq!(routes.len(), 3);
+        assert_eq!(routes[0].route_id, "claude-haiku-4-5");
+        assert_eq!(routes[0].upstream_model, "legacy-upstream");
+        assert_eq!(routes[0].label_override.as_deref(), Some("legacy-upstream"));
+        assert!(!routes[0].supports_1m);
+
+        assert_eq!(routes[1].route_id, "claude-opus-4-8");
+        assert_eq!(routes[1].upstream_model, "deepseek-v4-pro");
+        assert_eq!(routes[1].label_override.as_deref(), Some("deepseek-v4-pro"));
+        assert!(routes[1].supports_1m);
+
+        assert_eq!(routes[2].route_id, "claude-sonnet-4-6");
+        assert_eq!(routes[2].upstream_model, "claude-sonnet-4-6");
+        assert_eq!(routes[2].label_override, None);
+    }
+
+    #[test]
+    fn proxy_model_routes_deduplicate_by_repaired_route_id() {
+        let routes = claude_desktop_proxy_model_routes([
+            ClaudeDesktopProxyRouteInput {
+                route_id: "claude-sonnet-4-6",
+                upstream_model: "upstream-a",
+                label_override: Some("First"),
+                supports_1m: false,
+            },
+            ClaudeDesktopProxyRouteInput {
+                route_id: "claude-sonnet-4-6",
+                upstream_model: "upstream-b",
+                label_override: Some("Second"),
+                supports_1m: true,
+            },
+        ]);
+
+        assert_eq!(routes.len(), 1);
+        assert_eq!(routes[0].route_id, "claude-sonnet-4-6");
+        assert_eq!(routes[0].upstream_model, "upstream-a");
+        assert_eq!(routes[0].label_override.as_deref(), Some("First"));
+        assert!(!routes[0].supports_1m);
     }
 
     #[test]
