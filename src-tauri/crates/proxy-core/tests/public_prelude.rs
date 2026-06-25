@@ -90,6 +90,20 @@ impl ProviderSource for ExternalRelayServices {
         let provider = (provider_id == "relay-a").then(provider_spec);
         Box::pin(async move { Ok(provider) })
     }
+
+    fn current_provider_id<'a>(
+        &'a self,
+        _app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<String>>> {
+        Box::pin(async { Ok(Some("relay-a".to_string())) })
+    }
+
+    fn route_candidate_provider_ids<'a>(
+        &'a self,
+        _app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Vec<String>>> {
+        Box::pin(async { Ok(vec!["relay-a".to_string()]) })
+    }
 }
 
 impl ChannelSource for ExternalRelayServices {
@@ -669,6 +683,49 @@ fn external_host_can_use_app_list_contracts_from_prelude() {
     assert!(from_source.apps[0].auto_failover_enabled);
     assert_eq!(from_source.apps[0].provider_count, 2);
     assert_eq!(from_source.apps[0].channel_count, 3);
+}
+
+#[test]
+fn external_host_can_use_provider_list_contracts_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    let engine = ProxyEngine::new(services);
+
+    let response: ProviderListResponse = futures::executor::block_on(
+        engine.provider_list_response(
+            ManagementAppPathRequest::from_path("claude").expect("provider list request"),
+        ),
+    )
+    .expect("provider list response");
+    let providers: &[ProviderSummary] = response.providers.as_slice();
+    let from_source = ManagementAppPathRequest::from_path("codex")
+        .expect("source request")
+        .provider_list_response_from_source(ProviderListSource::new(
+            vec![ProviderSummaryInput::new(
+                "relay-b",
+                "Relay B",
+                Some("custom".to_string()),
+                Some(2),
+                None,
+                None,
+                Some("openai-compatible".to_string()),
+            )],
+            Some("relay-b".to_string()),
+            vec!["relay-b".to_string()],
+            vec!["relay-b".to_string()],
+        ));
+
+    assert_eq!(response.app_type, "claude");
+    assert_eq!(providers.len(), 1);
+    assert_eq!(providers[0].id, "relay-a");
+    assert!(providers[0].current);
+    assert!(!providers[0].in_failover_queue);
+    assert!(providers[0].route_candidate);
+    assert_eq!(from_source.app_type, "codex");
+    assert_eq!(from_source.providers.len(), 1);
+    assert_eq!(from_source.providers[0].category.as_deref(), Some("custom"));
+    assert!(from_source.providers[0].current);
+    assert!(from_source.providers[0].in_failover_queue);
+    assert!(from_source.providers[0].route_candidate);
 }
 
 #[test]

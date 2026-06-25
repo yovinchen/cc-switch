@@ -1529,6 +1529,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1087. crate 外 public prelude smoke 已覆盖 route resolve 管理 contract：外部宿主只依赖 prelude 即可构造 `RouteResolveManagementRequest`、调用 `ProxyEngine::resolve_route_response`，并完整命名 `RouteResolveResponse`、候选/淘汰列表和 `ChannelRouteSource` 字段类型。
 1088. crate 外 public prelude smoke 已覆盖 `/proxy/v1/status` 管理 contract：外部宿主只依赖 prelude 即可构造 `ProxyStatusRequest`/`ProxyStatusSource`、调用 `ProxyEngine::proxy_status_response`，并命名 `ProxyStatusResponse<ProxyRuntimeStatus>` 与 active target 状态字段。
 1089. crate 外 public prelude smoke 已覆盖 `/proxy/v1/apps` 管理 contract：外部宿主只依赖 prelude 即可构造 `AppListRequest`/`AppListSource`/`AppSummaryInput`，调用 `ProxyEngine::app_list_response`，并完整命名 `AppListResponse` 与 `AppSummary` 字段类型。
+1090. crate 外 public prelude smoke 已覆盖 `/proxy/v1/apps/{app}/providers` 管理 contract：外部宿主只依赖 prelude 即可构造 `ManagementAppPathRequest`/`ProviderListSource`/`ProviderSummaryInput`，调用 `ProxyEngine::provider_list_response`，并完整命名 `ProviderListResponse` 与 `ProviderSummary` 标记字段。
 
 ## 背景
 
