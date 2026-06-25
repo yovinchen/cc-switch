@@ -297,7 +297,7 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntime
 pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled, live_takeover_app_kinds,
     apply_codex_takeover_auth_placeholder_if_present,
-    apply_gemini_takeover_env_fields as core_apply_gemini_takeover_env_fields,
+    apply_gemini_takeover_env_fields,
     CodexLiveTakeoverMatchFacts,
     detect_gemini_auth_type as core_detect_gemini_auth_type,
     ensure_codex_takeover_auth_placeholder,
@@ -360,9 +360,9 @@ pub(crate) use crate::proxy_core::api::ports::{
     proxy_urls_match as core_proxy_urls_match,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
-    remove_claude_takeover_env_fields_if_present as core_remove_claude_takeover_env_fields_if_present,
+    remove_claude_takeover_env_fields_if_present,
     remove_codex_takeover_auth_placeholder_if_present,
-    remove_gemini_takeover_env_fields_if_present as core_remove_gemini_takeover_env_fields_if_present,
+    remove_gemini_takeover_env_fields_if_present,
     sanitize_claude_settings_for_live,
     provider_should_sync_to_live as core_provider_should_sync_to_live,
     should_skip_manual_default_live_import as core_should_skip_manual_default_live_import,
@@ -10671,17 +10671,6 @@ pub(crate) fn sync_provider_settings_with_live_token(
     }
 }
 
-pub(crate) fn remove_claude_takeover_env_fields_if_present<F>(
-    config: &mut Value,
-    placeholder: &str,
-    is_local_proxy_url: F,
-) -> Option<bool>
-where
-    F: Fn(&str) -> bool,
-{
-    core_remove_claude_takeover_env_fields_if_present(config, placeholder, is_local_proxy_url)
-}
-
 fn codex_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
     config
         .get("config")
@@ -10818,25 +10807,6 @@ pub(crate) fn codex_live_write_projection(
         (None, Some(config_text)) => CodexLiveWriteProjection::WriteConfigOnly { config_text },
         (None, None) => CodexLiveWriteProjection::Noop,
     })
-}
-
-pub(crate) fn apply_gemini_takeover_env_fields(
-    config: &mut Value,
-    proxy_url: &str,
-    placeholder: &str,
-) {
-    core_apply_gemini_takeover_env_fields(config, proxy_url, placeholder)
-}
-
-pub(crate) fn remove_gemini_takeover_env_fields_if_present<F>(
-    config: &mut Value,
-    placeholder: &str,
-    is_local_proxy_url: F,
-) -> Option<bool>
-where
-    F: Fn(&str) -> bool,
-{
-    core_remove_gemini_takeover_env_fields_if_present(config, placeholder, is_local_proxy_url)
 }
 
 pub(crate) fn live_takeover_config_matches_proxy_for_app(
