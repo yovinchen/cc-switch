@@ -1050,6 +1050,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn parse_copilot_usage_response_bytes(",
     "fn copilot_usage_response_endpoint(",
     "fn copilot_api_endpoint_from_usage_or_default(",
+    "fn copilot_token_is_expiring_soon(",
+    "fn copilot_oauth_poll_error_kind(",
     "fn codex_default_model_context_window(",
     "fn client_model_catalog_from_optional_raw(",
     "fn build_codex_upstream_url(",
@@ -7630,6 +7632,49 @@ fn production_copilot_auth_delegates_usage_contract_to_core() {
             && !fetch_endpoint_slice.contains("match usage.endpoints")
             && !fetch_endpoint_slice.contains("copilot_api_base(&domain)"),
         "fetch_and_cache_endpoint should delegate usage endpoint fallback policy to core"
+    );
+}
+
+#[test]
+fn production_copilot_auth_delegates_oauth_contract_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/copilot_auth.rs");
+    let source = fs::read_to_string(&path).expect("read copilot_auth.rs");
+    let token_slice = function_slice(&source, "impl CopilotToken", "/// Copilot Token API 响应");
+    let poll_slice = function_slice(
+        &source,
+        "pub async fn poll_for_token",
+        "        // 获取 access_token",
+    );
+
+    assert!(
+        !source.contains("TOKEN_REFRESH_BUFFER_SECONDS")
+            && !token_slice.contains("expires_at - now"),
+        "copilot_auth.rs should delegate token refresh-buffer expiry policy to core"
+    );
+
+    for marker in [
+        "\"authorization_pending\"",
+        "\"slow_down\"",
+        "\"expired_token\"",
+        "\"access_denied\"",
+        "error.as_str()",
+        "error_description.unwrap_or_default()",
+    ] {
+        assert!(
+            !poll_slice.contains(marker),
+            "poll_for_token should not own OAuth polling error-code policy marker `{marker}`"
+        );
+    }
+
+    assert!(
+        token_slice.contains("copilot_token_is_expiring_soon(")
+            && poll_slice.contains("copilot_oauth_poll_error_kind(")
+            && poll_slice.contains("CopilotOAuthPollErrorKind::AuthorizationPending")
+            && poll_slice.contains("CopilotOAuthPollErrorKind::ExpiredToken")
+            && poll_slice.contains("CopilotOAuthPollErrorKind::AccessDenied")
+            && poll_slice.contains("CopilotOAuthPollErrorKind::NetworkError"),
+        "copilot_auth.rs should map core OAuth polling classifications into host errors"
     );
 }
 

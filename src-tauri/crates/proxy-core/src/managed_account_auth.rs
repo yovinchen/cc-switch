@@ -12,9 +12,38 @@ pub const GITHUB_COPILOT_AUTH_PROVIDER: &str = "github_copilot";
 pub const CODEX_OAUTH_AUTH_PROVIDER: &str = "codex_oauth";
 pub const GITHUB_COPILOT_AUTH_PLACEHOLDER: &str = "copilot_placeholder";
 pub const CODEX_OAUTH_AUTH_PLACEHOLDER: &str = "codex_oauth_placeholder";
+pub const COPILOT_TOKEN_REFRESH_BUFFER_SECONDS: i64 = 60;
 
 pub type ManagedAccountRuntimeResultFuture<'a, T, E> = BoxFuture<'a, Result<T, E>>;
 pub type CodexOAuthResolution = (ProviderAuthInfo, Option<String>);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CopilotOAuthPollErrorKind {
+    AuthorizationPending,
+    ExpiredToken,
+    AccessDenied,
+    NetworkError(String),
+}
+
+pub fn copilot_token_is_expiring_soon(expires_at: i64, now: i64) -> bool {
+    expires_at - now < COPILOT_TOKEN_REFRESH_BUFFER_SECONDS
+}
+
+pub fn copilot_oauth_poll_error_kind(
+    error: &str,
+    error_description: Option<&str>,
+) -> CopilotOAuthPollErrorKind {
+    match error {
+        "authorization_pending" | "slow_down" => CopilotOAuthPollErrorKind::AuthorizationPending,
+        "expired_token" => CopilotOAuthPollErrorKind::ExpiredToken,
+        "access_denied" => CopilotOAuthPollErrorKind::AccessDenied,
+        other => CopilotOAuthPollErrorKind::NetworkError(format!(
+            "{}: {}",
+            other,
+            error_description.unwrap_or_default()
+        )),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManagedAccountAuthRuntime {
@@ -530,6 +559,7 @@ pub fn headers_contain_proxy_auth_placeholder(headers: &HeaderMap) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
+        copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
         managed_account_app_handle_unavailable_error_message,
         managed_account_app_handle_unavailable_log_message,
@@ -546,9 +576,10 @@ mod tests {
         resolve_copilot_model_vendor_with_runtime_source,
         resolve_managed_account_auth_for_binding_with_runtime_source,
         resolve_managed_account_auth_with_runtime_source, validate_managed_account_upstream_auth,
-        ManagedAccountAuthError, ManagedAccountAuthPlan, ManagedAccountAuthResolution,
-        ManagedAccountAuthRuntime, ManagedAccountBindingInput, ManagedAccountBindingSource,
-        ManagedAccountRuntimeSource, CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER,
+        CopilotOAuthPollErrorKind, ManagedAccountAuthError, ManagedAccountAuthPlan,
+        ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ManagedAccountBindingInput,
+        ManagedAccountBindingSource, ManagedAccountRuntimeSource, CODEX_OAUTH_AUTH_PLACEHOLDER,
+        CODEX_OAUTH_AUTH_PROVIDER,
         GITHUB_COPILOT_AUTH_PLACEHOLDER, GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
     };
     use futures::{executor::block_on, future::BoxFuture};
@@ -559,6 +590,45 @@ mod tests {
     use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
 
     struct StaticManagedRuntimeSource;
+
+    #[test]
+    fn copilot_oauth_token_expiry_policy_uses_refresh_buffer() {
+        let now = 1_771_000_000;
+
+        assert!(!copilot_token_is_expiring_soon(now + 3_600, now));
+        assert!(copilot_token_is_expiring_soon(now + 30, now));
+        assert!(copilot_token_is_expiring_soon(now - 1, now));
+        assert!(!copilot_token_is_expiring_soon(now + 60, now));
+        assert!(copilot_token_is_expiring_soon(now + 59, now));
+    }
+
+    #[test]
+    fn copilot_oauth_poll_error_codes_map_to_contract_kinds() {
+        assert_eq!(
+            copilot_oauth_poll_error_kind("authorization_pending", None),
+            CopilotOAuthPollErrorKind::AuthorizationPending
+        );
+        assert_eq!(
+            copilot_oauth_poll_error_kind("slow_down", Some("wait")),
+            CopilotOAuthPollErrorKind::AuthorizationPending
+        );
+        assert_eq!(
+            copilot_oauth_poll_error_kind("expired_token", None),
+            CopilotOAuthPollErrorKind::ExpiredToken
+        );
+        assert_eq!(
+            copilot_oauth_poll_error_kind("access_denied", None),
+            CopilotOAuthPollErrorKind::AccessDenied
+        );
+        assert_eq!(
+            copilot_oauth_poll_error_kind("unknown", Some("detail")),
+            CopilotOAuthPollErrorKind::NetworkError("unknown: detail".to_string())
+        );
+        assert_eq!(
+            copilot_oauth_poll_error_kind("unknown", None),
+            CopilotOAuthPollErrorKind::NetworkError("unknown: ".to_string())
+        );
+    }
 
     impl ManagedAccountRuntimeSource for StaticManagedRuntimeSource {
         type Error = String;

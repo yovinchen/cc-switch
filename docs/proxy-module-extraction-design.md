@@ -1436,6 +1436,7 @@
 1016. Stream check retry loop 的终端兜底 failed envelope 已迁入 `proxy-core::ports::stream_check_failed_result_with_retry_count`，host service 仍负责重试循环和 `retry_count` 事实注入。
 1017. Host `ProxyError` 到 core `ProxyErrorStatusKind` 的状态事实投影已收敛到 `proxy_core_adapter::proxy_error_status_kind`，`proxy/error.rs` 不再维护 host-to-core 映射，`error_mapper` 也统一经 adapter 获取 status fact。
 1018. Copilot `/copilot_internal/user` usage/quota DTO、usage JSON parse 和 `endpoints.api` 到默认 Copilot API base 的 fallback policy 已迁入 `proxy-core::copilot_model_map`，host `copilot_auth` 只保留 HTTP 调用、token/account 读取和 endpoint cache 写入。
+1019. Copilot OAuth device polling 的错误码分类与 token 提前刷新 buffer policy 已迁入 `proxy-core::managed_account_auth`；host `copilot_auth` 只保留 HTTP 轮询、账号持久化和 core classification 到 `CopilotAuthError` 的映射。
 
 ## 背景
 
