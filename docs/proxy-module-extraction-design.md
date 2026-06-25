@@ -1086,6 +1086,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续删除 `proxy/http_client.rs` 中未被调用的 `update_proxy` 与 `is_proxy_enabled` legacy facade；全局代理命令只保留 validate/apply/current-url 三个实际生命周期入口，避免迁移中继续复制重复热更新 surface。
 本轮继续删除 `proxy/error.rs` 中未被调用的 `ErrorCategory` 与 `categorize_error` reqwest 分类 helper；forward retry/non-retry 判定继续由 adapter/core runtime policy 维护，host error 类型只保留实际响应映射职责。
 本轮继续删除 Copilot token 响应 DTO 中未使用的 `refresh_in` 字段；serde 继续忽略上游额外字段，managed-auth host 只保留实际消费的 `token` / `expires_at` contract。
+本轮继续删除 adapter 内部 `current_provider_id_from_settings_for_app_type` 一跳 helper；forward current-provider fallback 读取统一经现有 `AppKind` settings 入口，避免保留重复 host type facade。
 本轮继续把 `CcSwitchChannelSource` 的 route/materialized channel record list 读取与 `ChannelRecord` 投影收敛到 adapter-owned source wrapper。
 本轮继续把 `CcSwitchChannelSource` 的 legacy channel migration preview/materialize DB 操作与 response input 投影收敛到 adapter-owned source wrapper，host services 只装配 channel source。
 本轮继续把 `CcSwitchRoutePolicySource` 的 failover queue DB 读取与 `RoutePolicy` 投影迁入 adapter-owned source，host services 只装配 source。
@@ -1504,6 +1505,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 1067. 删除 `proxy/http_client.rs` 的 `update_proxy` 与 `is_proxy_enabled` legacy facade；生产调用方已使用 `validate_proxy`、`apply_proxy` 和 `get_current_proxy_url`，新增 boundary marker 防止重复热更新/状态 helper 和 dead-code allowance 回流。
 1068. 删除 `proxy/error.rs` 的 `ErrorCategory` / `categorize_error` legacy reqwest 分类 helper；生产 retry/non-retry 控制流继续由 `proxy_core_adapter` 的 runtime failure policy 和 core status/failure 分类维护，新增 boundary marker 防止 host error module 重新承载请求错误分类策略。
 1069. 删除 `CopilotTokenResponse.refresh_in` dead-code 字段；host managed-auth token DTO 只保留运行时创建 `CopilotToken` 实际消费的 `token` 和 `expires_at`，serde 默认忽略上游额外字段，并新增 boundary marker 防止 unused upstream DTO field 回流。
+1070. 删除 `current_provider_id_from_settings_for_app_type` adapter facade；forward current-provider DB fallback 入口先投影为 `AppKind` 后复用 `current_provider_id_from_settings_for_app`，新增 small-helper boundary marker 防止 AppType 专用 settings wrapper 回流。
 
 ## 背景
 

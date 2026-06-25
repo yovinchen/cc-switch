@@ -1171,10 +1171,6 @@ pub(crate) fn current_provider_id_from_settings_for_app(app: &AppKind) -> Option
         .and_then(crate::settings::get_current_provider)
 }
 
-pub(crate) fn current_provider_id_from_settings_for_app_type(app_type: &AppType) -> Option<String> {
-    crate::settings::get_current_provider(app_type)
-}
-
 pub(crate) fn proxy_app_config_from_config_source(
     app: AppKind,
     config: AppProxyConfig,
@@ -1541,7 +1537,8 @@ pub(crate) fn forward_current_provider_id_from_db_sources(
     db: &Database,
     app_type: &AppType,
 ) -> String {
-    let settings_current_provider_id = current_provider_id_from_settings_for_app_type(app_type);
+    let app = AppKind::from(app_type);
+    let settings_current_provider_id = current_provider_id_from_settings_for_app(&app);
     forward_current_provider_id_from_source(settings_current_provider_id.as_deref(), || {
         db.get_current_provider(app_type.as_str()).ok().flatten()
     })
