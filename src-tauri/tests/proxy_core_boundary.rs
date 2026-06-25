@@ -8297,6 +8297,11 @@ fn production_forwarder_uses_request_source_resource() {
         "impl ForwarderRequestSource for CcSwitchForwarderRequestSource",
         "pub(crate) fn forwarder_request_source_from_managed_account_runtime_source",
     );
+    let request_private_impl_slice = function_slice(
+        &adapter_source,
+        "impl CcSwitchForwarderRequestSource",
+        "fn apply_forwarder_media_prevention_with_log",
+    );
 
     assert!(
         struct_slice.contains("request_source"),
@@ -8597,6 +8602,16 @@ fn production_forwarder_uses_request_source_resource() {
         request_impl_slice.contains("input.adapter.provider_url_facts(input.provider)")
             && !request_impl_slice.contains("forwarder_provider_base_url("),
         "default ForwarderRequestSource implementation must use ForwarderAdapterContext for provider URL facts"
+    );
+    assert!(
+        request_private_impl_slice.contains(".adapter")
+            && request_private_impl_slice
+                .contains(".transform_provider_request(input.body, input.provider)")
+            && !request_private_impl_slice.contains("forwarder_provider_transform_request(")
+            && !request_private_impl_slice.contains("forwarder_provider_transform_required(")
+            && request_impl_slice.contains("input.adapter.provider_transform_required(input.provider)")
+            && !request_impl_slice.contains("forwarder_provider_transform_required("),
+        "default ForwarderRequestSource implementation must use ForwarderAdapterContext for provider transform facts/actions"
     );
     let request_trait_slice = function_slice(
         &adapter_source,

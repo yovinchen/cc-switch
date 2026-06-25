@@ -4247,6 +4247,18 @@ impl ForwarderAdapterContext {
             base_url,
         })
     }
+
+    fn provider_transform_required(&self, provider: &Provider) -> bool {
+        forwarder_provider_transform_required(self.adapter(), provider)
+    }
+
+    fn transform_provider_request(
+        &self,
+        body: Value,
+        provider: &Provider,
+    ) -> Result<Value, ProxyError> {
+        forwarder_provider_transform_request(self.adapter(), body, provider)
+    }
 }
 
 pub(crate) fn forwarder_provider_adapter_name(adapter: &ForwarderAdapterHandle) -> &'static str {
@@ -8232,7 +8244,9 @@ impl CcSwitchForwarderRequestSource {
         &self,
         input: ForwarderProviderTransformInput<'_>,
     ) -> Result<Value, ProxyError> {
-        forwarder_provider_transform_request(input.adapter.adapter(), input.body, input.provider)
+        input
+            .adapter
+            .transform_provider_request(input.body, input.provider)
     }
 
     fn convert_codex_responses_to_chat_body(
@@ -8482,7 +8496,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             .is_claude_adapter
             .then(|| forwarder_claude_api_format(input.provider));
         let provider_transform_required = input.resolved_claude_api_format.is_none()
-            && forwarder_provider_transform_required(input.adapter.adapter(), input.provider);
+            && input.adapter.provider_transform_required(input.provider);
 
         forwarder_transform_plan_from_facts(ForwarderTransformPlanFacts {
             codex_responses_to_chat,
