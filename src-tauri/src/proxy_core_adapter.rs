@@ -296,17 +296,17 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntime
 
 pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled, live_takeover_app_kinds,
-    apply_codex_takeover_auth_placeholder_if_present as core_apply_codex_takeover_auth_placeholder_if_present,
+    apply_codex_takeover_auth_placeholder_if_present,
     apply_gemini_takeover_env_fields as core_apply_gemini_takeover_env_fields,
     CodexLiveTakeoverMatchFacts,
     detect_gemini_auth_type as core_detect_gemini_auth_type,
-    ensure_codex_takeover_auth_placeholder as core_ensure_codex_takeover_auth_placeholder,
+    ensure_codex_takeover_auth_placeholder,
     gemini_env_json_from_map,
     gemini_env_parse_issue_spec as core_gemini_env_parse_issue_spec,
     gemini_env_string_map_from_settings,
     gemini_live_config_object_from_settings as core_gemini_live_config_object_from_settings,
     gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
-    is_local_proxy_url as core_is_local_proxy_url,
+    is_local_proxy_url,
     launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings,
     live_backup_snapshot_from_live_config as core_live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
@@ -361,7 +361,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
     remove_claude_takeover_env_fields_if_present as core_remove_claude_takeover_env_fields_if_present,
-    remove_codex_takeover_auth_placeholder_if_present as core_remove_codex_takeover_auth_placeholder_if_present,
+    remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present as core_remove_gemini_takeover_env_fields_if_present,
     sanitize_claude_settings_for_live,
     provider_should_sync_to_live as core_provider_should_sync_to_live,
@@ -10671,10 +10671,6 @@ pub(crate) fn sync_provider_settings_with_live_token(
     }
 }
 
-pub(crate) fn is_local_proxy_url(url: &str) -> bool {
-    core_is_local_proxy_url(url)
-}
-
 pub(crate) fn remove_claude_takeover_env_fields_if_present<F>(
     config: &mut Value,
     placeholder: &str,
@@ -10693,27 +10689,6 @@ fn codex_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool
         .and_then(crate::codex_config::extract_codex_experimental_bearer_token)
         .as_deref()
         == Some(placeholder)
-}
-
-pub(crate) fn apply_codex_takeover_auth_placeholder_if_present(
-    config: &mut Value,
-    placeholder: &str,
-) -> bool {
-    core_apply_codex_takeover_auth_placeholder_if_present(config, placeholder)
-}
-
-pub(crate) fn ensure_codex_takeover_auth_placeholder(
-    config: &mut Value,
-    placeholder: &str,
-) -> bool {
-    core_ensure_codex_takeover_auth_placeholder(config, placeholder)
-}
-
-pub(crate) fn remove_codex_takeover_auth_placeholder_if_present(
-    config: &mut Value,
-    placeholder: &str,
-) -> bool {
-    core_remove_codex_takeover_auth_placeholder_if_present(config, placeholder)
 }
 
 pub(crate) fn remove_codex_takeover_config_placeholders_if_present<F>(
