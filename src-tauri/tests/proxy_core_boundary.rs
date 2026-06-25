@@ -11329,6 +11329,20 @@ fn production_provider_router_delegates_circuit_config_fallback_to_adapter() {
 }
 
 #[test]
+fn production_circuit_breaker_keeps_state_accessor_test_only() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/circuit_breaker.rs");
+    let source = fs::read_to_string(&path).expect("read circuit_breaker.rs");
+    let state_accessor_slice = function_slice(&source, "/// 获取当前状态", "/// 获取统计信息");
+
+    assert!(
+        state_accessor_slice.contains("#[cfg(test)]")
+            && !state_accessor_slice.contains("#[allow(dead_code)]"),
+        "CircuitBreaker::get_state should remain a test-only accessor, not production dead code"
+    );
+}
+
+#[test]
 fn production_provider_router_delegates_route_rejection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider_router.rs");

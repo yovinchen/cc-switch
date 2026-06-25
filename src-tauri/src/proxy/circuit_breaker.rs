@@ -219,7 +219,7 @@ impl CircuitBreaker {
     }
 
     /// 获取当前状态
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub async fn get_state(&self) -> CircuitState {
         *self.state.read().await
     }
