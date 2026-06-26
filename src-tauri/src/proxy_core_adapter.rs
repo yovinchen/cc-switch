@@ -577,8 +577,6 @@ pub(crate) use crate::proxy_core::api::auth::{
     claude_desktop_provider_unavailable_error,
 };
 pub(crate) type ProxyCoreResponse = crate::proxy_core::api::transport::ProxyCoreResponse;
-pub(crate) type RequestBodyJsonParseError =
-    crate::proxy_core::api::transport::RequestBodyJsonParseError;
 pub(crate) type ProxyCoreResult<T> = crate::proxy_core::api::errors::ProxyCoreResult<T>;
 pub(crate) type ProxyEngine<S> = crate::proxy_core::api::engine::ProxyEngine<S>;
 pub(crate) type ProxyResult = crate::proxy_core::api::transport::ProxyResult;
@@ -2196,6 +2194,7 @@ use crate::proxy_core::api::management::StreamCheckResult;
 pub(crate) type ChannelKeyRuntimeCandidate =
     crate::proxy_core::api::management::ChannelKeyRuntimeCandidate;
 
+#[cfg(test)]
 pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
 pub(crate) type LegacyChannelModelProjection =
     crate::proxy_core::api::routing::LegacyChannelModelProjection;
@@ -2459,6 +2458,9 @@ pub(crate) use crate::proxy_core::api::transport::resolve_upstream_request_trans
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::should_preserve_exact_request_header_case;
 #[cfg(test)]
+pub(crate) use crate::proxy_core::api::transport::ProxyBody;
+pub(crate) use crate::proxy_core::api::transport::ProxyRequest;
+#[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, claude_transform_endpoint_rewrite_input_from_body,
     rewrite_claude_transform_endpoint,
@@ -2475,8 +2477,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     forwarder_rectifier_retry_failure_label,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
-    forwarder_terminal_failure_status_message, parse_json_request_body,
-    parse_json_request_body_or_null, should_apply_bedrock_pre_send_optimizer,
+    forwarder_terminal_failure_status_message, should_apply_bedrock_pre_send_optimizer,
     should_apply_forwarder_media_prevention_for_app, should_failover_after_rectifier_retry_failure,
     CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan,
     ForwarderProviderUrlFacts,
@@ -2493,7 +2494,6 @@ pub(crate) use crate::proxy_core::api::transport::{
 pub(crate) use crate::proxy_core::api::transport::{
     resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
 };
-pub(crate) use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest};
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback;
 pub(crate) use crate::proxy_core::api::usage::{
@@ -5121,68 +5121,6 @@ pub(crate) fn app_type_from_proxy_core_app(app: &AppKind) -> ProxyCoreResult<App
         .map_err(unsupported_app_kind_config_error)
 }
 
-pub(crate) struct JsonProxyRequestInput {
-    pub(crate) app_type: AppType,
-    pub(crate) method: Method,
-    pub(crate) endpoint: String,
-    pub(crate) inbound_interface: InterfaceKind,
-    pub(crate) body: Value,
-    pub(crate) requested_model: Option<String>,
-    pub(crate) headers: HeaderMap,
-    pub(crate) extensions: http::Extensions,
-}
-
-pub(crate) struct ParsedJsonProxyBody {
-    pub(crate) body: Value,
-    pub(crate) is_stream: bool,
-}
-
-pub(crate) fn parse_json_proxy_request_body(
-    body_bytes: &Bytes,
-) -> Result<ParsedJsonProxyBody, RequestBodyJsonParseError> {
-    let body = parse_json_request_body(body_bytes.as_ref())?;
-    Ok(parsed_json_proxy_body_from_value(body))
-}
-
-pub(crate) fn parse_json_proxy_request_body_or_null(
-    body_bytes: &Bytes,
-) -> Result<ParsedJsonProxyBody, RequestBodyJsonParseError> {
-    let body = parse_json_request_body_or_null(body_bytes.as_ref())?;
-    Ok(parsed_json_proxy_body_from_value(body))
-}
-
-fn parsed_json_proxy_body_from_value(body: Value) -> ParsedJsonProxyBody {
-    let is_stream = request_body_stream_flag(&body);
-    ParsedJsonProxyBody { body, is_stream }
-}
-
-pub(crate) fn json_proxy_request_from_input(input: JsonProxyRequestInput) -> ProxyRequest {
-    ProxyRequest::new(
-        AppKind::from(&input.app_type),
-        input.method,
-        input.endpoint,
-        input.inbound_interface,
-        ProxyBody::Json(input.body),
-    )
-    .with_observed_request_context(input.requested_model, input.headers, input.extensions)
-}
-
-pub(crate) struct CodexResponsesProxyRequest {
-    pub(crate) request: ProxyRequest,
-    pub(crate) tool_context: CodexToolContext,
-}
-
-pub(crate) fn codex_responses_proxy_request_from_input(
-    input: JsonProxyRequestInput,
-) -> CodexResponsesProxyRequest {
-    let tool_context = codex_tool_context_from_request(&input.body);
-    let request = json_proxy_request_from_input(input);
-    CodexResponsesProxyRequest {
-        request,
-        tool_context,
-    }
-}
-
 pub(crate) struct ForwardRuntimeRequest {
     pub(crate) app_type: AppType,
     pub(crate) method: Method,
@@ -6666,10 +6604,9 @@ pub(crate) fn apply_channel_provider_overrides(
     }
 }
 
-pub(crate) use crate::proxy_core::api::transforms::{
-    build_codex_tool_context_from_request as codex_tool_context_from_request,
-    normalize_claude_anthropic_messages,
-};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transforms::build_codex_tool_context_from_request as codex_tool_context_from_request;
+pub(crate) use crate::proxy_core::api::transforms::normalize_claude_anthropic_messages;
 
 pub(crate) fn provider_claude_normalize_anthropic_messages(
     body: &mut Value,
@@ -6762,8 +6699,6 @@ pub(crate) fn rewrite_codex_responses_endpoint_to_chat(endpoint: &str) -> (Strin
 pub(crate) use crate::proxy_core::api::transforms::claude_api_format_needs_transform;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::resolve_gemini_native_url;
-
-pub(crate) use crate::proxy_core::api::transport::request_body_stream_flag;
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::is_streaming_upstream_request;
@@ -7971,58 +7906,6 @@ mod tests {
                 "invalid app: openclaw"
             ),
             "unsupported app kind: invalid app: openclaw"
-        );
-
-        let parsed_body = parse_json_proxy_request_body(&Bytes::from_static(
-            br#"{"model":"gpt-5","stream":true}"#,
-        ))
-        .expect("parse streamed body");
-        assert_eq!(parsed_body.body["model"], "gpt-5");
-        assert!(parsed_body.is_stream);
-
-        let parsed_null_body =
-            parse_json_proxy_request_body_or_null(&Bytes::new()).expect("parse empty body");
-        assert!(parsed_null_body.body.is_null());
-        assert!(!parsed_null_body.is_stream);
-
-        let mut headers = HeaderMap::new();
-        headers.insert("x-test", "1".parse().expect("header value"));
-        let mut extensions = http::Extensions::new();
-        extensions.insert("extension-value".to_string());
-        let bridged_request = json_proxy_request_from_input(JsonProxyRequestInput {
-            app_type: AppType::Codex,
-            method: Method::POST,
-            endpoint: "/v1/responses".to_string(),
-            inbound_interface: InterfaceKind::OpenAiResponses,
-            body: json!({"model": "gpt-5"}),
-            requested_model: Some("gpt-5".to_string()),
-            headers,
-            extensions,
-        });
-        assert_eq!(bridged_request.app, AppKind::Codex);
-        assert_eq!(bridged_request.endpoint, "/v1/responses");
-        assert_eq!(
-            bridged_request.inbound_interface,
-            InterfaceKind::OpenAiResponses
-        );
-        assert_eq!(bridged_request.requested_model.as_deref(), Some("gpt-5"));
-        assert_eq!(
-            bridged_request
-                .headers
-                .get("x-test")
-                .and_then(|value| value.to_str().ok()),
-            Some("1")
-        );
-        assert_eq!(
-            bridged_request
-                .extensions
-                .get::<String>()
-                .map(String::as_str),
-            Some("extension-value")
-        );
-        assert_eq!(
-            bridged_request.body,
-            ProxyBody::Json(json!({"model": "gpt-5"}))
         );
 
         let forward_request = forward_runtime_request_from_proxy_request(ProxyRequest::new(

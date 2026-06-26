@@ -40,12 +40,14 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
 pub(crate) use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
 use crate::proxy_core::api::routing::InterfaceKind;
 use crate::proxy_core::api::transforms::{
-    codex_chat_transform_streaming_decision, normalize_codex_chat_error_body,
-    ClaudeTransformStreamingDecision, CodexChatTransformStreamingDecision, CodexToolContext,
+    build_codex_tool_context_from_request, codex_chat_transform_streaming_decision,
+    normalize_codex_chat_error_body, ClaudeTransformStreamingDecision,
+    CodexChatTransformStreamingDecision, CodexToolContext,
 };
 use crate::proxy_core::api::transport::{
-    append_query_to_endpoint_path, extract_gemini_model_from_path, rebuilt_json_proxy_response,
-    request_body_read_error_message, strip_endpoint_prefix, transformed_sse_proxy_response,
+    append_query_to_endpoint_path, extract_gemini_model_from_path, parse_json_request_body,
+    parse_json_request_body_or_null, rebuilt_json_proxy_response, request_body_read_error_message,
+    request_body_stream_flag, strip_endpoint_prefix, transformed_sse_proxy_response, ProxyBody,
     ProxyCoreResponse, ProxyRequest,
     ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext,
     ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext, ProxyResult,
@@ -57,14 +59,11 @@ use crate::proxy_core::api::usage::{
 use crate::proxy_core_adapter::{
     claude_transformed_json_response_from_context, claude_transformed_sse_stream_from_context,
     codex_auto_transformed_json_response_from_context,
-    codex_auto_transformed_sse_stream_from_context, codex_responses_proxy_request_from_input,
-    json_proxy_request_from_input, parse_json_proxy_request_body,
-    parse_json_proxy_request_body_or_null, provider_claude_transform_streaming_decision,
+    codex_auto_transformed_sse_stream_from_context, provider_claude_transform_streaming_decision,
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
     record_forward_core_error_usage, ActiveConnectionGuard, ClaudeTransformedJsonResponseContext,
     ClaudeTransformedSseStreamContext, CodexAutoTransformedJsonResponseContext,
-    CodexAutoTransformedSseStreamContext, CodexResponsesProxyRequest, JsonProxyRequestInput,
-    ProxyState,
+    CodexAutoTransformedSseStreamContext, ProxyState,
 };
 use axum::{
     response::sse::{Event, KeepAlive, Sse},
@@ -85,6 +84,11 @@ pub(crate) struct ParsedAxumJsonProxyRequest {
     pub(crate) extensions: http::Extensions,
     pub(crate) body: Value,
     pub(crate) is_stream: bool,
+}
+
+pub(crate) struct CodexResponsesProxyRequest {
+    pub(crate) request: ProxyRequest,
+    pub(crate) tool_context: CodexToolContext,
 }
 
 impl ParsedAxumJsonProxyRequest {
@@ -146,16 +150,14 @@ impl ParsedAxumJsonProxyRequest {
         inbound_interface: InterfaceKind,
         requested_model: Option<String>,
     ) -> ProxyRequest {
-        json_proxy_request_from_input(JsonProxyRequestInput {
-            app_type,
-            method: self.method,
+        ProxyRequest::new(
+            AppKind::from(&app_type),
+            self.method,
             endpoint,
             inbound_interface,
-            body: self.body,
-            requested_model,
-            headers: self.headers,
-            extensions: self.extensions,
-        })
+            ProxyBody::Json(self.body),
+        )
+        .with_observed_request_context(requested_model, self.headers, self.extensions)
     }
 
     pub(crate) fn into_anthropic_messages_proxy_request(
@@ -190,16 +192,17 @@ impl ParsedAxumJsonProxyRequest {
         endpoint: String,
         requested_model: Option<String>,
     ) -> CodexResponsesProxyRequest {
-        codex_responses_proxy_request_from_input(JsonProxyRequestInput {
-            app_type: AppType::Codex,
-            method: self.method,
+        let tool_context = build_codex_tool_context_from_request(&self.body);
+        let request = self.into_json_proxy_request(
+            AppType::Codex,
             endpoint,
-            inbound_interface: InterfaceKind::OpenAiResponses,
-            body: self.body,
+            InterfaceKind::OpenAiResponses,
             requested_model,
-            headers: self.headers,
-            extensions: self.extensions,
-        })
+        );
+        CodexResponsesProxyRequest {
+            request,
+            tool_context,
+        }
     }
 
     pub(crate) fn into_gemini_proxy_request(self, endpoint: String) -> ProxyRequest {
@@ -229,16 +232,17 @@ pub(crate) async fn collect_json_proxy_request(
 ) -> Result<ParsedAxumJsonProxyRequest, ProxyError> {
     let (parts, body) = request.into_parts();
     let body_bytes = collect_axum_request_body(body).await?;
-    let parsed_body = parse_json_proxy_request_body(&body_bytes)
+    let body = parse_json_request_body(body_bytes.as_ref())
         .map_err(|error| ProxyError::Internal(error.to_string()))?;
+    let is_stream = request_body_stream_flag(&body);
 
     Ok(ParsedAxumJsonProxyRequest {
         method: parts.method,
         uri: parts.uri,
         headers: parts.headers,
         extensions: parts.extensions,
-        body: parsed_body.body,
-        is_stream: parsed_body.is_stream,
+        body,
+        is_stream,
     })
 }
 
@@ -247,16 +251,17 @@ pub(crate) async fn collect_json_or_null_proxy_request(
 ) -> Result<ParsedAxumJsonProxyRequest, ProxyError> {
     let (parts, body) = request.into_parts();
     let body_bytes = collect_axum_request_body(body).await?;
-    let parsed_body = parse_json_proxy_request_body_or_null(&body_bytes)
+    let body = parse_json_request_body_or_null(body_bytes.as_ref())
         .map_err(|error| ProxyError::Internal(error.to_string()))?;
+    let is_stream = request_body_stream_flag(&body);
 
     Ok(ParsedAxumJsonProxyRequest {
         method: parts.method,
         uri: parts.uri,
         headers: parts.headers,
         extensions: parts.extensions,
-        body: parsed_body.body,
-        is_stream: parsed_body.is_stream,
+        body,
+        is_stream,
     })
 }
 

@@ -1147,6 +1147,13 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_DTO_TRAIT_FACADE_MARKERS: &[&str] = &[
     "trait ToProxyCoreChannelRecord",
 ];
 const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
+    "struct JsonProxyRequestInput",
+    "struct ParsedJsonProxyBody",
+    "struct CodexResponsesProxyRequest",
+    "fn parse_json_proxy_request_body(",
+    "fn parse_json_proxy_request_body_or_null(",
+    "fn json_proxy_request_from_input(",
+    "fn codex_responses_proxy_request_from_input(",
     "fn current_provider_id_from_settings_for_app_type(",
     "fn error_message_with_context(",
     "fn request_model_from_body_for_context(",
@@ -19358,12 +19365,17 @@ fn proxy_response_adapter_owns_core_transport_imports() {
             && source.contains("crate::proxy_core::api::domain::AppKind")
             && source.contains("crate::proxy_core::api::transport::{")
             && source.contains("extract_gemini_model_from_path")
+            && source.contains("parse_json_request_body")
+            && source.contains("parse_json_request_body_or_null")
+            && source.contains("request_body_stream_flag")
+            && source.contains("ProxyBody")
             && source.contains("crate::proxy_core::api::events::ProxyEventEnvelope")
             && source.contains("crate::proxy_core::api::management::{")
             && source.contains("crate::proxy_core::api::model_catalog::{")
             && source.contains("crate::proxy_core::api::ports::{")
             && source.contains("crate::proxy_core::api::routing::InterfaceKind")
             && source.contains("crate::proxy_core::api::transforms::{")
+            && source.contains("build_codex_tool_context_from_request")
             && source.contains("crate::proxy_core::api::usage::{"),
         "response_adapter should import core auth/domain/transport/event/management/model_catalog/ports/routing/transforms/usage contracts directly"
     );
@@ -19374,10 +19386,14 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         "InterfaceKind",
         "append_query_to_endpoint_path",
         "extract_gemini_model_from_path",
+        "parse_json_request_body",
+        "parse_json_request_body_or_null",
         "rebuilt_json_proxy_response",
         "request_body_read_error_message",
+        "request_body_stream_flag",
         "strip_endpoint_prefix",
         "transformed_sse_proxy_response",
+        "ProxyBody",
         "ProxyCoreResponse",
         "ProxyEventEnvelope",
         "ProxyRequest",
@@ -19390,6 +19406,13 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         "ClaudeTransformStreamingDecision",
         "CodexChatTransformStreamingDecision",
         "CodexToolContext",
+        "build_codex_tool_context_from_request",
+        "CodexResponsesProxyRequest",
+        "JsonProxyRequestInput",
+        "codex_responses_proxy_request_from_input",
+        "json_proxy_request_from_input",
+        "parse_json_proxy_request_body",
+        "parse_json_proxy_request_body_or_null",
         "CurrentRouteTarget",
         "ProxyRuntimeStatus",
         "ClientModelCatalogResponse",
