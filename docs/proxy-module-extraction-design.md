@@ -1701,6 +1701,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1215. `proxy_core_adapter` 的 test-only `apply_channel_route_model_override` re-export 已删除；adapter 单测直接调用 `proxy_core::api::transport` owning helper，保留仍有生产调用的 `apply_resolved_channel_model_override` adapter 出口。
 1216. `proxy_core_adapter` 的 test-only `proxy_url_points_to_loopback_port` re-export 已删除；adapter 单测直接调用 core owning helper，`global_http_client` 单测继续通过生产 adapter 入口 `proxy_values_point_to_loopback_port` 验证同一 loopback 判定。
 1217. `proxy_core_adapter` 的 test-only `proxy_takeover_status_from_parts` re-export 已删除；adapter 单测直接调用 `proxy_core::api::ports` owning helper，保留仍有生产调用的 `proxy_takeover_status_from_enabled_options` adapter 出口。
+1218. `proxy_core_adapter` 的 test-only `ChannelReachabilityStatus` re-export 已删除；adapter/stream-check service 单测直接调用已允许 core-facing 模块中的 owning type，DAO 单测通过 serde 字段类型推断验证落库状态 contract，边界测试防止该状态 enum 回流到 adapter。
 
 ## 背景
 
