@@ -2471,17 +2471,6 @@ pub(crate) use crate::proxy_core::api::usage::{
     usage_record_debug_log_message, usage_record_failure_warning_message,
 };
 
-#[cfg(test)]
-pub(crate) use crate::proxy::host::cc_switch::managed_account_runtime_source::default_managed_account_runtime_source;
-#[cfg(test)]
-pub(crate) use crate::proxy::host::cc_switch::managed_account_runtime_source::resolve_managed_account_auth_from_runtime_source;
-#[cfg(test)]
-pub(crate) use crate::proxy::host::cc_switch::managed_account_runtime_source::ManagedAccountRuntimeSource;
-#[cfg(test)]
-pub(crate) use crate::proxy::host::cc_switch::managed_account_runtime_source::{
-    copilot_api_endpoint_from_app_handle, copilot_live_models_from_app_handle,
-    copilot_model_vendor_from_app_handle,
-};
 pub(crate) use crate::proxy::host::cc_switch::managed_account_runtime_source::{
     managed_account_runtime_source_from_app_handle, ManagedAccountRuntimeSourceRef,
 };
@@ -7691,6 +7680,11 @@ mod tests {
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{
         AuthBinding, AuthBindingSource, ClaudeDesktopMode, ClaudeDesktopModelRoute, ProviderMeta,
+    };
+    use crate::proxy::host::cc_switch::managed_account_runtime_source::{
+        copilot_api_endpoint_from_app_handle, copilot_live_models_from_app_handle,
+        copilot_model_vendor_from_app_handle, default_managed_account_runtime_source,
+        resolve_managed_account_auth_from_runtime_source, ManagedAccountRuntimeSource,
     };
     use crate::proxy::provider::ProviderAdapter;
     use crate::proxy_core::api::auth::channel_auth_profile_missing_key_error;

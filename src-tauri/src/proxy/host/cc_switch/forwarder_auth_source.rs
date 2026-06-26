@@ -19,7 +19,7 @@ use crate::proxy_core_adapter::{
 };
 
 #[cfg(test)]
-use crate::proxy_core_adapter::default_managed_account_runtime_source;
+use crate::proxy::host::cc_switch::managed_account_runtime_source::default_managed_account_runtime_source;
 
 struct CcSwitchForwarderAuthSource {
     managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
