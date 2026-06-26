@@ -2398,7 +2398,7 @@ fn basic_health_status_handlers_use_management_contracts() {
 #[test]
 fn proxy_server_status_delegates_to_proxy_engine_runtime_status() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/server.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let function = function_slice(
         &source,
@@ -2421,7 +2421,7 @@ fn proxy_server_status_delegates_to_proxy_engine_runtime_status() {
         ] {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/server.rs get_status:{} contains runtime status source marker `{}`",
+                    "src/proxy/transport/http/server.rs get_status:{} contains runtime status source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -2482,7 +2482,7 @@ fn claude_desktop_gateway_auth_delegates_to_proxy_engine() {
 #[test]
 fn proxy_server_claude_desktop_gateway_smoke_uses_adapter_token_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/server.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read proxy/server.rs");
     let smoke_slice = function_slice(
         &source,
@@ -2505,7 +2505,7 @@ fn proxy_server_claude_desktop_gateway_smoke_uses_adapter_token_source() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/server.rs proxy_server_runtime_smoke_serves_claude_desktop_models_with_gateway_auth:{} contains host token-source marker `{}`",
+                    "src/proxy/transport/http/server.rs proxy_server_runtime_smoke_serves_claude_desktop_models_with_gateway_auth:{} contains host token-source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8752,7 +8752,7 @@ fn production_provider_module_excludes_codex_chat_history_state() {
     let proxy_paths = [
         "src/proxy/forwarder.rs",
         "src/proxy/handlers.rs",
-        "src/proxy/server.rs",
+        "src/proxy/transport/http/server.rs",
     ];
 
     let mut violations = Vec::new();
@@ -14379,7 +14379,7 @@ fn production_proxy_core_host_delegates_forwarder_runtime_resources_to_adapter()
 #[test]
 fn production_proxy_server_delegates_circuit_runtime_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/server.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let circuit_runtime =
         function_slice(&source, "    /// 热更新熔断器配置", "\n}\n\n#[cfg(test)]");
@@ -14390,7 +14390,7 @@ fn production_proxy_server_delegates_circuit_runtime_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVER_CIRCUIT_RUNTIME_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/server.rs ProxyServer circuit runtime:{} contains provider router marker `{}`",
+                    "src/proxy/transport/http/server.rs ProxyServer circuit runtime:{} contains provider router marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -14408,7 +14408,7 @@ fn production_proxy_server_delegates_circuit_runtime_to_adapter() {
 #[test]
 fn production_proxy_server_delegates_runtime_assembly_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/server.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let constructor = function_slice(&source, "    pub fn new", "    pub async fn start");
 
@@ -14418,7 +14418,7 @@ fn production_proxy_server_delegates_runtime_assembly_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVER_RUNTIME_ASSEMBLY_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/server.rs ProxyServer::new:{} contains runtime assembly marker `{}`",
+                    "src/proxy/transport/http/server.rs ProxyServer::new:{} contains runtime assembly marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -14436,7 +14436,7 @@ fn production_proxy_server_delegates_runtime_assembly_to_adapter() {
 #[test]
 fn production_proxy_server_imports_runtime_services_from_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/server.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
 
     let mut violations = Vec::new();
@@ -14445,7 +14445,7 @@ fn production_proxy_server_imports_runtime_services_from_adapter() {
         for marker in FORBIDDEN_PROXY_SERVER_HOST_COMPAT_IMPORT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/server.rs:{} contains host compat import marker `{}`",
+                    "src/proxy/transport/http/server.rs:{} contains host compat import marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -14461,9 +14461,29 @@ fn production_proxy_server_imports_runtime_services_from_adapter() {
 }
 
 #[test]
-fn production_proxy_server_delegates_runtime_state_type_to_adapter() {
+fn production_proxy_server_legacy_module_is_reexport_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/server.rs");
+    let source = fs::read_to_string(&path).expect("read server.rs");
+    let production_code: Vec<&str> = production_lines(&source)
+        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert_eq!(
+        production_code,
+        vec![
+            "#[allow(unused_imports)]",
+            "pub(crate) use super::transport::http::server::ProxyServer;",
+        ],
+        "legacy proxy/server.rs must remain a re-export shim after transport/http/server.rs split"
+    );
+}
+
+#[test]
+fn production_proxy_server_delegates_runtime_state_type_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
 
     let mut violations = Vec::new();
@@ -14472,7 +14492,7 @@ fn production_proxy_server_delegates_runtime_state_type_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVER_RUNTIME_STATE_TYPE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/server.rs:{} contains runtime state type marker `{}`",
+                    "src/proxy/transport/http/server.rs:{} contains runtime state type marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -14490,7 +14510,7 @@ fn production_proxy_server_delegates_runtime_state_type_to_adapter() {
 #[test]
 fn production_proxy_server_keeps_host_state_constructor_test_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/server.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let lines: Vec<&str> = source.lines().collect();
 
@@ -14508,7 +14528,7 @@ fn production_proxy_server_keeps_host_state_constructor_test_only() {
             .unwrap_or_default();
         if previous != "#[cfg(test)]" {
             violations.push(format!(
-                "src/proxy/server.rs:{} keeps host-state constructor/import in production: `{}`",
+                "src/proxy/transport/http/server.rs:{} keeps host-state constructor/import in production: `{}`",
                 line_index + 1,
                 trimmed
             ));
@@ -14530,7 +14550,7 @@ fn production_proxy_state_imports_use_adapter_path() {
         "src/proxy/handler_context.rs",
         "src/proxy/handlers.rs",
         "src/proxy/response_processor.rs",
-        "src/proxy/server.rs",
+        "src/proxy/transport/http/server.rs",
     ];
 
     let mut violations = Vec::new();
@@ -14678,7 +14698,7 @@ fn proxy_core_host_compat_surface_stays_test_only() {
 #[test]
 fn production_proxy_server_delegates_runtime_state_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/server.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let runtime_state = function_slice(&source, "    pub async fn start", "    fn build_router");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
@@ -14744,7 +14764,7 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVER_RUNTIME_STATE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/server.rs ProxyServer runtime state:{} contains runtime state marker `{}`",
+                    "src/proxy/transport/http/server.rs ProxyServer runtime state:{} contains runtime state marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -14762,7 +14782,7 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
 #[test]
 fn production_proxy_server_delegates_route_assembly_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/server.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let start_slice = function_slice(&source, "    pub async fn start", "    pub async fn stop");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
@@ -14807,7 +14827,7 @@ fn production_proxy_server_delegates_route_assembly_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVER_ROUTE_ASSEMBLY_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/server.rs ProxyServer::start:{} contains route assembly marker `{}`",
+                    "src/proxy/transport/http/server.rs ProxyServer::start:{} contains route assembly marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -14825,7 +14845,7 @@ fn production_proxy_server_delegates_route_assembly_to_adapter() {
 #[test]
 fn production_proxy_server_delegates_accept_loop_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/server.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let start_slice = function_slice(&source, "    pub async fn start", "    pub async fn stop");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
@@ -14869,7 +14889,7 @@ fn production_proxy_server_delegates_accept_loop_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVER_ACCEPT_LOOP_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/server.rs ProxyServer::start:{} contains accept-loop marker `{}`",
+                    "src/proxy/transport/http/server.rs ProxyServer::start:{} contains accept-loop marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -14887,7 +14907,7 @@ fn production_proxy_server_delegates_accept_loop_to_adapter() {
 #[test]
 fn production_proxy_server_delegates_listener_bind_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/server.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let start_slice = function_slice(&source, "    pub async fn start", "    pub async fn stop");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
@@ -14930,7 +14950,7 @@ fn production_proxy_server_delegates_listener_bind_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVER_LISTENER_BIND_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/server.rs ProxyServer::start:{} contains listener-bind marker `{}`",
+                    "src/proxy/transport/http/server.rs ProxyServer::start:{} contains listener-bind marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -14948,7 +14968,7 @@ fn production_proxy_server_delegates_listener_bind_to_adapter() {
 #[test]
 fn production_proxy_server_delegates_stop_wait_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/server.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let stop_slice = function_slice(
         &source,
@@ -14987,7 +15007,7 @@ fn production_proxy_server_delegates_stop_wait_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVER_STOP_WAIT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/server.rs ProxyServer::stop:{} contains stop-wait marker `{}`",
+                    "src/proxy/transport/http/server.rs ProxyServer::stop:{} contains stop-wait marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -15005,7 +15025,7 @@ fn production_proxy_server_delegates_stop_wait_to_adapter() {
 #[test]
 fn production_proxy_server_delegates_handle_storage_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/server.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let server_lifecycle = function_slice(
         &source,
@@ -15049,7 +15069,7 @@ fn production_proxy_server_delegates_handle_storage_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVER_HANDLE_STORAGE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/server.rs ProxyServer lifecycle:{} contains handle-storage marker `{}`",
+                    "src/proxy/transport/http/server.rs ProxyServer lifecycle:{} contains handle-storage marker `{}`",
                     line_index + 1,
                     marker
                 ));

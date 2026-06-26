@@ -23,6 +23,7 @@ pub mod response_processor;
 pub(crate) mod route_attempt;
 pub(crate) mod server;
 pub(crate) mod switch_lock;
+pub(crate) mod transport;
 pub mod usage;
 
 pub(crate) use forwarder::{ForwardError, ForwardResult, RequestForwarder};

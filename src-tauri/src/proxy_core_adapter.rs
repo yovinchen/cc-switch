@@ -28,7 +28,7 @@ use crate::proxy::provider_router::{
 };
 use crate::proxy::providers::{get_adapter, ProviderAdapter};
 use crate::proxy::route_attempt::ForwardAttempt;
-use crate::proxy::server::ProxyServer;
+use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 #[cfg(test)]
