@@ -8,6 +8,7 @@
 use crate::database::Database;
 use crate::error::AppError;
 use crate::proxy_core_adapter::{
+    FailoverSwitchScheduler, FailoverSwitchSchedulerRef, ForwarderFailoverSwitchTarget,
     failover_switch_app_enabled_from_db, failover_switch_pending_key,
     provider_switched_failover_event_message,
 };
@@ -140,4 +141,36 @@ impl FailoverSwitchManager {
 
         Ok(switched)
     }
+}
+
+struct CcSwitchFailoverSwitchScheduler {
+    manager: Arc<FailoverSwitchManager>,
+    app_handle: Option<tauri::AppHandle>,
+}
+
+impl CcSwitchFailoverSwitchScheduler {
+    fn new(manager: Arc<FailoverSwitchManager>, app_handle: Option<tauri::AppHandle>) -> Self {
+        Self {
+            manager,
+            app_handle,
+        }
+    }
+}
+
+impl FailoverSwitchScheduler for CcSwitchFailoverSwitchScheduler {
+    fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget) {
+        self.manager.clone().spawn_try_switch(
+            self.app_handle.clone(),
+            app_type.to_string(),
+            target.provider_id,
+            target.provider_name,
+        );
+    }
+}
+
+pub(crate) fn failover_switch_scheduler_from_runtime_sources(
+    manager: Arc<FailoverSwitchManager>,
+    app_handle: Option<tauri::AppHandle>,
+) -> FailoverSwitchSchedulerRef {
+    Arc::new(CcSwitchFailoverSwitchScheduler::new(manager, app_handle))
 }

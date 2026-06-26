@@ -11458,10 +11458,26 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let failover_source_path = manifest_dir.join("src/proxy/host/cc_switch/failover_switch.rs");
+    let failover_source =
+        fs::read_to_string(&failover_source_path).expect("read failover_switch.rs");
 
     assert!(
         source.contains("failover_switch_scheduler"),
         "RequestForwarder must receive failover switch scheduling as an injected runtime source"
+    );
+    assert!(
+        failover_source.contains("struct CcSwitchFailoverSwitchScheduler")
+            && failover_source
+                .contains("impl FailoverSwitchScheduler for CcSwitchFailoverSwitchScheduler"),
+        "default failover switch scheduler implementation should live in the CC Switch host module"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources")
+            && !adapter_source.contains("struct CcSwitchFailoverSwitchScheduler"),
+        "proxy_core_adapter should re-export, not own, the default failover switch scheduler"
     );
 
     let forbidden_markers = [
