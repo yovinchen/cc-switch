@@ -2250,21 +2250,16 @@ pub type StreamCheckConfig = crate::proxy_core::api::management::StreamCheckConf
 pub type StreamCheckResult = crate::proxy_core::api::management::StreamCheckResult;
 pub(crate) type ChannelKeyRecord = crate::proxy_core::api::management::ChannelKeyRecord;
 pub(crate) type ChannelKeyRecordInput = crate::proxy_core::api::management::ChannelKeyRecordInput;
+#[cfg(test)]
 pub(crate) type ChannelKeyRuntimeCandidate =
     crate::proxy_core::api::management::ChannelKeyRuntimeCandidate;
-pub(crate) type ChannelKeyRuntimeCandidateInput =
-    crate::proxy_core::api::management::ChannelKeyRuntimeCandidateInput;
 pub(crate) type ChannelModelRecord = crate::proxy_core::api::management::ChannelModelRecord;
 pub(crate) type ChannelModelRecordInput =
     crate::proxy_core::api::management::ChannelModelRecordInput;
 pub(crate) type ChannelRecordInput = crate::proxy_core::api::management::ChannelRecordInput;
 
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::management::select_enabled_channel_key_runtime_candidate as core_select_enabled_channel_key_runtime_candidate;
 pub(crate) use crate::proxy_core::api::management::{
-    channel_key_record_from_input, channel_key_runtime_candidate_from_input,
-    channel_model_record_from_input, channel_record_from_input,
-    select_channel_key_runtime_candidate as core_select_channel_key_runtime_candidate,
+    channel_key_record_from_input, channel_model_record_from_input, channel_record_from_input,
 };
 
 pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
@@ -7983,6 +7978,7 @@ mod tests {
         upstream_proxy_error_response_body, ProxyCoreError, ProxyErrorStatusKind,
     };
     use crate::proxy_core::api::events::ProxyEventEnvelope;
+    use crate::proxy_core::api::management::ChannelKeyRuntimeCandidate;
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
     use crate::proxy_core::api::transport::{

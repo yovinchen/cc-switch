@@ -8,6 +8,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/error_mapper.rs",
     "src/proxy/error.rs",
     "src/proxy/events.rs",
+    "src/proxy/host/cc_switch/channel_key_runtime_source.rs",
     "src/proxy/host/cc_switch/forwarder_auth_source.rs",
     "src/proxy/host/cc_switch/forwarder_response_source.rs",
     "src/proxy/host/cc_switch/forwarder_request_source.rs",
@@ -3140,10 +3141,14 @@ fn channel_key_and_model_handlers_delegate_sources_to_proxy_engine() {
 }
 
 #[test]
-fn proxy_channel_runtime_source_delegates_key_selection_to_core_adapter() {
+fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let runtime_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/channel_key_runtime_source.rs");
     let runtime_source =
@@ -3168,6 +3173,25 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core_adapter() {
             && !function.contains(".key_value"),
         "channel key runtime source must load runtime DB key records, delegate key-ref/enabled selection to core, and return the selected runtime candidate"
     );
+    assert!(
+        runtime_source.contains("use crate::proxy_core::api::management::{")
+            && runtime_source.contains("channel_key_runtime_candidate_from_input")
+            && runtime_source.contains("select_channel_key_runtime_candidate")
+            && runtime_source.contains("select_enabled_channel_key_runtime_candidate")
+            && runtime_source.contains("ChannelKeyRuntimeCandidateInput"),
+        "channel key runtime source should import pure candidate projection/selection directly from proxy_core::api::management"
+    );
+    for marker in [
+        "core_select_channel_key_runtime_candidate",
+        "core_select_enabled_channel_key_runtime_candidate",
+        "channel_key_runtime_candidate_from_input",
+        "ChannelKeyRuntimeCandidateInput",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not re-export pure channel-key candidate helper/type `{marker}` once runtime source owns the call site"
+        );
+    }
     assert!(
         !function.contains(".get_proxy_channel_key("),
         "channel key runtime source must not perform exact-key DB lookup before core candidate selection"

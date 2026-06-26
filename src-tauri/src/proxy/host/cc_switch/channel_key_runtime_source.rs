@@ -1,11 +1,11 @@
 use crate::database::{Database, ProxyChannelKeyRecord};
 #[cfg(test)]
-use crate::proxy_core_adapter::core_select_enabled_channel_key_runtime_candidate;
-use crate::proxy_core_adapter::{
-    app_error, channel_key_runtime_candidate_from_input, core_select_channel_key_runtime_candidate,
-    ChannelKeyRuntimeCandidate, ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeSource,
-    ProxyCoreResult,
+use crate::proxy_core::api::management::select_enabled_channel_key_runtime_candidate;
+use crate::proxy_core::api::management::{
+    channel_key_runtime_candidate_from_input, select_channel_key_runtime_candidate,
+    ChannelKeyRuntimeCandidate, ChannelKeyRuntimeCandidateInput,
 };
+use crate::proxy_core_adapter::{app_error, ChannelKeyRuntimeSource, ProxyCoreResult};
 use std::sync::Arc;
 
 pub(crate) fn proxy_channel_key_record_to_runtime_candidate(
@@ -29,7 +29,7 @@ pub(crate) fn select_enabled_proxy_channel_key_runtime_candidate<I>(
 where
     I: IntoIterator<Item = ProxyChannelKeyRecord>,
 {
-    core_select_enabled_channel_key_runtime_candidate(
+    select_enabled_channel_key_runtime_candidate(
         keys.into_iter()
             .map(proxy_channel_key_record_to_runtime_candidate),
     )
@@ -42,7 +42,7 @@ fn select_proxy_channel_key_runtime_candidate<I>(
 where
     I: IntoIterator<Item = ProxyChannelKeyRecord>,
 {
-    core_select_channel_key_runtime_candidate(
+    select_channel_key_runtime_candidate(
         keys.into_iter()
             .map(proxy_channel_key_record_to_runtime_candidate),
         key_ref,
