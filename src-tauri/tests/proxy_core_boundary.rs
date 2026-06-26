@@ -1627,6 +1627,18 @@ const FORBIDDEN_HANDLER_TRANSFORM_STREAMING_DECISION_CALL_MARKERS: &[&str] = &[
     "provider_claude_transform_streaming_decision(",
     "codex_chat_transform_streaming_decision(",
 ];
+const FORBIDDEN_HANDLER_TRANSFORM_RESPONSE_ORCHESTRATION_MARKERS: &[&str] = &[
+    "async fn handle_claude_transform(",
+    "async fn handle_codex_chat_to_responses_transform(",
+    "claude_transformed_sse_stream_from_context(",
+    "codex_auto_transformed_sse_stream_from_context(",
+    "ClaudeTransformedSseStreamContext",
+    "CodexAutoTransformedSseStreamContext",
+    "claude_transformed_sse_response_to_axum_response(",
+    "codex_transformed_sse_response_to_axum_response(",
+    "claude_transformed_upstream_json_response_to_axum_response(",
+    "codex_transformed_upstream_json_response_to_axum_response(",
+];
 const FORBIDDEN_PROXY_CORE_ADAPTER_CLAUDE_STREAMING_DECISION_MARKERS: &[&str] = &[
     "should_aggregate_codex_oauth_responses_sse(",
     "should_use_claude_transform_streaming(",
@@ -3270,7 +3282,7 @@ fn production_protocol_handlers_delegate_forward_core_error_usage_to_adapter() {
         function_slice(
             &source,
             "async fn handle_messages_for_app(",
-            "\n}\n\n/// Claude 格式转换处理",
+            "\n}\n\n// ============================================================================\n// Codex API",
         ),
         function_slice(
             &source,
@@ -3285,7 +3297,7 @@ fn production_protocol_handlers_delegate_forward_core_error_usage_to_adapter() {
         function_slice(
             &source,
             "pub async fn handle_responses_compact(",
-            "\n}\n\nasync fn handle_codex_chat_to_responses_transform(",
+            "\n}\n\n// ============================================================================\n// Gemini API",
         ),
         function_slice(
             &source,
@@ -6567,29 +6579,17 @@ fn handlers_delegate_transformed_response_build_context_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let claude_transform = function_slice(
-        &source,
-        "async fn handle_claude_transform(",
-        "\n}\n\n// ============================================================================\n// Codex API",
-    );
-    let codex_transform = function_slice(
-        &source,
-        "async fn handle_codex_chat_to_responses_transform(",
-        "\n}\n\n// ============================================================================\n// Gemini API",
-    );
 
     let mut violations = Vec::new();
-    for transform in [claude_transform, codex_transform] {
-        for (line_index, line) in production_lines(transform) {
-            let code = line.split("//").next().unwrap_or_default();
-            for marker in FORBIDDEN_HANDLER_TRANSFORMED_RESPONSE_BUILD_CONTEXT_MARKERS {
-                if code.contains(marker) {
-                    violations.push(format!(
-                        "src/proxy/handlers.rs:{} contains transformed response build marker `{}`",
-                        line_index + 1,
-                        marker
-                    ));
-                }
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_TRANSFORMED_RESPONSE_BUILD_CONTEXT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains transformed response build marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
             }
         }
     }
@@ -6633,14 +6633,9 @@ fn handlers_delegate_claude_streaming_decision_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let transform = function_slice(
-        &source,
-        "async fn handle_claude_transform(",
-        "\n}\n\n// ============================================================================\n// Codex API",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(transform) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_HANDLER_CLAUDE_STREAMING_DECISION_MARKERS {
             if code.contains(marker) {
@@ -6719,14 +6714,9 @@ fn handlers_delegate_codex_chat_streaming_decision_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let transform = function_slice(
-        &source,
-        "async fn handle_codex_chat_to_responses_transform(",
-        "\n}\n\n// ============================================================================\n// Gemini API",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(transform) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_HANDLER_CODEX_STREAMING_DECISION_MARKERS {
             if code.contains(marker) {
@@ -6769,6 +6759,33 @@ fn handlers_delegate_transform_streaming_decision_calls_to_response_adapter() {
     assert!(
         violations.is_empty(),
         "protocol handlers must call transform streaming decisions through response_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn handlers_delegate_transform_response_orchestration_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_TRANSFORM_RESPONSE_ORCHESTRATION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains transform response orchestration marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "protocol handlers must delegate transform response orchestration to response_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

@@ -14,43 +14,36 @@ use super::{
     handler_context::RequestContext,
     response_adapter::{
         claude_proxy_result_to_proxy_response, claude_response_needs_transform,
-        claude_transform_streaming_decision_for_response,
-        claude_transformed_sse_response_to_axum_response,
-        claude_transformed_upstream_json_response_to_axum_response,
-        codex_chat_transform_streaming_decision_for_response,
-        codex_chat_upstream_error_response_to_axum_response, codex_proxy_error_to_axum_response,
-        codex_response_needs_chat_transform, codex_transformed_sse_response_to_axum_response,
-        codex_transformed_upstream_json_response_to_axum_response, collect_axum_request_body,
-        proxy_event_envelope_to_axum_sse_event, proxy_result_to_proxy_response,
+        claude_transformed_response_to_axum_response,
+        codex_chat_to_responses_transformed_response_to_axum_response,
+        codex_proxy_error_to_axum_response, codex_response_needs_chat_transform,
+        collect_axum_request_body, proxy_event_envelope_to_axum_sse_event,
+        proxy_result_to_proxy_response,
     },
     response_processor::process_response,
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
-    append_query_to_endpoint_path, claude_transformed_sse_stream_from_context,
-    codex_auto_transformed_sse_stream_from_context, codex_responses_proxy_request_from_input,
+    append_query_to_endpoint_path, codex_responses_proxy_request_from_input,
     extract_gemini_model_from_path, json_proxy_request_from_input, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, record_forward_core_error_usage, strip_endpoint_prefix,
-    ActiveConnectionGuard, AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse,
-    AppKind, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
-    ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord,
-    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
-    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
-    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
-    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CodexToolContext,
-    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
-    HealthCheckResponse, InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest,
-    ProviderListResponse, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-    ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyState, ProxyStatusRequest,
-    ProxyStatusResponse, RoutableModelList, RouteGroupListResponse, RouteResolveManagementRequest,
-    RouteResolveRequest, RouteResolveResponse, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
-    GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
-};
-use crate::proxy_core_adapter::{
-    ClaudeTransformedSseStreamContext, CodexAutoTransformedSseStreamContext,
+    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
+    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
+    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
+    ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
+    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
+    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
+    CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
+    InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest, ProviderListResponse,
+    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
+    ProxyRuntimeStatus, ProxyState, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
+    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
+    RouteResolveResponse, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
+    OPENAI_PARSER_CONFIG,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -58,7 +51,6 @@ use axum::{
     response::sse::{Event, KeepAlive, Sse},
     Json,
 };
-use serde_json::Value;
 use std::convert::Infallible;
 use std::time::Duration;
 
@@ -631,7 +623,7 @@ async fn handle_messages_for_app(
 
     // Claude 特有：格式转换处理
     if needs_transform {
-        return handle_claude_transform(
+        return claude_transformed_response_to_axum_response(
             response,
             &ctx,
             &state,
@@ -645,57 +637,6 @@ async fn handle_messages_for_app(
 
     // 通用响应处理（透传模式）
     process_response(response, &ctx, &state, &CLAUDE_PARSER_CONFIG, None).await
-}
-
-/// Claude 格式转换处理（独有逻辑）
-///
-/// 支持 OpenAI Chat Completions 和 Responses API 两种格式的转换
-async fn handle_claude_transform(
-    response: super::hyper_client::ProxyResponse,
-    ctx: &RequestContext,
-    state: &ProxyState,
-    original_body: &Value,
-    is_stream: bool,
-    api_format: &str,
-    connection_guard: Option<ActiveConnectionGuard>,
-) -> Result<axum::response::Response, ProxyError> {
-    let status = response.status();
-    let provider = ctx.provider()?;
-    let streaming_decision = claude_transform_streaming_decision_for_response(
-        provider,
-        is_stream,
-        response.headers(),
-        api_format,
-    );
-    if streaming_decision.use_streaming {
-        let stream = response.bytes_stream();
-        let logged_stream = claude_transformed_sse_stream_from_context(
-            stream,
-            ClaudeTransformedSseStreamContext {
-                state,
-                ctx,
-                provider,
-                api_format,
-                original_body,
-                status_code: status.as_u16(),
-                connection_guard,
-            },
-        );
-
-        return claude_transformed_sse_response_to_axum_response(logged_stream);
-    }
-
-    claude_transformed_upstream_json_response_to_axum_response(
-        response,
-        ctx,
-        state,
-        provider,
-        api_format,
-        original_body,
-        streaming_decision.response_sse_aggregation,
-        streaming_decision.aggregate_codex_oauth_responses_sse,
-    )
-    .await
 }
 
 // ============================================================================
@@ -802,7 +743,7 @@ pub async fn handle_responses(
     let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
     if codex_response_needs_chat_transform(&ctx, &endpoint)? {
-        return handle_codex_chat_to_responses_transform(
+        return codex_chat_to_responses_transformed_response_to_axum_response(
             response,
             &ctx,
             &state,
@@ -866,7 +807,7 @@ pub async fn handle_responses_compact(
     let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
     if codex_response_needs_chat_transform(&ctx, &endpoint)? {
-        return handle_codex_chat_to_responses_transform(
+        return codex_chat_to_responses_transformed_response_to_axum_response(
             response,
             &ctx,
             &state,
@@ -878,53 +819,6 @@ pub async fn handle_responses_compact(
     }
 
     process_response(response, &ctx, &state, &CODEX_PARSER_CONFIG, None).await
-}
-
-async fn handle_codex_chat_to_responses_transform(
-    response: super::hyper_client::ProxyResponse,
-    ctx: &RequestContext,
-    state: &ProxyState,
-    is_stream: bool,
-    connection_guard: Option<ActiveConnectionGuard>,
-    tool_context: CodexToolContext,
-) -> Result<axum::response::Response, ProxyError> {
-    let status = response.status();
-
-    if !status.is_success() {
-        // 上游 Chat 错误体形状与 Responses 不一致（如 MiniMax 的 base_resp、自定义 detail 字段）；
-        // 直接透传会让 Codex 客户端无法识别错误码。这里统一转换为 Responses 风格
-        // `{"error": {message, type, code, param}}`，保留原始 HTTP 状态码。
-        return codex_chat_upstream_error_response_to_axum_response(response, ctx).await;
-    }
-
-    let streaming_decision =
-        codex_chat_transform_streaming_decision_for_response(is_stream, response.headers());
-
-    if streaming_decision.use_streaming {
-        let stream = response.bytes_stream();
-        let logged_stream = codex_auto_transformed_sse_stream_from_context(
-            stream,
-            CodexAutoTransformedSseStreamContext {
-                state,
-                ctx,
-                tool_context,
-                status_code: status.as_u16(),
-                connection_guard,
-            },
-        );
-
-        return codex_transformed_sse_response_to_axum_response(logged_stream);
-    }
-
-    let _connection_guard = connection_guard;
-    codex_transformed_upstream_json_response_to_axum_response(
-        response,
-        ctx,
-        state,
-        &tool_context,
-        streaming_decision.response_sse_aggregation,
-    )
-    .await
 }
 
 // ============================================================================
