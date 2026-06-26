@@ -1,17 +1,22 @@
 use super::{
     error::ProxyError,
     error_mapper::{
+        claude_response_transform_error_to_proxy_error,
         codex_proxy_error_body_build_error_to_proxy_error, codex_proxy_error_response,
-        codex_responses_error_body_build_error_to_proxy_error, response_build_error_to_proxy_error,
+        codex_responses_error_body_build_error_to_proxy_error,
+        parse_claude_transform_upstream_json_or_unlabeled_sse, response_build_error_to_proxy_error,
     },
     handler_context::RequestContext,
     hyper_client::ProxyResponse,
 };
+use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    codex_chat_error_proxy_response, read_decoded_proxy_response_body, rebuilt_json_proxy_response,
-    request_body_read_error_message, transformed_sse_proxy_response, AxumResponseBuildErrorContext,
-    CoreResponseBuildFailureContext, ProxyCoreResponse, ProxyEventEnvelope, ProxyTransportResponse,
-    ProxyTransportResponseBody,
+    claude_transformed_json_response_from_context, codex_chat_error_proxy_response,
+    read_decoded_proxy_response_body, rebuilt_json_proxy_response, request_body_read_error_message,
+    transformed_sse_proxy_response, AxumResponseBuildErrorContext,
+    ClaudeTransformedJsonResponseContext, CoreResponseBuildFailureContext, ProxyCoreResponse,
+    ProxyEventEnvelope, ProxyState, ProxyTransportResponse, ProxyTransportResponseBody,
+    UpstreamSseAggregationKind,
 };
 use axum::response::sse::Event;
 use bytes::Bytes;
@@ -131,6 +136,47 @@ pub(crate) fn claude_transformed_json_response_to_axum_response(
         CoreResponseBuildFailureContext::ClaudeJson,
         AxumResponseBuildErrorContext::ClaudeResponse,
     )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn claude_transformed_upstream_json_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+    provider: &Provider,
+    api_format: &str,
+    original_body: &Value,
+    response_sse_aggregation: Option<UpstreamSseAggregationKind>,
+    aggregate_codex_oauth_responses_sse: bool,
+) -> Result<axum::response::Response, ProxyError> {
+    let decoded =
+        read_decoded_proxy_response_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
+    let response_headers = decoded.headers;
+    let status = decoded.status;
+    let body_bytes = decoded.body;
+
+    let upstream_response = parse_claude_transform_upstream_json_or_unlabeled_sse(
+        body_bytes.as_ref(),
+        &response_headers,
+        response_sse_aggregation,
+        api_format,
+        aggregate_codex_oauth_responses_sse,
+    )?;
+
+    let anthropic_response = claude_transformed_json_response_from_context(
+        &upstream_response,
+        ClaudeTransformedJsonResponseContext {
+            state,
+            ctx,
+            provider,
+            api_format,
+            original_body,
+            status_code: status.as_u16(),
+        },
+    )
+    .map_err(claude_response_transform_error_to_proxy_error)?;
+
+    claude_transformed_json_response_to_axum_response(status, response_headers, anthropic_response)
 }
 
 pub(crate) fn codex_transformed_json_response_to_axum_response(

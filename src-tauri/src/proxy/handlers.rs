@@ -11,15 +11,14 @@ use super::{
     auth_adapter::validate_claude_desktop_gateway_auth,
     error::ProxyError,
     error_mapper::{
-        claude_response_transform_error_to_proxy_error,
         codex_chat_to_responses_transform_error_to_proxy_error,
-        management_api_error_to_proxy_error, parse_claude_transform_upstream_json_or_unlabeled_sse,
-        parse_codex_chat_upstream_json_or_unlabeled_sse, proxy_core_error_to_proxy_error,
+        management_api_error_to_proxy_error, parse_codex_chat_upstream_json_or_unlabeled_sse,
+        proxy_core_error_to_proxy_error,
     },
     handler_context::RequestContext,
     response_adapter::{
-        claude_transformed_json_response_to_axum_response,
         claude_transformed_sse_response_to_axum_response,
+        claude_transformed_upstream_json_response_to_axum_response,
         codex_chat_upstream_error_response_to_axum_response, codex_proxy_error_to_axum_response,
         codex_transformed_json_response_to_axum_response,
         codex_transformed_sse_response_to_axum_response, collect_axum_request_body,
@@ -29,8 +28,8 @@ use super::{
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
-    append_query_to_endpoint_path, claude_transformed_json_response_from_context,
-    claude_transformed_sse_stream_from_context, codex_auto_transformed_json_response_from_context,
+    append_query_to_endpoint_path, claude_transformed_sse_stream_from_context,
+    codex_auto_transformed_json_response_from_context,
     codex_auto_transformed_sse_stream_from_context, codex_chat_transform_streaming_decision,
     codex_responses_proxy_request_from_input, extract_gemini_model_from_path,
     json_proxy_request_from_input, parse_json_proxy_request_body,
@@ -56,8 +55,8 @@ use crate::proxy_core_adapter::{
     GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
-    CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
+    ClaudeTransformedSseStreamContext, CodexAutoTransformedJsonResponseContext,
+    CodexAutoTransformedSseStreamContext,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -694,34 +693,17 @@ async fn handle_claude_transform(
         return claude_transformed_sse_response_to_axum_response(logged_stream);
     }
 
-    // 非流式响应转换 (OpenAI/Responses → Anthropic)
-    let decoded =
-        read_decoded_proxy_response_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
-    let response_headers = decoded.headers;
-    let body_bytes = decoded.body;
-
-    let upstream_response = parse_claude_transform_upstream_json_or_unlabeled_sse(
-        body_bytes.as_ref(),
-        &response_headers,
-        streaming_decision.response_sse_aggregation,
+    claude_transformed_upstream_json_response_to_axum_response(
+        response,
+        ctx,
+        state,
+        provider,
         api_format,
+        original_body,
+        streaming_decision.response_sse_aggregation,
         streaming_decision.aggregate_codex_oauth_responses_sse,
-    )?;
-
-    let anthropic_response = claude_transformed_json_response_from_context(
-        &upstream_response,
-        ClaudeTransformedJsonResponseContext {
-            state,
-            ctx,
-            provider,
-            api_format,
-            original_body,
-            status_code: status.as_u16(),
-        },
     )
-    .map_err(claude_response_transform_error_to_proxy_error)?;
-
-    claude_transformed_json_response_to_axum_response(status, response_headers, anthropic_response)
+    .await
 }
 
 // ============================================================================

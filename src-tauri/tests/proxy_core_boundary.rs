@@ -1505,6 +1505,7 @@ const FORBIDDEN_ERROR_MAPPER_RESPONSE_TRANSFORM_FAILURE_CONTEXT_MARKERS: &[&str]
     "Chat → Responses 响应转换失败",
 ];
 const FORBIDDEN_HANDLER_RESPONSE_PARSE_FAILURE_LOG_PROJECTION_MARKERS: &[&str] = &[
+    "parse_claude_transform_upstream_json_or_unlabeled_sse(",
     "parse_upstream_json_or_unlabeled_sse(",
     "response_body_parse_error_to_proxy_error(",
     "upstream_response_parse_failure_log_message(",
@@ -1543,6 +1544,7 @@ const FORBIDDEN_HANDLER_RESPONSE_BUILD_ERROR_MAPPING_MARKERS: &[&str] = &[
     "构造代理错误响应失败",
 ];
 const FORBIDDEN_HANDLER_RESPONSE_TRANSFORM_ERROR_MAPPING_MARKERS: &[&str] = &[
+    "claude_response_transform_error_to_proxy_error(",
     "转换响应失败",
     "Chat → Responses 响应转换失败",
     "ResponseTransformFailureContext::",
