@@ -1026,6 +1026,8 @@ mod tests {
     use crate::database::Database;
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy::events::ProxyEventBus;
+    use crate::proxy_core::api::auth::ManagedAccountAuthError;
+    use crate::proxy_core_adapter::ProxyRuntimeStatus;
     use crate::proxy_core_adapter::{canonical_json_string, short_value_hash};
     use crate::proxy_core_adapter::{
         claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input,
@@ -1033,7 +1035,6 @@ mod tests {
         rewrite_claude_transform_endpoint as rewrite_transform_endpoint, AppKind,
         GeminiShadowStore, ResolvedChannelAttempt,
     };
-    use crate::proxy_core_adapter::{ManagedAccountAuthError, ProxyRuntimeStatus};
     use axum::http::header::{HeaderValue, ACCEPT};
     use axum::http::HeaderMap;
     use bytes::Bytes;

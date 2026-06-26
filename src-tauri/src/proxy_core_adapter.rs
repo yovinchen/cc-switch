@@ -2283,8 +2283,6 @@ pub(crate) use crate::proxy_core::api::auth::claude_desktop_model_id_is_profile_
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::auth::validate_claude_desktop_gateway_bearer_header;
 pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::auth::ManagedAccountAuthError;
 pub(crate) use crate::proxy_core::api::auth::{
     classify_provider_managed_auth as core_classify_provider_managed_auth,
     codex_oauth_access_token_expires_at_ms, codex_oauth_authorization_code_form,

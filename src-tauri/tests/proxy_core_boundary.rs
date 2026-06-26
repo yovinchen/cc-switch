@@ -12878,6 +12878,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "default_managed_account_runtime_source",
         "resolve_managed_account_auth_from_runtime_source",
         "ManagedAccountRuntimeSource;",
+        "ManagedAccountAuthError",
         "copilot_api_endpoint_from_app_handle",
         "copilot_live_models_from_app_handle",
         "copilot_model_vendor_from_app_handle",
