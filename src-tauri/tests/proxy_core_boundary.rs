@@ -12876,14 +12876,14 @@ fn proxy_core_adapter_delegates_http_server_lifecycle_to_transport_module() {
         "HTTP server lifecycle and route/accept-loop helpers should live in transport/http/server.rs"
     );
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::transport::http::server::{")
-            && adapter_source.contains("ProxyHttpServerHandles")
-            && adapter_source.contains("start_proxy_http_server")
-            && adapter_source.contains("stop_proxy_http_server")
+        !adapter_source.contains("pub(crate) use crate::proxy::transport::http::server::{")
+            && !adapter_source.contains("ProxyHttpServerHandles")
+            && !adapter_source.contains("start_proxy_http_server")
+            && !adapter_source.contains("stop_proxy_http_server")
             && !adapter_source.contains("pub(crate) struct ProxyHttpServerHandles")
             && !adapter_source.contains("pub(crate) async fn start_proxy_http_server")
             && !adapter_source.contains("pub(crate) fn spawn_proxy_http_accept_loop"),
-        "proxy_core_adapter should re-export, not own, the HTTP server lifecycle"
+        "proxy_core_adapter should not re-export or own the HTTP server lifecycle"
     );
 }
 
@@ -18203,7 +18203,7 @@ fn production_proxy_server_delegates_handle_storage_to_adapter() {
                 "start_proxy_http_server(&self.config, self.state.clone(), &self.http_server_handles)"
             )
             && server_lifecycle.contains("stop_proxy_http_server(&self.http_server_handles).await"),
-        "ProxyServer must delegate shutdown sender/server handle storage and running gates to proxy_core_adapter"
+        "ProxyServer must delegate shutdown sender/server handle storage and running gates to HTTP transport helpers"
     );
 
     assert!(

@@ -536,13 +536,6 @@ pub(crate) fn proxy_server_from_runtime_config(
     ProxyServer::from_runtime_state(config, state)
 }
 
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::transport::http::server::{
-    await_proxy_http_accept_loop_stop, bind_proxy_http_listener, proxy_http_router_from_state,
-    proxy_http_shutdown_channel, spawn_proxy_http_accept_loop, start_proxy_http_server,
-    stop_proxy_http_server, ProxyHttpServerHandles,
-};
-
 pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;
 
 pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
