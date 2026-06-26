@@ -22,6 +22,7 @@ use super::{
 };
 use crate::app_config::AppType;
 use crate::provider::Provider;
+use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 pub(crate) use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::events::ProxyEventEnvelope;
@@ -65,7 +66,7 @@ use crate::proxy_core::api::usage::{
 };
 use crate::proxy_core_adapter::{
     provider_claude_transform_streaming_decision, provider_needs_claude_transform,
-    provider_should_convert_codex_responses_to_chat, ActiveConnectionGuard, ProxyState,
+    provider_should_convert_codex_responses_to_chat, ActiveConnectionGuard,
 };
 use axum::{
     response::sse::{Event, KeepAlive, Sse},

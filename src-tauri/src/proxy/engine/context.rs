@@ -5,6 +5,7 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
+use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy_core::api::config::{
     ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
 };
@@ -22,7 +23,7 @@ use crate::proxy_core::api::usage::UsageRouteContext;
 use crate::proxy_core_adapter::{
     app_proxy_config_from_proxy_app_config, provider_claude_api_format,
     proxy_core_app_kind_from_app_type, request_context_route_update_from_proxy_result_source,
-    ProxyServices, ProxyState, RequestContextRouteUpdateError,
+    ProxyServices, RequestContextRouteUpdateError,
 };
 use axum::http::HeaderMap;
 use std::time::Instant;

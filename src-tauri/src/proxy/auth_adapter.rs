@@ -1,5 +1,5 @@
 use super::{error::ProxyError, error_mapper::proxy_core_error_to_proxy_error};
-use crate::proxy_core_adapter::ProxyState;
+use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use axum::http::HeaderMap;
 
 pub(crate) async fn validate_claude_desktop_gateway_auth(

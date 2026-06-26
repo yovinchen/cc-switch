@@ -414,6 +414,7 @@ const FORBIDDEN_PROXY_STATE_SERVER_COMPAT_PATH_MARKERS: &[&str] = &[
     "server::ProxyState",
     "server::{ProxyState",
     "pub use crate::proxy_core_adapter::ProxyState",
+    "use crate::proxy_core_adapter::ProxyState",
 ];
 const FORBIDDEN_PROXY_STATE_HOST_RESOURCE_RETENTION_MARKERS: &[&str] = &[
     "app_handle: Option<tauri::AppHandle>",
@@ -12835,14 +12836,16 @@ fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
     );
     assert!(
         adapter_source
-            .contains("pub(crate) use crate::proxy::host::cc_switch::proxy_state::ProxyState")
+            .contains("use crate::proxy::host::cc_switch::proxy_state::ProxyState;")
+            && !adapter_source
+                .contains("pub(crate) use crate::proxy::host::cc_switch::proxy_state::ProxyState")
             && !adapter_source.contains("\npub struct ProxyState")
             && !adapter_source.contains("type CcSwitchProxyRuntimeServices")
             && adapter_source.contains("\nimpl ProxyState")
             && adapter_source
                 .contains("ProxyEngine<CcSwitchProxyServices<CcSwitchProxyRuntime>>")
             && adapter_source.contains("ProxyEngine::new(self.proxy_core_services.clone())"),
-        "proxy_core_adapter should re-export the state and keep only the ProxyEngine construction boundary"
+        "proxy_core_adapter should only use the state privately and keep the ProxyEngine construction boundary"
     );
 }
 
@@ -17724,11 +17727,12 @@ fn production_proxy_server_keeps_host_state_constructor_test_only() {
 }
 
 #[test]
-fn production_proxy_state_imports_use_adapter_path() {
+fn production_proxy_state_imports_use_host_path() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let files = [
         "src/proxy/auth_adapter.rs",
         "src/proxy/engine/context.rs",
+        "src/proxy/response_adapter.rs",
         "src/proxy/transport/http/handlers.rs",
         "src/proxy/engine/response_pipeline.rs",
         "src/proxy/transport/http/server.rs",
@@ -17738,8 +17742,20 @@ fn production_proxy_state_imports_use_adapter_path() {
     for relative in files {
         let path = manifest_dir.join(relative);
         let source = fs::read_to_string(&path).unwrap_or_else(|_| panic!("read {relative}"));
+        if !source.contains("use crate::proxy::host::cc_switch::proxy_state::ProxyState;") {
+            violations.push(format!(
+                "{relative} must import ProxyState from host proxy_state"
+            ));
+        }
         for (line_index, line) in production_lines(&source) {
             let code = line.split("//").next().unwrap_or_default();
+            if code.contains("proxy_core_adapter") && code.contains("ProxyState") {
+                violations.push(format!(
+                    "{relative}:{} imports ProxyState through proxy_core_adapter: `{}`",
+                    line_index + 1,
+                    code.trim()
+                ));
+            }
             for marker in FORBIDDEN_PROXY_STATE_SERVER_COMPAT_PATH_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
@@ -17754,7 +17770,7 @@ fn production_proxy_state_imports_use_adapter_path() {
 
     assert!(
         violations.is_empty(),
-        "production proxy modules must import ProxyState directly from proxy_core_adapter:\n{}",
+        "production proxy modules must import ProxyState directly from host proxy_state:\n{}",
         violations.join("\n")
     );
 }
@@ -19623,11 +19639,7 @@ fn http_handlers_route_signature_dtos_through_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read proxy/transport/http/handlers.rs");
-    let response_adapter_import = function_slice(
-        &source,
-        "response_adapter::{",
-        "};\nuse crate::proxy_core_adapter::ProxyState;",
-    );
+    let response_adapter_import = function_slice(&source, "response_adapter::{", "};\nuse axum::");
     let response_adapter_import_identifiers: Vec<&str> = response_adapter_import
         .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
         .filter(|identifier| !identifier.is_empty())
@@ -19699,8 +19711,8 @@ fn http_handlers_route_signature_dtos_through_response_adapter() {
     );
     assert_eq!(
         proxy_core_adapter_imports,
-        vec!["use crate::proxy_core_adapter::ProxyState;"],
-        "HTTP handlers should keep only runtime state on proxy_core_adapter"
+        Vec::<String>::new(),
+        "HTTP handlers should not import runtime state through proxy_core_adapter"
     );
 }
 

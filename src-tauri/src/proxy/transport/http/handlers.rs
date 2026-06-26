@@ -6,6 +6,7 @@
 //! - 协议请求编排由 `response_adapter` 承接
 //! - HTTP handler 只保留 Axum 提取、鉴权和管理 API 转发
 
+use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy::{
     auth_adapter::{validate_claude_desktop_gateway_auth, validate_proxy_management_auth},
     error::ProxyError,
@@ -56,7 +57,6 @@ use crate::proxy::{
         RouteResolveRequest, RouteResolveResponse,
     },
 };
-use crate::proxy_core_adapter::ProxyState;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,

@@ -20,7 +20,7 @@ use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
 use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices;
-pub(crate) use crate::proxy::host::cc_switch::proxy_state::ProxyState;
+use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
