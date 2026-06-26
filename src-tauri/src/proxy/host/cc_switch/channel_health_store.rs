@@ -2,10 +2,13 @@
 
 use crate::database::Database;
 use crate::proxy::engine::routing::ProviderRouter;
+use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::ports::{
+    ChannelAttemptResult, ChannelBreakerStats, ChannelHealthReset, ChannelHealthStore,
+};
 use crate::proxy_core_adapter::{
     channel_breaker_stats_with_router_source, record_channel_attempt_in_db_source,
-    reset_channel_health_with_router_source, ChannelAttemptResult, ChannelBreakerStats,
-    ChannelHealthReset, ChannelHealthStore, ProxyCoreResult,
+    reset_channel_health_with_router_source,
 };
 use futures::future::BoxFuture;
 use std::sync::Arc;

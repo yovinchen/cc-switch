@@ -3,11 +3,14 @@
 use crate::database::Database;
 use crate::error::AppError;
 use crate::proxy::engine::routing::ProviderRouterHealthStore;
-use crate::proxy_core::api::ports::ProviderAttemptResult;
+use crate::proxy_core::api::domain::AppKind;
+use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::ports::{
+    ChannelAttemptResult, ChannelHealthReset, ProviderAttemptResult, ProviderHealthStore,
+};
 use crate::proxy_core_adapter::{
     app_error_from_proxy_core_error, record_channel_health_attempt_from_router_db,
-    record_provider_attempt_in_db_source, reset_channel_health_from_router_db, AppKind,
-    ChannelAttemptResult, ChannelHealthReset, ProviderHealthStore, ProxyCoreResult,
+    record_provider_attempt_in_db_source, reset_channel_health_from_router_db,
 };
 use futures::future::BoxFuture;
 use std::sync::Arc;

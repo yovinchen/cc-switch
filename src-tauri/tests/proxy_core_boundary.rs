@@ -21,6 +21,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/events.rs",
     "src/proxy/host/cc_switch/auth_provider.rs",
     "src/proxy/host/cc_switch/channel_auth_profile_attempts.rs",
+    "src/proxy/host/cc_switch/channel_health_store.rs",
     "src/proxy/host/cc_switch/channel_key_runtime_source.rs",
     "src/proxy/host/cc_switch/forwarder_attempt_runtime_source.rs",
     "src/proxy/host/cc_switch/forwarder_auth_source.rs",
@@ -208,6 +209,7 @@ const FORBIDDEN_PROXY_MANAGEMENT_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
     "pub(crate) use crate::proxy_core::api::ports::ProviderHealthUpdateInput",
     "type ProviderAttemptResult = crate::proxy_core::api::ports::ProviderAttemptResult",
     "pub(crate) use crate::proxy_core::api::ports::ProviderAttemptResult",
+    "ProviderHealthStore,",
 ];
 const FORBIDDEN_STREAM_CHECK_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
     "proxy::providers",
@@ -18223,8 +18225,12 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_router_health_store.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_router_health_store.rs");
-    let provider_attempt_result_import =
-        "use crate::proxy_core::api::ports::ProviderAttemptResult;";
+    let direct_core_imports = [
+        "use crate::proxy_core::api::domain::AppKind;",
+        "use crate::proxy_core::api::errors::ProxyCoreResult;",
+        "use crate::proxy_core::api::ports::{",
+    ];
+    let adapter_import = function_slice(&source, "use crate::proxy_core_adapter::{", "};");
 
     assert!(
         source.contains("impl ProviderHealthStore for CcSwitchProviderRouterHealthStore")
@@ -18233,9 +18239,27 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
         "ProviderRouter health store must write provider health through core ProviderHealthStore attempt projection"
     );
     assert!(
-        source.contains(provider_attempt_result_import),
-        "ProviderRouter health store must import ProviderAttemptResult directly from proxy_core"
+        direct_core_imports
+            .iter()
+            .all(|direct_import| source.contains(direct_import))
+            && source.contains(
+                "ChannelAttemptResult, ChannelHealthReset, ProviderAttemptResult, ProviderHealthStore,"
+            ),
+        "ProviderRouter health store must import health attempt facts and ports directly from proxy_core"
     );
+    for adapter_type in [
+        "AppKind",
+        "ChannelAttemptResult",
+        "ChannelHealthReset",
+        "ProviderAttemptResult",
+        "ProviderHealthStore",
+        "ProxyCoreResult",
+    ] {
+        assert!(
+            !adapter_import.contains(adapter_type),
+            "ProviderRouter health store must not import {adapter_type} through proxy_core_adapter"
+        );
+    }
     assert!(
         source.contains("fn record_channel_health<'a>(")
             && source.contains("result: ChannelAttemptResult")
@@ -18280,9 +18304,9 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
         }
         let direct_core =
             code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
-        if direct_core && code.trim() != provider_attempt_result_import {
+        if direct_core && !direct_core_imports.contains(&code.trim()) {
             violations.push(format!(
-                "src/proxy/host/cc_switch/provider_router_health_store.rs:{} contains non-ProviderAttemptResult direct proxy-core import `{}`",
+                "src/proxy/host/cc_switch/provider_router_health_store.rs:{} contains unexpected direct proxy-core import `{}`",
                 line_index + 1,
                 code.trim()
             ));
@@ -18348,12 +18372,34 @@ fn production_channel_health_store_reads_channel_breaker_stats_through_core_port
 
     let store_path = manifest_dir.join("src/proxy/host/cc_switch/channel_health_store.rs");
     let store_source = fs::read_to_string(&store_path).expect("read channel_health_store.rs");
+    let store_adapter_import =
+        function_slice(&store_source, "use crate::proxy_core_adapter::{", "};");
     assert!(
         store_source.contains("fn channel_breaker_stats<'a>(")
             && store_source
                 .contains("channel_breaker_stats_with_router_source(&self.db, &self.router, channel_id).await"),
         "ChannelHealthStore host source must route breaker stats through the adapter helper"
     );
+    assert!(
+        store_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && store_source.contains("use crate::proxy_core::api::ports::{")
+            && store_source.contains(
+                "ChannelAttemptResult, ChannelBreakerStats, ChannelHealthReset, ChannelHealthStore,"
+            ),
+        "ChannelHealthStore host source must import channel health facts and ports directly from proxy_core"
+    );
+    for adapter_type in [
+        "ChannelAttemptResult",
+        "ChannelBreakerStats",
+        "ChannelHealthReset",
+        "ChannelHealthStore",
+        "ProxyCoreResult",
+    ] {
+        assert!(
+            !store_adapter_import.contains(adapter_type),
+            "ChannelHealthStore host source must not import {adapter_type} through proxy_core_adapter"
+        );
+    }
 
     let router_path = manifest_dir.join("src/proxy/engine/routing.rs");
     let router_source = fs::read_to_string(&router_path).expect("read engine/routing.rs");
