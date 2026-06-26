@@ -743,6 +743,40 @@ pub(crate) fn proxy_http_shutdown_channel() -> (oneshot::Sender<()>, oneshot::Re
     oneshot::channel()
 }
 
+pub(crate) async fn start_proxy_http_server(
+    config: &ProxyConfig,
+    state: ProxyState,
+    handles: &ProxyHttpServerHandles,
+) -> Result<ProxyServerInfo, ProxyError> {
+    handles.ensure_not_running().await?;
+
+    let (shutdown_tx, shutdown_rx) = proxy_http_shutdown_channel();
+    let app = proxy_http_router_from_state(state.clone());
+    let (listener, local_addr) = bind_proxy_http_listener(config).await?;
+    let actual_port = local_addr.port();
+
+    log::info!(
+        "[{}] 代理服务器启动于 {local_addr}",
+        server_log_codes::STARTED
+    );
+    let bound_address = local_addr.ip().to_string();
+    record_proxy_server_bound_runtime_source(&state, &bound_address, actual_port);
+
+    handles.store_shutdown_sender(shutdown_tx).await;
+
+    let server_info = record_proxy_server_started_info_runtime_source(
+        &state,
+        &config.listen_address,
+        actual_port,
+    )
+    .await;
+
+    let handle = spawn_proxy_http_accept_loop(listener, app, shutdown_rx, state);
+    handles.store_server_handle(handle).await;
+
+    Ok(server_info)
+}
+
 pub(crate) async fn bind_proxy_http_listener(
     config: &ProxyConfig,
 ) -> Result<(tokio::net::TcpListener, SocketAddr), ProxyError> {

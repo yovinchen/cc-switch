@@ -720,6 +720,7 @@ const FORBIDDEN_PROXY_SERVER_ACCEPT_LOOP_MARKERS: &[&str] = &[
     "serve_connection(",
     "TokioIo::new(",
     "hyper::service::service_fn(",
+    "spawn_proxy_http_accept_loop(",
     "record_proxy_server_stopped_runtime_event_source(",
     "tokio::select!",
 ];
@@ -736,6 +737,7 @@ const FORBIDDEN_PROXY_SERVER_STOP_WAIT_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROXY_SERVER_LISTENER_BIND_MARKERS: &[&str] = &[
     "SocketAddr",
+    "bind_proxy_http_listener(",
     "TcpListener::bind(",
     "ProxyError::BindFailed",
     ".local_addr()",
@@ -748,6 +750,10 @@ const FORBIDDEN_PROXY_SERVER_HANDLE_STORAGE_MARKERS: &[&str] = &[
     "JoinHandle<",
     "ProxyError::AlreadyRunning",
     "ProxyError::NotRunning",
+    "ensure_not_running(",
+    "proxy_http_shutdown_channel(",
+    "store_shutdown_sender(",
+    "store_server_handle(",
     "tokio::sync::",
     "tokio::task::JoinHandle",
 ];
@@ -14677,6 +14683,11 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
     let runtime_state = function_slice(&source, "    pub async fn start", "    fn build_router");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let start_orchestration = function_slice(
+        &adapter_source,
+        "pub(crate) async fn start_proxy_http_server",
+        "pub(crate) async fn bind_proxy_http_listener",
+    );
     let bound_source = function_slice(
         &adapter_source,
         "pub(crate) fn record_proxy_server_bound_runtime_source",
@@ -14699,9 +14710,16 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
     );
 
     assert!(
-        runtime_state.contains("record_proxy_server_bound_runtime_source(")
-            && runtime_state.contains("record_proxy_server_started_info_runtime_source("),
-        "production ProxyServer must use adapter-owned start/stop runtime side-effect helpers"
+        runtime_state.contains(
+            "start_proxy_http_server(&self.config, self.state.clone(), &self.http_server_handles)"
+        ),
+        "production ProxyServer::start must delegate start orchestration to proxy_core_adapter"
+    );
+
+    assert!(
+        start_orchestration.contains("record_proxy_server_bound_runtime_source(")
+            && start_orchestration.contains("record_proxy_server_started_info_runtime_source("),
+        "proxy_core_adapter start orchestration must use adapter-owned start runtime side-effect helpers"
     );
 
     assert!(
@@ -14746,9 +14764,14 @@ fn production_proxy_server_delegates_route_assembly_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
-    let build_router = function_slice(&source, "    fn build_router", "    /// 在不重启服务");
+    let start_slice = function_slice(&source, "    pub async fn start", "    pub async fn stop");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_start = function_slice(
+        &adapter_source,
+        "pub(crate) async fn start_proxy_http_server",
+        "pub(crate) async fn bind_proxy_http_listener",
+    );
     let adapter_router = function_slice(
         &adapter_source,
         "pub(crate) fn proxy_http_router_from_state",
@@ -14756,8 +14779,15 @@ fn production_proxy_server_delegates_route_assembly_to_adapter() {
     );
 
     assert!(
-        build_router.contains("proxy_http_router_from_state(self.state.clone())"),
-        "ProxyServer::build_router must delegate Axum route assembly to proxy_core_adapter"
+        start_slice.contains(
+            "start_proxy_http_server(&self.config, self.state.clone(), &self.http_server_handles)"
+        ),
+        "ProxyServer::start must delegate Axum route assembly through proxy_core_adapter"
+    );
+
+    assert!(
+        adapter_start.contains("let app = proxy_http_router_from_state(state.clone());"),
+        "proxy_core_adapter start orchestration must build the Axum router from adapter-owned state"
     );
 
     assert!(
@@ -14772,12 +14802,12 @@ fn production_proxy_server_delegates_route_assembly_to_adapter() {
     );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(build_router) {
+    for (line_index, line) in production_lines(start_slice) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_SERVER_ROUTE_ASSEMBLY_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/server.rs ProxyServer::build_router:{} contains route assembly marker `{}`",
+                    "src/proxy/server.rs ProxyServer::start:{} contains route assembly marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -14800,6 +14830,11 @@ fn production_proxy_server_delegates_accept_loop_to_adapter() {
     let start_slice = function_slice(&source, "    pub async fn start", "    pub async fn stop");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let start_orchestration = function_slice(
+        &adapter_source,
+        "pub(crate) async fn start_proxy_http_server",
+        "pub(crate) async fn bind_proxy_http_listener",
+    );
     let accept_loop = function_slice(
         &adapter_source,
         "pub(crate) fn spawn_proxy_http_accept_loop",
@@ -14808,9 +14843,15 @@ fn production_proxy_server_delegates_accept_loop_to_adapter() {
 
     assert!(
         start_slice.contains(
-            "spawn_proxy_http_accept_loop(listener, app, shutdown_rx, self.state.clone())"
+            "start_proxy_http_server(&self.config, self.state.clone(), &self.http_server_handles)"
         ),
-        "ProxyServer::start must delegate Hyper accept-loop execution to proxy_core_adapter"
+        "ProxyServer::start must delegate start orchestration to proxy_core_adapter"
+    );
+
+    assert!(
+        start_orchestration
+            .contains("spawn_proxy_http_accept_loop(listener, app, shutdown_rx, state)"),
+        "proxy_core_adapter start orchestration must launch the delegated Hyper accept loop"
     );
 
     assert!(
@@ -14851,6 +14892,11 @@ fn production_proxy_server_delegates_listener_bind_to_adapter() {
     let start_slice = function_slice(&source, "    pub async fn start", "    pub async fn stop");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let start_orchestration = function_slice(
+        &adapter_source,
+        "pub(crate) async fn start_proxy_http_server",
+        "pub(crate) async fn bind_proxy_http_listener",
+    );
     let listener_bind = function_slice(
         &adapter_source,
         "pub(crate) async fn bind_proxy_http_listener",
@@ -14858,8 +14904,15 @@ fn production_proxy_server_delegates_listener_bind_to_adapter() {
     );
 
     assert!(
-        start_slice.contains("bind_proxy_http_listener(&self.config).await?"),
-        "ProxyServer::start must delegate address parsing and listener bind to proxy_core_adapter"
+        start_slice.contains(
+            "start_proxy_http_server(&self.config, self.state.clone(), &self.http_server_handles)"
+        ),
+        "ProxyServer::start must delegate start orchestration to proxy_core_adapter"
+    );
+
+    assert!(
+        start_orchestration.contains("bind_proxy_http_listener(config).await?"),
+        "proxy_core_adapter start orchestration must bind the listener through the adapter helper"
     );
 
     assert!(
@@ -14970,10 +15023,9 @@ fn production_proxy_server_delegates_handle_storage_to_adapter() {
     assert!(
         server_lifecycle.contains("http_server_handles: ProxyHttpServerHandles")
             && server_lifecycle.contains("ProxyHttpServerHandles::new()")
-            && server_lifecycle.contains("self.http_server_handles.ensure_not_running().await?")
-            && server_lifecycle.contains("proxy_http_shutdown_channel()")
-            && server_lifecycle.contains(".store_shutdown_sender(shutdown_tx)")
-            && server_lifecycle.contains(".store_server_handle(handle).await")
+            && server_lifecycle.contains(
+                "start_proxy_http_server(&self.config, self.state.clone(), &self.http_server_handles)"
+            )
             && server_lifecycle.contains("stop_proxy_http_server(&self.http_server_handles).await"),
         "ProxyServer must delegate shutdown sender/server handle storage and running gates to proxy_core_adapter"
     );
@@ -14983,7 +15035,11 @@ fn production_proxy_server_delegates_handle_storage_to_adapter() {
             && adapter_handles.contains("server_handle: Arc<RwLock<Option<JoinHandle<()>>>>")
             && adapter_handles.contains("ProxyError::AlreadyRunning")
             && adapter_handles.contains("ProxyError::NotRunning")
-            && adapter_handles.contains("pub(crate) fn proxy_http_shutdown_channel()"),
+            && adapter_handles.contains("pub(crate) fn proxy_http_shutdown_channel()")
+            && adapter_handles.contains("handles.ensure_not_running().await?")
+            && adapter_handles.contains("proxy_http_shutdown_channel()")
+            && adapter_handles.contains("handles.store_shutdown_sender(shutdown_tx).await")
+            && adapter_handles.contains("handles.store_server_handle(handle).await"),
         "proxy_core_adapter must own HTTP server handle storage and running-state gates"
     );
 

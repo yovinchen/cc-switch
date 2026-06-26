@@ -13,15 +13,13 @@ use crate::database::Database;
 use crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source;
 use crate::proxy_core_adapter::ProxyState;
 use crate::proxy_core_adapter::{
-    bind_proxy_http_listener, provider_circuit_breaker_stats_source, proxy_http_router_from_state,
-    proxy_http_shutdown_channel, record_proxy_server_bound_runtime_source,
-    record_proxy_server_started_info_runtime_source, reset_provider_circuit_breaker_source,
-    server_log_codes as log_srv, set_active_route_target_runtime_source,
-    spawn_proxy_http_accept_loop, stop_proxy_http_server,
-    update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
-    CircuitBreakerConfig, CircuitBreakerStats, ProxyConfig, ProxyHttpServerHandles,
-    ProxyRuntimeStatus, ProxyServerInfo,
+    provider_circuit_breaker_stats_source, reset_provider_circuit_breaker_source,
+    server_log_codes as log_srv, set_active_route_target_runtime_source, start_proxy_http_server,
+    stop_proxy_http_server, update_all_circuit_breaker_configs_source,
+    update_app_circuit_breaker_config_source, CircuitBreakerConfig, CircuitBreakerStats,
+    ProxyConfig, ProxyHttpServerHandles, ProxyRuntimeStatus, ProxyServerInfo,
 };
+#[cfg(test)]
 use axum::Router;
 #[cfg(test)]
 use std::sync::Arc;
@@ -57,43 +55,7 @@ impl ProxyServer {
     }
 
     pub async fn start(&self) -> Result<ProxyServerInfo, ProxyError> {
-        // 检查是否已在运行
-        self.http_server_handles.ensure_not_running().await?;
-
-        // 创建关闭通道
-        let (shutdown_tx, shutdown_rx) = proxy_http_shutdown_channel();
-
-        // 构建路由
-        let app = self.build_router();
-
-        // 绑定监听器
-        let (listener, local_addr) = bind_proxy_http_listener(&self.config).await?;
-        let actual_port = local_addr.port();
-
-        log::info!("[{}] 代理服务器启动于 {local_addr}", log_srv::STARTED);
-        let bound_address = local_addr.ip().to_string();
-        record_proxy_server_bound_runtime_source(&self.state, &bound_address, actual_port);
-
-        // 保存关闭句柄
-        self.http_server_handles
-            .store_shutdown_sender(shutdown_tx)
-            .await;
-
-        let server_info = record_proxy_server_started_info_runtime_source(
-            &self.state,
-            &self.config.listen_address,
-            actual_port,
-        )
-        .await;
-
-        // 启动服务器 — 使用手动 hyper HTTP/1.1 accept loop
-        // 开启 preserve_header_case 以捕获客户端请求头的原始大小写
-        let handle = spawn_proxy_http_accept_loop(listener, app, shutdown_rx, self.state.clone());
-
-        // 保存服务器任务句柄
-        self.http_server_handles.store_server_handle(handle).await;
-
-        Ok(server_info)
+        start_proxy_http_server(&self.config, self.state.clone(), &self.http_server_handles).await
     }
 
     pub async fn stop(&self) -> Result<(), ProxyError> {
@@ -125,8 +87,9 @@ impl ProxyServer {
         .await;
     }
 
+    #[cfg(test)]
     fn build_router(&self) -> Router {
-        proxy_http_router_from_state(self.state.clone())
+        crate::proxy_core_adapter::proxy_http_router_from_state(self.state.clone())
     }
 
     /// 在不重启服务的情况下更新运行时配置
