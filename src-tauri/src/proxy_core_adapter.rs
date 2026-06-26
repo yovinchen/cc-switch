@@ -894,17 +894,12 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
 pub(crate) type GeminiShadowStore = crate::proxy_core::api::transforms::GeminiShadowStore;
 #[cfg(test)]
 pub(crate) type AuthProfileRef = crate::proxy_core::api::domain::AuthProfileRef;
-#[cfg(test)]
-pub(crate) type ClaudeAuthHeaderKind = crate::proxy_core::api::transport::ClaudeAuthHeaderKind;
 pub(crate) type ClaudeAuthKey = crate::proxy_core::api::auth::ClaudeAuthKey;
 pub(crate) type ClaudeAuthKeySource = crate::proxy_core::api::auth::ClaudeAuthKeySource;
 pub(crate) type ClaudePromptCacheKeyResolution =
     crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 pub(crate) type ClaudeProviderAuthHeadersInput<'a> =
     crate::proxy_core::api::transport::ClaudeProviderAuthHeadersInput<'a>;
-#[cfg(test)]
-pub(crate) type CopilotAuthHeadersInput<'a> =
-    crate::proxy_core::api::transport::CopilotAuthHeadersInput<'a>;
 pub(crate) type CopilotClassification = crate::proxy_core::api::transport::CopilotClassification;
 pub(crate) type ForwarderMaybeCopilotAuthOptimizationInput<'a> =
     crate::proxy_core::api::transport::OptionalCopilotAuthOptimizationPreparationInput<'a>;
@@ -2382,16 +2377,6 @@ pub(crate) use crate::proxy_core::api::transforms::{
     ClaudeApiFormatRequestTransformContext, ClaudeApiFormatSseTransformContext,
     ClaudeTransformStreamingDecision,
 };
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::build_claude_auth_headers;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::build_codex_bearer_auth_headers;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::build_codex_oauth_session_headers;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::build_copilot_auth_headers;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::build_gemini_auth_headers;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::extract_gemini_model_from_path;
 #[cfg(test)]
@@ -7650,11 +7635,13 @@ mod tests {
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
     use crate::proxy_core::api::transport::{
-        anthropic_beta_header_value, build_upstream_request_headers, forward_upstream_url_plan,
-        is_socks_proxy_url, resolve_upstream_request_transport_policy,
-        resolve_upstream_send_policy, serialize_upstream_request_body, ForwardUpstreamUrlPlanInput,
-        ProxyTransportResponseBody, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
-        UpstreamSseAggregationKind, UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
+        anthropic_beta_header_value, build_claude_auth_headers, build_codex_bearer_auth_headers,
+        build_copilot_auth_headers, build_gemini_auth_headers, build_upstream_request_headers,
+        forward_upstream_url_plan, is_socks_proxy_url, resolve_upstream_request_transport_policy,
+        resolve_upstream_send_policy, serialize_upstream_request_body, ClaudeAuthHeaderKind,
+        CopilotAuthHeadersInput, ForwardUpstreamUrlPlanInput, ProxyTransportResponseBody,
+        UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamSseAggregationKind,
+        UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
     };
     use crate::proxy_core::api::usage::{
         usage_selected_provider_missing_log_message, TransformedResponseUsageFormat,

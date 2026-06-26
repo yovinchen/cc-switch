@@ -12,9 +12,8 @@ use crate::proxy::{
 use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    build_codex_oauth_session_headers, prepare_upstream_request_body_with_report,
-    provider_bedrock_env_flag, provider_is_codex_oauth, should_preserve_exact_request_header_case,
-    validate_managed_account_upstream_auth,
+    prepare_upstream_request_body_with_report, provider_bedrock_env_flag, provider_is_codex_oauth,
+    should_preserve_exact_request_header_case, validate_managed_account_upstream_auth,
 };
 use crate::proxy_core_adapter::{
     ActiveConnectionGuard, FailoverSwitchSchedulerRef, ForwarderAnthropicRectifierGateInput,
@@ -1027,6 +1026,7 @@ mod tests {
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy::events::ProxyEventBus;
     use crate::proxy_core::api::auth::ManagedAccountAuthError;
+    use crate::proxy_core::api::transport::build_codex_oauth_session_headers;
     use crate::proxy_core_adapter::ProxyRuntimeStatus;
     use crate::proxy_core_adapter::{canonical_json_string, short_value_hash};
     use crate::proxy_core_adapter::{
