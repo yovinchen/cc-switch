@@ -619,6 +619,7 @@
 605. 显式 `channel-key:<keyRef>` auth profile 已改为 fail-closed：如果 key 缺失或被禁用，runtime 返回认证错误而不是静默回退到 provider 原始凭据，避免“地址声明了独立 key 但实际走错 key”的中转隔离风险。
 606. `authProfileRef` 的显式 profile 形状校验已迁入 `proxy-core::channel_request`，channel 写入和 patch 会在入库前拒绝空 `channel-key:`、空 provider ref 或未知 profile 前缀，避免运行期把 malformed channel key profile 回退成 provider 凭据。
 - raw Hyper 上游 transport、`ProxyResponse` 与 header-case preservation 实现已迁到 `proxy/transport/upstream/hyper_client.rs`，旧 `proxy/hyper_client.rs` 仅保留兼容 re-export；raw-hyper 发送仍与 reqwest/global HTTP client 迁移分开处理。
+- 上游 transport 分流已收敛到 `proxy/transport/upstream/mod.rs`：该模块负责 upstream send policy、raw-hyper fallback 与 pooled reqwest 分支调度；pooled reqwest 上游发送执行已迁到 `proxy/transport/upstream/reqwest_client.rs`，仍复用现有 global HTTP client。
 607. host crate 新增 `proxy_core_boundary` 集成测试，固定除 `src/lib.rs` re-export 与 `src/proxy_core_adapter.rs` 外不得直接引用 `crate::proxy_core::` 或 `cc_switch_proxy_core::`，确保后续 Tauri host 继续通过 adapter 集中接入 core。
 608. 模型目录服务层删除 `services::model_fetch` 与 `services::codex_oauth_models` 纯转发 facade，Tauri commands 直接调用 `model_fetch_transport` 这个 host reqwest adapter；URL 规划、请求契约、失败映射与响应解析继续由 `proxy-core::model_fetch` 维护。
 609. stream check 的延迟状态判定与 timeout-like retry 判定已迁入 `proxy-core` 的 channel reachability contract；host `StreamCheckService` 保留 reqwest 探测、provider base URL 提取和现有 DTO/DAO 兼容映射。
@@ -2537,7 +2538,7 @@ ProxyRequest
 | `usage/logger.rs` | `host/cc_switch/database_usage_sink.rs` | 只保留 parser/calculator 在核心 |
 | `providers/*` | `provider/*` | 先迁移类型依赖，再移动文件 |
 | `hyper_client.rs` | `transport/upstream/hyper_client.rs` | raw Hyper 上游 transport、`ProxyResponse` 与 header-case preservation 实现已迁到 `proxy/transport/upstream/hyper_client.rs`，旧 `proxy/hyper_client.rs` 仅保留兼容 re-export；后续继续区分 raw-hyper 上游 transport 与 reqwest/global HTTP client |
-| `http_client.rs` | `transport/upstream/reqwest_client.rs` 或 host shared | 需区分“上游请求客户端”和“应用全局 HTTP 客户端” |
+| `http_client.rs` | `transport/upstream/reqwest_client.rs` 或 host shared | pooled reqwest 上游发送执行已迁到 `proxy/transport/upstream/reqwest_client.rs`，`transport/upstream/mod.rs` 负责 reqwest/raw-hyper 分流；现有 `proxy/http_client.rs` 仍保留应用全局 HTTP client、proxy lifecycle 和系统代理自环保护，后续再决定是否迁到 host shared |
 | `types.rs` | `domain/config.rs`, `domain/status.rs` | 拆分领域类型 |
 | `services/proxy.rs` | `host/cc_switch/live_takeover.rs` | 保留桌面宿主逻辑 |
 | `provider_endpoints` 相关 DB 访问 | `host/cc_switch/database_channel_source.rs` | 兼容投影为 channel，后续迁移到独立 channel 表 |
