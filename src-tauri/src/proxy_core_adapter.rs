@@ -233,9 +233,7 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
     copilot_token_url, copilot_usage_response_endpoint, copilot_usage_url,
 };
 
-pub(crate) type RectifierConfig = crate::proxy_core::api::ports::RectifierConfig;
-pub(crate) type OptimizerConfig = crate::proxy_core::api::ports::OptimizerConfig;
-pub(crate) type CopilotOptimizerConfig = crate::proxy_core::api::ports::CopilotOptimizerConfig;
+use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 pub(crate) type ProxyConfig = crate::proxy_core::api::ports::ProxyConfig;
 pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntimeStatus;
 

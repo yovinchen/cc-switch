@@ -6,6 +6,7 @@ use crate::proxy::{
     error::ProxyError, route_attempt::ForwardAttempt,
     transport::upstream::hyper_client::ProxyResponse,
 };
+use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     build_codex_oauth_session_headers, prepare_upstream_request_body_with_report,
@@ -13,11 +14,11 @@ use crate::proxy_core_adapter::{
     should_preserve_exact_request_header_case, validate_managed_account_upstream_auth,
 };
 use crate::proxy_core_adapter::{
-    ActiveConnectionGuard, CopilotOptimizerConfig, FailoverSwitchSchedulerRef,
-    ForwarderAdapterContext, ForwarderAnthropicRectifierGateInput,
-    ForwarderAppMediaPreventionInput, ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput,
-    ForwarderAttemptBodyInput, ForwarderAttemptRuntimeSourceRef, ForwarderAuthHeadersInput,
-    ForwarderAuthSourceRef, ForwarderChannelResponseStatusInput, ForwarderClaudeApiFormatInput,
+    ActiveConnectionGuard, FailoverSwitchSchedulerRef, ForwarderAdapterContext,
+    ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
+    ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptBodyInput,
+    ForwarderAttemptRuntimeSourceRef, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
+    ForwarderChannelResponseStatusInput, ForwarderClaudeApiFormatInput,
     ForwarderClaudeBodyPolicyInput, ForwarderClaudeProtocolTransformInput,
     ForwarderCodexChatProtocolEnrichmentInput, ForwarderCopilotDynamicBaseUrlInput,
     ForwarderCopilotLiveModelInput, ForwarderCopilotRequestOptimizationGateInput,
@@ -31,8 +32,7 @@ use crate::proxy_core_adapter::{
     ForwarderRuntimeStateSourceRef, ForwarderThinkingBudgetRectifierInput,
     ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
     ForwarderTransportSourceRef, ForwarderUpstreamRequestLogInput,
-    ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput, OptimizerConfig, RectifierConfig,
-    ResolvedChannelAttempt,
+    ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput, ResolvedChannelAttempt,
 };
 use crate::{app_config::AppType, provider::Provider};
 use http::Extensions;

@@ -5,10 +5,13 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/commands/codex_oauth.rs",
     "src/commands/copilot.rs",
     "src/commands/model_fetch.rs",
+    "src/commands/settings.rs",
+    "src/database/dao/settings.rs",
     "src/lib.rs",
     "src/proxy/codex_oauth_auth.rs",
     "src/proxy/copilot_auth.rs",
     "src/proxy/engine/context.rs",
+    "src/proxy/engine/forward_pipeline.rs",
     "src/proxy/engine/response_pipeline.rs",
     "src/proxy/error_mapper.rs",
     "src/proxy/error.rs",
@@ -170,6 +173,11 @@ const FORBIDDEN_MODEL_FETCH_COMMAND_PROVIDER_DETAIL_MARKERS: &[&str] =
 const FORBIDDEN_COPILOT_MODEL_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
     "type CopilotModel = crate::proxy_core::api::model_catalog::CopilotModel",
     "pub use crate::proxy_core::api::model_catalog::CopilotModel",
+];
+const FORBIDDEN_SETTINGS_CONFIG_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
+    "type RectifierConfig = crate::proxy_core::api::ports::RectifierConfig",
+    "type OptimizerConfig = crate::proxy_core::api::ports::OptimizerConfig",
+    "type CopilotOptimizerConfig = crate::proxy_core::api::ports::CopilotOptimizerConfig",
 ];
 const FORBIDDEN_STREAM_CHECK_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
     "proxy::providers",
@@ -10100,6 +10108,73 @@ fn copilot_model_callers_use_core_dto_entrypoint() {
     assert!(
         violations.is_empty(),
         "Copilot model DTO callers must use proxy_core::api::model_catalog as the CopilotModel entrypoint:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn settings_runtime_config_callers_use_core_dto_entrypoint() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let caller_paths = [
+        "src/commands/settings.rs",
+        "src/database/dao/settings.rs",
+        "src/proxy/engine/forward_pipeline.rs",
+    ];
+    let required_import =
+        "use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};";
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&adapter_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_SETTINGS_CONFIG_ADAPTER_DTO_EXPORT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains settings config DTO export marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    for relative in caller_paths {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read caller source");
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            if code.contains("proxy_core_adapter")
+                && (code.contains("RectifierConfig")
+                    || code.contains("OptimizerConfig")
+                    || code.contains("CopilotOptimizerConfig"))
+            {
+                violations.push(format!(
+                    "{}:{} imports settings config DTOs from proxy_core_adapter",
+                    relative,
+                    line_index + 1
+                ));
+            }
+            let direct_core =
+                code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
+            if direct_core && code.trim() != required_import {
+                violations.push(format!(
+                    "{}:{} contains non-settings-config direct proxy-core import `{}`",
+                    relative,
+                    line_index + 1,
+                    code.trim()
+                ));
+            }
+        }
+        assert!(
+            source.contains(required_import),
+            "{} must import settings runtime config DTOs directly from proxy_core",
+            relative
+        );
+    }
+
+    assert!(
+        violations.is_empty(),
+        "settings runtime config callers must use proxy_core::api::ports as the DTO entrypoint:\n{}",
         violations.join("\n")
     );
 }

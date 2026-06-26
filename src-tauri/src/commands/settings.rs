@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use crate::proxy_core_adapter::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
+use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 use crate::settings::LogConfig;
 use tauri::AppHandle;
 use tauri_plugin_updater::UpdaterExt;
