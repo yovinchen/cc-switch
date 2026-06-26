@@ -29,7 +29,6 @@ pub const PROFILE_NAME: &str = "CC Switch";
 const CONFIG_FILE: &str = "claude_desktop_config.json";
 #[cfg(any(target_os = "macos", windows, test))]
 const CONFIG_LIBRARY_DIR: &str = "configLibrary";
-const GATEWAY_TOKEN_SETTING_KEY: &str = "claude_desktop_gateway_token";
 
 /// Claude Code env 中通过 `[1M]` 后缀声明 1M 上下文能力（匹配用 `eq_ignore_ascii_case`）。
 /// Claude Desktop schema 不接受此后缀，import 边界翻译为 `supports1m` 字段。
@@ -107,11 +106,8 @@ pub fn get_status(db: &Database, proxy_running: bool) -> Result<ClaudeDesktopSta
         crate::proxy_core_adapter::claude_desktop_profile_gateway_base_url(&profile);
     let stale_raw_models =
         crate::proxy_core_adapter::claude_desktop_profile_has_unsafe_model_ids(&profile);
-    let gateway_token_configured = db
-        .get_setting(GATEWAY_TOKEN_SETTING_KEY)
-        .ok()
-        .flatten()
-        .is_some_and(|token| !token.trim().is_empty());
+    let gateway_token_configured =
+        crate::proxy_core_adapter::claude_desktop_gateway_token_configured_from_db_source(db);
     let current_provider = crate::settings::get_effective_current_provider(
         db,
         &crate::app_config::AppType::ClaudeDesktop,
@@ -177,16 +173,7 @@ pub fn provider_mode(provider: &Provider) -> ClaudeDesktopMode {
 }
 
 pub fn get_or_create_gateway_token(db: &Database) -> Result<String, AppError> {
-    if let Some(token) = db.get_setting(GATEWAY_TOKEN_SETTING_KEY)? {
-        let trimmed = token.trim();
-        if !trimmed.is_empty() {
-            return Ok(trimmed.to_string());
-        }
-    }
-
-    let token = format!("ccs-{}", uuid::Uuid::new_v4().simple());
-    db.set_setting(GATEWAY_TOKEN_SETTING_KEY, &token)?;
-    Ok(token)
+    crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source(db)
 }
 
 fn direct_gateway_credential_issue_to_error(
