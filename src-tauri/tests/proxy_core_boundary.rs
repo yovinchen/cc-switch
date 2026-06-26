@@ -1417,6 +1417,8 @@ const FORBIDDEN_RESPONSE_PROCESSOR_STREAM_ORCHESTRATION_MARKERS: &[&str] = &[
     "create_logged_passthrough_stream(",
     "passthrough_streaming_usage_collector(",
     "ctx.streaming_timeout_config()",
+    "log_streaming_proxy_response_received(",
+    "passthrough_stream_proxy_response(",
     "async_stream::stream!",
     "SseEventScanner",
     "SsePassthroughEventKind",

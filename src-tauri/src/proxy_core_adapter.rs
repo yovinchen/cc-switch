@@ -11421,6 +11421,30 @@ where
     )
 }
 
+pub(crate) fn passthrough_stream_proxy_response_from_context<G>(
+    status: http::StatusCode,
+    headers: HeaderMap,
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    state: &ProxyState,
+    ctx: &RequestContext,
+    parser_config: &UsageParserConfig,
+    connection_guard: Option<G>,
+) -> ProxyCoreResponse
+where
+    G: Send + 'static,
+{
+    log_streaming_proxy_response_received(&headers, status, ctx.tag);
+    let logged_stream = create_passthrough_logged_stream(
+        stream,
+        state,
+        ctx,
+        status.as_u16(),
+        parser_config,
+        connection_guard,
+    );
+    passthrough_stream_proxy_response(status, headers, logged_stream)
+}
+
 pub(crate) struct NonStreamingResponseUsageContext<'a> {
     pub(crate) body: &'a [u8],
     pub(crate) response_parser: fn(&Value) -> Option<TokenUsage>,

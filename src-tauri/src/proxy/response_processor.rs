@@ -7,9 +7,8 @@ use super::{
     response_adapter::proxy_core_response_to_axum_response,
 };
 use crate::proxy_core_adapter::{
-    create_passthrough_logged_stream, log_non_streaming_proxy_response_body,
-    log_streaming_proxy_response_received, passthrough_bytes_proxy_response,
-    passthrough_stream_proxy_response, read_decoded_proxy_response_body,
+    log_non_streaming_proxy_response_body, passthrough_bytes_proxy_response,
+    passthrough_stream_proxy_response_from_context, read_decoded_proxy_response_body,
     record_non_streaming_response_usage, response_headers_indicate_sse, ActiveConnectionGuard,
     AxumResponseBuildErrorContext, ProxyState, UsageParserConfig,
 };
@@ -39,22 +38,18 @@ pub async fn handle_streaming(
     connection_guard: Option<ActiveConnectionGuard>,
 ) -> Response {
     let status = response.status();
-    log_streaming_proxy_response_received(response.headers(), status, ctx.tag);
-
-    // 创建字节流
     let response_headers = response.headers().clone();
     let stream = response.bytes_stream();
 
-    let logged_stream = create_passthrough_logged_stream(
+    let response = passthrough_stream_proxy_response_from_context(
+        status,
+        response_headers,
         stream,
         state,
         ctx,
-        status.as_u16(),
         parser_config,
         connection_guard,
     );
-
-    let response = passthrough_stream_proxy_response(status, response_headers, logged_stream);
     match proxy_core_response_to_axum_response(
         response,
         AxumResponseBuildErrorContext::TaggedStreaming { tag: ctx.tag },
