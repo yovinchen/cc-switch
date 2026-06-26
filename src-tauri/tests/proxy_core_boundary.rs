@@ -1515,6 +1515,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn record_proxy_server_stopped_status(",
     "fn apply_proxy_runtime_uptime(",
     "fn proxy_server_info_from_parts(",
+    "pub(crate) use crate::proxy_core::api::ports::proxy_takeover_status_from_parts",
     "fn proxy_takeover_status_from_parts(",
 ];
 const FORBIDDEN_PROXY_CORE_ADAPTER_DIRECT_ERROR_MARKERS: &[&str] = &[

@@ -541,8 +541,6 @@ pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
 pub(crate) type ProxyTakeoverStatus = crate::proxy_core::api::ports::ProxyTakeoverStatus;
 
 pub(crate) use crate::proxy_core::api::ports::proxy_takeover_status_from_enabled_options;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::ports::proxy_takeover_status_from_parts;
 
 pub(crate) type ClaudeDesktopModelRouteInput =
     crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
@@ -13221,7 +13219,9 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(info.address, "127.0.0.1");
         assert_eq!(info.port, 15721);
         assert_eq!(info.started_at, "2026-06-21T00:00:00Z");
-        let takeover = proxy_takeover_status_from_parts(true, false, true, false, false);
+        let takeover = crate::proxy_core::api::ports::proxy_takeover_status_from_parts(
+            true, false, true, false, false,
+        );
         assert!(takeover.claude);
         assert!(!takeover.codex);
         assert!(takeover.gemini);
