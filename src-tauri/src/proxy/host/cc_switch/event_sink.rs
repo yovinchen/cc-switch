@@ -2,9 +2,10 @@ use futures::future::BoxFuture;
 use std::sync::Arc;
 
 use crate::proxy::events::ProxyEventBus;
-use crate::proxy_core_adapter::{
-    emit_proxy_core_event_bus_source, ProxyCoreEvent, ProxyCoreResult, ProxyEventSink,
-};
+use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::events::ProxyCoreEvent;
+use crate::proxy_core::api::ports::ProxyEventSink;
+use crate::proxy_core_adapter::emit_proxy_core_event_bus_source;
 
 #[derive(Clone, Default)]
 pub(crate) struct CcSwitchEventSink {

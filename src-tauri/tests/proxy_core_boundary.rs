@@ -23,6 +23,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/channel_auth_profile_attempts.rs",
     "src/proxy/host/cc_switch/channel_health_store.rs",
     "src/proxy/host/cc_switch/channel_key_runtime_source.rs",
+    "src/proxy/host/cc_switch/event_sink.rs",
     "src/proxy/host/cc_switch/forwarder_attempt_runtime_source.rs",
     "src/proxy/host/cc_switch/forwarder_auth_source.rs",
     "src/proxy/host/cc_switch/forward_pipeline.rs",
@@ -16557,11 +16558,37 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
         "CC Switch event sink implementation should live in host/cc_switch/event_sink.rs"
     );
     assert!(
+        event_sink_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && event_sink_source.contains("use crate::proxy_core::api::events::ProxyCoreEvent;")
+            && event_sink_source.contains("use crate::proxy_core::api::ports::ProxyEventSink;"),
+        "CC Switch event sink should import event contracts directly from proxy_core"
+    );
+    let adapter_import = function_slice(
+        &event_sink_source,
+        "use crate::proxy_core_adapter::",
+        ";\n\n#[derive(Clone, Default)]",
+    );
+    for adapter_type in ["ProxyCoreEvent", "ProxyCoreResult", "ProxyEventSink"] {
+        assert!(
+            !adapter_import.contains(adapter_type),
+            "CC Switch event sink must not import {adapter_type} through proxy_core_adapter"
+        );
+    }
+    assert!(
         adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::event_sink::CcSwitchEventSink"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchEventSink")
             && !adapter_source.contains("impl ProxyEventSink for CcSwitchEventSink"),
         "proxy_core_adapter should re-export, not own, the CC Switch event sink source"
+    );
+    let adapter_core_ports_import = function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
+        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+    );
+    assert!(
+        !adapter_core_ports_import.contains("ProxyEventSink"),
+        "proxy_core_adapter should not re-export ProxyEventSink"
     );
 }
 

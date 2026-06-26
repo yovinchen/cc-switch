@@ -2459,7 +2459,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     channel_breaker_stats_from_parts, channel_health_reset_from_parts, AppSummaryConfig,
     AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelKeyRuntimeSource, ChannelSource,
     ClaudeDesktopGatewayAuthSource, ModelCatalogProvider, ProviderSource, ProxyConfigSource,
-    ProxyEventSink, ProxyServices, RoutePolicySource, UsageSink,
+    ProxyServices, RoutePolicySource, UsageSink,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
