@@ -105,13 +105,6 @@ pub use crate::proxy_core::api::auth::{
     CodexOAuthStatus, CopilotAuthStatus, GitHubAccount, GitHubDeviceCodeResponse,
 };
 
-#[cfg(test)]
-pub(crate) type ProxyErrorStatusKind = crate::proxy_core::api::errors::ProxyErrorStatusKind;
-
-pub(crate) use crate::proxy_core::api::errors::{
-    proxy_error_http_status_code, proxy_error_response_body, upstream_proxy_error_response_body,
-};
-
 pub(crate) use crate::proxy_core::api::errors::{
     config_error_with_context as core_config_error_with_context,
     internal_error_with_context as core_internal_error_with_context,
@@ -8012,7 +8005,10 @@ mod tests {
         AuthBinding, AuthBindingSource, ClaudeDesktopMode, ClaudeDesktopModelRoute, ProviderMeta,
     };
     use crate::proxy::provider::ProviderAdapter;
-    use crate::proxy_core::api::errors::ProxyCoreError;
+    use crate::proxy_core::api::errors::{
+        proxy_error_http_status_code, proxy_error_response_body,
+        upstream_proxy_error_response_body, ProxyCoreError, ProxyErrorStatusKind,
+    };
     use crate::proxy_core::api::events::ProxyEventEnvelope;
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;

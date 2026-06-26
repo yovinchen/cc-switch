@@ -5,6 +5,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/lib.rs",
     "src/proxy/engine/response_pipeline.rs",
     "src/proxy/error_mapper.rs",
+    "src/proxy/error.rs",
     "src/proxy/events.rs",
     "src/proxy/response_adapter.rs",
     "src/proxy_core_adapter.rs",
@@ -2251,6 +2252,62 @@ fn proxy_error_status_projection_lives_in_error_mapper() {
     assert!(
         !error_mapper_source.contains("use crate::proxy::error::proxy_error_status_kind"),
         "error_mapper should not import status projection from proxy/error.rs"
+    );
+}
+
+#[test]
+fn proxy_error_uses_grouped_api_surface() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/error.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/error.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in source.lines().enumerate() {
+        let code = line.split("//").next().unwrap_or_default();
+        for (column, _) in code.match_indices(PROXY_CORE_MARKER) {
+            if !code[column..].starts_with(PROXY_CORE_API_MARKER) {
+                violations.push(format!(
+                    "src/proxy/error.rs:{} contains non-api proxy-core access: {}",
+                    line_index + 1,
+                    code.trim()
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy/error.rs must use proxy_core::api as its integration surface:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_error_owns_core_error_response_imports() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/error.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/error.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_production = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
+
+    assert!(
+        source.contains("use crate::proxy_core::api::errors::{")
+            && source.contains("proxy_error_http_status_code")
+            && source.contains("proxy_error_response_body")
+            && source.contains("upstream_proxy_error_response_body"),
+        "proxy/error.rs should import HTTP error response contracts directly"
+    );
+
+    assert!(
+        !source.contains("proxy_core_adapter")
+            && !adapter_production.contains("proxy_error_http_status_code")
+            && !adapter_production.contains("proxy_error_response_body")
+            && !adapter_production.contains("upstream_proxy_error_response_body"),
+        "proxy/error.rs should not route HTTP error response contracts through proxy_core_adapter"
     );
 }
 
