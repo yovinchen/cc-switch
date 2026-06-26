@@ -841,6 +841,14 @@ const FORBIDDEN_PROTOCOL_HANDLER_ENDPOINT_BRIDGE_MARKERS: &[&str] =
     &["append_query_to_endpoint_path(", "strip_endpoint_prefix("];
 const FORBIDDEN_PROTOCOL_HANDLER_CONTEXT_BRIDGE_MARKERS: &[&str] =
     &["RequestContext::new(", ".with_model_from_uri("];
+const FORBIDDEN_GEMINI_HANDLER_ORCHESTRATION_MARKERS: &[&str] = &[
+    "collect_json_or_null_proxy_request(",
+    "gemini_request_context(",
+    "endpoint_from_uri(",
+    "into_gemini_proxy_request(",
+    "dispatch_proxy_request_to_proxy_response(",
+    "gemini_passthrough_response_to_axum_response(",
+];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
 const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
@@ -3386,6 +3394,38 @@ fn production_protocol_handlers_delegate_request_context_bridge_to_response_adap
     assert!(
         violations.is_empty(),
         "protocol handlers must delegate RequestContext construction to response_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_gemini_handler_delegates_protocol_orchestration_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "pub async fn handle_gemini(",
+        "\n}\n\n#[cfg(test)]",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_GEMINI_HANDLER_ORCHESTRATION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs handle_gemini:{} contains Gemini orchestration marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Gemini handler must delegate protocol orchestration to response_adapter:\n{}",
         violations.join("\n")
     );
 }

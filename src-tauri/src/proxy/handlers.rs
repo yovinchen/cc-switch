@@ -16,10 +16,8 @@ use super::{
         claude_transformed_response_to_axum_response,
         codex_chat_to_responses_transformed_response_to_axum_response,
         codex_passthrough_response_to_axum_response, codex_response_needs_chat_transform,
-        collect_json_or_null_proxy_request, collect_json_proxy_request,
-        dispatch_claude_proxy_request_to_proxy_response,
-        dispatch_codex_proxy_request_to_proxy_response, dispatch_proxy_request_to_proxy_response,
-        endpoint_from_uri, gemini_passthrough_response_to_axum_response,
+        collect_json_proxy_request, dispatch_claude_proxy_request_to_proxy_response,
+        dispatch_codex_proxy_request_to_proxy_response, dispatch_gemini_request_to_axum_response,
         openai_chat_passthrough_response_to_axum_response, proxy_event_envelope_to_axum_sse_event,
         CodexProxyDispatchResponse,
     },
@@ -755,22 +753,7 @@ pub async fn handle_gemini(
     uri: axum::http::Uri,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let parsed_request = collect_json_or_null_proxy_request(request).await?;
-    let is_stream = parsed_request.is_stream;
-
-    // Gemini 的模型名称在 URI 中
-    let mut ctx = parsed_request.gemini_request_context(&state, &uri).await?;
-
-    // 提取完整的路径和查询参数
-    let endpoint = endpoint_from_uri(&uri);
-
-    let proxy_request = parsed_request.into_gemini_proxy_request(endpoint.clone());
-
-    let response =
-        dispatch_proxy_request_to_proxy_response(&state, &mut ctx, proxy_request, is_stream)
-            .await?;
-
-    gemini_passthrough_response_to_axum_response(response, &ctx, &state).await
+    dispatch_gemini_request_to_axum_response(&state, uri, request).await
 }
 
 #[cfg(test)]

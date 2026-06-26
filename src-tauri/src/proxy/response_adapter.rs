@@ -260,6 +260,24 @@ pub(crate) async fn dispatch_proxy_request_to_proxy_response(
     proxy_result_to_proxy_response(result, ctx, state)
 }
 
+pub(crate) async fn dispatch_gemini_request_to_axum_response(
+    state: &ProxyState,
+    uri: Uri,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    let parsed_request = collect_json_or_null_proxy_request(request).await?;
+    let is_stream = parsed_request.is_stream;
+
+    let mut ctx = parsed_request.gemini_request_context(state, &uri).await?;
+    let endpoint = endpoint_from_uri(&uri);
+    let proxy_request = parsed_request.into_gemini_proxy_request(endpoint);
+
+    let response =
+        dispatch_proxy_request_to_proxy_response(state, &mut ctx, proxy_request, is_stream).await?;
+
+    gemini_passthrough_response_to_axum_response(response, &ctx, state).await
+}
+
 pub(crate) async fn dispatch_claude_proxy_request_to_proxy_response(
     state: &ProxyState,
     ctx: &mut RequestContext,
