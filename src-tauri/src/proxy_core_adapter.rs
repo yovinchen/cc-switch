@@ -20,6 +20,7 @@ pub(crate) use crate::proxy::error_mapper::proxy_core_error_to_proxy_error;
 use crate::proxy::events::ProxyEventBus;
 pub(crate) use crate::proxy::host::cc_switch::claude_desktop_gateway_auth_source::CcSwitchClaudeDesktopGatewayAuthSource;
 pub(crate) use crate::proxy::host::cc_switch::channel_health_store::CcSwitchChannelHealthStore;
+pub(crate) use crate::proxy::host::cc_switch::config_source::CcSwitchConfigSource;
 use crate::proxy::host::cc_switch::database_channel_source::CcSwitchChannelSource;
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
@@ -1923,42 +1924,6 @@ pub(crate) async fn proxy_runtime_config_from_db_source(
         .await
         .map_err(|error| app_error("load runtime proxy config", error))?;
     Ok(proxy_runtime_config_from_config(config, false))
-}
-
-#[derive(Clone)]
-pub(crate) struct CcSwitchConfigSource {
-    db: Arc<Database>,
-}
-
-impl CcSwitchConfigSource {
-    pub(crate) fn new(db: Arc<Database>) -> Self {
-        Self { db }
-    }
-}
-
-impl ProxyConfigSource for CcSwitchConfigSource {
-    fn list_apps<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<Vec<AppKind>>> {
-        Box::pin(async move { Ok(cc_switch_app_kinds()) })
-    }
-
-    fn load_global<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyGlobalConfig>> {
-        Box::pin(async move { proxy_global_config_from_db_source(&self.db).await })
-    }
-
-    fn load_app<'a>(&'a self, app: &'a AppKind) -> BoxFuture<'a, ProxyCoreResult<ProxyAppConfig>> {
-        Box::pin(async move { proxy_app_config_from_db_source(&self.db, app).await })
-    }
-
-    fn load_app_summary<'a>(
-        &'a self,
-        app: &'a AppKind,
-    ) -> BoxFuture<'a, ProxyCoreResult<AppSummaryConfig>> {
-        Box::pin(async move { app_summary_config_from_db_source(&self.db, app).await })
-    }
-
-    fn load_runtime<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeConfig>> {
-        Box::pin(async move { proxy_runtime_config_from_db_source(&self.db).await })
-    }
 }
 
 pub(crate) type ProviderHealth = crate::proxy_core::api::ports::ProviderHealth;

@@ -14056,6 +14056,33 @@ fn production_proxy_core_host_delegates_config_source_to_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_config_source_to_host_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/config_source.rs");
+    let source = fs::read_to_string(&source_path).expect("read config_source.rs");
+
+    assert!(
+        source.contains("pub(crate) struct CcSwitchConfigSource")
+            && source.contains("impl ProxyConfigSource for CcSwitchConfigSource")
+            && source.contains("cc_switch_app_kinds()")
+            && source.contains("proxy_global_config_from_db_source(&self.db).await")
+            && source.contains("proxy_app_config_from_db_source(&self.db, app).await")
+            && source.contains("app_summary_config_from_db_source(&self.db, app).await")
+            && source.contains("proxy_runtime_config_from_db_source(&self.db).await"),
+        "CC Switch config source should live in host/cc_switch/config_source.rs"
+    );
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::config_source::CcSwitchConfigSource"
+        ) && !adapter_source.contains("pub(crate) struct CcSwitchConfigSource")
+            && !adapter_source.contains("impl ProxyConfigSource for CcSwitchConfigSource"),
+        "proxy_core_adapter should re-export, not own, the CC Switch config source"
+    );
+}
+
+#[test]
 fn production_proxy_core_host_delegates_provider_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
