@@ -1,7 +1,8 @@
 //! CC Switch management API auth source.
 
-use crate::proxy_core_adapter::{
-    ManagementAuthRuntimeConfig, ManagementAuthSource, ProxyConfig, ProxyCoreResult,
+use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::ports::{
+    ManagementAuthRuntimeConfig, ManagementAuthSource, ProxyConfig,
 };
 use futures::future::BoxFuture;
 use std::sync::Arc;

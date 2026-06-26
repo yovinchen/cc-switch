@@ -28,6 +28,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/forward_pipeline.rs",
     "src/proxy/host/cc_switch/forwarder_response_source.rs",
     "src/proxy/host/cc_switch/forwarder_request_source.rs",
+    "src/proxy/host/cc_switch/management_auth_source.rs",
     "src/proxy/host/cc_switch/managed_account_runtime_source.rs",
     "src/proxy/host/cc_switch/provider_adapter_context.rs",
     "src/proxy/host/cc_switch/proxy_runtime.rs",
@@ -16415,6 +16416,23 @@ fn proxy_core_adapter_delegates_management_auth_source_to_host_module() {
         "CC Switch management auth source should live in host/cc_switch/management_auth_source.rs"
     );
     assert!(
+        source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && source.contains("use crate::proxy_core::api::ports::{")
+            && source.contains("ManagementAuthRuntimeConfig")
+            && source.contains("ManagementAuthSource")
+            && source.contains("ProxyConfig"),
+        "CC Switch management auth source should import management auth contracts directly from proxy_core"
+    );
+    let adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core",
+        ";\nuse futures::future::BoxFuture;",
+    );
+    assert!(
+        !adapter_import.contains("proxy_core_adapter"),
+        "CC Switch management auth source must not import management auth contracts through proxy_core_adapter"
+    );
+    assert!(
         adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::management_auth_source::CcSwitchManagementAuthSource"
         ) && !adapter_source.contains("struct CcSwitchManagementAuthSource")
@@ -16422,6 +16440,17 @@ fn proxy_core_adapter_delegates_management_auth_source_to_host_module() {
             && !adapter_source.contains("PROXY_MANAGEMENT_AUTH_TOKEN_ENV"),
         "proxy_core_adapter should re-export, not own, the CC Switch management auth source"
     );
+    let adapter_core_ports_import = function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
+        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+    );
+    for adapter_type in ["ManagementAuthRuntimeConfig", "ManagementAuthSource"] {
+        assert!(
+            !adapter_core_ports_import.contains(adapter_type),
+            "proxy_core_adapter should not re-export {adapter_type}"
+        );
+    }
 }
 
 #[test]
