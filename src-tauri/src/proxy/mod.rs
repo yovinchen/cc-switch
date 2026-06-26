@@ -13,7 +13,7 @@ pub(crate) mod events;
 pub(crate) mod failover_switch;
 mod forwarder;
 pub mod handler_context;
-mod handlers;
+pub(crate) mod handlers;
 pub mod http_client;
 pub mod hyper_client;
 pub mod provider_router;

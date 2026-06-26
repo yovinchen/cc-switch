@@ -8,26 +8,21 @@
 //! the hyper-based HTTP client, producing wire-level header casing identical to
 //! a direct (non-proxied) CLI request.
 
-use super::{error::ProxyError, handlers};
+use super::error::ProxyError;
 #[cfg(test)]
 use crate::database::Database;
 #[cfg(test)]
 use crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source;
 use crate::proxy_core_adapter::ProxyState;
 use crate::proxy_core_adapter::{
-    provider_circuit_breaker_stats_source, record_proxy_server_bound_runtime_source,
-    record_proxy_server_started_info_runtime_source,
+    provider_circuit_breaker_stats_source, proxy_http_router_from_state,
+    record_proxy_server_bound_runtime_source, record_proxy_server_started_info_runtime_source,
     record_proxy_server_stopped_runtime_event_source, reset_provider_circuit_breaker_source,
     server_log_codes as log_srv, set_active_route_target_runtime_source,
     update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
     CircuitBreakerConfig, CircuitBreakerStats, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
 };
-use axum::{
-    extract::DefaultBodyLimit,
-    middleware,
-    routing::{any, get, post, put},
-    Router,
-};
+use axum::Router;
 use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -246,152 +241,7 @@ impl ProxyServer {
     }
 
     fn build_router(&self) -> Router {
-        let management_routes = Router::new()
-            .route("/proxy/v1/health", get(handlers::health_check))
-            .route("/proxy/v1/status", get(handlers::get_status))
-            .route("/proxy/v1/events", get(handlers::stream_proxy_events))
-            .route("/proxy/v1/apps", get(handlers::list_proxy_apps))
-            .route(
-                "/proxy/v1/apps/:app/providers",
-                get(handlers::list_proxy_providers),
-            )
-            .route(
-                "/proxy/v1/apps/:app/models",
-                get(handlers::list_proxy_app_models),
-            )
-            .route(
-                "/proxy/v1/channels",
-                get(handlers::list_all_proxy_channels).post(handlers::create_proxy_channel),
-            )
-            .route(
-                "/proxy/v1/channels/:channel_id",
-                get(handlers::get_proxy_channel)
-                    .patch(handlers::update_proxy_channel)
-                    .delete(handlers::delete_proxy_channel),
-            )
-            .route(
-                "/proxy/v1/channels/:channel_id/keys",
-                get(handlers::list_proxy_channel_keys),
-            )
-            .route(
-                "/proxy/v1/channels/:channel_id/keys/:key_ref",
-                put(handlers::upsert_proxy_channel_key)
-                    .patch(handlers::update_proxy_channel_key)
-                    .delete(handlers::delete_proxy_channel_key),
-            )
-            .route(
-                "/proxy/v1/channels/:channel_id/models",
-                get(handlers::list_proxy_channel_models)
-                    .put(handlers::replace_proxy_channel_models),
-            )
-            .route(
-                "/proxy/v1/channels/:channel_id/test",
-                post(handlers::test_proxy_channel),
-            )
-            .route(
-                "/proxy/v1/apps/:app/channels",
-                get(handlers::list_proxy_channels),
-            )
-            .route(
-                "/proxy/v1/apps/:app/routes/current",
-                get(handlers::get_current_proxy_route),
-            )
-            .route(
-                "/proxy/v1/apps/:app/channels/migration/preview",
-                get(handlers::preview_proxy_channel_migration),
-            )
-            .route(
-                "/proxy/v1/apps/:app/channels/migration/materialize",
-                post(handlers::materialize_proxy_channel_migration),
-            )
-            .route(
-                "/proxy/v1/channels/:channel_id/breakers/stats",
-                get(handlers::get_proxy_channel_breaker_stats),
-            )
-            .route(
-                "/proxy/v1/channels/:channel_id/breakers/reset",
-                post(handlers::reset_proxy_channel_breaker),
-            )
-            .route(
-                "/proxy/v1/route/resolve",
-                post(handlers::resolve_proxy_route),
-            )
-            .route("/proxy/v1/groups", get(handlers::list_proxy_groups))
-            .route_layer(middleware::from_fn_with_state(
-                self.state.clone(),
-                handlers::require_proxy_management_auth,
-            ));
-
-        Router::new()
-            // 健康检查
-            .route("/health", get(handlers::health_check))
-            .route("/status", get(handlers::get_status))
-            // Versioned management API (channel migration surface)
-            .merge(management_routes)
-            // Claude API (支持带前缀和不带前缀两种格式)
-            .route("/v1/messages", post(handlers::handle_messages))
-            .route("/claude/v1/messages", post(handlers::handle_messages))
-            // Claude Desktop 3P 本地 gateway（独立 provider namespace）
-            .route(
-                "/claude-desktop/v1/models",
-                get(handlers::handle_claude_desktop_models),
-            )
-            .route(
-                "/claude-desktop/v1/messages",
-                post(handlers::handle_claude_desktop_messages),
-            )
-            // OpenAI Chat Completions API (Codex CLI，支持带前缀和不带前缀)
-            .route("/chat/completions", post(handlers::handle_chat_completions))
-            .route(
-                "/v1/chat/completions",
-                post(handlers::handle_chat_completions),
-            )
-            .route(
-                "/v1/v1/chat/completions",
-                post(handlers::handle_chat_completions),
-            )
-            .route(
-                "/codex/v1/chat/completions",
-                post(handlers::handle_chat_completions),
-            )
-            // OpenAI Models API (Codex CLI reachability check)
-            .route("/models", get(handlers::handle_models))
-            .route("/v1/models", get(handlers::handle_models))
-            // OpenAI Responses API (Codex CLI，支持带前缀和不带前缀)
-            .route("/responses", post(handlers::handle_responses))
-            .route("/v1/responses", post(handlers::handle_responses))
-            .route("/v1/v1/responses", post(handlers::handle_responses))
-            .route("/codex/v1/responses", post(handlers::handle_responses))
-            // OpenAI Responses Compact API (Codex CLI 远程压缩，透传)
-            .route(
-                "/responses/compact",
-                post(handlers::handle_responses_compact),
-            )
-            .route(
-                "/v1/responses/compact",
-                post(handlers::handle_responses_compact),
-            )
-            .route(
-                "/v1/v1/responses/compact",
-                post(handlers::handle_responses_compact),
-            )
-            .route(
-                "/codex/v1/responses/compact",
-                post(handlers::handle_responses_compact),
-            )
-            // Gemini API (支持带前缀和不带前缀)
-            //
-            // 用 `any(..)` 覆盖所有 HTTP 方法：除了 POST `:generateContent` /
-            // `:streamGenerateContent` / `:countTokens` 之外，Gemini SDK / CLI 还会发
-            // GET `/models`、GET `/models/<id>` 等只读端点。如果只挂 POST，这些 GET
-            // 请求会在路由层 404，绕过本地代理的统计、整流和故障转移。
-            .route("/v1beta/*path", any(handlers::handle_gemini))
-            .route("/gemini/v1beta/*path", any(handlers::handle_gemini))
-            // Gemini 的 GA 版本也叫 /v1，给原 SDK 留一条出口
-            .route("/gemini/v1/*path", any(handlers::handle_gemini))
-            // 提高默认请求体大小限制（避免 413 Payload Too Large）
-            .layer(DefaultBodyLimit::max(200 * 1024 * 1024))
-            .with_state(self.state.clone())
+        proxy_http_router_from_state(self.state.clone())
     }
 
     /// 在不重启服务的情况下更新运行时配置

@@ -19,6 +19,7 @@ use crate::proxy::error_mapper::{
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::handler_context::RequestContext;
+use crate::proxy::handlers;
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::{
     ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelSource,
@@ -45,6 +46,12 @@ use crate::proxy_core::api::routing::{
 use crate::proxy_core::api::session::SessionIdResult;
 use crate::services::stream_check::StreamCheckService;
 use crate::settings::CustomEndpoint;
+use axum::{
+    extract::DefaultBodyLimit,
+    middleware,
+    routing::{any, get, post, put},
+    Router as AxumRouter,
+};
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
 use http::{HeaderMap, Method};
@@ -677,6 +684,138 @@ pub(crate) fn proxy_server_from_runtime_config(
 ) -> CcSwitchProxyServer {
     let state = proxy_state_from_runtime_sources(config.clone(), db, app_handle);
     ProxyServer::from_runtime_state(config, state)
+}
+
+pub(crate) fn proxy_http_router_from_state(state: ProxyState) -> AxumRouter {
+    let management_routes = AxumRouter::new()
+        .route("/proxy/v1/health", get(handlers::health_check))
+        .route("/proxy/v1/status", get(handlers::get_status))
+        .route("/proxy/v1/events", get(handlers::stream_proxy_events))
+        .route("/proxy/v1/apps", get(handlers::list_proxy_apps))
+        .route(
+            "/proxy/v1/apps/:app/providers",
+            get(handlers::list_proxy_providers),
+        )
+        .route(
+            "/proxy/v1/apps/:app/models",
+            get(handlers::list_proxy_app_models),
+        )
+        .route(
+            "/proxy/v1/channels",
+            get(handlers::list_all_proxy_channels).post(handlers::create_proxy_channel),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id",
+            get(handlers::get_proxy_channel)
+                .patch(handlers::update_proxy_channel)
+                .delete(handlers::delete_proxy_channel),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id/keys",
+            get(handlers::list_proxy_channel_keys),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id/keys/:key_ref",
+            put(handlers::upsert_proxy_channel_key)
+                .patch(handlers::update_proxy_channel_key)
+                .delete(handlers::delete_proxy_channel_key),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id/models",
+            get(handlers::list_proxy_channel_models).put(handlers::replace_proxy_channel_models),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id/test",
+            post(handlers::test_proxy_channel),
+        )
+        .route(
+            "/proxy/v1/apps/:app/channels",
+            get(handlers::list_proxy_channels),
+        )
+        .route(
+            "/proxy/v1/apps/:app/routes/current",
+            get(handlers::get_current_proxy_route),
+        )
+        .route(
+            "/proxy/v1/apps/:app/channels/migration/preview",
+            get(handlers::preview_proxy_channel_migration),
+        )
+        .route(
+            "/proxy/v1/apps/:app/channels/migration/materialize",
+            post(handlers::materialize_proxy_channel_migration),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id/breakers/stats",
+            get(handlers::get_proxy_channel_breaker_stats),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id/breakers/reset",
+            post(handlers::reset_proxy_channel_breaker),
+        )
+        .route(
+            "/proxy/v1/route/resolve",
+            post(handlers::resolve_proxy_route),
+        )
+        .route("/proxy/v1/groups", get(handlers::list_proxy_groups))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            handlers::require_proxy_management_auth,
+        ));
+
+    AxumRouter::new()
+        .route("/health", get(handlers::health_check))
+        .route("/status", get(handlers::get_status))
+        .merge(management_routes)
+        .route("/v1/messages", post(handlers::handle_messages))
+        .route("/claude/v1/messages", post(handlers::handle_messages))
+        .route(
+            "/claude-desktop/v1/models",
+            get(handlers::handle_claude_desktop_models),
+        )
+        .route(
+            "/claude-desktop/v1/messages",
+            post(handlers::handle_claude_desktop_messages),
+        )
+        .route("/chat/completions", post(handlers::handle_chat_completions))
+        .route(
+            "/v1/chat/completions",
+            post(handlers::handle_chat_completions),
+        )
+        .route(
+            "/v1/v1/chat/completions",
+            post(handlers::handle_chat_completions),
+        )
+        .route(
+            "/codex/v1/chat/completions",
+            post(handlers::handle_chat_completions),
+        )
+        .route("/models", get(handlers::handle_models))
+        .route("/v1/models", get(handlers::handle_models))
+        .route("/responses", post(handlers::handle_responses))
+        .route("/v1/responses", post(handlers::handle_responses))
+        .route("/v1/v1/responses", post(handlers::handle_responses))
+        .route("/codex/v1/responses", post(handlers::handle_responses))
+        .route(
+            "/responses/compact",
+            post(handlers::handle_responses_compact),
+        )
+        .route(
+            "/v1/responses/compact",
+            post(handlers::handle_responses_compact),
+        )
+        .route(
+            "/v1/v1/responses/compact",
+            post(handlers::handle_responses_compact),
+        )
+        .route(
+            "/codex/v1/responses/compact",
+            post(handlers::handle_responses_compact),
+        )
+        .route("/v1beta/*path", any(handlers::handle_gemini))
+        .route("/gemini/v1beta/*path", any(handlers::handle_gemini))
+        .route("/gemini/v1/*path", any(handlers::handle_gemini))
+        .layer(DefaultBodyLimit::max(200 * 1024 * 1024))
+        .with_state(state)
 }
 
 pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;

@@ -703,6 +703,16 @@ const FORBIDDEN_PROXY_SERVER_RUNTIME_STATE_MARKERS: &[&str] = &[
     ".current_providers.read()",
     "current_providers.insert(",
 ];
+const FORBIDDEN_PROXY_SERVER_ROUTE_ASSEMBLY_MARKERS: &[&str] = &[
+    "handlers::",
+    "DefaultBodyLimit::max(",
+    "middleware::from_fn_with_state(",
+    "Router::new()",
+    ".route(",
+    ".route_layer(",
+    ".merge(",
+    ".with_state(",
+];
 const FORBIDDEN_PROXY_CORE_CONFIG_SOURCE_APP_CATALOG_MARKERS: &[&str] = &[
     "AppKind::Claude",
     "AppKind::ClaudeDesktop",
@@ -14679,6 +14689,57 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
     assert!(
         violations.is_empty(),
         "production ProxyServer must delegate runtime state projection/mutation to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_server_delegates_route_assembly_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/server.rs");
+    let source = fs::read_to_string(&path).expect("read server.rs");
+    let build_router = function_slice(&source, "    fn build_router", "    /// 在不重启服务");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_router = function_slice(
+        &adapter_source,
+        "pub(crate) fn proxy_http_router_from_state",
+        "pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts",
+    );
+
+    assert!(
+        build_router.contains("proxy_http_router_from_state(self.state.clone())"),
+        "ProxyServer::build_router must delegate Axum route assembly to proxy_core_adapter"
+    );
+
+    assert!(
+        adapter_router.contains("/proxy/v1/health")
+            && adapter_router.contains("/claude-desktop/v1/models")
+            && adapter_router.contains("/v1/chat/completions")
+            && adapter_router.contains("/gemini/v1beta/*path")
+            && adapter_router.contains("middleware::from_fn_with_state(")
+            && adapter_router.contains("DefaultBodyLimit::max(200 * 1024 * 1024)")
+            && adapter_router.contains(".with_state(state)"),
+        "proxy_core_adapter must own the management, protocol, middleware, and body-limit route tree"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(build_router) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVER_ROUTE_ASSEMBLY_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/server.rs ProxyServer::build_router:{} contains route assembly marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production ProxyServer must delegate Axum route assembly to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
