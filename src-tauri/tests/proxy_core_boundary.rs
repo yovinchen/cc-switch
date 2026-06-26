@@ -8,6 +8,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/error_mapper.rs",
     "src/proxy/error.rs",
     "src/proxy/events.rs",
+    "src/proxy/host/cc_switch/channel_auth_profile_attempts.rs",
     "src/proxy/host/cc_switch/channel_key_runtime_source.rs",
     "src/proxy/host/cc_switch/forwarder_auth_source.rs",
     "src/proxy/host/cc_switch/forwarder_response_source.rs",
@@ -11727,6 +11728,10 @@ fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&source);
     let attempt_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/channel_auth_profile_attempts.rs");
     let attempt_source =
@@ -11748,6 +11753,26 @@ fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
         function.contains("channel_auth_profile_provider_application("),
         "apply_channel_auth_profile_providers_from_source must delegate channel auth application planning to proxy-core"
     );
+    assert!(
+        attempt_source.contains("use crate::proxy_core::api::auth::channel_auth_profile_missing_key_error;")
+            && attempt_source.contains("use crate::proxy_core::api::domain::{")
+            && attempt_source.contains("channel_auth_profile_provider_application")
+            && attempt_source.contains("ChannelAuthProfileProviderApplication"),
+        "channel auth profile attempt source should import pure auth/application rules directly from proxy_core::api"
+    );
+    for marker in [
+        "channel_auth_profile_missing_provider_warning",
+        "channel_auth_profile_action",
+        "ChannelAuthProfileAction",
+        "channel_auth_profile_provider_application",
+        "ChannelAuthProfileProviderApplication",
+        "channel_auth_profile_missing_key_error",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not re-export pure channel auth profile rule `{marker}` once attempt source owns the call site"
+        );
+    }
     assert!(
         function.contains("providers.contains_key(provider_id)"),
         "adapter should pass provider availability as a fact into the core channel auth plan"

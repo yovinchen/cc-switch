@@ -2224,15 +2224,6 @@ pub(crate) fn provider_from_opencode_live_config(
     Ok(provider)
 }
 
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::domain::channel_auth_profile_missing_provider_warning;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::domain::{
-    channel_auth_profile_action, ChannelAuthProfileAction,
-};
-pub(crate) use crate::proxy_core::api::domain::{
-    channel_auth_profile_provider_application, ChannelAuthProfileProviderApplication,
-};
 pub(crate) use crate::proxy_core::api::domain::{
     channel_spec_from_input, ChannelSpecInput, ModelRouteInput,
 };
@@ -2393,11 +2384,6 @@ pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_a
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::auth::ManagedAccountAuthError;
 pub(crate) use crate::proxy_core::api::auth::{
-    channel_auth_profile_missing_key_error, extract_claude_auth_key_from_settings,
-    is_gemini_oauth_key_shape, parse_gemini_oauth_credentials,
-    settings_config_with_channel_auth_key_for_app,
-};
-pub(crate) use crate::proxy_core::api::auth::{
     classify_provider_managed_auth as core_classify_provider_managed_auth,
     codex_oauth_access_token_expires_at_ms, codex_oauth_authorization_code_form,
     codex_oauth_device_auth_token_request_body, codex_oauth_device_auth_token_url,
@@ -2443,6 +2429,10 @@ pub(crate) use crate::proxy_core::api::auth::{
     ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectModelRouteIssue,
     ClaudeDesktopGatewayProfileModelSpec, ClaudeDesktopProxyRequestBodyIssue,
     ClaudeDesktopProxyRouteInput, ClaudeDesktopResolvedProxyRoute,
+};
+pub(crate) use crate::proxy_core::api::auth::{
+    extract_claude_auth_key_from_settings, is_gemini_oauth_key_shape,
+    parse_gemini_oauth_credentials, settings_config_with_channel_auth_key_for_app,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
@@ -7973,6 +7963,11 @@ mod tests {
         AuthBinding, AuthBindingSource, ClaudeDesktopMode, ClaudeDesktopModelRoute, ProviderMeta,
     };
     use crate::proxy::provider::ProviderAdapter;
+    use crate::proxy_core::api::auth::channel_auth_profile_missing_key_error;
+    use crate::proxy_core::api::domain::{
+        channel_auth_profile_action, channel_auth_profile_missing_provider_warning,
+        ChannelAuthProfileAction,
+    };
     use crate::proxy_core::api::errors::{
         proxy_error_http_status_code, proxy_error_response_body,
         upstream_proxy_error_response_body, ProxyCoreError, ProxyErrorStatusKind,
