@@ -15897,6 +15897,31 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
             && !adapter_source.contains("impl ChannelSource for CcSwitchChannelSource"),
         "CcSwitchChannelSource implementation must not remain embedded in proxy_core_adapter.rs"
     );
+    for marker in [
+        "pub(crate) fn channel_model_records_from_db_source",
+        "pub(crate) fn replace_channel_model_records_from_db_source",
+        "pub(crate) fn create_channel_record_from_db_source",
+        "pub(crate) fn channel_record_from_db_source",
+        "pub(crate) fn update_channel_record_from_db_source",
+        "pub(crate) fn delete_channel_record_from_db_source",
+        "pub(crate) fn channel_records_from_db_source",
+        "pub(crate) fn materialized_channel_records_from_db_source",
+        "pub(crate) fn channel_key_records_from_db_source",
+        "pub(crate) fn upsert_channel_key_record_from_db_source",
+        "pub(crate) fn update_channel_key_record_from_db_source",
+        "pub(crate) fn delete_channel_key_record_from_db_source",
+        "pub(crate) fn channel_migration_preview_from_db_source",
+        "pub(crate) fn channel_migration_materialize_from_db_source",
+    ] {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not own channel DB source helper `{marker}`"
+        );
+        assert!(
+            source.contains(marker),
+            "host/cc_switch/database_channel_source.rs should own channel DB source helper `{marker}`"
+        );
+    }
     assert!(
         source.contains("struct CcSwitchChannelSource")
             && source.contains("impl ChannelSource for CcSwitchChannelSource")
