@@ -11197,6 +11197,30 @@ fn proxy_core_adapter_delegates_proxy_runtime_to_host_module() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let state_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs");
+    let state_source = fs::read_to_string(&state_path).expect("read proxy_state.rs");
+
+    assert!(
+        state_source.contains("pub struct ProxyState")
+            && !state_source.contains("ProxyEngine::new(")
+            && !state_source.contains("impl ProxyState"),
+        "CC Switch proxy state data shape should live in host/cc_switch/proxy_state.rs"
+    );
+    assert!(
+        adapter_source
+            .contains("pub(crate) use crate::proxy::host::cc_switch::proxy_state::ProxyState")
+            && !adapter_source.contains("\npub struct ProxyState")
+            && adapter_source.contains("\nimpl ProxyState")
+            && adapter_source.contains("ProxyEngine::new(self.proxy_core_services.clone())"),
+        "proxy_core_adapter should re-export the state and keep the ProxyEngine construction boundary"
+    );
+}
+
+#[test]
 fn production_forwarder_delegates_managed_auth_resolution_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
@@ -15401,9 +15425,9 @@ fn production_proxy_state_imports_use_adapter_path() {
 #[test]
 fn production_proxy_state_does_not_retain_injected_host_resources() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let proxy_state = function_slice(&source, "pub struct ProxyState", "impl ProxyState");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_state.rs");
+    let proxy_state = source.as_str();
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(proxy_state) {
@@ -15411,7 +15435,7 @@ fn production_proxy_state_does_not_retain_injected_host_resources() {
         for marker in FORBIDDEN_PROXY_STATE_HOST_RESOURCE_RETENTION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs ProxyState:{} retains host resource marker `{}`",
+                    "src/proxy/host/cc_switch/proxy_state.rs ProxyState:{} retains host resource marker `{}`",
                     line_index + 1,
                     marker
                 ));
