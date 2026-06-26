@@ -1699,6 +1699,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1213. `proxy_core_adapter` 的 test-only Codex error mapper projection re-export 已删除；adapter 单测直接调用 `proxy::error_mapper` owning module，边界测试从“必须兼容 re-export”改为禁止这组 error mapper projection 回流。
 1214. `proxy_core_adapter` 的 test-only Codex proxy error code/json/response core helper re-export 已删除；adapter 单测直接调用 `proxy_core::api::transforms` owning module，边界测试防止这些 Codex error core helper 重新作为 adapter 表面暴露。
 1215. `proxy_core_adapter` 的 test-only `apply_channel_route_model_override` re-export 已删除；adapter 单测直接调用 `proxy_core::api::transport` owning helper，保留仍有生产调用的 `apply_resolved_channel_model_override` adapter 出口。
+1216. `proxy_core_adapter` 的 test-only `proxy_url_points_to_loopback_port` re-export 已删除；adapter 单测直接调用 core owning helper，`global_http_client` 单测继续通过生产 adapter 入口 `proxy_values_point_to_loopback_port` 验证同一 loopback 判定。
 
 ## 背景
 
