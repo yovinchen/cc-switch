@@ -632,8 +632,6 @@ pub(crate) type UsageParserConfig = crate::proxy_core::api::usage::UsageParserCo
 pub(crate) type StreamUsageEventFilter = crate::proxy_core::api::usage::StreamUsageEventFilter;
 pub(crate) type TransformedResponseUsageFormat =
     crate::proxy_core::api::usage::TransformedResponseUsageFormat;
-pub(crate) type CoreResponseTransformFailureContext =
-    crate::proxy_core::api::transforms::ProxyResponseTransformFailureContext;
 pub(crate) type UsageSelectedProviderMissingPhase =
     crate::proxy_core::api::usage::UsageSelectedProviderMissingPhase;
 pub(crate) type UsageRecordFailureLogContext =

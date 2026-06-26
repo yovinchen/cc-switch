@@ -5,22 +5,20 @@
 use super::{error::ProxyError, ForwardError};
 use crate::proxy_core::api::errors::{
     proxy_core_error_from_status_kind, proxy_error_display_message_from_status,
-    proxy_error_http_status_code, ProxyCoreError, ProxyErrorStatusKind,
+    proxy_error_http_status_code, ProxyCoreError, ProxyCoreResult, ProxyErrorStatusKind,
 };
+use crate::proxy_core::api::transforms::ProxyResponseTransformFailureContext as CoreResponseTransformFailureContext;
 use crate::proxy_core::api::transport::{
     parse_upstream_json_or_unlabeled_sse, upstream_response_parse_failure_log_message,
-    upstream_send_error_projection, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
-    UpstreamJsonBodySource, UpstreamResponseParseFailureLogContext, UpstreamSendErrorInput,
-    UpstreamSseAggregationKind,
+    upstream_send_error_projection, ProxyCoreResponse,
+    ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext,
+    UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel, UpstreamJsonBodySource,
+    UpstreamResponseParseFailureLogContext, UpstreamSendErrorInput, UpstreamSseAggregationKind,
 };
+use crate::proxy_core_adapter::codex_proxy_error_response_from_proxy_error as core_codex_proxy_error_response;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     codex_proxy_error_json_from_proxy_error as core_codex_proxy_error_json, ProxyResponseBody,
-};
-use crate::proxy_core_adapter::{
-    codex_proxy_error_response_from_proxy_error as core_codex_proxy_error_response,
-    CoreResponseBuildFailureContext, CoreResponseTransformFailureContext, ProxyCoreResponse,
-    ProxyCoreResult,
 };
 use http::HeaderMap;
 use serde_json::Value;

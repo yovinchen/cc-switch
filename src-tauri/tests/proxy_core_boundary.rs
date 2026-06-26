@@ -6421,6 +6421,10 @@ fn error_mapper_delegates_response_build_failure_context_policy_to_core() {
         "error_mapper should consume the core response build failure context"
     );
     assert!(
+        source.contains("ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext"),
+        "error_mapper should import response build failure context from proxy_core::api::transport"
+    );
+    assert!(
         source.contains(".log_prefix()"),
         "error_mapper should use proxy-core response build failure log prefixes"
     );
@@ -6455,6 +6459,11 @@ fn error_mapper_delegates_response_transform_failure_context_policy_to_core() {
     assert!(
         source.contains("CoreResponseTransformFailureContext"),
         "error_mapper should consume the core response transform failure context"
+    );
+    assert!(
+        source
+            .contains("ProxyResponseTransformFailureContext as CoreResponseTransformFailureContext"),
+        "error_mapper should import response transform failure context from proxy_core::api::transforms"
     );
     assert!(
         source.contains(".log_prefix()"),
