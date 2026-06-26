@@ -14408,6 +14408,32 @@ fn production_proxy_core_host_delegates_usage_sink_source_to_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let usage_sink_path = manifest_dir.join("src/proxy/host/cc_switch/database_usage_sink.rs");
+    let usage_sink_source =
+        fs::read_to_string(&usage_sink_path).expect("read database_usage_sink.rs");
+
+    assert!(
+        usage_sink_source.contains("pub(crate) struct CcSwitchUsageSink")
+            && usage_sink_source.contains("impl UsageSink for CcSwitchUsageSink")
+            && usage_sink_source.contains("record_usage_in_db_source(")
+            && usage_sink_source.contains("UsageLogger::new("),
+        "CC Switch usage sink implementation should live in host/cc_switch/database_usage_sink.rs"
+    );
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::database_usage_sink::CcSwitchUsageSink"
+        ) && !adapter_source.contains("pub(crate) struct CcSwitchUsageSink")
+            && !adapter_source.contains("impl UsageSink for CcSwitchUsageSink")
+            && !adapter_source.contains("pub(crate) async fn record_usage_in_db_source("),
+        "proxy_core_adapter should re-export, not own, the CC Switch usage sink source"
+    );
+}
+
+#[test]
 fn production_proxy_core_host_delegates_event_sink_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");

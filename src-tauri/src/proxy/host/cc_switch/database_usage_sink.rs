@@ -2,10 +2,16 @@
 
 use crate::database::{Database, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
 use crate::error::AppError;
-use crate::proxy_core_adapter::{CostBreakdown, ModelPricing, TokenUsage};
+use crate::proxy_core_adapter::{
+    CostBreakdown, ModelPricing, ProxyCoreResult, TokenUsage, UsageRecord, UsageSink,
+    log_usage_request_projection_warnings, usage_error, usage_pricing_config_lookup_from_record,
+    usage_record_pricing_model, usage_record_to_request_log,
+};
 use crate::services::usage_stats::find_model_pricing_row;
+use futures::future::BoxFuture;
 use rust_decimal::Decimal;
 use std::str::FromStr;
+use std::sync::Arc;
 
 /// 请求日志
 #[derive(Debug, Clone)]
@@ -227,6 +233,51 @@ impl<'a> UsageLogger<'a> {
         };
 
         (cost_multiplier, pricing_model_source)
+    }
+}
+
+pub(crate) async fn record_usage_in_db_source(
+    db: &Database,
+    record: UsageRecord,
+) -> ProxyCoreResult<()> {
+    let logger = UsageLogger::new(db);
+    let lookup = usage_pricing_config_lookup_from_record(&record);
+    let (multiplier, pricing_model_source) = logger
+        .resolve_pricing_config(&lookup.provider_id, &lookup.app_type)
+        .await;
+    let pricing_model = usage_record_pricing_model(&record, &pricing_model_source);
+    let pricing = logger
+        .get_model_pricing(&pricing_model)
+        .map_err(|error| usage_error("load model pricing", error))?;
+    let projection = usage_record_to_request_log(
+        &record,
+        &pricing_model_source,
+        pricing.as_ref(),
+        multiplier,
+        || uuid::Uuid::new_v4().to_string(),
+    );
+
+    log_usage_request_projection_warnings(&projection);
+
+    logger
+        .log_request(&projection.log)
+        .map_err(|error| usage_error("record usage", error))
+}
+
+#[derive(Clone)]
+pub(crate) struct CcSwitchUsageSink {
+    db: Arc<Database>,
+}
+
+impl CcSwitchUsageSink {
+    pub(crate) fn new(db: Arc<Database>) -> Self {
+        Self { db }
+    }
+}
+
+impl UsageSink for CcSwitchUsageSink {
+    fn record_usage<'a>(&'a self, record: UsageRecord) -> BoxFuture<'a, ProxyCoreResult<()>> {
+        Box::pin(async move { record_usage_in_db_source(&self.db, record).await })
     }
 }
 

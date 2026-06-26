@@ -21,7 +21,7 @@ use crate::proxy::error_mapper::forward_error_to_core_error;
 pub(crate) use crate::proxy::error_mapper::proxy_core_error_to_proxy_error;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::host::cc_switch::database_channel_source::CcSwitchChannelSource;
-use crate::proxy::host::cc_switch::database_usage_sink::{RequestLog, UsageLogger};
+use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;
@@ -10692,50 +10692,7 @@ pub(crate) fn log_usage_request_projection_warnings(projection: &UsageRequestLog
     }
 }
 
-pub(crate) async fn record_usage_in_db_source(
-    db: &Database,
-    record: UsageRecord,
-) -> ProxyCoreResult<()> {
-    let logger = UsageLogger::new(db);
-    let lookup = usage_pricing_config_lookup_from_record(&record);
-    let (multiplier, pricing_model_source) = logger
-        .resolve_pricing_config(&lookup.provider_id, &lookup.app_type)
-        .await;
-    let pricing_model = usage_record_pricing_model(&record, &pricing_model_source);
-    let pricing = logger
-        .get_model_pricing(&pricing_model)
-        .map_err(|error| usage_error("load model pricing", error))?;
-    let projection = usage_record_to_request_log(
-        &record,
-        &pricing_model_source,
-        pricing.as_ref(),
-        multiplier,
-        || uuid::Uuid::new_v4().to_string(),
-    );
-
-    log_usage_request_projection_warnings(&projection);
-
-    logger
-        .log_request(&projection.log)
-        .map_err(|error| usage_error("record usage", error))
-}
-
-#[derive(Clone)]
-pub(crate) struct CcSwitchUsageSink {
-    db: Arc<Database>,
-}
-
-impl CcSwitchUsageSink {
-    pub(crate) fn new(db: Arc<Database>) -> Self {
-        Self { db }
-    }
-}
-
-impl UsageSink for CcSwitchUsageSink {
-    fn record_usage<'a>(&'a self, record: UsageRecord) -> BoxFuture<'a, ProxyCoreResult<()>> {
-        Box::pin(async move { record_usage_in_db_source(&self.db, record).await })
-    }
-}
+pub(crate) use crate::proxy::host::cc_switch::database_usage_sink::CcSwitchUsageSink;
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::model_catalog::{
