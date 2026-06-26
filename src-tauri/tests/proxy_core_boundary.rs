@@ -11904,6 +11904,48 @@ fn production_forwarder_uses_request_source_resource() {
 }
 
 #[test]
+fn proxy_core_adapter_forward_model_mapping_uses_adapter_claude_desktop_projection() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let mapping_slice = function_slice(
+        &source,
+        "pub(crate) fn apply_forward_request_model_mapping_from_provider(",
+        "#[cfg(test)]",
+    );
+
+    assert!(
+        mapping_slice.contains("provider_claude_desktop_proxy_request_body(")
+            && mapping_slice.contains("ModelMappingProjection"),
+        "proxy_core_adapter should map Claude Desktop forward request bodies through adapter projection"
+    );
+
+    let forbidden_markers = [
+        "crate::claude_desktop_config::map_proxy_request_model(",
+        "map_proxy_request_model(body, provider)",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(mapping_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs apply_forward_request_model_mapping_from_provider:{} contains host request body projection marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must not map Claude Desktop forward request bodies through host config:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_uses_response_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");

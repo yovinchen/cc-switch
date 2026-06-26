@@ -13,10 +13,13 @@ use crate::provider::{ClaudeDesktopMode, Provider};
 use crate::proxy_core_adapter::{
     ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectModelRouteIssue,
     ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProviderDirectGatewayProfileIssue,
-    ClaudeDesktopProviderDirectValidationIssue, ClaudeDesktopProviderProxyRequestBodyIssue,
-    ClaudeDesktopProviderProxyRouteIssue, ClaudeDesktopProviderProxyValidationIssue,
-    ClaudeDesktopProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
-    ClaudeDesktopProxyRequestBodyIssue,
+    ClaudeDesktopProviderDirectValidationIssue, ClaudeDesktopProviderProxyRouteIssue,
+    ClaudeDesktopProviderProxyValidationIssue, ClaudeDesktopProviderValidationIssue,
+    ClaudeDesktopProxyProviderConfigValidationIssue,
+};
+#[cfg(test)]
+use crate::proxy_core_adapter::{
+    ClaudeDesktopProviderProxyRequestBodyIssue, ClaudeDesktopProxyRequestBodyIssue,
 };
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
@@ -360,6 +363,7 @@ fn proxy_route_issue_to_error(issue: ClaudeDesktopProviderProxyRouteIssue) -> Ap
     }
 }
 
+#[cfg(test)]
 pub fn map_proxy_request_model(body: Value, provider: &Provider) -> Result<Value, AppError> {
     crate::proxy_core_adapter::provider_claude_desktop_proxy_request_body(body, provider).map_err(
         |issue| match issue {
@@ -373,6 +377,7 @@ pub fn map_proxy_request_model(body: Value, provider: &Provider) -> Result<Value
     )
 }
 
+#[cfg(test)]
 fn proxy_request_body_issue_to_error(issue: ClaudeDesktopProxyRequestBodyIssue) -> AppError {
     match issue {
         ClaudeDesktopProxyRequestBodyIssue::MissingModel => AppError::localized(

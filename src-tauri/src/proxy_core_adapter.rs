@@ -10179,15 +10179,40 @@ pub(crate) fn apply_forward_request_model_mapping_from_provider(
     provider: &Provider,
 ) -> Result<ModelMappingProjection, ProxyError> {
     if matches!(app_type, AppType::ClaudeDesktop) {
-        return crate::claude_desktop_config::map_proxy_request_model(body, provider)
+        return provider_claude_desktop_proxy_request_body(body, provider)
             .map(|body| ModelMappingProjection {
                 body,
                 log_message: None,
             })
-            .map_err(|error| ProxyError::InvalidRequest(error.to_string()));
+            .map_err(|issue| {
+                ProxyError::InvalidRequest(claude_desktop_proxy_request_body_issue_message(issue))
+            });
     }
 
     Ok(apply_provider_model_mapping_from_provider(body, provider))
+}
+
+fn claude_desktop_proxy_request_body_issue_message(
+    issue: ClaudeDesktopProviderProxyRequestBodyIssue,
+) -> String {
+    match issue {
+        ClaudeDesktopProviderProxyRequestBodyIssue::Routes(route_issue) => match route_issue {
+            ClaudeDesktopProviderProxyRouteIssue::Missing => {
+                "Claude Desktop proxy mode is missing model route mappings".to_string()
+            }
+            ClaudeDesktopProviderProxyRouteIssue::Empty => {
+                "Claude Desktop proxy mode requires at least one model route mapping".to_string()
+            }
+        },
+        ClaudeDesktopProviderProxyRequestBodyIssue::Body(body_issue) => match body_issue {
+            ClaudeDesktopProxyRequestBodyIssue::MissingModel => {
+                "Claude Desktop request is missing the model field".to_string()
+            }
+            ClaudeDesktopProxyRequestBodyIssue::UnknownRoute { requested_model } => {
+                format!("Claude Desktop model route is not configured: {requested_model}")
+            }
+        },
+    }
 }
 
 #[cfg(test)]
