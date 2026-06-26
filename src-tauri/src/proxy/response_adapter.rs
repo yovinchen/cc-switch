@@ -33,19 +33,21 @@ use crate::proxy_core_adapter::{
     ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
     ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
     ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ChannelTestResponse, ClaudeTransformStreamingDecision, ClaudeTransformedJsonResponseContext,
-    ClaudeTransformedSseStreamContext, ClientModelCatalogResponse,
-    CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
-    CodexChatTransformStreamingDecision, CodexResponsesProxyRequest, CodexToolContext,
-    CoreResponseBuildFailureContext, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
-    GroupListRequest, InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest,
+    ChannelTestResponse, ClaudeDesktopModelListResponse, ClaudeTransformStreamingDecision,
+    ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
+    ClientModelCatalogResponse, CodexAutoTransformedJsonResponseContext,
+    CodexAutoTransformedSseStreamContext, CodexChatTransformStreamingDecision,
+    CodexResponsesProxyRequest, CodexToolContext, CoreResponseBuildFailureContext,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
+    HealthCheckResponse, InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest,
     ProviderListResponse, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
     ProxyChannelWriteRequest, ProxyCoreResponse, ProxyEventEnvelope, ProxyRequest, ProxyResult,
-    ProxyState, ProxyTransportResponse, ProxyTransportResponseBody, RoutableModelList,
-    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
-    GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    ProxyRuntimeStatus, ProxyState, ProxyStatusRequest, ProxyStatusResponse,
+    ProxyTransportResponse, ProxyTransportResponseBody, RoutableModelList, RouteGroupListResponse,
+    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
+    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
+    OPENAI_PARSER_CONFIG,
 };
 use axum::{
     response::sse::{Event, KeepAlive, Sse},
@@ -262,6 +264,40 @@ pub(crate) fn proxy_core_response_to_proxy_response(
     };
 
     Ok(response)
+}
+
+pub(crate) fn proxy_health_check_to_axum_json_response() -> (StatusCode, Json<HealthCheckResponse>)
+{
+    let request = HealthCheckRequest::new();
+    (
+        StatusCode::OK,
+        Json(request.response(chrono::Utc::now().to_rfc3339())),
+    )
+}
+
+pub(crate) async fn dispatch_proxy_status_request_to_axum_json_response(
+    state: &ProxyState,
+) -> Result<Json<ProxyStatusResponse<ProxyRuntimeStatus>>, ProxyError> {
+    let request = ProxyStatusRequest::new();
+    let response = state
+        .proxy_engine()
+        .proxy_status_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
+}
+
+pub(crate) async fn dispatch_claude_desktop_models_request_to_axum_json_response(
+    state: &ProxyState,
+) -> Result<Json<ClaudeDesktopModelListResponse>, ProxyError> {
+    let response = state
+        .proxy_engine()
+        .claude_desktop_model_list_response()
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
 }
 
 pub(crate) async fn dispatch_proxy_apps_request_to_axum_json_response(

@@ -12,6 +12,7 @@ use super::{
     error_mapper::proxy_core_error_to_proxy_error,
     response_adapter::{
         dispatch_claude_desktop_messages_request_to_axum_response,
+        dispatch_claude_desktop_models_request_to_axum_json_response,
         dispatch_claude_request_to_axum_response, dispatch_codex_chat_request_to_axum_response,
         dispatch_codex_client_model_catalog_request_to_axum_json_response,
         dispatch_codex_responses_compact_request_to_axum_response,
@@ -35,12 +36,13 @@ use super::{
         dispatch_proxy_groups_request_to_axum_json_response,
         dispatch_proxy_providers_request_to_axum_json_response,
         dispatch_proxy_route_resolve_request_to_axum_json_response,
+        dispatch_proxy_status_request_to_axum_json_response,
         dispatch_replace_proxy_channel_models_request_to_axum_json_response,
         dispatch_reset_proxy_channel_breaker_request_to_axum_json_response,
         dispatch_update_proxy_channel_key_request_to_axum_json_response,
         dispatch_update_proxy_channel_request_to_axum_json_response,
         dispatch_upsert_proxy_channel_key_request_to_axum_json_response,
-        proxy_events_request_to_axum_sse_response,
+        proxy_events_request_to_axum_sse_response, proxy_health_check_to_axum_json_response,
     },
 };
 use crate::proxy_core_adapter::{
@@ -51,12 +53,11 @@ use crate::proxy_core_adapter::{
     ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelRecord,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
     ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
-    CurrentRouteTarget, GroupListQuery, HealthCheckRequest, HealthCheckResponse,
-    ProviderListResponse, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-    ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyState, ProxyStatusRequest,
-    ProxyStatusResponse, RoutableModelList, RouteGroupListResponse, RouteResolveRequest,
-    RouteResolveResponse,
+    CurrentRouteTarget, GroupListQuery, HealthCheckResponse, ProviderListResponse,
+    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
+    ProxyRuntimeStatus, ProxyState, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
+    RouteResolveRequest, RouteResolveResponse,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -70,24 +71,14 @@ use axum::{
 
 /// 健康检查
 pub async fn health_check() -> (StatusCode, Json<HealthCheckResponse>) {
-    let request = HealthCheckRequest::new();
-    (
-        StatusCode::OK,
-        Json(request.response(chrono::Utc::now().to_rfc3339())),
-    )
+    proxy_health_check_to_axum_json_response()
 }
 
 /// 获取服务状态
 pub async fn get_status(
     State(state): State<ProxyState>,
 ) -> Result<Json<ProxyStatusResponse<ProxyRuntimeStatus>>, ProxyError> {
-    let request = ProxyStatusRequest::new();
-    let response = state
-        .proxy_engine()
-        .proxy_status_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-    Ok(Json(response))
+    dispatch_proxy_status_request_to_axum_json_response(&state).await
 }
 
 /// GET /proxy/v1/events
@@ -363,12 +354,7 @@ pub async fn handle_claude_desktop_models(
     headers: axum::http::HeaderMap,
 ) -> Result<Json<ClaudeDesktopModelListResponse>, ProxyError> {
     validate_claude_desktop_gateway_auth(&state, &headers).await?;
-    let response = state
-        .proxy_engine()
-        .claude_desktop_model_list_response()
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-    Ok(Json(response))
+    dispatch_claude_desktop_models_request_to_axum_json_response(&state).await
 }
 
 // ============================================================================

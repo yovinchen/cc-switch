@@ -950,6 +950,14 @@ const FORBIDDEN_MIGRATION_BREAKER_HANDLER_ENGINE_MARKERS: &[&str] = &[
     ".channel_breaker_stats_response(",
     ".reset_channel_health_response(",
 ];
+const FORBIDDEN_STATUS_MODEL_HANDLER_ENGINE_MARKERS: &[&str] = &[
+    "HealthCheckRequest::new(",
+    "ProxyStatusRequest::new(",
+    "chrono::Utc::now()",
+    ".proxy_engine()",
+    ".proxy_status_response(",
+    ".claude_desktop_model_list_response(",
+];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
 const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
@@ -2268,6 +2276,8 @@ fn basic_health_status_handlers_use_management_contracts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read response_adapter.rs");
     let health_handler = function_slice(&source, "pub async fn health_check", "/// 获取服务状态");
     let status_handler = function_slice(
         &source,
@@ -2276,9 +2286,15 @@ fn basic_health_status_handlers_use_management_contracts() {
     );
 
     assert!(
-        status_handler.contains(".proxy_engine()")
-            && status_handler.contains(".proxy_status_response(request)"),
-        "status HTTP handler must delegate runtime status response assembly to ProxyEngine"
+        health_handler.contains("proxy_health_check_to_axum_json_response(")
+            && status_handler.contains("dispatch_proxy_status_request_to_axum_json_response("),
+        "basic health/status HTTP handlers should delegate response assembly to response_adapter"
+    );
+    assert!(
+        adapter_source.contains("HealthCheckRequest::new()")
+            && adapter_source.contains("ProxyStatusRequest::new()")
+            && adapter_source.contains(".proxy_status_response(request)"),
+        "response_adapter must own basic health/status management contracts and ProxyEngine status call"
     );
 
     let forbidden_markers = [
@@ -4177,6 +4193,66 @@ fn production_migration_and_breaker_handlers_delegate_json_bridge_to_response_ad
     assert!(
         violations.is_empty(),
         "migration and breaker handlers must delegate path request construction, engine calls, and JSON wrapping to response_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_status_and_desktop_model_handlers_delegate_json_bridge_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handlers = [
+        (
+            "health_check",
+            function_slice(&source, "pub async fn health_check(", "/// 获取服务状态"),
+            "proxy_health_check_to_axum_json_response(",
+        ),
+        (
+            "get_status",
+            function_slice(
+                &source,
+                "pub async fn get_status(",
+                "/// GET /proxy/v1/events",
+            ),
+            "dispatch_proxy_status_request_to_axum_json_response(",
+        ),
+        (
+            "handle_claude_desktop_models",
+            function_slice(
+                &source,
+                "pub async fn handle_claude_desktop_models(",
+                "\n}\n\n// ============================================================================\n// Codex API",
+            ),
+            "dispatch_claude_desktop_models_request_to_axum_json_response(",
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    for (handler_name, handler, adapter_marker) in handlers {
+        if !handler.contains(adapter_marker) {
+            violations.push(format!(
+                "src/proxy/handlers.rs {handler_name} should call `{adapter_marker}`"
+            ));
+        }
+
+        for (line_index, line) in production_lines(handler) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_STATUS_MODEL_HANDLER_ENGINE_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/proxy/handlers.rs {handler_name}:{} contains status/model engine marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "status and Claude Desktop model handlers must delegate response construction, engine calls, and JSON wrapping to response_adapter:\n{}",
         violations.join("\n")
     );
 }
