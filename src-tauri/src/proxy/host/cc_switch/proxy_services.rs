@@ -21,6 +21,9 @@ use crate::proxy::host::cc_switch::model_catalog_provider::CcSwitchModelCatalogP
 #[cfg(test)]
 use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 use crate::proxy::host::cc_switch::provider_source::CcSwitchProviderSource;
+use crate::proxy::host::cc_switch::proxy_runtime::{
+    HostForwardRuntime, ProxyServiceRuntimeResources,
+};
 use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource;
 use crate::proxy::host::cc_switch::route_resolver::CcSwitchRouteResolver;
 use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource;
@@ -34,7 +37,6 @@ use crate::proxy_core::api::ports::{
 };
 #[cfg(test)]
 use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};
-use crate::proxy_core_adapter::{HostForwardRuntime, ProxyServiceRuntimeResources};
 #[cfg(test)]
 use futures::future::BoxFuture;
 #[cfg(test)]

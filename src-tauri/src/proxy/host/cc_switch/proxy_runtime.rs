@@ -3,18 +3,44 @@
 use crate::database::Database;
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::events::ProxyEventBus;
+use crate::proxy_core::api::domain::ProxyRequest;
+use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::ports::{
+    ChannelKeyRuntimeSource, CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus,
+};
+use crate::proxy_core::api::routing::RoutePlan;
+use crate::proxy_core::api::transport::ProxyResult;
 use crate::proxy_core_adapter::{
-    forward_proxy_request_with_cc_switch_runtime, ChannelKeyRuntimeSource, CurrentRouteTarget,
-    FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderAuthSourceRef,
-    ForwarderProtocolStateSourceRef, ForwarderRequestSourceRef, ForwarderResponseSourceRef,
-    ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef, HostForwardRuntime, ProxyConfig,
-    ProxyCoreResult, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServiceRuntimeResources,
-    RoutePlan,
+    forward_proxy_request_with_cc_switch_runtime, FailoverSwitchSchedulerRef,
+    ForwarderAttemptRuntimeSourceRef, ForwarderAuthSourceRef, ForwarderProtocolStateSourceRef,
+    ForwarderRequestSourceRef, ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef,
+    ForwarderTransportSourceRef,
 };
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+pub(crate) trait ProxyServiceRuntimeResources:
+    HostForwardRuntime + Clone + Send + Sync
+{
+    fn db(&self) -> Arc<Database>;
+    fn config(&self) -> Arc<RwLock<ProxyConfig>>;
+    fn provider_router(&self) -> Arc<ProviderRouter>;
+    fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>>;
+    fn start_time(&self) -> Arc<RwLock<Option<std::time::Instant>>>;
+    fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>>;
+    fn events(&self) -> Arc<ProxyEventBus>;
+}
+
+pub(crate) trait HostForwardRuntime {
+    fn forward_host<'a>(
+        &'a self,
+        channel_key_runtime_source: &'a (dyn ChannelKeyRuntimeSource + Send + Sync),
+        request: ProxyRequest,
+        plan: RoutePlan,
+    ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>>;
+}
 
 #[derive(Clone)]
 pub(crate) struct CcSwitchProxyRuntime {

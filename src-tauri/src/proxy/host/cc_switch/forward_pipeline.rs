@@ -1,10 +1,12 @@
 //! CC Switch forward pipeline adapter.
 
 use crate::proxy::host::cc_switch::channel_key_runtime_source::CcSwitchChannelKeyRuntimeSource;
-use crate::proxy_core_adapter::{
-    forward_with_optional_host_runtime, ForwardPipeline, HostForwardRuntime, ProxyCoreResult,
-    ProxyRequest, ProxyResult, RoutePlan,
-};
+use crate::proxy::host::cc_switch::proxy_runtime::HostForwardRuntime;
+use crate::proxy_core::api::domain::ProxyRequest;
+use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::ports::{ChannelKeyRuntimeSource, ForwardPipeline};
+use crate::proxy_core::api::routing::{forwarding_requires_runtime_error, RoutePlan};
+use crate::proxy_core::api::transport::ProxyResult;
 use futures::future::BoxFuture;
 
 #[derive(Clone)]
@@ -51,4 +53,21 @@ where
             plan,
         )
     }
+}
+
+fn forward_with_optional_host_runtime<'a, R>(
+    runtime: Option<&'a R>,
+    channel_key_runtime_source: &'a (dyn ChannelKeyRuntimeSource + Send + Sync),
+    request: ProxyRequest,
+    plan: RoutePlan,
+) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>>
+where
+    R: HostForwardRuntime + Sync + 'a,
+{
+    Box::pin(async move {
+        let runtime = runtime.ok_or_else(forwarding_requires_runtime_error)?;
+        runtime
+            .forward_host(channel_key_runtime_source, request, plan)
+            .await
+    })
 }

@@ -2463,9 +2463,9 @@ pub(crate) use crate::proxy_core::api::ports::ChannelReachabilityProbe;
 pub(crate) use crate::proxy_core::api::ports::{
     channel_breaker_stats_from_parts, channel_health_reset_from_parts, AppSummaryConfig,
     AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelKeyRuntimeSource, ChannelSource,
-    ClaudeDesktopGatewayAuthSource, ForwardPipeline, ManagementAuthRuntimeConfig,
-    ManagementAuthSource, ModelCatalogProvider, ProviderSource, ProxyConfigSource, ProxyEventSink,
-    ProxyServices, RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
+    ClaudeDesktopGatewayAuthSource, ManagementAuthRuntimeConfig, ManagementAuthSource,
+    ModelCatalogProvider, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
+    RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
@@ -6358,51 +6358,13 @@ pub(crate) use crate::proxy::engine::response_pipeline::{
     TransformedStreamingResponseUsageContext, TransformedStreamingUsageCollectorContext,
 };
 
-pub(crate) trait ProxyServiceRuntimeResources:
-    HostForwardRuntime + Clone + Send + Sync
-{
-    fn db(&self) -> Arc<Database>;
-    fn config(&self) -> Arc<RwLock<ProxyConfig>>;
-    fn provider_router(&self) -> Arc<ProviderRouter>;
-    fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>>;
-    fn start_time(&self) -> Arc<RwLock<Option<std::time::Instant>>>;
-    fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>>;
-    fn events(&self) -> Arc<ProxyEventBus>;
-}
-
-pub(crate) trait HostForwardRuntime {
-    fn forward_host<'a>(
-        &'a self,
-        channel_key_runtime_source: &'a (dyn ChannelKeyRuntimeSource + Send + Sync),
-        request: ProxyRequest,
-        plan: RoutePlan,
-    ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>>;
-}
-
-pub(crate) fn forward_with_optional_host_runtime<'a, R>(
-    runtime: Option<&'a R>,
-    channel_key_runtime_source: &'a (dyn ChannelKeyRuntimeSource + Send + Sync),
-    request: ProxyRequest,
-    plan: RoutePlan,
-) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>>
-where
-    R: HostForwardRuntime + Sync + 'a,
-{
-    Box::pin(async move {
-        let runtime = runtime.ok_or_else(forwarding_runtime_unavailable_error)?;
-        runtime
-            .forward_host(channel_key_runtime_source, request, plan)
-            .await
-    })
-}
-
 pub(crate) use crate::proxy_core::api::routing::{
-    forwarding_requires_runtime_error as forwarding_runtime_unavailable_error,
     route_plan_no_matching_host_providers_error, route_plan_providers_unconfigured_error,
 };
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::{
+    forwarding_requires_runtime_error as forwarding_runtime_unavailable_error,
     forwarding_requires_runtime_error_message, route_plan_no_matching_host_providers_error_message,
     route_plan_providers_unconfigured_error_message,
 };

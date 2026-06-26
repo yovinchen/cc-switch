@@ -12437,20 +12437,26 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     );
     let pipeline_impl = pipeline_source.as_str();
     let host_runtime_trait = function_slice(
-        &source,
+        &runtime_source,
         "pub(crate) trait HostForwardRuntime",
-        "pub(crate) fn forward_with_optional_host_runtime",
+        "#[derive(Clone)]",
     );
     let host_runtime_impl = runtime_source.as_str();
-    let optional_runtime_function = function_slice(
-        &source,
-        "pub(crate) fn forward_with_optional_host_runtime",
-        "#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::{\n    forwarding_requires_runtime_error_message",
-    );
+    let optional_runtime_function = pipeline_source.as_str();
     let host_forward_function = function_slice(
         &source,
         "pub(crate) async fn forward_proxy_request_with_host_runtime",
         "#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
+    );
+    let adapter_core_ports_import = function_slice(
+        &source,
+        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
+        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+    );
+    let adapter_production_routing_import = function_slice(
+        &source,
+        "pub(crate) use crate::proxy_core::api::routing::{\n    route_plan_no_matching_host_providers_error",
+        "};\n\n#[cfg(test)]",
     );
     let attempt_source_function = attempt_source.as_str();
 
@@ -12476,14 +12482,32 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
         "ForwardPipeline implementation should pass its channel key runtime source into host runtime dispatch"
     );
     assert!(
+        !source.contains("pub(crate) trait HostForwardRuntime")
+            && !source.contains("pub(crate) trait ProxyServiceRuntimeResources")
+            && !source.contains("pub(crate) fn forward_with_optional_host_runtime"),
+        "proxy_core_adapter should not own host runtime trait contracts or optional runtime dispatch"
+    );
+    assert!(
+        !adapter_core_ports_import.contains("ForwardPipeline"),
+        "proxy_core_adapter should not re-export the ForwardPipeline port for the host forward pipeline"
+    );
+    assert!(
+        !adapter_production_routing_import
+            .contains("forwarding_requires_runtime_error as forwarding_runtime_unavailable_error"),
+        "proxy_core_adapter should keep runtime-unavailable alias test-only"
+    );
+    assert!(
         host_runtime_trait.contains("channel_key_runtime_source")
             && host_runtime_impl.contains("channel_key_runtime_source"),
         "HostForwardRuntime should receive channel key runtime source from the pipeline"
     );
     assert!(
+        optional_runtime_function.contains("fn forward_with_optional_host_runtime")
+            && optional_runtime_function.contains("forwarding_requires_runtime_error")
+            &&
         optional_runtime_function
             .contains(".forward_host(channel_key_runtime_source, request, plan)"),
-        "optional runtime dispatcher should forward the injected channel key runtime source"
+        "host forward pipeline optional runtime dispatcher should forward the injected channel key runtime source"
     );
     assert!(
         host_forward_function.contains("required_forward_attempts_from_sources(")
@@ -12506,6 +12530,8 @@ fn proxy_core_adapter_delegates_proxy_runtime_to_host_module() {
 
     assert!(
         runtime_source.contains("pub(crate) struct CcSwitchProxyRuntime")
+            && runtime_source.contains("pub(crate) trait ProxyServiceRuntimeResources")
+            && runtime_source.contains("pub(crate) trait HostForwardRuntime")
             && runtime_source.contains("impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime")
             && runtime_source.contains("impl HostForwardRuntime for CcSwitchProxyRuntime")
             && runtime_source.contains("forward_proxy_request_with_cc_switch_runtime("),
