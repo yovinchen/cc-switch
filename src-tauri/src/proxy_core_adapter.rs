@@ -2451,13 +2451,11 @@ pub(crate) use crate::proxy_core::api::transforms::{
     claude_request_transform_for_api_format, claude_response_to_anthropic_message_for_api_format,
     claude_stream_usage_event_filter,
     claude_transform_streaming_decision as core_claude_transform_streaming_decision,
-    codex_chat_transform_streaming_decision as core_codex_chat_transform_streaming_decision,
     codex_stream_usage_event_filter, create_claude_to_anthropic_sse_stream_for_api_format,
     create_codex_chat_to_responses_sse_stream_with_context, extract_anthropic_tool_schema_hints,
     inspect_codex_chat_history_sse_block, should_preserve_reasoning_content_for_openai_chat,
     take_sse_block, AnthropicToolSchemaHints, ClaudeApiFormatRequestTransformContext,
     ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
-    CodexChatTransformStreamingDecision,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::build_claude_auth_headers;
@@ -3736,13 +3734,6 @@ pub(crate) fn provider_claude_transform_streaming_decision(
         api_format,
         provider_is_codex_oauth(provider),
     )
-}
-
-pub(crate) fn codex_chat_transform_streaming_decision(
-    requested_streaming: bool,
-    response_headers: &HeaderMap,
-) -> CodexChatTransformStreamingDecision {
-    core_codex_chat_transform_streaming_decision(requested_streaming, response_headers)
 }
 
 pub(crate) use crate::proxy_core::api::domain::infer_claude_provider_kind;
@@ -16612,7 +16603,7 @@ command = "latest-command"
     }
 
     #[test]
-    fn codex_chat_streaming_decision_adapter_preserves_sse_fallback() {
+    fn codex_chat_streaming_decision_core_preserves_sse_fallback() {
         let mut sse_headers = HeaderMap::new();
         sse_headers.insert(
             http::header::CONTENT_TYPE,
@@ -16620,18 +16611,28 @@ command = "latest-command"
         );
 
         let header_streaming_decision =
-            codex_chat_transform_streaming_decision(false, &sse_headers);
+            crate::proxy_core::api::transforms::codex_chat_transform_streaming_decision(
+                false,
+                &sse_headers,
+            );
         assert!(header_streaming_decision.use_streaming);
         assert!(header_streaming_decision.response_sse_aggregation.is_none());
 
         let requested_streaming_decision =
-            codex_chat_transform_streaming_decision(true, &HeaderMap::new());
+            crate::proxy_core::api::transforms::codex_chat_transform_streaming_decision(
+                true,
+                &HeaderMap::new(),
+            );
         assert!(requested_streaming_decision.use_streaming);
         assert!(requested_streaming_decision
             .response_sse_aggregation
             .is_none());
 
-        let non_stream_decision = codex_chat_transform_streaming_decision(false, &HeaderMap::new());
+        let non_stream_decision =
+            crate::proxy_core::api::transforms::codex_chat_transform_streaming_decision(
+                false,
+                &HeaderMap::new(),
+            );
         assert!(!non_stream_decision.use_streaming);
         assert!(matches!(
             non_stream_decision.response_sse_aggregation,

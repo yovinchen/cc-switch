@@ -1889,10 +1889,6 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_CLAUDE_STREAMING_DECISION_MARKERS: &[&str] = 
     "claude_transform_unlabeled_sse_aggregation(",
     "Some(UpstreamSseAggregationKind::Responses)",
 ];
-const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_STREAMING_DECISION_MARKERS: &[&str] = &[
-    "response_headers_indicate_sse(response_headers)",
-    "Some(UpstreamSseAggregationKind::ChatCompletions)",
-];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -8926,18 +8922,13 @@ fn handlers_delegate_passthrough_response_processing_to_response_adapter() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_transform_streaming_decisions_to_core() {
+fn proxy_core_adapter_delegates_claude_transform_streaming_decision_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
     let claude_decision = function_slice(
         &source,
         "pub(crate) fn provider_claude_transform_streaming_decision",
-        "pub(crate) fn codex_chat_transform_streaming_decision",
-    );
-    let codex_decision = function_slice(
-        &source,
-        "pub(crate) fn codex_chat_transform_streaming_decision",
         "pub(crate) use crate::proxy_core::api::domain::infer_claude_provider_kind",
     );
 
@@ -8946,20 +8937,15 @@ fn proxy_core_adapter_delegates_transform_streaming_decisions_to_core() {
         "Claude transform streaming decision must be delegated to proxy-core"
     );
     assert!(
-        codex_decision.contains("core_codex_chat_transform_streaming_decision("),
-        "Codex Chat transform streaming decision must be delegated to proxy-core"
+        !source.contains("pub(crate) fn codex_chat_transform_streaming_decision")
+            && !source.contains("core_codex_chat_transform_streaming_decision"),
+        "Codex Chat transform streaming decision should not keep a one-hop proxy_core_adapter facade"
     );
 
     for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CLAUDE_STREAMING_DECISION_MARKERS {
         assert!(
             !claude_decision.contains(marker),
             "proxy_core_adapter must not locally compose Claude streaming decision marker `{marker}`"
-        );
-    }
-    for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_STREAMING_DECISION_MARKERS {
-        assert!(
-            !codex_decision.contains(marker),
-            "proxy_core_adapter must not locally compose Codex streaming decision marker `{marker}`"
         );
     }
 }
@@ -8993,6 +8979,8 @@ fn response_pipeline_uses_core_sse_header_decision() {
     let response_processor =
         fs::read_to_string(manifest_dir.join("src/proxy/engine/response_pipeline.rs"))
             .expect("read engine/response_pipeline.rs");
+    let response_adapter = fs::read_to_string(manifest_dir.join("src/proxy/response_adapter.rs"))
+        .expect("read response_adapter.rs");
     let adapter = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
 
@@ -9006,8 +8994,11 @@ fn response_pipeline_uses_core_sse_header_decision() {
     );
     assert!(
         adapter.contains("core_claude_transform_streaming_decision(")
-            && adapter.contains("core_codex_chat_transform_streaming_decision("),
-        "protocol transform adapter should delegate SSE-aware streaming decisions to proxy-core"
+            && !adapter.contains("core_codex_chat_transform_streaming_decision(")
+            && response_adapter.contains(
+                "codex_chat_transform_streaming_decision(requested_streaming, response_headers)"
+            ),
+        "provider-aware Claude decision stays in proxy_core_adapter; pure Codex Chat decision should be called from response_adapter/core"
     );
 }
 
