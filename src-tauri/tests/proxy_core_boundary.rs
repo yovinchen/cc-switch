@@ -1553,6 +1553,7 @@ const FORBIDDEN_HANDLER_TRANSFORMED_USAGE_POLICY_MARKERS: &[&str] = &[
     "claude_transformed_streaming_usage_collector(",
     "codex_auto_transformed_streaming_usage_collector(",
     "create_logged_passthrough_stream(",
+    "create_claude_transformed_logged_stream(",
     "ctx.streaming_timeout_config()",
     " record_transformed_response_usage(",
     " transformed_streaming_usage_collector(",
@@ -1575,6 +1576,7 @@ const FORBIDDEN_HANDLER_CLAUDE_RESPONSE_TRANSFORM_DISPATCH_MARKERS: &[&str] = &[
     "create_openai_chat_to_anthropic_sse_stream(",
     "create_openai_responses_to_anthropic_sse_stream(",
     "create_gemini_to_anthropic_sse_stream_with_callbacks(",
+    "provider_claude_transform_sse_for_api_format(",
     "Rectified tool args",
     "rectified_tool_names",
 ];

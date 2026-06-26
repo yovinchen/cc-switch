@@ -11717,6 +11717,41 @@ where
     )
 }
 
+pub(crate) struct ClaudeTransformedSseStreamContext<'a, G> {
+    pub(crate) state: &'a ProxyState,
+    pub(crate) ctx: &'a RequestContext,
+    pub(crate) provider: &'a Provider,
+    pub(crate) api_format: &'a str,
+    pub(crate) tool_schema_hints: Option<AnthropicToolSchemaHints>,
+    pub(crate) status_code: u16,
+    pub(crate) connection_guard: Option<G>,
+}
+
+pub(crate) fn claude_transformed_sse_stream_from_context<G>(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    context: ClaudeTransformedSseStreamContext<'_, G>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
+where
+    G: Send + 'static,
+{
+    let sse_stream = provider_claude_transform_sse_for_api_format(
+        stream,
+        context.api_format,
+        Some(context.state.gemini_shadow.clone()),
+        Some(context.provider.id.clone()),
+        Some(context.ctx.session_id.clone()),
+        context.tool_schema_hints,
+    );
+
+    create_claude_transformed_logged_stream(
+        sse_stream,
+        context.state,
+        context.ctx,
+        context.status_code,
+        context.connection_guard,
+    )
+}
+
 pub(crate) fn create_codex_auto_transformed_logged_stream<G>(
     stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
     state: &ProxyState,
