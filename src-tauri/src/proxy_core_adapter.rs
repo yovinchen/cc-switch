@@ -1430,16 +1430,8 @@ pub(crate) type ProviderAttemptResult = crate::proxy_core::api::ports::ProviderA
 pub(crate) type ProviderKind = crate::proxy_core::api::domain::ProviderKind;
 pub(crate) type ProviderAuthInfo = crate::proxy_core::api::auth::ProviderAuthInfo;
 pub(crate) type ProviderAuthStrategy = crate::proxy_core::api::auth::ProviderAuthStrategy;
-pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
-
-pub(crate) use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
-pub(crate) use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
-pub(crate) use crate::proxy_core::api::auth::codex_auth_info_from_api_key as core_codex_auth_info_from_api_key;
-pub(crate) use crate::proxy_core::api::auth::gemini_auth_info_from_api_key as core_gemini_auth_info_from_api_key;
-pub(crate) use crate::proxy_core::api::auth::gemini_auth_strategy_for_provider_kind as core_gemini_auth_strategy_for_provider_kind;
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::ports::auth_info_from_profile_ref;
-pub(crate) use crate::proxy_core::api::ports::auth_info_from_route_context;
+pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 
 #[cfg(test)]
 pub(crate) use crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_provider_config;
@@ -1449,6 +1441,11 @@ pub(crate) use crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_s
 pub(crate) use crate::proxy::host::cc_switch::auth_provider::{
     provider_with_channel_auth_key, CcSwitchAuthProvider,
 };
+pub(crate) use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
+pub(crate) use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
+pub(crate) use crate::proxy_core::api::auth::codex_auth_info_from_api_key as core_codex_auth_info_from_api_key;
+pub(crate) use crate::proxy_core::api::auth::gemini_auth_info_from_api_key as core_gemini_auth_info_from_api_key;
+pub(crate) use crate::proxy_core::api::auth::gemini_auth_strategy_for_provider_kind as core_gemini_auth_strategy_for_provider_kind;
 
 pub(crate) const CLAUDE_DESKTOP_GATEWAY_TOKEN_SETTING_KEY: &str = "claude_desktop_gateway_token";
 
@@ -2432,7 +2429,7 @@ pub(crate) use crate::proxy_core::api::auth::{
 };
 pub(crate) use crate::proxy_core::api::auth::{
     extract_claude_auth_key_from_settings, is_gemini_oauth_key_shape,
-    parse_gemini_oauth_credentials, settings_config_with_channel_auth_key_for_app,
+    parse_gemini_oauth_credentials,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,

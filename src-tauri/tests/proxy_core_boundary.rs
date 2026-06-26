@@ -8,6 +8,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/error_mapper.rs",
     "src/proxy/error.rs",
     "src/proxy/events.rs",
+    "src/proxy/host/cc_switch/auth_provider.rs",
     "src/proxy/host/cc_switch/channel_auth_profile_attempts.rs",
     "src/proxy/host/cc_switch/channel_key_runtime_source.rs",
     "src/proxy/host/cc_switch/forwarder_auth_source.rs",
@@ -11695,6 +11696,10 @@ fn proxy_core_adapter_delegates_channel_key_settings_policy_to_typed_core_helper
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/auth_provider.rs");
     let source = fs::read_to_string(&source_path).expect("read auth_provider.rs");
     let function = source.as_str();
@@ -11708,6 +11713,14 @@ fn proxy_core_adapter_delegates_channel_key_settings_policy_to_typed_core_helper
     assert!(
         function.contains("settings_config_with_channel_auth_key_for_app("),
         "provider_with_channel_auth_key must delegate app-typed channel key settings policy to proxy-core"
+    );
+    assert!(
+        source.contains("use crate::proxy_core::api::auth::settings_config_with_channel_auth_key_for_app;"),
+        "auth_provider.rs should import channel-key settings policy directly from proxy_core::api::auth"
+    );
+    assert!(
+        !adapter_runtime_source.contains("settings_config_with_channel_auth_key_for_app"),
+        "proxy_core_adapter should not re-export channel-key settings policy once auth_provider owns the call site"
     );
     assert!(
         function.contains("&AppKind::from(app_type)"),
@@ -15860,6 +15873,10 @@ fn proxy_core_adapter_delegates_auth_provider_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/auth_provider.rs");
     let auth_source = fs::read_to_string(&auth_source_path).expect("read auth_provider.rs");
 
@@ -15870,6 +15887,28 @@ fn proxy_core_adapter_delegates_auth_provider_source_to_host_module() {
             && auth_source.contains("cc_switch_provider_config"),
         "CC Switch auth provider implementation should live in host/cc_switch/auth_provider.rs"
     );
+    assert!(
+        auth_source.contains("use crate::proxy_core::api::ports::{")
+            && auth_source.contains("auth_info_from_route_context")
+            && auth_source.contains("AuthInfo")
+            && auth_source.contains("AuthProvider")
+            && auth_source.contains("use crate::proxy_core::api::domain::{")
+            && auth_source.contains("AppKind")
+            && auth_source.contains("ChannelSpec")
+            && auth_source.contains("ProviderSpec")
+            && auth_source.contains("ProxyRequest"),
+        "CC Switch auth provider source should import core auth provider port contracts directly from proxy_core::api"
+    );
+    for marker in [
+        "auth_info_from_profile_ref",
+        "auth_info_from_route_context",
+        "settings_config_with_channel_auth_key_for_app",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not re-export pure auth provider helper `{marker}` once auth_provider owns the call site"
+        );
+    }
     assert!(
         adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::auth_provider::")
             && adapter_source.contains("CcSwitchAuthProvider")
