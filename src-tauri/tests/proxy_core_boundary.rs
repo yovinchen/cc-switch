@@ -3266,10 +3266,12 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
     );
 
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::channel_key_runtime_source::{"
-        ) && !adapter_source.contains("fn load_channel_key_candidate_from_database"),
-        "proxy_core_adapter should re-export, not own, the DB-backed channel-key runtime source"
+        ) && !adapter_source
+            .contains("channel_key_runtime_source_from_database, CcSwitchChannelKeyRuntimeSource")
+            && !adapter_source.contains("fn load_channel_key_candidate_from_database"),
+        "proxy_core_adapter should not re-export or own the DB-backed channel-key runtime source"
     );
     assert!(
         function.contains(".list_proxy_channel_key_runtime_candidates(")
@@ -12621,12 +12623,12 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "channel-key host modules should not import ChannelKeyRuntimeSource or ProxyCoreResult through proxy_core_adapter"
     );
     assert!(
-        source.contains(
+        !source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::channel_key_runtime_source::{"
         ) && runtime_source.contains("impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource")
             && !source.contains("impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource")
             && !source.contains("fn load_channel_key_candidate_from_database"),
-        "DB-backed channel-key runtime source implementation should live in the host cc_switch module"
+        "DB-backed channel-key runtime source implementation should live in the host cc_switch module without adapter re-export"
     );
     assert!(
         services_struct.contains("channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource"),

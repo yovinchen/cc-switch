@@ -5422,10 +5422,6 @@ pub(crate) use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
 };
 #[cfg(test)]
 pub(crate) use crate::proxy::host::cc_switch::channel_key_runtime_source::select_enabled_proxy_channel_key_runtime_candidate;
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::host::cc_switch::channel_key_runtime_source::{
-    channel_key_runtime_source_from_database, CcSwitchChannelKeyRuntimeSource,
-};
 pub(crate) type FailoverSwitchSchedulerRef = Arc<dyn FailoverSwitchScheduler + Send + Sync>;
 
 pub(crate) trait FailoverSwitchScheduler {

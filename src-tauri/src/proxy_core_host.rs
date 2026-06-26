@@ -7,14 +7,15 @@ use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 #[cfg(test)]
 use crate::proxy::events::ProxyEventBus;
 #[cfg(test)]
+use crate::proxy::host::cc_switch::channel_key_runtime_source::channel_key_runtime_source_from_database;
+#[cfg(test)]
 use crate::proxy::host::cc_switch::route_resolver::RouteRequest;
 #[cfg(test)]
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    apply_channel_auth_profile_providers_from_source, channel_key_runtime_source_from_database,
-    client_model_catalog_from_optional_raw, forward_attempts_from_plan,
-    forward_result_to_proxy_result, host_providers_for_plan,
+    apply_channel_auth_profile_providers_from_source, client_model_catalog_from_optional_raw,
+    forward_attempts_from_plan, forward_result_to_proxy_result, host_providers_for_plan,
     management_route_response_from_router_source, provider_router_from_database, AppKind,
     AuthProfileRef, AuthProvider, CcSwitchAuthProvider, CcSwitchProxyRuntime, ChannelAttemptResult,
     ChannelQuery, ChannelSpec, GeminiShadowStore, ProviderSpec, ProxyCoreEvent, ProxyRequest,
