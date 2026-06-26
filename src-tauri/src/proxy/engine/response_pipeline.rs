@@ -4,8 +4,8 @@
 
 use super::context::RequestContext;
 use crate::proxy::{
-    error::ProxyError, hyper_client::ProxyResponse,
-    response_adapter::proxy_core_response_to_axum_response,
+    error::ProxyError, response_adapter::proxy_core_response_to_axum_response,
+    transport::upstream::hyper_client::ProxyResponse,
 };
 use crate::proxy_core_adapter::{
     passthrough_non_stream_proxy_response_from_context,

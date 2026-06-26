@@ -7952,10 +7952,31 @@ fn proxy_core_adapter_delegates_transform_streaming_decisions_to_core() {
 }
 
 #[test]
+fn production_proxy_hyper_client_legacy_module_is_reexport_only() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/hyper_client.rs");
+    let source = fs::read_to_string(&path).expect("read hyper_client.rs");
+    let production_code: Vec<&str> = production_lines(&source)
+        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert_eq!(
+        production_code,
+        vec![
+            "#[allow(unused_imports)]",
+            "pub(crate) use super::transport::upstream::hyper_client::*;",
+        ],
+        "legacy proxy/hyper_client.rs must remain a re-export shim after transport/upstream/hyper_client.rs split"
+    );
+}
+
+#[test]
 fn response_pipeline_uses_core_sse_header_decision() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let hyper_client = fs::read_to_string(manifest_dir.join("src/proxy/hyper_client.rs"))
-        .expect("read hyper_client.rs");
+    let hyper_client =
+        fs::read_to_string(manifest_dir.join("src/proxy/transport/upstream/hyper_client.rs"))
+            .expect("read transport/upstream/hyper_client.rs");
     let response_processor =
         fs::read_to_string(manifest_dir.join("src/proxy/engine/response_pipeline.rs"))
             .expect("read engine/response_pipeline.rs");
@@ -12808,7 +12829,7 @@ fn production_forwarder_uses_transport_source_resource() {
     let impl_forbidden_markers = [
         "super::http_client::get_current_proxy_url(",
         "super::http_client::get(",
-        "super::hyper_client::send_request(",
+        "transport::upstream::hyper_client::send_request(",
         "reqwest_send_error_to_proxy_error(",
         "resolve_upstream_send_policy(",
         "UpstreamSendPolicyInput",

@@ -7,7 +7,7 @@ use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 #[cfg(test)]
 use crate::proxy::events::ProxyEventBus;
 #[cfg(test)]
-use crate::proxy::hyper_client::ProxyResponse;
+use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     apply_channel_auth_profile_providers_from_source, channel_key_runtime_source_from_database,

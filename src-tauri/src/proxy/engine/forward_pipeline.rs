@@ -2,7 +2,10 @@
 //!
 //! 负责将请求转发到上游Provider，支持故障转移
 
-use crate::proxy::{error::ProxyError, hyper_client::ProxyResponse, route_attempt::ForwardAttempt};
+use crate::proxy::{
+    error::ProxyError, route_attempt::ForwardAttempt,
+    transport::upstream::hyper_client::ProxyResponse,
+};
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     build_codex_oauth_session_headers, prepare_upstream_request_body_with_report,

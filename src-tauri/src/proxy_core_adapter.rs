@@ -24,11 +24,11 @@ use crate::proxy::error_mapper::{
 };
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
-use crate::proxy::hyper_client::{OriginalHeaderCases, ProxyResponse};
 use crate::proxy::providers::{get_adapter, ProviderAdapter};
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::http::server::ProxyServer;
+use crate::proxy::transport::upstream::hyper_client::{OriginalHeaderCases, ProxyResponse};
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 #[cfg(test)]
@@ -9253,7 +9253,7 @@ impl ForwarderTransportSource for CcSwitchForwarderTransportSource {
                         error,
                     ))
                 })?;
-                crate::proxy::hyper_client::send_request(
+                crate::proxy::transport::upstream::hyper_client::send_request(
                     uri,
                     request.method,
                     request.request_parts.ordered_headers,

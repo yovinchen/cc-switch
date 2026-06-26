@@ -11,7 +11,7 @@ use super::{
         parse_codex_chat_upstream_json_or_unlabeled_sse, proxy_core_error_to_proxy_error,
         response_build_error_to_proxy_error,
     },
-    hyper_client::ProxyResponse,
+    transport::upstream::hyper_client::ProxyResponse,
 };
 use crate::app_config::AppType;
 use crate::provider::Provider;
