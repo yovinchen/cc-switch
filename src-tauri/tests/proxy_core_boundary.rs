@@ -6,6 +6,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/commands/copilot.rs",
     "src/commands/model_fetch.rs",
     "src/lib.rs",
+    "src/proxy/codex_oauth_auth.rs",
     "src/proxy/copilot_auth.rs",
     "src/proxy/engine/context.rs",
     "src/proxy/engine/response_pipeline.rs",
@@ -10063,6 +10064,7 @@ fn copilot_model_callers_use_core_dto_entrypoint() {
                 &["use crate::proxy_core::api::model_catalog::CopilotModel;"][..]
             }
             "src/proxy/copilot_auth.rs" => &[
+                "pub use crate::proxy_core::api::auth::{",
                 "use crate::proxy_core::api::model_catalog::CopilotModel;",
                 "pub use crate::proxy_core::api::model_catalog::CopilotUsageResponse;",
             ][..],
@@ -10207,13 +10209,32 @@ fn production_managed_auth_legacy_command_dtos_delegate_to_core() {
         copilot_source.contains("CopilotAuthStatus")
             && copilot_source.contains("GitHubAccount")
             && copilot_source.contains("GitHubDeviceCodeResponse")
-            && copilot_source.contains("pub use crate::proxy_core_adapter"),
-        "copilot_auth.rs should re-export legacy managed-auth command DTOs from proxy_core_adapter"
+            && copilot_source.contains("pub use crate::proxy_core::api::auth::{")
+            && !copilot_source.contains("proxy_core_adapter::{CopilotAuthStatus")
+            && !copilot_source.contains("proxy_core_adapter::CopilotAuthStatus")
+            && !copilot_source.contains("proxy_core_adapter::GitHubAccount")
+            && !copilot_source.contains("proxy_core_adapter::GitHubDeviceCodeResponse"),
+        "copilot_auth.rs should re-export legacy managed-auth command DTOs directly from proxy_core"
     );
     assert!(
-        codex_source.contains("CodexOAuthStatus"),
-        "codex_oauth_auth.rs should consume the core Codex OAuth status DTO"
+        codex_source.contains("use crate::proxy_core::api::auth::CodexOAuthStatus;")
+            && !codex_source.contains("proxy_core_adapter::CodexOAuthStatus")
+            && !codex_source.contains("CodexOAuthDevicePollStatusKind, CodexOAuthStatus"),
+        "codex_oauth_auth.rs should consume the core Codex OAuth status DTO directly"
     );
+
+    for (line_index, line) in production_lines(&codex_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        let direct_core =
+            code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
+        if direct_core && code.trim() != "use crate::proxy_core::api::auth::CodexOAuthStatus;" {
+            panic!(
+                "src/proxy/codex_oauth_auth.rs:{} contains non-DTO direct proxy-core import `{}`",
+                line_index + 1,
+                code.trim()
+            );
+        }
+    }
 }
 
 #[test]

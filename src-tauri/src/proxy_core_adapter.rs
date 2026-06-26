@@ -101,9 +101,6 @@ pub(crate) type ClaudeDesktopGatewayAuthError =
 pub(crate) use crate::proxy_core::api::auth::{
     ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
 };
-pub use crate::proxy_core::api::auth::{
-    CodexOAuthStatus, CopilotAuthStatus, GitHubAccount, GitHubDeviceCodeResponse,
-};
 
 pub(crate) use crate::proxy_core::api::errors::{
     config_error_with_context as core_config_error_with_context,

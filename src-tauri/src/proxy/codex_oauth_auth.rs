@@ -26,6 +26,7 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
 use super::copilot_auth::{GitHubAccount, GitHubDeviceCodeResponse};
+use crate::proxy_core::api::auth::CodexOAuthStatus;
 use crate::proxy_core_adapter::{
     codex_oauth_access_token_expires_at_ms, codex_oauth_authorization_code_form,
     codex_oauth_device_auth_token_request_body, codex_oauth_device_auth_token_url,
@@ -39,8 +40,8 @@ use crate::proxy_core_adapter::{
     codex_oauth_refresh_failure, codex_oauth_refresh_token_form, codex_oauth_status_from_parts,
     codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon, codex_oauth_token_url,
     compare_managed_auth_account_order, managed_auth_fallback_default_account_id,
-    CodexOAuthDevicePollStatusKind, CodexOAuthStatus, CodexOAuthTokenClaims,
-    ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate,
+    CodexOAuthDevicePollStatusKind, CodexOAuthTokenClaims, ManagedAuthAccountSortKey,
+    ManagedAuthDefaultAccountCandidate,
 };
 
 /// User-Agent
