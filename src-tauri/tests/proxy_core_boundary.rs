@@ -12508,10 +12508,14 @@ fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
 
     assert!(
         source.contains(
-            "pub(crate) use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{"
+            "use crate::proxy::host::cc_switch::channel_auth_profile_attempts::required_forward_attempts_from_sources;"
+        ) && source.contains(
+            "use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{"
+        ) && !source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::channel_auth_profile_attempts"
         ) && !source.contains("fn apply_channel_auth_profile_providers_from_source(")
             && !source.contains("fn required_forward_attempts_from_sources("),
-        "proxy_core_adapter should re-export, not own, the auth-profile attempt source helpers"
+        "proxy_core_adapter should only use, not re-export or own, the auth-profile attempt source helpers"
     );
     assert!(
         function.contains("channel_auth_profile_provider_application("),
@@ -12654,7 +12658,11 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     );
     assert!(
         source.contains(
-            "pub(crate) use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{"
+            "use crate::proxy::host::cc_switch::channel_auth_profile_attempts::required_forward_attempts_from_sources;"
+        ) && source.contains(
+            "use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{"
+        ) && !source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::channel_auth_profile_attempts"
         ) && !source.contains("fn apply_channel_auth_profile_providers_from_source(")
             && !source.contains("fn required_forward_attempts_from_sources(")
             && source_function.contains("dyn ChannelKeyRuntimeSource")

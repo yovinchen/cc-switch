@@ -5386,11 +5386,11 @@ pub(crate) fn codex_client_model_catalog_raw_from_active_config() -> Value {
 pub(crate) use crate::proxy_core::api::routing::route_plan_provider_ids;
 pub(crate) use crate::proxy_core::api::routing::route_plan_provider_match;
 
-pub(crate) use crate::proxy::host::cc_switch::channel_auth_profile_attempts::required_forward_attempts_from_sources;
+use crate::proxy::host::cc_switch::channel_auth_profile_attempts::required_forward_attempts_from_sources;
 #[cfg(test)]
-pub(crate) use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
+use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
     apply_channel_auth_profile_providers_from_source, forward_attempts_from_plan,
-    host_providers_for_plan, required_forward_attempts_from_plan,
+    required_forward_attempts_from_plan,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy::host::cc_switch::channel_key_runtime_source::select_enabled_proxy_channel_key_runtime_candidate;

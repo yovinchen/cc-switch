@@ -9,6 +9,11 @@ use crate::proxy::events::ProxyEventBus;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::auth_provider::CcSwitchAuthProvider;
 #[cfg(test)]
+use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
+    apply_channel_auth_profile_providers_from_source, forward_attempts_from_plan,
+    host_providers_for_plan,
+};
+#[cfg(test)]
 use crate::proxy::host::cc_switch::channel_key_runtime_source::channel_key_runtime_source_from_database;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
@@ -20,8 +25,7 @@ use crate::proxy::host::cc_switch::route_resolver::RouteRequest;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    apply_channel_auth_profile_providers_from_source, client_model_catalog_from_optional_raw,
-    forward_attempts_from_plan, forward_result_to_proxy_result, host_providers_for_plan,
+    client_model_catalog_from_optional_raw, forward_result_to_proxy_result,
     management_route_response_from_router_source, AppKind, AuthProfileRef, AuthProvider,
     ChannelAttemptResult, ChannelQuery, ChannelSpec, GeminiShadowStore, ProviderSpec,
     ProxyCoreEvent, ProxyRequest, ProxyServices, RoutePlan,
