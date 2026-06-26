@@ -2398,6 +2398,8 @@ provider adapter 仍负责 CC Switch 默认 fallback 的 provider settings 到 h
 
 本轮继续让 `CcSwitchForwardPipeline` 持有并传递 `ChannelKeyRuntimeSource`：host forward runtime 生成 `ForwardAttempt` 时走 source-injected helper，DB convenience helper 已删除。这样后续把 forward pipeline 抽到独立中转宿主时，可以直接替换 channel key runtime，而不用把 CC Switch 的数据库读取路径带过去。
 
+本轮继续把 channel-key runtime lookup 从“按 `channel_id + key_ref` 直接查单条 DB 记录”推进为“按 channel 读取 runtime-only 候选集合，再由 `proxy-core::ports::select_channel_key_runtime_candidate` 按 `key_ref`、enabled 状态、priority/weight/key_ref 顺序选择”。管理 API 的 key list 仍不返回 `key_value`，新增 runtime-only DAO 列表只供认证运行时读取密钥材料；这为后续 wildcard key ref、轮询、随机和失败回退策略预留了 core 选择入口，同时不改变当前 `channel-key:<keyRef>` 的精确隔离语义。
+
 本轮继续把 managed-account token runtime 的日志/错误文案 contract 收进 `proxy-core::managed_account_auth`：core 统一生成 Copilot/Codex OAuth 的无 AppHandle、指定/默认账号取 token、成功和失败文本；Tauri state 读取和 token 获取调用现在由 `proxy/host/cc_switch/managed_account_runtime_source.rs::CcSwitchManagedAccountRuntimeSource` 默认实现持有，`src/proxy/managed_account_auth.rs` 已删除。这让外部中转宿主可以复用相同 runtime 反馈 contract，而不复制 CC Switch 桌面 host 的中文文案分支。
 
 本轮继续把 Codex live/settings 的 JSON 形状契约收进 `proxy-core::ports`：auth 对象提取、live write parts、restore parts、live settings parts、snapshot parts 和 provider validation parts 都由 core 基于 `settings + category` 生成；`proxy_core_adapter` 只负责把 CC Switch `Provider` 拆成中立输入。这样后续中转迁移可以让不同地址绑定不同认证、接口和模型信息，同时不让宿主 adapter 重新承载 Codex 配置形状规则。
