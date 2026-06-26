@@ -14435,6 +14435,29 @@ fn production_proxy_core_host_delegates_event_sink_source_to_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let event_sink_path = manifest_dir.join("src/proxy/host/cc_switch/event_sink.rs");
+    let event_sink_source = fs::read_to_string(&event_sink_path).expect("read event_sink.rs");
+
+    assert!(
+        event_sink_source.contains("pub(crate) struct CcSwitchEventSink")
+            && event_sink_source.contains("impl ProxyEventSink for CcSwitchEventSink")
+            && event_sink_source.contains("emit_proxy_core_event_bus_source("),
+        "CC Switch event sink implementation should live in host/cc_switch/event_sink.rs"
+    );
+    assert!(
+        adapter_source
+            .contains("pub(crate) use crate::proxy::host::cc_switch::event_sink::CcSwitchEventSink")
+            && !adapter_source.contains("pub(crate) struct CcSwitchEventSink")
+            && !adapter_source.contains("impl ProxyEventSink for CcSwitchEventSink"),
+        "proxy_core_adapter should re-export, not own, the CC Switch event sink source"
+    );
+}
+
+#[test]
 fn production_proxy_core_host_delegates_auth_provider_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
