@@ -9462,10 +9462,30 @@ fn proxy_core_adapter_delegates_additive_stream_check_error_specs_to_core() {
 }
 
 #[test]
-fn production_proxy_service_delegates_takeover_status_sources_to_adapter() {
+fn production_services_proxy_legacy_module_is_reexport_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/services/proxy.rs");
     let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let production_code: Vec<&str> = production_lines(&source)
+        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert_eq!(
+        production_code,
+        vec![
+            "#[allow(unused_imports)]",
+            "pub use crate::proxy::host::cc_switch::live_takeover::*;",
+        ],
+        "legacy services/proxy.rs must remain a re-export shim after live takeover host split"
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_takeover_status_sources_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "pub async fn get_takeover_status",
@@ -9478,7 +9498,7 @@ fn production_proxy_service_delegates_takeover_status_sources_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_STATUS_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs get_takeover_status:{} contains takeover status source marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs get_takeover_status:{} contains takeover status source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9496,8 +9516,8 @@ fn production_proxy_service_delegates_takeover_status_sources_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_live_takeover_app_catalog_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let functions = [
         (
             "restore_live_configs",
@@ -9524,7 +9544,7 @@ fn production_proxy_service_delegates_live_takeover_app_catalog_to_adapter() {
             for marker in FORBIDDEN_PROXY_SERVICE_LIVE_TAKEOVER_APP_LIST_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/services/proxy.rs {function_name}:{} contains live takeover app-list marker `{}`",
+                        "src/proxy/host/cc_switch/live_takeover.rs {function_name}:{} contains live takeover app-list marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -9543,8 +9563,8 @@ fn production_proxy_service_delegates_live_takeover_app_catalog_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_official_warning_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -9557,7 +9577,7 @@ fn production_proxy_service_delegates_official_warning_source_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_OFFICIAL_WARNING_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs set_takeover_for_app:{} contains official-warning source marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs set_takeover_for_app:{} contains official-warning source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9575,8 +9595,8 @@ fn production_proxy_service_delegates_official_warning_source_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_current_provider_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let functions = [
         (
             "get_current_provider_for_app",
@@ -9603,7 +9623,7 @@ fn production_proxy_service_delegates_current_provider_source_to_adapter() {
             for marker in FORBIDDEN_PROXY_SERVICE_CURRENT_PROVIDER_SOURCE_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/services/proxy.rs {function_name}:{} contains current-provider source marker `{}`",
+                        "src/proxy/host/cc_switch/live_takeover.rs {function_name}:{} contains current-provider source marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -9622,8 +9642,8 @@ fn production_proxy_service_delegates_current_provider_source_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_live_token_sync_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "async fn sync_live_config_to_provider",
@@ -9636,7 +9656,7 @@ fn production_proxy_service_delegates_live_token_sync_source_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_LIVE_TOKEN_SYNC_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs sync_live_config_to_provider:{} contains live-token sync source marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs sync_live_config_to_provider:{} contains live-token sync source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9654,8 +9674,8 @@ fn production_proxy_service_delegates_live_token_sync_source_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_takeover_enabled_config_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -9668,7 +9688,7 @@ fn production_proxy_service_delegates_takeover_enabled_config_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_ENABLED_CONFIG_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs set_takeover_for_app:{} contains takeover enabled config marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs set_takeover_for_app:{} contains takeover enabled config marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9686,8 +9706,8 @@ fn production_proxy_service_delegates_takeover_enabled_config_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_takeover_backup_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -9700,7 +9720,7 @@ fn production_proxy_service_delegates_takeover_backup_source_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs set_takeover_for_app:{} contains takeover backup source marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs set_takeover_for_app:{} contains takeover backup source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9718,8 +9738,8 @@ fn production_proxy_service_delegates_takeover_backup_source_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_takeover_backup_delete_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -9732,7 +9752,7 @@ fn production_proxy_service_delegates_takeover_backup_delete_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_DELETE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs set_takeover_for_app:{} contains takeover backup delete marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs set_takeover_for_app:{} contains takeover backup delete marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9750,8 +9770,8 @@ fn production_proxy_service_delegates_takeover_backup_delete_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_takeover_active_flag_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -9764,7 +9784,7 @@ fn production_proxy_service_delegates_takeover_active_flag_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs set_takeover_for_app:{} contains takeover active flag marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs set_takeover_for_app:{} contains takeover active flag marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9782,8 +9802,8 @@ fn production_proxy_service_delegates_takeover_active_flag_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_takeover_health_cleanup_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -9796,7 +9816,7 @@ fn production_proxy_service_delegates_takeover_health_cleanup_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_HEALTH_CLEANUP_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs set_takeover_for_app:{} contains takeover health cleanup marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs set_takeover_for_app:{} contains takeover health cleanup marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9814,8 +9834,8 @@ fn production_proxy_service_delegates_takeover_health_cleanup_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_start_takeover_backup_cleanup_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "pub async fn start_with_takeover",
@@ -9828,7 +9848,7 @@ fn production_proxy_service_delegates_start_takeover_backup_cleanup_to_adapter()
         for marker in FORBIDDEN_PROXY_SERVICE_START_TAKEOVER_BACKUP_CLEANUP_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs start_with_takeover:{} contains start-takeover backup cleanup marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs start_with_takeover:{} contains start-takeover backup cleanup marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9846,8 +9866,8 @@ fn production_proxy_service_delegates_start_takeover_backup_cleanup_to_adapter()
 #[test]
 fn production_proxy_service_delegates_start_takeover_active_flag_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "pub async fn start_with_takeover",
@@ -9860,7 +9880,7 @@ fn production_proxy_service_delegates_start_takeover_active_flag_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_START_TAKEOVER_ACTIVE_FLAG_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs start_with_takeover:{} contains start-takeover active flag marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs start_with_takeover:{} contains start-takeover active flag marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9878,8 +9898,8 @@ fn production_proxy_service_delegates_start_takeover_active_flag_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_stop_restore_enabled_config_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "pub async fn stop_with_restore",
@@ -9892,7 +9912,7 @@ fn production_proxy_service_delegates_stop_restore_enabled_config_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_ENABLED_CONFIG_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs stop_with_restore:{} contains stop-restore enabled config marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs stop_with_restore:{} contains stop-restore enabled config marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9910,8 +9930,8 @@ fn production_proxy_service_delegates_stop_restore_enabled_config_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_simple_restore_backup_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "async fn restore_live_config_for_app_inner",
@@ -9924,7 +9944,7 @@ fn production_proxy_service_delegates_simple_restore_backup_source_to_adapter() 
         for marker in FORBIDDEN_PROXY_SERVICE_SIMPLE_RESTORE_BACKUP_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs restore_live_config_for_app_inner:{} contains simple restore backup source marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs restore_live_config_for_app_inner:{} contains simple restore backup source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9942,8 +9962,8 @@ fn production_proxy_service_delegates_simple_restore_backup_source_to_adapter() 
 #[test]
 fn production_proxy_service_delegates_fallback_restore_backup_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "async fn restore_live_config_for_app_with_fallback_inner",
@@ -9956,7 +9976,7 @@ fn production_proxy_service_delegates_fallback_restore_backup_source_to_adapter(
         for marker in FORBIDDEN_PROXY_SERVICE_FALLBACK_RESTORE_BACKUP_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs restore_live_config_for_app_with_fallback_inner:{} contains fallback restore backup source marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs restore_live_config_for_app_with_fallback_inner:{} contains fallback restore backup source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9974,8 +9994,8 @@ fn production_proxy_service_delegates_fallback_restore_backup_source_to_adapter(
 #[test]
 fn production_proxy_service_delegates_ssot_restore_provider_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "fn restore_live_from_ssot_for_app",
@@ -9988,7 +10008,7 @@ fn production_proxy_service_delegates_ssot_restore_provider_source_to_adapter() 
         for marker in FORBIDDEN_PROXY_SERVICE_SSOT_RESTORE_PROVIDER_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs restore_live_from_ssot_for_app:{} contains SSOT restore provider source marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs restore_live_from_ssot_for_app:{} contains SSOT restore provider source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -10006,8 +10026,8 @@ fn production_proxy_service_delegates_ssot_restore_provider_source_to_adapter() 
 #[test]
 fn production_proxy_service_delegates_ssot_restore_live_write_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "fn restore_live_from_ssot_for_app",
@@ -10020,7 +10040,7 @@ fn production_proxy_service_delegates_ssot_restore_live_write_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_SSOT_RESTORE_LIVE_WRITE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs restore_live_from_ssot_for_app:{} contains SSOT restore live-write marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs restore_live_from_ssot_for_app:{} contains SSOT restore live-write marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -10038,8 +10058,8 @@ fn production_proxy_service_delegates_ssot_restore_live_write_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_live_backup_save_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let functions = [
         (
             "backup_live_configs",
@@ -10066,7 +10086,7 @@ fn production_proxy_service_delegates_live_backup_save_to_adapter() {
             for marker in FORBIDDEN_PROXY_SERVICE_LIVE_BACKUP_SAVE_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/services/proxy.rs {function_name}:{} contains live backup save marker `{}`",
+                        "src/proxy/host/cc_switch/live_takeover.rs {function_name}:{} contains live backup save marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -10085,8 +10105,8 @@ fn production_proxy_service_delegates_live_backup_save_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_update_backup_existing_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "async fn update_live_backup_from_provider_inner",
@@ -10099,7 +10119,7 @@ fn production_proxy_service_delegates_update_backup_existing_source_to_adapter()
         for marker in FORBIDDEN_PROXY_SERVICE_UPDATE_BACKUP_EXISTING_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs update_live_backup_from_provider_inner:{} contains existing backup source marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs update_live_backup_from_provider_inner:{} contains existing backup source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -10117,8 +10137,8 @@ fn production_proxy_service_delegates_update_backup_existing_source_to_adapter()
 #[test]
 fn production_proxy_service_delegates_update_backup_save_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "async fn update_live_backup_from_provider_inner",
@@ -10131,7 +10151,7 @@ fn production_proxy_service_delegates_update_backup_save_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_UPDATE_BACKUP_SAVE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs update_live_backup_from_provider_inner:{} contains update backup save marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs update_live_backup_from_provider_inner:{} contains update backup save marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -10149,8 +10169,8 @@ fn production_proxy_service_delegates_update_backup_save_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_hot_switch_sources_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "pub(crate) async fn hot_switch_provider_inner",
@@ -10163,7 +10183,7 @@ fn production_proxy_service_delegates_hot_switch_sources_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_HOT_SWITCH_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs hot_switch_provider_inner:{} contains hot-switch source marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs hot_switch_provider_inner:{} contains hot-switch source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -10181,8 +10201,8 @@ fn production_proxy_service_delegates_hot_switch_sources_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_keep_state_active_flag_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "pub async fn stop_with_restore_keep_state",
@@ -10195,7 +10215,7 @@ fn production_proxy_service_delegates_keep_state_active_flag_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_KEEP_STATE_ACTIVE_FLAG_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs stop_with_restore_keep_state:{} contains keep-state active flag marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs stop_with_restore_keep_state:{} contains keep-state active flag marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -10213,8 +10233,8 @@ fn production_proxy_service_delegates_keep_state_active_flag_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_stop_restore_cleanup_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let functions = [
         (
             "stop_with_restore",
@@ -10241,7 +10261,7 @@ fn production_proxy_service_delegates_stop_restore_cleanup_to_adapter() {
             for marker in FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/services/proxy.rs {function_name}:{} contains stop-restore cleanup marker `{}`",
+                        "src/proxy/host/cc_switch/live_takeover.rs {function_name}:{} contains stop-restore cleanup marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -10260,8 +10280,8 @@ fn production_proxy_service_delegates_stop_restore_cleanup_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_crash_recovery_cleanup_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "pub async fn recover_from_crash",
@@ -10274,7 +10294,7 @@ fn production_proxy_service_delegates_crash_recovery_cleanup_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs recover_from_crash:{} contains crash-recovery cleanup marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs recover_from_crash:{} contains crash-recovery cleanup marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -10292,8 +10312,8 @@ fn production_proxy_service_delegates_crash_recovery_cleanup_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_global_proxy_enabled_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let functions = [
         (
             "start",
@@ -10320,7 +10340,7 @@ fn production_proxy_service_delegates_global_proxy_enabled_to_adapter() {
             for marker in FORBIDDEN_PROXY_SERVICE_GLOBAL_PROXY_ENABLED_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/services/proxy.rs {function_name}:{} contains global proxy enabled marker `{}`",
+                        "src/proxy/host/cc_switch/live_takeover.rs {function_name}:{} contains global proxy enabled marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -10339,8 +10359,8 @@ fn production_proxy_service_delegates_global_proxy_enabled_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_proxy_config_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let functions = [
         (
             "start",
@@ -10395,7 +10415,7 @@ fn production_proxy_service_delegates_proxy_config_source_to_adapter() {
             for marker in FORBIDDEN_PROXY_SERVICE_PROXY_CONFIG_SOURCE_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/services/proxy.rs {function_name}:{} contains proxy config source marker `{}`",
+                        "src/proxy/host/cc_switch/live_takeover.rs {function_name}:{} contains proxy config source marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -10414,8 +10434,8 @@ fn production_proxy_service_delegates_proxy_config_source_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_server_factory_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let functions = [
         (
             "start",
@@ -10442,7 +10462,7 @@ fn production_proxy_service_delegates_server_factory_to_adapter() {
             for marker in FORBIDDEN_PROXY_SERVICE_SERVER_FACTORY_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/services/proxy.rs {function_name}:{} contains server factory marker `{}`",
+                        "src/proxy/host/cc_switch/live_takeover.rs {function_name}:{} contains server factory marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -10461,8 +10481,8 @@ fn production_proxy_service_delegates_server_factory_to_adapter() {
 #[test]
 fn production_proxy_service_imports_server_type_from_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -10470,7 +10490,7 @@ fn production_proxy_service_imports_server_type_from_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_SERVER_TYPE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs:{} contains direct server type marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs:{} contains direct server type marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -10488,8 +10508,8 @@ fn production_proxy_service_imports_server_type_from_adapter() {
 #[test]
 fn production_proxy_service_delegates_effective_settings_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let functions = [
         (
             "claude_provider_with_effective_settings",
@@ -10532,7 +10552,7 @@ fn production_proxy_service_delegates_effective_settings_source_to_adapter() {
             for marker in FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/services/proxy.rs {function_name}:{} contains effective settings source marker `{}`",
+                        "src/proxy/host/cc_switch/live_takeover.rs {function_name}:{} contains effective settings source marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -10551,8 +10571,8 @@ fn production_proxy_service_delegates_effective_settings_source_to_adapter() {
 #[test]
 fn production_proxy_service_delegates_live_write_provider_facade_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
     let function = function_slice(
         &source,
         "    fn write_claude_live",
@@ -10565,7 +10585,7 @@ fn production_proxy_service_delegates_live_write_provider_facade_to_adapter() {
         for marker in FORBIDDEN_PROXY_SERVICE_LIVE_WRITE_PROVIDER_FACADE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/proxy.rs write_claude_live:{} contains provider facade marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs write_claude_live:{} contains provider facade marker `{}`",
                     line_index + 1,
                     marker
                 ));
