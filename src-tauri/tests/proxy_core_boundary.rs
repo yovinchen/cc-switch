@@ -12805,12 +12805,14 @@ fn proxy_core_adapter_delegates_proxy_runtime_to_host_module() {
     );
     assert!(
         adapter_source.contains(
+            "use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;"
+        ) && !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchProxyRuntime")
             && !adapter_source
                 .contains("impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime")
             && !adapter_source.contains("impl HostForwardRuntime for CcSwitchProxyRuntime"),
-        "proxy_core_adapter should re-export, not own, the CC Switch proxy runtime"
+        "proxy_core_adapter should only use the CC Switch proxy runtime privately and not re-export or own it"
     );
 }
 
@@ -12859,11 +12861,13 @@ fn proxy_core_adapter_delegates_proxy_services_to_host_module() {
     );
     assert!(
         adapter_source.contains(
+            "use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices;"
+        ) && !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices"
         ) && !adapter_source.contains("type CcSwitchProxyRuntimeServices")
             && !adapter_source.contains("pub(crate) struct CcSwitchProxyServices")
             && !adapter_source.contains("impl<R> ProxyServices for CcSwitchProxyServices"),
-        "proxy_core_adapter should re-export the generic CC Switch proxy service container without a runtime alias"
+        "proxy_core_adapter should only use the generic CC Switch proxy service container privately without a runtime alias"
     );
 }
 

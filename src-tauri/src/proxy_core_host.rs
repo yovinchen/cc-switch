@@ -13,6 +13,8 @@ use crate::proxy::host::cc_switch::channel_key_runtime_source::channel_key_runti
 #[cfg(test)]
 use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 #[cfg(test)]
+use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
+#[cfg(test)]
 use crate::proxy::host::cc_switch::route_resolver::RouteRequest;
 #[cfg(test)]
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
@@ -21,8 +23,8 @@ use crate::proxy_core_adapter::{
     apply_channel_auth_profile_providers_from_source, client_model_catalog_from_optional_raw,
     forward_attempts_from_plan, forward_result_to_proxy_result, host_providers_for_plan,
     management_route_response_from_router_source, AppKind, AuthProfileRef, AuthProvider,
-    CcSwitchProxyRuntime, ChannelAttemptResult, ChannelQuery, ChannelSpec, GeminiShadowStore,
-    ProviderSpec, ProxyCoreEvent, ProxyRequest, ProxyServices, RoutePlan,
+    ChannelAttemptResult, ChannelQuery, ChannelSpec, GeminiShadowStore, ProviderSpec,
+    ProxyCoreEvent, ProxyRequest, ProxyServices, RoutePlan,
 };
 #[cfg(test)]
 use serde_json::Value;
