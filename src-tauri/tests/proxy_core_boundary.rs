@@ -10918,12 +10918,23 @@ fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let attempt_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/channel_auth_profile_attempts.rs");
+    let attempt_source =
+        fs::read_to_string(&attempt_source_path).expect("read channel_auth_profile_attempts.rs");
     let function = function_slice(
-        &source,
+        &attempt_source,
         "pub(crate) fn apply_channel_auth_profile_providers_from_source",
         "pub(crate) fn required_forward_attempts_from_sources",
     );
 
+    assert!(
+        source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{"
+        ) && !source.contains("fn apply_channel_auth_profile_providers_from_source(")
+            && !source.contains("fn required_forward_attempts_from_sources("),
+        "proxy_core_adapter should re-export, not own, the auth-profile attempt source helpers"
+    );
     assert!(
         function.contains("channel_auth_profile_provider_application("),
         "apply_channel_auth_profile_providers_from_source must delegate channel auth application planning to proxy-core"
@@ -10951,17 +10962,16 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         manifest_dir.join("src/proxy/host/cc_switch/channel_key_runtime_source.rs");
     let runtime_source =
         fs::read_to_string(&runtime_source_path).expect("read channel_key_runtime_source.rs");
+    let attempt_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/channel_auth_profile_attempts.rs");
+    let attempt_source =
+        fs::read_to_string(&attempt_source_path).expect("read channel_auth_profile_attempts.rs");
     let core_ports_path = manifest_dir.join("crates/proxy-core/src/ports.rs");
     let core_ports_source = fs::read_to_string(&core_ports_path).expect("read core ports.rs");
     let services_trait = function_slice(
         &core_ports_source,
         "pub trait ProxyServices",
         "pub trait ProxyConfigSource",
-    );
-    let source_function = function_slice(
-        &source,
-        "pub(crate) fn apply_channel_auth_profile_providers_from_source",
-        "pub(crate) fn required_forward_attempts_from_sources",
     );
     let services_struct = function_slice(
         &source,
@@ -10977,6 +10987,11 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         &runtime_source,
         "fn load_channel_key_value_from_database",
         "impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource",
+    );
+    let source_function = function_slice(
+        &attempt_source,
+        "pub(crate) fn apply_channel_auth_profile_providers_from_source",
+        "pub(crate) fn required_forward_attempts_from_sources",
     );
 
     assert!(
@@ -11013,9 +11028,13 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "CC Switch ProxyServices implementation should return the channel key runtime source"
     );
     assert!(
-        source_function.contains("dyn ChannelKeyRuntimeSource")
+        source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{"
+        ) && !source.contains("fn apply_channel_auth_profile_providers_from_source(")
+            && !source.contains("fn required_forward_attempts_from_sources(")
+            && source_function.contains("dyn ChannelKeyRuntimeSource")
             && source_function.contains(".load_channel_key_value("),
-        "auth profile application should consume the channel key runtime source contract"
+        "host auth-profile attempt source should consume the channel key runtime source contract"
     );
     assert!(
         !source.contains("fn apply_channel_auth_profile_providers_from_db(")
@@ -11041,6 +11060,10 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let attempt_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/channel_auth_profile_attempts.rs");
+    let attempt_source =
+        fs::read_to_string(&attempt_source_path).expect("read channel_auth_profile_attempts.rs");
     let pipeline_struct = function_slice(
         &source,
         "pub(crate) struct CcSwitchForwardPipeline",
@@ -11076,11 +11099,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
         "pub(crate) async fn forward_proxy_request_with_host_runtime",
         "#[derive(Clone)]\npub(crate) struct CcSwitchForwardPipeline",
     );
-    let attempt_source_function = function_slice(
-        &source,
-        "pub(crate) fn required_forward_attempts_from_sources",
-        "pub(crate) type FailoverSwitchSchedulerRef",
-    );
+    let attempt_source_function = attempt_source.as_str();
 
     assert!(
         pipeline_struct.contains("channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource"),
