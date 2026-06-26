@@ -1990,8 +1990,6 @@ pub(crate) fn provider_opencode_live_provider_fragment(
     }
 }
 
-pub(crate) use crate::proxy_core::api::domain::opencode_settings_have_live_provider_fields as opencode_live_provider_fragment_has_provider_fields;
-
 #[derive(Debug, Clone)]
 pub(crate) enum OpenCodeLiveWriteConfig {
     Typed(OpenCodeProviderConfig),
@@ -2028,7 +2026,9 @@ pub(crate) fn provider_opencode_live_write_plan(provider: &Provider) -> OpenCode
     let fragment = provider_opencode_live_provider_fragment(provider);
     let config_to_write = fragment.config;
     let has_live_provider_fields =
-        opencode_live_provider_fragment_has_provider_fields(&config_to_write);
+        crate::proxy_core::api::domain::opencode_settings_have_live_provider_fields(
+            &config_to_write,
+        );
     let typed_config = serde_json::from_value::<OpenCodeProviderConfig>(config_to_write.clone());
     let decision = core_opencode_live_write_config_decision(
         config_to_write,
@@ -17217,9 +17217,11 @@ command = "latest-command"
         let fragment = provider_opencode_live_provider_fragment(&provider);
         assert_eq!(fragment.config, provider.settings_config);
         assert!(!fragment.from_full_config);
-        assert!(opencode_live_provider_fragment_has_provider_fields(
-            &fragment.config
-        ));
+        assert!(
+            crate::proxy_core::api::domain::opencode_settings_have_live_provider_fields(
+                &fragment.config
+            )
+        );
         let typed_config =
             serde_json::from_value::<OpenCodeProviderConfig>(provider.settings_config.clone())
                 .expect("typed opencode provider config");
@@ -17248,11 +17250,11 @@ command = "latest-command"
         let plan = provider_opencode_live_write_plan(&provider);
         assert!(!plan.from_full_config);
         assert!(matches!(plan.config, OpenCodeLiveWriteConfig::Typed(_)));
-        assert!(opencode_live_provider_fragment_has_provider_fields(
-            &json!({
+        assert!(
+            crate::proxy_core::api::domain::opencode_settings_have_live_provider_fields(&json!({
                 "npm": Value::Null
-            })
-        ));
+            }))
+        );
         let raw_provider = Provider::with_id(
             "raw".to_string(),
             "Raw".to_string(),
@@ -17276,16 +17278,16 @@ command = "latest-command"
             provider_opencode_live_write_projection(&raw_provider).action,
             OpenCodeLiveWriteAction::Raw { .. }
         ));
-        assert!(opencode_live_provider_fragment_has_provider_fields(
-            &json!({
+        assert!(
+            crate::proxy_core::api::domain::opencode_settings_have_live_provider_fields(&json!({
                 "options": {}
-            })
-        ));
-        assert!(!opencode_live_provider_fragment_has_provider_fields(
-            &json!({
+            }))
+        );
+        assert!(
+            !crate::proxy_core::api::domain::opencode_settings_have_live_provider_fields(&json!({
                 "name": "Provider"
-            })
-        ));
+            }))
+        );
         let invalid_provider = Provider::with_id(
             "invalid".to_string(),
             "Invalid".to_string(),
