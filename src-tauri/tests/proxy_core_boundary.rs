@@ -1527,9 +1527,11 @@ const FORBIDDEN_HANDLER_RESPONSE_BUILD_ERROR_MAPPING_MARKERS: &[&str] = &[
     "rebuilt_json_proxy_response(",
     "transformed_sse_proxy_response(",
     "codex_chat_error_proxy_response(",
+    "codex_chat_error_response_to_axum_response(",
     "codex_proxy_error_response(",
     "proxy_core_response_to_axum_response(",
     "build_codex_proxy_error_response(",
+    "handle_codex_chat_error_response(",
     "CoreResponseBuildFailureContext::CodexResponsesError",
     "CoreResponseBuildFailureContext::CodexProxyError",
     "AxumResponseBuildErrorContext::CodexResponsesError",
@@ -6500,7 +6502,7 @@ fn handlers_delegate_transformed_response_build_context_to_response_adapter() {
     let codex_transform = function_slice(
         &source,
         "async fn handle_codex_chat_to_responses_transform(",
-        "\n}\n\n/// 把上游 Chat Completions 的错误响应转换为 Responses API 错误形状。",
+        "\n}\n\n// ============================================================================\n// Gemini API",
     );
 
     let mut violations = Vec::new();
@@ -6647,7 +6649,7 @@ fn handlers_delegate_codex_chat_streaming_decision_to_adapter() {
     let transform = function_slice(
         &source,
         "async fn handle_codex_chat_to_responses_transform(",
-        "\n}\n\n/// 把上游 Chat Completions 的错误响应转换为 Responses API 错误形状。",
+        "\n}\n\n// ============================================================================\n// Gemini API",
     );
 
     let mut violations = Vec::new();

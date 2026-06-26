@@ -4,12 +4,14 @@ use super::{
         codex_proxy_error_body_build_error_to_proxy_error, codex_proxy_error_response,
         codex_responses_error_body_build_error_to_proxy_error, response_build_error_to_proxy_error,
     },
+    handler_context::RequestContext,
     hyper_client::ProxyResponse,
 };
 use crate::proxy_core_adapter::{
-    codex_chat_error_proxy_response, rebuilt_json_proxy_response, request_body_read_error_message,
-    transformed_sse_proxy_response, AxumResponseBuildErrorContext, CoreResponseBuildFailureContext,
-    ProxyCoreResponse, ProxyEventEnvelope, ProxyTransportResponse, ProxyTransportResponseBody,
+    codex_chat_error_proxy_response, read_decoded_proxy_response_body, rebuilt_json_proxy_response,
+    request_body_read_error_message, transformed_sse_proxy_response, AxumResponseBuildErrorContext,
+    CoreResponseBuildFailureContext, ProxyCoreResponse, ProxyEventEnvelope, ProxyTransportResponse,
+    ProxyTransportResponseBody,
 };
 use axum::response::sse::Event;
 use bytes::Bytes;
@@ -156,6 +158,15 @@ pub(crate) fn codex_chat_error_response_to_axum_response(
         response,
         AxumResponseBuildErrorContext::CodexResponsesError,
     )
+}
+
+pub(crate) async fn codex_chat_upstream_error_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+) -> Result<axum::response::Response, ProxyError> {
+    let decoded =
+        read_decoded_proxy_response_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
+    codex_chat_error_response_to_axum_response(decoded.status, decoded.headers, &decoded.body)
 }
 
 pub(crate) fn codex_proxy_error_to_axum_response(

@@ -20,7 +20,7 @@ use super::{
     response_adapter::{
         claude_transformed_json_response_to_axum_response,
         claude_transformed_sse_response_to_axum_response,
-        codex_chat_error_response_to_axum_response, codex_proxy_error_to_axum_response,
+        codex_chat_upstream_error_response_to_axum_response, codex_proxy_error_to_axum_response,
         codex_transformed_json_response_to_axum_response,
         codex_transformed_sse_response_to_axum_response, collect_axum_request_body,
         proxy_core_response_to_proxy_response, proxy_event_envelope_to_axum_sse_event,
@@ -926,7 +926,7 @@ async fn handle_codex_chat_to_responses_transform(
         // 上游 Chat 错误体形状与 Responses 不一致（如 MiniMax 的 base_resp、自定义 detail 字段）；
         // 直接透传会让 Codex 客户端无法识别错误码。这里统一转换为 Responses 风格
         // `{"error": {message, type, code, param}}`，保留原始 HTTP 状态码。
-        return handle_codex_chat_error_response(response, ctx, status).await;
+        return codex_chat_upstream_error_response_to_axum_response(response, ctx).await;
     }
 
     let streaming_decision = codex_chat_transform_streaming_decision(is_stream, response.headers());
@@ -973,25 +973,6 @@ async fn handle_codex_chat_to_responses_transform(
     .map_err(codex_chat_to_responses_transform_error_to_proxy_error)?;
 
     codex_transformed_json_response_to_axum_response(status, response_headers, responses_response)
-}
-
-/// 把上游 Chat Completions 的错误响应转换为 Responses API 错误形状。
-///
-/// 与正常响应分支配套：正常响应已经被改写成 Responses 形式，错误响应若仍保留
-/// Chat 错误体（如 MiniMax 的 `{"base_resp": {"status_code": 2013}}`），Codex
-/// 客户端的错误处理就无法对齐字段。这里读取上游 body、规整成
-/// `{"error": {message, type, code, param}}` 并保留原始 HTTP 状态码。
-async fn handle_codex_chat_error_response(
-    response: super::hyper_client::ProxyResponse,
-    ctx: &RequestContext,
-    status: axum::http::StatusCode,
-) -> Result<axum::response::Response, ProxyError> {
-    let decoded =
-        read_decoded_proxy_response_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
-    let response_headers = decoded.headers;
-    let body_bytes = decoded.body;
-
-    codex_chat_error_response_to_axum_response(status, response_headers, &body_bytes)
 }
 
 // ============================================================================
