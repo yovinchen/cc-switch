@@ -800,6 +800,11 @@ const FORBIDDEN_PROVIDER_ROUTER_LIVE_CIRCUIT_MAP_MARKERS: &[&str] = &[
 ];
 const PROVIDER_ROUTER_DATABASE_CONSTRUCTOR_MARKER: &str = "ProviderRouter::new(";
 const FORBIDDEN_HANDLER_PROXY_REQUEST_BRIDGE_MARKERS: &[&str] = &["ProxyRequest::new("];
+const FORBIDDEN_HANDLER_PROXY_RESULT_RESPONSE_BRIDGE_MARKERS: &[&str] = &[
+    ".apply_proxy_result(",
+    "claude_api_format_for_proxy_result(",
+    "proxy_core_response_to_proxy_response(",
+];
 const FORBIDDEN_HANDLER_RAW_JSON_BODY_PARSE_MARKERS: &[&str] = &[
     "parse_json_request_body(",
     "parse_json_request_body_or_null(",
@@ -3082,6 +3087,33 @@ fn production_handlers_build_proxy_requests_through_adapter() {
     assert!(
         violations.is_empty(),
         "production handlers must build ProxyRequest values through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_handlers_delegate_proxy_result_response_bridge_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_PROXY_RESULT_RESPONSE_BRIDGE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains direct proxy result bridge marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production handlers must delegate ProxyResult context updates and response transport bridge to response_adapter:\n{}",
         violations.join("\n")
     );
 }

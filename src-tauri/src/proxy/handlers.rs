@@ -13,12 +13,12 @@ use super::{
     error_mapper::{management_api_error_to_proxy_error, proxy_core_error_to_proxy_error},
     handler_context::RequestContext,
     response_adapter::{
-        claude_transformed_sse_response_to_axum_response,
+        claude_proxy_result_to_proxy_response, claude_transformed_sse_response_to_axum_response,
         claude_transformed_upstream_json_response_to_axum_response,
         codex_chat_upstream_error_response_to_axum_response, codex_proxy_error_to_axum_response,
         codex_transformed_sse_response_to_axum_response,
         codex_transformed_upstream_json_response_to_axum_response, collect_axum_request_body,
-        proxy_core_response_to_proxy_response, proxy_event_envelope_to_axum_sse_event,
+        proxy_event_envelope_to_axum_sse_event, proxy_result_to_proxy_response,
     },
     response_processor::process_response,
 };
@@ -624,9 +624,7 @@ async fn handle_messages_for_app(
         }
     };
 
-    ctx.apply_proxy_result(&state, &result)?;
-    let api_format = ctx.claude_api_format_for_proxy_result(&result)?;
-    let response = proxy_core_response_to_proxy_response(result.response)?;
+    let (response, api_format) = claude_proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
     // 检查是否需要格式转换（OpenRouter 等中转服务）
     let needs_transform = provider_needs_claude_transform(ctx.provider()?);
@@ -749,8 +747,7 @@ pub async fn handle_chat_completions(
         }
     };
 
-    ctx.apply_proxy_result(&state, &result)?;
-    let response = proxy_core_response_to_proxy_response(result.response)?;
+    let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
     process_response(response, &ctx, &state, &OPENAI_PARSER_CONFIG, None).await
 }
@@ -802,8 +799,7 @@ pub async fn handle_responses(
         }
     };
 
-    ctx.apply_proxy_result(&state, &result)?;
-    let response = proxy_core_response_to_proxy_response(result.response)?;
+    let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
     if provider_should_convert_codex_responses_to_chat(ctx.provider()?, &endpoint) {
         return handle_codex_chat_to_responses_transform(
@@ -867,8 +863,7 @@ pub async fn handle_responses_compact(
         }
     };
 
-    ctx.apply_proxy_result(&state, &result)?;
-    let response = proxy_core_response_to_proxy_response(result.response)?;
+    let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
     if provider_should_convert_codex_responses_to_chat(ctx.provider()?, &endpoint) {
         return handle_codex_chat_to_responses_transform(
@@ -979,8 +974,7 @@ pub async fn handle_gemini(
         }
     };
 
-    ctx.apply_proxy_result(&state, &result)?;
-    let response = proxy_core_response_to_proxy_response(result.response)?;
+    let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
     process_response(response, &ctx, &state, &GEMINI_PARSER_CONFIG, None).await
 }

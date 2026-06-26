@@ -19,7 +19,8 @@ use crate::proxy_core_adapter::{
     transformed_sse_proxy_response, AxumResponseBuildErrorContext,
     ClaudeTransformedJsonResponseContext, CodexAutoTransformedJsonResponseContext,
     CodexToolContext, CoreResponseBuildFailureContext, ProxyCoreResponse, ProxyEventEnvelope,
-    ProxyState, ProxyTransportResponse, ProxyTransportResponseBody, UpstreamSseAggregationKind,
+    ProxyResult, ProxyState, ProxyTransportResponse, ProxyTransportResponseBody,
+    UpstreamSseAggregationKind,
 };
 use axum::response::sse::Event;
 use bytes::Bytes;
@@ -56,6 +57,26 @@ pub(crate) fn proxy_core_response_to_proxy_response(
     };
 
     Ok(response)
+}
+
+pub(crate) fn proxy_result_to_proxy_response(
+    result: ProxyResult,
+    ctx: &mut RequestContext,
+    state: &ProxyState,
+) -> Result<ProxyResponse, ProxyError> {
+    ctx.apply_proxy_result(state, &result)?;
+    proxy_core_response_to_proxy_response(result.response)
+}
+
+pub(crate) fn claude_proxy_result_to_proxy_response(
+    result: ProxyResult,
+    ctx: &mut RequestContext,
+    state: &ProxyState,
+) -> Result<(ProxyResponse, String), ProxyError> {
+    ctx.apply_proxy_result(state, &result)?;
+    let api_format = ctx.claude_api_format_for_proxy_result(&result)?;
+    let response = proxy_core_response_to_proxy_response(result.response)?;
+    Ok((response, api_format))
 }
 
 pub(crate) fn proxy_core_response_to_axum_response(
