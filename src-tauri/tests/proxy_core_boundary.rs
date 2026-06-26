@@ -16970,6 +16970,7 @@ fn proxy_core_adapter_delegates_auth_provider_source_to_host_module() {
         "auth_info_from_profile_ref",
         "auth_info_from_route_context",
         "settings_config_with_channel_auth_key_for_app",
+        "type AuthInfo = crate::proxy_core::api::ports::AuthInfo",
     ] {
         assert!(
             !adapter_runtime_source.contains(marker),

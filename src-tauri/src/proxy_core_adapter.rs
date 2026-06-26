@@ -1343,8 +1343,6 @@ use crate::proxy_core::api::ports::ProviderAttemptResult;
 pub(crate) type ProviderKind = crate::proxy_core::api::domain::ProviderKind;
 pub(crate) type ProviderAuthInfo = crate::proxy_core::api::auth::ProviderAuthInfo;
 pub(crate) type ProviderAuthStrategy = crate::proxy_core::api::auth::ProviderAuthStrategy;
-#[cfg(test)]
-pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 
 use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
@@ -7587,6 +7585,7 @@ mod tests {
         json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
         normalize_claude_models_in_value,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
+        AuthInfo,
     };
 
     use super::*;
