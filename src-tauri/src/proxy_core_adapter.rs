@@ -1,5 +1,4 @@
 use crate::app_config::AppType;
-use crate::claude_desktop_config::ResolvedModelRoute;
 use crate::database::{
     Database, FailoverQueueItem, ProxyChannelKeyRecord, ProxyChannelMaterializeResult,
     ProxyChannelMigrationPreview, ProxyChannelModelRecord, ProxyChannelRecord,
@@ -6551,7 +6550,7 @@ pub(crate) async fn router_channel_route_inputs_from_channel_source(
 }
 
 pub(crate) fn claude_desktop_model_routes_to_core_inputs(
-    routes: impl IntoIterator<Item = ResolvedModelRoute>,
+    routes: impl IntoIterator<Item = ClaudeDesktopResolvedProxyRoute>,
 ) -> Vec<ClaudeDesktopModelRouteInput> {
     routes
         .into_iter()
@@ -6604,8 +6603,14 @@ pub(crate) async fn claude_desktop_model_routes_from_router_source(
     let provider = claude_desktop_provider_from_selection_result(provider_ids, |provider_id| {
         db.get_provider_by_id(provider_id, app.as_str())
     })?;
-    let routes = crate::claude_desktop_config::proxy_model_routes(&provider)
-        .map_err(|error| app_error("load claude desktop model routes", error))?;
+    let routes = provider_claude_desktop_proxy_model_routes(&provider).map_err(|issue| {
+        app_error(
+            "load claude desktop model routes",
+            AppError::Config(format!(
+                "Claude Desktop proxy model routes unavailable: {issue:?}"
+            )),
+        )
+    })?;
     Ok(claude_desktop_model_routes_to_core_inputs(routes))
 }
 
@@ -20287,12 +20292,13 @@ command = "latest-command"
 
     #[test]
     fn claude_desktop_model_routes_to_core_inputs_preserve_route_contract() {
-        let inputs = claude_desktop_model_routes_to_core_inputs([ResolvedModelRoute {
-            route_id: "claude-sonnet-4-6".to_string(),
-            upstream_model: "anthropic/claude-sonnet-4-6".to_string(),
-            label_override: None,
-            supports_1m: true,
-        }]);
+        let inputs =
+            claude_desktop_model_routes_to_core_inputs([ClaudeDesktopResolvedProxyRoute {
+                route_id: "claude-sonnet-4-6".to_string(),
+                upstream_model: "anthropic/claude-sonnet-4-6".to_string(),
+                label_override: None,
+                supports_1m: true,
+            }]);
         let response = ClaudeDesktopModelListResponse::from_routes(inputs.clone());
 
         assert_eq!(inputs.len(), 1);

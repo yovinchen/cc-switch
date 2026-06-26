@@ -73,25 +73,6 @@ pub struct ClaudeDesktopStatus {
     pub gateway_token_configured: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedModelRoute {
-    pub route_id: String,
-    pub upstream_model: String,
-    pub label_override: Option<String>,
-    pub supports_1m: bool,
-}
-
-impl From<crate::proxy_core_adapter::ClaudeDesktopResolvedProxyRoute> for ResolvedModelRoute {
-    fn from(route: crate::proxy_core_adapter::ClaudeDesktopResolvedProxyRoute) -> Self {
-        Self {
-            route_id: route.route_id,
-            upstream_model: route.upstream_model,
-            label_override: route.label_override,
-            supports_1m: route.supports_1m,
-        }
-    }
-}
-
 pub fn apply_provider(db: &Database, provider: &Provider) -> Result<(), AppError> {
     let paths = current_platform_paths()?;
     apply_provider_to_paths(db, provider, &paths)
@@ -362,16 +343,6 @@ pub fn validate_provider(provider: &Provider) -> Result<(), AppError> {
 
     crate::proxy_core_adapter::provider_claude_desktop_provider_validation(provider)
         .map_err(provider_validation_issue_to_error)
-}
-
-pub fn proxy_model_routes(provider: &Provider) -> Result<Vec<ResolvedModelRoute>, AppError> {
-    let result = crate::proxy_core_adapter::provider_claude_desktop_proxy_model_routes(provider)
-        .map_err(proxy_route_issue_to_error)?
-        .into_iter()
-        .map(ResolvedModelRoute::from)
-        .collect::<Vec<_>>();
-
-    Ok(result)
 }
 
 fn proxy_route_issue_to_error(issue: ClaudeDesktopProviderProxyRouteIssue) -> AppError {
@@ -1031,7 +1002,10 @@ mod tests {
         let models = serde_json::to_value(
             crate::proxy_core_adapter::ClaudeDesktopModelListResponse::from_routes(
                 crate::proxy_core_adapter::claude_desktop_model_routes_to_core_inputs(
-                    proxy_model_routes(&provider).expect("model routes"),
+                    crate::proxy_core_adapter::provider_claude_desktop_proxy_model_routes(
+                        &provider,
+                    )
+                    .expect("model routes"),
                 ),
             ),
         )
@@ -1397,7 +1371,9 @@ mod tests {
             ..Default::default()
         });
 
-        let routes = proxy_model_routes(&provider).expect("routes");
+        let routes =
+            crate::proxy_core_adapter::provider_claude_desktop_proxy_model_routes(&provider)
+                .expect("routes");
         assert_eq!(routes.len(), 3);
         let repaired = routes
             .iter()
