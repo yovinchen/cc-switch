@@ -887,6 +887,19 @@ const FORBIDDEN_PROTOCOL_HANDLER_ROUTE_METADATA_MARKERS: &[&str] = &[
     "\"/responses\"",
     "\"/responses/compact\"",
 ];
+const FORBIDDEN_PROXY_EVENTS_HANDLER_SSE_ORCHESTRATION_MARKERS: &[&str] = &[
+    ".events.subscribe(",
+    ".subscribe()",
+    "connected_event(",
+    "lagged_event(",
+    "proxy_event_envelope_to_axum_sse_event(",
+    "async_stream::stream!",
+    "RecvError::Lagged",
+    "RecvError::Closed",
+    "KeepAlive::new(",
+    "Duration::from_secs(",
+    "Sse::new(",
+];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
 const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
@@ -3713,6 +3726,43 @@ fn production_protocol_handlers_delegate_route_metadata_to_response_adapter() {
     assert!(
         violations.is_empty(),
         "protocol handlers must delegate app/tag/prefix/endpoint metadata to response_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_events_handler_delegates_sse_orchestration_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "pub async fn stream_proxy_events(",
+        "/// Management API auth middleware.",
+    );
+
+    assert!(
+        handler.contains("proxy_events_request_to_axum_sse_response("),
+        "proxy events handler should delegate SSE response construction to response_adapter"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_EVENTS_HANDLER_SSE_ORCHESTRATION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs stream_proxy_events:{} contains SSE orchestration marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy events handler must delegate event subscription and SSE keep-alive construction to response_adapter:\n{}",
         violations.join("\n")
     );
 }

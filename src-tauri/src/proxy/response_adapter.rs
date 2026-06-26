@@ -33,12 +33,14 @@ use crate::proxy_core_adapter::{
     ProxyTransportResponseBody, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG,
     CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
-use axum::response::sse::Event;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use bytes::Bytes;
 use futures::Stream;
 use http::{HeaderMap, Method, StatusCode, Uri};
 use http_body_util::BodyExt;
 use serde_json::Value;
+use std::convert::Infallible;
+use std::time::Duration;
 
 pub(crate) struct ParsedAxumJsonProxyRequest {
     pub(crate) method: Method,
@@ -904,6 +906,33 @@ pub(crate) fn proxy_event_envelope_to_axum_sse_event(event: ProxyEventEnvelope) 
         .id(spec.id)
         .event(spec.event)
         .data(spec.data)
+}
+
+pub(crate) fn proxy_events_request_to_axum_sse_response(
+    state: &ProxyState,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let mut receiver = state.events.subscribe();
+    let events = state.events.clone();
+
+    let stream = async_stream::stream! {
+        yield Ok(proxy_event_envelope_to_axum_sse_event(events.connected_event()));
+
+        loop {
+            match receiver.recv().await {
+                Ok(event) => yield Ok(proxy_event_envelope_to_axum_sse_event(event)),
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    yield Ok(proxy_event_envelope_to_axum_sse_event(events.lagged_event(skipped)));
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    };
+
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("keep-alive"),
+    )
 }
 
 #[cfg(test)]

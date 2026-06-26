@@ -15,7 +15,7 @@ use super::{
         dispatch_claude_request_to_axum_response, dispatch_codex_chat_request_to_axum_response,
         dispatch_codex_responses_compact_request_to_axum_response,
         dispatch_codex_responses_request_to_axum_response,
-        dispatch_gemini_request_to_axum_response, proxy_event_envelope_to_axum_sse_event,
+        dispatch_gemini_request_to_axum_response, proxy_events_request_to_axum_sse_response,
     },
 };
 use crate::proxy_core_adapter::{
@@ -38,11 +38,8 @@ use crate::proxy_core_adapter::{
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::sse::{Event, KeepAlive, Sse},
     Json,
 };
-use std::convert::Infallible;
-use std::time::Duration;
 
 // ============================================================================
 // 健康检查和状态查询（简单端点）
@@ -73,29 +70,8 @@ pub async fn get_status(
 /// GET /proxy/v1/events
 pub async fn stream_proxy_events(
     State(state): State<ProxyState>,
-) -> Sse<impl futures::Stream<Item = Result<Event, Infallible>>> {
-    let mut receiver = state.events.subscribe();
-    let events = state.events.clone();
-
-    let stream = async_stream::stream! {
-        yield Ok(proxy_event_envelope_to_axum_sse_event(events.connected_event()));
-
-        loop {
-            match receiver.recv().await {
-                Ok(event) => yield Ok(proxy_event_envelope_to_axum_sse_event(event)),
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    yield Ok(proxy_event_envelope_to_axum_sse_event(events.lagged_event(skipped)));
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-            }
-        }
-    };
-
-    Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("keep-alive"),
-    )
+) -> impl axum::response::IntoResponse {
+    proxy_events_request_to_axum_sse_response(&state)
 }
 
 /// Management API auth middleware.
