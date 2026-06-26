@@ -12,8 +12,8 @@ use crate::provider::{
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::engine::context::RequestContext;
 use crate::proxy::engine::routing::{
-    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterConfigSource,
-    ProviderRouterHealthStore, ProviderRouterProviderSource, ProviderRouterSources,
+    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterHealthStore,
+    ProviderRouterProviderSource, ProviderRouterSources,
 };
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::forward_error_to_core_error;
@@ -26,6 +26,7 @@ use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
 pub(crate) use crate::proxy::host::cc_switch::management_auth_source::CcSwitchManagementAuthSource;
 pub(crate) use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource;
 pub(crate) use crate::proxy::host::cc_switch::provider_router_channel_source::CcSwitchProviderRouterChannelSource;
+pub(crate) use crate::proxy::host::cc_switch::provider_router_config_source::CcSwitchProviderRouterConfigSource;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::http::server::ProxyServer;
@@ -5095,9 +5096,9 @@ pub(crate) struct CcSwitchProviderRouterSources;
 impl CcSwitchProviderRouterSources {
     pub(crate) fn from_database(db: Arc<Database>) -> ProviderRouterSources {
         ProviderRouterSources::new(
-            Arc::new(CcSwitchProviderRouterConfigSource {
-                source: CcSwitchConfigSource::new(db.clone()),
-            }),
+            Arc::new(CcSwitchProviderRouterConfigSource::new(
+                CcSwitchConfigSource::new(db.clone()),
+            )),
             Arc::new(CcSwitchProviderRouterProviderSource {
                 db: db.clone(),
                 route_policies: CcSwitchRoutePolicySource::new(db.clone()),
@@ -5112,34 +5113,6 @@ impl CcSwitchProviderRouterSources {
 
 pub(crate) fn provider_router_from_database(db: Arc<Database>) -> ProviderRouter {
     ProviderRouter::with_sources(CcSwitchProviderRouterSources::from_database(db))
-}
-
-struct CcSwitchProviderRouterConfigSource {
-    source: CcSwitchConfigSource,
-}
-
-impl ProviderRouterConfigSource for CcSwitchProviderRouterConfigSource {
-    fn load_failover_enabled<'a>(&'a self, app_type: &'a str) -> BoxFuture<'a, bool> {
-        Box::pin(async move {
-            auto_failover_enabled_from_router_config_source(&self.source, app_type).await
-        })
-    }
-
-    fn circuit_breaker_config<'a>(
-        &'a self,
-        app_type: &'a str,
-    ) -> BoxFuture<'a, CircuitBreakerConfig> {
-        Box::pin(async move {
-            circuit_breaker_config_from_router_config_source(&self.source, app_type).await
-        })
-    }
-
-    fn failure_threshold<'a>(&'a self, app_type: &'a str, fallback: u32) -> BoxFuture<'a, u32> {
-        Box::pin(async move {
-            circuit_failure_threshold_from_router_config_source(&self.source, app_type, fallback)
-                .await
-        })
-    }
 }
 
 struct CcSwitchProviderRouterProviderSource {

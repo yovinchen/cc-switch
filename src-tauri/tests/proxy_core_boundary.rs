@@ -16120,32 +16120,39 @@ fn production_provider_router_uses_route_channel_inputs() {
 #[test]
 fn production_provider_router_config_source_uses_core_config_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let adapter_slice = function_slice(
-        &source,
-        "struct CcSwitchProviderRouterConfigSource",
-        "struct CcSwitchProviderRouterProviderSource",
-    );
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_router_config_source.rs");
+    let source = fs::read_to_string(&source_path).expect("read provider_router_config_source.rs");
 
     assert!(
-        adapter_slice.contains("source: CcSwitchConfigSource"),
-        "ProviderRouter config source adapter must hold the core-facing CcSwitchConfigSource"
+        source.contains("source: CcSwitchConfigSource")
+            && source.contains("impl ProviderRouterConfigSource for CcSwitchProviderRouterConfigSource"),
+        "ProviderRouter config source must hold the core-facing CcSwitchConfigSource in host/cc_switch"
     );
     assert!(
-        adapter_slice.contains("auto_failover_enabled_from_router_config_source")
-            && adapter_slice.contains("circuit_breaker_config_from_router_config_source")
-            && adapter_slice.contains("circuit_failure_threshold_from_router_config_source"),
-        "ProviderRouter config source adapter must project router config from ProxyConfigSource"
+        source.contains("auto_failover_enabled_from_router_config_source")
+            && source.contains("circuit_breaker_config_from_router_config_source")
+            && source.contains("circuit_failure_threshold_from_router_config_source"),
+        "ProviderRouter config source must project router config from ProxyConfigSource"
+    );
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::provider_router_config_source::CcSwitchProviderRouterConfigSource"
+        ) && adapter_source.contains("CcSwitchProviderRouterConfigSource::new(")
+            && !adapter_source.contains("struct CcSwitchProviderRouterConfigSource")
+            && !adapter_source
+                .contains("impl ProviderRouterConfigSource for CcSwitchProviderRouterConfigSource"),
+        "proxy_core_adapter should re-export and instantiate, not own, the ProviderRouter config source"
     );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(adapter_slice) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROVIDER_ROUTER_CONFIG_SOURCE_ADAPTER_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs CcSwitchProviderRouterConfigSource:{} contains config source adapter marker `{}`",
+                    "src/proxy/host/cc_switch/provider_router_config_source.rs:{} contains config source adapter marker `{}`",
                     line_index + 1,
                     marker
                 ));
