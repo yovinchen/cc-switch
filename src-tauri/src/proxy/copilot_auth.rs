@@ -24,6 +24,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
+use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core_adapter::{
     compare_managed_auth_account_order, copilot_api_base,
     copilot_api_endpoint_from_usage_or_default, copilot_auth_status_from_parts,
@@ -32,10 +33,9 @@ use crate::proxy_core_adapter::{
     copilot_token_is_expiring_soon, copilot_token_url, copilot_usage_response_endpoint,
     copilot_usage_url, is_copilot_ghes_domain, managed_auth_fallback_default_account_id,
     normalize_github_domain, parse_copilot_models_response_bytes,
-    parse_copilot_usage_response_bytes, CopilotModel, CopilotOAuthPollErrorKind,
-    ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate, COPILOT_API_VERSION,
-    COPILOT_EDITOR_VERSION, COPILOT_PLUGIN_VERSION, COPILOT_PUBLIC_GITHUB_DOMAIN,
-    COPILOT_USER_AGENT,
+    parse_copilot_usage_response_bytes, CopilotOAuthPollErrorKind, ManagedAuthAccountSortKey,
+    ManagedAuthDefaultAccountCandidate, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION,
+    COPILOT_PLUGIN_VERSION, COPILOT_PUBLIC_GITHUB_DOMAIN, COPILOT_USER_AGENT,
 };
 
 const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;

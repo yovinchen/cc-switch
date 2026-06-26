@@ -162,6 +162,10 @@ const FORBIDDEN_MODEL_FETCH_COMMAND_DTO_IMPORT_MARKERS: &[&str] =
     &["services::model_fetch_transport::FetchedModel"];
 const FORBIDDEN_MODEL_FETCH_COMMAND_PROVIDER_DETAIL_MARKERS: &[&str] =
     &["crate::provider::parse_custom_user_agent("];
+const FORBIDDEN_COPILOT_MODEL_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
+    "type CopilotModel = crate::proxy_core::api::model_catalog::CopilotModel",
+    "pub use crate::proxy_core::api::model_catalog::CopilotModel",
+];
 const FORBIDDEN_STREAM_CHECK_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
     "proxy::providers",
     "get_adapter(",
@@ -10011,6 +10015,53 @@ fn model_fetch_commands_use_core_dto_entrypoint() {
     assert!(
         violations.is_empty(),
         "model fetch commands must use proxy_core::api::model_catalog as the FetchedModel DTO entrypoint:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn copilot_model_callers_use_core_dto_entrypoint() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let caller_paths = ["src/commands/copilot.rs", "src/proxy/copilot_auth.rs"];
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&adapter_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_COPILOT_MODEL_ADAPTER_DTO_EXPORT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains CopilotModel DTO export marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    for relative in caller_paths {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read caller source");
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            if code.contains("proxy_core_adapter") && code.contains("CopilotModel") {
+                violations.push(format!(
+                    "{}:{} imports CopilotModel from proxy_core_adapter",
+                    relative,
+                    line_index + 1
+                ));
+            }
+        }
+        assert!(
+            source.contains("use crate::proxy_core::api::model_catalog::CopilotModel;"),
+            "{} must import CopilotModel directly from proxy_core",
+            relative
+        );
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Copilot model DTO callers must use proxy_core::api::model_catalog as the CopilotModel entrypoint:\n{}",
         violations.join("\n")
     );
 }

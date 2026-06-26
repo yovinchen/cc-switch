@@ -230,7 +230,6 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
     parse_copilot_usage_response_bytes,
 };
 
-pub(crate) type CopilotModel = crate::proxy_core::api::model_catalog::CopilotModel;
 pub type CopilotUsageResponse = crate::proxy_core::api::model_catalog::CopilotUsageResponse;
 
 pub(crate) use crate::proxy_core::api::model_catalog::{
@@ -7962,6 +7961,7 @@ mod tests {
     };
     use crate::proxy_core::api::events::ProxyEventEnvelope;
     use crate::proxy_core::api::management::ChannelKeyRuntimeCandidate;
+    use crate::proxy_core::api::model_catalog::CopilotModel;
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
     use crate::proxy_core::api::transport::{
