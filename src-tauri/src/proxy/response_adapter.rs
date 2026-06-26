@@ -25,16 +25,21 @@ use crate::proxy_core_adapter::{
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
     read_decoded_proxy_response_body, rebuilt_json_proxy_response, record_forward_core_error_usage,
     request_body_read_error_message, strip_endpoint_prefix, transformed_sse_proxy_response,
-    ActiveConnectionGuard, AppKind, AppListRequest, AppListResponse, AppModelCatalogRequest,
-    AppModelListQuery, AxumResponseBuildErrorContext, ClaudeTransformStreamingDecision,
+    ActiveConnectionGuard, AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse,
+    AppKind, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
+    AxumResponseBuildErrorContext, ChannelListQuery, ChannelListRequest, ChannelListResponse,
+    ChannelRecord, ChannelRouteCandidate, ChannelRouteRejected, ClaudeTransformStreamingDecision,
     ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
     ClientModelCatalogResponse, CodexAutoTransformedJsonResponseContext,
     CodexAutoTransformedSseStreamContext, CodexChatTransformStreamingDecision,
-    CodexResponsesProxyRequest, CodexToolContext, CoreResponseBuildFailureContext, InterfaceKind,
+    CodexResponsesProxyRequest, CodexToolContext, CoreResponseBuildFailureContext,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, InterfaceKind,
     JsonProxyRequestInput, ManagementAppPathRequest, ProviderListResponse, ProxyCoreResponse,
     ProxyEventEnvelope, ProxyRequest, ProxyResult, ProxyState, ProxyTransportResponse,
-    ProxyTransportResponseBody, RoutableModelList, UpstreamSseAggregationKind,
-    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    ProxyTransportResponseBody, RoutableModelList, RouteGroupListResponse,
+    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
+    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
+    OPENAI_PARSER_CONFIG,
 };
 use axum::{
     response::sse::{Event, KeepAlive, Sse},
@@ -303,6 +308,85 @@ pub(crate) async fn dispatch_codex_client_model_catalog_request_to_axum_json_res
     let response = state
         .proxy_engine()
         .client_model_catalog_response(&AppKind::Codex)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
+}
+
+pub(crate) async fn dispatch_proxy_channels_request_to_axum_json_response(
+    state: &ProxyState,
+    query: ChannelListQuery,
+) -> Result<Json<ChannelListResponse<ChannelRecord>>, ProxyError> {
+    let request =
+        ChannelListRequest::from_query(query).map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .channel_list_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
+}
+
+pub(crate) async fn dispatch_proxy_app_channels_request_to_axum_json_response(
+    state: &ProxyState,
+    app_type: String,
+    query: AppChannelListQuery,
+) -> Result<
+    Json<AppChannelResponse<ChannelRecord, ChannelRouteCandidate, ChannelRouteRejected>>,
+    ProxyError,
+> {
+    let request = AppChannelManagementRequest::from_parts(app_type, query)
+        .map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .app_channel_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
+}
+
+pub(crate) async fn dispatch_proxy_groups_request_to_axum_json_response(
+    state: &ProxyState,
+    query: GroupListQuery,
+) -> Result<Json<RouteGroupListResponse>, ProxyError> {
+    let request =
+        GroupListRequest::from_query(query).map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .group_list_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
+}
+
+pub(crate) async fn dispatch_current_proxy_route_request_to_axum_json_response(
+    state: &ProxyState,
+    app_type: String,
+) -> Result<Json<CurrentRouteResponse<CurrentRouteTarget>>, ProxyError> {
+    let request = ManagementAppPathRequest::from_path(app_type)
+        .map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .current_route_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
+}
+
+pub(crate) async fn dispatch_proxy_route_resolve_request_to_axum_json_response(
+    state: &ProxyState,
+    request: RouteResolveRequest,
+) -> Result<Json<RouteResolveResponse>, ProxyError> {
+    let request = RouteResolveManagementRequest::from_body(request)
+        .map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .resolve_route_response(request)
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
 

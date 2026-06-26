@@ -911,6 +911,19 @@ const FORBIDDEN_MANAGEMENT_READ_HANDLER_ENGINE_MARKERS: &[&str] = &[
     ".client_model_catalog_response(",
     "AppKind::Codex",
 ];
+const FORBIDDEN_ROUTE_INSPECTION_HANDLER_ENGINE_MARKERS: &[&str] = &[
+    "ChannelListRequest::from_query(",
+    "AppChannelManagementRequest::from_parts(",
+    "GroupListRequest::from_query(",
+    "ManagementAppPathRequest::from_path(",
+    "RouteResolveManagementRequest::from_body(",
+    ".proxy_engine()",
+    ".channel_list_response(",
+    ".app_channel_response(",
+    ".group_list_response(",
+    ".current_route_response(",
+    ".resolve_route_response(",
+];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
 const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
@@ -3847,6 +3860,88 @@ fn production_management_read_handlers_delegate_json_bridge_to_response_adapter(
     assert!(
         violations.is_empty(),
         "management read handlers must delegate request construction, engine calls, route metadata, and JSON wrapping to response_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_route_inspection_handlers_delegate_json_bridge_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handlers = [
+        (
+            "list_all_proxy_channels",
+            function_slice(
+                &source,
+                "pub async fn list_all_proxy_channels(",
+                "/// POST /proxy/v1/channels",
+            ),
+            "dispatch_proxy_channels_request_to_axum_json_response(",
+        ),
+        (
+            "list_proxy_channels",
+            function_slice(
+                &source,
+                "pub async fn list_proxy_channels(",
+                "/// GET /proxy/v1/groups",
+            ),
+            "dispatch_proxy_app_channels_request_to_axum_json_response(",
+        ),
+        (
+            "list_proxy_groups",
+            function_slice(
+                &source,
+                "pub async fn list_proxy_groups(",
+                "/// GET /proxy/v1/apps/{app}/routes/current",
+            ),
+            "dispatch_proxy_groups_request_to_axum_json_response(",
+        ),
+        (
+            "get_current_proxy_route",
+            function_slice(
+                &source,
+                "pub async fn get_current_proxy_route(",
+                "/// GET /proxy/v1/apps/{app}/channels/migration/preview",
+            ),
+            "dispatch_current_proxy_route_request_to_axum_json_response(",
+        ),
+        (
+            "resolve_proxy_route",
+            function_slice(
+                &source,
+                "pub async fn resolve_proxy_route(",
+                "/// GET /v1/models",
+            ),
+            "dispatch_proxy_route_resolve_request_to_axum_json_response(",
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    for (handler_name, handler, adapter_marker) in handlers {
+        if !handler.contains(adapter_marker) {
+            violations.push(format!(
+                "src/proxy/handlers.rs {handler_name} should call `{adapter_marker}`"
+            ));
+        }
+
+        for (line_index, line) in production_lines(handler) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_ROUTE_INSPECTION_HANDLER_ENGINE_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/proxy/handlers.rs {handler_name}:{} contains route inspection engine marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "route inspection handlers must delegate request construction, dry-run/current-route engine calls, and JSON wrapping to response_adapter:\n{}",
         violations.join("\n")
     );
 }
