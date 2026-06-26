@@ -407,7 +407,7 @@
 396. host `transform_gemini::rectify_tool_call_parts` facade 已删除；非流式 response rectifier 现在由 core 产出 `rectified_tool_names`，host 仅消费这些名称写入既有日志。
 397. Gemini request transform 的 shadow session 读取与 request envelope 调用 wrapper 已迁入 `proxy-core::anthropic_request_to_gemini_request_with_shadow`；host `anthropic_to_gemini_with_shadow` 只转发 store/provider/session 并映射 core 错误。
 398. Gemini Native 非流式 response 转换后的 shadow store 写入 wrapper 已迁入 `proxy-core::gemini_response_to_anthropic_message_with_shadow`；host 只传入 store/provider/session、记录 rectifier 日志并映射 core 错误。
-399. host `transform_gemini::{extract_anthropic_tool_schema_hints, rectify_tool_call_args}` passthrough facade 已删除；handler 和测试直接引用 `proxy-core` 的 tool schema hint/args rectifier contract。
+399. host `transform_gemini::{extract_anthropic_tool_schema_hints, rectify_tool_call_args}` passthrough facade 已删除；Claude response transform 的 tool schema hint 提取已由 `proxy_core_adapter` context wrapper 承接，测试继续直接验证 `proxy-core` 的 tool schema hint/args rectifier contract。
 400. Claude/Gemini 生产 request/response 调用点已从 host `transform_gemini` wrapper 改为直接调用 `proxy-core::{anthropic_request_to_gemini_request_with_shadow, gemini_response_to_anthropic_message_with_shadow, gemini_response_to_anthropic_message}`；host wrapper 仅保留测试/兼容入口，UUID suffix 生成和 rectifier 日志仍由 Tauri host 负责。
 401. `providers::transform_gemini` host facade 已删除；Gemini request/response 协议规则只在 `proxy-core::{gemini_request, gemini_response, gemini_stream}` 维护，Tauri host 仅在生产调用点注入 UUID suffix、shadow store、日志和 `ProxyError` 映射。
 402. `proxy::health` 空占位模块已删除；Provider 健康事实继续由现有 circuit breaker、health DAO/query 和 runtime status 路径表达，避免保留无行为 host surface。
@@ -1171,6 +1171,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续把 Claude transformed SSE 的 provider stream transform、Gemini shadow/provider/session/tool hints 注入和 transformed logged stream 包装收敛到 `proxy_core_adapter::claude_transformed_sse_stream_from_context`；`handlers` 只保留 streaming branch 选择与 Axum response bridge。
 本轮继续把 Codex Chat→Responses transformed SSE 的 history-recording stream transform 和 transformed logged stream 包装收敛到 `proxy_core_adapter::codex_auto_transformed_sse_stream_from_context`；`handlers` 只保留 streaming branch 选择与 Axum response bridge。
 本轮继续把 Claude transformed JSON 的 provider response transform、Gemini shadow/provider/session/tool hints 注入和 transformed usage record 包装收敛到 `proxy_core_adapter::claude_transformed_json_response_from_context`；`handlers` 只保留 decoded body 读取、上游 JSON/SSE parse 和 Axum response bridge。
+本轮继续把 Claude transformed JSON/SSE 的 Anthropic tool schema hints 提取收敛到 `proxy_core_adapter` context wrapper；`handlers` 只把原始请求 body 作为转换上下文传入，不再直接调用 `extract_anthropic_tool_schema_hints`。
 本轮继续把 Codex Chat→Responses transformed JSON 的 history-recording response transform 和 transformed usage record 包装收敛到 `proxy_core_adapter::codex_auto_transformed_json_response_from_context`；`handlers` 只保留 decoded body 读取、上游 JSON/SSE parse、transform error 映射和 Axum response bridge。
 本轮还把 Codex client model catalog 的 active config 读取与 stale guard fallback 收敛到 adapter，`proxy_core_host` 不再维护 catalog 文件解析 helper。
 本轮继续把 host Provider 到 provider model catalog 的 settings 投影收敛到 adapter，`proxy_core_host` 不再直接拆 provider 字段。
