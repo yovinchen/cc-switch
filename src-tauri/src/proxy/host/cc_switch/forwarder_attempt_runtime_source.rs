@@ -4,12 +4,14 @@ use std::sync::Arc;
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
 use crate::proxy::route_attempt::ForwardAttempt;
+use crate::proxy_core::api::transport::{
+    forwarder_attempt_runtime_decision, ForwarderAttemptRuntimeDecisionInput,
+};
 use crate::proxy_core_adapter::{
-    allow_forward_attempt_runtime_source, forwarder_attempt_runtime_decision,
-    record_forward_attempt_failure_runtime_source, record_forward_attempt_success_runtime_source,
+    allow_forward_attempt_runtime_source, record_forward_attempt_failure_runtime_source,
+    record_forward_attempt_success_runtime_source,
     release_forward_attempt_permit_neutral_runtime_source, ForwarderAttemptAllowDecision,
-    ForwarderAttemptAllowInput, ForwarderAttemptRuntimeDecisionInput,
-    ForwarderAttemptRuntimeSource, ForwarderAttemptRuntimeSourceRef,
+    ForwarderAttemptAllowInput, ForwarderAttemptRuntimeSource, ForwarderAttemptRuntimeSourceRef,
 };
 
 struct CcSwitchForwarderAttemptRuntimeSource {

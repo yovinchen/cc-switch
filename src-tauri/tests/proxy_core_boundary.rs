@@ -11,6 +11,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/auth_provider.rs",
     "src/proxy/host/cc_switch/channel_auth_profile_attempts.rs",
     "src/proxy/host/cc_switch/channel_key_runtime_source.rs",
+    "src/proxy/host/cc_switch/forwarder_attempt_runtime_source.rs",
     "src/proxy/host/cc_switch/forwarder_auth_source.rs",
     "src/proxy/host/cc_switch/forwarder_response_source.rs",
     "src/proxy/host/cc_switch/forwarder_request_source.rs",
@@ -13798,6 +13799,10 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let attempt_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_attempt_runtime_source.rs");
     let attempt_source =
@@ -13861,6 +13866,21 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
             && attempt_runtime_impl_slice.contains("runtime_decision.limit_log_line"),
         "default ForwarderAttemptRuntimeSource implementation should delegate attempt limit and circuit-bypass policy to core"
     );
+    assert!(
+        attempt_source.contains("use crate::proxy_core::api::transport::{")
+            && attempt_source.contains("forwarder_attempt_runtime_decision")
+            && attempt_source.contains("ForwarderAttemptRuntimeDecisionInput"),
+        "default ForwarderAttemptRuntimeSource should import pure attempt decision helper/input directly from proxy_core::api::transport"
+    );
+    for marker in [
+        "forwarder_attempt_runtime_decision",
+        "ForwarderAttemptRuntimeDecisionInput",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not re-export pure attempt runtime helper/input `{marker}` once attempt runtime source owns the call site"
+        );
+    }
     assert!(
         adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_router")
             && !adapter_source.contains("struct CcSwitchForwarderAttemptRuntimeSource"),
