@@ -850,7 +850,7 @@
 824. ProviderService Codex provider validation 的 settings/auth/config shape 判定已改为 `proxy_core_adapter::provider_codex_validation_parts`：ProviderService 继续负责本地化错误和 TOML 语法校验，provider settings 字段读取集中在 adapter。
 825. provider live snapshot 的 Codex `auth`/`config` 提取已改为 `proxy_core_adapter::provider_codex_live_snapshot_parts`：live 写入继续负责文件落盘和错误文案，snapshot 路径保留旧的 auth 存在性语义，字段读取集中在 adapter。
 826. provider live snapshot 的 OpenCode provider fragment 投影已改为 `proxy_core_adapter::provider_opencode_live_provider_fragment`：live 写入继续负责 typed/raw 写入和日志，整份 opencode config 到单 provider fragment 的兼容提取集中在 adapter。
-827. OpenCode live 写入 fallback 的 raw provider shape 检测已改为 `proxy_core_adapter::opencode_live_provider_fragment_has_provider_fields`：provider live 继续负责 raw write 策略，`npm`/`options` 字段存在性规则集中在 core/domain 与 adapter。
+827. OpenCode live 写入 fallback 的 raw provider shape 检测已改为直接调用 `proxy_core::api::domain::opencode_settings_have_live_provider_fields`：provider live 继续负责 raw write 策略，`npm`/`options` 字段存在性规则集中在 core/domain，adapter 不再保留 `opencode_live_provider_fragment_has_provider_fields` 别名。
 828. Gemini live 写入的 `config` object/null/absent/invalid 投影已改为 `proxy_core_adapter::provider_gemini_live_config_object`：`write_gemini_live` 继续负责 settings.json 合并与本地化错误，provider settings 字段读取集中在 adapter。
 829. Codex common-config 路径的 settings `config` TOML 文本读取已改为 `proxy_core_adapter::codex_config_text_from_settings`：ProviderService/provider live 继续负责 TOML merge/remove/export 与错误文案，Codex settings schema 字段读取集中在 adapter。
 830. Gemini common-config 路径的 settings `env` 对象读取已改为 `proxy_core_adapter::gemini_env_map_from_settings`：ProviderService/provider live 继续负责 JSON subset/merge/remove/export 与 credential 排除，Gemini settings schema 字段读取集中在 adapter。
