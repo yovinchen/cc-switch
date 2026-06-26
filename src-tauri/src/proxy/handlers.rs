@@ -13,10 +13,11 @@ use super::{
     error_mapper::{management_api_error_to_proxy_error, proxy_core_error_to_proxy_error},
     response_adapter::{
         claude_passthrough_response_to_axum_response, claude_response_needs_transform,
-        claude_transformed_response_to_axum_response, codex_chat_proxy_request_to_axum_response,
-        codex_responses_proxy_request_to_axum_response, collect_json_proxy_request,
-        dispatch_claude_proxy_request_to_proxy_response, dispatch_gemini_request_to_axum_response,
-        proxy_event_envelope_to_axum_sse_event,
+        claude_transformed_response_to_axum_response, collect_json_proxy_request,
+        dispatch_claude_proxy_request_to_proxy_response,
+        dispatch_codex_chat_request_to_axum_response,
+        dispatch_codex_responses_request_to_axum_response,
+        dispatch_gemini_request_to_axum_response, proxy_event_envelope_to_axum_sse_event,
     },
 };
 use crate::app_config::AppType;
@@ -621,19 +622,7 @@ pub async fn handle_chat_completions(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let parsed_request = collect_json_proxy_request(request).await?;
-    let is_stream = parsed_request.is_stream;
-
-    let mut ctx = parsed_request
-        .request_context(&state, AppType::Codex, "Codex", "codex")
-        .await?;
-    let endpoint = parsed_request.endpoint_for_path("/chat/completions");
-
-    let proxy_request = parsed_request
-        .into_codex_chat_proxy_request(endpoint.clone(), Some(ctx.request_model.clone()));
-
-    codex_chat_proxy_request_to_axum_response(&state, &mut ctx, proxy_request, &endpoint, is_stream)
-        .await
+    dispatch_codex_chat_request_to_axum_response(&state, request).await
 }
 
 /// 处理 /v1/responses 请求（OpenAI Responses API - Codex CLI 透传）
@@ -641,28 +630,7 @@ pub async fn handle_responses(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let parsed_request = collect_json_proxy_request(request).await?;
-    let is_stream = parsed_request.is_stream;
-
-    let mut ctx = parsed_request
-        .request_context(&state, AppType::Codex, "Codex", "codex")
-        .await?;
-    let endpoint = parsed_request.endpoint_for_path("/responses");
-
-    let codex_proxy_request = parsed_request
-        .into_codex_responses_proxy_request(endpoint.clone(), Some(ctx.request_model.clone()));
-    let proxy_request = codex_proxy_request.request;
-    let codex_tool_context = codex_proxy_request.tool_context;
-
-    codex_responses_proxy_request_to_axum_response(
-        &state,
-        &mut ctx,
-        proxy_request,
-        &endpoint,
-        is_stream,
-        codex_tool_context,
-    )
-    .await
+    dispatch_codex_responses_request_to_axum_response(&state, request, "/responses").await
 }
 
 /// 处理 /v1/responses/compact 请求（OpenAI Responses Compact API - Codex CLI 透传）
@@ -670,28 +638,7 @@ pub async fn handle_responses_compact(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let parsed_request = collect_json_proxy_request(request).await?;
-    let is_stream = parsed_request.is_stream;
-
-    let mut ctx = parsed_request
-        .request_context(&state, AppType::Codex, "Codex", "codex")
-        .await?;
-    let endpoint = parsed_request.endpoint_for_path("/responses/compact");
-
-    let codex_proxy_request = parsed_request
-        .into_codex_responses_proxy_request(endpoint.clone(), Some(ctx.request_model.clone()));
-    let proxy_request = codex_proxy_request.request;
-    let codex_tool_context = codex_proxy_request.tool_context;
-
-    codex_responses_proxy_request_to_axum_response(
-        &state,
-        &mut ctx,
-        proxy_request,
-        &endpoint,
-        is_stream,
-        codex_tool_context,
-    )
-    .await
+    dispatch_codex_responses_request_to_axum_response(&state, request, "/responses/compact").await
 }
 
 // ============================================================================

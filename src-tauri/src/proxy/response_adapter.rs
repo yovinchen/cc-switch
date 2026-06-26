@@ -68,6 +68,14 @@ impl ParsedAxumJsonProxyRequest {
         .await
     }
 
+    pub(crate) async fn codex_request_context(
+        &self,
+        state: &ProxyState,
+    ) -> Result<RequestContext, ProxyError> {
+        self.request_context(state, AppType::Codex, "Codex", "codex")
+            .await
+    }
+
     pub(crate) async fn gemini_request_context(
         &self,
         state: &ProxyState,
@@ -316,7 +324,49 @@ async fn dispatch_codex_proxy_request_to_proxy_response(
         .map(CodexProxyDispatchResponse::ProxyResponse)
 }
 
-pub(crate) async fn codex_chat_proxy_request_to_axum_response(
+pub(crate) async fn dispatch_codex_chat_request_to_axum_response(
+    state: &ProxyState,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    let parsed_request = collect_json_proxy_request(request).await?;
+    let is_stream = parsed_request.is_stream;
+
+    let mut ctx = parsed_request.codex_request_context(state).await?;
+    let endpoint = parsed_request.endpoint_for_path("/chat/completions");
+    let proxy_request = parsed_request
+        .into_codex_chat_proxy_request(endpoint.clone(), Some(ctx.request_model.clone()));
+
+    codex_chat_proxy_request_to_axum_response(state, &mut ctx, proxy_request, &endpoint, is_stream)
+        .await
+}
+
+pub(crate) async fn dispatch_codex_responses_request_to_axum_response(
+    state: &ProxyState,
+    request: axum::extract::Request,
+    endpoint_path: &'static str,
+) -> Result<axum::response::Response, ProxyError> {
+    let parsed_request = collect_json_proxy_request(request).await?;
+    let is_stream = parsed_request.is_stream;
+
+    let mut ctx = parsed_request.codex_request_context(state).await?;
+    let endpoint = parsed_request.endpoint_for_path(endpoint_path);
+    let codex_proxy_request = parsed_request
+        .into_codex_responses_proxy_request(endpoint.clone(), Some(ctx.request_model.clone()));
+    let proxy_request = codex_proxy_request.request;
+    let codex_tool_context = codex_proxy_request.tool_context;
+
+    codex_responses_proxy_request_to_axum_response(
+        state,
+        &mut ctx,
+        proxy_request,
+        &endpoint,
+        is_stream,
+        codex_tool_context,
+    )
+    .await
+}
+
+async fn codex_chat_proxy_request_to_axum_response(
     state: &ProxyState,
     ctx: &mut RequestContext,
     proxy_request: ProxyRequest,
@@ -339,7 +389,7 @@ pub(crate) async fn codex_chat_proxy_request_to_axum_response(
     openai_chat_passthrough_response_to_axum_response(response, ctx, state).await
 }
 
-pub(crate) async fn codex_responses_proxy_request_to_axum_response(
+async fn codex_responses_proxy_request_to_axum_response(
     state: &ProxyState,
     ctx: &mut RequestContext,
     proxy_request: ProxyRequest,
