@@ -348,7 +348,8 @@ pub async fn reset_circuit_breaker(
         }
 
         // 创建故障转移切换管理器并执行切换
-        let switch_manager = crate::proxy::failover_switch::FailoverSwitchManager::new(db.clone());
+        let switch_manager =
+            crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager::new(db.clone());
         if let Err(e) = switch_manager
             .try_switch(
                 Some(&app_handle),

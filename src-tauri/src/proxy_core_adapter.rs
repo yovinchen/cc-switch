@@ -21,7 +21,7 @@ use crate::proxy::engine::routing::{
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_core_error_to_proxy_error};
 use crate::proxy::events::ProxyEventBus;
-use crate::proxy::failover_switch::FailoverSwitchManager;
+use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
 use crate::proxy::providers::{get_adapter, ProviderAdapter};
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;

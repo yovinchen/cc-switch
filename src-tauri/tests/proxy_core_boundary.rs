@@ -12643,8 +12643,8 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
 #[test]
 fn production_failover_switch_delegates_proxy_config_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/failover_switch.rs");
-    let source = fs::read_to_string(&path).expect("read failover_switch.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/failover_switch.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/failover_switch.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -12652,7 +12652,7 @@ fn production_failover_switch_delegates_proxy_config_to_adapter() {
         for marker in FORBIDDEN_FAILOVER_SWITCH_CONFIG_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/failover_switch.rs:{} contains proxy config marker `{}`",
+                    "src/proxy/host/cc_switch/failover_switch.rs:{} contains proxy config marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12664,6 +12664,26 @@ fn production_failover_switch_delegates_proxy_config_to_adapter() {
         violations.is_empty(),
         "FailoverSwitchManager must delegate proxy_config reads and enabled policy to proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_failover_switch_legacy_module_is_reexport_only() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/failover_switch.rs");
+    let source = fs::read_to_string(&path).expect("read failover_switch.rs");
+    let production_code: Vec<&str> = production_lines(&source)
+        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert_eq!(
+        production_code,
+        vec![
+            "#[allow(unused_imports)]",
+            "pub(crate) use super::host::cc_switch::failover_switch::*;",
+        ],
+        "legacy proxy/failover_switch.rs must remain a re-export shim after host/cc_switch split"
     );
 }
 
