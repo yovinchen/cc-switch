@@ -8026,10 +8026,30 @@ fn production_forwarder_stays_preplanned_only() {
 }
 
 #[test]
-fn production_forwarder_delegates_upstream_url_planning_to_adapter() {
+fn production_proxy_forwarder_legacy_module_is_reexport_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let production_code: Vec<&str> = production_lines(&source)
+        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert_eq!(
+        production_code,
+        vec![
+            "#[allow(unused_imports)]",
+            "pub(crate) use super::engine::forward_pipeline::*;",
+        ],
+        "legacy proxy/forwarder.rs must remain a re-export shim after engine/forward_pipeline.rs split"
+    );
+}
+
+#[test]
+fn production_forwarder_delegates_upstream_url_planning_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8037,7 +8057,7 @@ fn production_forwarder_delegates_upstream_url_planning_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains upstream URL planning marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains upstream URL planning marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8375,8 +8395,8 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
 #[test]
 fn production_forwarder_delegates_claude_provider_helpers_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8384,7 +8404,7 @@ fn production_forwarder_delegates_claude_provider_helpers_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_CLAUDE_PROVIDER_COMPAT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains Claude provider compat marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains Claude provider compat marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8402,8 +8422,8 @@ fn production_forwarder_delegates_claude_provider_helpers_to_adapter() {
 #[test]
 fn production_forwarder_delegates_codex_provider_helpers_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8411,7 +8431,7 @@ fn production_forwarder_delegates_codex_provider_helpers_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_CODEX_PROVIDER_COMPAT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains Codex provider compat marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains Codex provider compat marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8429,8 +8449,8 @@ fn production_forwarder_delegates_codex_provider_helpers_to_adapter() {
 #[test]
 fn production_forwarder_delegates_request_optimizer_provider_facts_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8438,7 +8458,7 @@ fn production_forwarder_delegates_request_optimizer_provider_facts_to_adapter() 
         for marker in FORBIDDEN_FORWARDER_REQUEST_OPTIMIZER_PROVIDER_FACT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains request optimizer provider fact marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains request optimizer provider fact marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8456,8 +8476,8 @@ fn production_forwarder_delegates_request_optimizer_provider_facts_to_adapter() 
 #[test]
 fn production_forwarder_delegates_request_header_provider_facts_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8465,7 +8485,7 @@ fn production_forwarder_delegates_request_header_provider_facts_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_REQUEST_HEADER_PROVIDER_FACT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains request header provider fact marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains request header provider fact marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8483,8 +8503,8 @@ fn production_forwarder_delegates_request_header_provider_facts_to_adapter() {
 #[test]
 fn production_forwarder_delegates_request_url_provider_facts_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8492,7 +8512,7 @@ fn production_forwarder_delegates_request_url_provider_facts_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_REQUEST_URL_PROVIDER_FACT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains request URL provider fact marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains request URL provider fact marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8510,8 +8530,8 @@ fn production_forwarder_delegates_request_url_provider_facts_to_adapter() {
 #[test]
 fn production_forwarder_delegates_request_media_provider_facts_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8519,7 +8539,7 @@ fn production_forwarder_delegates_request_media_provider_facts_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_REQUEST_MEDIA_PROVIDER_FACT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains request media provider fact marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains request media provider fact marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8537,8 +8557,8 @@ fn production_forwarder_delegates_request_media_provider_facts_to_adapter() {
 #[test]
 fn production_forwarder_delegates_provider_adapter_transform_gate_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8546,7 +8566,7 @@ fn production_forwarder_delegates_provider_adapter_transform_gate_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_TRANSFORM_GATE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains provider adapter transform gate marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains provider adapter transform gate marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8564,8 +8584,8 @@ fn production_forwarder_delegates_provider_adapter_transform_gate_to_adapter() {
 #[test]
 fn production_forwarder_delegates_provider_adapter_request_transform_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8573,7 +8593,7 @@ fn production_forwarder_delegates_provider_adapter_request_transform_to_adapter(
         for marker in FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_REQUEST_TRANSFORM_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains provider adapter request transform marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains provider adapter request transform marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8591,8 +8611,8 @@ fn production_forwarder_delegates_provider_adapter_request_transform_to_adapter(
 #[test]
 fn production_forwarder_delegates_provider_adapter_base_url_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8600,7 +8620,7 @@ fn production_forwarder_delegates_provider_adapter_base_url_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_BASE_URL_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains provider adapter base URL marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains provider adapter base URL marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8618,8 +8638,8 @@ fn production_forwarder_delegates_provider_adapter_base_url_to_adapter() {
 #[test]
 fn production_forwarder_delegates_provider_adapter_auth_info_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8627,7 +8647,7 @@ fn production_forwarder_delegates_provider_adapter_auth_info_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_AUTH_INFO_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains provider adapter auth info marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains provider adapter auth info marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8645,8 +8665,8 @@ fn production_forwarder_delegates_provider_adapter_auth_info_to_adapter() {
 #[test]
 fn production_forwarder_delegates_provider_adapter_auth_headers_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8654,7 +8674,7 @@ fn production_forwarder_delegates_provider_adapter_auth_headers_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains provider adapter auth header marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains provider adapter auth header marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8672,8 +8692,8 @@ fn production_forwarder_delegates_provider_adapter_auth_headers_to_adapter() {
 #[test]
 fn production_forwarder_delegates_provider_adapter_url_building_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8681,7 +8701,7 @@ fn production_forwarder_delegates_provider_adapter_url_building_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_URL_BUILD_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains provider adapter URL build marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains provider adapter URL build marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8699,8 +8719,8 @@ fn production_forwarder_delegates_provider_adapter_url_building_to_adapter() {
 #[test]
 fn production_forwarder_delegates_provider_adapter_name_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8708,7 +8728,7 @@ fn production_forwarder_delegates_provider_adapter_name_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_NAME_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains provider adapter name marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains provider adapter name marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8726,8 +8746,8 @@ fn production_forwarder_delegates_provider_adapter_name_to_adapter() {
 #[test]
 fn production_forwarder_delegates_provider_adapter_registry_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8735,7 +8755,7 @@ fn production_forwarder_delegates_provider_adapter_registry_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_REGISTRY_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains provider adapter registry marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains provider adapter registry marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8753,8 +8773,8 @@ fn production_forwarder_delegates_provider_adapter_registry_to_adapter() {
 #[test]
 fn production_forwarder_uses_adapter_context_without_provider_trait() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8762,7 +8782,7 @@ fn production_forwarder_uses_adapter_context_without_provider_trait() {
         for marker in FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_TRAIT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains provider adapter trait marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains provider adapter trait marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8780,8 +8800,8 @@ fn production_forwarder_uses_adapter_context_without_provider_trait() {
 #[test]
 fn production_forwarder_delegates_channel_status_mapping_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8789,7 +8809,7 @@ fn production_forwarder_delegates_channel_status_mapping_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_CHANNEL_STATUS_MAPPING_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains channel status mapping marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains channel status mapping marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8810,7 +8830,7 @@ fn production_provider_module_excludes_codex_chat_history_state() {
     let provider_mod_path = manifest_dir.join("src/proxy/providers/mod.rs");
     let provider_mod = fs::read_to_string(&provider_mod_path).expect("read providers/mod.rs");
     let proxy_paths = [
-        "src/proxy/forwarder.rs",
+        "src/proxy/engine/forward_pipeline.rs",
         "src/proxy/transport/http/handlers.rs",
         "src/proxy/transport/http/server.rs",
     ];
@@ -10934,8 +10954,8 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
 #[test]
 fn production_forwarder_delegates_managed_auth_resolution_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -10943,7 +10963,7 @@ fn production_forwarder_delegates_managed_auth_resolution_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains managed auth marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains managed auth marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11107,8 +11127,8 @@ fn production_adapter_managed_auth_tests_use_runtime_source_surface() {
 #[test]
 fn production_forwarder_uses_managed_auth_runtime_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let struct_slice = function_slice(
@@ -11157,7 +11177,7 @@ fn production_forwarder_uses_managed_auth_runtime_source_resource() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains managed-auth app_handle source marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains managed-auth app_handle source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11175,8 +11195,8 @@ fn production_forwarder_uses_managed_auth_runtime_source_resource() {
 #[test]
 fn production_forwarder_delegates_failover_switch_scheduling_to_manager() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -11184,7 +11204,7 @@ fn production_forwarder_delegates_failover_switch_scheduling_to_manager() {
         for marker in FORBIDDEN_FORWARDER_FAILOVER_SWITCH_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains failover switch marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains failover switch marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11202,8 +11222,8 @@ fn production_forwarder_delegates_failover_switch_scheduling_to_manager() {
 #[test]
 fn production_forwarder_uses_failover_switch_scheduler_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     assert!(
         source.contains("failover_switch_scheduler"),
@@ -11223,7 +11243,7 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains failover host resource marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains failover host resource marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11241,8 +11261,9 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
 #[test]
 fn production_forwarder_delegates_copilot_dynamic_base_url_to_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
-    let forwarder_source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let forwarder_source =
+        fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
 
@@ -11272,7 +11293,7 @@ fn production_forwarder_delegates_copilot_dynamic_base_url_to_runtime_source() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct Copilot dynamic endpoint marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct Copilot dynamic endpoint marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11290,8 +11311,9 @@ fn production_forwarder_delegates_copilot_dynamic_base_url_to_runtime_source() {
 #[test]
 fn production_forwarder_delegates_claude_api_format_to_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
-    let forwarder_source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let forwarder_source =
+        fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
 
@@ -11317,7 +11339,7 @@ fn production_forwarder_delegates_claude_api_format_to_runtime_source() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct Claude API format runtime marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct Claude API format runtime marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11335,8 +11357,9 @@ fn production_forwarder_delegates_claude_api_format_to_runtime_source() {
 #[test]
 fn production_forwarder_delegates_claude_body_policy_gate_to_request_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
-    let forwarder_source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let forwarder_source =
+        fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
 
@@ -11368,7 +11391,7 @@ fn production_forwarder_delegates_claude_body_policy_gate_to_request_source() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct Claude body policy gate marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct Claude body policy gate marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11386,8 +11409,9 @@ fn production_forwarder_delegates_claude_body_policy_gate_to_request_source() {
 #[test]
 fn production_forwarder_delegates_codex_media_prevention_gate_to_request_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
-    let forwarder_source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let forwarder_source =
+        fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
 
@@ -11414,7 +11438,7 @@ fn production_forwarder_delegates_codex_media_prevention_gate_to_request_source(
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct Codex media prevention gate marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct Codex media prevention gate marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11444,8 +11468,9 @@ fn production_forwarder_delegates_codex_media_prevention_gate_to_request_source(
 #[test]
 fn production_forwarder_delegates_claude_transform_gate_to_request_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
-    let forwarder_source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let forwarder_source =
+        fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
 
@@ -11467,7 +11492,7 @@ fn production_forwarder_delegates_claude_transform_gate_to_request_source() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct Claude transform gate marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct Claude transform gate marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11717,8 +11742,9 @@ fn production_codex_oauth_auth_delegates_device_poll_contract_to_core() {
 #[test]
 fn production_forwarder_delegates_copilot_live_model_resolution_to_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
-    let forwarder_source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let forwarder_source =
+        fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
 
@@ -11748,7 +11774,7 @@ fn production_forwarder_delegates_copilot_live_model_resolution_to_runtime_sourc
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct Copilot live model marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct Copilot live model marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11766,8 +11792,9 @@ fn production_forwarder_delegates_copilot_live_model_resolution_to_runtime_sourc
 #[test]
 fn production_forwarder_uses_request_source_for_managed_account_runtime() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
-    let forwarder_source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let forwarder_source =
+        fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let struct_slice = function_slice(
@@ -11808,8 +11835,8 @@ fn production_forwarder_uses_request_source_for_managed_account_runtime() {
 #[test]
 fn production_forwarder_uses_auth_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -11928,7 +11955,7 @@ fn production_forwarder_uses_auth_source_resource() {
         for marker in impl_forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct auth assembly marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct auth assembly marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11946,8 +11973,8 @@ fn production_forwarder_uses_auth_source_resource() {
 #[test]
 fn production_forwarder_uses_runtime_state_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -12121,7 +12148,7 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         for marker in struct_forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs RequestForwarder:{} contains runtime state field marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs RequestForwarder:{} contains runtime state field marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12133,7 +12160,7 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         for marker in impl_forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct runtime state marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct runtime state marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12224,8 +12251,8 @@ fn production_forwarder_active_connection_guard_uses_runtime_state_source() {
 #[test]
 fn production_forwarder_request_lifecycle_uses_runtime_state_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
     let forbidden_markers = [
@@ -12239,7 +12266,7 @@ fn production_forwarder_request_lifecycle_uses_runtime_state_source() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct request lifecycle marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct request lifecycle marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12257,8 +12284,8 @@ fn production_forwarder_request_lifecycle_uses_runtime_state_source() {
 #[test]
 fn production_forwarder_attempt_events_use_runtime_state_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
     let forbidden_markers = ["emit_attempt_event_source("];
@@ -12269,7 +12296,7 @@ fn production_forwarder_attempt_events_use_runtime_state_source() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct attempt event marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct attempt event marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12287,8 +12314,8 @@ fn production_forwarder_attempt_events_use_runtime_state_source() {
 #[test]
 fn production_forwarder_active_route_target_uses_runtime_state_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
     let forbidden_markers = ["record_forward_active_route_target_runtime_source("];
@@ -12299,7 +12326,7 @@ fn production_forwarder_active_route_target_uses_runtime_state_source() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct active-route target marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct active-route target marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12317,8 +12344,8 @@ fn production_forwarder_active_route_target_uses_runtime_state_source() {
 #[test]
 fn production_forwarder_status_updates_use_runtime_state_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
     let forbidden_markers = [
@@ -12332,7 +12359,7 @@ fn production_forwarder_status_updates_use_runtime_state_source() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct status update marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct status update marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12350,8 +12377,8 @@ fn production_forwarder_status_updates_use_runtime_state_source() {
 #[test]
 fn production_forwarder_provider_status_updates_use_runtime_state_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
     let forbidden_markers = [
@@ -12366,7 +12393,7 @@ fn production_forwarder_provider_status_updates_use_runtime_state_source() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct provider status marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct provider status marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12384,8 +12411,8 @@ fn production_forwarder_provider_status_updates_use_runtime_state_source() {
 #[test]
 fn production_forwarder_uses_protocol_state_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -12424,7 +12451,7 @@ fn production_forwarder_uses_protocol_state_source_resource() {
         for marker in struct_forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs RequestForwarder:{} contains protocol state field marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs RequestForwarder:{} contains protocol state field marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12436,7 +12463,7 @@ fn production_forwarder_uses_protocol_state_source_resource() {
         for marker in impl_forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct protocol state marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct protocol state marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12454,8 +12481,8 @@ fn production_forwarder_uses_protocol_state_source_resource() {
 #[test]
 fn production_forwarder_uses_attempt_runtime_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let struct_slice = function_slice(
@@ -12565,7 +12592,7 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         for marker in struct_forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs RequestForwarder:{} contains attempt runtime field marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs RequestForwarder:{} contains attempt runtime field marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12577,7 +12604,7 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         for marker in impl_forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct attempt runtime marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct attempt runtime marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12735,8 +12762,8 @@ fn production_set_auto_failover_command_delegates_plan_sources_to_adapter() {
 #[test]
 fn production_forwarder_uses_transport_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let struct_slice = function_slice(
@@ -12796,7 +12823,7 @@ fn production_forwarder_uses_transport_source_resource() {
         for marker in impl_forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct transport marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct transport marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12814,8 +12841,8 @@ fn production_forwarder_uses_transport_source_resource() {
 #[test]
 fn production_forwarder_uses_request_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let core_transport_path = manifest_dir.join("crates/proxy-core/src/request_transport.rs");
@@ -13262,7 +13289,7 @@ fn production_forwarder_uses_request_source_resource() {
         for marker in impl_forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct request assembly marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct request assembly marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -13322,8 +13349,8 @@ fn proxy_core_adapter_forward_model_mapping_uses_adapter_claude_desktop_projecti
 #[test]
 fn production_forwarder_uses_response_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let struct_slice = function_slice(
@@ -13425,7 +13452,7 @@ fn production_forwarder_uses_response_source_resource() {
         for marker in impl_forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct response-readiness marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs impl RequestForwarder:{} contains direct response-readiness marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -13443,8 +13470,8 @@ fn production_forwarder_uses_response_source_resource() {
 #[test]
 fn production_forwarder_delegates_runtime_events_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -13452,7 +13479,7 @@ fn production_forwarder_delegates_runtime_events_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_RUNTIME_EVENT_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains runtime event marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains runtime event marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -13470,8 +13497,8 @@ fn production_forwarder_delegates_runtime_events_to_adapter() {
 #[test]
 fn production_forwarder_delegates_attempt_runtime_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -13479,7 +13506,7 @@ fn production_forwarder_delegates_attempt_runtime_to_adapter() {
         for marker in FORBIDDEN_FORWARDER_ATTEMPT_RUNTIME_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs:{} contains attempt runtime marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs:{} contains attempt runtime marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -14292,8 +14319,9 @@ fn production_forwarder_runtime_config_reaches_forwarder_as_single_input() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
-    let forwarder_source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let forwarder_source =
+        fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
 
     let bridge_slice = function_slice(
         &adapter_source,
@@ -15933,8 +15961,8 @@ fn production_forward_attempt_excludes_provider_only_constructor() {
 #[test]
 fn production_forward_error_excludes_host_provider_payload() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let forward_error = function_slice(
         &source,
         "pub struct ForwardError",
@@ -15948,7 +15976,7 @@ fn production_forward_error_excludes_host_provider_payload() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs ForwardError:{} contains host provider payload marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs ForwardError:{} contains host provider payload marker `{}`",
                     line_index + 1,
                     marker
                 ));

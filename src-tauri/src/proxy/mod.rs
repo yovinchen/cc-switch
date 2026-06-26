@@ -27,4 +27,4 @@ pub(crate) mod switch_lock;
 pub(crate) mod transport;
 pub mod usage;
 
-pub(crate) use forwarder::{ForwardError, ForwardResult, RequestForwarder};
+pub(crate) use engine::forward_pipeline::{ForwardError, ForwardResult, RequestForwarder};
