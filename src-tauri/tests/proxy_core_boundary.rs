@@ -16467,6 +16467,11 @@ fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
     let usage_sink_path = manifest_dir.join("src/proxy/host/cc_switch/database_usage_sink.rs");
     let usage_sink_source =
         fs::read_to_string(&usage_sink_path).expect("read database_usage_sink.rs");
+    let adapter_core_ports_import = function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
+        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+    );
 
     assert!(
         usage_sink_source.contains("pub(crate) struct CcSwitchUsageSink")
@@ -16482,6 +16487,22 @@ fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
             && !adapter_source.contains("impl UsageSink for CcSwitchUsageSink")
             && !adapter_source.contains("pub(crate) async fn record_usage_in_db_source("),
         "proxy_core_adapter should re-export, not own, the CC Switch usage sink source"
+    );
+    assert!(
+        usage_sink_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && usage_sink_source.contains("use crate::proxy_core::api::ports::UsageSink;")
+            && usage_sink_source.contains(
+                "use crate::proxy_core::api::usage::{CostBreakdown, ModelPricing, TokenUsage, UsageRecord};"
+            ),
+        "CC Switch usage sink should import core usage sink/result/DTO contracts directly"
+    );
+    assert!(
+        !adapter_core_ports_import.contains("UsageSink"),
+        "proxy_core_adapter should not re-export the UsageSink port trait"
+    );
+    assert!(
+        !usage_sink_source.contains("ProxyCoreResult, TokenUsage, UsageRecord, UsageSink"),
+        "CC Switch usage sink should not import UsageSink or usage DTO contracts through proxy_core_adapter"
     );
 }
 

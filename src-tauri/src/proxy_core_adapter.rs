@@ -602,8 +602,8 @@ pub(crate) type CodexChatReasoningProfile =
     crate::proxy_core::api::transforms::CodexChatReasoningProfile;
 pub(crate) type CodexToolContext = crate::proxy_core::api::transforms::CodexToolContext;
 pub(crate) type ProxyResponseBody = crate::proxy_core::api::transport::ProxyResponseBody;
-pub(crate) type CostBreakdown = crate::proxy_core::api::usage::CostBreakdown;
 pub(crate) type ModelPricing = crate::proxy_core::api::usage::ModelPricing;
+#[cfg(test)]
 pub(crate) type TokenUsage = crate::proxy_core::api::usage::TokenUsage;
 pub(crate) type UsageRecord = crate::proxy_core::api::usage::UsageRecord;
 pub(crate) type UsageRouteContext = crate::proxy_core::api::usage::UsageRouteContext;
@@ -2459,7 +2459,7 @@ pub(crate) use crate::proxy_core::api::ports::ChannelReachabilityProbe;
 pub(crate) use crate::proxy_core::api::ports::{
     channel_breaker_stats_from_parts, channel_health_reset_from_parts, AppSummaryConfig,
     AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelSource, ProviderSource,
-    ProxyConfigSource, ProxyServices, RoutePolicySource, UsageSink,
+    ProxyConfigSource, ProxyServices, RoutePolicySource,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;

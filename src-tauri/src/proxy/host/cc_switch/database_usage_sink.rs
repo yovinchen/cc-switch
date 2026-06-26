@@ -2,10 +2,12 @@
 
 use crate::database::{Database, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
 use crate::error::AppError;
+use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::ports::UsageSink;
+use crate::proxy_core::api::usage::{CostBreakdown, ModelPricing, TokenUsage, UsageRecord};
 use crate::proxy_core_adapter::{
     log_usage_request_projection_warnings, usage_error, usage_pricing_config_lookup_from_record,
-    usage_record_pricing_model, usage_record_to_request_log, CostBreakdown, ModelPricing,
-    ProxyCoreResult, TokenUsage, UsageRecord, UsageSink,
+    usage_record_pricing_model, usage_record_to_request_log,
 };
 use crate::services::usage_stats::find_model_pricing_row;
 use futures::future::BoxFuture;
