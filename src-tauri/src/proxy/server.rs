@@ -13,16 +13,15 @@ use crate::database::Database;
 use crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source;
 use crate::proxy_core_adapter::ProxyState;
 use crate::proxy_core_adapter::{
-    await_proxy_http_accept_loop_stop, provider_circuit_breaker_stats_source,
-    proxy_http_router_from_state, record_proxy_server_bound_runtime_source,
-    record_proxy_server_started_info_runtime_source, reset_provider_circuit_breaker_source,
-    server_log_codes as log_srv, set_active_route_target_runtime_source,
-    spawn_proxy_http_accept_loop, update_all_circuit_breaker_configs_source,
-    update_app_circuit_breaker_config_source, CircuitBreakerConfig, CircuitBreakerStats,
-    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+    await_proxy_http_accept_loop_stop, bind_proxy_http_listener,
+    provider_circuit_breaker_stats_source, proxy_http_router_from_state,
+    record_proxy_server_bound_runtime_source, record_proxy_server_started_info_runtime_source,
+    reset_provider_circuit_breaker_source, server_log_codes as log_srv,
+    set_active_route_target_runtime_source, spawn_proxy_http_accept_loop,
+    update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
+    CircuitBreakerConfig, CircuitBreakerStats, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
 };
 use axum::Router;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{oneshot, RwLock};
 use tokio::task::JoinHandle;
@@ -66,11 +65,6 @@ impl ProxyServer {
             return Err(ProxyError::AlreadyRunning);
         }
 
-        let addr: SocketAddr =
-            format!("{}:{}", self.config.listen_address, self.config.listen_port)
-                .parse()
-                .map_err(|e| ProxyError::BindFailed(format!("无效的地址: {e}")))?;
-
         // 创建关闭通道
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
@@ -78,12 +72,7 @@ impl ProxyServer {
         let app = self.build_router();
 
         // 绑定监听器
-        let listener = tokio::net::TcpListener::bind(&addr)
-            .await
-            .map_err(|e| ProxyError::BindFailed(e.to_string()))?;
-        let local_addr = listener
-            .local_addr()
-            .map_err(|e| ProxyError::BindFailed(e.to_string()))?;
+        let (listener, local_addr) = bind_proxy_http_listener(&self.config).await?;
         let actual_port = local_addr.port();
 
         log::info!("[{}] 代理服务器启动于 {local_addr}", log_srv::STARTED);

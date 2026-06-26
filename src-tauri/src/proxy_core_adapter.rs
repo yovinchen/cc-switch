@@ -60,6 +60,7 @@ use indexmap::IndexMap;
 use rust_decimal::Decimal;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::{oneshot, Mutex, RwLock};
@@ -686,6 +687,23 @@ pub(crate) fn proxy_server_from_runtime_config(
 ) -> CcSwitchProxyServer {
     let state = proxy_state_from_runtime_sources(config.clone(), db, app_handle);
     ProxyServer::from_runtime_state(config, state)
+}
+
+pub(crate) async fn bind_proxy_http_listener(
+    config: &ProxyConfig,
+) -> Result<(tokio::net::TcpListener, SocketAddr), ProxyError> {
+    let addr: SocketAddr = format!("{}:{}", config.listen_address, config.listen_port)
+        .parse()
+        .map_err(|e| ProxyError::BindFailed(format!("无效的地址: {e}")))?;
+
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .map_err(|e| ProxyError::BindFailed(e.to_string()))?;
+    let local_addr = listener
+        .local_addr()
+        .map_err(|e| ProxyError::BindFailed(e.to_string()))?;
+
+    Ok((listener, local_addr))
 }
 
 pub(crate) fn proxy_http_router_from_state(state: ProxyState) -> AxumRouter {

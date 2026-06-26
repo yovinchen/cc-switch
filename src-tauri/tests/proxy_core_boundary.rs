@@ -731,6 +731,13 @@ const FORBIDDEN_PROXY_SERVER_STOP_WAIT_MARKERS: &[&str] = &[
     "log_srv::STOPPED",
     "log_srv::STOP_TIMEOUT",
 ];
+const FORBIDDEN_PROXY_SERVER_LISTENER_BIND_MARKERS: &[&str] = &[
+    "SocketAddr",
+    "TcpListener::bind(",
+    "ProxyError::BindFailed",
+    ".local_addr()",
+    ".parse()",
+];
 const FORBIDDEN_PROXY_CORE_CONFIG_SOURCE_APP_CATALOG_MARKERS: &[&str] = &[
     "AppKind::Claude",
     "AppKind::ClaudeDesktop",
@@ -14819,6 +14826,55 @@ fn production_proxy_server_delegates_accept_loop_to_adapter() {
     assert!(
         violations.is_empty(),
         "production ProxyServer must delegate Hyper accept-loop and header-case capture to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_server_delegates_listener_bind_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/server.rs");
+    let source = fs::read_to_string(&path).expect("read server.rs");
+    let start_slice = function_slice(&source, "    pub async fn start", "    pub async fn stop");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let listener_bind = function_slice(
+        &adapter_source,
+        "pub(crate) async fn bind_proxy_http_listener",
+        "pub(crate) fn proxy_http_router_from_state",
+    );
+
+    assert!(
+        start_slice.contains("bind_proxy_http_listener(&self.config).await?"),
+        "ProxyServer::start must delegate address parsing and listener bind to proxy_core_adapter"
+    );
+
+    assert!(
+        listener_bind.contains("format!(\"{}:{}\", config.listen_address, config.listen_port)")
+            && listener_bind.contains("tokio::net::TcpListener::bind(&addr)")
+            && listener_bind.contains(".local_addr()")
+            && listener_bind.contains("ProxyError::BindFailed(format!(\"无效的地址: {e}\"))")
+            && listener_bind.contains("ProxyError::BindFailed(e.to_string())"),
+        "proxy_core_adapter must own listener address parsing, bind, local address lookup, and bind error mapping"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(start_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVER_LISTENER_BIND_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/server.rs ProxyServer::start:{} contains listener-bind marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production ProxyServer must delegate listener binding to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
