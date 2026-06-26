@@ -24,6 +24,7 @@ pub(crate) mod provider_router_channel_source;
 pub(crate) mod provider_router_config_source;
 pub(crate) mod provider_router_health_store;
 pub(crate) mod provider_router_provider_source;
+pub(crate) mod provider_source;
 pub(crate) mod runtime_status_source;
 pub(crate) mod route_policy_source;
 pub(crate) mod route_resolver;

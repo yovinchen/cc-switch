@@ -14083,6 +14083,32 @@ fn production_proxy_core_host_delegates_provider_source_to_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_provider_source_to_host_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_source.rs");
+    let source = fs::read_to_string(&source_path).expect("read provider_source.rs");
+
+    assert!(
+        source.contains("pub(crate) struct CcSwitchProviderSource")
+            && source.contains("impl ProviderSource for CcSwitchProviderSource")
+            && source.contains("provider_specs_from_db_source(&self.db, app)")
+            && source.contains("current_provider_id_from_db_source(&self.db, app)")
+            && source.contains("active_route_target_from_runtime_source(&self.current_providers, app).await")
+            && source.contains("route_candidate_provider_ids_from_router_source(&self.router, app).await"),
+        "CC Switch provider source should live in host/cc_switch/provider_source.rs"
+    );
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::provider_source::CcSwitchProviderSource"
+        ) && !adapter_source.contains("pub(crate) struct CcSwitchProviderSource")
+            && !adapter_source.contains("impl ProviderSource for CcSwitchProviderSource"),
+        "proxy_core_adapter should re-export, not own, the CC Switch provider source"
+    );
+}
+
+#[test]
 fn production_proxy_core_host_delegates_channel_spec_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
