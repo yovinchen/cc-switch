@@ -7,9 +7,8 @@
 //! - HTTP handler 只保留 Axum 提取、鉴权和管理 API 转发
 
 use super::{
-    auth_adapter::validate_claude_desktop_gateway_auth,
+    auth_adapter::{validate_claude_desktop_gateway_auth, validate_proxy_management_auth},
     error::ProxyError,
-    error_mapper::proxy_core_error_to_proxy_error,
     response_adapter::{
         dispatch_claude_desktop_messages_request_to_axum_response,
         dispatch_claude_desktop_models_request_to_axum_json_response,
@@ -98,11 +97,7 @@ pub async fn require_proxy_management_auth(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Result<axum::response::Response, ProxyError> {
-    state
-        .proxy_engine()
-        .validate_management_auth(request.headers())
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
+    validate_proxy_management_auth(&state, request.headers()).await?;
 
     Ok(next.run(request).await)
 }

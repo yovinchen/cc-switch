@@ -1519,6 +1519,8 @@ const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_NORMALIZE_MARKERS: &[&str] = &[
     "api_format.trim()",
 ];
 const FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS: &[&str] = &[
+    ".proxy_engine()",
+    ".validate_management_auth(",
     "state.config",
     ".config.read()",
     "std::env::var(",
@@ -5462,8 +5464,8 @@ fn production_handlers_delegate_management_auth_decisions_to_adapter() {
     );
 
     assert!(
-        handler.contains(".proxy_engine()") && handler.contains(".validate_management_auth("),
-        "management auth middleware must delegate auth validation to ProxyEngine"
+        handler.contains("validate_proxy_management_auth(&state, request.headers()).await?"),
+        "management auth middleware must delegate auth validation to auth_adapter"
     );
 
     let mut violations = Vec::new();
@@ -5482,7 +5484,7 @@ fn production_handlers_delegate_management_auth_decisions_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "management auth middleware must delegate token-source decisions to proxy_core_adapter helpers:\n{}",
+        "management auth middleware must delegate token-source decisions and engine calls to auth_adapter:\n{}",
         violations.join("\n")
     );
 }
@@ -6760,6 +6762,50 @@ fn claude_desktop_config_does_not_retain_direct_gateway_credentials_wrapper() {
         !source.contains("pub fn direct_gateway_credentials(")
             && !source.contains("struct DirectGatewayCredentials"),
         "claude_desktop_config should not retain Direct gateway credential wrapper DTOs after provider validation/profile assembly moved to proxy_core_adapter"
+    );
+}
+
+#[test]
+fn proxy_management_auth_delegates_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/auth_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read auth_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) async fn validate_proxy_management_auth",
+        "}",
+    );
+
+    assert!(
+        function.contains(".proxy_engine()") && function.contains(".validate_management_auth(headers)"),
+        "management auth adapter must delegate token-source lookup and bearer validation to ProxyEngine"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in [
+            "state.config",
+            ".config.read()",
+            "std::env::var(",
+            "CC_SWITCH_PROXY_MANAGEMENT_TOKEN",
+            "resolve_management_auth_decision(",
+            "validate_management_bearer_header(",
+        ] {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/auth_adapter.rs validate_proxy_management_auth:{} contains management auth decision marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "management auth adapter must keep token-source decisions behind ProxyEngine:\n{}",
+        violations.join("\n")
     );
 }
 
