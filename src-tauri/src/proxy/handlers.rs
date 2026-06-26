@@ -32,8 +32,7 @@ use crate::proxy_core_adapter::{
     append_query_to_endpoint_path, claude_transformed_json_response_from_context,
     claude_transformed_sse_stream_from_context, codex_auto_transformed_json_response_from_context,
     codex_auto_transformed_sse_stream_from_context, codex_chat_transform_streaming_decision,
-    extract_anthropic_tool_schema_hints, extract_gemini_model_from_path,
-    json_proxy_request_from_input, parse_json_proxy_request_body,
+    extract_gemini_model_from_path, json_proxy_request_from_input, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, provider_claude_transform_streaming_decision,
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
     read_decoded_proxy_response_body, record_forward_core_error_usage, strip_endpoint_prefix,
@@ -676,9 +675,6 @@ async fn handle_claude_transform(
         response.headers(),
         api_format,
     );
-    let tool_schema_hints = extract_anthropic_tool_schema_hints(original_body);
-    let tool_schema_hints = (!tool_schema_hints.is_empty()).then_some(tool_schema_hints);
-
     if streaming_decision.use_streaming {
         let stream = response.bytes_stream();
         let logged_stream = claude_transformed_sse_stream_from_context(
@@ -688,7 +684,7 @@ async fn handle_claude_transform(
                 ctx,
                 provider,
                 api_format,
-                tool_schema_hints: tool_schema_hints.clone(),
+                original_body,
                 status_code: status.as_u16(),
                 connection_guard,
             },
@@ -718,7 +714,7 @@ async fn handle_claude_transform(
             ctx,
             provider,
             api_format,
-            tool_schema_hints: tool_schema_hints.as_ref(),
+            original_body,
             status_code: status.as_u16(),
         },
     )

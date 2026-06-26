@@ -11722,7 +11722,7 @@ pub(crate) struct ClaudeTransformedSseStreamContext<'a, G> {
     pub(crate) ctx: &'a RequestContext,
     pub(crate) provider: &'a Provider,
     pub(crate) api_format: &'a str,
-    pub(crate) tool_schema_hints: Option<AnthropicToolSchemaHints>,
+    pub(crate) original_body: &'a Value,
     pub(crate) status_code: u16,
     pub(crate) connection_guard: Option<G>,
 }
@@ -11732,21 +11732,27 @@ pub(crate) struct ClaudeTransformedJsonResponseContext<'a> {
     pub(crate) ctx: &'a RequestContext,
     pub(crate) provider: &'a Provider,
     pub(crate) api_format: &'a str,
-    pub(crate) tool_schema_hints: Option<&'a AnthropicToolSchemaHints>,
+    pub(crate) original_body: &'a Value,
     pub(crate) status_code: u16,
+}
+
+fn claude_transform_tool_schema_hints(original_body: &Value) -> Option<AnthropicToolSchemaHints> {
+    let tool_schema_hints = extract_anthropic_tool_schema_hints(original_body);
+    (!tool_schema_hints.is_empty()).then_some(tool_schema_hints)
 }
 
 pub(crate) fn claude_transformed_json_response_from_context(
     upstream_response: &Value,
     context: ClaudeTransformedJsonResponseContext<'_>,
 ) -> Result<Value, String> {
+    let tool_schema_hints = claude_transform_tool_schema_hints(context.original_body);
     let anthropic_response = provider_claude_transform_response_for_api_format(
         upstream_response,
         context.api_format,
         Some(context.state.gemini_shadow.as_ref()),
         Some(&context.provider.id),
         Some(&context.ctx.session_id),
-        context.tool_schema_hints,
+        tool_schema_hints.as_ref(),
     )?;
 
     record_claude_transformed_response_usage(
@@ -11765,13 +11771,14 @@ pub(crate) fn claude_transformed_sse_stream_from_context<G>(
 where
     G: Send + 'static,
 {
+    let tool_schema_hints = claude_transform_tool_schema_hints(context.original_body);
     let sse_stream = provider_claude_transform_sse_for_api_format(
         stream,
         context.api_format,
         Some(context.state.gemini_shadow.clone()),
         Some(context.provider.id.clone()),
         Some(context.ctx.session_id.clone()),
-        context.tool_schema_hints,
+        tool_schema_hints,
     );
 
     create_claude_transformed_logged_stream(

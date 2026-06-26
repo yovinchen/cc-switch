@@ -1574,6 +1574,7 @@ const FORBIDDEN_HANDLER_TRANSFORMED_RESPONSE_BUILD_CONTEXT_MARKERS: &[&str] = &[
     "transformed_sse_proxy_response_to_axum_response(",
 ];
 const FORBIDDEN_HANDLER_CLAUDE_RESPONSE_TRANSFORM_DISPATCH_MARKERS: &[&str] = &[
+    "extract_anthropic_tool_schema_hints(",
     "openai_responses_to_anthropic_message(",
     "openai_chat_to_anthropic_message(",
     "gemini_response_to_anthropic_message_with_shadow(",
