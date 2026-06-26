@@ -38,6 +38,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/model_catalog_provider.rs",
     "src/proxy/host/cc_switch/provider_adapter_context.rs",
     "src/proxy/host/cc_switch/provider_router_channel_source.rs",
+    "src/proxy/host/cc_switch/provider_router_config_source.rs",
     "src/proxy/host/cc_switch/provider_router_provider_source.rs",
     "src/proxy/host/cc_switch/provider_source.rs",
     "src/proxy/host/cc_switch/proxy_runtime.rs",
@@ -15910,11 +15911,11 @@ fn proxy_core_adapter_delegates_config_source_to_host_module() {
         "CC Switch config source should live in host/cc_switch/config_source.rs"
     );
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::config_source::CcSwitchConfigSource"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchConfigSource")
             && !adapter_source.contains("impl ProxyConfigSource for CcSwitchConfigSource"),
-        "proxy_core_adapter should re-export, not own, the CC Switch config source"
+        "proxy_core_adapter should not own or re-export the CC Switch config source"
     );
     assert!(
         source.contains(
@@ -18507,6 +18508,11 @@ fn production_provider_router_config_source_uses_core_config_source() {
     let source_path =
         manifest_dir.join("src/proxy/host/cc_switch/provider_router_config_source.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_router_config_source.rs");
+    let source_adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::{",
+        "};\nuse futures::future::BoxFuture;",
+    );
 
     assert!(
         source.contains("source: CcSwitchConfigSource")
@@ -18519,6 +18525,18 @@ fn production_provider_router_config_source_uses_core_config_source() {
             && source.contains("circuit_failure_threshold_from_router_config_source"),
         "ProviderRouter config source must project router config from ProxyConfigSource"
     );
+    assert!(
+        source.contains(
+            "use crate::proxy::host::cc_switch::config_source::CcSwitchConfigSource;"
+        ) && source.contains("use crate::proxy_core::api::config::CircuitBreakerConfig;"),
+        "ProviderRouter config source should import host config source and core config contract directly"
+    );
+    for adapter_type in ["CcSwitchConfigSource", "CircuitBreakerConfig"] {
+        assert!(
+            !source_adapter_import.contains(adapter_type),
+            "ProviderRouter config source should not import {adapter_type} through proxy_core_adapter"
+        );
+    }
     assert!(
         !adapter_source.contains("struct CcSwitchProviderRouterConfigSource")
             && !adapter_source

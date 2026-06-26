@@ -22,7 +22,6 @@ use crate::proxy::events::ProxyEventBus;
 pub(crate) use crate::proxy::host::cc_switch::channel_health_store::CcSwitchChannelHealthStore;
 #[allow(unused_imports)]
 pub(crate) use crate::proxy::host::cc_switch::claude_desktop_gateway_auth_source::CcSwitchClaudeDesktopGatewayAuthSource;
-pub(crate) use crate::proxy::host::cc_switch::config_source::CcSwitchConfigSource;
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
 #[allow(unused_imports)]

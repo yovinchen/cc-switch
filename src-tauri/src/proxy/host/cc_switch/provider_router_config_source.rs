@@ -1,11 +1,12 @@
 //! CC Switch ProviderRouter config source.
 
 use crate::proxy::engine::routing::ProviderRouterConfigSource;
+use crate::proxy::host::cc_switch::config_source::CcSwitchConfigSource;
+use crate::proxy_core::api::config::CircuitBreakerConfig;
 use crate::proxy_core_adapter::{
     auto_failover_enabled_from_router_config_source,
     circuit_breaker_config_from_router_config_source,
-    circuit_failure_threshold_from_router_config_source, CcSwitchConfigSource,
-    CircuitBreakerConfig,
+    circuit_failure_threshold_from_router_config_source,
 };
 use futures::future::BoxFuture;
 
