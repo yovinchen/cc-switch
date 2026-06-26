@@ -17,7 +17,7 @@ use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
-pub(crate) use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
+use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 pub(crate) use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 pub(crate) use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices;
 pub(crate) use crate::proxy::host::cc_switch::proxy_state::ProxyState;

@@ -473,9 +473,10 @@ mod tests {
     use super::*;
     use crate::database::Database;
     use crate::provider::Provider;
+    use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
     use crate::proxy_core_adapter::{
-        management_route_response_from_router_source, provider_router_from_database,
-        ChannelRouteSource, CircuitState, RouteResolveRequest,
+        management_route_response_from_router_source, ChannelRouteSource, CircuitState,
+        RouteResolveRequest,
     };
     use crate::settings::CustomEndpoint;
     use serde_json::json;

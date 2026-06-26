@@ -2,6 +2,8 @@
 //!
 //! 负责将请求转发到上游Provider，支持故障转移
 
+#[cfg(test)]
+use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 use crate::proxy::{
     error::ProxyError, route_attempt::ForwardAttempt,
     transport::upstream::hyper_client::ProxyResponse,
@@ -10,8 +12,8 @@ use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, Rec
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     build_codex_oauth_session_headers, prepare_upstream_request_body_with_report,
-    provider_bedrock_env_flag, provider_is_codex_oauth, provider_router_from_database,
-    should_preserve_exact_request_header_case, validate_managed_account_upstream_auth,
+    provider_bedrock_env_flag, provider_is_codex_oauth, should_preserve_exact_request_header_case,
+    validate_managed_account_upstream_auth,
 };
 use crate::proxy_core_adapter::{
     ActiveConnectionGuard, FailoverSwitchSchedulerRef, ForwarderAdapterContext,

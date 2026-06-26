@@ -6411,7 +6411,7 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
     let adapter_import = function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
-        "};\n#[cfg(test)]",
+        "};\nuse axum::response",
     );
     let adapter_import_identifiers: Vec<&str> = adapter_import
         .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
@@ -6744,7 +6744,7 @@ fn response_pipeline_owns_core_usage_transport_imports() {
     let adapter_import = function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
-        "};\n#[cfg(test)]",
+        "};\nuse axum::response",
     );
     let adapter_import_identifiers: Vec<&str> = adapter_import
         .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
@@ -18634,11 +18634,13 @@ fn proxy_core_adapter_delegates_provider_router_sources_to_host_module() {
     );
     assert!(
         adapter_source.contains(
+            "use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;"
+        ) && !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database"
         ) && !adapter_source.contains("CcSwitchProviderRouterSources")
             && !adapter_source.contains("pub(crate) struct CcSwitchProviderRouterSources")
             && !adapter_source.contains("pub(crate) fn provider_router_from_database("),
-        "proxy_core_adapter should re-export only the ProviderRouter factory and not own the source assembly"
+        "proxy_core_adapter should only use the ProviderRouter factory privately and not re-export or own the source assembly"
     );
 }
 
