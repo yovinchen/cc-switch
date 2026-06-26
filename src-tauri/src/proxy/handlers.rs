@@ -13,14 +13,15 @@ use super::{
     error_mapper::{management_api_error_to_proxy_error, proxy_core_error_to_proxy_error},
     handler_context::RequestContext,
     response_adapter::{
-        claude_proxy_result_to_proxy_response, claude_response_needs_transform,
-        claude_transformed_response_to_axum_response,
+        claude_passthrough_response_to_axum_response, claude_proxy_result_to_proxy_response,
+        claude_response_needs_transform, claude_transformed_response_to_axum_response,
         codex_chat_to_responses_transformed_response_to_axum_response,
-        codex_proxy_error_to_axum_response, codex_response_needs_chat_transform,
-        collect_axum_request_body, proxy_event_envelope_to_axum_sse_event,
+        codex_passthrough_response_to_axum_response, codex_proxy_error_to_axum_response,
+        codex_response_needs_chat_transform, collect_axum_request_body,
+        gemini_passthrough_response_to_axum_response,
+        openai_chat_passthrough_response_to_axum_response, proxy_event_envelope_to_axum_sse_event,
         proxy_result_to_proxy_response,
     },
-    response_processor::process_response,
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
@@ -42,8 +43,7 @@ use crate::proxy_core_adapter::{
     ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
     ProxyRuntimeStatus, ProxyState, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
     RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
-    OPENAI_PARSER_CONFIG,
+    RouteResolveResponse,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -636,7 +636,7 @@ async fn handle_messages_for_app(
     }
 
     // 通用响应处理（透传模式）
-    process_response(response, &ctx, &state, &CLAUDE_PARSER_CONFIG, None).await
+    claude_passthrough_response_to_axum_response(response, &ctx, &state).await
 }
 
 // ============================================================================
@@ -690,7 +690,7 @@ pub async fn handle_chat_completions(
 
     let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
-    process_response(response, &ctx, &state, &OPENAI_PARSER_CONFIG, None).await
+    openai_chat_passthrough_response_to_axum_response(response, &ctx, &state).await
 }
 
 /// 处理 /v1/responses 请求（OpenAI Responses API - Codex CLI 透传）
@@ -754,7 +754,7 @@ pub async fn handle_responses(
         .await;
     }
 
-    process_response(response, &ctx, &state, &CODEX_PARSER_CONFIG, None).await
+    codex_passthrough_response_to_axum_response(response, &ctx, &state).await
 }
 
 /// 处理 /v1/responses/compact 请求（OpenAI Responses Compact API - Codex CLI 透传）
@@ -818,7 +818,7 @@ pub async fn handle_responses_compact(
         .await;
     }
 
-    process_response(response, &ctx, &state, &CODEX_PARSER_CONFIG, None).await
+    codex_passthrough_response_to_axum_response(response, &ctx, &state).await
 }
 
 // ============================================================================
@@ -871,7 +871,7 @@ pub async fn handle_gemini(
 
     let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
-    process_response(response, &ctx, &state, &GEMINI_PARSER_CONFIG, None).await
+    gemini_passthrough_response_to_axum_response(response, &ctx, &state).await
 }
 
 #[cfg(test)]

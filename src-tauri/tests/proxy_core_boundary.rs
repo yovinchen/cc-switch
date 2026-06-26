@@ -1639,6 +1639,14 @@ const FORBIDDEN_HANDLER_TRANSFORM_RESPONSE_ORCHESTRATION_MARKERS: &[&str] = &[
     "claude_transformed_upstream_json_response_to_axum_response(",
     "codex_transformed_upstream_json_response_to_axum_response(",
 ];
+const FORBIDDEN_HANDLER_PASSTHROUGH_RESPONSE_PROCESSING_MARKERS: &[&str] = &[
+    "response_processor::process_response",
+    "process_response(",
+    "CLAUDE_PARSER_CONFIG",
+    "CODEX_PARSER_CONFIG",
+    "GEMINI_PARSER_CONFIG",
+    "OPENAI_PARSER_CONFIG",
+];
 const FORBIDDEN_PROXY_CORE_ADAPTER_CLAUDE_STREAMING_DECISION_MARKERS: &[&str] = &[
     "should_aggregate_codex_oauth_responses_sse(",
     "should_use_claude_transform_streaming(",
@@ -6786,6 +6794,33 @@ fn handlers_delegate_transform_response_orchestration_to_response_adapter() {
     assert!(
         violations.is_empty(),
         "protocol handlers must delegate transform response orchestration to response_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn handlers_delegate_passthrough_response_processing_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_PASSTHROUGH_RESPONSE_PROCESSING_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains passthrough response processing marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "protocol handlers must delegate passthrough response processing to response_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

@@ -10,6 +10,7 @@ use super::{
     },
     handler_context::RequestContext,
     hyper_client::ProxyResponse,
+    response_processor::process_response,
 };
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
@@ -25,6 +26,7 @@ use crate::proxy_core_adapter::{
     CodexAutoTransformedSseStreamContext, CodexChatTransformStreamingDecision, CodexToolContext,
     CoreResponseBuildFailureContext, ProxyCoreResponse, ProxyEventEnvelope, ProxyResult,
     ProxyState, ProxyTransportResponse, ProxyTransportResponseBody, UpstreamSseAggregationKind,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::response::sse::Event;
 use bytes::Bytes;
@@ -209,6 +211,38 @@ pub(crate) async fn codex_chat_to_responses_transformed_response_to_axum_respons
         streaming_decision.response_sse_aggregation,
     )
     .await
+}
+
+pub(crate) async fn claude_passthrough_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+) -> Result<axum::response::Response, ProxyError> {
+    process_response(response, ctx, state, &CLAUDE_PARSER_CONFIG, None).await
+}
+
+pub(crate) async fn openai_chat_passthrough_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+) -> Result<axum::response::Response, ProxyError> {
+    process_response(response, ctx, state, &OPENAI_PARSER_CONFIG, None).await
+}
+
+pub(crate) async fn codex_passthrough_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+) -> Result<axum::response::Response, ProxyError> {
+    process_response(response, ctx, state, &CODEX_PARSER_CONFIG, None).await
+}
+
+pub(crate) async fn gemini_passthrough_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+) -> Result<axum::response::Response, ProxyError> {
+    process_response(response, ctx, state, &GEMINI_PARSER_CONFIG, None).await
 }
 
 pub(crate) fn proxy_core_response_to_axum_response(
