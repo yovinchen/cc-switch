@@ -30,6 +30,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/transport/upstream/reqwest_client.rs",
     "src/proxy_core_adapter.rs",
     "src/services/model_fetch_transport.rs",
+    "src/services/stream_check.rs",
     "src/services/session_usage.rs",
     "src/services/session_usage_codex.rs",
     "src/services/session_usage_gemini.rs",
@@ -178,6 +179,11 @@ const FORBIDDEN_SETTINGS_CONFIG_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
     "type RectifierConfig = crate::proxy_core::api::ports::RectifierConfig",
     "type OptimizerConfig = crate::proxy_core::api::ports::OptimizerConfig",
     "type CopilotOptimizerConfig = crate::proxy_core::api::ports::CopilotOptimizerConfig",
+];
+const FORBIDDEN_STREAM_CHECK_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
+    "type StreamCheckConfig = crate::proxy_core::api::management::StreamCheckConfig",
+    "type StreamCheckResult = crate::proxy_core::api::management::StreamCheckResult",
+    "pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult",
 ];
 const FORBIDDEN_STREAM_CHECK_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
     "proxy::providers",
@@ -10475,6 +10481,62 @@ fn production_stream_check_delegates_provider_adapters_to_adapter() {
     assert!(
         violations.is_empty(),
         "stream_check must resolve provider adapter facts through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn stream_check_service_owns_core_dto_reexports() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let service_path = manifest_dir.join("src/services/stream_check.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let service_source = fs::read_to_string(&service_path).expect("read stream_check.rs");
+    let required_reexport =
+        "pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};";
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&adapter_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_STREAM_CHECK_ADAPTER_DTO_EXPORT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains stream check DTO export marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    for (line_index, line) in production_lines(&service_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        if code.contains("proxy_core_adapter")
+            && (code.contains("StreamCheckConfig") || code.contains("StreamCheckResult"))
+        {
+            violations.push(format!(
+                "src/services/stream_check.rs:{} imports stream check DTOs from proxy_core_adapter",
+                line_index + 1
+            ));
+        }
+        let direct_core =
+            code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
+        if direct_core && code.trim() != required_reexport {
+            violations.push(format!(
+                "src/services/stream_check.rs:{} contains non-stream-check direct proxy-core import `{}`",
+                line_index + 1,
+                code.trim()
+            ));
+        }
+    }
+
+    assert!(
+        service_source.contains(required_reexport),
+        "stream_check service must re-export public stream check DTOs directly from proxy_core"
+    );
+    assert!(
+        violations.is_empty(),
+        "stream_check public DTOs must bypass proxy_core_adapter aliases:\n{}",
         violations.join("\n")
     );
 }

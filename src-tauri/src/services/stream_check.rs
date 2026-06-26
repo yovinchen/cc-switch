@@ -30,7 +30,7 @@ use crate::proxy_core_adapter::{
     stream_check_result_from_probe_result,
 };
 
-pub use crate::proxy_core_adapter::{StreamCheckConfig, StreamCheckResult};
+pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};
 
 /// 连通性检查服务
 pub struct StreamCheckService;
