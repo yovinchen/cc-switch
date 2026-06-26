@@ -2392,7 +2392,7 @@ provider adapter 仍负责 CC Switch 默认 fallback 的 provider settings 到 h
 
 本轮继续把 channel-key runtime candidate 的启用状态和确定性选择规则收进 `proxy-core::ports`：运行时候选保留 `key_value` 供认证注入，选择规则按 enabled 状态、`priority DESC`、`weight DESC`、`key_ref ASC` 收敛；DAO 只读取指定 `channel_id + key_ref` 候选并交给 adapter 投影到 core runtime candidate。后续把单 key 扩展为多 key、轮询 key、随机 key 或失败回退时，应复用同一候选选择入口，而不是让 DAO/forwarder 重新理解 key 状态和排序策略。
 
-本轮还把 channel-key lookup 的闭包形态推进为 `proxy-core::ports::ChannelKeyRuntimeSource`：`apply_channel_auth_profile_providers_from_source` 只消费 core source contract，CC Switch 默认实现 `CcSwitchChannelKeyRuntimeSource` 负责 DB 查询、enabled candidate 选择和 key value 投影。后续外部中转宿主可以替换这个 source 来接 Vault/KMS/轮询 key 池或账号 runtime，而不需要改 auth profile 应用循环。
+本轮还把 channel-key lookup 的闭包形态推进为 `proxy-core::ports::ChannelKeyRuntimeSource`：`apply_channel_auth_profile_providers_from_source` 只消费 core source contract，CC Switch 默认实现 `CcSwitchChannelKeyRuntimeSource` 负责 DB 查询和 enabled candidate 选择，并返回完整 `ChannelKeyRuntimeCandidate`；认证应用循环只在最后 provider-auth 投影时读取 `key_value`，因此 `priority`、`weight`、`status`、`last_failure_at` 等运行时元数据不会在 source 边界被过早丢弃。后续外部中转宿主可以替换这个 source 来接 Vault/KMS/轮询 key 池或账号 runtime，而不需要改 auth profile 应用循环。
 
 随后又把 `ChannelKeyRuntimeSource` 接入 `ProxyServices` 容器：core service catalog 现在显式包含 channel-key runtime source，CC Switch services 持有 DB-backed source 实现。外部中转宿主在组装独立 proxy module 时可以和 `AuthProvider`、`ProviderSource`、`ChannelSource` 一样注入自己的 key runtime，而不是依赖 CC Switch adapter 的辅助函数。
 
