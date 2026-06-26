@@ -2213,6 +2213,7 @@ pub(crate) type RouteCandidateCircuitKey =
 pub(crate) type ChannelRouteCandidate = crate::proxy_core::api::routing::ChannelRouteCandidate;
 pub(crate) type ResolvedChannelAttempt = crate::proxy_core::api::routing::ResolvedChannelAttempt;
 pub(crate) type RoutePlan = crate::proxy_core::api::routing::RoutePlan;
+#[cfg(test)]
 pub(crate) type RouteSelection = crate::proxy_core::api::routing::RouteSelection;
 #[cfg(test)]
 pub(crate) type CodexProxyErrorContext<'a> =
@@ -6448,12 +6449,6 @@ fn forward_failure_message_from_proxy_error(error: &ProxyError) -> String {
     )
 }
 
-pub(crate) use crate::proxy_core::api::routing::default_route_candidate_from_selection as channel_route_candidate_from_selection;
-
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate;
-pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_selection;
-
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_code;
 
@@ -9467,19 +9462,21 @@ base_url = "https://api.openai.com/v1"
             }),
             None,
         );
-        let channel = resolved_channel_attempt_from_candidate(ChannelRouteCandidate {
-            channel_id: "ch_1".to_string(),
-            provider_id: "provider-a".to_string(),
-            channel_name: "Relay".to_string(),
-            base_url: "https://relay.example.com/v1".to_string(),
-            interface_kind: "anthropic_messages".to_string(),
-            public_model: Some("sonnet-mapped".to_string()),
-            upstream_model: Some("upstream-sonnet[1M]".to_string()),
-            route_group: "default".to_string(),
-            priority: 100,
-            weight: 1,
-            source_kind: "manual".to_string(),
-        });
+        let channel = crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate(
+            ChannelRouteCandidate {
+                channel_id: "ch_1".to_string(),
+                provider_id: "provider-a".to_string(),
+                channel_name: "Relay".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "anthropic_messages".to_string(),
+                public_model: Some("sonnet-mapped".to_string()),
+                upstream_model: Some("upstream-sonnet[1M]".to_string()),
+                route_group: "default".to_string(),
+                priority: 100,
+                weight: 1,
+                source_kind: "manual".to_string(),
+            },
+        );
 
         let body = source
             .prepare_provider_request_body(ForwarderProviderRequestBodyInput {
@@ -15669,11 +15666,13 @@ command = "latest-command"
             InterfaceKind::OpenAiChatCompletions
         );
         let selected = route_selection_for_forward_result(&plan, Some("ch-b"), "provider-a");
-        let candidate = channel_route_candidate_from_selection(&selected);
+        let candidate =
+            crate::proxy_core::api::routing::default_route_candidate_from_selection(&selected);
         assert_eq!(candidate.channel_id, "ch-b");
         assert_eq!(candidate.route_group, "default");
         assert_eq!(candidate.source_kind, "proxy_core");
-        let resolved = resolved_channel_attempt_from_candidate(candidate);
+        let resolved =
+            crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate(candidate);
         assert_eq!(resolved.channel_id, "ch-b");
         let result = ProxyResult {
             response: ProxyCoreResponse::empty(http::StatusCode::OK),

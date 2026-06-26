@@ -48,6 +48,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/route_policy_source.rs",
     "src/proxy/host/cc_switch/route_resolver.rs",
     "src/proxy/host/cc_switch/runtime_status_source.rs",
+    "src/proxy/route_attempt.rs",
     "src/proxy/response_adapter.rs",
     "src/proxy/transport/upstream/mod.rs",
     "src/proxy/transport/upstream/reqwest_client.rs",
@@ -1174,6 +1175,9 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn route_plan_from_request(",
     "fn route_plan_provider_ids(",
     "fn route_plan_provider_match(",
+    "default_route_candidate_from_selection as channel_route_candidate_from_selection",
+    "pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate",
+    "pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_selection",
     "fn usage_script_credentials(",
     "usage_script_credentials_from_parts as usage_script_credentials",
     "fn forwarding_requires_runtime_error_message(",
@@ -2379,7 +2383,7 @@ fn proxy_core_adapter_delegates_forward_failure_message_policy_to_core() {
     let function = function_slice(
         &source,
         "fn forward_failure_message_from_proxy_error",
-        "pub(crate) use crate::proxy_core::api::routing::default_route_candidate_from_selection",
+        "pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_code",
     );
 
     assert!(

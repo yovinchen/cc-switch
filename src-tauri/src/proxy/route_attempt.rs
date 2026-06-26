@@ -5,11 +5,15 @@
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
-use crate::proxy_core_adapter::{
-    apply_channel_provider_overrides, channel_route_candidate_from_selection,
-    resolved_channel_attempt_from_selection, route_plan_selections, ResolvedChannelAttempt,
-    RoutePlan, RouteSelection,
+use crate::proxy_core::api::routing::{
+    default_route_candidate_from_selection, resolved_channel_attempt_from_selection,
+    ResolvedChannelAttempt, RoutePlan, RouteSelection,
 };
+#[cfg(test)]
+use crate::proxy_core::api::routing::{
+    resolved_channel_attempt_from_candidate, ChannelRouteCandidate,
+};
+use crate::proxy_core_adapter::{apply_channel_provider_overrides, route_plan_selections};
 #[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
@@ -35,7 +39,7 @@ impl ForwardAttempt {
     pub(crate) fn from_channel(
         app_type: &AppType,
         provider: &Provider,
-        candidate: crate::proxy_core_adapter::ChannelRouteCandidate,
+        candidate: ChannelRouteCandidate,
     ) -> Self {
         let mut provider = provider.clone();
         apply_channel_provider_overrides(app_type, &mut provider, &candidate);
@@ -43,9 +47,7 @@ impl ForwardAttempt {
         Self {
             provider,
             auth_provider: None,
-            channel: Some(
-                crate::proxy_core_adapter::resolved_channel_attempt_from_candidate(candidate),
-            ),
+            channel: Some(resolved_channel_attempt_from_candidate(candidate)),
         }
     }
 
@@ -54,7 +56,7 @@ impl ForwardAttempt {
         provider: &Provider,
         selection: &RouteSelection,
     ) -> Self {
-        let candidate = channel_route_candidate_from_selection(selection);
+        let candidate = default_route_candidate_from_selection(selection);
         let mut provider = provider.clone();
         apply_channel_provider_overrides(app_type, &mut provider, &candidate);
 
