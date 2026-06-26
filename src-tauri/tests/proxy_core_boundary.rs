@@ -13687,6 +13687,10 @@ fn production_forwarder_uses_response_source_resource() {
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let response_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_response_source.rs");
+    let response_source =
+        fs::read_to_string(&response_source_path).expect("read forwarder_response_source.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -13712,17 +13716,17 @@ fn production_forwarder_uses_response_source_resource() {
         "RequestForwarder must pass channel response status facts as a response-source input DTO"
     );
     let response_source_impl_slice = function_slice(
-        &adapter_source,
+        &response_source,
         "impl ForwarderResponseSource for CcSwitchForwarderResponseSource",
         "async fn prime_streaming_forward_response",
     );
     assert!(
-        !adapter_source.contains("fn upstream_error_body")
-            && !adapter_source.contains("fn upstream_error_response"),
+        !response_source.contains("fn upstream_error_body")
+            && !response_source.contains("fn upstream_error_response"),
         "default ForwarderResponseSource implementation must not retain private upstream error projection helpers"
     );
     assert!(
-        adapter_source.contains("fn prepare_success_response"),
+        response_source.contains("fn prepare_success_response"),
         "default ForwarderResponseSource implementation must retain success response readiness projection"
     );
     assert!(
@@ -13730,10 +13734,15 @@ fn production_forwarder_uses_response_source_resource() {
             && response_source_impl_slice.contains("ProxyError::UpstreamError { status, body }"),
         "default ForwarderResponseSource should project upstream error responses inside finalize_upstream_response"
     );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_response_source::default_forwarder_response_source")
+            && !adapter_source.contains("struct CcSwitchForwarderResponseSource;"),
+        "proxy_core_adapter should re-export, not own, the default forwarder response source"
+    );
     let response_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderResponseSource",
-        "struct CcSwitchForwarderResponseSource",
+        "pub(crate) use crate::proxy::host::cc_switch::forwarder_response_source",
     );
     assert!(
         !response_trait_slice.contains("upstream_error_body")
