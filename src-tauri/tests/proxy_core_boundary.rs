@@ -10981,22 +10981,29 @@ fn proxy_core_adapter_delegates_additive_stream_check_error_specs_to_core() {
 }
 
 #[test]
-fn production_services_proxy_legacy_module_is_reexport_only() {
+fn production_services_proxy_legacy_module_removed_after_live_takeover_split() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/services/proxy.rs");
-    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
-    let production_code: Vec<&str> = production_lines(&source)
+    let legacy_path = manifest_dir.join("src/services/proxy.rs");
+    assert!(
+        !legacy_path.exists(),
+        "legacy services/proxy.rs should stay deleted; re-export ProxyService from services/mod.rs"
+    );
+
+    let services_mod_path = manifest_dir.join("src/services/mod.rs");
+    let services_mod = fs::read_to_string(&services_mod_path).expect("read services/mod.rs");
+    let production_code: Vec<&str> = production_lines(&services_mod)
         .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
         .filter(|line| !line.is_empty())
         .collect();
 
-    assert_eq!(
-        production_code,
-        vec![
-            "#[allow(unused_imports)]",
-            "pub use crate::proxy::host::cc_switch::live_takeover::*;",
-        ],
-        "legacy services/proxy.rs must remain a re-export shim after live takeover host split"
+    assert!(
+        !production_code.contains(&"pub mod proxy;"),
+        "services/mod.rs should not declare the removed services::proxy shim"
+    );
+    assert!(
+        production_code
+            .contains(&"pub use crate::proxy::host::cc_switch::live_takeover::ProxyService;"),
+        "services/mod.rs should keep services::ProxyService by directly re-exporting the owning host type"
     );
 }
 

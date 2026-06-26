@@ -8,7 +8,6 @@ pub(crate) mod model_fetch_transport;
 pub mod omo;
 pub mod prompt;
 pub mod provider;
-pub mod proxy;
 pub mod s3;
 pub mod s3_auto_sync;
 pub mod s3_sync;
@@ -28,12 +27,12 @@ pub mod webdav;
 pub mod webdav_auto_sync;
 pub mod webdav_sync;
 
+pub use crate::proxy::host::cc_switch::live_takeover::ProxyService;
 pub use config::ConfigService;
 pub use mcp::McpService;
 pub use omo::OmoService;
 pub use prompt::PromptService;
 pub use provider::{ProviderService, ProviderSortUpdate, SwitchResult};
-pub use proxy::ProxyService;
 #[allow(unused_imports)]
 pub use skill::{DiscoverableSkill, Skill, SkillRepo, SkillService};
 pub use speedtest::{EndpointLatency, SpeedtestService};
