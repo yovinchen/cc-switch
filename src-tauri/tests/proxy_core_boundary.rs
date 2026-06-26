@@ -3063,6 +3063,57 @@ fn channel_test_handler_delegates_probe_to_proxy_engine() {
 }
 
 #[test]
+fn proxy_core_adapter_uses_host_reachability_probe_source() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let probe_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/channel_reachability_probe.rs");
+    let probe_source =
+        fs::read_to_string(&probe_source_path).expect("read channel_reachability_probe.rs");
+    let services_struct = function_slice(
+        &adapter_source,
+        "pub(crate) struct CcSwitchProxyServices",
+        "impl<R> CcSwitchProxyServices",
+    );
+    let services_impl = function_slice(
+        &adapter_source,
+        "impl<R> ProxyServices for CcSwitchProxyServices",
+        "pub(crate) trait HostForwardRuntime",
+    );
+
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::channel_reachability_probe::{"
+        ) && !adapter_source.contains(
+            "impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe"
+        ) && !adapter_source.contains("probe_channel_reachability_from_db_source("),
+        "DB-backed reachability probe implementation should live in the host cc_switch module"
+    );
+    assert!(
+        probe_source.contains("impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe")
+            && probe_source.contains("probe_channel_reachability_from_db_source("),
+        "host reachability module should implement the proxy-core reachability probe port"
+    );
+    assert!(
+        probe_source.contains(".get_provider_by_id(")
+            && probe_source.contains(".get_stream_check_config(")
+            && probe_source.contains("StreamCheckService::check_with_retry(")
+            && probe_source.contains("stream_check_result_to_channel_reachability("),
+        "host reachability module must own DB lookup, stream-check side effects, and core reachability projection"
+    );
+    assert!(
+        services_struct.contains("reachability_probe: CcSwitchChannelReachabilityProbe"),
+        "CC Switch service container should own the DB-backed reachability probe"
+    );
+    assert!(
+        services_impl.contains("fn reachability_probe(")
+            && services_impl.contains("&self.reachability_probe"),
+        "CC Switch ProxyServices implementation should return the reachability probe"
+    );
+}
+
+#[test]
 fn channel_list_route_branch_delegates_dry_run_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");

@@ -32,7 +32,6 @@ use crate::proxy::RequestForwarder;
 #[cfg(test)]
 use crate::proxy_core::api::domain::{ChannelHealthPolicy, ChannelOverrides, UpstreamEndpoint};
 use crate::proxy_core::api::domain::{ProviderMetadata, ProviderMetadataInput};
-pub(crate) use crate::proxy_core::api::management::ChannelReachabilityResult;
 pub(crate) use crate::proxy_core::api::management::channel_route_source_for_materialized_count;
 #[cfg(test)]
 use crate::proxy_core::api::routing::RouteResolveModelInput;
@@ -41,7 +40,6 @@ use crate::proxy_core::api::routing::{
     RouteResolveModelRecordInput,
 };
 use crate::proxy_core::api::session::SessionIdResult;
-use crate::services::stream_check::StreamCheckService;
 use crate::settings::CustomEndpoint;
 use axum::{
     extract::DefaultBodyLimit,
@@ -3138,8 +3136,8 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeInput,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
     ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelPathRequest,
-    ChannelRecordResponse, ChannelRouteRejected, ChannelTestProbeRequest, ChannelTestResponse,
-    CurrentRouteResponse, GroupListQuery, GroupListRequest, HealthCheckRequest,
+    ChannelReachabilityResult, ChannelRecordResponse, ChannelRouteRejected, ChannelTestProbeRequest,
+    ChannelTestResponse, CurrentRouteResponse, GroupListQuery, GroupListRequest, HealthCheckRequest,
     HealthCheckResponse, ManagementAppPathRequest, ProviderHealthUpdateInput, ProviderListResponse,
     ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest, ProxyStatusRequest,
     ProxyStatusResponse, RouteGroupListResponse, RouteResolveManagementRequest,
@@ -3158,12 +3156,12 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
 pub(crate) use crate::proxy_core::api::ports::{
     channel_breaker_stats_from_parts, channel_health_reset_from_parts, AppSummaryConfig,
     AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelHealthStore,
-    ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource,
-    ClaudeDesktopGatewayAuthSource, ForwardPipeline, ManagementAuthRuntimeConfig,
-    ManagementAuthSource, ModelCatalogProvider, ProviderHealthStore, ProviderSource,
-    ProxyConfigSource, ProxyEventSink, ProxyServices, RoutePolicySource, RouteResolver,
-    RuntimeStatusSource, UsageSink,
+    ChannelKeyRuntimeSource, ChannelSource, ClaudeDesktopGatewayAuthSource, ForwardPipeline,
+    ManagementAuthRuntimeConfig, ManagementAuthSource, ModelCatalogProvider, ProviderHealthStore,
+    ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices, RoutePolicySource,
+    RouteResolver, RuntimeStatusSource, UsageSink,
 };
+pub(crate) use crate::proxy_core::api::ports::ChannelReachabilityProbe;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
 pub(crate) use crate::proxy_core::api::routing::{
@@ -7182,6 +7180,9 @@ pub(crate) use crate::proxy::host::cc_switch::channel_key_runtime_source::{
 };
 #[cfg(test)]
 pub(crate) use crate::proxy::host::cc_switch::channel_key_runtime_source::select_enabled_proxy_channel_key_runtime_candidate;
+pub(crate) use crate::proxy::host::cc_switch::channel_reachability_probe::{
+    CcSwitchChannelReachabilityProbe,
+};
 
 pub(crate) fn apply_channel_auth_profile_providers_from_source(
     app_type: &AppType,
@@ -12831,49 +12832,6 @@ pub(crate) fn extract_proxy_session_id(
         client_format,
         || Uuid::new_v4().to_string(),
     )
-}
-
-pub(crate) async fn probe_channel_reachability_from_db_source(
-    db: &Database,
-    request: ChannelTestProbeRequest,
-) -> ProxyCoreResult<ChannelReachabilityResult> {
-    let app_type = request
-        .app_type
-        .parse::<AppType>()
-        .map_err(channel_test_app_type_error)?;
-    let provider = db
-        .get_provider_by_id(&request.provider_id, &request.app_type)
-        .map_err(|error| app_error("get channel test provider", error))?;
-    let provider = provider.ok_or_else(|| channel_test_provider_not_found_error(&request))?;
-    let config = db
-        .get_stream_check_config()
-        .map_err(|error| app_error("get stream check config", error))?;
-    let result =
-        StreamCheckService::check_with_retry(&app_type, &provider, &config, Some(request.base_url))
-            .await
-            .map_err(channel_reachability_probe_error)?;
-
-    Ok(stream_check_result_to_channel_reachability(result))
-}
-
-#[derive(Clone)]
-pub(crate) struct CcSwitchChannelReachabilityProbe {
-    db: Arc<Database>,
-}
-
-impl CcSwitchChannelReachabilityProbe {
-    pub(crate) fn new(db: Arc<Database>) -> Self {
-        Self { db }
-    }
-}
-
-impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe {
-    fn probe_channel<'a>(
-        &'a self,
-        request: ChannelTestProbeRequest,
-    ) -> BoxFuture<'a, ProxyCoreResult<ChannelReachabilityResult>> {
-        Box::pin(async move { probe_channel_reachability_from_db_source(&self.db, request).await })
-    }
 }
 
 fn provider_metadata_without_secrets(provider: &Provider) -> ProviderMetadata {
