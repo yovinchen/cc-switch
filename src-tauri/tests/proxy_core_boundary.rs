@@ -14460,6 +14460,33 @@ fn proxy_core_adapter_delegates_management_auth_source_to_host_module() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_runtime_status_source_to_host_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/runtime_status_source.rs");
+    let source = fs::read_to_string(&source_path).expect("read runtime_status_source.rs");
+
+    assert!(
+        source.contains("pub(crate) struct CcSwitchRuntimeStatusSource")
+            && source.contains("impl RuntimeStatusSource for CcSwitchRuntimeStatusSource")
+            && source.contains("proxy_runtime_status_from_runtime_sources(")
+            && source.contains("apply_proxy_runtime_uptime(")
+            && source.contains("apply_proxy_runtime_active_targets("),
+        "CC Switch runtime status source should live in host/cc_switch/runtime_status_source.rs"
+    );
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource"
+        ) && !adapter_source.contains("struct CcSwitchRuntimeStatusSource")
+            && !adapter_source.contains("impl RuntimeStatusSource for CcSwitchRuntimeStatusSource")
+            && !adapter_source
+                .contains("pub(crate) async fn proxy_runtime_status_from_runtime_sources("),
+        "proxy_core_adapter should re-export, not own, the CC Switch runtime status source"
+    );
+}
+
+#[test]
 fn production_proxy_core_host_delegates_event_sink_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
@@ -15323,7 +15350,7 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
     let stopped_source = function_slice(
         &adapter_source,
         "pub(crate) async fn record_proxy_server_stopped_runtime_event_source",
-        "pub(crate) async fn proxy_runtime_status_from_runtime_sources",
+        "pub(crate) async fn set_active_route_target_runtime_source",
     );
     let accept_loop_source = function_slice(
         &adapter_source,

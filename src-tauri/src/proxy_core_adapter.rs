@@ -24,6 +24,7 @@ use crate::proxy::host::cc_switch::database_channel_source::CcSwitchChannelSourc
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
 pub(crate) use crate::proxy::host::cc_switch::management_auth_source::CcSwitchManagementAuthSource;
+pub(crate) use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::http::server::ProxyServer;
@@ -1252,23 +1253,6 @@ pub(crate) async fn record_proxy_server_stopped_runtime_event_source(state: &Pro
     emit_proxy_server_stopped_event_source(state.events.as_ref());
 }
 
-pub(crate) async fn proxy_runtime_status_from_runtime_sources(
-    status: &RwLock<ProxyRuntimeStatus>,
-    start_time: &RwLock<Option<std::time::Instant>>,
-    current_providers: &RwLock<HashMap<String, CurrentRouteTarget>>,
-) -> ProxyRuntimeStatus {
-    let mut status = status.read().await.clone();
-
-    if let Some(start) = start_time.read().await.as_ref().copied() {
-        apply_proxy_runtime_uptime(&mut status, start.elapsed().as_secs());
-    }
-
-    let current_providers = current_providers.read().await;
-    apply_proxy_runtime_active_targets(&mut status, current_providers.values().cloned());
-
-    status
-}
-
 #[cfg(test)]
 #[derive(Clone, Default)]
 struct DefaultRuntimeStatusSource;
@@ -1277,40 +1261,6 @@ struct DefaultRuntimeStatusSource;
 impl RuntimeStatusSource for DefaultRuntimeStatusSource {
     fn load_status<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeStatus>> {
         Box::pin(async { Ok(ProxyRuntimeStatus::default()) })
-    }
-}
-
-#[derive(Clone)]
-struct CcSwitchRuntimeStatusSource {
-    status: Arc<RwLock<ProxyRuntimeStatus>>,
-    start_time: Arc<RwLock<Option<std::time::Instant>>>,
-    current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
-}
-
-impl CcSwitchRuntimeStatusSource {
-    fn new(
-        status: Arc<RwLock<ProxyRuntimeStatus>>,
-        start_time: Arc<RwLock<Option<std::time::Instant>>>,
-        current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
-    ) -> Self {
-        Self {
-            status,
-            start_time,
-            current_providers,
-        }
-    }
-}
-
-impl RuntimeStatusSource for CcSwitchRuntimeStatusSource {
-    fn load_status<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeStatus>> {
-        Box::pin(async move {
-            Ok(proxy_runtime_status_from_runtime_sources(
-                &self.status,
-                &self.start_time,
-                &self.current_providers,
-            )
-            .await)
-        })
     }
 }
 
