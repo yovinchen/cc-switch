@@ -564,7 +564,7 @@
 550. Copilot OAuth/API URL 构造、Copilot API base fallback、模型列表响应解析与 `CopilotModel` 类型入口已迁入 `proxy_core_adapter`；Copilot auth 模块只负责 HTTP 调用、token/OAuth 状态和 endpoint/model 缓存。
 551. Claude Desktop gateway bearer token 校验与 auth error 类型入口已迁入 `proxy_core_adapter`；host auth adapter 只负责委托 `ProxyEngine` 并映射为 `ProxyError`，gateway token DB source 归 adapter 维护。
 552. global proxy URL masking、显式代理 URL parse/scheme 校验、系统代理 env key 与 loopback 自环检测 helper 已迁入 `proxy_core_adapter`；global proxy command 和 host HTTP client 只负责 DB 状态、reqwest client 生命周期、reqwest proxy 应用和环境变量读取。
-553. 模型拉取 command/service 边界使用的 `FetchedModel` DTO 入口已迁入 `proxy_core_adapter`；model fetch transport 继续只负责 reqwest 执行并复用 core request planning/response parsing ports。
+553. 模型拉取 command/service 边界使用的 `FetchedModel` DTO 入口已从 `proxy_core_adapter` 二次出口改为命令层直接引用 `proxy_core::api::model_catalog::FetchedModel`；model fetch transport 继续只负责 reqwest 执行并复用 core request planning/response parsing ports，boundary 测试禁止 adapter 重新导出该 DTO。
 554. host `ProxyError` 到 HTTP status/display 的 `ProxyErrorStatusKind`、状态码和展示文案投影入口已迁入 `proxy::error_mapper`；host error 模块直接经 `proxy_core::api::errors` 消费 HTTP status/body helper，`proxy_core_adapter` 不再作为这些 pure error response contract 的中转 re-export。
 555. settings command/DAO 使用的 rectifier、optimizer 与 Copilot optimizer 配置 DTO 入口已迁入 `proxy_core_adapter`；host settings DAO 继续负责 settings key、JSON 持久化与 `AppError` 映射。
 556. proxy management command/service/DAO 使用的 proxy config、runtime status、server info、takeover status、provider health 与 circuit breaker DTO 入口已迁入 `proxy_core_adapter`；host 继续负责代理服务生命周期、DB 行映射和运行时热更新。
@@ -1270,7 +1270,7 @@ forwarder provider adapter upstream URL 的一跳 wrapper `forwarder_provider_up
 forwarder provider adapter name 的一跳 wrapper `forwarder_provider_adapter_name` 已删除；`ForwarderAdapterFacts` 在 adapter context 内直接从 trait object 读取 name，`forwarder.rs` 仍只消费 facts。
 forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapter_for_app` 已删除；adapter context factory 和 stream check fallback 通过 `proxy/host/cc_switch/provider_adapter_context.rs` 调用 provider registry，`forwarder.rs` 仍不直接调用 provider 模块。
 本轮继续把 `ForwarderAdapterContext` 下沉到 `proxy/host/cc_switch/provider_adapter_context.rs`：provider adapter trait object、auth info/header fallback、base URL facts、transform gate/action 和 upstream URL assembly 的宿主调用都由该 host 模块拥有，`proxy_core_adapter` 只 re-export context/factory 供 forward runtime 使用。
-本轮继续把模型列表命令层的 `FetchedModel` DTO 入口收敛到 `proxy_core_adapter::FetchedModel`，`model_fetch_transport` 不再作为命令层 DTO re-export，只保留 core model catalog transport port 的 reqwest 执行实现。
+本轮继续把模型列表命令层的 `FetchedModel` DTO 入口从 `proxy_core_adapter` 二次出口收敛到 `proxy_core::api::model_catalog::FetchedModel`，`model_fetch_transport` 只保留 core model catalog transport port 的 reqwest 执行实现。
 本轮继续把模型列表命令层的自定义 User-Agent 解析入口收敛到 `proxy_core_adapter::model_fetch_custom_user_agent_header`，命令不再直接调用 provider 模块的 schema helper。
 本轮继续把 stream_check 服务的标准 provider adapter base URL 提取收敛到 `proxy_core_adapter::stream_check_provider_base_url`，服务层不再直接导入 provider adapter registry、trait 或具体 Claude adapter，只保留 reachability HTTP 探测执行。
 本轮继续把 `FailoverSwitchManager` 的 proxy_config enabled 读取收敛到 `proxy_core_adapter::failover_switch_app_enabled_from_db`：manager 只保留 Tauri emit、托盘刷新和 `hot_switch_provider` 宿主副作用，配置读取失败时跳过切换的策略集中在 adapter。
