@@ -13028,12 +13028,14 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
     }
     assert!(
         adapter_source.contains(
+            "use crate::proxy::host::cc_switch::managed_account_runtime_source::{"
+        ) && !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::managed_account_runtime_source::{"
         ) && !adapter_source.contains(
             "impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource"
         ) && !adapter_source.contains("fn copilot_token_from_app_handle(")
             && !adapter_source.contains("fn codex_oauth_token_from_app_handle("),
-        "proxy_core_adapter should re-export, not own, the managed-account Tauri runtime source"
+        "proxy_core_adapter should only use, not re-export or own, the managed-account Tauri runtime source"
     );
 
     let forbidden_markers = ["crate::proxy::managed_account_auth"];
@@ -13111,8 +13113,9 @@ fn production_adapter_managed_auth_runtime_source_is_trait() {
 
     assert!(
         host_source.contains("trait ManagedAccountRuntimeSource")
-            && adapter_source.contains("ManagedAccountRuntimeSourceRef"),
-        "managed-account runtime reads must stay behind a host source trait re-exported through adapter"
+            && host_source.contains("pub(crate) type ManagedAccountRuntimeSourceRef")
+            && adapter_source.contains("managed_account_runtime_source_from_app_handle"),
+        "managed-account runtime reads must stay behind a host source trait used by adapter assembly"
     );
 }
 

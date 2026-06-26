@@ -6,6 +6,7 @@ use crate::app_config::AppType;
 use crate::proxy::error::ProxyError;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::managed_account_runtime_source::default_managed_account_runtime_source;
+use crate::proxy::host::cc_switch::managed_account_runtime_source::ManagedAccountRuntimeSourceRef;
 use crate::proxy_core::api::transforms::responses_to_chat_completions_with_options;
 use crate::proxy_core::api::transport::{
     anthropic_beta_header_value, apply_copilot_warmup_model_override,

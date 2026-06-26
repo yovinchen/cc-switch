@@ -2471,9 +2471,7 @@ pub(crate) use crate::proxy_core::api::usage::{
     usage_record_debug_log_message, usage_record_failure_warning_message,
 };
 
-pub(crate) use crate::proxy::host::cc_switch::managed_account_runtime_source::{
-    managed_account_runtime_source_from_app_handle, ManagedAccountRuntimeSourceRef,
-};
+use crate::proxy::host::cc_switch::managed_account_runtime_source::managed_account_runtime_source_from_app_handle;
 
 const PROXY_OFFICIAL_WARNING_EVENT: &str =
     crate::proxy_core::api::events::PROXY_OFFICIAL_WARNING_EVENT;
