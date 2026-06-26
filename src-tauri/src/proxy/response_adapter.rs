@@ -16,6 +16,7 @@ use super::{
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy_core::api::events::ProxyEventEnvelope;
+use crate::proxy_core::api::management::{ChannelKeyRecord, ChannelModelRecord};
 use crate::proxy_core::api::transport::{
     append_query_to_endpoint_path, extract_gemini_model_from_path, rebuilt_json_proxy_response,
     request_body_read_error_message, strip_endpoint_prefix, transformed_sse_proxy_response,
@@ -37,11 +38,11 @@ use crate::proxy_core_adapter::{
     AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest, AppListResponse,
     AppModelCatalogRequest, AppModelListQuery, AxumResponseBuildErrorContext,
     ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord,
+    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest,
     ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
-    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
+    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
     ClaudeDesktopModelListResponse, ClaudeTransformStreamingDecision,
     ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
     ClientModelCatalogResponse, CodexAutoTransformedJsonResponseContext,
