@@ -1670,6 +1670,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1190. `CcSwitchConfigSource` 已迁入 `proxy/host/cc_switch/config_source.rs`：该 host 模块拥有默认 `ProxyConfigSource` 实现，包装 DB 并复用 adapter 的 app catalog、global/app/app-summary/runtime config helper，`proxy_core_adapter` 只保留 helper 和默认 source re-export/装配。
 1191. `CcSwitchProviderRouterSources` 与 `provider_router_from_database` 已迁入 `proxy/host/cc_switch/provider_router_sources.rs`：该 host 模块拥有 DB-backed ProviderRouter source assembly，直接装配 config/provider/channel source 与 health store，`proxy_core_adapter` 只 re-export `provider_router_from_database` 工厂。
 1192. `CcSwitchForwarderRequestSource` 的请求准备、上游 URL planning、媒体/rectifier plan、Codex Responses->Chat 转换、请求 body/header 构造与 transport policy helper 已改为直接引用 `proxy_core::api::{transport,transforms}`；`proxy_core_adapter` 不再为这些纯 request helper/type 提供生产 re-export，仅保留 trait/input/type alias、factory 和必要的 `#[cfg(test)]` 兼容桥接。
+1193. `CcSwitchForwarderResponseSource` 的响应 status mapping、非流式 body timeout 和流式首包 priming 错误文案 helper 已改为直接引用 `proxy_core::api::transport`；`proxy_core_adapter` 不再为这些纯 response helper 提供生产 re-export，response source 仍只通过 trait/input/type alias 与 forwarder 交互。
 
 ## 背景
 
@@ -2636,7 +2637,7 @@ ProxyRequest
 | provider adapter context | `host/cc_switch/provider_adapter_context.rs` | `ForwarderAdapterContext`、provider adapter trait object/factory、provider auth info/header fallback 调用、base URL facts、transform gate/action 和 upstream URL assembly 已迁到 `proxy/host/cc_switch/provider_adapter_context.rs`；adapter 仅 re-export context/factory，后续继续补 token 缓存/刷新、channel-key 轮询/随机和失败回退策略 |
 | forwarder auth source | `host/cc_switch/forwarder_auth_source.rs` | `CcSwitchForwarderAuthSource`、AuthProvider 显式 header/fallback 分支、managed-account auth resolution、Copilot auth optimization 准备和上游 auth header finalization 已迁到 `proxy/host/cc_switch/forwarder_auth_source.rs`；adapter 仅保留 trait/input/type alias 并 re-export factory，后续继续补 token 缓存/刷新、channel-key 轮询/随机和失败回退策略 |
 | forwarder transport source | `host/cc_switch/forwarder_transport_source.rs` | `CcSwitchForwarderTransportSource` 默认实现已迁到 `proxy/host/cc_switch/forwarder_transport_source.rs` 并委托 `proxy::transport::upstream::send_request`；adapter 仅保留 trait/request/type alias 并 re-export factory |
-| forwarder response source | `host/cc_switch/forwarder_response_source.rs` | `CcSwitchForwarderResponseSource` 默认实现已迁到 `proxy/host/cc_switch/forwarder_response_source.rs`，负责响应成功就绪、流式首包预读、非成功 upstream error 投影和 channel response status mapping；adapter 仅保留 trait/input/type alias 并 re-export factory |
+| forwarder response source | `host/cc_switch/forwarder_response_source.rs` | `CcSwitchForwarderResponseSource` 默认实现已迁到 `proxy/host/cc_switch/forwarder_response_source.rs`，负责响应成功就绪、流式首包预读、非成功 upstream error 投影和 channel response status mapping；response source 已直接引用 `proxy_core::api::transport` 的纯响应 helper，adapter 仅保留 trait/input/type alias 并 re-export factory |
 
 ## 分阶段实施计划
 
