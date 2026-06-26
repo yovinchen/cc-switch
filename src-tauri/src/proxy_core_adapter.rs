@@ -1343,7 +1343,7 @@ pub(crate) fn app_proxy_config_from_proxy_app_config(
         .map_err(|error| format!("invalid app proxy config: {error}"))
 }
 
-pub(crate) use crate::proxy_core::api::config::proxy_runtime_config_from_proxy_config as proxy_runtime_config_from_config;
+use crate::proxy_core::api::config::proxy_runtime_config_from_proxy_config as proxy_runtime_config_from_config;
 
 pub(crate) async fn proxy_runtime_config_from_db_source(
     db: &Database,
@@ -1362,11 +1362,11 @@ pub(crate) type ProviderAuthStrategy = crate::proxy_core::api::auth::ProviderAut
 #[cfg(test)]
 pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 
-pub(crate) use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
-pub(crate) use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
-pub(crate) use crate::proxy_core::api::auth::codex_auth_info_from_api_key as core_codex_auth_info_from_api_key;
-pub(crate) use crate::proxy_core::api::auth::gemini_auth_info_from_api_key as core_gemini_auth_info_from_api_key;
-pub(crate) use crate::proxy_core::api::auth::gemini_auth_strategy_for_provider_kind as core_gemini_auth_strategy_for_provider_kind;
+use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
+use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
+use crate::proxy_core::api::auth::codex_auth_info_from_api_key as core_codex_auth_info_from_api_key;
+use crate::proxy_core::api::auth::gemini_auth_info_from_api_key as core_gemini_auth_info_from_api_key;
+use crate::proxy_core::api::auth::gemini_auth_strategy_for_provider_kind as core_gemini_auth_strategy_for_provider_kind;
 
 pub(crate) const CLAUDE_DESKTOP_GATEWAY_TOKEN_SETTING_KEY: &str = "claude_desktop_gateway_token";
 
