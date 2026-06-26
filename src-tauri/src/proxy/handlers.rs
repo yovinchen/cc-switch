@@ -3,22 +3,21 @@
 //! 处理各种API端点的HTTP请求
 //!
 //! 重构后的结构：
-//! - 通用逻辑提取到 `handler_context` 和 `response_processor` 模块
-//! - 各 handler 只保留独特的业务逻辑
-//! - Claude 的格式转换逻辑保留在此文件（用于 OpenRouter 旧接口回退）
+//! - 协议请求编排由 `response_adapter` 承接
+//! - HTTP handler 只保留 Axum 提取、鉴权和管理 API 转发
 
 use super::{
     auth_adapter::validate_claude_desktop_gateway_auth,
     error::ProxyError,
     error_mapper::{management_api_error_to_proxy_error, proxy_core_error_to_proxy_error},
     response_adapter::{
-        dispatch_claude_messages_request_to_axum_response,
-        dispatch_codex_chat_request_to_axum_response,
+        dispatch_claude_desktop_messages_request_to_axum_response,
+        dispatch_claude_request_to_axum_response, dispatch_codex_chat_request_to_axum_response,
+        dispatch_codex_responses_compact_request_to_axum_response,
         dispatch_codex_responses_request_to_axum_response,
         dispatch_gemini_request_to_axum_response, proxy_event_envelope_to_axum_sse_event,
     },
 };
-use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
@@ -530,7 +529,7 @@ pub async fn handle_messages(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    handle_messages_for_app(state, request, AppType::Claude, "Claude", "claude", None).await
+    dispatch_claude_request_to_axum_response(&state, request).await
 }
 
 pub async fn handle_claude_desktop_messages(
@@ -538,15 +537,7 @@ pub async fn handle_claude_desktop_messages(
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
     validate_claude_desktop_gateway_auth(&state, request.headers()).await?;
-    handle_messages_for_app(
-        state,
-        request,
-        AppType::ClaudeDesktop,
-        "Claude Desktop",
-        "claude-desktop",
-        Some("/claude-desktop"),
-    )
-    .await
+    dispatch_claude_desktop_messages_request_to_axum_response(&state, request).await
 }
 
 pub async fn handle_claude_desktop_models(
@@ -560,25 +551,6 @@ pub async fn handle_claude_desktop_models(
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
     Ok(Json(response))
-}
-
-async fn handle_messages_for_app(
-    state: ProxyState,
-    request: axum::extract::Request,
-    app_type: AppType,
-    tag: &'static str,
-    app_type_str: &'static str,
-    strip_prefix: Option<&'static str>,
-) -> Result<axum::response::Response, ProxyError> {
-    dispatch_claude_messages_request_to_axum_response(
-        &state,
-        request,
-        app_type,
-        tag,
-        app_type_str,
-        strip_prefix,
-    )
-    .await
 }
 
 // ============================================================================
@@ -598,7 +570,7 @@ pub async fn handle_responses(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    dispatch_codex_responses_request_to_axum_response(&state, request, "/responses").await
+    dispatch_codex_responses_request_to_axum_response(&state, request).await
 }
 
 /// 处理 /v1/responses/compact 请求（OpenAI Responses Compact API - Codex CLI 透传）
@@ -606,7 +578,7 @@ pub async fn handle_responses_compact(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    dispatch_codex_responses_request_to_axum_response(&state, request, "/responses/compact").await
+    dispatch_codex_responses_compact_request_to_axum_response(&state, request).await
 }
 
 // ============================================================================

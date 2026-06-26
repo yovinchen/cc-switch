@@ -876,6 +876,17 @@ const FORBIDDEN_CLAUDE_MESSAGES_HANDLER_ORCHESTRATION_MARKERS: &[&str] = &[
     "claude_transformed_response_to_axum_response(",
     "claude_passthrough_response_to_axum_response(",
 ];
+const FORBIDDEN_PROTOCOL_HANDLER_ROUTE_METADATA_MARKERS: &[&str] = &[
+    "AppType::",
+    "handle_messages_for_app(",
+    "\"Claude\"",
+    "\"claude\"",
+    "\"Claude Desktop\"",
+    "\"claude-desktop\"",
+    "\"/claude-desktop\"",
+    "\"/responses\"",
+    "\"/responses/compact\"",
+];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
 const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
@@ -3120,7 +3131,7 @@ fn claude_desktop_models_handler_delegates_provider_selection_to_proxy_engine() 
     let handler = function_slice(
         &source,
         "pub async fn handle_claude_desktop_models",
-        "async fn handle_messages_for_app",
+        "\n}\n\n// ============================================================================\n// Codex API",
     );
     let forbidden_markers = [
         "provider_router",
@@ -3321,8 +3332,13 @@ fn production_protocol_handlers_delegate_endpoint_bridge_to_response_adapter() {
     let protocol_handlers = [
         function_slice(
             &source,
-            "async fn handle_messages_for_app(",
-            "\n}\n\n// ============================================================================\n// Codex API",
+            "pub async fn handle_messages(",
+            "\n}\n\npub async fn handle_claude_desktop_messages",
+        ),
+        function_slice(
+            &source,
+            "pub async fn handle_claude_desktop_messages(",
+            "\n}\n\npub async fn handle_claude_desktop_models",
         ),
         function_slice(
             &source,
@@ -3377,8 +3393,13 @@ fn production_protocol_handlers_delegate_request_context_bridge_to_response_adap
     let protocol_handlers = [
         function_slice(
             &source,
-            "async fn handle_messages_for_app(",
-            "\n}\n\n// ============================================================================\n// Codex API",
+            "pub async fn handle_messages(",
+            "\n}\n\npub async fn handle_claude_desktop_messages",
+        ),
+        function_slice(
+            &source,
+            "pub async fn handle_claude_desktop_messages(",
+            "\n}\n\npub async fn handle_claude_desktop_models",
         ),
         function_slice(
             &source,
@@ -3556,7 +3577,7 @@ fn production_claude_messages_handler_delegates_protocol_orchestration_to_respon
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
-        "async fn handle_messages_for_app(",
+        "pub async fn handle_messages(",
         "\n}\n\n// ============================================================================\n// Codex API",
     );
 
@@ -3566,7 +3587,7 @@ fn production_claude_messages_handler_delegates_protocol_orchestration_to_respon
         for marker in FORBIDDEN_CLAUDE_MESSAGES_HANDLER_ORCHESTRATION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs handle_messages_for_app:{} contains Claude Messages orchestration marker `{}`",
+                    "src/proxy/handlers.rs Claude Messages handlers:{} contains Claude Messages orchestration marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3616,8 +3637,13 @@ fn production_protocol_handlers_delegate_forward_core_error_usage_to_adapter() {
     let protocol_handlers = [
         function_slice(
             &source,
-            "async fn handle_messages_for_app(",
-            "\n}\n\n// ============================================================================\n// Codex API",
+            "pub async fn handle_messages(",
+            "\n}\n\npub async fn handle_claude_desktop_messages",
+        ),
+        function_slice(
+            &source,
+            "pub async fn handle_claude_desktop_messages(",
+            "\n}\n\npub async fn handle_claude_desktop_models",
         ),
         function_slice(
             &source,
@@ -3660,6 +3686,33 @@ fn production_protocol_handlers_delegate_forward_core_error_usage_to_adapter() {
     assert!(
         violations.is_empty(),
         "protocol handlers must delegate core-error mapping plus forward usage logging to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_protocol_handlers_delegate_route_metadata_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROTOCOL_HANDLER_ROUTE_METADATA_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains protocol route metadata marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "protocol handlers must delegate app/tag/prefix/endpoint metadata to response_adapter:\n{}",
         violations.join("\n")
     );
 }

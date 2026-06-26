@@ -286,7 +286,37 @@ pub(crate) async fn dispatch_gemini_request_to_axum_response(
     gemini_passthrough_response_to_axum_response(response, &ctx, state).await
 }
 
-pub(crate) async fn dispatch_claude_messages_request_to_axum_response(
+pub(crate) async fn dispatch_claude_request_to_axum_response(
+    state: &ProxyState,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    dispatch_claude_messages_request_to_axum_response(
+        state,
+        request,
+        AppType::Claude,
+        "Claude",
+        "claude",
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn dispatch_claude_desktop_messages_request_to_axum_response(
+    state: &ProxyState,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    dispatch_claude_messages_request_to_axum_response(
+        state,
+        request,
+        AppType::ClaudeDesktop,
+        "Claude Desktop",
+        "claude-desktop",
+        Some("/claude-desktop"),
+    )
+    .await
+}
+
+async fn dispatch_claude_messages_request_to_axum_response(
     state: &ProxyState,
     request: axum::extract::Request,
     app_type: AppType,
@@ -385,6 +415,21 @@ pub(crate) async fn dispatch_codex_chat_request_to_axum_response(
 }
 
 pub(crate) async fn dispatch_codex_responses_request_to_axum_response(
+    state: &ProxyState,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    dispatch_codex_responses_path_request_to_axum_response(state, request, "/responses").await
+}
+
+pub(crate) async fn dispatch_codex_responses_compact_request_to_axum_response(
+    state: &ProxyState,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    dispatch_codex_responses_path_request_to_axum_response(state, request, "/responses/compact")
+        .await
+}
+
+async fn dispatch_codex_responses_path_request_to_axum_response(
     state: &ProxyState,
     request: axum::extract::Request,
     endpoint_path: &'static str,
