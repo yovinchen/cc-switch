@@ -12,9 +12,8 @@ use crate::provider::{
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::engine::context::RequestContext;
 use crate::proxy::engine::routing::{
-    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelSource,
-    ProviderRouterConfigSource, ProviderRouterHealthStore, ProviderRouterProviderSource,
-    ProviderRouterSources,
+    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterConfigSource,
+    ProviderRouterHealthStore, ProviderRouterProviderSource, ProviderRouterSources,
 };
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::forward_error_to_core_error;
@@ -26,6 +25,7 @@ use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
 pub(crate) use crate::proxy::host::cc_switch::management_auth_source::CcSwitchManagementAuthSource;
 pub(crate) use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource;
+pub(crate) use crate::proxy::host::cc_switch::provider_router_channel_source::CcSwitchProviderRouterChannelSource;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::http::server::ProxyServer;
@@ -5102,9 +5102,9 @@ impl CcSwitchProviderRouterSources {
                 db: db.clone(),
                 route_policies: CcSwitchRoutePolicySource::new(db.clone()),
             }),
-            Arc::new(CcSwitchProviderRouterChannelSource {
-                source: CcSwitchChannelSource::new(db.clone()),
-            }),
+            Arc::new(CcSwitchProviderRouterChannelSource::new(
+                CcSwitchChannelSource::new(db.clone()),
+            )),
             Arc::new(CcSwitchProviderRouterHealthStore { db }),
         )
     }
@@ -5211,23 +5211,6 @@ impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource {
     ) -> BoxFuture<'a, Result<Vec<String>, AppError>> {
         Box::pin(async move {
             select_current_provider_ids_from_router_provider_source(self, app_type).await
-        })
-    }
-}
-
-struct CcSwitchProviderRouterChannelSource {
-    source: CcSwitchChannelSource,
-}
-
-impl ProviderRouterChannelSource for CcSwitchProviderRouterChannelSource {
-    fn channel_route_inputs<'a>(
-        &'a self,
-        app_type: &'a str,
-    ) -> BoxFuture<'a, Result<(Vec<RouteResolveChannelInput>, ChannelRouteSource), AppError>> {
-        Box::pin(async move {
-            router_channel_route_inputs_from_channel_source(&self.source, app_type)
-                .await
-                .map_err(app_error_from_proxy_core_error)
         })
     }
 }

@@ -16168,7 +16168,7 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
     let adapter_slice = function_slice(
         &source,
         "struct CcSwitchProviderRouterProviderSource",
-        "struct CcSwitchProviderRouterChannelSource",
+        "struct CcSwitchProviderRouterHealthStore",
     );
 
     assert!(
@@ -16210,30 +16210,38 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
 #[test]
 fn production_provider_router_channel_source_uses_core_channel_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let adapter_slice = function_slice(
-        &source,
-        "struct CcSwitchProviderRouterChannelSource",
-        "struct CcSwitchProviderRouterHealthStore",
-    );
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_router_channel_source.rs");
+    let source =
+        fs::read_to_string(&source_path).expect("read provider_router_channel_source.rs");
 
     assert!(
-        adapter_slice.contains("source: CcSwitchChannelSource"),
-        "ProviderRouter channel source adapter must hold the core-facing CcSwitchChannelSource"
+        source.contains("source: CcSwitchChannelSource")
+            && source.contains("impl ProviderRouterChannelSource for CcSwitchProviderRouterChannelSource"),
+        "ProviderRouter channel source must hold the core-facing CcSwitchChannelSource in host/cc_switch"
     );
     assert!(
-        adapter_slice.contains("router_channel_route_inputs_from_channel_source"),
-        "ProviderRouter channel source adapter must project route inputs from ChannelSource"
+        source.contains("router_channel_route_inputs_from_channel_source"),
+        "ProviderRouter channel source must project route inputs from ChannelSource"
+    );
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::provider_router_channel_source::CcSwitchProviderRouterChannelSource"
+        ) && adapter_source.contains("CcSwitchProviderRouterChannelSource::new(")
+            && !adapter_source.contains("struct CcSwitchProviderRouterChannelSource")
+            && !adapter_source
+                .contains("impl ProviderRouterChannelSource for CcSwitchProviderRouterChannelSource"),
+        "proxy_core_adapter should re-export and instantiate, not own, the ProviderRouter channel source"
     );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(adapter_slice) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROVIDER_ROUTER_CHANNEL_SOURCE_ADAPTER_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs CcSwitchProviderRouterChannelSource:{} contains channel source adapter marker `{}`",
+                    "src/proxy/host/cc_switch/provider_router_channel_source.rs:{} contains channel source adapter marker `{}`",
                     line_index + 1,
                     marker
                 ));
