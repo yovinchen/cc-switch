@@ -918,8 +918,6 @@ pub(crate) type ForwarderProtocolPreparationInput<'a> =
 pub(crate) type ForwarderTransformPlan = crate::proxy_core::api::transport::ForwarderTransformPlan;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
 #[cfg(test)]
-pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig;
-#[cfg(test)]
 use crate::proxy_core::api::ports::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::api::config::AppProxyConfig;
 
@@ -7637,6 +7635,7 @@ mod tests {
         ManagedAccountAuthRuntime, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
         ManagementAuthError,
     };
+    use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
         channel_auth_profile_action, channel_auth_profile_missing_provider_warning,
         ChannelAuthProfileAction,

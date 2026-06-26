@@ -2228,6 +2228,8 @@ fn request_context_owns_core_context_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/context.rs");
     let source = fs::read_to_string(&path).expect("read engine/context.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let adapter_import = function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
@@ -2290,6 +2292,12 @@ fn request_context_owns_core_context_imports() {
         violations.is_empty(),
         "RequestContext should not route pure core context contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        !adapter_source.contains(
+            "pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig"
+        ),
+        "proxy_core_adapter should not re-export ResponseTimeoutConfig"
     );
 }
 
