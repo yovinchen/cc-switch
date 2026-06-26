@@ -215,7 +215,6 @@ fn system_proxy_points_to_loopback() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core_adapter::proxy_url_points_to_loopback_port;
     use std::sync::{Mutex, OnceLock};
 
     fn env_lock() -> &'static Mutex<()> {
@@ -252,36 +251,36 @@ mod tests {
     #[test]
     fn test_proxy_points_to_loopback() {
         // 只有指向 CC Switch 自己端口的 loopback 地址才返回 true
-        assert!(proxy_url_points_to_loopback_port(
-            "http://127.0.0.1:15721",
+        assert!(proxy_values_point_to_loopback_port(
+            ["http://127.0.0.1:15721"],
             DEFAULT_PROXY_LISTEN_PORT
         ));
-        assert!(proxy_url_points_to_loopback_port(
-            "socks5://localhost:15721",
+        assert!(proxy_values_point_to_loopback_port(
+            ["socks5://localhost:15721"],
             DEFAULT_PROXY_LISTEN_PORT
         ));
-        assert!(proxy_url_points_to_loopback_port(
-            "127.0.0.1:15721",
+        assert!(proxy_values_point_to_loopback_port(
+            ["127.0.0.1:15721"],
             DEFAULT_PROXY_LISTEN_PORT
         ));
 
         // 其他 loopback 端口不应该被跳过（允许使用其他本地代理工具）
-        assert!(!proxy_url_points_to_loopback_port(
-            "http://127.0.0.1:7890",
+        assert!(!proxy_values_point_to_loopback_port(
+            ["http://127.0.0.1:7890"],
             DEFAULT_PROXY_LISTEN_PORT
         ));
-        assert!(!proxy_url_points_to_loopback_port(
-            "socks5://localhost:1080",
+        assert!(!proxy_values_point_to_loopback_port(
+            ["socks5://localhost:1080"],
             DEFAULT_PROXY_LISTEN_PORT
         ));
 
         // 非 loopback 地址不应该被跳过
-        assert!(!proxy_url_points_to_loopback_port(
-            "http://192.168.1.10:7890",
+        assert!(!proxy_values_point_to_loopback_port(
+            ["http://192.168.1.10:7890"],
             DEFAULT_PROXY_LISTEN_PORT
         ));
-        assert!(!proxy_url_points_to_loopback_port(
-            "http://192.168.1.10:15721",
+        assert!(!proxy_values_point_to_loopback_port(
+            ["http://192.168.1.10:15721"],
             DEFAULT_PROXY_LISTEN_PORT
         ));
     }

@@ -151,9 +151,6 @@ pub(crate) const SYSTEM_PROXY_ENV_KEYS: [&str; 6] =
 
 pub(crate) use crate::proxy_core::api::security::mask_url_for_log;
 
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::proxy_url_points_to_loopback_port;
-
 pub(crate) use crate::proxy_core::api::transport::{
     invalid_explicit_proxy_url_message, proxy_values_point_to_loopback_port,
     validate_explicit_proxy_url,
@@ -8429,14 +8426,18 @@ mod tests {
             mask_url_for_log("http://user:pass@127.0.0.1:7890"),
             "http://127.0.0.1:7890"
         );
-        assert!(proxy_url_points_to_loopback_port(
-            "socks5://localhost:15721",
-            15721
-        ));
-        assert!(!proxy_url_points_to_loopback_port(
-            "http://127.0.0.1:7890",
-            15721
-        ));
+        assert!(
+            crate::proxy_core::api::transport::proxy_url_points_to_loopback_port(
+                "socks5://localhost:15721",
+                15721
+            )
+        );
+        assert!(
+            !crate::proxy_core::api::transport::proxy_url_points_to_loopback_port(
+                "http://127.0.0.1:7890",
+                15721
+            )
+        );
         assert!(proxy_values_point_to_loopback_port(
             ["", " http://127.0.0.1:15721 "],
             15721

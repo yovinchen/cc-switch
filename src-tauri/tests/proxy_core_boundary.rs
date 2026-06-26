@@ -1304,6 +1304,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn extract_opencode_stream_check_npm(",
     "fn resolve_opencode_stream_check_base_url(",
     "fn additive_stream_check_base_url_missing_error_spec(",
+    "pub(crate) use crate::proxy_core::api::transport::proxy_url_points_to_loopback_port",
     "fn opencode_live_provider_fragment_has_provider_fields(",
     "opencode_settings_have_live_provider_fields as opencode_live_provider_fragment_has_provider_fields",
     "fn channel_health_reset_from_parts(",
