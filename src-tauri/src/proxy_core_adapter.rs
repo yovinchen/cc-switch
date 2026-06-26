@@ -1555,6 +1555,8 @@ pub(crate) type ProxyCoreChannelOverrides = crate::proxy_core::api::domain::Chan
 #[cfg(test)]
 pub(crate) type ChannelSpec = crate::proxy_core::api::routing::ChannelSpec;
 #[cfg(test)]
+pub(crate) type ChannelQuery<'a> = crate::proxy_core::api::routing::ChannelQuery<'a>;
+#[cfg(test)]
 pub(crate) type ProxyCoreChannelSpec = crate::proxy_core::api::routing::ChannelSpec;
 #[cfg(test)]
 pub(crate) type ChannelStatus = crate::proxy_core::api::routing::ChannelStatus;
@@ -2206,9 +2208,7 @@ pub(crate) fn provider_from_opencode_live_config(
 }
 
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::domain::{
-    channel_spec_from_input, ChannelSpecInput, ModelRouteInput,
-};
+pub(crate) use crate::proxy_core::api::domain::{channel_spec_from_input, ChannelSpecInput};
 
 #[cfg(test)]
 pub(crate) type ProxyCoreUpstreamEndpoint = crate::proxy_core::api::domain::UpstreamEndpoint;
