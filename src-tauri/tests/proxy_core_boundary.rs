@@ -12860,6 +12860,70 @@ fn production_forwarder_uses_transport_source_resource() {
 }
 
 #[test]
+fn production_forwarder_transport_source_delegates_to_upstream_transport_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let upstream_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/transport/upstream/mod.rs"))
+            .expect("read transport/upstream/mod.rs");
+    let reqwest_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/transport/upstream/reqwest_client.rs"))
+            .expect("read transport/upstream/reqwest_client.rs");
+    let impl_slice = function_slice(
+        &adapter_source,
+        "impl ForwarderTransportSource for CcSwitchForwarderTransportSource",
+        "pub(crate) fn default_forwarder_transport_source",
+    );
+
+    assert!(
+        impl_slice.contains("crate::proxy::transport::upstream::send_request(request).await"),
+        "default ForwarderTransportSource must delegate upstream transport execution to proxy::transport::upstream"
+    );
+
+    let forbidden_adapter_markers = [
+        "crate::proxy::http_client::get_current_proxy_url(",
+        "crate::proxy::http_client::get(",
+        "resolve_upstream_send_policy(",
+        "UpstreamSendPolicyInput",
+        "UpstreamTransportKind::",
+        "reqwest_send_error_to_proxy_error(",
+        "transport::upstream::hyper_client::send_request(",
+        "invalid_upstream_url_error_message(",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(impl_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_adapter_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs default transport source:{} contains direct upstream transport marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "default ForwarderTransportSource must stay a thin upstream transport module delegate:\n{}",
+        violations.join("\n")
+    );
+    assert!(
+        upstream_source.contains("resolve_upstream_send_policy(UpstreamSendPolicyInput")
+            && upstream_source.contains("reqwest_client::send_request(")
+            && upstream_source.contains("hyper_client::send_request("),
+        "transport/upstream/mod.rs must own upstream transport policy dispatch"
+    );
+    assert!(
+        reqwest_source.contains("crate::proxy::http_client::get()")
+            && reqwest_source.contains("reqwest_send_error_to_proxy_error"),
+        "transport/upstream/reqwest_client.rs must own pooled reqwest upstream send execution"
+    );
+}
+
+#[test]
 fn production_forwarder_uses_request_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");

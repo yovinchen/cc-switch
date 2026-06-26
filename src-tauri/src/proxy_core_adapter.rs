@@ -19,9 +19,7 @@ use crate::proxy::engine::routing::{
     ProviderRouterSources,
 };
 use crate::proxy::error::ProxyError;
-use crate::proxy::error_mapper::{
-    forward_error_to_core_error, proxy_core_error_to_proxy_error, reqwest_send_error_to_proxy_error,
-};
+use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_core_error_to_proxy_error};
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::providers::{get_adapter, ProviderAdapter};
@@ -9207,64 +9205,7 @@ impl ForwarderTransportSource for CcSwitchForwarderTransportSource {
         &'a self,
         request: ForwarderUpstreamTransportRequest,
     ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>> {
-        Box::pin(async move {
-            let upstream_proxy_url: Option<String> =
-                crate::proxy::http_client::get_current_proxy_url();
-            let is_socks_proxy = is_socks_proxy_url(upstream_proxy_url.as_deref());
-            let send_policy = resolve_upstream_send_policy(UpstreamSendPolicyInput {
-                is_socks_proxy,
-                preserve_exact_header_case: request.request_parts.preserve_exact_header_case,
-                request_is_streaming: request.request_is_streaming,
-                non_streaming_timeout: request.non_streaming_timeout,
-                streaming_first_byte_timeout: request.streaming_first_byte_timeout,
-            });
-
-            if matches!(send_policy.transport, UpstreamTransportKind::PooledReqwest) {
-                log::debug!(
-                    "[Forwarder] Using pooled reqwest client (preserve_exact_header_case={}, socks_proxy={})",
-                    request.request_parts.preserve_exact_header_case,
-                    is_socks_proxy
-                );
-                let client = crate::proxy::http_client::get();
-                let mut outbound = client.request(request.method, &request.url);
-                if let Some(request_timeout) = send_policy.reqwest_request_timeout {
-                    outbound = outbound.timeout(request_timeout);
-                }
-                for (key, value) in &request.request_parts.ordered_headers {
-                    outbound = outbound.header(key, value);
-                }
-                let send = outbound.body(request.request_parts.body).send();
-                let send_result = if let Some(header_timeout) = send_policy.streaming_header_timeout
-                {
-                    tokio::time::timeout(header_timeout, send)
-                        .await
-                        .map_err(|_| {
-                            ProxyError::Timeout(streaming_header_timeout_message(header_timeout))
-                        })?
-                } else {
-                    send.await
-                };
-                let reqwest_resp = send_result.map_err(reqwest_send_error_to_proxy_error)?;
-                Ok(ProxyResponse::Reqwest(reqwest_resp))
-            } else {
-                let uri: http::Uri = request.url.parse().map_err(|error| {
-                    ProxyError::ForwardFailed(invalid_upstream_url_error_message(
-                        &request.url,
-                        error,
-                    ))
-                })?;
-                crate::proxy::transport::upstream::hyper_client::send_request(
-                    uri,
-                    request.method,
-                    request.request_parts.ordered_headers,
-                    request.extensions,
-                    request.request_parts.body,
-                    send_policy.base_timeout,
-                    upstream_proxy_url.as_deref(),
-                )
-                .await
-            }
-        })
+        Box::pin(async move { crate::proxy::transport::upstream::send_request(request).await })
     }
 }
 
