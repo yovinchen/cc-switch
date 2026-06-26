@@ -16090,6 +16090,8 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/route_resolver.rs");
     let source = fs::read_to_string(&source_path).expect("read route_resolver.rs");
+    let host_path = manifest_dir.join("src/proxy_core_host.rs");
+    let host_source = fs::read_to_string(&host_path).expect("read proxy_core_host.rs");
 
     assert!(
         source.contains("pub(crate) struct CcSwitchRouteResolver")
@@ -16105,8 +16107,8 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
                 "use crate::proxy_core::api::management::{RouteResolveRequest, RouteResolveResponse};"
             )
             && source.contains("use crate::proxy_core::api::ports::RouteResolver;")
-            && source
-                .contains("use crate::proxy_core::api::routing::{build_route_plan, RoutePlan, RouteRequest};"),
+            && source.contains("use crate::proxy_core::api::routing::{build_route_plan, RoutePlan};")
+            && source.contains("pub(crate) use crate::proxy_core::api::routing::RouteRequest;"),
         "CC Switch route resolver should import route contracts directly from proxy_core"
     );
     let adapter_import =
@@ -16153,6 +16155,16 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
     assert!(
         !adapter_source.contains("route_plan_from_request"),
         "proxy_core_adapter should not re-export route planning through route_plan_from_request"
+    );
+    let host_adapter_import =
+        function_slice(&host_source, "use crate::proxy_core_adapter::{", "};");
+    assert!(
+        !host_adapter_import.contains("RouteRequest"),
+        "proxy_core_host test harness should not import RouteRequest through proxy_core_adapter"
+    );
+    assert!(
+        host_source.contains("use crate::proxy::host::cc_switch::route_resolver::RouteRequest;"),
+        "proxy_core_host test harness should import RouteRequest through the host route resolver module"
     );
 }
 
