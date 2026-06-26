@@ -900,6 +900,17 @@ const FORBIDDEN_PROXY_EVENTS_HANDLER_SSE_ORCHESTRATION_MARKERS: &[&str] = &[
     "Duration::from_secs(",
     "Sse::new(",
 ];
+const FORBIDDEN_MANAGEMENT_READ_HANDLER_ENGINE_MARKERS: &[&str] = &[
+    "AppListRequest::new(",
+    "ManagementAppPathRequest::from_path(",
+    "AppModelCatalogRequest::from_parts(",
+    ".proxy_engine()",
+    ".app_list_response(",
+    ".provider_list_response(",
+    ".list_model_catalog_for_request(",
+    ".client_model_catalog_response(",
+    "AppKind::Codex",
+];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
 const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
@@ -3763,6 +3774,79 @@ fn production_proxy_events_handler_delegates_sse_orchestration_to_response_adapt
     assert!(
         violations.is_empty(),
         "proxy events handler must delegate event subscription and SSE keep-alive construction to response_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_management_read_handlers_delegate_json_bridge_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handlers = [
+        (
+            "list_proxy_apps",
+            function_slice(
+                &source,
+                "pub async fn list_proxy_apps(",
+                "/// GET /proxy/v1/apps/{app}/providers",
+            ),
+            "dispatch_proxy_apps_request_to_axum_json_response(",
+        ),
+        (
+            "list_proxy_providers",
+            function_slice(
+                &source,
+                "pub async fn list_proxy_providers(",
+                "/// GET /proxy/v1/apps/{app}/models",
+            ),
+            "dispatch_proxy_providers_request_to_axum_json_response(",
+        ),
+        (
+            "list_proxy_app_models",
+            function_slice(
+                &source,
+                "pub async fn list_proxy_app_models(",
+                "/// GET /proxy/v1/channels",
+            ),
+            "dispatch_proxy_app_models_request_to_axum_json_response(",
+        ),
+        (
+            "handle_models",
+            function_slice(
+                &source,
+                "pub async fn handle_models(",
+                "// ============================================================================\n// Claude API",
+            ),
+            "dispatch_codex_client_model_catalog_request_to_axum_json_response(",
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    for (handler_name, handler, adapter_marker) in handlers {
+        if !handler.contains(adapter_marker) {
+            violations.push(format!(
+                "src/proxy/handlers.rs {handler_name} should call `{adapter_marker}`"
+            ));
+        }
+
+        for (line_index, line) in production_lines(handler) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_MANAGEMENT_READ_HANDLER_ENGINE_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/proxy/handlers.rs {handler_name}:{} contains management read engine marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "management read handlers must delegate request construction, engine calls, route metadata, and JSON wrapping to response_adapter:\n{}",
         violations.join("\n")
     );
 }

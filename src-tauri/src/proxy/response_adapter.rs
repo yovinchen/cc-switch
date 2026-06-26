@@ -4,9 +4,10 @@ use super::{
         claude_response_transform_error_to_proxy_error,
         codex_chat_to_responses_transform_error_to_proxy_error,
         codex_proxy_error_body_build_error_to_proxy_error, codex_proxy_error_response,
-        codex_responses_error_body_build_error_to_proxy_error,
+        codex_responses_error_body_build_error_to_proxy_error, management_api_error_to_proxy_error,
         parse_claude_transform_upstream_json_or_unlabeled_sse,
-        parse_codex_chat_upstream_json_or_unlabeled_sse, response_build_error_to_proxy_error,
+        parse_codex_chat_upstream_json_or_unlabeled_sse, proxy_core_error_to_proxy_error,
+        response_build_error_to_proxy_error,
     },
     handler_context::RequestContext,
     hyper_client::ProxyResponse,
@@ -24,16 +25,21 @@ use crate::proxy_core_adapter::{
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
     read_decoded_proxy_response_body, rebuilt_json_proxy_response, record_forward_core_error_usage,
     request_body_read_error_message, strip_endpoint_prefix, transformed_sse_proxy_response,
-    ActiveConnectionGuard, AxumResponseBuildErrorContext, ClaudeTransformStreamingDecision,
+    ActiveConnectionGuard, AppKind, AppListRequest, AppListResponse, AppModelCatalogRequest,
+    AppModelListQuery, AxumResponseBuildErrorContext, ClaudeTransformStreamingDecision,
     ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
-    CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
-    CodexChatTransformStreamingDecision, CodexResponsesProxyRequest, CodexToolContext,
-    CoreResponseBuildFailureContext, InterfaceKind, JsonProxyRequestInput, ProxyCoreResponse,
+    ClientModelCatalogResponse, CodexAutoTransformedJsonResponseContext,
+    CodexAutoTransformedSseStreamContext, CodexChatTransformStreamingDecision,
+    CodexResponsesProxyRequest, CodexToolContext, CoreResponseBuildFailureContext, InterfaceKind,
+    JsonProxyRequestInput, ManagementAppPathRequest, ProviderListResponse, ProxyCoreResponse,
     ProxyEventEnvelope, ProxyRequest, ProxyResult, ProxyState, ProxyTransportResponse,
-    ProxyTransportResponseBody, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG,
-    CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    ProxyTransportResponseBody, RoutableModelList, UpstreamSseAggregationKind,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::{
+    response::sse::{Event, KeepAlive, Sse},
+    Json,
+};
 use bytes::Bytes;
 use futures::Stream;
 use http::{HeaderMap, Method, StatusCode, Uri};
@@ -245,6 +251,62 @@ pub(crate) fn proxy_core_response_to_proxy_response(
     };
 
     Ok(response)
+}
+
+pub(crate) async fn dispatch_proxy_apps_request_to_axum_json_response(
+    state: &ProxyState,
+) -> Result<Json<AppListResponse>, ProxyError> {
+    let request = AppListRequest::new();
+    let response = state
+        .proxy_engine()
+        .app_list_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
+}
+
+pub(crate) async fn dispatch_proxy_providers_request_to_axum_json_response(
+    state: &ProxyState,
+    app_type: String,
+) -> Result<Json<ProviderListResponse>, ProxyError> {
+    let request = ManagementAppPathRequest::from_path(app_type)
+        .map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .provider_list_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
+}
+
+pub(crate) async fn dispatch_proxy_app_models_request_to_axum_json_response(
+    state: &ProxyState,
+    app_type: String,
+    query: AppModelListQuery,
+) -> Result<Json<RoutableModelList>, ProxyError> {
+    let request = AppModelCatalogRequest::from_parts(app_type, query)
+        .map_err(management_api_error_to_proxy_error)?;
+    let catalog = state
+        .proxy_engine()
+        .list_model_catalog_for_request(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(catalog))
+}
+
+pub(crate) async fn dispatch_codex_client_model_catalog_request_to_axum_json_response(
+    state: &ProxyState,
+) -> Result<Json<ClientModelCatalogResponse>, ProxyError> {
+    let response = state
+        .proxy_engine()
+        .client_model_catalog_response(&AppKind::Codex)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
 }
 
 async fn dispatch_proxy_request(

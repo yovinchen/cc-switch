@@ -13,20 +13,24 @@ use super::{
     response_adapter::{
         dispatch_claude_desktop_messages_request_to_axum_response,
         dispatch_claude_request_to_axum_response, dispatch_codex_chat_request_to_axum_response,
+        dispatch_codex_client_model_catalog_request_to_axum_json_response,
         dispatch_codex_responses_compact_request_to_axum_response,
         dispatch_codex_responses_request_to_axum_response,
-        dispatch_gemini_request_to_axum_response, proxy_events_request_to_axum_sse_response,
+        dispatch_gemini_request_to_axum_response,
+        dispatch_proxy_app_models_request_to_axum_json_response,
+        dispatch_proxy_apps_request_to_axum_json_response,
+        dispatch_proxy_providers_request_to_axum_json_response,
+        proxy_events_request_to_axum_sse_response,
     },
 };
 use crate::proxy_core_adapter::{
-    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
-    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
-    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
-    ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
-    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
+    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppListResponse,
+    AppModelListQuery, ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
+    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord,
+    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
     ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
     CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
     ManagementAppPathRequest, ProviderListResponse, ProxyChannelKeyPatchRequest,
@@ -97,14 +101,7 @@ pub async fn require_proxy_management_auth(
 pub async fn list_proxy_apps(
     State(state): State<ProxyState>,
 ) -> Result<Json<AppListResponse>, ProxyError> {
-    let request = AppListRequest::new();
-    let response = state
-        .proxy_engine()
-        .app_list_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
+    dispatch_proxy_apps_request_to_axum_json_response(&state).await
 }
 
 /// GET /proxy/v1/apps/{app}/providers
@@ -112,15 +109,7 @@ pub async fn list_proxy_providers(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
 ) -> Result<Json<ProviderListResponse>, ProxyError> {
-    let request = ManagementAppPathRequest::from_path(app_type)
-        .map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .provider_list_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
+    dispatch_proxy_providers_request_to_axum_json_response(&state, app_type).await
 }
 
 /// GET /proxy/v1/apps/{app}/models
@@ -129,15 +118,7 @@ pub async fn list_proxy_app_models(
     Path(app_type): Path<String>,
     Query(query): Query<AppModelListQuery>,
 ) -> Result<Json<RoutableModelList>, ProxyError> {
-    let request = AppModelCatalogRequest::from_parts(app_type, query)
-        .map_err(management_api_error_to_proxy_error)?;
-    let engine = state.proxy_engine();
-    let catalog = engine
-        .list_model_catalog_for_request(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(catalog))
+    dispatch_proxy_app_models_request_to_axum_json_response(&state, app_type, query).await
 }
 
 /// GET /proxy/v1/channels
@@ -484,12 +465,7 @@ pub async fn resolve_proxy_route(
 pub async fn handle_models(
     State(state): State<ProxyState>,
 ) -> Result<Json<ClientModelCatalogResponse>, ProxyError> {
-    let response = state
-        .proxy_engine()
-        .client_model_catalog_response(&AppKind::Codex)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-    Ok(Json(response))
+    dispatch_codex_client_model_catalog_request_to_axum_json_response(&state).await
 }
 
 // ============================================================================
