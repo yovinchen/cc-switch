@@ -5,6 +5,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/lib.rs",
     "src/proxy/engine/response_pipeline.rs",
     "src/proxy/error_mapper.rs",
+    "src/proxy/events.rs",
     "src/proxy/response_adapter.rs",
     "src/proxy_core_adapter.rs",
     "src/services/model_fetch_transport.rs",
@@ -17592,6 +17593,65 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         violations.is_empty(),
         "response_adapter should not route pure core transport/event/usage contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_events_uses_grouped_api_surface() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/events.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/events.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in source.lines().enumerate() {
+        let code = line.split("//").next().unwrap_or_default();
+        for (column, _) in code.match_indices(PROXY_CORE_MARKER) {
+            if !code[column..].starts_with(PROXY_CORE_API_MARKER) {
+                violations.push(format!(
+                    "src/proxy/events.rs:{} contains non-api proxy-core access: {}",
+                    line_index + 1,
+                    code.trim()
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy/events.rs must use proxy_core::api as its integration surface:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_events_owns_core_event_stream_imports() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/events.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/events.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        source.contains("use crate::proxy_core::api::events::{")
+            && source.contains("build_proxy_events_connected_payload")
+            && source.contains("build_proxy_events_lagged_payload")
+            && source.contains("ProxyEventEnvelope")
+            && source.contains("PROXY_EVENTS_CONNECTED_EVENT")
+            && source.contains("PROXY_EVENTS_LAGGED_EVENT"),
+        "proxy/events.rs should import event stream contracts directly from proxy_core::api::events"
+    );
+
+    assert!(
+        !source.contains("proxy_core_adapter")
+            && !source.contains("proxy_events_connected_message")
+            && !source.contains("proxy_events_lagged_message"),
+        "proxy/events.rs should not route event stream contracts through proxy_core_adapter"
+    );
+
+    assert!(
+        !adapter_source.contains("fn proxy_events_connected_message(")
+            && !adapter_source.contains("fn proxy_events_lagged_message("),
+        "proxy_core_adapter should not keep one-hop proxy event stream message facades"
     );
 }
 

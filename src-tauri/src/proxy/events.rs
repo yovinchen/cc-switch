@@ -4,8 +4,9 @@
 //! Keeping it independent from Tauri lets it become the future `ProxyEventSink`
 //! implementation when the forwarding engine is moved behind service ports.
 
-use crate::proxy_core_adapter::{
-    proxy_events_connected_message, proxy_events_lagged_message, ProxyEventEnvelope,
+use crate::proxy_core::api::events::{
+    build_proxy_events_connected_payload, build_proxy_events_lagged_payload, ProxyEventEnvelope,
+    PROXY_EVENTS_CONNECTED_EVENT, PROXY_EVENTS_LAGGED_EVENT,
 };
 use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -41,13 +42,17 @@ impl ProxyEventBus {
     }
 
     pub fn connected_event(&self) -> ProxyEventEnvelope {
-        let message = proxy_events_connected_message(EVENT_BUFFER_SIZE);
-        self.envelope(message.event_name, message.payload)
+        self.envelope(
+            PROXY_EVENTS_CONNECTED_EVENT,
+            build_proxy_events_connected_payload(EVENT_BUFFER_SIZE),
+        )
     }
 
     pub fn lagged_event(&self, skipped: u64) -> ProxyEventEnvelope {
-        let message = proxy_events_lagged_message(skipped);
-        self.envelope(message.event_name, message.payload)
+        self.envelope(
+            PROXY_EVENTS_LAGGED_EVENT,
+            build_proxy_events_lagged_payload(skipped),
+        )
     }
 
     fn envelope(&self, event: impl Into<String>, payload: Value) -> ProxyEventEnvelope {

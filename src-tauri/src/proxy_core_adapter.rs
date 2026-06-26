@@ -606,7 +606,6 @@ pub(crate) type ProxyCoreResult<T> = crate::proxy_core::api::errors::ProxyCoreRe
 pub(crate) type ProxyEngine<S> = crate::proxy_core::api::engine::ProxyEngine<S>;
 pub(crate) type ProxyResult = crate::proxy_core::api::transport::ProxyResult;
 pub(crate) type ProxyCoreEvent = crate::proxy_core::api::events::ProxyCoreEvent;
-pub(crate) type ProxyEventEnvelope = crate::proxy_core::api::events::ProxyEventEnvelope;
 pub(crate) type CodexChatHistorySseRecord =
     crate::proxy_core::api::transforms::CodexChatHistorySseRecord;
 pub(crate) type CodexChatHistoryState = crate::proxy_core::api::transforms::CodexChatHistoryState;
@@ -2476,7 +2475,6 @@ pub(crate) use crate::proxy_core::api::config::{
 pub(crate) use crate::proxy_core::api::domain::channel_matches_query;
 use crate::proxy_core::api::events::{
     attempt_event_name, build_attempt_event_payload, build_provider_switched_event_payload,
-    build_proxy_events_connected_payload, build_proxy_events_lagged_payload,
     build_proxy_official_warning_event_payload, build_request_started_event_payload,
     build_server_started_event_payload, build_server_stopped_event_payload,
 };
@@ -2654,9 +2652,6 @@ pub(crate) use crate::proxy::host::cc_switch::managed_account_runtime_source::{
 
 pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =
     crate::proxy_core::api::usage::SESSION_REQUEST_ID_PREFIX;
-const PROXY_EVENTS_CONNECTED_EVENT: &str =
-    crate::proxy_core::api::events::PROXY_EVENTS_CONNECTED_EVENT;
-const PROXY_EVENTS_LAGGED_EVENT: &str = crate::proxy_core::api::events::PROXY_EVENTS_LAGGED_EVENT;
 const PROXY_OFFICIAL_WARNING_EVENT: &str =
     crate::proxy_core::api::events::PROXY_OFFICIAL_WARNING_EVENT;
 const PROVIDER_SWITCHED_EVENT: &str = crate::proxy_core::api::events::PROVIDER_SWITCHED_EVENT;
@@ -2670,20 +2665,6 @@ const SERVER_STOPPED_EVENT: &str = crate::proxy_core::api::events::SERVER_STOPPE
 #[cfg(test)]
 pub(crate) const AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE: &str =
     crate::proxy_core::api::routing::AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE;
-
-pub(crate) fn proxy_events_connected_message(buffer_size: usize) -> ProxyEventBusMessage {
-    ProxyEventBusMessage {
-        event_name: PROXY_EVENTS_CONNECTED_EVENT.to_string(),
-        payload: build_proxy_events_connected_payload(buffer_size),
-    }
-}
-
-pub(crate) fn proxy_events_lagged_message(skipped: u64) -> ProxyEventBusMessage {
-    ProxyEventBusMessage {
-        event_name: PROXY_EVENTS_LAGGED_EVENT.to_string(),
-        payload: build_proxy_events_lagged_payload(skipped),
-    }
-}
 
 pub(crate) fn server_started_event_message(address: &str, port: u16) -> ProxyEventBusMessage {
     ProxyEventBusMessage {
@@ -8032,6 +8013,7 @@ mod tests {
     };
     use crate::proxy::provider::ProviderAdapter;
     use crate::proxy_core::api::errors::ProxyCoreError;
+    use crate::proxy_core::api::events::ProxyEventEnvelope;
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
     use crate::proxy_core::api::transport::{
@@ -11793,19 +11775,11 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn proxy_event_adapter_projects_event_stream_contracts() {
-        assert_eq!(PROXY_EVENTS_CONNECTED_EVENT, "proxy_events_connected");
-        assert_eq!(PROXY_EVENTS_LAGGED_EVENT, "proxy_events_lagged");
         assert_eq!(PROXY_OFFICIAL_WARNING_EVENT, "proxy-official-warning");
         assert_eq!(PROVIDER_SWITCHED_EVENT, "provider-switched");
         assert_eq!(REQUEST_STARTED_EVENT, "request_started");
         assert_eq!(SERVER_STARTED_EVENT, "server_started");
         assert_eq!(SERVER_STOPPED_EVENT, "server_stopped");
-        let connected = proxy_events_connected_message(256);
-        assert_eq!(connected.event_name, "proxy_events_connected");
-        assert_eq!(connected.payload["bufferSize"], 256);
-        let lagged = proxy_events_lagged_message(3);
-        assert_eq!(lagged.event_name, "proxy_events_lagged");
-        assert_eq!(lagged.payload["skipped"], 3);
         assert_eq!(
             build_proxy_official_warning_event_payload("claude", "Official Claude"),
             json!({
