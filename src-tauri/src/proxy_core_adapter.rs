@@ -5609,7 +5609,7 @@ pub(crate) trait ForwarderAttemptRuntimeSource {
     ) -> BoxFuture<'a, ()>;
 }
 
-pub(crate) use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_router;
+use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_router;
 
 pub(crate) type ForwarderAuthSourceRef = Arc<dyn ForwarderAuthSource + Send + Sync>;
 pub(crate) type AuthProviderRef = Arc<dyn AuthProvider + Send + Sync>;

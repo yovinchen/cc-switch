@@ -1110,7 +1110,7 @@ mod tests {
 
         let forwarder = RequestForwarder {
             attempt_runtime_source:
-                crate::proxy_core_adapter::forwarder_attempt_runtime_source_from_router(router),
+                crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_router(router),
             protocol_state_source:
                 crate::proxy::host::cc_switch::forwarder_protocol_state_source::forwarder_protocol_state_source_from_runtime_parts(
                     gemini_shadow,

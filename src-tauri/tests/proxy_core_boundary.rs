@@ -14700,9 +14700,10 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         );
     }
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_router")
+        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_router")
+            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_router")
             && !adapter_source.contains("struct CcSwitchForwarderAttemptRuntimeSource"),
-        "proxy_core_adapter should re-export, not own, the default forwarder attempt runtime source"
+        "proxy_core_adapter should use, not re-export or own, the default forwarder attempt runtime source"
     );
     assert!(
         !adapter_source.contains("pub(crate) fn forwarder_attempt_limit_reached_log_line")
@@ -14716,7 +14717,7 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     let attempt_runtime_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderAttemptRuntimeSource",
-        "pub(crate) use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source",
+        "use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source",
     );
     let attempt_failure_runtime_source_slice = function_slice(
         &adapter_source,

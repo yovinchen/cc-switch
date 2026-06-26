@@ -543,7 +543,7 @@ mod tests {
             events: events.clone(),
             current_providers: current_providers.clone(),
             attempt_runtime_source:
-                crate::proxy_core_adapter::forwarder_attempt_runtime_source_from_router(
+                crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_router(
                     provider_router,
                 ),
             protocol_state_source:
