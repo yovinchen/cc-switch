@@ -29,6 +29,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/forwarder_request_source.rs",
     "src/proxy/host/cc_switch/managed_account_runtime_source.rs",
     "src/proxy/host/cc_switch/provider_adapter_context.rs",
+    "src/proxy/host/cc_switch/proxy_services.rs",
     "src/proxy/host/cc_switch/provider_router_health_store.rs",
     "src/proxy/response_adapter.rs",
     "src/proxy/transport/upstream/mod.rs",
@@ -209,6 +210,7 @@ const FORBIDDEN_PROXY_MANAGEMENT_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
     "pub(crate) use crate::proxy_core::api::ports::ProviderHealthUpdateInput",
     "type ProviderAttemptResult = crate::proxy_core::api::ports::ProviderAttemptResult",
     "pub(crate) use crate::proxy_core::api::ports::ProviderAttemptResult",
+    "ChannelHealthStore,",
     "ProviderHealthStore,",
 ];
 const FORBIDDEN_STREAM_CHECK_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
@@ -16490,6 +16492,8 @@ fn production_proxy_services_excludes_test_constructor_surface() {
     let pipeline_source = fs::read_to_string(&pipeline_path).expect("read forward_pipeline.rs");
     let services_slice = services_source.as_str();
     let lines: Vec<&str> = services_slice.lines().collect();
+    let services_adapter_import =
+        function_slice(&services_source, "use crate::proxy_core_adapter::{", "};");
 
     let mut violations = Vec::new();
     for marker in [
@@ -16548,6 +16552,52 @@ fn production_proxy_services_excludes_test_constructor_surface() {
             "src/proxy/host/cc_switch/forward_pipeline.rs keeps no-runtime forward pipeline constructor outside test cfg"
                 .to_string(),
         );
+    }
+    if !services_source.contains("use crate::proxy_core::api::ports::{")
+        || !services_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+        || !services_source
+            .contains("use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};")
+        || !services_source.contains("fn config(&self) -> &(dyn ProxyConfigSource + Send + Sync)")
+    {
+        violations.push(
+            "src/proxy/host/cc_switch/proxy_services.rs must import core service ports directly"
+                .to_string(),
+        );
+    }
+    for adapter_type in [
+        "AuthProvider",
+        "ChannelHealthStore",
+        "ChannelKeyRuntimeSource",
+        "ChannelReachabilityProbe",
+        "ChannelSource",
+        "ClaudeDesktopGatewayAuthSource",
+        "ForwardPipeline",
+        "ManagementAuthSource",
+        "ModelCatalogProvider",
+        "ProviderSource",
+        "ProxyConfigSource",
+        "ProxyEventSink",
+        "ProxyServices",
+        "RoutePolicySource",
+        "RouteResolver",
+        "RuntimeStatusSource",
+        "UsageSink",
+    ] {
+        if services_adapter_import.contains(adapter_type) {
+            violations.push(format!(
+                "src/proxy/host/cc_switch/proxy_services.rs imports core service port {adapter_type} through proxy_core_adapter"
+            ));
+        }
+    }
+    for adapter_import in [
+        "use crate::proxy_core_adapter::{ProxyConfig, ProxyCoreResult, ProxyRuntimeStatus};",
+        "crate::proxy_core_adapter::ProxyConfigSource",
+    ] {
+        if services_source.contains(adapter_import) {
+            violations.push(format!(
+                "src/proxy/host/cc_switch/proxy_services.rs keeps adapter import `{adapter_import}`"
+            ));
+        }
     }
 
     assert!(

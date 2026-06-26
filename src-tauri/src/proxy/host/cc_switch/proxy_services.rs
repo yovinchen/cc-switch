@@ -24,15 +24,17 @@ use crate::proxy::host::cc_switch::provider_source::CcSwitchProviderSource;
 use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource;
 use crate::proxy::host::cc_switch::route_resolver::CcSwitchRouteResolver;
 use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource;
-use crate::proxy_core_adapter::{
+#[cfg(test)]
+use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::ports::{
     AuthProvider, ChannelHealthStore, ChannelKeyRuntimeSource, ChannelReachabilityProbe,
-    ChannelSource, ClaudeDesktopGatewayAuthSource, ForwardPipeline, HostForwardRuntime,
-    ManagementAuthSource, ModelCatalogProvider, ProviderSource, ProxyEventSink,
-    ProxyServiceRuntimeResources, ProxyServices, RoutePolicySource, RouteResolver,
-    RuntimeStatusSource, UsageSink,
+    ChannelSource, ClaudeDesktopGatewayAuthSource, ForwardPipeline, ManagementAuthSource,
+    ModelCatalogProvider, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
+    RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
 };
 #[cfg(test)]
-use crate::proxy_core_adapter::{ProxyConfig, ProxyCoreResult, ProxyRuntimeStatus};
+use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};
+use crate::proxy_core_adapter::{HostForwardRuntime, ProxyServiceRuntimeResources};
 #[cfg(test)]
 use futures::future::BoxFuture;
 #[cfg(test)]
@@ -162,7 +164,7 @@ impl<R> ProxyServices for CcSwitchProxyServices<R>
 where
     R: HostForwardRuntime + Send + Sync + 'static,
 {
-    fn config(&self) -> &(dyn crate::proxy_core_adapter::ProxyConfigSource + Send + Sync) {
+    fn config(&self) -> &(dyn ProxyConfigSource + Send + Sync) {
         &self.config
     }
 
