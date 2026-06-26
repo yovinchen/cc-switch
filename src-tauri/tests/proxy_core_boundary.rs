@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/lib.rs",
+    "src/proxy/engine/context.rs",
     "src/proxy/engine/response_pipeline.rs",
     "src/proxy/error_mapper.rs",
     "src/proxy/error.rs",
@@ -2099,6 +2100,103 @@ fn request_context_uses_adapter_for_provider_facts() {
     assert!(
         violations.is_empty(),
         "RequestContext must consume provider facts through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn request_context_uses_grouped_api_surface() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/engine/context.rs");
+    let source = fs::read_to_string(&path).expect("read engine/context.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for (column, _) in code.match_indices(PROXY_CORE_MARKER) {
+            if !code[column..].starts_with(PROXY_CORE_API_MARKER) {
+                violations.push(format!(
+                    "src/proxy/engine/context.rs:{} contains non-api proxy-core access: {}",
+                    line_index + 1,
+                    code.trim()
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "engine/context.rs must use proxy_core::api as its integration surface:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn request_context_owns_core_context_imports() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/engine/context.rs");
+    let source = fs::read_to_string(&path).expect("read engine/context.rs");
+    let adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::{",
+        "};\nuse axum::",
+    );
+    let adapter_import_identifiers: Vec<&str> = adapter_import
+        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        .filter(|identifier| !identifier.is_empty())
+        .collect();
+
+    assert!(
+        source.contains("use crate::proxy_core::api::config::{")
+            && source.contains("ResponseRuntimePolicy")
+            && source.contains("use crate::proxy_core::api::domain::AppKind;")
+            && source.contains("use crate::proxy_core::api::errors::{")
+            && source.contains("selected_provider_display_name_for_error")
+            && source.contains("selected_provider_not_applied_message")
+            && source.contains("unselected_provider_fallback_id")
+            && source.contains(
+                "use crate::proxy_core::api::session::extract_session_id_with_generator;"
+            )
+            && source.contains("use crate::proxy_core::api::transport::{")
+            && source.contains("request_model_for_forward")
+            && source.contains("resolve_response_runtime_policy")
+            && source.contains("ProxyResult")
+            && source.contains(
+                "use crate::proxy_core::api::transforms::claude_api_format_from_metadata;"
+            )
+            && source.contains("use crate::proxy_core::api::usage::UsageRouteContext;"),
+        "engine/context.rs should import pure request context contracts directly"
+    );
+
+    let mut violations = Vec::new();
+    for marker in [
+        "AppKind",
+        "ProxyResult",
+        "ResponseRuntimePolicy",
+        "ResponseTimeoutConfig",
+        "StreamingTimeoutConfig",
+        "UsageRouteContext",
+        "claude_api_format_from_metadata",
+        "extract_proxy_session_id",
+        "request_model_for_forward",
+        "response_runtime_policy_from_app_proxy_config",
+        "selected_provider_display_name_for_error",
+        "selected_provider_not_applied_message",
+        "unselected_provider_fallback_id",
+    ] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == &marker)
+        {
+            violations.push(format!(
+                "engine/context.rs still imports pure core marker `{marker}` from proxy_core_adapter"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "RequestContext should not route pure core context contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

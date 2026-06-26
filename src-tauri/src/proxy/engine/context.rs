@@ -5,14 +5,24 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
+use crate::proxy_core::api::config::{
+    ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
+};
+use crate::proxy_core::api::domain::AppKind;
+use crate::proxy_core::api::errors::{
+    selected_provider_display_name_for_error, selected_provider_not_applied_message,
+    unselected_provider_fallback_id,
+};
+use crate::proxy_core::api::session::extract_session_id_with_generator;
+use crate::proxy_core::api::transforms::claude_api_format_from_metadata;
+use crate::proxy_core::api::transport::{
+    request_model_for_forward, resolve_response_runtime_policy, ProxyResult,
+};
+use crate::proxy_core::api::usage::UsageRouteContext;
 use crate::proxy_core_adapter::{
-    app_proxy_config_from_proxy_app_config, claude_api_format_from_metadata,
-    extract_proxy_session_id, provider_claude_api_format, proxy_core_app_kind_from_app_type,
-    request_context_route_update_from_proxy_result_source, request_model_for_forward,
-    response_runtime_policy_from_app_proxy_config, selected_provider_display_name_for_error,
-    selected_provider_not_applied_message, unselected_provider_fallback_id, AppKind, ProxyResult,
-    ProxyServices, ProxyState, RequestContextRouteUpdateError, ResponseRuntimePolicy,
-    ResponseTimeoutConfig, StreamingTimeoutConfig, UsageRouteContext,
+    app_proxy_config_from_proxy_app_config, provider_claude_api_format,
+    proxy_core_app_kind_from_app_type, request_context_route_update_from_proxy_result_source,
+    ProxyServices, ProxyState, RequestContextRouteUpdateError,
 };
 use axum::http::HeaderMap;
 use std::time::Instant;
@@ -84,13 +94,21 @@ impl RequestContext {
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
         let app_config = app_proxy_config_from_proxy_app_config(&core_app_config)
             .map_err(ProxyError::ConfigError)?;
-        let response_runtime_policy = response_runtime_policy_from_app_proxy_config(&app_config);
+        let response_runtime_policy = resolve_response_runtime_policy(
+            app_config.auto_failover_enabled,
+            app_config.max_retries,
+            app_config.non_streaming_timeout as u64,
+            app_config.streaming_first_byte_timeout as u64,
+            app_config.streaming_idle_timeout as u64,
+        );
 
         let request_model =
             request_model_for_forward(&app_kind, "", body).unwrap_or_else(|| "unknown".to_string());
 
         // 提取 Session ID
-        let session_result = extract_proxy_session_id(headers, body, app_type_str);
+        let session_result = extract_session_id_with_generator(headers, body, app_type_str, || {
+            uuid::Uuid::new_v4().to_string()
+        });
         let session_id = session_result.session_id.clone();
 
         log::debug!(

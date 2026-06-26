@@ -108,8 +108,12 @@ pub use crate::proxy_core::api::auth::{
 pub(crate) use crate::proxy_core::api::errors::{
     config_error_with_context as core_config_error_with_context,
     internal_error_with_context as core_internal_error_with_context,
-    invalid_request_error as core_invalid_request_error, selected_provider_display_name_for_error,
-    selected_provider_missing_from_source_message, selected_provider_not_applied_message,
+    invalid_request_error as core_invalid_request_error,
+    selected_provider_missing_from_source_message,
+};
+#[cfg(test)]
+use crate::proxy_core::api::errors::{
+    selected_provider_display_name_for_error, selected_provider_not_applied_message,
     unselected_provider_fallback_id,
 };
 
@@ -994,6 +998,7 @@ pub(crate) type ForwarderTransformPlan = crate::proxy_core::api::transport::Forw
 pub(crate) type ForwarderTransformPlanFacts<'a> =
     crate::proxy_core::api::transport::ForwarderTransformPlanFacts<'a>;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
+#[cfg(test)]
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig;
 pub(crate) type StreamingTimeoutConfig = crate::proxy_core::api::config::StreamingTimeoutConfig;
 pub(crate) type SsePassthroughStreamState =
@@ -2519,6 +2524,9 @@ pub(crate) use crate::proxy_core::api::routing::{
     RoutePolicy, RouteRequest,
 };
 #[cfg(test)]
+pub(crate) use crate::proxy_core::api::transforms::claude_api_format_from_metadata;
+pub(crate) use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY;
+#[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
     anthropic_to_openai_responses_request, canonical_json_string,
@@ -2540,9 +2548,6 @@ pub(crate) use crate::proxy_core::api::transforms::{
     CodexChatTransformStreamingDecision,
 };
 pub(crate) use crate::proxy_core::api::transforms::{
-    claude_api_format_from_metadata, CLAUDE_API_FORMAT_METADATA_KEY,
-};
-pub(crate) use crate::proxy_core::api::transforms::{
     resolve_claude_forward_api_format, responses_to_chat_completions_with_options,
 };
 #[cfg(test)]
@@ -2555,8 +2560,11 @@ pub(crate) use crate::proxy_core::api::transport::build_codex_oauth_session_head
 pub(crate) use crate::proxy_core::api::transport::build_copilot_auth_headers;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::build_gemini_auth_headers;
+pub(crate) use crate::proxy_core::api::transport::extract_gemini_model_from_path;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::interface_kind_for_forward;
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transport::request_model_for_forward;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, claude_transform_endpoint_rewrite_input_from_body,
@@ -2600,9 +2608,6 @@ pub(crate) use crate::proxy_core::api::transport::{
     codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
     codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required,
     forwarder_provider_url_facts,
-};
-pub(crate) use crate::proxy_core::api::transport::{
-    extract_gemini_model_from_path, request_model_for_forward,
 };
 pub(crate) use crate::proxy_core::api::transport::{
     parse_custom_user_agent,
