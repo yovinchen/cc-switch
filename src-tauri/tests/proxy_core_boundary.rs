@@ -866,6 +866,16 @@ const FORBIDDEN_CODEX_HANDLER_ORCHESTRATION_MARKERS: &[&str] = &[
     "codex_chat_proxy_request_to_axum_response(",
     "codex_responses_proxy_request_to_axum_response(",
 ];
+const FORBIDDEN_CLAUDE_MESSAGES_HANDLER_ORCHESTRATION_MARKERS: &[&str] = &[
+    "collect_json_proxy_request(",
+    ".request_context(",
+    "endpoint_from_request_uri_stripping_prefix(",
+    "into_anthropic_messages_proxy_request(",
+    "dispatch_claude_proxy_request_to_proxy_response(",
+    "claude_response_needs_transform(",
+    "claude_transformed_response_to_axum_response(",
+    "claude_passthrough_response_to_axum_response(",
+];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
 const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
@@ -3535,6 +3545,38 @@ fn production_codex_handlers_delegate_protocol_orchestration_to_response_adapter
     assert!(
         violations.is_empty(),
         "Codex handlers must delegate request/context/endpoint orchestration to response_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_claude_messages_handler_delegates_protocol_orchestration_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "async fn handle_messages_for_app(",
+        "\n}\n\n// ============================================================================\n// Codex API",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_CLAUDE_MESSAGES_HANDLER_ORCHESTRATION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs handle_messages_for_app:{} contains Claude Messages orchestration marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Claude Messages handler must delegate protocol orchestration to response_adapter:\n{}",
         violations.join("\n")
     );
 }

@@ -286,6 +286,50 @@ pub(crate) async fn dispatch_gemini_request_to_axum_response(
     gemini_passthrough_response_to_axum_response(response, &ctx, state).await
 }
 
+pub(crate) async fn dispatch_claude_messages_request_to_axum_response(
+    state: &ProxyState,
+    request: axum::extract::Request,
+    app_type: AppType,
+    tag: &'static str,
+    app_type_str: &'static str,
+    strip_prefix: Option<&'static str>,
+) -> Result<axum::response::Response, ProxyError> {
+    let parsed_request = collect_json_proxy_request(request).await?;
+    let is_stream = parsed_request.is_stream;
+
+    let mut ctx = parsed_request
+        .request_context(state, app_type.clone(), tag, app_type_str)
+        .await?;
+
+    let endpoint = parsed_request.endpoint_from_request_uri_stripping_prefix(strip_prefix);
+    let original_body = parsed_request.body.clone();
+
+    let proxy_request = parsed_request.into_anthropic_messages_proxy_request(
+        app_type,
+        endpoint.to_string(),
+        Some(ctx.request_model.clone()),
+    );
+
+    let (response, api_format) =
+        dispatch_claude_proxy_request_to_proxy_response(state, &mut ctx, proxy_request, is_stream)
+            .await?;
+
+    if claude_response_needs_transform(&ctx)? {
+        return claude_transformed_response_to_axum_response(
+            response,
+            &ctx,
+            state,
+            &original_body,
+            is_stream,
+            &api_format,
+            None,
+        )
+        .await;
+    }
+
+    claude_passthrough_response_to_axum_response(response, &ctx, state).await
+}
+
 pub(crate) async fn dispatch_claude_proxy_request_to_proxy_response(
     state: &ProxyState,
     ctx: &mut RequestContext,
