@@ -14346,6 +14346,31 @@ fn production_proxy_core_host_delegates_health_store_sources_to_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_channel_health_store_to_host_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/channel_health_store.rs");
+    let source = fs::read_to_string(&source_path).expect("read channel_health_store.rs");
+
+    assert!(
+        source.contains("pub(crate) struct CcSwitchChannelHealthStore")
+            && source.contains("impl ChannelHealthStore for CcSwitchChannelHealthStore")
+            && source.contains("record_channel_attempt_in_db_source")
+            && source.contains("reset_channel_health_with_router_source")
+            && source.contains("channel_breaker_stats_with_router_source"),
+        "CC Switch channel health store should live in host/cc_switch/channel_health_store.rs"
+    );
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::channel_health_store::CcSwitchChannelHealthStore"
+        ) && !adapter_source.contains("pub(crate) struct CcSwitchChannelHealthStore")
+            && !adapter_source.contains("impl ChannelHealthStore for CcSwitchChannelHealthStore"),
+        "proxy_core_adapter should re-export, not own, the CC Switch channel health store"
+    );
+}
+
+#[test]
 fn production_proxy_core_host_delegates_reachability_probe_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
@@ -16466,9 +16491,17 @@ fn production_channel_health_store_reads_channel_breaker_stats_through_core_port
     assert!(
         adapter_slice.contains(".get_proxy_channel_app_type(channel_id)")
             && adapter_slice.contains(".get_channel_circuit_breaker_stats(channel_id, &app_type)")
-            && adapter_slice.contains("channel_breaker_stats_from_parts(")
-            && adapter_slice.contains("fn channel_breaker_stats<'a>("),
-        "ChannelHealthStore adapter must expose channel breaker stats through a core stats fact"
+            && adapter_slice.contains("channel_breaker_stats_from_parts("),
+        "ChannelHealthStore adapter helper must expose channel breaker stats through a core stats fact"
+    );
+
+    let store_path = manifest_dir.join("src/proxy/host/cc_switch/channel_health_store.rs");
+    let store_source = fs::read_to_string(&store_path).expect("read channel_health_store.rs");
+    assert!(
+        store_source.contains("fn channel_breaker_stats<'a>(")
+            && store_source
+                .contains("channel_breaker_stats_with_router_source(&self.db, &self.router, channel_id).await"),
+        "ChannelHealthStore host source must route breaker stats through the adapter helper"
     );
 
     let router_path = manifest_dir.join("src/proxy/engine/routing.rs");
