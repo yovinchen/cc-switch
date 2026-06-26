@@ -2,7 +2,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
+    "src/commands/codex_oauth.rs",
+    "src/commands/copilot.rs",
+    "src/commands/model_fetch.rs",
     "src/lib.rs",
+    "src/proxy/copilot_auth.rs",
     "src/proxy/engine/context.rs",
     "src/proxy/engine/response_pipeline.rs",
     "src/proxy/error_mapper.rs",
@@ -10004,6 +10008,18 @@ fn model_fetch_commands_use_core_dto_entrypoint() {
                     line_index + 1
                 ));
             }
+            let direct_core =
+                code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
+            if direct_core
+                && code.trim() != "use crate::proxy_core::api::model_catalog::FetchedModel;"
+            {
+                violations.push(format!(
+                    "{}:{} contains non-DTO direct proxy-core import `{}`",
+                    relative,
+                    line_index + 1,
+                    code.trim()
+                ));
+            }
         }
         assert!(
             source.contains("use crate::proxy_core::api::model_catalog::FetchedModel;"),
@@ -10042,6 +10058,16 @@ fn copilot_model_callers_use_core_dto_entrypoint() {
 
     for relative in caller_paths {
         let source = fs::read_to_string(manifest_dir.join(relative)).expect("read caller source");
+        let allowed_direct_core_lines = match relative {
+            "src/commands/copilot.rs" => {
+                &["use crate::proxy_core::api::model_catalog::CopilotModel;"][..]
+            }
+            "src/proxy/copilot_auth.rs" => &[
+                "use crate::proxy_core::api::model_catalog::CopilotModel;",
+                "pub use crate::proxy_core::api::model_catalog::CopilotUsageResponse;",
+            ][..],
+            _ => &[][..],
+        };
         for (line_index, line) in production_lines(&source) {
             let code = line.split("//").next().unwrap_or_default();
             if code.contains("proxy_core_adapter") && code.contains("CopilotModel") {
@@ -10049,6 +10075,16 @@ fn copilot_model_callers_use_core_dto_entrypoint() {
                     "{}:{} imports CopilotModel from proxy_core_adapter",
                     relative,
                     line_index + 1
+                ));
+            }
+            let direct_core =
+                code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
+            if direct_core && !allowed_direct_core_lines.contains(&code.trim()) {
+                violations.push(format!(
+                    "{}:{} contains non-DTO direct proxy-core import `{}`",
+                    relative,
+                    line_index + 1,
+                    code.trim()
                 ));
             }
         }
