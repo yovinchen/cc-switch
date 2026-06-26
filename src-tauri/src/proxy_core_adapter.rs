@@ -1367,10 +1367,6 @@ pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 pub(crate) use crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_provider_config;
 #[cfg(test)]
 pub(crate) use crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_route_context;
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::host::cc_switch::auth_provider::{
-    provider_with_channel_auth_key, CcSwitchAuthProvider,
-};
 pub(crate) use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 pub(crate) use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
 pub(crate) use crate::proxy_core::api::auth::codex_auth_info_from_api_key as core_codex_auth_info_from_api_key;
@@ -8256,7 +8252,11 @@ mod tests {
             None,
         );
         let auth_provider =
-            provider_with_channel_auth_key(&AppType::Claude, &provider, "channel-key");
+            crate::proxy::host::cc_switch::auth_provider::provider_with_channel_auth_key(
+                &AppType::Claude,
+                &provider,
+                "channel-key",
+            );
         assert_eq!(
             provider
                 .settings_config

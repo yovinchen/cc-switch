@@ -12441,12 +12441,22 @@ fn proxy_core_adapter_delegates_channel_key_settings_policy_to_typed_core_helper
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/auth_provider.rs");
     let source = fs::read_to_string(&source_path).expect("read auth_provider.rs");
     let function = source.as_str();
+    let attempts_path =
+        manifest_dir.join("src/proxy/host/cc_switch/channel_auth_profile_attempts.rs");
+    let attempts_source =
+        fs::read_to_string(&attempts_path).expect("read channel_auth_profile_attempts.rs");
 
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::auth_provider::{")
-            && adapter_source.contains("provider_with_channel_auth_key")
-            && !adapter_source.contains("pub(crate) fn provider_with_channel_auth_key("),
-        "proxy_core_adapter should re-export, not own, provider_with_channel_auth_key"
+        source.contains("pub(crate) fn provider_with_channel_auth_key(")
+            && !adapter_runtime_source.contains("provider_with_channel_auth_key"),
+        "provider_with_channel_auth_key should live in auth_provider.rs without a proxy_core_adapter re-export"
+    );
+    assert!(
+        attempts_source.contains(
+            "use crate::proxy::host::cc_switch::auth_provider::provider_with_channel_auth_key;",
+        ) && !attempts_source
+            .contains("proxy_core_adapter::{\n    provider_with_channel_auth_key"),
+        "channel auth profile attempts should import provider_with_channel_auth_key from host auth_provider.rs"
     );
     assert!(
         function.contains("settings_config_with_channel_auth_key_for_app("),
@@ -17066,13 +17076,14 @@ fn proxy_core_adapter_delegates_auth_provider_source_to_host_module() {
         );
     }
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::auth_provider::")
-            && adapter_source.contains("CcSwitchAuthProvider")
-            && adapter_source.contains("auth_info_from_cc_switch_route_context")
+        adapter_runtime_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_route_context;",
+        ) && !adapter_runtime_source.contains("CcSwitchAuthProvider")
+            && !adapter_runtime_source.contains("provider_with_channel_auth_key")
             && !adapter_source.contains("pub(crate) struct CcSwitchAuthProvider")
             && !adapter_source.contains("impl AuthProvider for CcSwitchAuthProvider")
             && !adapter_source.contains("pub(crate) fn auth_info_from_cc_switch_route_context("),
-        "proxy_core_adapter should re-export, not own, the CC Switch auth provider source"
+        "proxy_core_adapter should not expose the host CC Switch auth provider source beyond the test-only auth-info bridge"
     );
 }
 

@@ -1,5 +1,6 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
+use crate::proxy::host::cc_switch::auth_provider::provider_with_channel_auth_key;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy_core::api::auth::channel_auth_profile_missing_key_error;
 use crate::proxy_core::api::domain::{
@@ -8,8 +9,8 @@ use crate::proxy_core::api::domain::{
 use crate::proxy_core::api::errors::ProxyCoreResult;
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
 use crate::proxy_core_adapter::{
-    provider_with_channel_auth_key, route_plan_no_matching_host_providers_error,
-    route_plan_provider_match, route_plan_providers_unconfigured_error, RoutePlan,
+    route_plan_no_matching_host_providers_error, route_plan_provider_match,
+    route_plan_providers_unconfigured_error, RoutePlan,
 };
 use indexmap::IndexMap;
 
