@@ -10,10 +10,9 @@ use crate::proxy_core_adapter::{
     create_logged_passthrough_stream, decode_raw_proxy_response_body,
     log_non_streaming_proxy_response_body, log_streaming_proxy_response_received,
     non_streaming_body_timeout_message, passthrough_bytes_proxy_response,
-    passthrough_stream_proxy_response, record_non_streaming_response_usage_from_context,
-    response_headers_indicate_sse, streaming_usage_collector_from_context,
-    usage_logging_enabled_from_proxy_config, ActiveConnectionGuard, AxumResponseBuildErrorContext,
-    NonStreamingUsageRecordContext, ProxyState, StreamingUsageCollectorContext, UsageParserConfig,
+    passthrough_stream_proxy_response, passthrough_streaming_usage_collector,
+    record_non_streaming_response_usage, response_headers_indicate_sse, ActiveConnectionGuard,
+    AxumResponseBuildErrorContext, ProxyState, UsageParserConfig,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -75,20 +74,8 @@ pub async fn handle_streaming(
     let stream = response.bytes_stream();
 
     // 创建使用量收集器；关闭 usage logging 时不要在流式热路径上解析每个 SSE event。
-    let usage_collector = streaming_usage_collector_from_context(StreamingUsageCollectorContext {
-        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
-        services: state.proxy_core_services.clone(),
-        provider: ctx.provider_for_usage(),
-        app_type: ctx.app_type_str,
-        tag: ctx.tag,
-        request_model: &ctx.request_model,
-        outbound_model: ctx.outbound_model.as_deref(),
-        route_context: ctx.usage_route_context.as_ref(),
-        start_time: ctx.start_time,
-        status_code: status.as_u16(),
-        session_id: &ctx.session_id,
-        parser_config,
-    });
+    let usage_collector =
+        passthrough_streaming_usage_collector(state, ctx, status.as_u16(), parser_config);
 
     // 获取流式超时配置
     let timeout_config = ctx.streaming_timeout_config();
@@ -126,22 +113,8 @@ pub async fn handle_non_streaming(
 
     log_non_streaming_proxy_response_body(&body_bytes, ctx.tag);
 
-    record_non_streaming_response_usage_from_context(NonStreamingUsageRecordContext {
-        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
-        services: state.proxy_core_services.clone(),
-        body: &body_bytes,
-        parser_config,
-        provider: ctx.provider_for_usage(),
-        app_type: ctx.app_type_str,
-        tag: ctx.tag,
-        request_model: &ctx.request_model,
-        outbound_model: ctx.outbound_model.as_deref(),
-        route_context: ctx.usage_route_context.as_ref(),
-        latency_ms: ctx.latency_ms(),
-        status_code: status.as_u16(),
-        session_id: &ctx.session_id,
-    })
-    .map_err(ProxyError::ConfigError)?;
+    record_non_streaming_response_usage(state, ctx, &body_bytes, parser_config, status.as_u16())
+        .map_err(ProxyError::ConfigError)?;
 
     let response = passthrough_bytes_proxy_response(status, response_headers, body_bytes);
     proxy_core_response_to_axum_response(

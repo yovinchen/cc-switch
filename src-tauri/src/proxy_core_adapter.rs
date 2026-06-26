@@ -11356,6 +11356,28 @@ where
     ))
 }
 
+pub(crate) fn passthrough_streaming_usage_collector(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: u16,
+    parser_config: &UsageParserConfig,
+) -> Option<SseUsageCollector> {
+    streaming_usage_collector_from_context(StreamingUsageCollectorContext {
+        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
+        services: state.proxy_core_services.clone(),
+        provider: ctx.provider_for_usage(),
+        app_type: ctx.app_type_str,
+        tag: ctx.tag,
+        request_model: &ctx.request_model,
+        outbound_model: ctx.outbound_model.as_deref(),
+        route_context: ctx.usage_route_context.as_ref(),
+        start_time: ctx.start_time,
+        status_code,
+        session_id: &ctx.session_id,
+        parser_config,
+    })
+}
+
 pub(crate) struct NonStreamingResponseUsageContext<'a> {
     pub(crate) body: &'a [u8],
     pub(crate) response_parser: fn(&Value) -> Option<TokenUsage>,
@@ -11424,6 +11446,30 @@ where
 
     spawn_usage_record_with_proxy_services(context.services, output.record);
     Ok(())
+}
+
+pub(crate) fn record_non_streaming_response_usage(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    body: &[u8],
+    parser_config: &UsageParserConfig,
+    status_code: u16,
+) -> Result<(), String> {
+    record_non_streaming_response_usage_from_context(NonStreamingUsageRecordContext {
+        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
+        services: state.proxy_core_services.clone(),
+        body,
+        parser_config,
+        provider: ctx.provider_for_usage(),
+        app_type: ctx.app_type_str,
+        tag: ctx.tag,
+        request_model: &ctx.request_model,
+        outbound_model: ctx.outbound_model.as_deref(),
+        route_context: ctx.usage_route_context.as_ref(),
+        latency_ms: ctx.latency_ms(),
+        status_code,
+        session_id: &ctx.session_id,
+    })
 }
 
 pub(crate) fn usage_logging_enabled_from_proxy_config(config: &RwLock<ProxyConfig>) -> bool {
