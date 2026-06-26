@@ -1,11 +1,13 @@
 use crate::database::{Database, ProxyChannelKeyRecord};
+use crate::proxy_core::api::errors::ProxyCoreResult;
 #[cfg(test)]
 use crate::proxy_core::api::management::select_enabled_channel_key_runtime_candidate;
 use crate::proxy_core::api::management::{
     channel_key_runtime_candidate_from_input, select_channel_key_runtime_candidate,
     ChannelKeyRuntimeCandidate, ChannelKeyRuntimeCandidateInput,
 };
-use crate::proxy_core_adapter::{app_error, ChannelKeyRuntimeSource, ProxyCoreResult};
+use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
+use crate::proxy_core_adapter::app_error;
 use std::sync::Arc;
 
 pub(crate) fn proxy_channel_key_record_to_runtime_candidate(

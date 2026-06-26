@@ -12377,6 +12377,11 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "pub(crate) fn apply_channel_auth_profile_providers_from_source",
         "pub(crate) fn required_forward_attempts_from_sources",
     );
+    let adapter_core_ports_import = function_slice(
+        &source,
+        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
+        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+    );
 
     assert!(
         core_ports_source.contains("pub trait ChannelKeyRuntimeSource"),
@@ -12399,6 +12404,24 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     assert!(
         source.contains("ChannelKeyRuntimeSource"),
         "proxy_core_adapter should import the core channel key runtime source contract"
+    );
+    assert!(
+        !adapter_core_ports_import.contains("ChannelKeyRuntimeSource"),
+        "proxy_core_adapter should consume ChannelKeyRuntimeSource internally, not re-export the port trait"
+    );
+    assert!(
+        runtime_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && runtime_source
+                .contains("use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;")
+            && attempt_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && attempt_source.contains("use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;"),
+        "channel-key runtime and auth-profile host sources should import core result/port contracts directly"
+    );
+    assert!(
+        !runtime_source.contains("ChannelKeyRuntimeSource, ProxyCoreResult")
+            && !attempt_source.contains("ChannelKeyRuntimeSource,\n    ProxyCoreResult")
+            && !attempt_source.contains("ProxyCoreResult, RoutePlan"),
+        "channel-key host modules should not import ChannelKeyRuntimeSource or ProxyCoreResult through proxy_core_adapter"
     );
     assert!(
         source.contains(
