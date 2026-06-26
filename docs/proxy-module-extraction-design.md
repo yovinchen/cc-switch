@@ -625,7 +625,7 @@
 - DB-backed usage logging sink、`RequestLog` 与 `UsageLogger` 已迁到 `proxy/host/cc_switch/database_usage_sink.rs`，旧 `proxy/usage/logger.rs` 与 `proxy::usage` re-export 已删除；token/cost DTO 与纯计价策略继续通过 core/adapter 入口。
 - provider adapter 实现已从 `proxy/providers/*` 迁到 singular `proxy/provider/*`，`proxy_core_adapter` 已引用 `proxy::provider`；旧 `proxy/providers/mod.rs` 已删除。
 - 应用全局 reqwest client、global proxy lifecycle 与系统代理自环保护已迁到 `proxy/host/cc_switch/global_http_client.rs`，服务、命令、上游 transport 与 adapter 调用已引用 host 路径；旧 `proxy/http_client.rs` 已删除。
-- `ProxyService` 的 live takeover、restore、hot switch 与 live config 宿主副作用实现已迁到 `proxy/host/cc_switch/live_takeover.rs`，旧 `services/proxy.rs` 仅保留 `services::ProxyService` API 兼容 re-export。
+- `ProxyService` 的 live takeover、restore、hot switch 与 live config 宿主副作用实现已迁到 `proxy/host/cc_switch/live_takeover.rs`，旧 `services/proxy.rs` 已删除；`src/services/mod.rs` 直接保留 `services::ProxyService` API 出口。
 607. host crate 新增 `proxy_core_boundary` 集成测试，固定除 `src/lib.rs` re-export 与 `src/proxy_core_adapter.rs` 外不得直接引用 `crate::proxy_core::` 或 `cc_switch_proxy_core::`，确保后续 Tauri host 继续通过 adapter 集中接入 core。
 608. 模型目录服务层删除 `services::model_fetch` 与 `services::codex_oauth_models` 纯转发 facade，Tauri commands 直接调用 `model_fetch_transport` 这个 host reqwest adapter；URL 规划、请求契约、失败映射与响应解析继续由 `proxy-core::model_fetch` 维护。
 609. stream check 的延迟状态判定与 timeout-like retry 判定已迁入 `proxy-core` 的 channel reachability contract；host `StreamCheckService` 保留 reqwest 探测、provider base URL 提取和现有 DTO/DAO 兼容映射。
@@ -1688,13 +1688,14 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1203. channel auth profile attempts、database channel source 测试 helper、channel-key selector 与 failover switch scheduler factory 已从 adapter re-export 收口为私有/直接 host 引用：DAO、forward runtime 测试与 boundary 测试不再把 `proxy_core_adapter` 当作 host helper 目录。
 1204. forwarder transport/response/protocol/runtime/attempt/auth/request source 的默认 factory 与测试 helper 已从 adapter re-export 收口为私有 use 或直接 host 模块引用：`proxy_core_adapter` 继续保留 forwarder source trait/input/type alias，但不再暴露 cc-switch host source factory。
 1205. `proxy_core_boundary` 已新增/调整 host source factory 禁用扫描：`proxy_core_adapter.rs` 内不再允许 `pub(crate) use crate::proxy::host::cc_switch::*` 重导出，测试构造器必须显式依赖 host-owned source 模块。
+1206. 旧 `src/services/proxy.rs` 兼容 shim 已删除；`services::ProxyService` 由 `src/services/mod.rs` 直接 re-export `proxy/host/cc_switch/live_takeover.rs` 的 owning type，边界测试防止 `services::proxy` 模块回流。
 
 ## 背景
 
-当前代理能力集中在 `src-tauri/src/proxy/` 与 `src-tauri/src/services/proxy.rs` 两处：
+当前代理能力集中在 `src-tauri/src/proxy/` 及其 `host/cc_switch` 宿主适配模块中：
 
 - `src-tauri/src/proxy/` 负责本地 HTTP server、路由、provider 选择、请求转发、协议转换、故障转移、熔断、响应处理、用量解析和用量落库。
-- `src-tauri/src/services/proxy.rs` 负责桌面应用宿主逻辑，包括启动/停止代理、更新配置、接管/恢复 Claude/Codex/Gemini Live 配置、托盘/UI 联动。
+- `src-tauri/src/proxy/host/cc_switch/live_takeover.rs` 负责桌面应用宿主逻辑，包括启动/停止代理、更新配置、接管/恢复 Claude/Codex/Gemini Live 配置、托盘/UI 联动；`src-tauri/src/services/mod.rs` 仅保留 `services::ProxyService` 顶层导出。
 
 这使代理能力目前更像“嵌入在 Tauri 应用里的功能模块”，而不是可独立集成的中转模块。重构目标是把可复用的代理中转能力抽离成独立模块，让 CC Switch 桌面端只是一个宿主适配器；未来外部进程、CLI、服务端网关或其他应用也可以通过稳定接口复用同一套中转能力。
 
@@ -1897,7 +1898,7 @@ channels:
 ```text
 cc-switch desktop host
   commands/proxy.rs
-  services/proxy.rs
+  services/mod.rs (ProxyService export)
   database adapters
   live takeover adapters
   tauri event adapter
@@ -2625,7 +2626,7 @@ ProxyRequest
 | `hyper_client.rs` | `transport/upstream/hyper_client.rs` | raw Hyper 上游 transport、`ProxyResponse` 与 header-case preservation 实现已迁到 `proxy/transport/upstream/hyper_client.rs`，旧 `proxy/hyper_client.rs` 已删除；后续继续区分 raw-hyper 上游 transport 与 reqwest/global HTTP client |
 | `http_client.rs` | `transport/upstream/reqwest_client.rs` 或 host shared | pooled reqwest 上游发送执行已迁到 `proxy/transport/upstream/reqwest_client.rs`，`transport/upstream/mod.rs` 负责 reqwest/raw-hyper 分流；应用全局 HTTP client、proxy lifecycle 和系统代理自环保护已迁到 `proxy/host/cc_switch/global_http_client.rs`，旧 `proxy/http_client.rs` 已删除 |
 | `types.rs` | `domain/config.rs`, `domain/status.rs` | 拆分领域类型 |
-| `services/proxy.rs` | `host/cc_switch/live_takeover.rs` | `ProxyService` live takeover/restore/hot-switch/live-config 宿主副作用实现已迁到 `proxy/host/cc_switch/live_takeover.rs`，旧 `services/proxy.rs` 仅保留 `services::ProxyService` API 兼容 re-export |
+| `services/proxy.rs` | `host/cc_switch/live_takeover.rs` | `ProxyService` live takeover/restore/hot-switch/live-config 宿主副作用实现已迁到 `proxy/host/cc_switch/live_takeover.rs`，旧 `services/proxy.rs` 已删除；`src/services/mod.rs` 直接 re-export `services::ProxyService` 顶层 API |
 | `provider_endpoints` / `proxy_channels` 相关 DB 访问 | `host/cc_switch/database_channel_source.rs` | `CcSwitchChannelSource` wrapper 已迁到 `proxy/host/cc_switch/database_channel_source.rs` 并包装 provider 主 URL、`provider_endpoints` 与 materialized channel 的 core-facing `ChannelSource` 入口；spec/list/get、record CRUD/list、key/model 管理和 migration preview/materialize helper 已迁入该 host 模块，并直接引用 core channel DTO/trait/helper contract；adapter 仅保留宿主错误包装和旧兼容别名 |
 | `proxy_channel_keys` runtime lookup | `host/cc_switch/channel_key_runtime_source.rs` | DB-backed `CcSwitchChannelKeyRuntimeSource`、raw key record 查询、runtime candidate 投影和 key-ref/enabled-key core selection 已迁到 `proxy/host/cc_switch/channel_key_runtime_source.rs`；runtime source 已直接引用 `proxy_core::api::{management,ports,errors}` 的 candidate projection/selection helper、`ChannelKeyRuntimeSource` port 和 result contract，adapter 仅 re-export 默认 source factory/type 与 test-only candidate alias |
 | channel test reachability probe | `host/cc_switch/channel_reachability_probe.rs` | DB-backed `CcSwitchChannelReachabilityProbe`、app type parse、provider/config DB 读取、`StreamCheckService` 执行和 reachability result 投影已迁到 `proxy/host/cc_switch/channel_reachability_probe.rs`；host probe 直接引用 core reachability probe/request/result contract，adapter 仅保留 stream-check 投影/错误 helper、默认 probe type re-export 和 services 装配，不再 re-export `ChannelReachabilityProbe` port 或 probe DTO |
@@ -2687,7 +2688,7 @@ ProxyRequest
 ```bash
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo test --manifest-path src-tauri/Cargo.toml proxy --lib
-cargo test --manifest-path src-tauri/Cargo.toml services::proxy --lib
+cargo test --manifest-path src-tauri/Cargo.toml proxy::host::cc_switch::live_takeover --lib
 node_modules/.bin/tsc --noEmit
 ```
 
