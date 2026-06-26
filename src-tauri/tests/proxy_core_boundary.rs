@@ -1621,16 +1621,13 @@ const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = 
     "non_streaming_response_usage_record_from_body_with_request_id_fallback(",
     "non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(",
 ];
-const FORBIDDEN_RESPONSE_PROCESSOR_STREAM_ORCHESTRATION_MARKERS: &[&str] = &[
-    "fn create_logged_passthrough_stream(",
-    "async_stream::stream!",
+const FORBIDDEN_RESPONSE_PIPELINE_LOGGED_STREAM_POLICY_MARKERS: &[&str] = &[
     "SseEventScanner",
     "SsePassthroughEventKind",
-    "SseUsageAccumulator",
-    "SseUsageFinishGuard",
-    "StreamingTimeoutPhase",
-    "tokio::time::timeout(duration, stream.next())",
-    "push_passthrough_bytes(",
+    "strip_sse_field(",
+    "take_sse_block(",
+    "response_usage_provider_facts_from_optional(",
+    "spawn_usage_record_with_proxy_services(",
 ];
 const FORBIDDEN_PROXY_CORE_ADAPTER_SSE_PASSTHROUGH_POLICY_MARKERS: &[&str] = &[
     "SseEventScanner",
@@ -5711,29 +5708,43 @@ fn response_processor_delegates_usage_provider_projection_to_adapter() {
 }
 
 #[test]
-fn response_processor_delegates_stream_orchestration_to_adapter() {
+fn response_pipeline_owns_logged_stream_runtime_loop() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(&source) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_RESPONSE_PROCESSOR_STREAM_ORCHESTRATION_MARKERS {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy/engine/response_pipeline.rs:{} contains stream orchestration marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) struct SseUsageCollector",
+        "pub(crate) fn passthrough_streaming_usage_collector",
+    );
 
     assert!(
-        violations.is_empty(),
-        "response processor must delegate stream scanner/timeout orchestration to proxy_core_adapter:\n{}",
-        violations.join("\n")
+        function.contains("SseUsageAccumulator::new(")
+            && function.contains("SseUsageFinishGuard")
+            && function.contains("pub(crate) fn create_logged_passthrough_stream")
+            && function.contains("async_stream::stream!")
+            && function.contains("SsePassthroughStreamState::new()")
+            && function.contains("tokio::time::timeout(")
+            && function.contains("collector.finish().await")
+            && function.contains("guard.disarm()"),
+        "response pipeline should own logged stream runtime loop and collector finish guard"
+    );
+    for marker in FORBIDDEN_RESPONSE_PIPELINE_LOGGED_STREAM_POLICY_MARKERS {
+        assert!(
+            !function.contains(marker),
+            "response pipeline logged-stream loop must delegate policy marker `{marker}`"
+        );
+    }
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
+            && adapter_source.contains("create_logged_passthrough_stream")
+            && adapter_source.contains("SseUsageCollector")
+            && !adapter_source.contains("pub(crate) struct SseUsageCollector")
+            && !adapter_source.contains("struct SseUsageFinishGuard")
+            && !adapter_source.contains("pub(crate) fn create_logged_passthrough_stream"),
+        "proxy_core_adapter should re-export, not own, logged stream runtime loop"
     );
 }
 
@@ -6100,26 +6111,26 @@ fn response_pipeline_delegates_response_log_projection_to_core() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_sse_passthrough_policy_to_core() {
+fn response_pipeline_delegates_sse_passthrough_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let function = function_slice(
         &source,
         "pub(crate) fn create_logged_passthrough_stream",
-        "pub(crate) trait ProxyServiceRuntimeResources",
+        "pub(crate) fn passthrough_streaming_usage_collector",
     );
 
     assert!(
         function.contains("SsePassthroughStreamState::new()")
             && function.contains(".inspect_chunk("),
-        "proxy_core_adapter must use proxy-core SSE passthrough state for chunk policy"
+        "response_pipeline must use proxy-core SSE passthrough state for chunk policy"
     );
 
     for marker in FORBIDDEN_PROXY_CORE_ADAPTER_SSE_PASSTHROUGH_POLICY_MARKERS {
         assert!(
             !function.contains(marker),
-            "proxy_core_adapter must not locally project SSE passthrough policy marker `{marker}`"
+            "response_pipeline must not locally project SSE passthrough policy marker `{marker}`"
         );
     }
 }
@@ -11389,7 +11400,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let host_forward_function = function_slice(
         &source,
         "pub(crate) async fn forward_proxy_request_with_host_runtime",
-        "type UsageCallbackWithTiming",
+        "#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
     );
     let attempt_source_function = attempt_source.as_str();
 

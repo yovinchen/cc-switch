@@ -65,7 +65,7 @@ use rust_decimal::Decimal;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 pub(crate) const COPILOT_EDITOR_VERSION: &str = "vscode/1.110.1";
@@ -6491,8 +6491,6 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
     .await
 }
 
-type UsageCallbackWithTiming = Arc<dyn Fn(Vec<Value>, Option<u64>) + Send + Sync + 'static>;
-
 #[allow(unused_imports)]
 pub(crate) use crate::proxy::engine::response_pipeline::{
     claude_transform_tool_schema_hints, claude_transformed_json_response_from_context,
@@ -6509,178 +6507,8 @@ pub(crate) use crate::proxy::engine::response_pipeline::{
     record_transformed_response_usage, transformed_streaming_usage_collector,
     ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
     CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
-    DecodedProxyResponseBody,
+    DecodedProxyResponseBody, SseUsageCollector,
 };
-
-#[derive(Clone)]
-pub(crate) struct SseUsageCollector {
-    inner: Arc<SseUsageCollectorInner>,
-}
-
-struct SseUsageCollectorInner {
-    accumulator: Mutex<SseUsageAccumulator>,
-    on_complete: UsageCallbackWithTiming,
-    should_collect: Option<StreamUsageEventFilter>,
-}
-
-impl SseUsageCollector {
-    pub(crate) fn new(
-        start_time: std::time::Instant,
-        should_collect: Option<StreamUsageEventFilter>,
-        callback: impl Fn(Vec<Value>, Option<u64>) + Send + Sync + 'static,
-    ) -> Self {
-        let on_complete: UsageCallbackWithTiming = Arc::new(callback);
-        Self {
-            inner: Arc::new(SseUsageCollectorInner {
-                accumulator: Mutex::new(SseUsageAccumulator::new(start_time)),
-                on_complete,
-                should_collect,
-            }),
-        }
-    }
-
-    pub(crate) fn should_collect(&self, data: &str) -> bool {
-        self.inner
-            .should_collect
-            .map(|filter| filter(data))
-            .unwrap_or(true)
-    }
-
-    pub(crate) async fn push(&self, event: Value) {
-        let mut accumulator = self.inner.accumulator.lock().await;
-        accumulator.push(event);
-    }
-
-    pub(crate) async fn finish(&self) {
-        let snapshot = {
-            let mut accumulator = self.inner.accumulator.lock().await;
-            accumulator.finish()
-        };
-        if let Some(snapshot) = snapshot {
-            (self.inner.on_complete)(snapshot.events, snapshot.first_token_ms);
-        }
-    }
-}
-
-struct SseUsageFinishGuard {
-    collector: Option<SseUsageCollector>,
-}
-
-impl SseUsageFinishGuard {
-    fn new(collector: SseUsageCollector) -> Self {
-        Self {
-            collector: Some(collector),
-        }
-    }
-
-    fn disarm(&mut self) {
-        self.collector = None;
-    }
-}
-
-impl Drop for SseUsageFinishGuard {
-    fn drop(&mut self) {
-        if let Some(collector) = self.collector.take() {
-            if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                handle.spawn(async move {
-                    collector.finish().await;
-                });
-            } else {
-                log::warn!("SSE 用量收尾保护触发时 Tokio runtime 不可用，跳过异步 finish");
-            }
-        }
-    }
-}
-
-pub(crate) fn create_logged_passthrough_stream<G>(
-    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-    tag: &'static str,
-    usage_collector: Option<SseUsageCollector>,
-    timeout_config: StreamingTimeoutConfig,
-    connection_guard: Option<G>,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send
-where
-    G: Send + 'static,
-{
-    async_stream::stream! {
-        let _conn_guard = connection_guard;
-        let mut passthrough_state = SsePassthroughStreamState::new();
-        let mut collector = usage_collector;
-        let mut finish_guard = collector.clone().map(SseUsageFinishGuard::new);
-        let inspect_sse_events =
-            collector.is_some() || log::log_enabled!(log::Level::Debug);
-
-        tokio::pin!(stream);
-
-        loop {
-            let timeout_phase = passthrough_state.timeout_phase();
-            let timeout_duration = timeout_config.duration_for_phase(timeout_phase);
-
-            let chunk_result = match timeout_duration {
-                Some(duration) => {
-                    match tokio::time::timeout(duration, stream.next()).await {
-                        Ok(Some(chunk)) => Some(chunk),
-                        Ok(None) => None,
-                        Err(_) => {
-                            log::error!(
-                                "[{tag}] {} ({}秒)",
-                                timeout_phase.timeout_message(),
-                                duration.as_secs()
-                            );
-                            yield Err(std::io::Error::other(timeout_phase.timeout_message()));
-                            break;
-                        }
-                    }
-                }
-                None => stream.next().await,
-            };
-
-            match chunk_result {
-                Some(Ok(bytes)) => {
-                    let inspection = passthrough_state.inspect_chunk(
-                        &bytes,
-                        tag,
-                        inspect_sse_events,
-                        |data| {
-                            collector
-                                .as_ref()
-                                .map(|collector| collector.should_collect(data))
-                                .unwrap_or(false)
-                        },
-                    );
-                    if let Some(message) = inspection.first_chunk_log_message {
-                        log::debug!("{message}");
-                    }
-                    for event in inspection.event_actions {
-                        if let (Some(collector), Some(json_value)) =
-                            (&collector, event.usage_event)
-                        {
-                            collector.push(json_value).await;
-                        }
-                        log::debug!("{}", event.log_message);
-                    }
-
-                    yield Ok(bytes);
-                }
-                Some(Err(e)) => {
-                    log::error!("[{tag}] 流错误: {e}");
-                    yield Err(std::io::Error::other(e.to_string()));
-                    break;
-                }
-                None => {
-                    break;
-                }
-            }
-        }
-
-        if let Some(c) = collector.take() {
-            c.finish().await;
-        }
-        if let Some(guard) = &mut finish_guard {
-            guard.disarm();
-        }
-    }
-}
 
 pub(crate) trait ProxyServiceRuntimeResources:
     HostForwardRuntime + Clone + Send + Sync
