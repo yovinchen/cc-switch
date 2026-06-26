@@ -339,7 +339,7 @@
 328. `CircuitBreakerConfig` DTO、默认值和 `AppProxyConfig` 到熔断器配置/失败阈值的投影已迁入 `proxy-core::circuit_breaker_config`；host `proxy::circuit_breaker` 只保留状态机实现，调用方直接引用 core 配置类型。
 329. provider/channel circuit breaker key、app type 解析和 app scope prefix 规则已迁入 `proxy-core::circuit_breaker_key`；`ProviderRouter` 不再手写 `app:provider` / `channel:app:channel` 字符串契约。
 330. response runtime policy 已在 `proxy-core::response_timeout` 中统一产出 failover-gated timeout 和 `max_retries`；host `RequestContext` 不再手写 failover 关闭时 retry 清零规则。
-331. Codex proxy error code 字符串契约已迁入 `proxy-core::codex_error`；`ProxyError` 到 Codex proxy error facts/kind 的宿主投影已收敛到 `proxy_core_adapter`，host `error_mapper` 只保留兼容 wrapper。
+331. Codex proxy error code 字符串契约已迁入 `proxy-core::codex_error`；`ProxyError` 到 Codex proxy error facts/kind/context 的宿主投影已收敛到 `proxy::error_mapper`，`proxy_core_adapter` 只保留兼容 re-export。
 332. `ProxySession::from_request` 中的 client format、model 和 streaming flag 派生已迁入 `proxy-core::proxy_session_request_metadata`；host session 只补 UUID、时间和 provider 运行态字段。
 333. `ProxyError` 到 HTTP status code 的状态码契约已迁入 `proxy-core::proxy_error_http_status_code`；host `proxy::error_mapper::{proxy_error_status_kind,proxy_error_status_code}` 负责 `ProxyError` 到 host-neutral status kind 的投影，`ProxyError::into_response` 只消费 mapper 状态投影与 core response body helper。
 334. channel route candidate 到 provider settings/meta 的覆盖计划已迁入 `proxy-core::channel_provider_override_plan`；host `route_attempt` 只负责把 core plan 写入 `Provider.settings_config` 和 `Provider.meta`。
@@ -584,7 +584,7 @@
 570. Codex provider 使用的 upstream URL builder、Bearer auth header builder、Responses-to-Chat endpoint 判定、upstream model policy、catalog model IDs 与 reasoning profile/options 入口已迁入 `proxy_core_adapter`；host Codex adapter 继续负责 Provider/TOML 配置解析和 `ProxyError` 映射。
 571. Claude provider 使用的 API-format resolution、auth-key/base-url 提取、upstream URL builder、static/Copilot auth header builder 与 prompt-cache key helper 入口已迁入 `proxy_core_adapter`；Claude 大请求/响应 transform 仍保留为下一组独立迁移切片。
 572. Claude provider 使用的 Anthropic/OpenAI/Gemini request/response transform contract 入口已迁入 `proxy_core_adapter`；`src-tauri/src/proxy/providers` 已不再直接 import `proxy_core`，host provider adapters 继续负责 `Provider` 解析、runtime wrapping、logging 与 `ProxyError` 映射。
-573. error mapper 使用的 core error/status/display/result contract 已直接经 `proxy_core::api::errors` 引用，response parse、upstream send error、response build failure context 与 core response 类型已直接经 `proxy_core::api::transport` 引用，response transform failure context 已直接经 `proxy_core::api::transforms` 引用；Codex proxy error response 等 response 构造桥接 helper 仍经 `proxy_core_adapter` 消费，host error mapper 继续负责 `ProxyError`/`ForwardError` 与 core error category 的双向桥接。
+573. error mapper 使用的 core error/status/display/result contract 已直接经 `proxy_core::api::errors` 引用，response parse、upstream send error、response build failure context 与 core response 类型已直接经 `proxy_core::api::transport` 引用，Codex proxy error context/body/response 与 response transform failure context 已直接经 `proxy_core::api::transforms` 引用；host error mapper 继续负责 `ProxyError`/`ForwardError` 与 core error category、Codex error context 的桥接。
 574. route attempt 测试使用的 provider/channel/route DTO alias 已迁入 `proxy_core_adapter`；`route_attempt.rs` 生产与测试路径均不再直接 import `proxy_core`，host 继续负责 provider cloning、AppType-specific override 与 ForwardAttempt 编排。
 575. usage sink bridge 使用的 usage record helper、stream event filter、transformed usage format、`UsageRecord` 与 `ProxyServices` 入口已迁入 `proxy_core_adapter`；host 继续负责 `RequestContext` 生命周期事实、usage logging 开关与异步落库调度。
 576. response processor 使用的非流式 decoded body bridge、response log event dispatch、passthrough streaming usage runtime source、非流式 usage runtime source、transformed streaming usage runtime source、transformed non-streaming usage runtime source、passthrough/transformed usage runtime orchestration、streaming/non-streaming/transformed response usage record builder、forward-error usage record helper、reusable sink-spawn helper、streaming/non-streaming passthrough response construction、Claude/Codex transformed SSE stream wrappers、Claude/Codex transformed JSON wrappers、shared logged-stream runtime loop 与 provider usage facts projection 已迁入 `proxy/engine/response_pipeline.rs`，并继续只消费 `proxy-core` 的 response body decode/log/SSE passthrough policy 规则、core usage builder、provider transform/history helper 与 core response builder；SSE scanner/usage accumulator 仍在 `response_pipeline` 内维护，`proxy_core_adapter` 仅兼容 re-export response pipeline 入口；host 继续负责 Axum response 转换、connection guard 生命周期与 `ProxyState` 调度。
@@ -1154,7 +1154,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮进一步把 forward pipeline 和 route plan host-provider 匹配失败的固定错误文案收敛为 core helper，host 只保留错误类型包装。
 本轮还把 unsupported app kind parse 错误文案迁入 core，减少 host 中零散的 Config 文案拼接。
 本轮继续把 host adapter 的 context/error 通用拼接格式迁入 core errors API，host 只保留错误类别映射。
-本轮继续把 `ProxyError` 到 Codex 错误响应 envelope 的 context/code/status 组装收敛到 adapter wrapper，error mapper 只保留 host error facts 归类。
+本轮继续把 `ProxyError` 到 Codex 错误响应 envelope 的 context/code/status 组装收敛到 `error_mapper`，adapter 只保留兼容 re-export。
 本轮继续把 Claude/Codex/Gemini provider adapter 的必填 base_url 提取和缺失错误文案收敛到 adapter helper，provider adapter 只保留现有 `ProxyError` 映射。
 本轮继续把 Gemini provider adapter 的 auth strategy/auth info 构造收敛到 adapter helper，Gemini adapter 不再直接解析 OAuth key 或构造 `ProviderAuthInfo`。
 本轮继续把 Codex provider adapter 的 Bearer auth info 构造收敛到 adapter helper，Codex adapter 不再保留私有 API key 提取和 `ProviderAuthInfo` 包装逻辑。
@@ -1254,7 +1254,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 forwarder 的 Codex app gate 与 Responses->Chat provider predicate 一跳 wrapper `forwarder_should_convert_codex_responses_to_chat` 已删除；request source transform plan 直接组合 app gate 与 provider predicate。
 本轮继续把 global proxy 的显式代理 URL parse、scheme allowlist 和错误消息投影收敛到 `proxy_core_adapter::{validate_explicit_proxy_url,invalid_explicit_proxy_url_message}`，host HTTP client 只负责 reqwest proxy 构造和 client builder。
 本轮继续把 provider custom endpoints 的列表排序、URL key 归一化、空 URL 新增校验和 last-used mutation 收敛到 `proxy_core_adapter`，endpoint service 不再直接穿透 `Provider.meta.custom_endpoints`。
-本轮继续把 Codex proxy error facts/kind 的 `ProxyError` 投影收敛到 `proxy_core_adapter`，`error_mapper` 不再直接引用 `CodexProxyErrorKind` 或组装 `CodexProxyHostErrorFacts`。
+本轮继续把 Codex proxy error facts/kind/context 的 `ProxyError` 投影收敛到 `proxy::error_mapper`，`proxy_core_adapter` 不再拥有 `CodexProxyHostErrorFacts` 或 kind/context 组装逻辑。
 本轮继续把 forward failure 的 `ProxyError -> ForwardFailureKind` 投影收敛到 `proxy_core_adapter`，并把 raw message 与 display message 的选择策略下移到 `proxy-core::forward_failure_message_from_proxy_status`；`error_mapper` 不再直接引用 `ForwardFailureKind` 或调用 core forward-failure 分类入口。
 本轮继续把 forwarder 的 Claude Desktop route 模型映射收敛到 `proxy_core_adapter::apply_forward_request_model_mapping_from_provider`，forwarder 不再直接调用 `claude_desktop_config`。
 本轮曾把 forwarder 的 Claude provider adapter 名称判定收敛到 `proxy_core_adapter::provider_adapter_name_is_claude`，forwarder 不再手写 `adapter.name() == "Claude"`；后续 `ForwarderAdapterFacts::from_adapter` 成为唯一归属点后该单行 helper 已删除。
