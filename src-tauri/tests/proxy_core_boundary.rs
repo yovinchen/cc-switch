@@ -6188,11 +6188,10 @@ fn response_pipeline_owns_passthrough_stream_response_construction() {
         "response pipeline should still delegate logged-stream internals"
     );
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
-            && adapter_source.contains("passthrough_stream_proxy_response_from_context")
+        !adapter_source.contains("passthrough_stream_proxy_response_from_context")
             && !adapter_source
                 .contains("pub(crate) fn passthrough_stream_proxy_response_from_context"),
-        "proxy_core_adapter should re-export, not own, passthrough streaming construction"
+        "proxy_core_adapter should not re-export passthrough streaming construction"
     );
 }
 
@@ -8803,11 +8802,10 @@ fn response_pipeline_owns_non_stream_passthrough_response_construction() {
         "response pipeline should still delegate usage projection and persistence internals"
     );
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
-            && adapter_source.contains("passthrough_non_stream_proxy_response_from_context")
+        !adapter_source.contains("passthrough_non_stream_proxy_response_from_context")
             && !adapter_source
                 .contains("pub(crate) fn passthrough_non_stream_proxy_response_from_context"),
-        "proxy_core_adapter should re-export, not own, non-streaming passthrough construction"
+        "proxy_core_adapter should not re-export non-streaming passthrough construction"
     );
 }
 
