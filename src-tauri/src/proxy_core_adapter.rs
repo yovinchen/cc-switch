@@ -29,6 +29,7 @@ pub(crate) use crate::proxy::host::cc_switch::provider_router_config_source::CcS
 pub(crate) use crate::proxy::host::cc_switch::provider_router_health_store::CcSwitchProviderRouterHealthStore;
 pub(crate) use crate::proxy::host::cc_switch::provider_router_provider_source::CcSwitchProviderRouterProviderSource;
 pub(crate) use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource;
+pub(crate) use crate::proxy::host::cc_switch::route_resolver::CcSwitchRouteResolver;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::http::server::ProxyServer;
@@ -7654,35 +7655,6 @@ pub(crate) fn route_policy_from_db_source(
         .get_failover_queue(app.as_str())
         .map_err(|error| app_error("load route policy", error))?;
     Ok(route_policy_from_source(app.clone(), queue))
-}
-
-#[derive(Clone)]
-pub(crate) struct CcSwitchRouteResolver {
-    router: Arc<ProviderRouter>,
-}
-
-impl CcSwitchRouteResolver {
-    pub(crate) fn new(router: Arc<ProviderRouter>) -> Self {
-        Self { router }
-    }
-}
-
-impl RouteResolver for CcSwitchRouteResolver {
-    fn resolve<'a>(
-        &'a self,
-        request: RouteRequest<'a>,
-    ) -> BoxFuture<'a, ProxyCoreResult<RoutePlan>> {
-        Box::pin(async move { route_plan_from_request(request) })
-    }
-
-    fn resolve_management_route<'a>(
-        &'a self,
-        request: RouteResolveRequest,
-    ) -> BoxFuture<'a, ProxyCoreResult<RouteResolveResponse>> {
-        Box::pin(async move {
-            management_route_response_from_router_source(&self.router, request).await
-        })
-    }
 }
 
 #[derive(Debug)]

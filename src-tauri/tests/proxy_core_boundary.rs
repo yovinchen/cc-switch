@@ -14295,6 +14295,30 @@ fn production_proxy_core_host_delegates_route_resolver_source_to_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/route_resolver.rs");
+    let source = fs::read_to_string(&source_path).expect("read route_resolver.rs");
+
+    assert!(
+        source.contains("pub(crate) struct CcSwitchRouteResolver")
+            && source.contains("impl RouteResolver for CcSwitchRouteResolver")
+            && source.contains("route_plan_from_request(request)")
+            && source.contains("management_route_response_from_router_source(&self.router, request)"),
+        "CC Switch route resolver should live in host/cc_switch/route_resolver.rs"
+    );
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::route_resolver::CcSwitchRouteResolver"
+        ) && !adapter_source.contains("pub(crate) struct CcSwitchRouteResolver")
+            && !adapter_source.contains("impl RouteResolver for CcSwitchRouteResolver"),
+        "proxy_core_adapter should re-export, not own, the CC Switch route resolver"
+    );
+}
+
+#[test]
 fn production_proxy_core_host_delegates_health_store_sources_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
