@@ -2463,13 +2463,13 @@ pub(crate) use crate::proxy_core::api::ports::{
     AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelKeyRuntimeSource, ChannelSource,
     ClaudeDesktopGatewayAuthSource, ManagementAuthRuntimeConfig, ManagementAuthSource,
     ModelCatalogProvider, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
-    RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
+    RoutePolicySource, RuntimeStatusSource, UsageSink,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
 pub(crate) use crate::proxy_core::api::routing::{
     failover_config_read_error_log_line, provider_router_auto_failover_enabled_decision,
-    route_policy_failover_provider_ids, RoutePolicy, RouteRequest,
+    route_policy_failover_provider_ids, RoutePolicy,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::claude_api_format_from_metadata;
@@ -6599,8 +6599,6 @@ pub(crate) fn proxy_result_from_forward_parts(
         metadata: Value::Object(metadata),
     }
 }
-
-pub(crate) use crate::proxy_core::api::routing::build_route_plan as route_plan_from_request;
 
 pub(crate) async fn management_route_response_from_router_source(
     router: &ProviderRouter,

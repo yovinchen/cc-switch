@@ -33,6 +33,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/proxy_runtime.rs",
     "src/proxy/host/cc_switch/proxy_services.rs",
     "src/proxy/host/cc_switch/provider_router_health_store.rs",
+    "src/proxy/host/cc_switch/route_resolver.rs",
     "src/proxy/response_adapter.rs",
     "src/proxy/transport/upstream/mod.rs",
     "src/proxy/transport/upstream/reqwest_client.rs",
@@ -16093,17 +16094,65 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
     assert!(
         source.contains("pub(crate) struct CcSwitchRouteResolver")
             && source.contains("impl RouteResolver for CcSwitchRouteResolver")
-            && source.contains("route_plan_from_request(request)")
+            && source.contains("build_route_plan(request)")
             && source
                 .contains("management_route_response_from_router_source(&self.router, request)"),
         "CC Switch route resolver should live in host/cc_switch/route_resolver.rs"
     );
+    assert!(
+        source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && source.contains(
+                "use crate::proxy_core::api::management::{RouteResolveRequest, RouteResolveResponse};"
+            )
+            && source.contains("use crate::proxy_core::api::ports::RouteResolver;")
+            && source
+                .contains("use crate::proxy_core::api::routing::{build_route_plan, RoutePlan, RouteRequest};"),
+        "CC Switch route resolver should import route contracts directly from proxy_core"
+    );
+    let adapter_import =
+        function_slice(&source, "use crate::proxy_core_adapter::", ";\nuse futures");
+    for adapter_type in [
+        "ProxyCoreResult",
+        "RoutePlan",
+        "RouteRequest",
+        "RouteResolveRequest",
+        "RouteResolveResponse",
+        "RouteResolver",
+        "route_plan_from_request",
+    ] {
+        assert!(
+            !adapter_import.contains(adapter_type),
+            "CC Switch route resolver must not import {adapter_type} through proxy_core_adapter"
+        );
+    }
     assert!(
         adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::route_resolver::CcSwitchRouteResolver"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchRouteResolver")
             && !adapter_source.contains("impl RouteResolver for CcSwitchRouteResolver"),
         "proxy_core_adapter should re-export, not own, the CC Switch route resolver"
+    );
+    let adapter_core_ports_import = function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
+        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+    );
+    assert!(
+        !adapter_core_ports_import.contains("RouteResolver"),
+        "proxy_core_adapter should not re-export RouteResolver"
+    );
+    let adapter_routing_import = function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::routing::{\n    failover_config_read_error_log_line",
+        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::transforms::claude_api_format_from_metadata;",
+    );
+    assert!(
+        !adapter_routing_import.contains("RouteRequest"),
+        "proxy_core_adapter should not re-export RouteRequest"
+    );
+    assert!(
+        !adapter_source.contains("route_plan_from_request"),
+        "proxy_core_adapter should not re-export route planning through route_plan_from_request"
     );
 }
 

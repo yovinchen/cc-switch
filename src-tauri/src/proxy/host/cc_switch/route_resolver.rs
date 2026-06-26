@@ -1,10 +1,11 @@
 //! CC Switch route resolver source.
 
 use crate::proxy::engine::routing::ProviderRouter;
-use crate::proxy_core_adapter::{
-    management_route_response_from_router_source, route_plan_from_request, ProxyCoreResult,
-    RoutePlan, RouteRequest, RouteResolveRequest, RouteResolveResponse, RouteResolver,
-};
+use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::management::{RouteResolveRequest, RouteResolveResponse};
+use crate::proxy_core::api::ports::RouteResolver;
+use crate::proxy_core::api::routing::{build_route_plan, RoutePlan, RouteRequest};
+use crate::proxy_core_adapter::management_route_response_from_router_source;
 use futures::future::BoxFuture;
 use std::sync::Arc;
 
@@ -24,7 +25,7 @@ impl RouteResolver for CcSwitchRouteResolver {
         &'a self,
         request: RouteRequest<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<RoutePlan>> {
-        Box::pin(async move { route_plan_from_request(request) })
+        Box::pin(async move { build_route_plan(request) })
     }
 
     fn resolve_management_route<'a>(
