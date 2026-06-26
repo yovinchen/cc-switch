@@ -11,6 +11,8 @@
 use super::{error::ProxyError, handlers};
 #[cfg(test)]
 use crate::database::Database;
+#[cfg(test)]
+use crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source;
 use crate::proxy_core_adapter::ProxyState;
 use crate::proxy_core_adapter::{
     emit_proxy_server_started_event_source, emit_proxy_server_stopped_event_source,
@@ -713,7 +715,7 @@ mod tests {
         db.save_provider("claude-desktop", &provider).unwrap();
         db.set_current_provider("claude-desktop", "desktop-runtime")
             .unwrap();
-        let gateway_token = crate::claude_desktop_config::get_or_create_gateway_token(db.as_ref())
+        let gateway_token = get_or_create_claude_desktop_gateway_token_from_db_source(db.as_ref())
             .expect("gateway token");
 
         let config = ProxyConfig {

@@ -2225,6 +2225,47 @@ fn claude_desktop_gateway_auth_delegates_to_proxy_engine() {
 }
 
 #[test]
+fn proxy_server_claude_desktop_gateway_smoke_uses_adapter_token_source() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/server.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/server.rs");
+    let smoke_slice = function_slice(
+        &source,
+        "async fn proxy_server_runtime_smoke_serves_claude_desktop_models_with_gateway_auth",
+        "async fn management_apps_and_providers_return_sanitized_summaries",
+    );
+
+    assert!(
+        smoke_slice.contains("get_or_create_claude_desktop_gateway_token_from_db_source("),
+        "Claude Desktop gateway runtime smoke should use the adapter-owned token source"
+    );
+
+    let forbidden_markers = [
+        "claude_desktop_config::get_or_create_gateway_token",
+        "crate::claude_desktop_config",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in smoke_slice.lines().enumerate() {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/server.rs proxy_server_runtime_smoke_serves_claude_desktop_models_with_gateway_auth:{} contains host token-source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Claude Desktop gateway smoke must keep token creation behind proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_owns_claude_desktop_gateway_token_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
