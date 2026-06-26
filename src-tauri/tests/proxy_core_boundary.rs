@@ -6386,6 +6386,9 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let response_adapter_source =
+        fs::read_to_string(&response_adapter_path).expect("read proxy/response_adapter.rs");
     let adapter_import = function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
@@ -6447,7 +6450,7 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
             && adapter_source.contains("spawn_usage_record_with_proxy_services")
             && adapter_source.contains("spawn_usage_record_with_proxy_services_context")
             && adapter_source.contains("record_forward_error_usage")
-            && adapter_source.contains("record_forward_core_error_usage")
+            && !adapter_source.contains("record_forward_core_error_usage")
             && adapter_source.contains("ForwardErrorUsageContext")
             && adapter_source.contains("ForwardErrorUsageRecordContext")
             && adapter_source.contains("record_forward_error_usage_from_context")
@@ -6468,6 +6471,17 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
             && !adapter_source
                 .contains("pub(crate) fn forward_error_usage_record_from_response_context"),
         "proxy_core_adapter should re-export, not own, forward-error usage and sink scheduling"
+    );
+    assert!(
+        response_adapter_source.contains("engine::response_pipeline::{")
+            && response_adapter_source.contains("record_forward_core_error_usage")
+            && !function_slice(
+                &response_adapter_source,
+                "use crate::proxy_core_adapter::{",
+                "};\nuse axum::",
+            )
+            .contains("record_forward_core_error_usage"),
+        "response_adapter should import forward-core error usage mapping directly from response_pipeline"
     );
 }
 

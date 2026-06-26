@@ -1,6 +1,8 @@
 use super::{
     engine::context::RequestContext,
-    engine::response_pipeline::{process_response, read_decoded_proxy_response_body},
+    engine::response_pipeline::{
+        process_response, read_decoded_proxy_response_body, record_forward_core_error_usage,
+    },
     error::ProxyError,
     error_mapper::{
         claude_response_transform_error_to_proxy_error,
@@ -61,9 +63,8 @@ use crate::proxy_core_adapter::{
     codex_auto_transformed_json_response_from_context,
     codex_auto_transformed_sse_stream_from_context, provider_claude_transform_streaming_decision,
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
-    record_forward_core_error_usage, ActiveConnectionGuard, ClaudeTransformedJsonResponseContext,
-    ClaudeTransformedSseStreamContext, CodexAutoTransformedJsonResponseContext,
-    CodexAutoTransformedSseStreamContext, ProxyState,
+    ActiveConnectionGuard, ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
+    CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext, ProxyState,
 };
 use axum::{
     response::sse::{Event, KeepAlive, Sse},
