@@ -6495,9 +6495,10 @@ type UsageCallbackWithTiming = Arc<dyn Fn(Vec<Value>, Option<u64>) + Send + Sync
 
 #[allow(unused_imports)]
 pub(crate) use crate::proxy::engine::response_pipeline::{
-    decode_raw_proxy_response_body, log_non_streaming_proxy_response_body,
-    log_streaming_proxy_response_received, read_decoded_proxy_response_body,
-    DecodedProxyResponseBody,
+    create_passthrough_logged_stream, decode_raw_proxy_response_body,
+    log_non_streaming_proxy_response_body, log_streaming_proxy_response_received,
+    passthrough_streaming_usage_collector, read_decoded_proxy_response_body,
+    record_non_streaming_response_usage, DecodedProxyResponseBody,
 };
 
 #[derive(Clone)]
@@ -8314,50 +8315,6 @@ where
     ))
 }
 
-pub(crate) fn passthrough_streaming_usage_collector(
-    state: &ProxyState,
-    ctx: &RequestContext,
-    status_code: u16,
-    parser_config: &UsageParserConfig,
-) -> Option<SseUsageCollector> {
-    streaming_usage_collector_from_context(StreamingUsageCollectorContext {
-        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
-        services: state.proxy_core_services.clone(),
-        provider: ctx.provider_for_usage(),
-        app_type: ctx.app_type_str,
-        tag: ctx.tag,
-        request_model: &ctx.request_model,
-        outbound_model: ctx.outbound_model.as_deref(),
-        route_context: ctx.usage_route_context.as_ref(),
-        start_time: ctx.start_time,
-        status_code,
-        session_id: &ctx.session_id,
-        parser_config,
-    })
-}
-
-pub(crate) fn create_passthrough_logged_stream<G>(
-    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-    state: &ProxyState,
-    ctx: &RequestContext,
-    status_code: u16,
-    parser_config: &UsageParserConfig,
-    connection_guard: Option<G>,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
-where
-    G: Send + 'static,
-{
-    let usage_collector =
-        passthrough_streaming_usage_collector(state, ctx, status_code, parser_config);
-    create_logged_passthrough_stream(
-        stream,
-        ctx.tag,
-        usage_collector,
-        ctx.streaming_timeout_config(),
-        connection_guard,
-    )
-}
-
 pub(crate) fn passthrough_stream_proxy_response_from_context<G>(
     status: http::StatusCode,
     headers: HeaderMap,
@@ -8450,30 +8407,6 @@ where
 
     spawn_usage_record_with_proxy_services(context.services, output.record);
     Ok(())
-}
-
-pub(crate) fn record_non_streaming_response_usage(
-    state: &ProxyState,
-    ctx: &RequestContext,
-    body: &[u8],
-    parser_config: &UsageParserConfig,
-    status_code: u16,
-) -> Result<(), String> {
-    record_non_streaming_response_usage_from_context(NonStreamingUsageRecordContext {
-        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
-        services: state.proxy_core_services.clone(),
-        body,
-        parser_config,
-        provider: ctx.provider_for_usage(),
-        app_type: ctx.app_type_str,
-        tag: ctx.tag,
-        request_model: &ctx.request_model,
-        outbound_model: ctx.outbound_model.as_deref(),
-        route_context: ctx.usage_route_context.as_ref(),
-        latency_ms: ctx.latency_ms(),
-        status_code,
-        session_id: &ctx.session_id,
-    })
 }
 
 pub(crate) fn passthrough_non_stream_proxy_response_from_context(

@@ -1610,11 +1610,6 @@ const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = 
     "usage_record_failure_warning_message(",
     "UsageRecordFailureLogContext::UsageRecord",
     "UsageSelectedProviderMissingPhase::StreamingPassthrough",
-    "StreamingUsageCollectorContext",
-    "NonStreamingUsageRecordContext",
-    "usage_logging_enabled_from_proxy_config(",
-    "state.config",
-    "state.proxy_core_services.clone()",
     "usage logging 已关闭，跳过非流式 usage 解析",
     "usage_logging_enabled_from_config_flag(",
     ".try_read()",
@@ -1625,13 +1620,9 @@ const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = 
     "streaming_response_usage_record_with_optional_outbound_model(",
     "non_streaming_response_usage_record_from_body_with_request_id_fallback(",
     "non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(",
-    "record_non_streaming_response_usage(",
 ];
 const FORBIDDEN_RESPONSE_PROCESSOR_STREAM_ORCHESTRATION_MARKERS: &[&str] = &[
     "fn create_logged_passthrough_stream(",
-    "create_logged_passthrough_stream(",
-    "passthrough_streaming_usage_collector(",
-    "ctx.streaming_timeout_config()",
     "passthrough_stream_proxy_response(",
     "async_stream::stream!",
     "SseEventScanner",
@@ -5746,6 +5737,52 @@ fn response_processor_delegates_stream_orchestration_to_adapter() {
         violations.is_empty(),
         "response processor must delegate stream scanner/timeout orchestration to proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn response_pipeline_owns_passthrough_usage_runtime_source() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let usage_slice = function_slice(
+        &source,
+        "pub(crate) fn passthrough_streaming_usage_collector",
+        "/// 内部使用量记录函数",
+    );
+
+    assert!(
+        usage_slice.contains("StreamingUsageCollectorContext {")
+            && usage_slice
+                .contains("usage_logging_enabled_from_proxy_config(state.config.as_ref())")
+            && usage_slice.contains("state.proxy_core_services.clone()")
+            && usage_slice.contains("ctx.provider_for_usage()")
+            && usage_slice.contains("ctx.streaming_timeout_config()")
+            && usage_slice.contains("record_non_streaming_response_usage_from_context(")
+            && usage_slice.contains("NonStreamingUsageRecordContext {"),
+        "response pipeline should own passthrough usage runtime-source selection"
+    );
+    assert!(
+        usage_slice.contains("create_logged_passthrough_stream(")
+            && !usage_slice.contains("SsePassthroughStreamState::new()")
+            && !usage_slice.contains("async_stream::stream!")
+            && !usage_slice.contains("SseUsageCollector::new(")
+            && !usage_slice.contains("response_usage_provider_facts_from_optional(")
+            && !usage_slice.contains("non_streaming_response_usage_record_from_response_context(")
+            && !usage_slice.contains("spawn_usage_record_with_proxy_services("),
+        "response pipeline should delegate collector internals and usage-record construction"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
+            && adapter_source.contains("passthrough_streaming_usage_collector")
+            && adapter_source.contains("create_passthrough_logged_stream")
+            && adapter_source.contains("record_non_streaming_response_usage")
+            && !adapter_source.contains("pub(crate) fn passthrough_streaming_usage_collector")
+            && !adapter_source.contains("pub(crate) fn create_passthrough_logged_stream")
+            && !adapter_source.contains("pub(crate) fn record_non_streaming_response_usage("),
+        "proxy_core_adapter should re-export, not own, passthrough usage runtime-source wrappers"
     );
 }
 
