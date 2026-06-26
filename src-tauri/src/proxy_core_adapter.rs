@@ -626,14 +626,6 @@ pub(crate) type UsageRecord = crate::proxy_core::api::usage::UsageRecord;
 pub(crate) type UsageRouteContext = crate::proxy_core::api::usage::UsageRouteContext;
 #[cfg(test)]
 pub(crate) type UsageTokens = crate::proxy_core::api::usage::UsageTokens;
-pub(crate) type UsageParserConfig = crate::proxy_core::api::usage::UsageParserConfig;
-pub(crate) type StreamUsageEventFilter = crate::proxy_core::api::usage::StreamUsageEventFilter;
-pub(crate) type TransformedResponseUsageFormat =
-    crate::proxy_core::api::usage::TransformedResponseUsageFormat;
-pub(crate) type UsageSelectedProviderMissingPhase =
-    crate::proxy_core::api::usage::UsageSelectedProviderMissingPhase;
-pub(crate) type UsageRecordFailureLogContext =
-    crate::proxy_core::api::usage::UsageRecordFailureLogContext;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::api::ports::CurrentRouteTarget;
 
 pub(crate) type AxumResponseBuildErrorContext<'a> =
@@ -2635,12 +2627,10 @@ pub(crate) use crate::proxy_core::api::transport::{
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback;
+pub(crate) use crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag;
 pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
     PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
-};
-pub(crate) use crate::proxy_core::api::usage::{
-    usage_logging_enabled_from_config_flag, usage_selected_provider_missing_log_message,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::usage::{
@@ -6991,8 +6981,6 @@ pub(crate) use crate::proxy_core::api::transport::is_socks_proxy_url;
 
 pub(crate) use crate::proxy_core::api::transport::resolve_upstream_send_policy;
 
-pub(crate) use crate::proxy_core::api::transport::response_headers_indicate_sse;
-
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::decompress_body;
 
@@ -8048,6 +8036,10 @@ mod tests {
     use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
     use crate::proxy_core::api::transport::{
         ProxyTransportResponseBody, UpstreamSseAggregationKind, UpstreamTransportKind,
+    };
+    use crate::proxy_core::api::usage::{
+        usage_selected_provider_missing_log_message, TransformedResponseUsageFormat,
+        UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
     };
 
     #[tokio::test]

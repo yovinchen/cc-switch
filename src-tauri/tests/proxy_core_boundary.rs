@@ -6237,6 +6237,65 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
 }
 
 #[test]
+fn response_pipeline_owns_core_usage_transport_imports() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::{",
+        "};\n#[cfg(test)]",
+    );
+    let adapter_import_identifiers: Vec<&str> = adapter_import
+        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        .filter(|identifier| !identifier.is_empty())
+        .collect();
+
+    assert!(
+        source.contains("use crate::proxy_core::api::transport::{")
+            && source.contains("response_headers_indicate_sse")
+            && source.contains("ProxyCoreResponse")
+            && source.contains("use crate::proxy_core::api::usage::{")
+            && source.contains("usage_selected_provider_missing_log_message")
+            && source.contains("StreamUsageEventFilter")
+            && source.contains("TransformedResponseUsageFormat")
+            && source.contains("UsageParserConfig")
+            && source.contains("UsageRecordFailureLogContext")
+            && source.contains("UsageSelectedProviderMissingPhase"),
+        "response_pipeline should import pure core usage/transport contracts directly"
+    );
+
+    let mut violations = Vec::new();
+    for marker in [
+        "response_headers_indicate_sse",
+        "ProxyCoreResponse",
+        "StreamUsageEventFilter",
+        "TokenUsage",
+        "TransformedResponseUsageFormat",
+        "UsageParserConfig",
+        "UsageRecordFailureLogContext",
+        "UsageRouteContext",
+        "UsageSelectedProviderMissingPhase",
+        "usage_selected_provider_missing_log_message",
+    ] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == &marker)
+        {
+            violations.push(format!(
+                "response_pipeline still imports pure core marker `{marker}` from proxy_core_adapter"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "response_pipeline should not route pure core usage/transport contracts through proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn response_pipeline_keeps_response_log_projection_text_in_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
