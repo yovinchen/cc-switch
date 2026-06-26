@@ -15046,9 +15046,10 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
         "default ForwarderTransportSource must delegate upstream transport execution to proxy::transport::upstream"
     );
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_transport_source::default_forwarder_transport_source")
+        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_transport_source::default_forwarder_transport_source;")
+            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_transport_source::default_forwarder_transport_source")
             && !adapter_source.contains("struct CcSwitchForwarderTransportSource"),
-        "proxy_core_adapter should re-export, not own, the default forwarder transport source"
+        "proxy_core_adapter should only use, not re-export or own, the default forwarder transport source"
     );
 
     let forbidden_adapter_markers = [
@@ -15821,14 +15822,15 @@ fn production_forwarder_uses_response_source_resource() {
         "default ForwarderResponseSource should project upstream error responses inside finalize_upstream_response"
     );
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_response_source::default_forwarder_response_source")
+        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_response_source::default_forwarder_response_source;")
+            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_response_source::default_forwarder_response_source")
             && !adapter_source.contains("struct CcSwitchForwarderResponseSource;"),
-        "proxy_core_adapter should re-export, not own, the default forwarder response source"
+        "proxy_core_adapter should only use, not re-export or own, the default forwarder response source"
     );
     let response_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderResponseSource",
-        "pub(crate) use crate::proxy::host::cc_switch::forwarder_response_source",
+        "use crate::proxy::host::cc_switch::forwarder_response_source",
     );
     assert!(
         !response_trait_slice.contains("upstream_error_body")

@@ -5961,7 +5961,7 @@ pub(crate) trait ForwarderTransportSource {
     ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
 }
 
-pub(crate) use crate::proxy::host::cc_switch::forwarder_transport_source::default_forwarder_transport_source;
+use crate::proxy::host::cc_switch::forwarder_transport_source::default_forwarder_transport_source;
 
 pub(crate) type ForwarderResponseSourceRef = Arc<dyn ForwarderResponseSource + Send + Sync>;
 
@@ -5989,10 +5989,10 @@ pub(crate) trait ForwarderResponseSource {
     ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
 }
 
-pub(crate) use crate::proxy::host::cc_switch::forwarder_response_source::default_forwarder_response_source;
+use crate::proxy::host::cc_switch::forwarder_response_source::default_forwarder_response_source;
 
 #[cfg(test)]
-pub(crate) use crate::proxy::host::cc_switch::forwarder_response_source::CcSwitchForwarderResponseSource;
+use crate::proxy::host::cc_switch::forwarder_response_source::CcSwitchForwarderResponseSource;
 
 #[derive(Clone)]
 pub(crate) struct ForwarderRuntimeHostResources {

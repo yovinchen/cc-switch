@@ -559,8 +559,12 @@ mod tests {
                 ),
             auth_source: crate::proxy_core_adapter::default_forwarder_auth_source(),
             request_source: crate::proxy_core_adapter::default_forwarder_request_source(),
-            transport_source: crate::proxy_core_adapter::default_forwarder_transport_source(),
-            response_source: crate::proxy_core_adapter::default_forwarder_response_source(),
+            transport_source:
+                crate::proxy::host::cc_switch::forwarder_transport_source::default_forwarder_transport_source(
+                ),
+            response_source:
+                crate::proxy::host::cc_switch::forwarder_response_source::default_forwarder_response_source(
+                ),
             failover_switch_scheduler: crate::proxy_core_adapter::noop_failover_switch_scheduler(),
         }
     }
