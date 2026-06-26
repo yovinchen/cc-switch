@@ -557,7 +557,7 @@
 543. Claude API format 是否需要 transform 的 predicate 已迁入 `proxy_core_adapter::claude_api_format_needs_transform`；`RequestForwarder` 只负责 provider adapter fallback 和 transform 分支调度。
 544. 上游请求 `anthropic-beta` 组装、ordered request headers 构建与 method-aware body serialization 已迁入 `proxy_core_adapter::{anthropic_beta_header_value,build_upstream_request_headers,serialize_upstream_request_body}`；`RequestForwarder` 只负责收集 upstream host、auth/session headers 和 managed-account 校验。
 545. `ProxyCoreError::Unavailable` 分类已迁入 `proxy_core_adapter::proxy_core_error_is_unavailable`；`RequestForwarder` 只保留 materialized route 不可用时降级为空 attempts 的行为。
-546. 上游请求 transport/streaming/SOCKS 发送策略已迁入 `proxy_core_adapter::{resolve_upstream_request_transport_policy,resolve_upstream_send_policy,is_socks_proxy_url}`；`RequestForwarder` 只保留 reqwest/raw-hyper 执行、proxy URL 读取与 response priming。
+546. 上游请求 transport/streaming/SOCKS 发送策略已迁入 `proxy_core_adapter::{resolve_upstream_request_transport_policy,resolve_upstream_send_policy,is_socks_proxy_url}`；`RequestForwarder` 只保留 reqwest/raw-hyper 执行、proxy URL 读取与 response priming；forward pipeline 实现已迁到 `proxy/engine/forward_pipeline.rs`，旧 `proxy/forwarder.rs` 仅保留兼容 re-export。
 547. Codex 官方客户端 User-Agent 判定已迁入 `proxy_core_adapter::is_official_codex_client_user_agent`；Codex provider 测试不再直连 core policy helper。
 548. Claude provider 的 API format transform predicate、OpenAI stream usage 注入、Anthropic tool-thinking history normalize 与 DeepSeek thinking-disabled effort 清理已迁入 `proxy_core_adapter`；Claude provider 只负责 provider settings、API format dispatch 和 transform 编排。
 549. Copilot GitHub domain normalize、GHES 判定、默认 public domain 与复合 account id 策略已迁入 `proxy_core_adapter`；Copilot auth 模块只负责 token/OAuth 流程、账号存储与 endpoint/model 缓存。
@@ -1666,7 +1666,7 @@ managed-account runtime source 已彻底归并到 `proxy_core_adapter::CcSwitchM
 | --- | --- | --- |
 | HTTP server | `transport/http/server.rs`, `transport/http/handlers.rs` | Axum/hyper 服务、路由表、HTTP 请求转为代理请求；旧 `server.rs`/`handlers.rs` 仅为兼容 re-export |
 | 请求上下文 | `engine/context.rs` | 从 config source/route result 维护请求生命周期事实、session、模型名；旧 `handler_context.rs` 仅为兼容 re-export |
-| 转发核心 | `forwarder.rs` | provider 重试、熔断记录、请求体处理、认证、上游请求、状态统计 |
+| 转发核心 | `engine/forward_pipeline.rs` | provider 重试、熔断记录、请求体处理、认证、上游请求、状态统计；旧 `forwarder.rs` 仅为兼容 re-export |
 | provider 适配 | `providers/*` | Claude/Codex/Gemini URL、认证、请求/响应转换、SSE 转换 |
 | 响应处理 | `engine/response_pipeline.rs` | 流式/非流式响应透传、解压、用量收集、日志落库；旧 `response_processor.rs` 仅为兼容 re-export |
 | 故障转移 | `provider_router.rs`, `circuit_breaker.rs`, `failover_switch.rs` | provider 选择、熔断状态、故障转移后切换当前 provider |
@@ -2332,7 +2332,7 @@ pub trait ProxyEventSink: Send + Sync {
 
 ### 认证接口
 
-当前 `forwarder.rs` 已不再直接依赖 Codex OAuth/Copilot token 刷新 manager，也不再直接读取 Copilot 动态 endpoint、live model list 或 model vendor 状态；这些 refresh/read state 副作用已收口到 `proxy_core_adapter::CcSwitchManagedAccountRuntimeSource`，外部中转宿主可替换 `ManagedAccountRuntimeSource` 来提供“获取/刷新可用 token”和“读取账号运行态能力”。
+当前 `engine/forward_pipeline.rs` 已不再直接依赖 Codex OAuth/Copilot token 刷新 manager，也不再直接读取 Copilot 动态 endpoint、live model list 或 model vendor 状态；这些 refresh/read state 副作用已收口到 `proxy_core_adapter::CcSwitchManagedAccountRuntimeSource`，外部中转宿主可替换 `ManagedAccountRuntimeSource` 来提供“获取/刷新可用 token”和“读取账号运行态能力”。
 
 ```rust
 pub trait AuthProvider: Send + Sync {
@@ -2529,7 +2529,7 @@ ProxyRequest
 | `server.rs` | `transport/http/server.rs` | `ProxyServer` 实现已迁到 `proxy/transport/http/server.rs`，旧 `proxy/server.rs` 仅保留兼容 re-export；当前启动/停止 runtime side effects、listener binding、route assembly、Hyper accept loop/header-case capture、stop wait/error mapping、shutdown sender/server handle storage、running-state gate、start 编排与 stop 编排已通过 `proxy_core_adapter` 组合 helper 收口 |
 | `handlers.rs` | `transport/http/handlers.rs` + `engine` | HTTP handler 实现已迁到 `proxy/transport/http/handlers.rs`，route builder 已导入新路径，旧 `proxy/handlers.rs` 仅保留兼容 re-export；后续继续把非 HTTP 解析/鉴权/桥接的业务处理下沉到 engine |
 | `handler_context.rs` | `engine/context.rs` | `RequestContext` 实现已迁到 `proxy/engine/context.rs`，旧 `proxy/handler_context.rs` 仅保留兼容 re-export；后续继续把 route result 后的 DB provider hydration 改为 service traits |
-| `forwarder.rs` | `engine/forward_pipeline.rs` | 切掉 Tauri/AppHandle/Database 依赖 |
+| `forwarder.rs` | `engine/forward_pipeline.rs` | `RequestForwarder`/`ForwardResult`/`ForwardError` 实现已迁到 `proxy/engine/forward_pipeline.rs`，旧 `proxy/forwarder.rs` 仅保留兼容 re-export；后续继续切掉残余 Tauri/AppHandle/Database 依赖并收敛为可替换 source/port |
 | `provider_router.rs` | `engine/routing.rs` | 当前已通过 router 端 provider/channel/config/health 四个 focused port 注入 source/store，channel route 输入已切到 core `RouteResolveChannelInput`，config/provider/channel/route-policy source adapter 已分别通过 `CcSwitchConfigSource` / `ProviderSource` / `CcSwitchChannelSource` / `RoutePolicySource` 对齐 core `ProxyConfigSource` / `ProviderSource` / `ChannelSource` / `RoutePolicySource`，provider health 写入已对齐 core `ProviderHealthStore`/`ProviderAttemptResult`，channel health 写入已改为异步传递 core `ChannelAttemptResult` 且保留 router failure threshold，channel reset 已改为传递 app-scoped `ChannelHealthReset` fact，DB-backed 构造统一在 host adapter factory；live breaker map 已由 `ProviderRoutingCircuitRuntime` 承接，下一步评估是否可在不引入 router/store 环的前提下完全实现 core `ChannelHealthStore` |
 | `failover_switch.rs` | `host/cc_switch` | 核心只发 failover event |
 | `response_processor.rs` | `engine/response_pipeline.rs` | response pipeline 实现已迁到 `proxy/engine/response_pipeline.rs`，旧 `proxy/response_processor.rs` 仅保留兼容 re-export；后续继续把用量落库改为 `UsageSink` |
