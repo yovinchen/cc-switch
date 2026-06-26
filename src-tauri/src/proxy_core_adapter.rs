@@ -2223,7 +2223,9 @@ pub(crate) type ChannelRequestValidationError =
 pub(crate) type ChannelRouteSource = crate::proxy_core::api::management::ChannelRouteSource;
 pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecord;
 #[cfg(test)]
-use crate::proxy_core::api::management::{ChannelReachabilityStatus, StreamCheckResult};
+pub(crate) use crate::proxy_core::api::management::ChannelReachabilityStatus;
+#[cfg(test)]
+use crate::proxy_core::api::management::StreamCheckResult;
 pub(crate) type ChannelKeyRecord = crate::proxy_core::api::management::ChannelKeyRecord;
 pub(crate) type ChannelKeyRecordInput = crate::proxy_core::api::management::ChannelKeyRecordInput;
 #[cfg(test)]
