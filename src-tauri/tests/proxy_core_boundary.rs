@@ -799,7 +799,16 @@ const FORBIDDEN_PROVIDER_ROUTER_LIVE_CIRCUIT_MAP_MARKERS: &[&str] = &[
     "breakers:",
 ];
 const PROVIDER_ROUTER_DATABASE_CONSTRUCTOR_MARKER: &str = "ProviderRouter::new(";
-const FORBIDDEN_HANDLER_PROXY_REQUEST_BRIDGE_MARKERS: &[&str] = &["ProxyRequest::new("];
+const FORBIDDEN_HANDLER_PROXY_REQUEST_BRIDGE_MARKERS: &[&str] = &[
+    "ProxyRequest::new(",
+    "JsonProxyRequestInput",
+    "json_proxy_request_from_input(",
+    "codex_responses_proxy_request_from_input(",
+    "InterfaceKind::AnthropicMessages",
+    "InterfaceKind::OpenAiChatCompletions",
+    "InterfaceKind::OpenAiResponses",
+    "InterfaceKind::GeminiNative",
+];
 const FORBIDDEN_HANDLER_PROXY_RESULT_RESPONSE_BRIDGE_MARKERS: &[&str] = &[
     ".apply_proxy_result(",
     "claude_api_format_for_proxy_result(",

@@ -22,24 +22,22 @@ use super::{
         dispatch_codex_proxy_request_to_proxy_response, dispatch_proxy_request_to_proxy_response,
         gemini_passthrough_response_to_axum_response,
         openai_chat_passthrough_response_to_axum_response, proxy_event_envelope_to_axum_sse_event,
-        CodexProxyDispatchResponse, ParsedAxumJsonProxyRequest,
+        CodexProxyDispatchResponse,
     },
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
-    append_query_to_endpoint_path, codex_responses_proxy_request_from_input,
-    extract_gemini_model_from_path, json_proxy_request_from_input, strip_endpoint_prefix,
-    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
-    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
-    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
-    ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
-    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
-    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
-    CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
-    InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest, ProviderListResponse,
+    append_query_to_endpoint_path, strip_endpoint_prefix, AppChannelListQuery,
+    AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest, AppListResponse,
+    AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse, ChannelCreateRequest,
+    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
+    ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
+    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
+    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
+    HealthCheckResponse, ManagementAppPathRequest, ProviderListResponse,
     ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
     ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
     ProxyRuntimeStatus, ProxyState, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
@@ -580,31 +578,29 @@ async fn handle_messages_for_app(
     app_type_str: &'static str,
     strip_prefix: Option<&'static str>,
 ) -> Result<axum::response::Response, ProxyError> {
-    let ParsedAxumJsonProxyRequest {
-        method,
-        uri,
-        headers,
-        extensions,
-        body,
-        is_stream,
-    } = collect_json_proxy_request(request).await?;
+    let parsed_request = collect_json_proxy_request(request).await?;
+    let is_stream = parsed_request.is_stream;
 
-    let mut ctx =
-        RequestContext::new(&state, &body, &headers, app_type.clone(), tag, app_type_str).await?;
+    let mut ctx = RequestContext::new(
+        &state,
+        &parsed_request.body,
+        &parsed_request.headers,
+        app_type.clone(),
+        tag,
+        app_type_str,
+    )
+    .await?;
 
-    let raw_endpoint = append_query_to_endpoint_path(uri.path(), uri.query());
+    let raw_endpoint =
+        append_query_to_endpoint_path(parsed_request.uri.path(), parsed_request.uri.query());
     let endpoint = strip_endpoint_prefix(&raw_endpoint, strip_prefix);
+    let original_body = parsed_request.body.clone();
 
-    let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
-        app_type: app_type.clone(),
-        method,
-        endpoint: endpoint.to_string(),
-        inbound_interface: InterfaceKind::AnthropicMessages,
-        body: body.clone(),
-        requested_model: Some(ctx.request_model.clone()),
-        headers,
-        extensions,
-    });
+    let proxy_request = parsed_request.into_anthropic_messages_proxy_request(
+        app_type.clone(),
+        endpoint.to_string(),
+        Some(ctx.request_model.clone()),
+    );
 
     let (response, api_format) =
         dispatch_claude_proxy_request_to_proxy_response(&state, &mut ctx, proxy_request, is_stream)
@@ -619,7 +615,7 @@ async fn handle_messages_for_app(
             response,
             &ctx,
             &state,
-            &body,
+            &original_body,
             is_stream,
             &api_format,
             None,
@@ -640,29 +636,22 @@ pub async fn handle_chat_completions(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let ParsedAxumJsonProxyRequest {
-        method,
-        uri,
-        headers,
-        extensions,
-        body,
-        is_stream,
-    } = collect_json_proxy_request(request).await?;
+    let parsed_request = collect_json_proxy_request(request).await?;
+    let is_stream = parsed_request.is_stream;
 
-    let mut ctx =
-        RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
-    let endpoint = append_query_to_endpoint_path("/chat/completions", uri.query());
+    let mut ctx = RequestContext::new(
+        &state,
+        &parsed_request.body,
+        &parsed_request.headers,
+        AppType::Codex,
+        "Codex",
+        "codex",
+    )
+    .await?;
+    let endpoint = append_query_to_endpoint_path("/chat/completions", parsed_request.uri.query());
 
-    let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
-        app_type: AppType::Codex,
-        method,
-        endpoint: endpoint.clone(),
-        inbound_interface: InterfaceKind::OpenAiChatCompletions,
-        body,
-        requested_model: Some(ctx.request_model.clone()),
-        headers,
-        extensions,
-    });
+    let proxy_request = parsed_request
+        .into_codex_chat_proxy_request(endpoint.clone(), Some(ctx.request_model.clone()));
 
     let response = match dispatch_codex_proxy_request_to_proxy_response(
         &state,
@@ -685,29 +674,22 @@ pub async fn handle_responses(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let ParsedAxumJsonProxyRequest {
-        method,
-        uri,
-        headers,
-        extensions,
-        body,
-        is_stream,
-    } = collect_json_proxy_request(request).await?;
+    let parsed_request = collect_json_proxy_request(request).await?;
+    let is_stream = parsed_request.is_stream;
 
-    let mut ctx =
-        RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
-    let endpoint = append_query_to_endpoint_path("/responses", uri.query());
+    let mut ctx = RequestContext::new(
+        &state,
+        &parsed_request.body,
+        &parsed_request.headers,
+        AppType::Codex,
+        "Codex",
+        "codex",
+    )
+    .await?;
+    let endpoint = append_query_to_endpoint_path("/responses", parsed_request.uri.query());
 
-    let codex_proxy_request = codex_responses_proxy_request_from_input(JsonProxyRequestInput {
-        app_type: AppType::Codex,
-        method,
-        endpoint: endpoint.clone(),
-        inbound_interface: InterfaceKind::OpenAiResponses,
-        body,
-        requested_model: Some(ctx.request_model.clone()),
-        headers,
-        extensions,
-    });
+    let codex_proxy_request = parsed_request
+        .into_codex_responses_proxy_request(endpoint.clone(), Some(ctx.request_model.clone()));
     let proxy_request = codex_proxy_request.request;
     let codex_tool_context = codex_proxy_request.tool_context;
 
@@ -744,29 +726,22 @@ pub async fn handle_responses_compact(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let ParsedAxumJsonProxyRequest {
-        method,
-        uri,
-        headers,
-        extensions,
-        body,
-        is_stream,
-    } = collect_json_proxy_request(request).await?;
+    let parsed_request = collect_json_proxy_request(request).await?;
+    let is_stream = parsed_request.is_stream;
 
-    let mut ctx =
-        RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
-    let endpoint = append_query_to_endpoint_path("/responses/compact", uri.query());
+    let mut ctx = RequestContext::new(
+        &state,
+        &parsed_request.body,
+        &parsed_request.headers,
+        AppType::Codex,
+        "Codex",
+        "codex",
+    )
+    .await?;
+    let endpoint = append_query_to_endpoint_path("/responses/compact", parsed_request.uri.query());
 
-    let codex_proxy_request = codex_responses_proxy_request_from_input(JsonProxyRequestInput {
-        app_type: AppType::Codex,
-        method,
-        endpoint: endpoint.clone(),
-        inbound_interface: InterfaceKind::OpenAiResponses,
-        body,
-        requested_model: Some(ctx.request_model.clone()),
-        headers,
-        extensions,
-    });
+    let codex_proxy_request = parsed_request
+        .into_codex_responses_proxy_request(endpoint.clone(), Some(ctx.request_model.clone()));
     let proxy_request = codex_proxy_request.request;
     let codex_tool_context = codex_proxy_request.tool_context;
 
@@ -808,33 +783,25 @@ pub async fn handle_gemini(
     uri: axum::http::Uri,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let ParsedAxumJsonProxyRequest {
-        method,
-        headers,
-        extensions,
-        body,
-        is_stream,
-        ..
-    } = collect_json_or_null_proxy_request(request).await?;
+    let parsed_request = collect_json_or_null_proxy_request(request).await?;
+    let is_stream = parsed_request.is_stream;
 
     // Gemini 的模型名称在 URI 中
-    let mut ctx = RequestContext::new(&state, &body, &headers, AppType::Gemini, "Gemini", "gemini")
-        .await?
-        .with_model_from_uri(&uri);
+    let mut ctx = RequestContext::new(
+        &state,
+        &parsed_request.body,
+        &parsed_request.headers,
+        AppType::Gemini,
+        "Gemini",
+        "gemini",
+    )
+    .await?
+    .with_model_from_uri(&uri);
 
     // 提取完整的路径和查询参数
     let endpoint = append_query_to_endpoint_path(uri.path(), uri.query());
 
-    let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
-        app_type: AppType::Gemini,
-        method,
-        endpoint: endpoint.clone(),
-        inbound_interface: InterfaceKind::GeminiNative,
-        body,
-        requested_model: extract_gemini_model_from_path(&endpoint),
-        headers,
-        extensions,
-    });
+    let proxy_request = parsed_request.into_gemini_proxy_request(endpoint.clone());
 
     let response =
         dispatch_proxy_request_to_proxy_response(&state, &mut ctx, proxy_request, is_stream)
