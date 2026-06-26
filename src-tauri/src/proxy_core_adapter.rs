@@ -5935,9 +5935,9 @@ pub(crate) trait ForwarderRequestSource {
     ) -> Result<ForwarderUpstreamRequestParts, ProxyError>;
 }
 
-pub(crate) use crate::proxy::host::cc_switch::forwarder_request_source::forwarder_request_source_from_managed_account_runtime_source;
+use crate::proxy::host::cc_switch::forwarder_request_source::forwarder_request_source_from_managed_account_runtime_source;
 #[cfg(test)]
-pub(crate) use crate::proxy::host::cc_switch::forwarder_request_source::{
+use crate::proxy::host::cc_switch::forwarder_request_source::{
     default_forwarder_request_source, forwarder_rectifier_error_message,
     CcSwitchForwarderRequestSource,
 };

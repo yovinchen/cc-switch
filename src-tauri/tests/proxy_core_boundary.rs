@@ -15601,7 +15601,7 @@ fn production_forwarder_uses_request_source_resource() {
     let request_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderRequestSource",
-        "pub(crate) use crate::proxy::host::cc_switch::forwarder_request_source",
+        "use crate::proxy::host::cc_switch::forwarder_request_source",
     );
     assert!(
         !request_trait_slice.contains("request_body_model")
@@ -15615,9 +15615,10 @@ fn production_forwarder_uses_request_source_resource() {
         "ForwarderRequestSource trait must not expose internal request body model, provider transform, Codex bridge body/gate, Copilot optimizer, media prevention, adapter facts, or provider URL facts helpers"
     );
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_request_source::forwarder_request_source_from_managed_account_runtime_source")
+        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_request_source::forwarder_request_source_from_managed_account_runtime_source")
+            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_request_source::forwarder_request_source_from_managed_account_runtime_source")
             && !adapter_source.contains("struct CcSwitchForwarderRequestSource"),
-        "proxy_core_adapter should re-export, not own, the default forwarder request source"
+        "proxy_core_adapter should use, not re-export or own, the default forwarder request source"
     );
 
     let impl_forbidden_markers = [
