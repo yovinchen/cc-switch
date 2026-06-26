@@ -32,7 +32,8 @@ use crate::proxy_core_adapter::{
     append_query_to_endpoint_path, claude_transformed_json_response_from_context,
     claude_transformed_sse_stream_from_context, codex_auto_transformed_json_response_from_context,
     codex_auto_transformed_sse_stream_from_context, codex_chat_transform_streaming_decision,
-    extract_gemini_model_from_path, json_proxy_request_from_input, parse_json_proxy_request_body,
+    codex_responses_proxy_request_from_input, extract_gemini_model_from_path,
+    json_proxy_request_from_input, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, provider_claude_transform_streaming_decision,
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
     read_decoded_proxy_response_body, record_forward_core_error_usage, strip_endpoint_prefix,
@@ -798,9 +799,7 @@ pub async fn handle_responses(
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
     let endpoint = append_query_to_endpoint_path("/responses", uri.query());
 
-    let codex_tool_context = crate::proxy_core_adapter::codex_tool_context_from_request(&body);
-
-    let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
+    let codex_proxy_request = codex_responses_proxy_request_from_input(JsonProxyRequestInput {
         app_type: AppType::Codex,
         method,
         endpoint: endpoint.clone(),
@@ -810,6 +809,8 @@ pub async fn handle_responses(
         headers,
         extensions,
     });
+    let proxy_request = codex_proxy_request.request;
+    let codex_tool_context = codex_proxy_request.tool_context;
 
     let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
@@ -863,9 +864,7 @@ pub async fn handle_responses_compact(
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
     let endpoint = append_query_to_endpoint_path("/responses/compact", uri.query());
 
-    let codex_tool_context = crate::proxy_core_adapter::codex_tool_context_from_request(&body);
-
-    let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
+    let codex_proxy_request = codex_responses_proxy_request_from_input(JsonProxyRequestInput {
         app_type: AppType::Codex,
         method,
         endpoint: endpoint.clone(),
@@ -875,6 +874,8 @@ pub async fn handle_responses_compact(
         headers,
         extensions,
     });
+    let proxy_request = codex_proxy_request.request;
+    let codex_tool_context = codex_proxy_request.tool_context;
 
     let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {

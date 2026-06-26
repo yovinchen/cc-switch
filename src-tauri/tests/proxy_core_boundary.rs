@@ -1597,6 +1597,7 @@ const FORBIDDEN_HANDLER_CLAUDE_STREAMING_DECISION_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_HANDLER_CODEX_NON_STREAM_TRANSFORM_MARKERS: &[&str] = &[
     "chat_completion_to_response_with_context(",
+    "codex_tool_context_from_request(",
     "record_codex_chat_response_history(",
     "transform_codex_chat_response_with_history(",
 ];

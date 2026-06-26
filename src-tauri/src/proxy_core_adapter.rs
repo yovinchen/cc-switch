@@ -6306,6 +6306,22 @@ pub(crate) fn json_proxy_request_from_input(input: JsonProxyRequestInput) -> Pro
     .with_observed_request_context(input.requested_model, input.headers, input.extensions)
 }
 
+pub(crate) struct CodexResponsesProxyRequest {
+    pub(crate) request: ProxyRequest,
+    pub(crate) tool_context: CodexToolContext,
+}
+
+pub(crate) fn codex_responses_proxy_request_from_input(
+    input: JsonProxyRequestInput,
+) -> CodexResponsesProxyRequest {
+    let tool_context = codex_tool_context_from_request(&input.body);
+    let request = json_proxy_request_from_input(input);
+    CodexResponsesProxyRequest {
+        request,
+        tool_context,
+    }
+}
+
 pub(crate) struct ForwardRuntimeRequest {
     pub(crate) app_type: AppType,
     pub(crate) method: Method,
