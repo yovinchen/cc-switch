@@ -1694,6 +1694,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1208. `proxy_core_adapter` 的 test-only response pipeline helper re-export 已删除；adapter 单测直接 import `proxy::engine::response_pipeline` owning module，边界测试防止这组 helper 重新作为 adapter 表面暴露。
 1209. `proxy_core_adapter` 不再 re-export `proxy_core_error_to_proxy_error`；forwarder auth source 直接 import `proxy::error_mapper` owning module，边界测试防止通用 error mapper helper 重新从 adapter 暴露。
 1210. `proxy_core_adapter` 不再 re-export route selection candidate/resolved-attempt helper；`route_attempt.rs` 已纳入 direct-core allowlist 作为专门 routing adapter，边界测试防止这组 routing helper 重新从 adapter 暴露。
+1211. `proxy_core_adapter` 的 test-only `codex_tool_context_from_request` alias 已删除；adapter 单测直接调用 `proxy_core::api::transforms::build_codex_tool_context_from_request` owning helper，边界测试防止该 Codex tool context alias 回流。
 
 ## 背景
 
