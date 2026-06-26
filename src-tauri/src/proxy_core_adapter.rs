@@ -5526,10 +5526,10 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
 }
 
-pub(crate) use crate::proxy::host::cc_switch::forwarder_runtime_state_source::forwarder_runtime_state_source_from_runtime_parts;
+use crate::proxy::host::cc_switch::forwarder_runtime_state_source::forwarder_runtime_state_source_from_runtime_parts;
 
 #[cfg(test)]
-pub(crate) use crate::proxy::host::cc_switch::forwarder_runtime_state_source::CcSwitchForwarderRuntimeStateSource;
+use crate::proxy::host::cc_switch::forwarder_runtime_state_source::CcSwitchForwarderRuntimeStateSource;
 
 pub(crate) type ForwarderProtocolStateSourceRef =
     Arc<dyn ForwarderProtocolStateSource + Send + Sync>;
@@ -5558,10 +5558,10 @@ pub(crate) trait ForwarderProtocolStateSource {
     ) -> Result<Value, String>;
 }
 
-pub(crate) use crate::proxy::host::cc_switch::forwarder_protocol_state_source::forwarder_protocol_state_source_from_runtime_parts;
+use crate::proxy::host::cc_switch::forwarder_protocol_state_source::forwarder_protocol_state_source_from_runtime_parts;
 
 #[cfg(test)]
-pub(crate) use crate::proxy::host::cc_switch::forwarder_protocol_state_source::CcSwitchForwarderProtocolStateSource;
+use crate::proxy::host::cc_switch::forwarder_protocol_state_source::CcSwitchForwarderProtocolStateSource;
 
 pub(crate) type ForwarderAttemptRuntimeSourceRef =
     Arc<dyn ForwarderAttemptRuntimeSource + Send + Sync>;

@@ -547,12 +547,12 @@ mod tests {
                     provider_router,
                 ),
             protocol_state_source:
-                crate::proxy_core_adapter::forwarder_protocol_state_source_from_runtime_parts(
+                crate::proxy::host::cc_switch::forwarder_protocol_state_source::forwarder_protocol_state_source_from_runtime_parts(
                     gemini_shadow,
                     codex_chat_history,
                 ),
             runtime_state_source:
-                crate::proxy_core_adapter::forwarder_runtime_state_source_from_runtime_parts(
+                crate::proxy::host::cc_switch::forwarder_runtime_state_source::forwarder_runtime_state_source_from_runtime_parts(
                     status,
                     current_providers,
                     events,

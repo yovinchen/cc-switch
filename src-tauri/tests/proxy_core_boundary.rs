@@ -14093,7 +14093,7 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     let runtime_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderRuntimeStateSource",
-        "pub(crate) use crate::proxy::host::cc_switch::forwarder_runtime_state_source",
+        "use crate::proxy::host::cc_switch::forwarder_runtime_state_source",
     );
     let runtime_source_slice = function_slice(
         &runtime_source,
@@ -14137,9 +14137,10 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "default ForwarderRuntimeStateSource implementation must own status/current-provider/events runtime resources"
     );
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_runtime_state_source::forwarder_runtime_state_source_from_runtime_parts")
+        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_runtime_state_source::forwarder_runtime_state_source_from_runtime_parts;")
+            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_runtime_state_source::forwarder_runtime_state_source_from_runtime_parts")
             && !adapter_source.contains("struct CcSwitchForwarderRuntimeStateSource"),
-        "proxy_core_adapter should re-export, not own, the default forwarder runtime state source"
+        "proxy_core_adapter should only use, not re-export or own, the default forwarder runtime state source"
     );
     assert!(
         !runtime_trait_slice.contains("fn status(") && !runtime_trait_slice.contains("fn events("),
@@ -14554,9 +14555,10 @@ fn production_forwarder_uses_protocol_state_source_resource() {
         "default ForwarderProtocolStateSource implementation should live in the CC Switch host module"
     );
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_protocol_state_source::forwarder_protocol_state_source_from_runtime_parts")
+        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_protocol_state_source::forwarder_protocol_state_source_from_runtime_parts;")
+            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_protocol_state_source::forwarder_protocol_state_source_from_runtime_parts")
             && !adapter_source.contains("struct CcSwitchForwarderProtocolStateSource"),
-        "proxy_core_adapter should re-export, not own, the default forwarder protocol state source"
+        "proxy_core_adapter should only use, not re-export or own, the default forwarder protocol state source"
     );
 
     let struct_forbidden_markers = [
