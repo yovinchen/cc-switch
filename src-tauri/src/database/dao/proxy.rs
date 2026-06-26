@@ -4,11 +4,11 @@
 
 use crate::error::AppError;
 use crate::proxy_core::api::ports::GlobalProxyConfig;
+use crate::proxy_core::api::ports::{ProviderHealth, ProviderHealthUpdateInput};
 use crate::proxy_core_adapter::{
     app_proxy_config_defaults_for_app, normalize_pricing_source, provider_health_update_from_input,
     validate_cost_multiplier_value, AppProxyConfig, CircuitBreakerConfig,
-    CostMultiplierValidationError, PricingSourceValidationError, ProviderHealth,
-    ProviderHealthUpdateInput, ProxyConfig,
+    CostMultiplierValidationError, PricingSourceValidationError, ProxyConfig,
 };
 pub(crate) use crate::proxy_core_adapter::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
 use rust_decimal::Decimal;

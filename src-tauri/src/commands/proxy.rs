@@ -4,10 +4,10 @@
 
 use crate::error::AppError;
 use crate::proxy_core::api::ports::GlobalProxyConfig;
+use crate::proxy_core::api::ports::ProviderHealth;
 use crate::proxy_core_adapter::{
     reset_circuit_breaker_switchback_target_from_db, AppProxyConfig, CircuitBreakerConfig,
-    CircuitBreakerStats, ProviderHealth, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
-    ProxyTakeoverStatus,
+    CircuitBreakerStats, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::store::AppState;
 

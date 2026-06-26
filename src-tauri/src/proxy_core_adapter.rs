@@ -1419,7 +1419,6 @@ pub(crate) async fn proxy_runtime_config_from_db_source(
     Ok(proxy_runtime_config_from_config(config, false))
 }
 
-pub(crate) type ProviderHealth = crate::proxy_core::api::ports::ProviderHealth;
 pub(crate) type ProviderAttemptResult = crate::proxy_core::api::ports::ProviderAttemptResult;
 pub(crate) type ProviderKind = crate::proxy_core::api::domain::ProviderKind;
 pub(crate) type ProviderAuthInfo = crate::proxy_core::api::auth::ProviderAuthInfo;
@@ -2446,9 +2445,9 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelReachabilityResult, ChannelRecordResponse, ChannelRouteRejected,
     ChannelTestProbeRequest, ChannelTestResponse, CurrentRouteResponse, GroupListQuery,
     GroupListRequest, HealthCheckRequest, HealthCheckResponse, ManagementAppPathRequest,
-    ProviderHealthUpdateInput, ProviderListResponse, ProxyChannelModelsReplaceRequest,
-    ProxyChannelTestRequest, ProxyStatusRequest, ProxyStatusResponse, RouteGroupListResponse,
-    RouteResolveManagementRequest, StreamCheckConfigOverride, CHANNEL_HEALTH_UNKNOWN_STATUS,
+    ProviderListResponse, ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest,
+    ProxyStatusRequest, ProxyStatusResponse, RouteGroupListResponse, RouteResolveManagementRequest,
+    StreamCheckConfigOverride, CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;
