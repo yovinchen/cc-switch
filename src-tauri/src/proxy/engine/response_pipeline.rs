@@ -412,7 +412,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_claude_desktop_inherits_claude_global_defaults() -> Result<(), AppError> {
-        use crate::proxy::usage::logger::UsageLogger;
+        use crate::proxy::host::cc_switch::database_usage_sink::UsageLogger;
 
         let db = Arc::new(Database::memory()?);
 

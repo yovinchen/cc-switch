@@ -4,4 +4,5 @@
 
 pub mod logger;
 
+#[allow(unused_imports)]
 pub use logger::{RequestLog, UsageLogger};

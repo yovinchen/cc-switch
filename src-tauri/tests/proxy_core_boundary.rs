@@ -8010,6 +8010,26 @@ fn usage_sink_bridge_module_removed_after_adapter_migration() {
 }
 
 #[test]
+fn production_proxy_usage_logger_legacy_module_is_reexport_only() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/usage/logger.rs");
+    let source = fs::read_to_string(&path).expect("read usage/logger.rs");
+    let production_code: Vec<&str> = production_lines(&source)
+        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert_eq!(
+        production_code,
+        vec![
+            "#[allow(unused_imports)]",
+            "pub use super::super::host::cc_switch::database_usage_sink::*;",
+        ],
+        "legacy proxy/usage/logger.rs must remain a re-export shim after host database usage sink split"
+    );
+}
+
+#[test]
 fn production_forwarder_stays_preplanned_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut rust_files = Vec::new();

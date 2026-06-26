@@ -21,13 +21,13 @@ use crate::proxy::engine::routing::{
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_core_error_to_proxy_error};
 use crate::proxy::events::ProxyEventBus;
+use crate::proxy::host::cc_switch::database_usage_sink::{RequestLog, UsageLogger};
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
 use crate::proxy::providers::{get_adapter, ProviderAdapter};
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy::transport::upstream::hyper_client::{OriginalHeaderCases, ProxyResponse};
-use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 #[cfg(test)]
 use crate::proxy_core::api::domain::{ChannelHealthPolicy, ChannelOverrides, UpstreamEndpoint};
