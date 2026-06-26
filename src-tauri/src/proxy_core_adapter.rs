@@ -2561,12 +2561,10 @@ pub(crate) use crate::proxy_core::api::transport::{
     should_apply_forwarder_media_prevention_for_app, should_failover_after_rectifier_retry_failure,
     CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan,
     ForwarderAttemptRuntimeDecisionInput, ForwarderProviderUrlFacts,
-    ForwarderProviderUrlFactsInput,
 };
 pub(crate) use crate::proxy_core::api::transport::{
     codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
     codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required,
-    forwarder_provider_url_facts,
 };
 pub(crate) use crate::proxy_core::api::transport::{
     parse_custom_user_agent,

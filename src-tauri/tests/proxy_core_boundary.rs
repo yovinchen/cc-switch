@@ -14,6 +14,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/forwarder_auth_source.rs",
     "src/proxy/host/cc_switch/forwarder_response_source.rs",
     "src/proxy/host/cc_switch/forwarder_request_source.rs",
+    "src/proxy/host/cc_switch/provider_adapter_context.rs",
     "src/proxy/response_adapter.rs",
     "src/proxy/transport/upstream/mod.rs",
     "src/proxy/transport/upstream/reqwest_client.rs",
@@ -9271,6 +9272,10 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let path = manifest_dir.join("src/proxy/host/cc_switch/provider_adapter_context.rs");
     let source = fs::read_to_string(&path).expect("read provider_adapter_context.rs");
     let function = function_slice(
@@ -9283,6 +9288,21 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
         function.contains("forwarder_provider_url_facts("),
         "ForwarderAdapterContext::provider_url_facts must delegate URL facts projection to proxy-core"
     );
+    assert!(
+        source.contains("use crate::proxy_core::api::transport::{")
+            && source.contains("forwarder_provider_url_facts")
+            && source.contains("ForwarderProviderUrlFactsInput"),
+        "ForwarderAdapterContext should import pure provider URL facts helper/input directly from proxy_core::api::transport"
+    );
+    for marker in [
+        "forwarder_provider_url_facts",
+        "ForwarderProviderUrlFactsInput",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not re-export pure provider URL facts helper/input `{marker}` once provider_adapter_context owns the call site"
+        );
+    }
 
     let forbidden_markers = [
         "ForwarderProviderUrlFacts {",
