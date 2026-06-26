@@ -723,6 +723,14 @@ const FORBIDDEN_PROXY_SERVER_ACCEPT_LOOP_MARKERS: &[&str] = &[
     "record_proxy_server_stopped_runtime_event_source(",
     "tokio::select!",
 ];
+const FORBIDDEN_PROXY_SERVER_STOP_WAIT_MARKERS: &[&str] = &[
+    "tokio::time::timeout(",
+    "std::time::Duration::from_secs(5)",
+    "ProxyError::StopFailed",
+    "ProxyError::StopTimeout",
+    "log_srv::STOPPED",
+    "log_srv::STOP_TIMEOUT",
+];
 const FORBIDDEN_PROXY_CORE_CONFIG_SOURCE_APP_CATALOG_MARKERS: &[&str] = &[
     "AppKind::Claude",
     "AppKind::ClaudeDesktop",
@@ -14811,6 +14819,60 @@ fn production_proxy_server_delegates_accept_loop_to_adapter() {
     assert!(
         violations.is_empty(),
         "production ProxyServer must delegate Hyper accept-loop and header-case capture to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_server_delegates_stop_wait_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/server.rs");
+    let source = fs::read_to_string(&path).expect("read server.rs");
+    let stop_slice = function_slice(
+        &source,
+        "    pub async fn stop",
+        "    pub async fn get_status",
+    );
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let stop_wait = function_slice(
+        &adapter_source,
+        "pub(crate) async fn await_proxy_http_accept_loop_stop",
+        "pub(crate) fn record_proxy_server_listen_port_runtime_source",
+    );
+
+    assert!(
+        stop_slice.contains("await_proxy_http_accept_loop_stop(handle).await"),
+        "ProxyServer::stop must delegate accept-loop wait/error mapping to proxy_core_adapter"
+    );
+
+    assert!(
+        stop_wait.contains("tokio::time::timeout(std::time::Duration::from_secs(5), handle).await")
+            && stop_wait.contains("server_log_codes::STOPPED")
+            && stop_wait.contains("server_log_codes::TASK_ERROR")
+            && stop_wait.contains("server_log_codes::STOP_TIMEOUT")
+            && stop_wait.contains("ProxyError::StopFailed(e.to_string())")
+            && stop_wait.contains("ProxyError::StopTimeout"),
+        "proxy_core_adapter must own accept-loop stop wait timeout, logging, and error mapping"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(stop_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVER_STOP_WAIT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/server.rs ProxyServer::stop:{} contains stop-wait marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production ProxyServer must delegate accept-loop stop wait/error mapping to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

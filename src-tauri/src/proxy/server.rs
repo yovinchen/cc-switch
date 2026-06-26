@@ -2,11 +2,9 @@
 //!
 //! 基于Axum的HTTP服务器，处理代理请求
 //!
-//! Uses a manual hyper HTTP/1.1 accept loop with `preserve_header_case(true)` so
-//! that the original header-name casing from the CLI client is captured in a
-//! `HeaderCaseMap` extension.  This map is later forwarded to the upstream via
-//! the hyper-based HTTP client, producing wire-level header casing identical to
-//! a direct (non-proxied) CLI request.
+//! Delegates the manual hyper HTTP/1.1 accept loop with `preserve_header_case(true)`
+//! so that original header-name casing from CLI clients is captured and forwarded
+//! to upstreams with wire-level casing identical to direct requests.
 
 use super::error::ProxyError;
 #[cfg(test)]
@@ -15,12 +13,13 @@ use crate::database::Database;
 use crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source;
 use crate::proxy_core_adapter::ProxyState;
 use crate::proxy_core_adapter::{
-    provider_circuit_breaker_stats_source, proxy_http_router_from_state,
-    record_proxy_server_bound_runtime_source, record_proxy_server_started_info_runtime_source,
-    reset_provider_circuit_breaker_source, server_log_codes as log_srv,
-    set_active_route_target_runtime_source, spawn_proxy_http_accept_loop,
-    update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
-    CircuitBreakerConfig, CircuitBreakerStats, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+    await_proxy_http_accept_loop_stop, provider_circuit_breaker_stats_source,
+    proxy_http_router_from_state, record_proxy_server_bound_runtime_source,
+    record_proxy_server_started_info_runtime_source, reset_provider_circuit_breaker_source,
+    server_log_codes as log_srv, set_active_route_target_runtime_source,
+    spawn_proxy_http_accept_loop, update_all_circuit_breaker_configs_source,
+    update_app_circuit_breaker_config_source, CircuitBreakerConfig, CircuitBreakerStats,
+    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
 };
 use axum::Router;
 use std::net::SocketAddr;
@@ -121,23 +120,7 @@ impl ProxyServer {
 
         // 2. 等待服务器任务结束（带 5 秒超时保护）
         if let Some(handle) = self.server_handle.write().await.take() {
-            match tokio::time::timeout(std::time::Duration::from_secs(5), handle).await {
-                Ok(Ok(())) => {
-                    log::info!("[{}] 代理服务器已完全停止", log_srv::STOPPED);
-                    Ok(())
-                }
-                Ok(Err(e)) => {
-                    log::warn!("[{}] 代理服务器任务异常终止: {e}", log_srv::TASK_ERROR);
-                    Err(ProxyError::StopFailed(e.to_string()))
-                }
-                Err(_) => {
-                    log::warn!(
-                        "[{}] 代理服务器停止超时（5秒），强制继续",
-                        log_srv::STOP_TIMEOUT
-                    );
-                    Err(ProxyError::StopTimeout)
-                }
-            }
+            await_proxy_http_accept_loop_stop(handle).await
         } else {
             Ok(())
         }

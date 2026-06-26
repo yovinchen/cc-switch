@@ -907,6 +907,31 @@ pub(crate) fn spawn_proxy_http_accept_loop(
 
 pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;
 
+pub(crate) async fn await_proxy_http_accept_loop_stop(
+    handle: JoinHandle<()>,
+) -> Result<(), ProxyError> {
+    match tokio::time::timeout(std::time::Duration::from_secs(5), handle).await {
+        Ok(Ok(())) => {
+            log::info!("[{}] 代理服务器已完全停止", server_log_codes::STOPPED);
+            Ok(())
+        }
+        Ok(Err(e)) => {
+            log::warn!(
+                "[{}] 代理服务器任务异常终止: {e}",
+                server_log_codes::TASK_ERROR
+            );
+            Err(ProxyError::StopFailed(e.to_string()))
+        }
+        Err(_) => {
+            log::warn!(
+                "[{}] 代理服务器停止超时（5秒），强制继续",
+                server_log_codes::STOP_TIMEOUT
+            );
+            Err(ProxyError::StopTimeout)
+        }
+    }
+}
+
 pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
     crate::proxy::http_client::set_proxy_port(port);
 }
