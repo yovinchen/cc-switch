@@ -605,7 +605,7 @@
 591. `proxy-core` crate root 的 legacy flat `pub use *` 已移除，crate 内部改为从 owning module 显式 import；当前集成面以 `proxy_core::api` 分组为准，后续继续稳定 host-only port 边界并补 runtime smoke 验证。
 592. runtime route planning 的 channel 过滤、模型匹配、候选排序和 attempt plan 构造已下沉到 `proxy-core::build_route_plan`，当前默认 `CcSwitchRouteResolver` 已迁到 host-owned resolver 并直接引用 core `RouteResolver` / `RouteRequest` / `RoutePlan` contract；adapter 不再 re-export `route_plan_from_request` 或 route resolver contract，只保留 ProviderRouter-backed management dry-run projection helper。
 593. 上游 URL authority 到 Host header replacement 值的解析已下沉到 `proxy-core::upstream_host_header_from_url`；host forwarder 不再直接解析 `http::Uri`，只通过 adapter 调用 core helper 并继续把结果传入 header builder。
-594. `ProxyErrorStatusKind` 到 `ProxyCoreError`/`ForwardFailureKind` 的分类规则和 forward failure message 选择策略已下沉到 `proxy-core`；host `error_mapper` 负责把 `ProxyError` 投影为 kind/raw-message/display-message/body 事实，`proxy_core_adapter` 只兼容 re-export 这些投影，并继续保留 reqwest 与 Tauri-facing response 适配。
+594. `ProxyErrorStatusKind` 到 `ProxyCoreError`/`ForwardFailureKind` 的分类规则和 forward failure message 选择策略已下沉到 `proxy-core`；host `error_mapper` 负责把 `ProxyError` 投影为 kind/raw-message/display-message/body 事实，通用 core-to-host error mapping 与 status projection 不再经 `proxy_core_adapter` re-export，adapter 仅保留仍需注入 forward runtime 事实的 failure projection wrapper。
 595. `/proxy/v1/channels` HTTP CRUD smoke 已扩展覆盖每个 channel 独立的 `authProfileRef`、base URL、interface、模型映射、weight、priority、health policy、header/param override、status mapping、tags 与 metadata；同一测试通过 `/proxy/v1/route/resolve` 验证候选 channel 继续携带独立 weight/priority 与模型映射。
 596. `proxy-core` 已新增独立 boundary integration test，自动扫描 crate `Cargo.toml` 与 `src/`，防止重新引入 `tauri`、SQLite client 或 `crate::database/settings/services` 等宿主依赖；`cargo test --manifest-path src-tauri/crates/proxy-core/Cargo.toml --target-dir /private/tmp/cc-switch-proxy-core-target --offline` 已验证 core crate 可独立测试。
 597. channel `paramOverrides` 已在最终上游 URL 构建后生效，同名 query 参数会被 channel 配置覆盖，scalar 值会做 query component encoding；channel `headerOverrides` 已接入上游请求 header 构建，并明确禁止覆盖 Host、认证 header 与 hop/tracing 类剥离 header。runtime `ForwardAttempt` 现在从完整 `RouteSelection` 保留 header/param overrides，管理 route candidate response 继续保持轻量且不暴露 override 内容。
@@ -1499,7 +1499,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1014. Stream check 的 provider override 配置合并与 probe result 到 `StreamCheckResult` 的成功/失败/degraded envelope 构造已迁入 `proxy-core::ports`，host `StreamCheckService` 只保留 reqwest 探测、timestamp 注入和 provider override 投影。
 1015. Stream check 批量命令捕获单 provider 异常后的 failed `StreamCheckResult` envelope 已迁入 `proxy-core::ports::stream_check_failed_result`，host command 只负责并发/循环调度、错误文本和 timestamp 注入。
 1016. Stream check retry loop 的终端兜底 failed envelope 已迁入 `proxy-core::ports::stream_check_failed_result_with_retry_count`，host service 仍负责重试循环和 `retry_count` 事实注入。
-1017. Host `ProxyError` 到 core `ProxyErrorStatusKind` 的状态事实投影已收敛到 `proxy::error_mapper::proxy_error_status_kind`，`proxy/error.rs` 直接消费 mapper 状态投影，`proxy_core_adapter` 只保留兼容 re-export 给尚未迁移的旧调用点。
+1017. Host `ProxyError` 到 core `ProxyErrorStatusKind` 的状态事实投影已收敛到 `proxy::error_mapper::proxy_error_status_kind`，`proxy/error.rs` 和需要该映射的 host 模块直接消费 mapper 状态投影，`proxy_core_adapter` 不再作为通用 error mapper projection 的兼容出口。
 1018. Copilot `/copilot_internal/user` usage/quota DTO、usage JSON parse 和 `endpoints.api` 到默认 Copilot API base 的 fallback policy 已迁入 `proxy-core::copilot_model_map`，host `copilot_auth` 只保留 HTTP 调用、token/account 读取和 endpoint cache 写入。
 1019. Copilot OAuth device polling 的错误码分类与 token 提前刷新 buffer policy 已迁入 `proxy-core::managed_account_auth`；host `copilot_auth` 只保留 HTTP 轮询、账号持久化和 core classification 到 `CopilotAuthError` 的映射。
 1020. Codex OAuth device polling 的 HTTP status 分类、device code 默认过期/interval 安全余量、access token 过期时间计算和 token 提前刷新 buffer policy 已迁入 `proxy-core::managed_account_auth`；host `codex_oauth_auth` 只保留 reqwest 调用、token cache、refresh token 持久化和 status classification 到 `CodexOAuthError` 的映射。
@@ -1691,6 +1691,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1206. 旧 `src/services/proxy.rs` 兼容 shim 已删除；`services::ProxyService` 由 `src/services/mod.rs` 直接 re-export `proxy/host/cc_switch/live_takeover.rs` 的 owning type，边界测试防止 `services::proxy` 模块回流。
 1207. 旧 `proxy/handler_context.rs` 兼容 shim 已删除；`RequestContext` 只由 `proxy/engine/context.rs` 拥有，`proxy/mod.rs` 不再声明 `handler_context`。
 1208. `proxy_core_adapter` 的 test-only response pipeline helper re-export 已删除；adapter 单测直接 import `proxy::engine::response_pipeline` owning module，边界测试防止这组 helper 重新作为 adapter 表面暴露。
+1209. `proxy_core_adapter` 不再 re-export `proxy_core_error_to_proxy_error`；forwarder auth source 直接 import `proxy::error_mapper` owning module，边界测试防止通用 error mapper helper 重新从 adapter 暴露。
 
 ## 背景
 
