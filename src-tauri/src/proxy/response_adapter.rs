@@ -1,6 +1,6 @@
 use super::{
     engine::context::RequestContext,
-    engine::response_pipeline::process_response,
+    engine::response_pipeline::{process_response, read_decoded_proxy_response_body},
     error::ProxyError,
     error_mapper::{
         claude_response_transform_error_to_proxy_error,
@@ -15,25 +15,33 @@ use super::{
 };
 use crate::app_config::AppType;
 use crate::provider::Provider;
+use crate::proxy_core::api::events::ProxyEventEnvelope;
+use crate::proxy_core::api::transport::{
+    append_query_to_endpoint_path, rebuilt_json_proxy_response, request_body_read_error_message,
+    strip_endpoint_prefix, transformed_sse_proxy_response, ProxyCoreResponse, ProxyRequest,
+    ProxyResult, ProxyTransportResponse, ProxyTransportResponseBody, UpstreamSseAggregationKind,
+};
+use crate::proxy_core::api::usage::{
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+};
 use crate::proxy_core_adapter::{
-    append_query_to_endpoint_path, claude_transformed_json_response_from_context,
-    claude_transformed_sse_stream_from_context, codex_auto_transformed_json_response_from_context,
+    claude_transformed_json_response_from_context, claude_transformed_sse_stream_from_context,
+    codex_auto_transformed_json_response_from_context,
     codex_auto_transformed_sse_stream_from_context, codex_chat_error_proxy_response,
     codex_chat_transform_streaming_decision, codex_responses_proxy_request_from_input,
     extract_gemini_model_from_path, json_proxy_request_from_input, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, provider_claude_transform_streaming_decision,
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
-    read_decoded_proxy_response_body, rebuilt_json_proxy_response, record_forward_core_error_usage,
-    request_body_read_error_message, strip_endpoint_prefix, transformed_sse_proxy_response,
-    ActiveConnectionGuard, AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse,
-    AppKind, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
-    AxumResponseBuildErrorContext, ChannelBreakerStatsResponse, ChannelCreateRequest,
-    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
-    ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
-    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
-    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ChannelTestResponse, ClaudeDesktopModelListResponse, ClaudeTransformStreamingDecision,
+    record_forward_core_error_usage, ActiveConnectionGuard, AppChannelListQuery,
+    AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest, AppListResponse,
+    AppModelCatalogRequest, AppModelListQuery, AxumResponseBuildErrorContext,
+    ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
+    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord,
+    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
+    ClaudeDesktopModelListResponse, ClaudeTransformStreamingDecision,
     ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
     ClientModelCatalogResponse, CodexAutoTransformedJsonResponseContext,
     CodexAutoTransformedSseStreamContext, CodexChatTransformStreamingDecision,
@@ -42,12 +50,9 @@ use crate::proxy_core_adapter::{
     HealthCheckResponse, InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest,
     ProviderListResponse, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-    ProxyChannelWriteRequest, ProxyCoreResponse, ProxyEventEnvelope, ProxyRequest, ProxyResult,
-    ProxyRuntimeStatus, ProxyState, ProxyStatusRequest, ProxyStatusResponse,
-    ProxyTransportResponse, ProxyTransportResponseBody, RoutableModelList, RouteGroupListResponse,
-    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
-    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
-    OPENAI_PARSER_CONFIG,
+    ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyState, ProxyStatusRequest,
+    ProxyStatusResponse, RoutableModelList, RouteGroupListResponse, RouteResolveManagementRequest,
+    RouteResolveRequest, RouteResolveResponse,
 };
 use axum::{
     response::sse::{Event, KeepAlive, Sse},
@@ -1358,7 +1363,8 @@ pub(crate) fn proxy_events_request_to_axum_sse_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core_adapter::{ProxyEventEnvelope, ProxyResponseBody};
+    use crate::proxy_core::api::events::ProxyEventEnvelope;
+    use crate::proxy_core::api::transport::ProxyResponseBody;
     use axum::response::{sse::Sse, IntoResponse};
     use http::StatusCode;
     use serde_json::json;

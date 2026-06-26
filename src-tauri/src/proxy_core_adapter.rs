@@ -618,9 +618,6 @@ pub(crate) type CodexChatReasoningProfile =
     crate::proxy_core::api::transforms::CodexChatReasoningProfile;
 pub(crate) type CodexToolContext = crate::proxy_core::api::transforms::CodexToolContext;
 pub(crate) type ProxyResponseBody = crate::proxy_core::api::transport::ProxyResponseBody;
-pub(crate) type ProxyTransportResponse = crate::proxy_core::api::transport::ProxyTransportResponse;
-pub(crate) type ProxyTransportResponseBody =
-    crate::proxy_core::api::transport::ProxyTransportResponseBody;
 pub(crate) type CostBreakdown = crate::proxy_core::api::usage::CostBreakdown;
 pub(crate) type CostCalculator = crate::proxy_core::api::usage::CostCalculator;
 pub(crate) type ModelPricing = crate::proxy_core::api::usage::ModelPricing;
@@ -2578,10 +2575,6 @@ pub(crate) use crate::proxy_core::api::transport::build_copilot_auth_headers;
 pub(crate) use crate::proxy_core::api::transport::build_gemini_auth_headers;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::interface_kind_for_forward;
-pub(crate) use crate::proxy_core::api::transport::{
-    append_query_to_endpoint_path, rebuilt_json_proxy_response, strip_endpoint_prefix,
-    transformed_sse_proxy_response, ProxyBody, ProxyRequest, UpstreamSseAggregationKind,
-};
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, claude_transform_endpoint_rewrite_input_from_body,
@@ -2610,14 +2603,14 @@ pub(crate) use crate::proxy_core::api::transport::{
     merge_copilot_tool_results, parse_json_request_body, parse_json_request_body_or_null,
     prepare_optional_copilot_auth_optimization_for_forwarder,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    request_body_filter_log_message, request_body_read_error_message,
-    request_body_serialize_error_message, resolve_auth_provider_headers,
-    sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
-    should_apply_forwarder_media_prevention_for_app, should_failover_after_rectifier_retry_failure,
-    should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-    strip_copilot_thinking_blocks, supports_reasoning_effort, AuthProviderHeaderResolution,
-    CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan,
-    ForwardUpstreamUrlPlanInput, ForwarderAttemptRuntimeDecisionInput, ForwarderProviderUrlFacts,
+    request_body_filter_log_message, request_body_serialize_error_message,
+    resolve_auth_provider_headers, sanitize_copilot_orphan_tool_results,
+    should_apply_bedrock_pre_send_optimizer, should_apply_forwarder_media_prevention_for_app,
+    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
+    should_send_anthropic_request_headers, strip_copilot_thinking_blocks,
+    supports_reasoning_effort, AuthProviderHeaderResolution, CodexProviderChatCompletionsFacts,
+    CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan, ForwardUpstreamUrlPlanInput,
+    ForwarderAttemptRuntimeDecisionInput, ForwarderProviderUrlFacts,
     ForwarderProviderUrlFactsInput, ForwarderRectifierErrorInput,
     ForwarderRequestBodyTransformAction, UNSUPPORTED_IMAGE_MARKER,
 };
@@ -2633,6 +2626,9 @@ pub(crate) use crate::proxy_core::api::transport::{
     parse_custom_user_agent,
     provider_custom_user_agent_header as core_provider_custom_user_agent_header,
 };
+pub(crate) use crate::proxy_core::api::transport::{
+    rebuilt_json_proxy_response, ProxyBody, ProxyRequest,
+};
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::{
     resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
@@ -2645,7 +2641,6 @@ pub(crate) use crate::proxy_core::api::usage::{
 };
 pub(crate) use crate::proxy_core::api::usage::{
     usage_logging_enabled_from_config_flag, usage_selected_provider_missing_log_message,
-    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::usage::{
@@ -8051,7 +8046,9 @@ mod tests {
     use crate::proxy_core::api::errors::ProxyCoreError;
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
-    use crate::proxy_core::api::transport::UpstreamTransportKind;
+    use crate::proxy_core::api::transport::{
+        ProxyTransportResponseBody, UpstreamSseAggregationKind, UpstreamTransportKind,
+    };
 
     #[tokio::test]
     async fn non_managed_auth_passes_through_without_app_handle() {

@@ -5,6 +5,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/lib.rs",
     "src/proxy/engine/response_pipeline.rs",
     "src/proxy/error_mapper.rs",
+    "src/proxy/response_adapter.rs",
     "src/proxy_core_adapter.rs",
     "src/services/model_fetch_transport.rs",
 ];
@@ -17446,6 +17447,91 @@ fn proxy_error_mapper_uses_grouped_api_surface() {
     assert!(
         violations.is_empty(),
         "proxy/error_mapper.rs must use proxy_core::api as its integration surface:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_response_adapter_uses_grouped_api_surface() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/response_adapter.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in source.lines().enumerate() {
+        let code = line.split("//").next().unwrap_or_default();
+        for (column, _) in code.match_indices(PROXY_CORE_MARKER) {
+            if !code[column..].starts_with(PROXY_CORE_API_MARKER) {
+                violations.push(format!(
+                    "src/proxy/response_adapter.rs:{} contains non-api proxy-core access: {}",
+                    line_index + 1,
+                    code.trim()
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy/response_adapter.rs must use proxy_core::api as its integration surface:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_response_adapter_owns_core_transport_imports() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/response_adapter.rs");
+    let adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::{",
+        "};\nuse axum::",
+    );
+    let adapter_import_identifiers: Vec<&str> = adapter_import
+        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        .filter(|identifier| !identifier.is_empty())
+        .collect();
+
+    assert!(
+        source.contains("use crate::proxy_core::api::transport::{")
+            && source.contains("use crate::proxy_core::api::events::ProxyEventEnvelope;")
+            && source.contains("use crate::proxy_core::api::usage::{"),
+        "response_adapter should import core transport/event/usage contracts directly"
+    );
+
+    let mut violations = Vec::new();
+    for marker in [
+        "append_query_to_endpoint_path",
+        "rebuilt_json_proxy_response",
+        "request_body_read_error_message",
+        "strip_endpoint_prefix",
+        "transformed_sse_proxy_response",
+        "ProxyCoreResponse",
+        "ProxyEventEnvelope",
+        "ProxyRequest",
+        "ProxyResult",
+        "ProxyTransportResponse",
+        "ProxyTransportResponseBody",
+        "UpstreamSseAggregationKind",
+        "CLAUDE_PARSER_CONFIG",
+        "CODEX_PARSER_CONFIG",
+        "GEMINI_PARSER_CONFIG",
+        "OPENAI_PARSER_CONFIG",
+    ] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == &marker)
+        {
+            violations.push(format!(
+                "response_adapter still imports core transport marker `{marker}` from proxy_core_adapter"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "response_adapter should not route pure core transport/event/usage contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
