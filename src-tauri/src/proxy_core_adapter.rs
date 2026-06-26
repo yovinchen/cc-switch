@@ -6450,15 +6450,6 @@ fn forward_failure_message_from_proxy_error(error: &ProxyError) -> String {
 }
 
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_code;
-
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_json;
-
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_response;
-
-#[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::apply_channel_route_model_override;
 
 pub(crate) use crate::proxy_core::api::transport::apply_resolved_channel_model_override;
@@ -15825,18 +15816,21 @@ command = "latest-command"
         );
         assert_eq!(unselected_provider_fallback_id("codex"), "unselected:codex");
         assert_eq!(
-            codex_proxy_error_code(CodexProxyErrorKind::ForwardFailed),
+            crate::proxy_core::api::transforms::codex_proxy_error_code(
+                CodexProxyErrorKind::ForwardFailed
+            ),
             "cc_switch_forward_failed"
         );
-        let json_body = codex_proxy_error_json(CodexProxyErrorContext {
-            provider_name: "Relay",
-            request_model: "model-a",
-            endpoint: "/responses",
-            fallback_message: "failed",
-            fallback_code: "cc_switch_forward_failed",
-            upstream_status: None,
-            upstream_body: None,
-        });
+        let json_body =
+            crate::proxy_core::api::transforms::codex_proxy_error_json(CodexProxyErrorContext {
+                provider_name: "Relay",
+                request_model: "model-a",
+                endpoint: "/responses",
+                fallback_message: "failed",
+                fallback_code: "cc_switch_forward_failed",
+                upstream_status: None,
+                upstream_body: None,
+            });
         assert_eq!(json_body["error"]["provider"], "Relay");
         let facts_body = crate::proxy::error_mapper::codex_proxy_error_json_from_host_facts(
             "Relay",
@@ -15879,7 +15873,7 @@ command = "latest-command"
             .expect("upstream error message")
             .contains("quota exceeded"));
 
-        let response = codex_proxy_error_response(
+        let response = crate::proxy_core::api::transforms::codex_proxy_error_response(
             ProxyErrorStatusKind::AuthError,
             CodexProxyErrorContext {
                 provider_name: "Relay",

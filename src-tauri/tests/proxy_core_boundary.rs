@@ -1241,6 +1241,9 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn should_close_half_open_after_success(",
     "fn half_open_probe_allow_result(",
     "fn circuit_breaker_failure_decision(",
+    "pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_code",
+    "pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_json",
+    "pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_response",
     "fn codex_proxy_error_code(",
     "fn codex_proxy_error_json(",
     "fn codex_proxy_error_response(",
@@ -2387,7 +2390,7 @@ fn proxy_core_adapter_delegates_forward_failure_message_policy_to_core() {
     let function = function_slice(
         &source,
         "fn forward_failure_message_from_proxy_error",
-        "pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_code",
+        "#[cfg(test)]\npub(crate) use crate::proxy_core::api::transport::apply_channel_route_model_override",
     );
 
     assert!(
