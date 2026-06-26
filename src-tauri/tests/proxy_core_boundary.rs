@@ -12742,6 +12742,10 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let attempt_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_attempt_runtime_source.rs");
+    let attempt_source =
+        fs::read_to_string(&attempt_source_path).expect("read forwarder_attempt_runtime_source.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -12782,7 +12786,7 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         "RequestForwarder must pass attempt allow facts as an input DTO"
     );
     let attempt_runtime_impl_slice = function_slice(
-        &adapter_source,
+        &attempt_source,
         "impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource",
         "pub(crate) fn forwarder_attempt_runtime_source_from_router",
     );
@@ -12802,6 +12806,11 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         "default ForwarderAttemptRuntimeSource implementation should delegate attempt limit and circuit-bypass policy to core"
     );
     assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_router")
+            && !adapter_source.contains("struct CcSwitchForwarderAttemptRuntimeSource"),
+        "proxy_core_adapter should re-export, not own, the default forwarder attempt runtime source"
+    );
+    assert!(
         !adapter_source.contains("pub(crate) fn forwarder_attempt_limit_reached_log_line")
             && !adapter_source.contains("pub(crate) fn forwarder_should_bypass_circuit_breaker"),
         "proxy_core_adapter must not retain host-owned forward attempt limit or circuit-bypass policy helpers"
@@ -12813,7 +12822,7 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     let attempt_runtime_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderAttemptRuntimeSource",
-        "struct CcSwitchForwarderAttemptRuntimeSource",
+        "pub(crate) use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source",
     );
     let attempt_failure_runtime_source_slice = function_slice(
         &adapter_source,

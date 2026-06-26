@@ -5,6 +5,7 @@ pub(crate) mod channel_reachability_probe;
 pub(crate) mod database_channel_source;
 pub(crate) mod database_usage_sink;
 pub(crate) mod failover_switch;
+pub(crate) mod forwarder_attempt_runtime_source;
 pub(crate) mod forwarder_auth_source;
 pub(crate) mod forwarder_protocol_state_source;
 pub(crate) mod forwarder_response_source;
