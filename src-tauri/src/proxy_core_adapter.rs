@@ -15,28 +15,12 @@ use crate::proxy::error::ProxyError;
 pub(crate) use crate::proxy::error_mapper::proxy_core_error_to_proxy_error;
 use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status_kind};
 use crate::proxy::events::ProxyEventBus;
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::host::cc_switch::channel_health_store::CcSwitchChannelHealthStore;
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::host::cc_switch::claude_desktop_gateway_auth_source::CcSwitchClaudeDesktopGatewayAuthSource;
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::host::cc_switch::forward_pipeline::CcSwitchForwardPipeline;
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::host::cc_switch::management_auth_source::CcSwitchManagementAuthSource;
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::host::cc_switch::model_catalog_provider::CcSwitchModelCatalogProvider;
 pub(crate) use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::host::cc_switch::provider_source::CcSwitchProviderSource;
 pub(crate) use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 pub(crate) use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices;
 pub(crate) use crate::proxy::host::cc_switch::proxy_state::ProxyState;
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::host::cc_switch::route_resolver::CcSwitchRouteResolver;
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
@@ -5442,9 +5426,6 @@ pub(crate) use crate::proxy::host::cc_switch::channel_key_runtime_source::select
 pub(crate) use crate::proxy::host::cc_switch::channel_key_runtime_source::{
     channel_key_runtime_source_from_database, CcSwitchChannelKeyRuntimeSource,
 };
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::host::cc_switch::channel_reachability_probe::CcSwitchChannelReachabilityProbe;
-
 pub(crate) type FailoverSwitchSchedulerRef = Arc<dyn FailoverSwitchScheduler + Send + Sync>;
 
 pub(crate) trait FailoverSwitchScheduler {
@@ -7630,9 +7611,6 @@ pub(crate) fn log_usage_request_projection_warnings(projection: &UsageRequestLog
         log::warn!("{message}");
     }
 }
-
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::host::cc_switch::database_usage_sink::CcSwitchUsageSink;
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::model_catalog::{

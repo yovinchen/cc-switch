@@ -2854,13 +2854,13 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
         );
     }
     assert!(
-        source.contains(
+        !source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::claude_desktop_gateway_auth_source::CcSwitchClaudeDesktopGatewayAuthSource"
         ) && !source.contains("struct CcSwitchClaudeDesktopGatewayAuthSource")
             && !source
                 .contains("impl ClaudeDesktopGatewayAuthSource for CcSwitchClaudeDesktopGatewayAuthSource")
             && !source.contains("fn load_gateway_token<'a>(&'a self)"),
-        "proxy_core_adapter should re-export, not own, the Claude Desktop gateway auth source"
+        "proxy_core_adapter should not re-export or own the Claude Desktop gateway auth source"
     );
     let adapter_core_ports_import = function_slice(
         &source,
@@ -3403,14 +3403,14 @@ fn proxy_core_adapter_uses_host_reachability_probe_source() {
     );
 
     assert!(
-        (adapter_source.contains(
+        !(adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::channel_reachability_probe::{"
         ) || adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::channel_reachability_probe::CcSwitchChannelReachabilityProbe"
-        )) && !adapter_source
+        ) || adapter_source
             .contains("impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe")
-            && !adapter_source.contains("probe_channel_reachability_from_db_source("),
-        "DB-backed reachability probe implementation should live in the host cc_switch module"
+            || adapter_source.contains("probe_channel_reachability_from_db_source(")),
+        "DB-backed reachability probe implementation should live in the host cc_switch module without adapter re-export"
     );
     assert!(
         !adapter_source
@@ -12715,10 +12715,10 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let attempt_source_function = attempt_source.as_str();
 
     assert!(
-        source.contains("pub(crate) use crate::proxy::host::cc_switch::forward_pipeline::CcSwitchForwardPipeline")
+        !source.contains("pub(crate) use crate::proxy::host::cc_switch::forward_pipeline::CcSwitchForwardPipeline")
             && !source.contains("pub(crate) struct CcSwitchForwardPipeline")
             && !source.contains("impl<R> ForwardPipeline for CcSwitchForwardPipeline"),
-        "proxy_core_adapter should re-export, not own, the CC Switch forward pipeline"
+        "proxy_core_adapter should not re-export or own the CC Switch forward pipeline"
     );
     assert!(
         pipeline_struct.contains("channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource"),
@@ -16162,11 +16162,11 @@ fn proxy_core_adapter_delegates_provider_source_to_host_module() {
         "CC Switch provider source should live in host/cc_switch/provider_source.rs"
     );
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::provider_source::CcSwitchProviderSource"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchProviderSource")
             && !adapter_source.contains("impl ProviderSource for CcSwitchProviderSource"),
-        "proxy_core_adapter should re-export, not own, the CC Switch provider source"
+        "proxy_core_adapter should not re-export or own the CC Switch provider source"
     );
     assert!(
         source.contains("use crate::proxy_core::api::domain::{AppKind, ProviderSpec};")
@@ -16479,11 +16479,11 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
         );
     }
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::route_resolver::CcSwitchRouteResolver"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchRouteResolver")
             && !adapter_source.contains("impl RouteResolver for CcSwitchRouteResolver"),
-        "proxy_core_adapter should re-export, not own, the CC Switch route resolver"
+        "proxy_core_adapter should not re-export or own the CC Switch route resolver"
     );
     let adapter_core_ports_import = function_slice(
         &adapter_source,
@@ -16563,11 +16563,11 @@ fn proxy_core_adapter_delegates_channel_health_store_to_host_module() {
         "CC Switch channel health store should live in host/cc_switch/channel_health_store.rs"
     );
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::channel_health_store::CcSwitchChannelHealthStore"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchChannelHealthStore")
             && !adapter_source.contains("impl ChannelHealthStore for CcSwitchChannelHealthStore"),
-        "proxy_core_adapter should re-export, not own, the CC Switch channel health store"
+        "proxy_core_adapter should not re-export or own the CC Switch channel health store"
     );
 }
 
@@ -16669,12 +16669,12 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
         );
     }
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::model_catalog_provider::CcSwitchModelCatalogProvider"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchModelCatalogProvider")
             && !adapter_source
                 .contains("impl ModelCatalogProvider for CcSwitchModelCatalogProvider"),
-        "proxy_core_adapter should re-export, not own, the CC Switch model catalog provider"
+        "proxy_core_adapter should not re-export or own the CC Switch model catalog provider"
     );
     let adapter_core_ports_import = function_slice(
         &adapter_source,
@@ -16778,12 +16778,12 @@ fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
         "CC Switch usage sink implementation should live in host/cc_switch/database_usage_sink.rs"
     );
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::database_usage_sink::CcSwitchUsageSink"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchUsageSink")
             && !adapter_source.contains("impl UsageSink for CcSwitchUsageSink")
             && !adapter_source.contains("pub(crate) async fn record_usage_in_db_source("),
-        "proxy_core_adapter should re-export, not own, the CC Switch usage sink source"
+        "proxy_core_adapter should not re-export or own the CC Switch usage sink source"
     );
     assert!(
         usage_sink_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
@@ -16837,12 +16837,12 @@ fn proxy_core_adapter_delegates_management_auth_source_to_host_module() {
         "CC Switch management auth source must not import management auth contracts through proxy_core_adapter"
     );
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::management_auth_source::CcSwitchManagementAuthSource"
         ) && !adapter_source.contains("struct CcSwitchManagementAuthSource")
             && !adapter_source.contains("impl ManagementAuthSource for CcSwitchManagementAuthSource")
             && !adapter_source.contains("PROXY_MANAGEMENT_AUTH_TOKEN_ENV"),
-        "proxy_core_adapter should re-export, not own, the CC Switch management auth source"
+        "proxy_core_adapter should not re-export or own the CC Switch management auth source"
     );
     let adapter_core_ports_import = function_slice(
         &adapter_source,
@@ -16891,13 +16891,13 @@ fn proxy_core_adapter_delegates_runtime_status_source_to_host_module() {
         "CC Switch runtime status source must not import runtime status contracts through proxy_core_adapter"
     );
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource"
         ) && !adapter_source.contains("struct CcSwitchRuntimeStatusSource")
             && !adapter_source.contains("impl RuntimeStatusSource for CcSwitchRuntimeStatusSource")
             && !adapter_source
                 .contains("pub(crate) async fn proxy_runtime_status_from_runtime_sources("),
-        "proxy_core_adapter should re-export, not own, the CC Switch runtime status source"
+        "proxy_core_adapter should not re-export or own the CC Switch runtime status source"
     );
     let adapter_core_ports_import = function_slice(
         &adapter_source,
