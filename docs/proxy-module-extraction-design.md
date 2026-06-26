@@ -1056,7 +1056,7 @@ forwarder provider URL facts 内部的 full URL 与 GitHub Copilot upstream 一�
 本轮继续把 forwarder 的 media prevention text-only provider 图片替换 fact 收敛到 `proxy-core::request_media::apply_forwarder_media_prevention_from_facts`；media 预防式降级不再直接消费 provider 级模型能力投影 helper。
 forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_provider_transform_required` / `forwarder_provider_transform_request` 已删除；adapter context 内部直接调用 trait，`forwarder.rs` 仍只通过 request source 执行 transform 策略。
 本轮继续把 usage sink 的计费配置 lookup 输入收敛到 adapter，host 不再直接拆 `UsageRecord` 的 app/provider 字段。
-本轮还把 core event 到 host event bus 的投影+分发入口收敛到 adapter，后续再把 event sink 端口实现本身收敛为 adapter-owned source wrapper。
+本轮还把 core event 到 host event bus 的投影+分发入口收敛到 adapter；后续 event sink 端口实现已由 host-owned `CcSwitchEventSink` 承接，adapter 只保留 event bus helper。
 此前曾把 `CcSwitchForwardPipeline` 本身迁为 adapter-owned optional runtime wrapper，runtime 缺失判断和 host forward runtime 调度都在 adapter wrapper 内完成；该方向已由后续 host forward pipeline split 修正，wrapper 数据结构、`ForwardPipeline` impl 与 optional-runtime dispatch helper 回到 `proxy/host/cc_switch/forward_pipeline.rs`，adapter 只保留真正进入旧转发链的 bridge helper 和兼容 re-export。
 此前曾把 `CcSwitchProxyServices` 迁为 adapter-owned generic `ProxyServices` 容器；该方向已由后续 host service container split 修正，服务容器结构、runtime-backed source 装配、test-only fixture constructor 与 `ProxyServices` impl 回到 `proxy/host/cc_switch/proxy_services.rs`，runtime/service trait contract 回到 `proxy/host/cc_switch/proxy_runtime.rs`，adapter 已删除 `CcSwitchProxyRuntimeServices` alias，只保留 generic service container 兼容 re-export。
 本轮继续把 response processor 非流式 usage 的 provider 缺失判定和 usage record 输入组装收敛到 adapter wrapper，response processor 只负责读取响应体、记录日志和触发 `UsageSink`。
@@ -1206,7 +1206,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续把 ChannelSource 的 channel 列表/单条投影收敛到 adapter，host ChannelSource 只保留 DB/router channel 查询。
 本轮后续已把 ChannelHealthStore 的 attempt 写库参数投影和 DB 写入调用收敛到 host-owned health store，adapter 只保留 helper，host services 只装配 store。
 本轮继续把 `ProxyCoreEvent` 到 host event bus 的 name/payload 投影收敛到 adapter。
-本轮继续把 `CcSwitchEventSink` 的 `ProxyEventBus` 分发副作用和 optional event bus 判断收敛到 adapter-owned source wrapper，host services 只负责注入事件总线。
+本轮继续把 `CcSwitchEventSink` 的 `ProxyEventBus` 分发副作用和 optional event bus 判断收敛到 host-owned source，host services 只负责注入事件总线，adapter 只保留 event bus helper。
 本轮后续已把 RoutePolicySource 的 failover queue 到 optional route policy 包装和 DB 查询收敛到 host-owned source，adapter 只保留 helper，host services 只装配 source。
 本轮后续已把 ChannelHealthStore reset 的 app lookup 校验、router reset 和 reset fact 投影收敛到 host-owned health store，adapter 只保留 helper，host services 不再保留 reset 桥接实现。
 本轮继续把 response processor 的 provider/app usage facts 投影收敛到 adapter，response processor 不再直接调用 provider kind 或 app kind 投影 helper。
@@ -1654,7 +1654,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1173. `CcSwitchForwarderRuntimeStateSource` 已迁入 `proxy/host/cc_switch/forwarder_runtime_state_source.rs`：该 host 模块拥有 `ProxyRuntimeStatus`、current route target map、`ProxyEventBus`、request/attempt event、active connection 计数、forward success/failure 状态和 rectifier/terminal failure 日志副作用，`proxy_core_adapter` 只保留 `ForwarderRuntimeStateSource` trait/input/type alias、`ActiveConnectionGuard` 和 factory re-export。
 1174. `CcSwitchForwarderRequestSource` 已迁入 `proxy/host/cc_switch/forwarder_request_source.rs`：该 host 模块拥有默认请求体预处理、provider transform/Codex Responses→Chat 转换、Copilot request optimizer、upstream URL planning、media fallback/rectifier plan、上游 body/header 组装和请求日志副作用，`proxy_core_adapter` 只保留 `ForwarderRequestSource` trait/input/type alias 与 factory/test re-export。
 1175. `CcSwitchFailoverSwitchScheduler` 已迁入 `proxy/host/cc_switch/failover_switch.rs`：该 host 模块继续拥有 `FailoverSwitchManager`、Tauri AppHandle、托盘/UI 更新和 Live hot-switch 副作用，`proxy_core_adapter` 只保留 `FailoverSwitchScheduler` trait/type alias、noop 测试 source 与 factory re-export。
-1176. `CcSwitchEventSink` 已迁入 `proxy/host/cc_switch/event_sink.rs`：该 host 模块拥有 core event 到 `ProxyEventBus` 的分发副作用，`proxy_core_adapter` 只保留 event message/helper contract 并 re-export 默认 event sink source。
+1176. `CcSwitchEventSink` 已迁入 `proxy/host/cc_switch/event_sink.rs`：该 host 模块拥有 core event 到 `ProxyEventBus` 的分发副作用，并直接引用 core `ProxyEventSink` / `ProxyCoreEvent` contract；`proxy_core_adapter` 不再 re-export `ProxyEventSink`，只保留 event bus 投影/分发 helper 和默认 event sink source re-export。
 1177. `CcSwitchUsageSink` 已迁入 `proxy/host/cc_switch/database_usage_sink.rs`：该 host 模块拥有 `UsageLogger`、pricing lookup、缺失定价 warning、`RequestLog` 写入和 DB 持久化副作用，`proxy_core_adapter` 只保留 `UsageSink` contract、usage projection helper 并 re-export 默认 usage sink source。
 1178. `CcSwitchManagementAuthSource` 已迁入 `proxy/host/cc_switch/management_auth_source.rs`：该 host 模块拥有 `ProxyConfig` 读锁、`CC_SWITCH_PROXY_MANAGEMENT_TOKEN` fallback 读取和 `ManagementAuthRuntimeConfig` 组装，并直接引用 core `ManagementAuthSource` / `ManagementAuthRuntimeConfig` / `ProxyConfig` contract；`proxy_core_adapter` 不再 re-export management auth contract，只保留默认 source re-export。
 1179. `CcSwitchRuntimeStatusSource` 已迁入 `proxy/host/cc_switch/runtime_status_source.rs`：该 host 模块拥有 runtime status/start-time/current route target 读锁、uptime 回填和 active target projection，并直接引用 core `RuntimeStatusSource` / `ProxyRuntimeStatus` / `CurrentRouteTarget` contract 与 runtime status helper；`proxy_core_adapter` 不再 re-export `RuntimeStatusSource` 或 uptime/active-target helper，只保留默认 source re-export。
@@ -2627,7 +2627,7 @@ ProxyRequest
 | forwarder runtime state source | `host/cc_switch/forwarder_runtime_state_source.rs` | `CcSwitchForwarderRuntimeStateSource` 默认实现已迁到 `proxy/host/cc_switch/forwarder_runtime_state_source.rs`，负责 runtime status、active route target、event bus、active connection lifecycle、forward success/failure 状态和日志副作用；adapter 仅保留 trait/type alias、`ActiveConnectionGuard` 与 factory re-export |
 | forwarder request source | `host/cc_switch/forwarder_request_source.rs` | `CcSwitchForwarderRequestSource` 默认实现已迁到 `proxy/host/cc_switch/forwarder_request_source.rs`，负责请求体预处理、provider/Codex/Copilot 转换、URL planning、media/rectifier plan、upstream body/header 组装和请求日志；request source 已直接引用 `proxy_core::api::{transport,transforms}` 的纯 helper/type，adapter 仅保留 trait/input/type alias、factory/test re-export 和少量 `#[cfg(test)]` 兼容桥接 |
 | failover switch scheduler | `host/cc_switch/failover_switch.rs` | `CcSwitchFailoverSwitchScheduler` 默认实现已迁到 `proxy/host/cc_switch/failover_switch.rs`，负责把 forwarder 的切换目标投影到 `FailoverSwitchManager`、Tauri AppHandle、托盘/UI 和 Live hot-switch 副作用；adapter 仅保留 trait/type alias、noop 测试 source 与 factory re-export |
-| event sink | `host/cc_switch/event_sink.rs` | `CcSwitchEventSink` 默认实现已迁到 `proxy/host/cc_switch/event_sink.rs`，负责把 `ProxyCoreEvent` 分发到可选 `ProxyEventBus`；adapter 仅保留 event message/helper contract 并 re-export source |
+| event sink | `host/cc_switch/event_sink.rs` | `CcSwitchEventSink` 默认实现已迁到 `proxy/host/cc_switch/event_sink.rs`，负责直接引用 core event sink contract 并把 `ProxyCoreEvent` 分发到可选 `ProxyEventBus`；adapter 仅保留 event bus 投影/分发 helper 并 re-export source |
 | usage sink | `host/cc_switch/database_usage_sink.rs` | `CcSwitchUsageSink` 默认实现已迁到 `proxy/host/cc_switch/database_usage_sink.rs`，负责 `UsageLogger`、pricing lookup、缺失定价 warning、`RequestLog` 写入和 DB 持久化；adapter 仅保留 usage projection helper 并 re-export source |
 | config source | `host/cc_switch/config_source.rs` | `CcSwitchConfigSource` 默认实现已迁到 `proxy/host/cc_switch/config_source.rs`，负责 global/app/app-summary/runtime config 和 app catalog 端口实现；adapter 仅保留 config source/projection helper、factory 装配和 re-export |
 | management auth source | `host/cc_switch/management_auth_source.rs` | `CcSwitchManagementAuthSource` 默认实现已迁到 `proxy/host/cc_switch/management_auth_source.rs`，负责直接引用 core management auth contract、读取 `ProxyConfig` 与 `CC_SWITCH_PROXY_MANAGEMENT_TOKEN` fallback 并组装 `ManagementAuthRuntimeConfig`；adapter 仅保留默认 source re-export |
@@ -2706,7 +2706,7 @@ node_modules/.bin/tsc --noEmit
 4. `CcSwitchRoutePolicySource` 作为 host-owned source 包装 failover queue 到 core `RoutePolicy` 的默认桥接，并由 adapter re-export/装配；`CcSwitchRouteResolver` 作为 host-owned resolver 直接调用 core `build_route_plan` 并仅通过 adapter helper 包装 management dry-run route response，由 adapter re-export/装配。
 5. `CcSwitchChannelHealthStore` 作为 host-owned store 包装 channel health attempt 写入、breaker reset 和 stats 查询，并由 adapter re-export/装配；兼容期可同时写 provider health 聚合。
 6. `CcSwitchUsageSink` 作为 host-owned source 包装 `UsageLogger`、pricing lookup 和日志落库副作用，并由 adapter re-export；写入必须使用完整 `UsageRecord`，不能用简化 hint 直接写账单。
-7. `CcSwitchEventSink` 作为 host-owned source 包装 `ProxyEventBus` 分发副作用，并由 adapter re-export。
+7. `CcSwitchEventSink` 作为 host-owned source 包装 `ProxyEventBus` 分发副作用，直接消费 core event sink contract，并由 adapter re-export 默认 source。
 8. `CcSwitchManagementAuthSource` 作为 host-owned source 包装 `ProxyConfig` 读锁、管理 token env fallback 和 runtime auth config 组装，直接消费 core management auth contract，并由 adapter re-export 默认 source。
 9. `CcSwitchRuntimeStatusSource` 作为 host-owned source 包装 runtime status/start time/current route target 读取与 uptime/active target projection，直接消费 core runtime status contract，并由 adapter re-export 默认 source。
 10. `CcSwitchClaudeDesktopGatewayAuthSource` 作为 host-owned source 包装默认 Claude Desktop gateway bearer token source，并由 adapter re-export；DB token helper 仍留在 adapter 供 profile apply/status/server smoke 复用。
@@ -2935,7 +2935,7 @@ CC Switch 前端可以继续用 Tauri commands；外部集成用 HTTP API。
 - adapter-owned `CcSwitchChannelSource` 可以从 provider 主 URL、`provider_endpoints` 和新 channel 表生成一致候选。
 - 旧配置迁移 dry-run 可以输出新增、重复、需人工确认的 channel。
 - host-owned `CcSwitchUsageSink` 写入 `proxy_request_logs` 字段完整，adapter 只保留 projection helper 并 re-export sink。
-- host-owned `CcSwitchEventSink` 可以驱动托盘和前端事件，adapter 只保留 event helper 并 re-export sink。
+- host-owned `CcSwitchEventSink` 可以直接消费 core event sink contract 并驱动托盘和前端事件，adapter 只保留 event bus helper 并 re-export sink。
 - host-owned `CcSwitchManagementAuthSource` 可以直接消费 core management auth contract，读取热更新后的 `ProxyConfig` 与 env fallback，adapter 只 re-export source。
 - host-owned `CcSwitchRuntimeStatusSource` 可以直接消费 core runtime status contract，读取 runtime status/start time/current route target，并生成与 `ProxyEngine::runtime_status` 一致的 uptime/active target。
 - host-owned `CcSwitchClaudeDesktopGatewayAuthSource` 可以通过 adapter token helper 加载/创建 gateway bearer token，adapter 只 re-export source。
