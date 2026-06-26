@@ -105,6 +105,7 @@ pub use crate::proxy_core::api::auth::{
     CodexOAuthStatus, CopilotAuthStatus, GitHubAccount, GitHubDeviceCodeResponse,
 };
 
+#[cfg(test)]
 pub(crate) type ProxyErrorStatusKind = crate::proxy_core::api::errors::ProxyErrorStatusKind;
 
 pub(crate) use crate::proxy_core::api::errors::{
@@ -2346,8 +2347,10 @@ pub(crate) type ChannelRouteCandidate = crate::proxy_core::api::routing::Channel
 pub(crate) type ResolvedChannelAttempt = crate::proxy_core::api::routing::ResolvedChannelAttempt;
 pub(crate) type RoutePlan = crate::proxy_core::api::routing::RoutePlan;
 pub(crate) type RouteSelection = crate::proxy_core::api::routing::RouteSelection;
+#[cfg(test)]
 pub(crate) type CodexProxyErrorContext<'a> =
     crate::proxy_core::api::transforms::CodexProxyErrorContext<'a>;
+#[cfg(test)]
 pub(crate) type CodexProxyErrorKind = crate::proxy_core::api::transforms::CodexProxyErrorKind;
 pub(crate) type ForwardFailureKind = crate::proxy_core::api::transport::ForwardFailureKind;
 pub(crate) enum ForwarderFailureDecision {
@@ -6832,138 +6835,23 @@ pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_se
 
 pub(crate) use crate::proxy_core::api::transport::resolve_channel_response_status_mapping;
 
-pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_code;
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct CodexProxyHostErrorFacts<'a> {
-    pub(crate) status: ProxyErrorStatusKind,
-    pub(crate) message: &'a str,
-    pub(crate) kind: CodexProxyErrorKind,
-    pub(crate) upstream_status: Option<u16>,
-    pub(crate) upstream_body: Option<&'a str>,
-}
-
 #[cfg(test)]
-pub(crate) fn codex_proxy_error_json_from_host_facts(
-    provider_name: &str,
-    request_model: &str,
-    endpoint: &str,
-    facts: CodexProxyHostErrorFacts<'_>,
-) -> Value {
-    codex_proxy_error_json(codex_proxy_error_context_from_host_facts(
-        provider_name,
-        request_model,
-        endpoint,
-        facts,
-    ))
-}
+pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_code;
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_json;
 
-pub(crate) fn codex_proxy_error_response_from_host_facts(
-    provider_name: &str,
-    request_model: &str,
-    endpoint: &str,
-    facts: CodexProxyHostErrorFacts<'_>,
-) -> ProxyCoreResult<ProxyCoreResponse> {
-    codex_proxy_error_response(
-        facts.status,
-        codex_proxy_error_context_from_host_facts(provider_name, request_model, endpoint, facts),
-    )
-}
-
+#[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_response;
 
 #[cfg(test)]
-pub(crate) fn codex_proxy_error_json_from_proxy_error(
-    provider_name: &str,
-    request_model: &str,
-    endpoint: &str,
-    error: &ProxyError,
-) -> Value {
-    let message = proxy_error_display_message(error);
-    codex_proxy_error_json_from_host_facts(
-        provider_name,
-        request_model,
-        endpoint,
-        codex_proxy_error_facts_from_proxy_error(error, &message),
-    )
-}
-
-pub(crate) fn codex_proxy_error_response_from_proxy_error(
-    provider_name: &str,
-    request_model: &str,
-    endpoint: &str,
-    error: &ProxyError,
-) -> ProxyCoreResult<ProxyCoreResponse> {
-    let message = proxy_error_display_message(error);
-    codex_proxy_error_response_from_host_facts(
-        provider_name,
-        request_model,
-        endpoint,
-        codex_proxy_error_facts_from_proxy_error(error, &message),
-    )
-}
-
-fn codex_proxy_error_facts_from_proxy_error<'a>(
-    error: &'a ProxyError,
-    message: &'a str,
-) -> CodexProxyHostErrorFacts<'a> {
-    let (upstream_status, upstream_body) = match error {
-        ProxyError::UpstreamError { status, body } => (Some(*status), body.as_deref()),
-        _ => (None, None),
-    };
-
-    CodexProxyHostErrorFacts {
-        status: proxy_error_status_kind(error),
-        message,
-        kind: codex_proxy_error_kind_from_proxy_error(error),
-        upstream_status,
-        upstream_body,
-    }
-}
-
-fn codex_proxy_error_kind_from_proxy_error(error: &ProxyError) -> CodexProxyErrorKind {
-    match error {
-        ProxyError::ForwardFailed(_) => CodexProxyErrorKind::ForwardFailed,
-        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => CodexProxyErrorKind::Timeout,
-        ProxyError::NoAvailableProvider => CodexProxyErrorKind::NoAvailableProvider,
-        ProxyError::AllProvidersCircuitOpen => CodexProxyErrorKind::AllProvidersCircuitOpen,
-        ProxyError::NoProvidersConfigured => CodexProxyErrorKind::NoProvidersConfigured,
-        ProxyError::MaxRetriesExceeded => CodexProxyErrorKind::MaxRetriesExceeded,
-        ProxyError::ProviderUnhealthy(_) => CodexProxyErrorKind::ProviderUnhealthy,
-        ProxyError::ConfigError(_) => CodexProxyErrorKind::ConfigError,
-        ProxyError::TransformError(_) => CodexProxyErrorKind::TransformError,
-        ProxyError::InvalidRequest(_) => CodexProxyErrorKind::InvalidRequest,
-        ProxyError::AuthError(_) => CodexProxyErrorKind::AuthError,
-        ProxyError::UpstreamError { .. } => CodexProxyErrorKind::UpstreamError,
-        ProxyError::DatabaseError(_) => CodexProxyErrorKind::DatabaseError,
-        ProxyError::Internal(_) => CodexProxyErrorKind::InternalError,
-        ProxyError::AlreadyRunning
-        | ProxyError::NotRunning
-        | ProxyError::BindFailed(_)
-        | ProxyError::StopTimeout
-        | ProxyError::StopFailed(_) => CodexProxyErrorKind::ProxyError,
-    }
-}
-
-fn codex_proxy_error_context_from_host_facts<'a>(
-    provider_name: &'a str,
-    request_model: &'a str,
-    endpoint: &'a str,
-    facts: CodexProxyHostErrorFacts<'a>,
-) -> CodexProxyErrorContext<'a> {
-    CodexProxyErrorContext {
-        provider_name,
-        request_model,
-        endpoint,
-        fallback_message: facts.message,
-        fallback_code: codex_proxy_error_code(facts.kind),
-        upstream_status: facts.upstream_status,
-        upstream_body: facts.upstream_body,
-    }
-}
+pub(crate) use crate::proxy::error_mapper::codex_proxy_error_response as codex_proxy_error_response_from_proxy_error;
+#[cfg(test)]
+pub(crate) use crate::proxy::error_mapper::{
+    codex_proxy_error_json as codex_proxy_error_json_from_proxy_error,
+    codex_proxy_error_json_from_host_facts, codex_proxy_error_response_from_host_facts,
+    CodexProxyHostErrorFacts,
+};
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::apply_channel_route_model_override;

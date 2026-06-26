@@ -30,14 +30,6 @@ const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
     "selected_provider_missing_from_source_message(",
     "request_context_route_update_from_proxy_result(",
 ];
-const FORBIDDEN_PROXY_ERROR_MAPPER_CODEX_PROJECTION_MARKERS: &[&str] = &[
-    "CodexProxyErrorContext",
-    "CodexProxyHostErrorFacts",
-    "CodexProxyErrorKind",
-    "codex_proxy_error_code(",
-    "codex_proxy_error_facts(",
-    "codex_proxy_error_kind(",
-];
 const FORBIDDEN_PROXY_ERROR_MAPPER_FORWARD_FAILURE_PROJECTION_MARKERS: &[&str] = &[
     "ForwardFailureKind",
     "forward_failure_kind_from_proxy_status(",
@@ -2056,30 +2048,49 @@ fn request_context_uses_adapter_for_provider_facts() {
 }
 
 #[test]
-fn proxy_error_mapper_delegates_codex_error_projection_to_adapter() {
+fn proxy_error_mapper_owns_codex_error_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/error_mapper.rs");
     let source = fs::read_to_string(&path).expect("read error_mapper.rs");
 
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(&source) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_PROXY_ERROR_MAPPER_CODEX_PROJECTION_MARKERS {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy/error_mapper.rs:{} contains codex error projection marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
+    assert!(
+        source.contains("CodexProxyErrorContext")
+            && source.contains("CodexProxyHostErrorFacts")
+            && source.contains("CodexProxyErrorKind::ForwardFailed")
+            && source.contains("codex_proxy_error_code("),
+        "error_mapper should own host ProxyError to Codex proxy error context projection"
+    );
+    assert!(
+        source.contains("core_codex_proxy_error_response(")
+            && source.contains("core_codex_proxy_error_json("),
+        "error_mapper should delegate final Codex proxy error body/response construction to proxy-core"
+    );
+}
+
+#[test]
+fn proxy_core_adapter_reexports_codex_error_projection() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
 
     assert!(
-        violations.is_empty(),
-        "Proxy error mapper must delegate Codex error envelope projection to proxy_core_adapter:\n{}",
-        violations.join("\n")
+        source.contains("pub(crate) use crate::proxy::error_mapper::{")
+            && source.contains("codex_proxy_error_response_from_host_facts")
+            && source.contains("codex_proxy_error_response_from_proxy_error")
+            && source.contains("CodexProxyHostErrorFacts"),
+        "proxy_core_adapter should re-export Codex proxy error projection for compatibility"
     );
+    for marker in [
+        "struct CodexProxyHostErrorFacts",
+        "fn codex_proxy_error_facts_from_proxy_error",
+        "fn codex_proxy_error_kind_from_proxy_error",
+        "fn codex_proxy_error_context_from_host_facts",
+    ] {
+        assert!(
+            !source.contains(marker),
+            "proxy_core_adapter should not own Codex proxy error projection marker `{marker}`"
+        );
+    }
 }
 
 #[test]
