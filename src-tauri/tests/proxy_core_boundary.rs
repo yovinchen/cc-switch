@@ -1411,6 +1411,7 @@ const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = 
     "streaming_response_usage_record_with_optional_outbound_model(",
     "non_streaming_response_usage_record_from_body_with_request_id_fallback(",
     "non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(",
+    "record_non_streaming_response_usage(",
 ];
 const FORBIDDEN_RESPONSE_PROCESSOR_STREAM_ORCHESTRATION_MARKERS: &[&str] = &[
     "fn create_logged_passthrough_stream(",
@@ -1454,6 +1455,10 @@ const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_PROJECTION_MARKERS: &[&str] = &[
     "上游响应体内容",
     "String::from_utf8_lossy(",
 ];
+const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_CALL_MARKERS: &[&str] =
+    &["log_non_streaming_proxy_response_body("];
+const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_CONSTRUCTION_MARKERS: &[&str] =
+    &["passthrough_bytes_proxy_response("];
 const FORBIDDEN_RESPONSE_BUILD_CONTEXT_LITERAL_MARKERS: &[&str] = &[
     "Failed to build response",
     "Failed to build streaming response",
@@ -4549,8 +4554,11 @@ fn response_processor_delegates_response_log_projection_to_adapter() {
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_PROJECTION_MARKERS {
-            if code.contains(marker) {
+        let markers = FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_PROJECTION_MARKERS
+            .iter()
+            .chain(FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_CALL_MARKERS.iter());
+        for marker in markers {
+            if code.contains(*marker) {
                 violations.push(format!(
                     "src/proxy/response_processor.rs:{} contains response log projection marker `{}`",
                     line_index + 1,
@@ -6440,6 +6448,33 @@ fn handlers_delegate_transformed_usage_policy_to_adapter() {
     assert!(
         violations.is_empty(),
         "protocol handlers must delegate transformed usage format/filter policy to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn response_processor_delegates_response_construction_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/response_processor.rs");
+    let source = fs::read_to_string(&path).expect("read response_processor.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_CONSTRUCTION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/response_processor.rs:{} contains response construction marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "response processor must delegate core response construction to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

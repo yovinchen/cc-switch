@@ -11539,6 +11539,19 @@ pub(crate) fn record_non_streaming_response_usage(
     })
 }
 
+pub(crate) fn passthrough_non_stream_proxy_response_from_context(
+    status: http::StatusCode,
+    headers: HeaderMap,
+    body: Bytes,
+    state: &ProxyState,
+    ctx: &RequestContext,
+    parser_config: &UsageParserConfig,
+) -> Result<ProxyCoreResponse, String> {
+    log_non_streaming_proxy_response_body(&body, ctx.tag);
+    record_non_streaming_response_usage(state, ctx, &body, parser_config, status.as_u16())?;
+    Ok(passthrough_bytes_proxy_response(status, headers, body))
+}
+
 pub(crate) fn usage_logging_enabled_from_proxy_config(config: &RwLock<ProxyConfig>) -> bool {
     usage_logging_enabled_from_config_flag(
         config.try_read().ok().map(|config| config.enable_logging),

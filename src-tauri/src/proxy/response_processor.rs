@@ -7,10 +7,10 @@ use super::{
     response_adapter::proxy_core_response_to_axum_response,
 };
 use crate::proxy_core_adapter::{
-    log_non_streaming_proxy_response_body, passthrough_bytes_proxy_response,
+    passthrough_non_stream_proxy_response_from_context,
     passthrough_stream_proxy_response_from_context, read_decoded_proxy_response_body,
-    record_non_streaming_response_usage, response_headers_indicate_sse, ActiveConnectionGuard,
-    AxumResponseBuildErrorContext, ProxyState, UsageParserConfig,
+    response_headers_indicate_sse, ActiveConnectionGuard, AxumResponseBuildErrorContext,
+    ProxyState, UsageParserConfig,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -74,12 +74,15 @@ pub async fn handle_non_streaming(
     let status = decoded.status;
     let body_bytes = decoded.body;
 
-    log_non_streaming_proxy_response_body(&body_bytes, ctx.tag);
-
-    record_non_streaming_response_usage(state, ctx, &body_bytes, parser_config, status.as_u16())
-        .map_err(ProxyError::ConfigError)?;
-
-    let response = passthrough_bytes_proxy_response(status, response_headers, body_bytes);
+    let response = passthrough_non_stream_proxy_response_from_context(
+        status,
+        response_headers,
+        body_bytes,
+        state,
+        ctx,
+        parser_config,
+    )
+    .map_err(ProxyError::ConfigError)?;
     proxy_core_response_to_axum_response(
         response,
         AxumResponseBuildErrorContext::TaggedResponse { tag: ctx.tag },
