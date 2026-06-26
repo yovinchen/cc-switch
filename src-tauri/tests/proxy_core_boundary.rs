@@ -10,6 +10,11 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/response_adapter.rs",
     "src/proxy_core_adapter.rs",
     "src/services/model_fetch_transport.rs",
+    "src/services/session_usage.rs",
+    "src/services/session_usage_codex.rs",
+    "src/services/session_usage_gemini.rs",
+    "src/services/session_usage_opencode.rs",
+    "src/services/usage_stats.rs",
 ];
 const ALLOWED_PROXY_ENGINE_CONSTRUCTOR_FILES: &[&str] = &["src/proxy_core_adapter.rs"];
 
@@ -1847,6 +1852,54 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
         violations.is_empty(),
         "host code must access proxy-core through approved host adapter files:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn session_usage_services_direct_core_access_stays_in_usage_api() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let files = [
+        "src/services/session_usage.rs",
+        "src/services/session_usage_codex.rs",
+        "src/services/session_usage_gemini.rs",
+        "src/services/session_usage_opencode.rs",
+        "src/services/usage_stats.rs",
+    ];
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let adapter_production = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
+
+    let mut violations = Vec::new();
+    for relative in files {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read service file");
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            for (column, _) in code.match_indices(PROXY_CORE_MARKER) {
+                if !code[column..].starts_with("crate::proxy_core::api::usage") {
+                    violations.push(format!(
+                        "{}:{} contains non-usage direct proxy-core access: {}",
+                        relative,
+                        line_index + 1,
+                        code.trim()
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "session usage services may only consume proxy_core::api::usage directly:\n{}",
+        violations.join("\n")
+    );
+
+    assert!(
+        !adapter_production.contains("type CostCalculator")
+            && !adapter_production.contains("SESSION_REQUEST_ID_PREFIX"),
+        "proxy_core_adapter should not re-export session usage cost/request-id contracts"
     );
 }
 

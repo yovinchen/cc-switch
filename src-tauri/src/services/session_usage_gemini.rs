@@ -16,7 +16,7 @@
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
 use crate::gemini_config::get_gemini_dir;
-use crate::proxy_core_adapter::{CostCalculator, ModelPricing, TokenUsage};
+use crate::proxy_core::api::usage::{CostCalculator, ModelPricing, TokenUsage};
 use crate::services::session_usage::{
     get_sync_state, metadata_modified_nanos, update_sync_state, SessionSyncResult,
 };

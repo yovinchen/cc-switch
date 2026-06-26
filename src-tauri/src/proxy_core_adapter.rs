@@ -611,7 +611,6 @@ pub(crate) type CodexChatReasoningProfile =
 pub(crate) type CodexToolContext = crate::proxy_core::api::transforms::CodexToolContext;
 pub(crate) type ProxyResponseBody = crate::proxy_core::api::transport::ProxyResponseBody;
 pub(crate) type CostBreakdown = crate::proxy_core::api::usage::CostBreakdown;
-pub(crate) type CostCalculator = crate::proxy_core::api::usage::CostCalculator;
 pub(crate) type ModelPricing = crate::proxy_core::api::usage::ModelPricing;
 pub(crate) type TokenUsage = crate::proxy_core::api::usage::TokenUsage;
 pub(crate) type UsageRecord = crate::proxy_core::api::usage::UsageRecord;
@@ -2643,8 +2642,6 @@ pub(crate) use crate::proxy::host::cc_switch::managed_account_runtime_source::{
     managed_account_runtime_source_from_app_handle, ManagedAccountRuntimeSourceRef,
 };
 
-pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =
-    crate::proxy_core::api::usage::SESSION_REQUEST_ID_PREFIX;
 const PROXY_OFFICIAL_WARNING_EVENT: &str =
     crate::proxy_core::api::events::PROXY_OFFICIAL_WARNING_EVENT;
 const PROVIDER_SWITCHED_EVENT: &str = crate::proxy_core::api::events::PROVIDER_SWITCHED_EVENT;
