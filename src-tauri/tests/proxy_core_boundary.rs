@@ -924,6 +924,23 @@ const FORBIDDEN_ROUTE_INSPECTION_HANDLER_ENGINE_MARKERS: &[&str] = &[
     ".current_route_response(",
     ".resolve_route_response(",
 ];
+const FORBIDDEN_CHANNEL_MUTATION_HANDLER_ENGINE_MARKERS: &[&str] = &[
+    "ChannelCreateRequest::from_body(",
+    "ChannelPathRequest::from_path(",
+    "ChannelKeyPathRequest::from_path(",
+    ".proxy_engine()",
+    ".create_channel_response(",
+    ".channel_record_response(",
+    ".update_channel_response(",
+    ".delete_channel_response(",
+    ".channel_keys_response(",
+    ".upsert_channel_key_response(",
+    ".update_channel_key_response(",
+    ".delete_channel_key_response(",
+    ".channel_models_response(",
+    ".replace_channel_models_response(",
+    ".channel_test_response(",
+];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
 const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
@@ -3942,6 +3959,142 @@ fn production_route_inspection_handlers_delegate_json_bridge_to_response_adapter
     assert!(
         violations.is_empty(),
         "route inspection handlers must delegate request construction, dry-run/current-route engine calls, and JSON wrapping to response_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_channel_mutation_handlers_delegate_json_bridge_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handlers = [
+        (
+            "create_proxy_channel",
+            function_slice(
+                &source,
+                "pub async fn create_proxy_channel(",
+                "/// GET /proxy/v1/channels/{channel_id}",
+            ),
+            "dispatch_create_proxy_channel_request_to_axum_json_response(",
+        ),
+        (
+            "get_proxy_channel",
+            function_slice(
+                &source,
+                "pub async fn get_proxy_channel(",
+                "/// PATCH /proxy/v1/channels/{channel_id}",
+            ),
+            "dispatch_get_proxy_channel_request_to_axum_json_response(",
+        ),
+        (
+            "update_proxy_channel",
+            function_slice(
+                &source,
+                "pub async fn update_proxy_channel(",
+                "/// DELETE /proxy/v1/channels/{channel_id}",
+            ),
+            "dispatch_update_proxy_channel_request_to_axum_json_response(",
+        ),
+        (
+            "delete_proxy_channel",
+            function_slice(
+                &source,
+                "pub async fn delete_proxy_channel(",
+                "/// GET /proxy/v1/channels/{channel_id}/keys",
+            ),
+            "dispatch_delete_proxy_channel_request_to_axum_json_response(",
+        ),
+        (
+            "list_proxy_channel_keys",
+            function_slice(
+                &source,
+                "pub async fn list_proxy_channel_keys(",
+                "/// PUT /proxy/v1/channels/{channel_id}/keys/{key_ref}",
+            ),
+            "dispatch_proxy_channel_keys_request_to_axum_json_response(",
+        ),
+        (
+            "upsert_proxy_channel_key",
+            function_slice(
+                &source,
+                "pub async fn upsert_proxy_channel_key(",
+                "/// PATCH /proxy/v1/channels/{channel_id}/keys/{key_ref}",
+            ),
+            "dispatch_upsert_proxy_channel_key_request_to_axum_json_response(",
+        ),
+        (
+            "update_proxy_channel_key",
+            function_slice(
+                &source,
+                "pub async fn update_proxy_channel_key(",
+                "/// DELETE /proxy/v1/channels/{channel_id}/keys/{key_ref}",
+            ),
+            "dispatch_update_proxy_channel_key_request_to_axum_json_response(",
+        ),
+        (
+            "delete_proxy_channel_key",
+            function_slice(
+                &source,
+                "pub async fn delete_proxy_channel_key(",
+                "/// GET /proxy/v1/channels/{channel_id}/models",
+            ),
+            "dispatch_delete_proxy_channel_key_request_to_axum_json_response(",
+        ),
+        (
+            "list_proxy_channel_models",
+            function_slice(
+                &source,
+                "pub async fn list_proxy_channel_models(",
+                "/// PUT /proxy/v1/channels/{channel_id}/models",
+            ),
+            "dispatch_proxy_channel_models_request_to_axum_json_response(",
+        ),
+        (
+            "replace_proxy_channel_models",
+            function_slice(
+                &source,
+                "pub async fn replace_proxy_channel_models(",
+                "/// POST /proxy/v1/channels/{channel_id}/test",
+            ),
+            "dispatch_replace_proxy_channel_models_request_to_axum_json_response(",
+        ),
+        (
+            "test_proxy_channel",
+            function_slice(
+                &source,
+                "pub async fn test_proxy_channel(",
+                "/// GET /proxy/v1/apps/{app}/channels",
+            ),
+            "dispatch_proxy_channel_test_request_to_axum_json_response(",
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    for (handler_name, handler, adapter_marker) in handlers {
+        if !handler.contains(adapter_marker) {
+            violations.push(format!(
+                "src/proxy/handlers.rs {handler_name} should call `{adapter_marker}`"
+            ));
+        }
+
+        for (line_index, line) in production_lines(handler) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_CHANNEL_MUTATION_HANDLER_ENGINE_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/proxy/handlers.rs {handler_name}:{} contains channel mutation engine marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "channel mutation handlers must delegate path/body request construction, engine calls, and JSON wrapping to response_adapter:\n{}",
         violations.join("\n")
     );
 }

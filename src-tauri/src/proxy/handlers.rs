@@ -16,33 +16,43 @@ use super::{
         dispatch_codex_client_model_catalog_request_to_axum_json_response,
         dispatch_codex_responses_compact_request_to_axum_response,
         dispatch_codex_responses_request_to_axum_response,
+        dispatch_create_proxy_channel_request_to_axum_json_response,
         dispatch_current_proxy_route_request_to_axum_json_response,
+        dispatch_delete_proxy_channel_key_request_to_axum_json_response,
+        dispatch_delete_proxy_channel_request_to_axum_json_response,
         dispatch_gemini_request_to_axum_response,
+        dispatch_get_proxy_channel_request_to_axum_json_response,
         dispatch_proxy_app_channels_request_to_axum_json_response,
         dispatch_proxy_app_models_request_to_axum_json_response,
         dispatch_proxy_apps_request_to_axum_json_response,
+        dispatch_proxy_channel_keys_request_to_axum_json_response,
+        dispatch_proxy_channel_models_request_to_axum_json_response,
+        dispatch_proxy_channel_test_request_to_axum_json_response,
         dispatch_proxy_channels_request_to_axum_json_response,
         dispatch_proxy_groups_request_to_axum_json_response,
         dispatch_proxy_providers_request_to_axum_json_response,
         dispatch_proxy_route_resolve_request_to_axum_json_response,
+        dispatch_replace_proxy_channel_models_request_to_axum_json_response,
+        dispatch_update_proxy_channel_key_request_to_axum_json_response,
+        dispatch_update_proxy_channel_request_to_axum_json_response,
+        dispatch_upsert_proxy_channel_key_request_to_axum_json_response,
         proxy_events_request_to_axum_sse_response,
     },
 };
 use crate::proxy_core_adapter::{
     AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery,
-    ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord,
-    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListResponse,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
-    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
-    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
-    CurrentRouteTarget, GroupListQuery, HealthCheckRequest, HealthCheckResponse,
-    ManagementAppPathRequest, ProviderListResponse, ProxyChannelKeyPatchRequest,
-    ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyState,
-    ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
-    RouteResolveRequest, RouteResolveResponse,
+    ChannelBreakerStatsResponse, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelKeyDeleteResponse, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
+    ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
+    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, HealthCheckRequest,
+    HealthCheckResponse, ManagementAppPathRequest, ProviderListResponse,
+    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
+    ProxyRuntimeStatus, ProxyState, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
+    RouteGroupListResponse, RouteResolveRequest, RouteResolveResponse,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -139,14 +149,7 @@ pub async fn create_proxy_channel(
     State(state): State<ProxyState>,
     Json(request): Json<ProxyChannelWriteRequest>,
 ) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
-    let request = ChannelCreateRequest::from_body(request);
-    let response = state
-        .proxy_engine()
-        .create_channel_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
+    dispatch_create_proxy_channel_request_to_axum_json_response(&state, request).await
 }
 
 /// GET /proxy/v1/channels/{channel_id}
@@ -154,15 +157,7 @@ pub async fn get_proxy_channel(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
-    let request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .channel_record_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
+    dispatch_get_proxy_channel_request_to_axum_json_response(&state, channel_id).await
 }
 
 /// PATCH /proxy/v1/channels/{channel_id}
@@ -171,15 +166,7 @@ pub async fn update_proxy_channel(
     Path(channel_id): Path<String>,
     Json(request): Json<ProxyChannelPatchRequest>,
 ) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
-    let path_request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .update_channel_response(path_request, request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
+    dispatch_update_proxy_channel_request_to_axum_json_response(&state, channel_id, request).await
 }
 
 /// DELETE /proxy/v1/channels/{channel_id}
@@ -187,15 +174,7 @@ pub async fn delete_proxy_channel(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelDeleteResponse>, ProxyError> {
-    let request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .delete_channel_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
+    dispatch_delete_proxy_channel_request_to_axum_json_response(&state, channel_id).await
 }
 
 /// GET /proxy/v1/channels/{channel_id}/keys
@@ -203,15 +182,7 @@ pub async fn list_proxy_channel_keys(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelKeysResponse<ChannelKeyRecord>>, ProxyError> {
-    let request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .channel_keys_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
+    dispatch_proxy_channel_keys_request_to_axum_json_response(&state, channel_id).await
 }
 
 /// PUT /proxy/v1/channels/{channel_id}/keys/{key_ref}
@@ -220,15 +191,10 @@ pub async fn upsert_proxy_channel_key(
     Path((channel_id, key_ref)): Path<(String, String)>,
     Json(request): Json<ProxyChannelKeyWriteRequest>,
 ) -> Result<Json<ChannelKeyRecordResponse<ChannelKeyRecord>>, ProxyError> {
-    let path_request = ChannelKeyPathRequest::from_path(channel_id, key_ref)
-        .map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .upsert_channel_key_response(path_request, request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
+    dispatch_upsert_proxy_channel_key_request_to_axum_json_response(
+        &state, channel_id, key_ref, request,
+    )
+    .await
 }
 
 /// PATCH /proxy/v1/channels/{channel_id}/keys/{key_ref}
@@ -237,15 +203,10 @@ pub async fn update_proxy_channel_key(
     Path((channel_id, key_ref)): Path<(String, String)>,
     Json(request): Json<ProxyChannelKeyPatchRequest>,
 ) -> Result<Json<ChannelKeyRecordResponse<ChannelKeyRecord>>, ProxyError> {
-    let path_request = ChannelKeyPathRequest::from_path(channel_id, key_ref)
-        .map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .update_channel_key_response(path_request, request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
+    dispatch_update_proxy_channel_key_request_to_axum_json_response(
+        &state, channel_id, key_ref, request,
+    )
+    .await
 }
 
 /// DELETE /proxy/v1/channels/{channel_id}/keys/{key_ref}
@@ -253,15 +214,8 @@ pub async fn delete_proxy_channel_key(
     State(state): State<ProxyState>,
     Path((channel_id, key_ref)): Path<(String, String)>,
 ) -> Result<Json<ChannelKeyDeleteResponse>, ProxyError> {
-    let path_request = ChannelKeyPathRequest::from_path(channel_id, key_ref)
-        .map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .delete_channel_key_response(path_request)
+    dispatch_delete_proxy_channel_key_request_to_axum_json_response(&state, channel_id, key_ref)
         .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
 }
 
 /// GET /proxy/v1/channels/{channel_id}/models
@@ -269,15 +223,7 @@ pub async fn list_proxy_channel_models(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelModelsResponse<ChannelModelRecord>>, ProxyError> {
-    let request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .channel_models_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
+    dispatch_proxy_channel_models_request_to_axum_json_response(&state, channel_id).await
 }
 
 /// PUT /proxy/v1/channels/{channel_id}/models
@@ -286,15 +232,8 @@ pub async fn replace_proxy_channel_models(
     Path(channel_id): Path<String>,
     Json(request): Json<ProxyChannelModelsReplaceRequest>,
 ) -> Result<Json<ChannelModelsResponse<ChannelModelRecord>>, ProxyError> {
-    let path_request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .replace_channel_models_response(path_request, request)
+    dispatch_replace_proxy_channel_models_request_to_axum_json_response(&state, channel_id, request)
         .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
 }
 
 /// POST /proxy/v1/channels/{channel_id}/test
@@ -303,15 +242,7 @@ pub async fn test_proxy_channel(
     Path(channel_id): Path<String>,
     Json(request): Json<ProxyChannelTestRequest>,
 ) -> Result<Json<ChannelTestResponse>, ProxyError> {
-    let path_request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .channel_test_response(path_request, request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
+    dispatch_proxy_channel_test_request_to_axum_json_response(&state, channel_id, request).await
 }
 
 /// GET /proxy/v1/apps/{app}/channels
