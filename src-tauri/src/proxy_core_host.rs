@@ -29,12 +29,6 @@ use tokio::sync::RwLock;
 use crate::proxy_core_adapter::DEFAULT_ROUTE_GROUP;
 
 #[cfg(test)]
-pub(crate) type CcSwitchProxyServices =
-    crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices<
-        crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime,
-    >;
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::app_config::AppType;
@@ -55,6 +49,11 @@ mod tests {
     use indexmap::IndexMap;
     use serde_json::json;
     use std::ffi::OsString;
+
+    type CcSwitchProxyServices =
+        crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices<
+            crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime,
+        >;
 
     struct IsolatedTestHome {
         _dir: tempfile::TempDir,
