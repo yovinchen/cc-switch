@@ -308,9 +308,9 @@ pub(crate) use crate::proxy_core::api::ports::{
     validate_gemini_settings_strict as core_validate_gemini_settings_strict,
     CodexLiveSettingsIssue, CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
     CodexLiveTakeoverMatchFacts, CodexProviderBackfillParts, CodexProviderLiveWriteIssue,
-    CodexProviderLiveWriteParts, GeminiAuthType, GeminiAuthTypeInput, GeminiEnvParseIssue,
-    GeminiLiveConfigIssue, GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue,
-    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
+    CodexProviderLiveWriteParts, GeminiEnvParseIssue, GeminiLiveConfigIssue,
+    GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, ProviderAdditiveLiveWriteAction,
+    ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
     ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
     ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
     ProviderSettingsValidationParts, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
@@ -332,6 +332,7 @@ use crate::proxy_core::api::ports::{
 pub(crate) use crate::proxy_core::api::ports::{
     provider_credential_issue_spec, ProviderCredentialIssue,
 };
+use crate::proxy_core::api::ports::{GeminiAuthType, GeminiAuthTypeInput};
 
 pub(crate) fn record_forward_success_status(
     status: &mut ProxyRuntimeStatus,

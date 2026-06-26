@@ -31,6 +31,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/transport/upstream/reqwest_client.rs",
     "src/proxy_core_adapter.rs",
     "src/services/model_fetch_transport.rs",
+    "src/services/provider/gemini_auth.rs",
     "src/services/stream_check.rs",
     "src/services/session_usage.rs",
     "src/services/session_usage_codex.rs",
@@ -189,6 +190,12 @@ const FORBIDDEN_STREAM_CHECK_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
     "type StreamCheckConfig = crate::proxy_core::api::management::StreamCheckConfig",
     "type StreamCheckResult = crate::proxy_core::api::management::StreamCheckResult",
     "pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult",
+];
+const FORBIDDEN_GEMINI_AUTH_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
+    "CodexProviderLiveWriteParts, GeminiAuthType",
+    "GeminiAuthType, GeminiAuthTypeInput, GeminiEnvParseIssue",
+    "pub(crate) type GeminiAuthType = crate::proxy_core::api::ports::GeminiAuthType",
+    "pub(crate) use crate::proxy_core::api::ports::GeminiAuthType",
 ];
 const FORBIDDEN_STREAM_CHECK_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
     "proxy::providers",
@@ -10603,6 +10610,63 @@ fn stream_check_service_owns_core_dto_reexports() {
     assert!(
         violations.is_empty(),
         "stream_check public DTOs must bypass proxy_core_adapter aliases:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn gemini_auth_service_owns_core_auth_type_reexport() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let service_path = manifest_dir.join("src/services/provider/gemini_auth.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let service_source = fs::read_to_string(&service_path).expect("read gemini_auth.rs");
+    let required_import = "pub(crate) use crate::proxy_core::api::ports::GeminiAuthType;";
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&adapter_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_GEMINI_AUTH_ADAPTER_DTO_EXPORT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains Gemini auth DTO export marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    for (line_index, line) in production_lines(&service_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        if code.contains("proxy_core_adapter") && code.contains("GeminiAuthType") {
+            violations.push(format!(
+                "src/services/provider/gemini_auth.rs:{} imports GeminiAuthType from proxy_core_adapter",
+                line_index + 1
+            ));
+        }
+        let direct_core =
+            code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
+        if direct_core && code.trim() != required_import {
+            violations.push(format!(
+                "src/services/provider/gemini_auth.rs:{} contains non-GeminiAuthType direct proxy-core import `{}`",
+                line_index + 1,
+                code.trim()
+            ));
+        }
+    }
+
+    assert!(
+        service_source.contains(required_import),
+        "Gemini auth service must re-export GeminiAuthType directly from proxy_core"
+    );
+    assert!(
+        service_source.contains("crate::proxy_core_adapter::detect_gemini_auth_type(provider)"),
+        "Gemini auth service should keep provider-aware detection behind proxy_core_adapter"
+    );
+    assert!(
+        violations.is_empty(),
+        "Gemini auth type DTO must bypass proxy_core_adapter aliases:\n{}",
         violations.join("\n")
     );
 }
