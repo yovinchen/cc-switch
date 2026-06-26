@@ -572,7 +572,7 @@
 558. model fetch transport 使用的 OpenAI-compatible/Codex OAuth request plan、transport trait、HTTP response 与 core planning/response parsing wrapper 已迁入 `proxy_core_adapter`；host transport 继续只负责 shared reqwest client 执行与 response body 读取。
 559. provider router/circuit breaker 使用的熔断 DTO、熔断 key helper、provider selection、route resolve 与 unavailable-channel filter 入口已迁入 `proxy_core_adapter`；host router 继续只负责 DB/provider facts、熔断器实例生命周期和健康状态写回。
 560. proxy event bus/response SSE bridge 使用的 event envelope、connected/lagged event 常量、payload builder 与 SSE spec 投影入口已迁入 `proxy_core_adapter`；host event bus 继续只负责 broadcast runtime state 与 sequence 分配。
-561. response adapter 使用的 core response、transport response 与 transport body DTO 入口已迁入 `proxy_core_adapter`；host response adapter 继续只负责映射到内部 `ProxyResponse` 与 Axum response/SSE event。
+561. response adapter 使用的 core response、transport response 与 transport body DTO 入口已迁入 `proxy_core_adapter`；host response adapter 继续只负责映射到内部 `ProxyResponse` 与 Axum response/SSE event，response pipeline 实现已迁到 `proxy/engine/response_pipeline.rs`，旧 `proxy/response_processor.rs` 仅保留兼容 re-export。
 562. route attempt 使用的 route candidate、resolved channel attempt、route plan 与 route selection DTO 入口已迁入 `proxy_core_adapter`；host `ForwardAttempt` 继续只负责 provider override、provider-shaped attempt 编排和 model override log。
 563. usage stats/logger/session usage 使用的 cost calculator、pricing、token usage、cost breakdown 与 session request id prefix 入口已迁入 `proxy_core_adapter`；host 继续负责 DB 查询、日志文件解析、dedup 与 request log 落库。
 564. handler context 使用的 app config DTO、proxy result/services trait、response runtime policy DTO、Gemini path model 提取、Claude metadata API-format 提取与 session id 提取入口已迁入 `proxy_core_adapter`；`RequestContext` 实现已迁到 `proxy/engine/context.rs`，旧 `proxy/handler_context.rs` 仅保留兼容 re-export，host context 只保留 route result 后的 DB provider 回填与 response/usage 生命周期事实。
@@ -1189,7 +1189,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续把 Claude transform gate 与 Codex Responses→Chat gate 收敛到 `proxy::response_adapter::{claude_response_needs_transform,codex_response_needs_chat_transform}`；`handlers` 不再直接调用 `provider_needs_claude_transform` 或 `provider_should_convert_codex_responses_to_chat`，只根据 response adapter 的 branch gate 结果进入 passthrough/transform 分支。
 本轮继续把 Claude/Codex transform streaming decision 调用收敛到 `proxy::response_adapter::{claude_transform_streaming_decision_for_response,codex_chat_transform_streaming_decision_for_response}`；`handlers` 不再直接调用 `provider_claude_transform_streaming_decision` 或 `codex_chat_transform_streaming_decision`，stream/non-stream 分支仍保持原有行为。
 本轮继续把 Claude transformed response 与 Codex Chat→Responses transformed response 的 status/error/stream/non-stream 编排收敛到 `proxy::response_adapter::{claude_transformed_response_to_axum_response,codex_chat_to_responses_transformed_response_to_axum_response}`；`handlers` 不再保留本地 transform 编排函数或直接构造 transformed SSE stream。
-本轮继续把 Claude/OpenAI Chat/Codex/Gemini passthrough response 的 parser config 选择和 `process_response` 调用收敛到 `proxy::response_adapter::*_passthrough_response_to_axum_response`；`handlers` 不再直接引用 `*_PARSER_CONFIG` 或 `response_processor::process_response`。
+本轮继续把 Claude/OpenAI Chat/Codex/Gemini passthrough response 的 parser config 选择和 `process_response` 调用收敛到 `proxy::response_adapter::*_passthrough_response_to_axum_response`；`handlers` 不再直接引用 `*_PARSER_CONFIG` 或 `engine::response_pipeline::process_response`。
 本轮还把 Codex client model catalog 的 active config 读取与 stale guard fallback 收敛到 adapter，`proxy_core_host` 不再维护 catalog 文件解析 helper。
 本轮继续把 host Provider 到 provider model catalog 的 settings 投影收敛到 adapter，`proxy_core_host` 不再直接拆 provider 字段。
 本轮也把 app config source 的当前 provider settings 查询和 `ProxyAppConfig` parts 组装收敛到 adapter-owned source wrapper。
@@ -1668,7 +1668,7 @@ managed-account runtime source 已彻底归并到 `proxy_core_adapter::CcSwitchM
 | 请求上下文 | `engine/context.rs` | 从 config source/route result 维护请求生命周期事实、session、模型名；旧 `handler_context.rs` 仅为兼容 re-export |
 | 转发核心 | `forwarder.rs` | provider 重试、熔断记录、请求体处理、认证、上游请求、状态统计 |
 | provider 适配 | `providers/*` | Claude/Codex/Gemini URL、认证、请求/响应转换、SSE 转换 |
-| 响应处理 | `response_processor.rs` | 流式/非流式响应透传、解压、用量收集、日志落库 |
+| 响应处理 | `engine/response_pipeline.rs` | 流式/非流式响应透传、解压、用量收集、日志落库；旧 `response_processor.rs` 仅为兼容 re-export |
 | 故障转移 | `provider_router.rs`, `circuit_breaker.rs`, `failover_switch.rs` | provider 选择、熔断状态、故障转移后切换当前 provider |
 | 用量 | `usage/*` | token 解析、计价、请求日志写入 |
 | 工具能力 | `thinking_optimizer.rs`, `cache_injector.rs` | 请求前/错误后优化日志与宿主配置投影；私有字段过滤和 media fallback 已进入 `proxy-core` |
@@ -2532,7 +2532,7 @@ ProxyRequest
 | `forwarder.rs` | `engine/forward_pipeline.rs` | 切掉 Tauri/AppHandle/Database 依赖 |
 | `provider_router.rs` | `engine/routing.rs` | 当前已通过 router 端 provider/channel/config/health 四个 focused port 注入 source/store，channel route 输入已切到 core `RouteResolveChannelInput`，config/provider/channel/route-policy source adapter 已分别通过 `CcSwitchConfigSource` / `ProviderSource` / `CcSwitchChannelSource` / `RoutePolicySource` 对齐 core `ProxyConfigSource` / `ProviderSource` / `ChannelSource` / `RoutePolicySource`，provider health 写入已对齐 core `ProviderHealthStore`/`ProviderAttemptResult`，channel health 写入已改为异步传递 core `ChannelAttemptResult` 且保留 router failure threshold，channel reset 已改为传递 app-scoped `ChannelHealthReset` fact，DB-backed 构造统一在 host adapter factory；live breaker map 已由 `ProviderRoutingCircuitRuntime` 承接，下一步评估是否可在不引入 router/store 环的前提下完全实现 core `ChannelHealthStore` |
 | `failover_switch.rs` | `host/cc_switch` | 核心只发 failover event |
-| `response_processor.rs` | `engine/response_pipeline.rs` | 用量落库改为 `UsageSink` |
+| `response_processor.rs` | `engine/response_pipeline.rs` | response pipeline 实现已迁到 `proxy/engine/response_pipeline.rs`，旧 `proxy/response_processor.rs` 仅保留兼容 re-export；后续继续把用量落库改为 `UsageSink` |
 | `usage/logger.rs` | `host/cc_switch/database_usage_sink.rs` | 只保留 parser/calculator 在核心 |
 | `providers/*` | `provider/*` | 先迁移类型依赖，再移动文件 |
 | `hyper_client.rs` | `transport/upstream/hyper_client.rs` | 保留 header casing 行为 |
