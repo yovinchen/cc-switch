@@ -13275,9 +13275,10 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
         "default failover switch scheduler implementation should live in the CC Switch host module"
     );
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources")
+        adapter_source.contains("use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources;")
+            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources")
             && !adapter_source.contains("struct CcSwitchFailoverSwitchScheduler"),
-        "proxy_core_adapter should re-export, not own, the default failover switch scheduler"
+        "proxy_core_adapter should only use, not re-export or own, the default failover switch scheduler"
     );
 
     let forbidden_markers = [

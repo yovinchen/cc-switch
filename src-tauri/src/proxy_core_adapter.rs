@@ -5393,7 +5393,7 @@ pub(crate) trait FailoverSwitchScheduler {
     fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget);
 }
 
-pub(crate) use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources;
+use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources;
 
 #[cfg(test)]
 struct NoopFailoverSwitchScheduler;
