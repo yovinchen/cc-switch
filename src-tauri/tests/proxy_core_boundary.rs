@@ -12,6 +12,8 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/forwarder_response_source.rs",
     "src/proxy/host/cc_switch/forwarder_request_source.rs",
     "src/proxy/response_adapter.rs",
+    "src/proxy/transport/upstream/mod.rs",
+    "src/proxy/transport/upstream/reqwest_client.rs",
     "src/proxy_core_adapter.rs",
     "src/services/model_fetch_transport.rs",
     "src/services/session_usage.rs",
@@ -14066,6 +14068,10 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let transport_source = fs::read_to_string(
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_transport_source.rs"),
     )
@@ -14129,6 +14135,33 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
             && upstream_source.contains("hyper_client::send_request("),
         "transport/upstream/mod.rs must own upstream transport policy dispatch"
     );
+    assert!(
+        upstream_source.contains("use crate::proxy_core::api::transport::{")
+            && upstream_source.contains("invalid_upstream_url_error_message")
+            && upstream_source.contains("is_socks_proxy_url")
+            && upstream_source.contains("resolve_upstream_send_policy")
+            && upstream_source.contains("UpstreamSendPolicyInput")
+            && upstream_source.contains("UpstreamTransportKind"),
+        "transport/upstream/mod.rs should import pure upstream send policy helpers directly from proxy_core::api::transport"
+    );
+    assert!(
+        reqwest_source
+            .contains("use crate::proxy_core::api::transport::streaming_header_timeout_message;"),
+        "transport/upstream/reqwest_client.rs should import streaming header timeout diagnostics directly from proxy_core::api::transport"
+    );
+    for marker in [
+        "type UpstreamSendPolicyInput",
+        "type UpstreamTransportKind",
+        "invalid_upstream_url_error_message",
+        "is_socks_proxy_url",
+        "resolve_upstream_send_policy",
+        "streaming_header_timeout_message",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not re-export pure upstream transport helper/type `{marker}` once transport/upstream owns the call site"
+        );
+    }
     assert!(
         reqwest_source.contains("crate::proxy::host::cc_switch::global_http_client::get()")
             && reqwest_source.contains("reqwest_send_error_to_proxy_error"),

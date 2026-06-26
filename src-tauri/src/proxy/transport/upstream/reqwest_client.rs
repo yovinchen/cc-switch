@@ -3,9 +3,8 @@ use std::time::Duration;
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::reqwest_send_error_to_proxy_error;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
-use crate::proxy_core_adapter::{
-    streaming_header_timeout_message, ForwarderUpstreamTransportRequest,
-};
+use crate::proxy_core::api::transport::streaming_header_timeout_message;
+use crate::proxy_core_adapter::ForwarderUpstreamTransportRequest;
 
 pub(crate) async fn send_request(
     request: ForwarderUpstreamTransportRequest,

@@ -2239,9 +2239,6 @@ pub(crate) use crate::proxy_core::api::domain::{
 
 #[cfg(test)]
 pub(crate) type ProxyCoreUpstreamEndpoint = crate::proxy_core::api::domain::UpstreamEndpoint;
-pub(crate) type UpstreamSendPolicyInput =
-    crate::proxy_core::api::transport::UpstreamSendPolicyInput;
-pub(crate) type UpstreamTransportKind = crate::proxy_core::api::transport::UpstreamTransportKind;
 pub(crate) type ChannelRequestValidationError =
     crate::proxy_core::api::routing::ChannelRequestValidationError;
 pub(crate) type ChannelRouteSource = crate::proxy_core::api::management::ChannelRouteSource;
@@ -2577,11 +2574,10 @@ pub(crate) use crate::proxy_core::api::transport::{
     forwarder_no_providers_configured_log_line, forwarder_rectifier_retry_failure_label,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
-    forwarder_terminal_failure_status_message, invalid_upstream_url_error_message,
-    parse_json_request_body, parse_json_request_body_or_null,
-    should_apply_bedrock_pre_send_optimizer, should_apply_forwarder_media_prevention_for_app,
-    should_failover_after_rectifier_retry_failure, CodexProviderChatCompletionsFacts,
-    CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan,
+    forwarder_terminal_failure_status_message, parse_json_request_body,
+    parse_json_request_body_or_null, should_apply_bedrock_pre_send_optimizer,
+    should_apply_forwarder_media_prevention_for_app, should_failover_after_rectifier_retry_failure,
+    CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan,
     ForwarderAttemptRuntimeDecisionInput, ForwarderProviderUrlFacts,
     ForwarderProviderUrlFactsInput,
 };
@@ -6922,17 +6918,11 @@ pub(crate) use crate::proxy_core::api::transport::request_body_stream_flag;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::is_streaming_upstream_request;
 
-pub(crate) use crate::proxy_core::api::transport::is_socks_proxy_url;
-
-pub(crate) use crate::proxy_core::api::transport::resolve_upstream_send_policy;
-
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::decompress_body;
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::strip_sse_field;
-
-pub(crate) use crate::proxy_core::api::transport::streaming_header_timeout_message;
 
 pub(crate) use crate::proxy_core::api::transport::{
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
@@ -7997,8 +7987,9 @@ mod tests {
     use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
     use crate::proxy_core::api::transport::{
         anthropic_beta_header_value, build_upstream_request_headers, forward_upstream_url_plan,
-        resolve_upstream_request_transport_policy, serialize_upstream_request_body,
-        ForwardUpstreamUrlPlanInput, ProxyTransportResponseBody, UpstreamRequestHeadersInput,
+        is_socks_proxy_url, resolve_upstream_request_transport_policy,
+        resolve_upstream_send_policy, serialize_upstream_request_body, ForwardUpstreamUrlPlanInput,
+        ProxyTransportResponseBody, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
         UpstreamSseAggregationKind, UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
     };
     use crate::proxy_core::api::usage::{
