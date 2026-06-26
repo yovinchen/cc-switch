@@ -2,6 +2,7 @@
 //!
 //! 负责将请求转发到上游Provider，支持故障转移
 
+use crate::proxy::host::cc_switch::provider_adapter_context::ForwarderAdapterContext;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 use crate::proxy::{
@@ -16,11 +17,10 @@ use crate::proxy_core_adapter::{
     validate_managed_account_upstream_auth,
 };
 use crate::proxy_core_adapter::{
-    ActiveConnectionGuard, FailoverSwitchSchedulerRef, ForwarderAdapterContext,
-    ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
-    ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptBodyInput,
-    ForwarderAttemptRuntimeSourceRef, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
-    ForwarderChannelResponseStatusInput, ForwarderClaudeApiFormatInput,
+    ActiveConnectionGuard, FailoverSwitchSchedulerRef, ForwarderAnthropicRectifierGateInput,
+    ForwarderAppMediaPreventionInput, ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput,
+    ForwarderAttemptBodyInput, ForwarderAttemptRuntimeSourceRef, ForwarderAuthHeadersInput,
+    ForwarderAuthSourceRef, ForwarderChannelResponseStatusInput, ForwarderClaudeApiFormatInput,
     ForwarderClaudeBodyPolicyInput, ForwarderClaudeProtocolTransformInput,
     ForwarderCodexChatProtocolEnrichmentInput, ForwarderCopilotDynamicBaseUrlInput,
     ForwarderCopilotLiveModelInput, ForwarderCopilotRequestOptimizationGateInput,

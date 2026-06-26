@@ -3545,7 +3545,7 @@ pub(crate) fn provider_gemini_auth_headers(
     build_gemini_provider_auth_headers(auth).map_err(|error| error.to_string())
 }
 
-pub(crate) use crate::proxy::host::cc_switch::provider_adapter_context::{
+use crate::proxy::host::cc_switch::provider_adapter_context::{
     forwarder_provider_adapter_context_for_app, ForwarderAdapterContext,
 };
 pub(crate) use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;

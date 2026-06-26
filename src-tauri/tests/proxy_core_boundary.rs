@@ -9614,9 +9614,11 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
 
     assert!(
         adapter_source
-            .contains("pub(crate) use crate::proxy::host::cc_switch::provider_adapter_context::{")
+            .contains("use crate::proxy::host::cc_switch::provider_adapter_context::{")
+            && !adapter_source
+                .contains("pub(crate) use crate::proxy::host::cc_switch::provider_adapter_context::{")
             && adapter_source.contains("ForwarderAdapterContext"),
-        "proxy_core_adapter should expose provider adapter context through a host-module re-export"
+        "proxy_core_adapter should only use provider adapter context privately through the host module"
     );
     assert!(
         !adapter_source.contains("pub(crate) struct ForwarderAdapterContext"),
