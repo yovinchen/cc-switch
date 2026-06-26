@@ -6120,33 +6120,6 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
     .await
 }
 
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::engine::response_pipeline::{
-    error_usage_record_from_provider_facts_with_request_id_fallback,
-    fallback_response_usage_provider_facts, forward_error_usage_record_from_response_context,
-    log_non_streaming_proxy_response_body, log_streaming_proxy_response_received,
-    non_streaming_response_usage_record_from_provider_body_with_request_id_fallback,
-    non_streaming_response_usage_record_from_response_context,
-    record_claude_transformed_response_usage, record_codex_auto_transformed_response_usage,
-    record_forward_error_usage, record_forward_error_usage_from_context,
-    record_non_streaming_response_usage, record_non_streaming_response_usage_from_context,
-    record_transformed_response_usage, record_transformed_response_usage_from_context,
-    record_usage_with_proxy_services, record_usage_with_proxy_services_context,
-    response_usage_provider_facts, response_usage_provider_facts_from_optional,
-    spawn_usage_record_with_proxy_services, spawn_usage_record_with_proxy_services_context,
-    streaming_response_usage_record_from_provider_facts,
-    streaming_response_usage_record_from_response_context, streaming_usage_collector_from_context,
-    transformed_response_usage_record_from_provider_facts_with_request_id_fallback,
-    transformed_response_usage_record_from_response_context,
-    transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback,
-    transformed_streaming_response_usage_record_from_response_context, ForwardErrorUsageContext,
-    ForwardErrorUsageRecordContext, NonStreamingResponseUsageContext,
-    NonStreamingUsageRecordContext, ResponseUsageProviderFacts, StreamingResponseUsageContext,
-    StreamingUsageCollectorContext, TransformedResponseUsageContext,
-    TransformedResponseUsageRecordContext, TransformedStreamingResponseUsageContext,
-};
-
 pub(crate) use crate::proxy_core::api::routing::{
     route_plan_no_matching_host_providers_error, route_plan_providers_unconfigured_error,
 };
@@ -7671,6 +7644,16 @@ mod tests {
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{
         AuthBinding, AuthBindingSource, ClaudeDesktopMode, ClaudeDesktopModelRoute, ProviderMeta,
+    };
+    use crate::proxy::engine::response_pipeline::{
+        forward_error_usage_record_from_response_context,
+        non_streaming_response_usage_record_from_response_context, response_usage_provider_facts,
+        response_usage_provider_facts_from_optional,
+        streaming_response_usage_record_from_response_context,
+        transformed_response_usage_record_from_response_context,
+        transformed_streaming_response_usage_record_from_response_context,
+        ForwardErrorUsageContext, NonStreamingResponseUsageContext, StreamingResponseUsageContext,
+        TransformedResponseUsageContext, TransformedStreamingResponseUsageContext,
     };
     use crate::proxy::host::cc_switch::database_channel_source::{
         channel_route_records_from_sources, channel_spec_from_source,

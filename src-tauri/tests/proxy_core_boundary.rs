@@ -6033,11 +6033,6 @@ fn response_pipeline_owns_usage_provider_facts_projection() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let adapter_reexport = function_slice(
-        &adapter_source,
-        "#[cfg(test)]\n#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
-        "};\n\npub(crate) use crate::proxy_core::api::routing::{",
-    );
     let function = function_slice(
         &source,
         "pub(crate) struct ResponseUsageProviderFacts",
@@ -6060,17 +6055,14 @@ fn response_pipeline_owns_usage_provider_facts_projection() {
             "response pipeline provider facts projection must not own usage record helper marker `{marker}`"
         );
     }
+    assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     assert!(
-        adapter_reexport.contains("ResponseUsageProviderFacts")
-            && adapter_reexport.contains("response_usage_provider_facts")
-            && adapter_reexport.contains("fallback_response_usage_provider_facts")
-            && adapter_reexport.contains("response_usage_provider_facts_from_optional")
-            && !adapter_source.contains("pub(crate) struct ResponseUsageProviderFacts")
+        !adapter_source.contains("pub(crate) struct ResponseUsageProviderFacts")
             && !adapter_source.contains("pub(crate) fn response_usage_provider_facts")
             && !adapter_source.contains("pub(crate) fn fallback_response_usage_provider_facts")
             && !adapter_source
                 .contains("pub(crate) fn response_usage_provider_facts_from_optional"),
-        "proxy_core_adapter should expose response usage provider facts only to adapter tests"
+        "proxy_core_adapter should not own or re-export response usage provider facts"
     );
 }
 
@@ -6081,11 +6073,6 @@ fn response_pipeline_owns_logged_stream_runtime_loop() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let adapter_reexport = function_slice(
-        &adapter_source,
-        "#[cfg(test)]\n#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
-        "};\n\npub(crate) use crate::proxy_core::api::routing::{",
-    );
     let function = function_slice(
         &source,
         "pub(crate) struct SseUsageCollector",
@@ -6109,10 +6096,9 @@ fn response_pipeline_owns_logged_stream_runtime_loop() {
             "response pipeline logged-stream loop must delegate policy marker `{marker}`"
         );
     }
+    assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     assert!(
-        !adapter_reexport.contains("create_logged_passthrough_stream")
-            && !adapter_reexport.contains("SseUsageCollector")
-            && !adapter_source.contains("pub(crate) struct SseUsageCollector")
+        !adapter_source.contains("pub(crate) struct SseUsageCollector")
             && !adapter_source.contains("struct SseUsageFinishGuard")
             && !adapter_source.contains("pub(crate) fn create_logged_passthrough_stream"),
         "proxy_core_adapter should not re-export logged stream runtime loop internals"
@@ -6161,11 +6147,6 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let adapter_reexport = function_slice(
-        &adapter_source,
-        "#[cfg(test)]\n#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
-        "};\n\npub(crate) use crate::proxy_core::api::routing::{",
-    );
     let usage_slice = function_slice(
         &source,
         "pub(crate) struct StreamingResponseUsageContext",
@@ -6208,23 +6189,9 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
             && !usage_slice.contains("success_usage_record_with_request_id_fallback("),
         "response pipeline should own bottom passthrough usage-record construction"
     );
+    assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
-            && adapter_source.contains("StreamingUsageCollectorContext")
-            && adapter_source.contains("streaming_usage_collector_from_context")
-            && adapter_source.contains("NonStreamingUsageRecordContext")
-            && adapter_source.contains("record_non_streaming_response_usage_from_context")
-            && adapter_source.contains("streaming_response_usage_record_from_provider_facts")
-            && adapter_source.contains("streaming_response_usage_record_from_response_context")
-            && adapter_source
-                .contains("non_streaming_response_usage_record_from_response_context")
-            && adapter_source.contains(
-                "non_streaming_response_usage_record_from_provider_body_with_request_id_fallback"
-            )
-            && adapter_source.contains("record_non_streaming_response_usage")
-            && !adapter_reexport.contains("passthrough_streaming_usage_collector")
-            && !adapter_reexport.contains("create_passthrough_logged_stream")
-            && !adapter_source.contains("pub(crate) fn usage_logging_enabled_from_proxy_config")
+        !adapter_source.contains("pub(crate) fn usage_logging_enabled_from_proxy_config")
             && !adapter_source.contains("pub(crate) struct StreamingUsageCollectorContext")
             && !adapter_source.contains("pub(crate) fn streaming_usage_collector_from_context")
             && !adapter_source.contains("pub(crate) struct NonStreamingUsageRecordContext")
@@ -6242,7 +6209,7 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
             && !adapter_source.contains("pub(crate) fn passthrough_streaming_usage_collector")
             && !adapter_source.contains("pub(crate) fn create_passthrough_logged_stream")
             && !adapter_source.contains("pub(crate) fn record_non_streaming_response_usage("),
-        "proxy_core_adapter should re-export only externally needed passthrough usage runtime orchestration"
+        "proxy_core_adapter should not own or re-export passthrough usage runtime orchestration"
     );
 }
 
@@ -6253,11 +6220,6 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let adapter_reexport = function_slice(
-        &adapter_source,
-        "#[cfg(test)]\n#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
-        "};\n\npub(crate) use crate::proxy_core::api::routing::{",
-    );
     let function = function_slice(
         &source,
         "pub(crate) struct TransformedResponseUsageContext",
@@ -6302,26 +6264,9 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
             && function.contains("usage_record_with_route_context("),
         "response pipeline should own bottom transformed usage-record construction"
     );
+    assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
-            && adapter_source.contains("TransformedResponseUsageRecordContext")
-            && adapter_source.contains("record_transformed_response_usage_from_context")
-            && adapter_source
-                .contains("transformed_response_usage_record_from_provider_facts_with_request_id_fallback")
-            && adapter_source.contains("transformed_response_usage_record_from_response_context")
-            && adapter_source.contains(
-                "transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback"
-            )
-            && adapter_source
-                .contains("transformed_streaming_response_usage_record_from_response_context")
-            && !adapter_reexport.contains("TransformedStreamingUsageCollectorContext")
-            && !adapter_reexport.contains("transformed_streaming_usage_collector_from_context")
-            && !adapter_reexport.contains("transformed_streaming_usage_collector")
-            && !adapter_reexport.contains("claude_transformed_streaming_usage_collector")
-            && !adapter_reexport.contains("codex_auto_transformed_streaming_usage_collector")
-            && !adapter_reexport.contains("create_claude_transformed_logged_stream")
-            && !adapter_reexport.contains("create_codex_auto_transformed_logged_stream")
-            && !adapter_source
+        !adapter_source
                 .contains("pub(crate) struct TransformedStreamingUsageCollectorContext")
             && !adapter_source
                 .contains("pub(crate) fn transformed_streaming_usage_collector_from_context")
@@ -6343,7 +6288,7 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
             && !adapter_source.contains("pub(crate) fn create_claude_transformed_logged_stream(")
             && !adapter_source
                 .contains("pub(crate) fn create_codex_auto_transformed_logged_stream("),
-        "proxy_core_adapter should not re-export transformed streaming internals"
+        "proxy_core_adapter should not own or re-export transformed streaming internals"
     );
 }
 
@@ -6412,19 +6357,9 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
         "response_pipeline should route ProxyError display/status projection through error_mapper:\n{}",
         import_violations.join("\n")
     );
+    assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
-            && adapter_source.contains("record_usage_with_proxy_services")
-            && adapter_source.contains("spawn_usage_record_with_proxy_services")
-            && adapter_source.contains("spawn_usage_record_with_proxy_services_context")
-            && adapter_source.contains("record_forward_error_usage")
-            && !adapter_source.contains("record_forward_core_error_usage")
-            && adapter_source.contains("ForwardErrorUsageContext")
-            && adapter_source.contains("ForwardErrorUsageRecordContext")
-            && adapter_source.contains("record_forward_error_usage_from_context")
-            && adapter_source
-                .contains("error_usage_record_from_provider_facts_with_request_id_fallback")
-            && adapter_source.contains("forward_error_usage_record_from_response_context")
+        !adapter_source.contains("record_forward_core_error_usage")
             && !adapter_source.contains("pub(crate) fn spawn_usage_record_with_proxy_services")
             && !adapter_source
                 .contains("pub(crate) fn spawn_usage_record_with_proxy_services_context")
@@ -6438,7 +6373,7 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
             )
             && !adapter_source
                 .contains("pub(crate) fn forward_error_usage_record_from_response_context"),
-        "proxy_core_adapter should re-export, not own, forward-error usage and sink scheduling"
+        "proxy_core_adapter should not own or re-export forward-error usage and sink scheduling"
     );
     assert!(
         response_adapter_source.contains("engine::response_pipeline::{")
@@ -6460,11 +6395,6 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let adapter_reexport = function_slice(
-        &adapter_source,
-        "#[cfg(test)]\n#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
-        "};\n\npub(crate) use crate::proxy_core::api::routing::{",
-    );
     let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
     let response_adapter_source =
         fs::read_to_string(&response_adapter_path).expect("read proxy/response_adapter.rs");
@@ -6494,10 +6424,9 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
             && !function.contains("spawn_usage_record_with_proxy_services_context("),
         "response pipeline should keep shared logged-stream internals and usage records delegated"
     );
+    assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
-            && !adapter_reexport.contains("claude_transform_tool_schema_hints")
-            && !adapter_source.contains("ClaudeTransformedSseStreamContext")
+        !adapter_source.contains("ClaudeTransformedSseStreamContext")
             && !adapter_source.contains("claude_transformed_sse_stream_from_context")
             && !adapter_source.contains("CodexAutoTransformedSseStreamContext")
             && !adapter_source.contains("codex_auto_transformed_sse_stream_from_context")
@@ -6563,12 +6492,9 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
             && !function.contains("async_stream::stream!"),
         "response pipeline should delegate transformed usage record construction and stream internals"
     );
+    assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
-            && adapter_source.contains("record_transformed_response_usage")
-            && adapter_source.contains("record_claude_transformed_response_usage")
-            && adapter_source.contains("record_codex_auto_transformed_response_usage")
-            && !adapter_source.contains("ClaudeTransformedJsonResponseContext")
+        !adapter_source.contains("ClaudeTransformedJsonResponseContext")
             && !adapter_source.contains("claude_transformed_json_response_from_context")
             && !adapter_source.contains("CodexAutoTransformedJsonResponseContext")
             && !adapter_source.contains("codex_auto_transformed_json_response_from_context")
@@ -12628,7 +12554,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let host_forward_function = function_slice(
         &source,
         "pub(crate) async fn forward_proxy_request_with_host_runtime",
-        "#[cfg(test)]\n#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
+        "pub(crate) use crate::proxy_core::api::routing::{\n    route_plan_no_matching_host_providers_error",
     );
     let adapter_core_ports_import = function_slice(
         &source,
@@ -19774,6 +19700,13 @@ fn assert_proxy_legacy_module_removed(manifest_dir: &Path, legacy_path: &str, mo
             );
         }
     }
+}
+
+fn assert_proxy_core_adapter_no_response_pipeline_reexport(adapter_source: &str) {
+    assert!(
+        !adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{"),
+        "proxy_core_adapter should not re-export response_pipeline helpers; tests and callers must import the owning module directly"
+    );
 }
 
 fn collect_rust_files(dir: &Path, files: &mut Vec<PathBuf>) {
