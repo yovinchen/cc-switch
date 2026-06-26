@@ -12652,6 +12652,12 @@ fn production_forwarder_uses_protocol_state_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let protocol_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_protocol_state_source.rs");
+    let protocol_source =
+        fs::read_to_string(&protocol_source_path).expect("read forwarder_protocol_state_source.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -12666,6 +12672,18 @@ fn production_forwarder_uses_protocol_state_source_resource() {
     assert!(
         source.contains("ForwarderCodexChatProtocolEnrichmentInput"),
         "ForwarderProtocolStateSource must receive Codex chat enrichment gates as input"
+    );
+    assert!(
+        protocol_source.contains("struct CcSwitchForwarderProtocolStateSource")
+            && protocol_source.contains(
+                "impl ForwarderProtocolStateSource for CcSwitchForwarderProtocolStateSource"
+            ),
+        "default ForwarderProtocolStateSource implementation should live in the CC Switch host module"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_protocol_state_source::forwarder_protocol_state_source_from_runtime_parts")
+            && !adapter_source.contains("struct CcSwitchForwarderProtocolStateSource"),
+        "proxy_core_adapter should re-export, not own, the default forwarder protocol state source"
     );
 
     let struct_forbidden_markers = [
