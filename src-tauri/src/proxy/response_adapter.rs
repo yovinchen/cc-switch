@@ -79,6 +79,54 @@ pub(crate) async fn dispatch_proxy_request(
         .map_err(|error| record_forward_core_error_usage(state, ctx, is_stream, error))
 }
 
+pub(crate) async fn dispatch_proxy_request_to_proxy_response(
+    state: &ProxyState,
+    ctx: &mut RequestContext,
+    proxy_request: ProxyRequest,
+    is_stream: bool,
+) -> Result<ProxyResponse, ProxyError> {
+    let result = dispatch_proxy_request(state, ctx, proxy_request, is_stream).await?;
+    proxy_result_to_proxy_response(result, ctx, state)
+}
+
+pub(crate) async fn dispatch_claude_proxy_request_to_proxy_response(
+    state: &ProxyState,
+    ctx: &mut RequestContext,
+    proxy_request: ProxyRequest,
+    is_stream: bool,
+) -> Result<(ProxyResponse, String), ProxyError> {
+    let result = dispatch_proxy_request(state, ctx, proxy_request, is_stream).await?;
+    claude_proxy_result_to_proxy_response(result, ctx, state)
+}
+
+pub(crate) enum CodexProxyDispatchResponse {
+    ProxyResponse(ProxyResponse),
+    ErrorResponse(axum::response::Response),
+}
+
+pub(crate) async fn dispatch_codex_proxy_request_to_proxy_response(
+    state: &ProxyState,
+    ctx: &mut RequestContext,
+    proxy_request: ProxyRequest,
+    endpoint: &str,
+    is_stream: bool,
+) -> Result<CodexProxyDispatchResponse, ProxyError> {
+    let result = match dispatch_proxy_request(state, ctx, proxy_request, is_stream).await {
+        Ok(result) => result,
+        Err(error) => {
+            let response = codex_proxy_error_to_axum_response(
+                ctx.provider_name_for_error(),
+                &ctx.request_model,
+                endpoint,
+                &error,
+            )?;
+            return Ok(CodexProxyDispatchResponse::ErrorResponse(response));
+        }
+    };
+    proxy_result_to_proxy_response(result, ctx, state)
+        .map(CodexProxyDispatchResponse::ProxyResponse)
+}
+
 pub(crate) fn proxy_result_to_proxy_response(
     result: ProxyResult,
     ctx: &mut RequestContext,

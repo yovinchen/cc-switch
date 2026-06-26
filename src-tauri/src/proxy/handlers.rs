@@ -13,14 +13,15 @@ use super::{
     error_mapper::{management_api_error_to_proxy_error, proxy_core_error_to_proxy_error},
     handler_context::RequestContext,
     response_adapter::{
-        claude_passthrough_response_to_axum_response, claude_proxy_result_to_proxy_response,
-        claude_response_needs_transform, claude_transformed_response_to_axum_response,
+        claude_passthrough_response_to_axum_response, claude_response_needs_transform,
+        claude_transformed_response_to_axum_response,
         codex_chat_to_responses_transformed_response_to_axum_response,
-        codex_passthrough_response_to_axum_response, codex_proxy_error_to_axum_response,
-        codex_response_needs_chat_transform, collect_axum_request_body, dispatch_proxy_request,
+        codex_passthrough_response_to_axum_response, codex_response_needs_chat_transform,
+        collect_axum_request_body, dispatch_claude_proxy_request_to_proxy_response,
+        dispatch_codex_proxy_request_to_proxy_response, dispatch_proxy_request_to_proxy_response,
         gemini_passthrough_response_to_axum_response,
         openai_chat_passthrough_response_to_axum_response, proxy_event_envelope_to_axum_sse_event,
-        proxy_result_to_proxy_response,
+        CodexProxyDispatchResponse,
     },
 };
 use crate::app_config::AppType;
@@ -606,9 +607,9 @@ async fn handle_messages_for_app(
         extensions,
     });
 
-    let result = dispatch_proxy_request(&state, &ctx, proxy_request, is_stream).await?;
-
-    let (response, api_format) = claude_proxy_result_to_proxy_response(result, &mut ctx, &state)?;
+    let (response, api_format) =
+        dispatch_claude_proxy_request_to_proxy_response(&state, &mut ctx, proxy_request, is_stream)
+            .await?;
 
     // 检查是否需要格式转换（OpenRouter 等中转服务）
     let needs_transform = claude_response_needs_transform(&ctx)?;
@@ -666,19 +667,18 @@ pub async fn handle_chat_completions(
         extensions,
     });
 
-    let result = match dispatch_proxy_request(&state, &ctx, proxy_request, is_stream).await {
-        Ok(result) => result,
-        Err(error) => {
-            return codex_proxy_error_to_axum_response(
-                ctx.provider_name_for_error(),
-                &ctx.request_model,
-                &endpoint,
-                &error,
-            );
-        }
+    let response = match dispatch_codex_proxy_request_to_proxy_response(
+        &state,
+        &mut ctx,
+        proxy_request,
+        &endpoint,
+        is_stream,
+    )
+    .await?
+    {
+        CodexProxyDispatchResponse::ProxyResponse(response) => response,
+        CodexProxyDispatchResponse::ErrorResponse(response) => return Ok(response),
     };
-
-    let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
     openai_chat_passthrough_response_to_axum_response(response, &ctx, &state).await
 }
@@ -716,19 +716,18 @@ pub async fn handle_responses(
     let proxy_request = codex_proxy_request.request;
     let codex_tool_context = codex_proxy_request.tool_context;
 
-    let result = match dispatch_proxy_request(&state, &ctx, proxy_request, is_stream).await {
-        Ok(result) => result,
-        Err(error) => {
-            return codex_proxy_error_to_axum_response(
-                ctx.provider_name_for_error(),
-                &ctx.request_model,
-                &endpoint,
-                &error,
-            );
-        }
+    let response = match dispatch_codex_proxy_request_to_proxy_response(
+        &state,
+        &mut ctx,
+        proxy_request,
+        &endpoint,
+        is_stream,
+    )
+    .await?
+    {
+        CodexProxyDispatchResponse::ProxyResponse(response) => response,
+        CodexProxyDispatchResponse::ErrorResponse(response) => return Ok(response),
     };
-
-    let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
     if codex_response_needs_chat_transform(&ctx, &endpoint)? {
         return codex_chat_to_responses_transformed_response_to_axum_response(
@@ -778,19 +777,18 @@ pub async fn handle_responses_compact(
     let proxy_request = codex_proxy_request.request;
     let codex_tool_context = codex_proxy_request.tool_context;
 
-    let result = match dispatch_proxy_request(&state, &ctx, proxy_request, is_stream).await {
-        Ok(result) => result,
-        Err(error) => {
-            return codex_proxy_error_to_axum_response(
-                ctx.provider_name_for_error(),
-                &ctx.request_model,
-                &endpoint,
-                &error,
-            );
-        }
+    let response = match dispatch_codex_proxy_request_to_proxy_response(
+        &state,
+        &mut ctx,
+        proxy_request,
+        &endpoint,
+        is_stream,
+    )
+    .await?
+    {
+        CodexProxyDispatchResponse::ProxyResponse(response) => response,
+        CodexProxyDispatchResponse::ErrorResponse(response) => return Ok(response),
     };
-
-    let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
     if codex_response_needs_chat_transform(&ctx, &endpoint)? {
         return codex_chat_to_responses_transformed_response_to_axum_response(
@@ -846,9 +844,9 @@ pub async fn handle_gemini(
         extensions,
     });
 
-    let result = dispatch_proxy_request(&state, &ctx, proxy_request, is_stream).await?;
-
-    let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
+    let response =
+        dispatch_proxy_request_to_proxy_response(&state, &mut ctx, proxy_request, is_stream)
+            .await?;
 
     gemini_passthrough_response_to_axum_response(response, &ctx, &state).await
 }

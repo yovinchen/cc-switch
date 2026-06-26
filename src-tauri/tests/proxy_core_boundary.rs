@@ -804,6 +804,8 @@ const FORBIDDEN_HANDLER_PROXY_RESULT_RESPONSE_BRIDGE_MARKERS: &[&str] = &[
     ".apply_proxy_result(",
     "claude_api_format_for_proxy_result(",
     "proxy_core_response_to_proxy_response(",
+    "proxy_result_to_proxy_response(",
+    "claude_proxy_result_to_proxy_response(",
 ];
 const FORBIDDEN_HANDLER_RAW_JSON_BODY_PARSE_MARKERS: &[&str] = &[
     "parse_json_request_body(",
@@ -829,6 +831,7 @@ const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
     "record_forward_core_error_usage(",
     "let engine = state.proxy_engine();",
     "engine.handle(proxy_request).await",
+    "codex_proxy_error_to_axum_response(",
 ];
 const FORBIDDEN_PROVIDER_ADAPTER_BASE_URL_ERROR_MARKERS: &[&str] = &[
     "缺少 base_url 配置",
