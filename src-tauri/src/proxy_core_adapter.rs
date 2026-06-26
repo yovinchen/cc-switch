@@ -2816,9 +2816,6 @@ pub(crate) fn emit_proxy_core_event_bus_source(events: &ProxyEventBus, event: Pr
     });
 }
 
-#[allow(unused_imports)]
-pub(crate) use crate::proxy::host::cc_switch::event_sink::CcSwitchEventSink;
-
 pub(crate) fn provider_codex_auth_headers(
     auth: &ProviderAuthInfo,
 ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {

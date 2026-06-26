@@ -16978,11 +16978,11 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
         );
     }
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::event_sink::CcSwitchEventSink"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchEventSink")
             && !adapter_source.contains("impl ProxyEventSink for CcSwitchEventSink"),
-        "proxy_core_adapter should re-export, not own, the CC Switch event sink source"
+        "proxy_core_adapter should not re-export or own the CC Switch event sink source"
     );
     let adapter_core_ports_import = function_slice(
         &adapter_source,
