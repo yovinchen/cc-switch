@@ -11193,12 +11193,15 @@ fn production_proxy_module_excludes_managed_account_auth_module() {
 }
 
 #[test]
-fn production_adapter_owns_managed_account_tauri_runtime_source() {
+fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let adapter_runtime_source = function_slice(
-        &adapter_source,
+    let host_path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
+    let host_source =
+        fs::read_to_string(&host_path).expect("read managed_account_runtime_source.rs");
+    let host_runtime_source = function_slice(
+        &host_source,
         "impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource",
         "#[cfg(test)]\npub(crate) async fn resolve_managed_account_auth_from_runtime_source",
     );
@@ -11217,10 +11220,19 @@ fn production_adapter_owns_managed_account_tauri_runtime_source() {
         "copilot_model_vendor_from_app_handle(",
     ] {
         assert!(
-            adapter_runtime_source.contains(marker),
-            "CcSwitchManagedAccountRuntimeSource should own managed-account runtime source marker `{marker}`"
+            host_runtime_source.contains(marker),
+            "host managed_account_runtime_source should own marker `{marker}`"
         );
     }
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::managed_account_runtime_source::{"
+        ) && !adapter_source.contains(
+            "impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource"
+        ) && !adapter_source.contains("fn copilot_token_from_app_handle(")
+            && !adapter_source.contains("fn codex_oauth_token_from_app_handle("),
+        "proxy_core_adapter should re-export, not own, the managed-account Tauri runtime source"
+    );
 
     let forbidden_markers = ["crate::proxy::managed_account_auth"];
     let mut violations = Vec::new();
@@ -11238,7 +11250,7 @@ fn production_adapter_owns_managed_account_tauri_runtime_source() {
     }
     assert!(
         violations.is_empty(),
-        "managed account runtime source must be adapter-owned, not a proxy submodule:\n{}",
+        "managed account runtime source must not call the removed proxy managed-auth module:\n{}",
         violations.join("\n")
     );
 }
@@ -11246,8 +11258,8 @@ fn production_adapter_owns_managed_account_tauri_runtime_source() {
 #[test]
 fn production_adapter_managed_auth_planning_uses_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
+    let source = fs::read_to_string(&path).expect("read managed_account_runtime_source.rs");
     let method = function_slice(
         &source,
         "fn resolve_auth_for_provider<'a>",
@@ -11270,7 +11282,7 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
         for marker in FORBIDDEN_ADAPTER_MANAGED_AUTH_PLAN_RUNTIME_CALL_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs ManagedAccountRuntimeSource::resolve_auth_for_provider:{} contains direct runtime call marker `{}`",
+                    "host managed_account_runtime_source.rs ManagedAccountRuntimeSource::resolve_auth_for_provider:{} contains direct runtime call marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11280,7 +11292,7 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
 
     assert!(
         violations.is_empty(),
-        "adapter managed-auth provider extension must call core runtime-source orchestration instead of host auth functions directly:\n{}",
+        "host managed-auth provider extension must call core runtime-source orchestration instead of host auth functions directly:\n{}",
         violations.join("\n")
     );
 }
@@ -11288,33 +11300,43 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
 #[test]
 fn production_adapter_managed_auth_runtime_source_is_trait() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let host_path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
+    let host_source =
+        fs::read_to_string(&host_path).expect("read managed_account_runtime_source.rs");
 
     assert!(
-        source.contains("trait ManagedAccountRuntimeSource"),
-        "proxy_core_adapter must expose managed-account runtime reads behind a source trait"
+        host_source.contains("trait ManagedAccountRuntimeSource")
+            && adapter_source.contains("ManagedAccountRuntimeSourceRef"),
+        "managed-account runtime reads must stay behind a host source trait re-exported through adapter"
     );
 }
 
 #[test]
 fn production_adapter_managed_auth_tests_use_runtime_source_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let test_surface = function_slice(
-        &source,
-        "#[cfg(test)]\npub(crate) async fn resolve_managed_account_auth_from_runtime_source",
-        "pub(crate) const SESSION_REQUEST_ID_PREFIX",
-    );
+    let host_path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
+    let source = fs::read_to_string(&host_path).expect("read managed_account_runtime_source.rs");
+    let start = source
+        .find("#[cfg(test)]\npub(crate) async fn resolve_managed_account_auth_from_runtime_source")
+        .expect("find runtime-source test helper");
+    let test_surface = &source[start..];
 
     assert!(
+        test_surface.contains(
+            "runtime_source: &(dyn ManagedAccountRuntimeSource + Send + Sync)"
+        ) && test_surface.contains(".resolve_auth_for_provider("),
+        "managed-auth host test helper must keep using ManagedAccountRuntimeSource directly"
+    );
+    assert!(
         !test_surface.contains("app_handle: Option<&tauri::AppHandle>")
-            && !test_surface.contains("managed_account_runtime_source_from_app_handle(app_handle.cloned())"),
+            && !test_surface.contains(
+                "managed_account_runtime_source_from_app_handle(app_handle.cloned())"
+            ),
         "managed-auth adapter test helpers must use ManagedAccountRuntimeSource directly instead of AppHandle wrappers"
     );
 }
-
 #[test]
 fn production_forwarder_uses_managed_auth_runtime_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -11455,15 +11477,16 @@ fn production_forwarder_delegates_copilot_dynamic_base_url_to_runtime_source() {
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let forwarder_source =
         fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
+    let runtime_source =
+        fs::read_to_string(&source_path).expect("read managed_account_runtime_source.rs");
 
     assert!(
-        adapter_source.contains("apply_copilot_dynamic_base_url_for_provider"),
+        runtime_source.contains("apply_copilot_dynamic_base_url_for_provider"),
         "ManagedAccountRuntimeSource must expose provider-aware Copilot dynamic base URL mutation"
     );
     assert!(
-        adapter_source.contains(
+        runtime_source.contains(
             "resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source("
         ),
         "ManagedAccountRuntimeSource must delegate Copilot dynamic endpoint account binding to proxy-core"
@@ -11505,15 +11528,16 @@ fn production_forwarder_delegates_claude_api_format_to_runtime_source() {
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let forwarder_source =
         fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
+    let runtime_source =
+        fs::read_to_string(&source_path).expect("read managed_account_runtime_source.rs");
 
     assert!(
-        adapter_source.contains("resolve_claude_api_format_for_adapter"),
+        runtime_source.contains("resolve_claude_api_format_for_adapter"),
         "ManagedAccountRuntimeSource must expose adapter-gated Claude API format resolution"
     );
     assert!(
-        adapter_source.contains("resolve_core_copilot_model_vendor_for_binding_with_runtime_source("),
+        runtime_source.contains("resolve_core_copilot_model_vendor_for_binding_with_runtime_source("),
         "ManagedAccountRuntimeSource must delegate Copilot model vendor runtime gating to proxy-core"
     );
 
@@ -11936,15 +11960,16 @@ fn production_forwarder_delegates_copilot_live_model_resolution_to_runtime_sourc
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let forwarder_source =
         fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
+    let runtime_source =
+        fs::read_to_string(&source_path).expect("read managed_account_runtime_source.rs");
 
     assert!(
-        adapter_source.contains("apply_copilot_live_model_for_adapter"),
+        runtime_source.contains("apply_copilot_live_model_for_adapter"),
         "ManagedAccountRuntimeSource must expose adapter-gated Copilot live model body resolution"
     );
     assert!(
-        adapter_source.contains("resolve_core_copilot_live_model_for_binding_with_runtime_source("),
+        runtime_source.contains("resolve_core_copilot_live_model_for_binding_with_runtime_source("),
         "ManagedAccountRuntimeSource must delegate Copilot live model account binding to proxy-core"
     );
 
