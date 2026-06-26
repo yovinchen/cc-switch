@@ -824,6 +824,7 @@ mod tests {
     use crate::database::Database;
     use crate::error::AppError;
     use crate::provider::Provider;
+    use crate::proxy_core::api::ports::GlobalProxyConfig;
 
     #[tokio::test]
     async fn test_default_cost_multiplier_round_trip() -> Result<(), AppError> {
