@@ -1,6 +1,8 @@
+use crate::app_config::AppType;
+use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     AppKind, AuthInfo, AuthProvider, ChannelSpec, ProviderSpec, ProxyCoreResult, ProxyRequest,
-    auth_info_from_route_context,
+    auth_info_from_route_context, settings_config_with_channel_auth_key_for_app,
 };
 use futures::future::BoxFuture;
 
@@ -46,4 +48,18 @@ impl AuthProvider for CcSwitchAuthProvider {
             ))
         })
     }
+}
+
+pub(crate) fn provider_with_channel_auth_key(
+    app_type: &AppType,
+    provider: &Provider,
+    key_value: &str,
+) -> Provider {
+    let mut auth_provider = provider.clone();
+    auth_provider.settings_config = settings_config_with_channel_auth_key_for_app(
+        &AppKind::from(app_type),
+        &provider.settings_config,
+        key_value,
+    );
+    auth_provider
 }

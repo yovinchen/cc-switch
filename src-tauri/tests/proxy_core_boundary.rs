@@ -10887,14 +10887,19 @@ fn proxy_core_adapter_delegates_hot_switch_takeover_policies_to_core() {
 #[test]
 fn proxy_core_adapter_delegates_channel_key_settings_policy_to_typed_core_helper() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let function = function_slice(
-        &source,
-        "pub(crate) fn provider_with_channel_auth_key",
-        "pub(crate) use crate::proxy_core::api::domain::extract_claude_base_url_from_settings",
-    );
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/auth_provider.rs");
+    let source = fs::read_to_string(&source_path).expect("read auth_provider.rs");
+    let function = source.as_str();
 
+    assert!(
+        adapter_source
+            .contains("pub(crate) use crate::proxy::host::cc_switch::auth_provider::{")
+            && adapter_source.contains("provider_with_channel_auth_key")
+            && !adapter_source.contains("pub(crate) fn provider_with_channel_auth_key("),
+        "proxy_core_adapter should re-export, not own, provider_with_channel_auth_key"
+    );
     assert!(
         function.contains("settings_config_with_channel_auth_key_for_app("),
         "provider_with_channel_auth_key must delegate app-typed channel key settings policy to proxy-core"

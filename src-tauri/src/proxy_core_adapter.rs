@@ -2052,7 +2052,9 @@ pub(crate) use crate::proxy_core::api::ports::auth_info_from_route_context;
 pub(crate) use crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_provider_config;
 #[cfg(test)]
 pub(crate) use crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_route_context;
-pub(crate) use crate::proxy::host::cc_switch::auth_provider::CcSwitchAuthProvider;
+pub(crate) use crate::proxy::host::cc_switch::auth_provider::{
+    CcSwitchAuthProvider, provider_with_channel_auth_key,
+};
 
 #[derive(Clone)]
 struct CcSwitchClaudeDesktopGatewayAuthSource {
@@ -5157,20 +5159,6 @@ pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderA
             auth_key.source,
         )),
     }
-}
-
-pub(crate) fn provider_with_channel_auth_key(
-    app_type: &AppType,
-    provider: &Provider,
-    key_value: &str,
-) -> Provider {
-    let mut auth_provider = provider.clone();
-    auth_provider.settings_config = settings_config_with_channel_auth_key_for_app(
-        &AppKind::from(app_type),
-        &provider.settings_config,
-        key_value,
-    );
-    auth_provider
 }
 
 pub(crate) use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;
