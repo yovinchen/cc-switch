@@ -2584,8 +2584,9 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
     );
     assert!(
         auth_source.contains("pub(crate) struct CcSwitchClaudeDesktopGatewayAuthSource")
-            && auth_source
-                .contains("impl ClaudeDesktopGatewayAuthSource for CcSwitchClaudeDesktopGatewayAuthSource")
+            && auth_source.contains(
+                "impl ClaudeDesktopGatewayAuthSource for CcSwitchClaudeDesktopGatewayAuthSource"
+            )
             && auth_source.contains("get_or_create_claude_desktop_gateway_token_from_db_source(")
             && auth_source.contains("claude_desktop_gateway_token_error"),
         "CC Switch Claude Desktop gateway auth source implementation should live in host/cc_switch"
@@ -3095,11 +3096,13 @@ fn proxy_core_adapter_uses_host_reachability_probe_source() {
     let services_impl = services_source.as_str();
 
     assert!(
-        adapter_source.contains(
+        (adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::channel_reachability_probe::{"
-        ) && !adapter_source.contains(
-            "impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe"
-        ) && !adapter_source.contains("probe_channel_reachability_from_db_source("),
+        ) || adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::channel_reachability_probe::CcSwitchChannelReachabilityProbe"
+        )) && !adapter_source
+            .contains("impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe")
+            && !adapter_source.contains("probe_channel_reachability_from_db_source("),
         "DB-backed reachability probe implementation should live in the host cc_switch module"
     );
     assert!(
@@ -8526,7 +8529,8 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
     }
 
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::provider_adapter_context::{")
+        adapter_source
+            .contains("pub(crate) use crate::proxy::host::cc_switch::provider_adapter_context::{")
             && adapter_source.contains("ForwarderAdapterContext"),
         "proxy_core_adapter should expose provider adapter context through a host-module re-export"
     );
@@ -10922,8 +10926,7 @@ fn proxy_core_adapter_delegates_channel_key_settings_policy_to_typed_core_helper
     let function = source.as_str();
 
     assert!(
-        adapter_source
-            .contains("pub(crate) use crate::proxy::host::cc_switch::auth_provider::{")
+        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::auth_provider::{")
             && adapter_source.contains("provider_with_channel_auth_key")
             && !adapter_source.contains("pub(crate) fn provider_with_channel_auth_key("),
         "proxy_core_adapter should re-export, not own, provider_with_channel_auth_key"
@@ -11234,11 +11237,41 @@ fn proxy_core_adapter_delegates_proxy_services_to_host_module() {
         "CC Switch proxy service container should live in host/cc_switch/proxy_services.rs"
     );
     assert!(
-        adapter_source
-            .contains("pub(crate) use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices")
-            && !adapter_source.contains("pub(crate) struct CcSwitchProxyServices")
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices"
+        ) && !adapter_source.contains("pub(crate) struct CcSwitchProxyServices")
             && !adapter_source.contains("impl<R> ProxyServices for CcSwitchProxyServices"),
         "proxy_core_adapter should re-export, not own, the CC Switch proxy service container"
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_http_server_lifecycle_to_transport_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let server_path = manifest_dir.join("src/proxy/transport/http/server.rs");
+    let server_source = fs::read_to_string(&server_path).expect("read transport/http/server.rs");
+
+    assert!(
+        server_source.contains("pub(crate) struct ProxyHttpServerHandles")
+            && server_source.contains("pub(crate) async fn start_proxy_http_server")
+            && server_source.contains("pub(crate) async fn bind_proxy_http_listener")
+            && server_source.contains("pub(crate) fn proxy_http_router_from_state")
+            && server_source.contains("pub(crate) fn spawn_proxy_http_accept_loop")
+            && server_source.contains("pub(crate) async fn await_proxy_http_accept_loop_stop")
+            && server_source.contains("pub(crate) async fn stop_proxy_http_server"),
+        "HTTP server lifecycle and route/accept-loop helpers should live in transport/http/server.rs"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::transport::http::server::{")
+            && adapter_source.contains("ProxyHttpServerHandles")
+            && adapter_source.contains("start_proxy_http_server")
+            && adapter_source.contains("stop_proxy_http_server")
+            && !adapter_source.contains("pub(crate) struct ProxyHttpServerHandles")
+            && !adapter_source.contains("pub(crate) async fn start_proxy_http_server")
+            && !adapter_source.contains("pub(crate) fn spawn_proxy_http_accept_loop"),
+        "proxy_core_adapter should re-export, not own, the HTTP server lifecycle"
     );
 }
 
@@ -11424,9 +11457,8 @@ fn production_adapter_managed_auth_tests_use_runtime_source_surface() {
     let test_surface = &source[start..];
 
     assert!(
-        test_surface.contains(
-            "runtime_source: &(dyn ManagedAccountRuntimeSource + Send + Sync)"
-        ) && test_surface.contains(".resolve_auth_for_provider("),
+        test_surface.contains("runtime_source: &(dyn ManagedAccountRuntimeSource + Send + Sync)")
+            && test_surface.contains(".resolve_auth_for_provider("),
         "managed-auth host test helper must keep using ManagedAccountRuntimeSource directly"
     );
     assert!(
@@ -11443,8 +11475,7 @@ fn production_forwarder_uses_managed_auth_runtime_source_resource() {
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let source = fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
     let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/forwarder_auth_source.rs");
-    let auth_source =
-        fs::read_to_string(&auth_source_path).expect("read forwarder_auth_source.rs");
+    let auth_source = fs::read_to_string(&auth_source_path).expect("read forwarder_auth_source.rs");
     let request_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
     let request_source =
@@ -11598,7 +11629,8 @@ fn production_forwarder_delegates_copilot_dynamic_base_url_to_runtime_source() {
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let forwarder_source =
         fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
-    let source_path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
+    let source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
     let runtime_source =
         fs::read_to_string(&source_path).expect("read managed_account_runtime_source.rs");
 
@@ -11649,7 +11681,8 @@ fn production_forwarder_delegates_claude_api_format_to_runtime_source() {
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let forwarder_source =
         fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
-    let source_path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
+    let source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
     let runtime_source =
         fs::read_to_string(&source_path).expect("read managed_account_runtime_source.rs");
 
@@ -12081,7 +12114,8 @@ fn production_forwarder_delegates_copilot_live_model_resolution_to_runtime_sourc
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let forwarder_source =
         fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
-    let source_path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
+    let source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
     let runtime_source =
         fs::read_to_string(&source_path).expect("read managed_account_runtime_source.rs");
 
@@ -12191,8 +12225,7 @@ fn production_forwarder_uses_auth_source_resource() {
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/forwarder_auth_source.rs");
-    let auth_source =
-        fs::read_to_string(&auth_source_path).expect("read forwarder_auth_source.rs");
+    let auth_source = fs::read_to_string(&auth_source_path).expect("read forwarder_auth_source.rs");
     assert!(
         adapter_source.contains(
             "type ForwarderAuthHeaders = crate::proxy_core::api::transport::ForwarderAuthHeaders"
@@ -14192,8 +14225,12 @@ fn proxy_core_adapter_delegates_provider_source_to_host_module() {
             && source.contains("impl ProviderSource for CcSwitchProviderSource")
             && source.contains("provider_specs_from_db_source(&self.db, app)")
             && source.contains("current_provider_id_from_db_source(&self.db, app)")
-            && source.contains("active_route_target_from_runtime_source(&self.current_providers, app).await")
-            && source.contains("route_candidate_provider_ids_from_router_source(&self.router, app).await"),
+            && source.contains(
+                "active_route_target_from_runtime_source(&self.current_providers, app).await"
+            )
+            && source.contains(
+                "route_candidate_provider_ids_from_router_source(&self.router, app).await"
+            ),
         "CC Switch provider source should live in host/cc_switch/provider_source.rs"
     );
     assert!(
@@ -14429,7 +14466,8 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
         source.contains("pub(crate) struct CcSwitchRouteResolver")
             && source.contains("impl RouteResolver for CcSwitchRouteResolver")
             && source.contains("route_plan_from_request(request)")
-            && source.contains("management_route_response_from_router_source(&self.router, request)"),
+            && source
+                .contains("management_route_response_from_router_source(&self.router, request)"),
         "CC Switch route resolver should live in host/cc_switch/route_resolver.rs"
     );
     assert!(
@@ -14765,9 +14803,9 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
         "CC Switch event sink implementation should live in host/cc_switch/event_sink.rs"
     );
     assert!(
-        adapter_source
-            .contains("pub(crate) use crate::proxy::host::cc_switch::event_sink::CcSwitchEventSink")
-            && !adapter_source.contains("pub(crate) struct CcSwitchEventSink")
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::event_sink::CcSwitchEventSink"
+        ) && !adapter_source.contains("pub(crate) struct CcSwitchEventSink")
             && !adapter_source.contains("impl ProxyEventSink for CcSwitchEventSink"),
         "proxy_core_adapter should re-export, not own, the CC Switch event sink source"
     );
@@ -14816,8 +14854,7 @@ fn proxy_core_adapter_delegates_auth_provider_source_to_host_module() {
         "CC Switch auth provider implementation should live in host/cc_switch/auth_provider.rs"
     );
     assert!(
-        adapter_source
-            .contains("pub(crate) use crate::proxy::host::cc_switch::auth_provider::")
+        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::auth_provider::")
             && adapter_source.contains("CcSwitchAuthProvider")
             && adapter_source.contains("auth_info_from_cc_switch_route_context")
             && !adapter_source.contains("pub(crate) struct CcSwitchAuthProvider")
@@ -15567,13 +15604,13 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let runtime_state = function_slice(&source, "    pub async fn start", "    fn build_router");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let start_orchestration = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) async fn start_proxy_http_server",
         "pub(crate) async fn bind_proxy_http_listener",
     );
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let bound_source = function_slice(
         &adapter_source,
         "pub(crate) fn record_proxy_server_bound_runtime_source",
@@ -15590,9 +15627,9 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
         "pub(crate) async fn set_active_route_target_runtime_source",
     );
     let accept_loop_source = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) fn spawn_proxy_http_accept_loop",
-        "pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts",
+        "pub(crate) async fn await_proxy_http_accept_loop_stop",
     );
 
     assert!(
@@ -15605,13 +15642,13 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
     assert!(
         start_orchestration.contains("record_proxy_server_bound_runtime_source(")
             && start_orchestration.contains("record_proxy_server_started_info_runtime_source("),
-        "proxy_core_adapter start orchestration must use adapter-owned start runtime side-effect helpers"
+        "HTTP transport start orchestration must use adapter-owned start runtime side-effect helpers"
     );
 
     assert!(
         accept_loop_source
             .contains("record_proxy_server_stopped_runtime_event_source(&state).await"),
-        "proxy_core_adapter accept loop must own stopped runtime side effects"
+        "HTTP transport accept loop must call adapter-owned stopped runtime side effects"
     );
 
     assert!(
@@ -15651,17 +15688,15 @@ fn production_proxy_server_delegates_route_assembly_to_adapter() {
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let start_slice = function_slice(&source, "    pub async fn start", "    pub async fn stop");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let adapter_start = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) async fn start_proxy_http_server",
         "pub(crate) async fn bind_proxy_http_listener",
     );
     let adapter_router = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) fn proxy_http_router_from_state",
-        "pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts",
+        "pub(crate) fn spawn_proxy_http_accept_loop",
     );
 
     assert!(
@@ -15673,7 +15708,7 @@ fn production_proxy_server_delegates_route_assembly_to_adapter() {
 
     assert!(
         adapter_start.contains("let app = proxy_http_router_from_state(state.clone());"),
-        "proxy_core_adapter start orchestration must build the Axum router from adapter-owned state"
+        "HTTP transport start orchestration must build the Axum router from runtime state"
     );
 
     assert!(
@@ -15684,7 +15719,7 @@ fn production_proxy_server_delegates_route_assembly_to_adapter() {
             && adapter_router.contains("middleware::from_fn_with_state(")
             && adapter_router.contains("DefaultBodyLimit::max(200 * 1024 * 1024)")
             && adapter_router.contains(".with_state(state)"),
-        "proxy_core_adapter must own the management, protocol, middleware, and body-limit route tree"
+        "HTTP transport module must own the management, protocol, middleware, and body-limit route tree"
     );
 
     let mut violations = Vec::new();
@@ -15714,17 +15749,15 @@ fn production_proxy_server_delegates_accept_loop_to_adapter() {
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let start_slice = function_slice(&source, "    pub async fn start", "    pub async fn stop");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let start_orchestration = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) async fn start_proxy_http_server",
         "pub(crate) async fn bind_proxy_http_listener",
     );
     let accept_loop = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) fn spawn_proxy_http_accept_loop",
-        "pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts",
+        "pub(crate) async fn await_proxy_http_accept_loop_stop",
     );
 
     assert!(
@@ -15737,7 +15770,7 @@ fn production_proxy_server_delegates_accept_loop_to_adapter() {
     assert!(
         start_orchestration
             .contains("spawn_proxy_http_accept_loop(listener, app, shutdown_rx, state)"),
-        "proxy_core_adapter start orchestration must launch the delegated Hyper accept loop"
+        "HTTP transport start orchestration must launch the delegated Hyper accept loop"
     );
 
     assert!(
@@ -15746,7 +15779,7 @@ fn production_proxy_server_delegates_accept_loop_to_adapter() {
             && accept_loop.contains(".preserve_header_case(true)")
             && accept_loop.contains("serve_connection(TokioIo::new(stream), service)")
             && accept_loop.contains("record_proxy_server_stopped_runtime_event_source(&state).await"),
-        "proxy_core_adapter must own accept-loop, header-case capture, connection serving, and stop side effects"
+        "HTTP transport module must own accept-loop, header-case capture, connection serving, and stop side effects"
     );
 
     let mut violations = Vec::new();
@@ -15776,15 +15809,13 @@ fn production_proxy_server_delegates_listener_bind_to_adapter() {
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let start_slice = function_slice(&source, "    pub async fn start", "    pub async fn stop");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let start_orchestration = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) async fn start_proxy_http_server",
         "pub(crate) async fn bind_proxy_http_listener",
     );
     let listener_bind = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) async fn bind_proxy_http_listener",
         "pub(crate) fn proxy_http_router_from_state",
     );
@@ -15798,7 +15829,7 @@ fn production_proxy_server_delegates_listener_bind_to_adapter() {
 
     assert!(
         start_orchestration.contains("bind_proxy_http_listener(config).await?"),
-        "proxy_core_adapter start orchestration must bind the listener through the adapter helper"
+        "HTTP transport start orchestration must bind the listener through the lifecycle helper"
     );
 
     assert!(
@@ -15807,7 +15838,7 @@ fn production_proxy_server_delegates_listener_bind_to_adapter() {
             && listener_bind.contains(".local_addr()")
             && listener_bind.contains("ProxyError::BindFailed(format!(\"无效的地址: {e}\"))")
             && listener_bind.contains("ProxyError::BindFailed(e.to_string())"),
-        "proxy_core_adapter must own listener address parsing, bind, local address lookup, and bind error mapping"
+        "HTTP transport module must own listener address parsing, bind, local address lookup, and bind error mapping"
     );
 
     let mut violations = Vec::new();
@@ -15841,12 +15872,10 @@ fn production_proxy_server_delegates_stop_wait_to_adapter() {
         "    pub async fn stop",
         "    pub async fn get_status",
     );
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let stop_wait = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) async fn await_proxy_http_accept_loop_stop",
-        "pub(crate) fn record_proxy_server_listen_port_runtime_source",
+        "/// 代理HTTP服务器",
     );
 
     assert!(
@@ -15864,7 +15893,7 @@ fn production_proxy_server_delegates_stop_wait_to_adapter() {
             && stop_wait.contains("handles.signal_shutdown().await?")
             && stop_wait.contains("handles.take_server_handle().await")
             && stop_wait.contains("await_proxy_http_accept_loop_stop(handle).await"),
-        "proxy_core_adapter must own accept-loop stop wait timeout, shutdown signaling, handle taking, logging, and error mapping"
+        "HTTP transport module must own accept-loop stop wait timeout, shutdown signaling, handle taking, logging, and error mapping"
     );
 
     let mut violations = Vec::new();
@@ -15898,10 +15927,8 @@ fn production_proxy_server_delegates_handle_storage_to_adapter() {
         "pub struct ProxyServer",
         "    pub async fn get_status",
     );
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let adapter_handles = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) struct ProxyHttpServerHandles",
         "pub(crate) async fn bind_proxy_http_listener",
     );
@@ -15926,7 +15953,7 @@ fn production_proxy_server_delegates_handle_storage_to_adapter() {
             && adapter_handles.contains("proxy_http_shutdown_channel()")
             && adapter_handles.contains("handles.store_shutdown_sender(shutdown_tx).await")
             && adapter_handles.contains("handles.store_server_handle(handle).await"),
-        "proxy_core_adapter must own HTTP server handle storage and running-state gates"
+        "HTTP transport module must own HTTP server handle storage and running-state gates"
     );
 
     let mut violations = Vec::new();
@@ -16373,7 +16400,8 @@ fn production_provider_router_config_source_uses_core_config_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_router_config_source.rs");
+    let source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/provider_router_config_source.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_router_config_source.rs");
 
     assert!(
@@ -16440,8 +16468,11 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
     );
     assert!(
         !adapter_source.contains("struct CcSwitchProviderRouterProviderSource")
-            && !adapter_source.contains("impl ProviderSource for CcSwitchProviderRouterProviderSource")
-            && !adapter_source.contains("impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource"),
+            && !adapter_source
+                .contains("impl ProviderSource for CcSwitchProviderRouterProviderSource")
+            && !adapter_source.contains(
+                "impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource"
+            ),
         "proxy_core_adapter should not own the ProviderRouter provider source"
     );
 
@@ -16471,9 +16502,9 @@ fn production_provider_router_channel_source_uses_core_channel_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_router_channel_source.rs");
-    let source =
-        fs::read_to_string(&source_path).expect("read provider_router_channel_source.rs");
+    let source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/provider_router_channel_source.rs");
+    let source = fs::read_to_string(&source_path).expect("read provider_router_channel_source.rs");
 
     assert!(
         source.contains("source: CcSwitchChannelSource")
@@ -16486,8 +16517,9 @@ fn production_provider_router_channel_source_uses_core_channel_source() {
     );
     assert!(
         !adapter_source.contains("struct CcSwitchProviderRouterChannelSource")
-            && !adapter_source
-                .contains("impl ProviderRouterChannelSource for CcSwitchProviderRouterChannelSource"),
+            && !adapter_source.contains(
+                "impl ProviderRouterChannelSource for CcSwitchProviderRouterChannelSource"
+            ),
         "proxy_core_adapter should not own the ProviderRouter channel source"
     );
 
@@ -16520,8 +16552,8 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
     let services_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_services.rs");
     let services_source = fs::read_to_string(&services_path).expect("read proxy_services.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/database_channel_source.rs");
-    let source = fs::read_to_string(&source_path)
-        .expect("read host/cc_switch/database_channel_source.rs");
+    let source =
+        fs::read_to_string(&source_path).expect("read host/cc_switch/database_channel_source.rs");
 
     assert!(
         services_source.contains(
@@ -16597,8 +16629,10 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
     );
     assert!(
         !adapter_source.contains("struct CcSwitchProviderRouterHealthStore")
-            && !adapter_source.contains("impl ProviderHealthStore for CcSwitchProviderRouterHealthStore")
-            && !adapter_source.contains("impl ProviderRouterHealthStore for CcSwitchProviderRouterHealthStore"),
+            && !adapter_source
+                .contains("impl ProviderHealthStore for CcSwitchProviderRouterHealthStore")
+            && !adapter_source
+                .contains("impl ProviderRouterHealthStore for CcSwitchProviderRouterHealthStore"),
         "proxy_core_adapter should not own the ProviderRouter health store"
     );
 

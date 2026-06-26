@@ -9,20 +9,389 @@
 #[cfg(test)]
 use crate::database::Database;
 use crate::proxy::error::ProxyError;
+use crate::proxy::transport::http::handlers;
+use crate::proxy::transport::upstream::hyper_client::OriginalHeaderCases;
 #[cfg(test)]
 use crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source;
 use crate::proxy_core_adapter::ProxyState;
 use crate::proxy_core_adapter::{
-    provider_circuit_breaker_stats_source, reset_provider_circuit_breaker_source,
-    server_log_codes as log_srv, set_active_route_target_runtime_source, start_proxy_http_server,
-    stop_proxy_http_server, update_all_circuit_breaker_configs_source,
-    update_app_circuit_breaker_config_source, CircuitBreakerConfig, CircuitBreakerStats,
-    ProxyConfig, ProxyHttpServerHandles, ProxyRuntimeStatus, ProxyServerInfo,
+    provider_circuit_breaker_stats_source, record_proxy_server_bound_runtime_source,
+    record_proxy_server_started_info_runtime_source,
+    record_proxy_server_stopped_runtime_event_source, reset_provider_circuit_breaker_source,
+    server_log_codes, set_active_route_target_runtime_source,
+    update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
+    CircuitBreakerConfig, CircuitBreakerStats, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
 };
-#[cfg(test)]
-use axum::Router;
-#[cfg(test)]
+use axum::{
+    extract::DefaultBodyLimit,
+    middleware,
+    routing::{any, get, post, put},
+    Router as AxumRouter,
+};
+use hyper_util::rt::TokioIo;
+use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::sync::{oneshot, RwLock};
+use tokio::task::JoinHandle;
+
+#[derive(Clone)]
+pub(crate) struct ProxyHttpServerHandles {
+    shutdown_tx: Arc<RwLock<Option<oneshot::Sender<()>>>>,
+    server_handle: Arc<RwLock<Option<JoinHandle<()>>>>,
+}
+
+impl ProxyHttpServerHandles {
+    pub(crate) fn new() -> Self {
+        Self {
+            shutdown_tx: Arc::new(RwLock::new(None)),
+            server_handle: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    pub(crate) async fn ensure_not_running(&self) -> Result<(), ProxyError> {
+        if self.shutdown_tx.read().await.is_some() {
+            return Err(ProxyError::AlreadyRunning);
+        }
+
+        Ok(())
+    }
+
+    pub(crate) async fn store_shutdown_sender(&self, shutdown_tx: oneshot::Sender<()>) {
+        *self.shutdown_tx.write().await = Some(shutdown_tx);
+    }
+
+    pub(crate) async fn store_server_handle(&self, server_handle: JoinHandle<()>) {
+        *self.server_handle.write().await = Some(server_handle);
+    }
+
+    pub(crate) async fn signal_shutdown(&self) -> Result<(), ProxyError> {
+        if let Some(tx) = self.shutdown_tx.write().await.take() {
+            let _ = tx.send(());
+            Ok(())
+        } else {
+            Err(ProxyError::NotRunning)
+        }
+    }
+
+    pub(crate) async fn take_server_handle(&self) -> Option<JoinHandle<()>> {
+        self.server_handle.write().await.take()
+    }
+}
+
+impl Default for ProxyHttpServerHandles {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub(crate) fn proxy_http_shutdown_channel() -> (oneshot::Sender<()>, oneshot::Receiver<()>) {
+    oneshot::channel()
+}
+
+pub(crate) async fn start_proxy_http_server(
+    config: &ProxyConfig,
+    state: ProxyState,
+    handles: &ProxyHttpServerHandles,
+) -> Result<ProxyServerInfo, ProxyError> {
+    handles.ensure_not_running().await?;
+
+    let (shutdown_tx, shutdown_rx) = proxy_http_shutdown_channel();
+    let app = proxy_http_router_from_state(state.clone());
+    let (listener, local_addr) = bind_proxy_http_listener(config).await?;
+    let actual_port = local_addr.port();
+
+    log::info!(
+        "[{}] 代理服务器启动于 {local_addr}",
+        server_log_codes::STARTED
+    );
+    let bound_address = local_addr.ip().to_string();
+    record_proxy_server_bound_runtime_source(&state, &bound_address, actual_port);
+
+    handles.store_shutdown_sender(shutdown_tx).await;
+
+    let server_info = record_proxy_server_started_info_runtime_source(
+        &state,
+        &config.listen_address,
+        actual_port,
+    )
+    .await;
+
+    let handle = spawn_proxy_http_accept_loop(listener, app, shutdown_rx, state);
+    handles.store_server_handle(handle).await;
+
+    Ok(server_info)
+}
+
+pub(crate) async fn bind_proxy_http_listener(
+    config: &ProxyConfig,
+) -> Result<(tokio::net::TcpListener, SocketAddr), ProxyError> {
+    let addr: SocketAddr = format!("{}:{}", config.listen_address, config.listen_port)
+        .parse()
+        .map_err(|e| ProxyError::BindFailed(format!("无效的地址: {e}")))?;
+
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .map_err(|e| ProxyError::BindFailed(e.to_string()))?;
+    let local_addr = listener
+        .local_addr()
+        .map_err(|e| ProxyError::BindFailed(e.to_string()))?;
+
+    Ok((listener, local_addr))
+}
+
+pub(crate) fn proxy_http_router_from_state(state: ProxyState) -> AxumRouter {
+    let management_routes = AxumRouter::new()
+        .route("/proxy/v1/health", get(handlers::health_check))
+        .route("/proxy/v1/status", get(handlers::get_status))
+        .route("/proxy/v1/events", get(handlers::stream_proxy_events))
+        .route("/proxy/v1/apps", get(handlers::list_proxy_apps))
+        .route(
+            "/proxy/v1/apps/:app/providers",
+            get(handlers::list_proxy_providers),
+        )
+        .route(
+            "/proxy/v1/apps/:app/models",
+            get(handlers::list_proxy_app_models),
+        )
+        .route(
+            "/proxy/v1/channels",
+            get(handlers::list_all_proxy_channels).post(handlers::create_proxy_channel),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id",
+            get(handlers::get_proxy_channel)
+                .patch(handlers::update_proxy_channel)
+                .delete(handlers::delete_proxy_channel),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id/keys",
+            get(handlers::list_proxy_channel_keys),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id/keys/:key_ref",
+            put(handlers::upsert_proxy_channel_key)
+                .patch(handlers::update_proxy_channel_key)
+                .delete(handlers::delete_proxy_channel_key),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id/models",
+            get(handlers::list_proxy_channel_models).put(handlers::replace_proxy_channel_models),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id/test",
+            post(handlers::test_proxy_channel),
+        )
+        .route(
+            "/proxy/v1/apps/:app/channels",
+            get(handlers::list_proxy_channels),
+        )
+        .route(
+            "/proxy/v1/apps/:app/routes/current",
+            get(handlers::get_current_proxy_route),
+        )
+        .route(
+            "/proxy/v1/apps/:app/channels/migration/preview",
+            get(handlers::preview_proxy_channel_migration),
+        )
+        .route(
+            "/proxy/v1/apps/:app/channels/migration/materialize",
+            post(handlers::materialize_proxy_channel_migration),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id/breakers/stats",
+            get(handlers::get_proxy_channel_breaker_stats),
+        )
+        .route(
+            "/proxy/v1/channels/:channel_id/breakers/reset",
+            post(handlers::reset_proxy_channel_breaker),
+        )
+        .route(
+            "/proxy/v1/route/resolve",
+            post(handlers::resolve_proxy_route),
+        )
+        .route("/proxy/v1/groups", get(handlers::list_proxy_groups))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            handlers::require_proxy_management_auth,
+        ));
+
+    AxumRouter::new()
+        .route("/health", get(handlers::health_check))
+        .route("/status", get(handlers::get_status))
+        .merge(management_routes)
+        .route("/v1/messages", post(handlers::handle_messages))
+        .route("/claude/v1/messages", post(handlers::handle_messages))
+        .route(
+            "/claude-desktop/v1/models",
+            get(handlers::handle_claude_desktop_models),
+        )
+        .route(
+            "/claude-desktop/v1/messages",
+            post(handlers::handle_claude_desktop_messages),
+        )
+        .route("/chat/completions", post(handlers::handle_chat_completions))
+        .route(
+            "/v1/chat/completions",
+            post(handlers::handle_chat_completions),
+        )
+        .route(
+            "/v1/v1/chat/completions",
+            post(handlers::handle_chat_completions),
+        )
+        .route(
+            "/codex/v1/chat/completions",
+            post(handlers::handle_chat_completions),
+        )
+        .route("/models", get(handlers::handle_models))
+        .route("/v1/models", get(handlers::handle_models))
+        .route("/responses", post(handlers::handle_responses))
+        .route("/v1/responses", post(handlers::handle_responses))
+        .route("/v1/v1/responses", post(handlers::handle_responses))
+        .route("/codex/v1/responses", post(handlers::handle_responses))
+        .route(
+            "/responses/compact",
+            post(handlers::handle_responses_compact),
+        )
+        .route(
+            "/v1/responses/compact",
+            post(handlers::handle_responses_compact),
+        )
+        .route(
+            "/v1/v1/responses/compact",
+            post(handlers::handle_responses_compact),
+        )
+        .route(
+            "/codex/v1/responses/compact",
+            post(handlers::handle_responses_compact),
+        )
+        .route("/v1beta/*path", any(handlers::handle_gemini))
+        .route("/gemini/v1beta/*path", any(handlers::handle_gemini))
+        .route("/gemini/v1/*path", any(handlers::handle_gemini))
+        .layer(DefaultBodyLimit::max(200 * 1024 * 1024))
+        .with_state(state)
+}
+
+pub(crate) fn spawn_proxy_http_accept_loop(
+    listener: tokio::net::TcpListener,
+    app: AxumRouter,
+    shutdown_rx: oneshot::Receiver<()>,
+    state: ProxyState,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut shutdown_rx = shutdown_rx;
+        loop {
+            tokio::select! {
+                result = listener.accept() => {
+                    let (stream, _remote_addr) = match result {
+                        Ok(v) => v,
+                        Err(e) => {
+                            log::error!(
+                                "[{SRV}] accept 失败: {e}",
+                                SRV = server_log_codes::ACCEPT_ERR
+                            );
+                            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                            continue;
+                        }
+                    };
+
+                    let app = app.clone();
+                    tokio::spawn(async move {
+                        let original_cases = {
+                            let mut peek_buf = vec![0u8; 8192];
+                            match stream.peek(&mut peek_buf).await {
+                                Ok(n) => {
+                                    let cases =
+                                        OriginalHeaderCases::from_raw_bytes(&peek_buf[..n]);
+                                    log::debug!(
+                                        "[ProxyServer] Peeked {} bytes, captured {} header casings",
+                                        n,
+                                        cases.cases.len()
+                                    );
+                                    cases
+                                }
+                                Err(e) => {
+                                    log::debug!("[ProxyServer] peek failed (non-fatal): {e}");
+                                    OriginalHeaderCases::default()
+                                }
+                            }
+                        };
+
+                        let service = hyper::service::service_fn(
+                            move |req: hyper::Request<hyper::body::Incoming>| {
+                                let mut router = app.clone();
+                                let cases = original_cases.clone();
+                                async move {
+                                    let (mut parts, body) = req.into_parts();
+                                    parts.extensions.insert(cases);
+
+                                    let body = axum::body::Body::new(body);
+                                    let axum_req = http::Request::from_parts(parts, body);
+                                    <AxumRouter as tower::Service<
+                                        http::Request<axum::body::Body>,
+                                    >>::call(&mut router, axum_req)
+                                    .await
+                                }
+                            },
+                        );
+
+                        if let Err(e) = hyper::server::conn::http1::Builder::new()
+                            .preserve_header_case(true)
+                            .serve_connection(TokioIo::new(stream), service)
+                            .await
+                        {
+                            log::debug!(
+                                "[{SRV}] connection error: {e}",
+                                SRV = server_log_codes::CONN_ERR
+                            );
+                        }
+                    });
+                }
+                _ = &mut shutdown_rx => {
+                    break;
+                }
+            }
+        }
+
+        record_proxy_server_stopped_runtime_event_source(&state).await;
+    })
+}
+
+pub(crate) async fn await_proxy_http_accept_loop_stop(
+    handle: JoinHandle<()>,
+) -> Result<(), ProxyError> {
+    match tokio::time::timeout(std::time::Duration::from_secs(5), handle).await {
+        Ok(Ok(())) => {
+            log::info!("[{}] 代理服务器已完全停止", server_log_codes::STOPPED);
+            Ok(())
+        }
+        Ok(Err(e)) => {
+            log::warn!(
+                "[{}] 代理服务器任务异常终止: {e}",
+                server_log_codes::TASK_ERROR
+            );
+            Err(ProxyError::StopFailed(e.to_string()))
+        }
+        Err(_) => {
+            log::warn!(
+                "[{}] 代理服务器停止超时（5秒），强制继续",
+                server_log_codes::STOP_TIMEOUT
+            );
+            Err(ProxyError::StopTimeout)
+        }
+    }
+}
+
+pub(crate) async fn stop_proxy_http_server(
+    handles: &ProxyHttpServerHandles,
+) -> Result<(), ProxyError> {
+    handles.signal_shutdown().await?;
+
+    if let Some(handle) = handles.take_server_handle().await {
+        await_proxy_http_accept_loop_stop(handle).await
+    } else {
+        Ok(())
+    }
+}
 
 /// 代理HTTP服务器
 pub struct ProxyServer {
@@ -68,7 +437,10 @@ impl ProxyServer {
             .runtime_status()
             .await
             .unwrap_or_else(|error| {
-                log::warn!("[{}] 获取代理状态失败: {error}", log_srv::TASK_ERROR);
+                log::warn!(
+                    "[{}] 获取代理状态失败: {error}",
+                    server_log_codes::TASK_ERROR
+                );
                 ProxyRuntimeStatus::default()
             })
     }
@@ -88,8 +460,8 @@ impl ProxyServer {
     }
 
     #[cfg(test)]
-    fn build_router(&self) -> Router {
-        crate::proxy_core_adapter::proxy_http_router_from_state(self.state.clone())
+    fn build_router(&self) -> AxumRouter {
+        proxy_http_router_from_state(self.state.clone())
     }
 
     /// 在不重启服务的情况下更新运行时配置
