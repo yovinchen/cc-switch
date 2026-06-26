@@ -10,7 +10,6 @@ use crate::provider::{
     UsageScript,
 };
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
-use crate::proxy::engine::context::RequestContext;
 use crate::proxy::engine::routing::{ProviderFailoverRouterSources, ProviderRouter};
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::forward_error_to_core_error;
@@ -2709,14 +2708,16 @@ pub(crate) use crate::proxy_core::api::transport::{
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback;
 pub(crate) use crate::proxy_core::api::usage::{
-    error_usage_record_with_request_id_fallback, usage_logging_enabled_from_config_flag,
-    usage_record_debug_log_message, usage_record_failure_warning_message,
-    usage_selected_provider_missing_log_message, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
-    GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
-};
-pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
     PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
+};
+pub(crate) use crate::proxy_core::api::usage::{
+    usage_logging_enabled_from_config_flag, usage_selected_provider_missing_log_message,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::usage::{
+    usage_record_debug_log_message, usage_record_failure_warning_message,
 };
 
 #[cfg(test)]
@@ -6494,17 +6495,21 @@ pub(crate) use crate::proxy::engine::response_pipeline::{
     codex_auto_transformed_streaming_usage_collector, create_claude_transformed_logged_stream,
     create_codex_auto_transformed_logged_stream, create_logged_passthrough_stream,
     create_passthrough_logged_stream, decode_raw_proxy_response_body,
-    fallback_response_usage_provider_facts, log_non_streaming_proxy_response_body,
-    log_streaming_proxy_response_received,
+    error_usage_record_from_provider_facts_with_request_id_fallback,
+    fallback_response_usage_provider_facts, forward_error_usage_record_from_response_context,
+    log_non_streaming_proxy_response_body, log_streaming_proxy_response_received,
     non_streaming_response_usage_record_from_provider_body_with_request_id_fallback,
     non_streaming_response_usage_record_from_response_context,
     passthrough_non_stream_proxy_response_from_context,
     passthrough_stream_proxy_response_from_context, passthrough_streaming_usage_collector,
     read_decoded_proxy_response_body, record_claude_transformed_response_usage,
-    record_codex_auto_transformed_response_usage, record_non_streaming_response_usage,
-    record_non_streaming_response_usage_from_context, record_transformed_response_usage,
-    record_transformed_response_usage_from_context, response_usage_provider_facts,
-    response_usage_provider_facts_from_optional,
+    record_codex_auto_transformed_response_usage, record_forward_core_error_usage,
+    record_forward_error_usage, record_forward_error_usage_from_context,
+    record_non_streaming_response_usage, record_non_streaming_response_usage_from_context,
+    record_transformed_response_usage, record_transformed_response_usage_from_context,
+    record_usage_with_proxy_services, record_usage_with_proxy_services_context,
+    response_usage_provider_facts, response_usage_provider_facts_from_optional,
+    spawn_usage_record_with_proxy_services, spawn_usage_record_with_proxy_services_context,
     streaming_response_usage_record_from_provider_facts,
     streaming_response_usage_record_from_response_context, streaming_usage_collector_from_context,
     transformed_response_usage_record_from_provider_facts_with_request_id_fallback,
@@ -6514,11 +6519,11 @@ pub(crate) use crate::proxy::engine::response_pipeline::{
     transformed_streaming_usage_collector, transformed_streaming_usage_collector_from_context,
     ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
     CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
-    DecodedProxyResponseBody, NonStreamingResponseUsageContext, NonStreamingUsageRecordContext,
-    ResponseUsageProviderFacts, SseUsageCollector, StreamingResponseUsageContext,
-    StreamingUsageCollectorContext, TransformedResponseUsageContext,
-    TransformedResponseUsageRecordContext, TransformedStreamingResponseUsageContext,
-    TransformedStreamingUsageCollectorContext,
+    DecodedProxyResponseBody, ForwardErrorUsageContext, ForwardErrorUsageRecordContext,
+    NonStreamingResponseUsageContext, NonStreamingUsageRecordContext, ResponseUsageProviderFacts,
+    SseUsageCollector, StreamingResponseUsageContext, StreamingUsageCollectorContext,
+    TransformedResponseUsageContext, TransformedResponseUsageRecordContext,
+    TransformedStreamingResponseUsageContext, TransformedStreamingUsageCollectorContext,
 };
 
 pub(crate) trait ProxyServiceRuntimeResources:
@@ -7208,57 +7213,6 @@ pub(crate) struct UsageRequestLogProjection {
 pub(crate) struct UsagePricingConfigLookup {
     pub(crate) provider_id: String,
     pub(crate) app_type: String,
-}
-
-#[cfg(test)]
-pub(crate) async fn record_usage_with_proxy_services(
-    services: &(dyn ProxyServices + Send + Sync),
-    record: UsageRecord,
-) {
-    record_usage_with_proxy_services_context(
-        services,
-        record,
-        UsageRecordFailureLogContext::UsageRecord,
-    )
-    .await
-}
-
-pub(crate) fn spawn_usage_record_with_proxy_services<S>(services: Arc<S>, record: UsageRecord)
-where
-    S: ProxyServices + Send + Sync + 'static,
-{
-    spawn_usage_record_with_proxy_services_context(
-        services,
-        record,
-        UsageRecordFailureLogContext::UsageRecord,
-    );
-}
-
-pub(crate) fn spawn_usage_record_with_proxy_services_context<S>(
-    services: Arc<S>,
-    record: UsageRecord,
-    failure_context: UsageRecordFailureLogContext,
-) where
-    S: ProxyServices + Send + Sync + 'static,
-{
-    tokio::spawn(async move {
-        record_usage_with_proxy_services_context(services.as_ref(), record, failure_context).await;
-    });
-}
-
-pub(crate) async fn record_usage_with_proxy_services_context(
-    services: &(dyn ProxyServices + Send + Sync),
-    record: UsageRecord,
-    failure_context: UsageRecordFailureLogContext,
-) {
-    log::debug!("{}", usage_record_debug_log_message(&record));
-
-    if let Err(error) = services.usage_sink().record_usage(record).await {
-        log::warn!(
-            "{}",
-            usage_record_failure_warning_message(failure_context, error)
-        );
-    }
 }
 
 pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
@@ -8021,105 +7975,13 @@ pub(crate) fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
 }
 
 pub(crate) use crate::proxy_core::api::usage::{
-    is_placeholder_pricing_model, usage_record_with_route_context,
-    usage_route_context_from_selection,
+    is_placeholder_pricing_model, usage_route_context_from_selection,
 };
 
 pub(crate) fn usage_logging_enabled_from_proxy_config(config: &RwLock<ProxyConfig>) -> bool {
     usage_logging_enabled_from_config_flag(
         config.try_read().ok().map(|config| config.enable_logging),
     )
-}
-
-pub(crate) fn record_forward_error_usage(
-    state: &ProxyState,
-    ctx: &RequestContext,
-    is_streaming: bool,
-    error: &ProxyError,
-) {
-    record_forward_error_usage_from_context(ForwardErrorUsageRecordContext {
-        services: state.proxy_core_services.clone(),
-        provider: ctx.provider_for_usage(),
-        fallback_provider_id: &ctx.fallback_provider_id(),
-        app_type: ctx.app_type_str,
-        request_model: &ctx.request_model,
-        outbound_model: ctx.outbound_model.as_deref(),
-        route_context: ctx.usage_route_context.as_ref(),
-        status_code: proxy_error_status_code(error),
-        error_message: proxy_error_display_message(error),
-        latency_ms: ctx.latency_ms(),
-        is_streaming,
-        session_id: &ctx.session_id,
-    });
-}
-
-pub(crate) fn record_forward_core_error_usage(
-    state: &ProxyState,
-    ctx: &RequestContext,
-    is_streaming: bool,
-    error: ProxyCoreError,
-) -> ProxyError {
-    let error = proxy_core_error_to_proxy_error(error);
-    record_forward_error_usage(state, ctx, is_streaming, &error);
-    error
-}
-
-pub(crate) struct ForwardErrorUsageContext<'a> {
-    pub(crate) provider: Option<&'a Provider>,
-    pub(crate) fallback_provider_id: &'a str,
-    pub(crate) app_type: &'a str,
-    pub(crate) request_model: &'a str,
-    pub(crate) outbound_model: Option<&'a str>,
-    pub(crate) route_context: Option<&'a UsageRouteContext>,
-    pub(crate) status_code: u16,
-    pub(crate) error_message: String,
-    pub(crate) latency_ms: u64,
-    pub(crate) is_streaming: bool,
-    pub(crate) session_id: &'a str,
-}
-
-pub(crate) struct ForwardErrorUsageRecordContext<'a, S> {
-    pub(crate) services: Arc<S>,
-    pub(crate) provider: Option<&'a Provider>,
-    pub(crate) fallback_provider_id: &'a str,
-    pub(crate) app_type: &'a str,
-    pub(crate) request_model: &'a str,
-    pub(crate) outbound_model: Option<&'a str>,
-    pub(crate) route_context: Option<&'a UsageRouteContext>,
-    pub(crate) status_code: u16,
-    pub(crate) error_message: String,
-    pub(crate) latency_ms: u64,
-    pub(crate) is_streaming: bool,
-    pub(crate) session_id: &'a str,
-}
-
-pub(crate) fn record_forward_error_usage_from_context<S>(
-    context: ForwardErrorUsageRecordContext<'_, S>,
-) where
-    S: ProxyServices + Send + Sync + 'static,
-{
-    let record = forward_error_usage_record_from_response_context(
-        ForwardErrorUsageContext {
-            provider: context.provider,
-            fallback_provider_id: context.fallback_provider_id,
-            app_type: context.app_type,
-            request_model: context.request_model,
-            outbound_model: context.outbound_model,
-            route_context: context.route_context,
-            status_code: context.status_code,
-            error_message: context.error_message,
-            latency_ms: context.latency_ms,
-            is_streaming: context.is_streaming,
-            session_id: context.session_id,
-        },
-        || uuid::Uuid::new_v4().to_string(),
-    );
-
-    spawn_usage_record_with_proxy_services_context(
-        context.services,
-        record,
-        UsageRecordFailureLogContext::ForwardError,
-    );
 }
 
 #[cfg(test)]
@@ -8154,60 +8016,6 @@ pub(crate) fn success_usage_record_from_app_type_with_request_id_fallback(
         session_id,
         request_id_fallback,
     )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn error_usage_record_from_provider_facts_with_request_id_fallback(
-    provider_facts: &ResponseUsageProviderFacts,
-    request_model: &str,
-    outbound_model: Option<&str>,
-    status_code: u16,
-    error_message: String,
-    latency_ms: u64,
-    is_streaming: bool,
-    session_id: Option<String>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> UsageRecord {
-    error_usage_record_with_request_id_fallback(
-        &provider_facts.provider_id,
-        provider_facts.provider_kind.clone(),
-        provider_facts.app.clone(),
-        request_model,
-        outbound_model,
-        status_code,
-        error_message,
-        latency_ms,
-        is_streaming,
-        session_id,
-        request_id_fallback,
-    )
-}
-
-pub(crate) fn forward_error_usage_record_from_response_context(
-    context: ForwardErrorUsageContext<'_>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> UsageRecord {
-    let provider_facts = context
-        .provider
-        .map(|provider| response_usage_provider_facts(provider, context.app_type))
-        .unwrap_or_else(|| {
-            fallback_response_usage_provider_facts(
-                context.fallback_provider_id.to_string(),
-                context.app_type,
-            )
-        });
-    let record = error_usage_record_from_provider_facts_with_request_id_fallback(
-        &provider_facts,
-        context.request_model,
-        context.outbound_model,
-        context.status_code,
-        context.error_message,
-        context.latency_ms,
-        context.is_streaming,
-        Some(context.session_id.to_string()),
-        request_id_fallback,
-    );
-    usage_record_with_route_context(record, context.route_context)
 }
 
 pub(crate) fn usage_record_pricing_model(

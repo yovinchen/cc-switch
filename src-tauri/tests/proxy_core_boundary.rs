@@ -5979,6 +5979,70 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
 }
 
 #[test]
+fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        source.contains("pub(crate) async fn record_usage_with_proxy_services")
+            && source.contains("pub(crate) fn spawn_usage_record_with_proxy_services")
+            && source.contains("pub(crate) fn spawn_usage_record_with_proxy_services_context")
+            && source.contains("record_usage_with_proxy_services_context(")
+            && source.contains("tokio::spawn(async move")
+            && source.contains(".usage_sink().record_usage(record).await")
+            && source.contains("usage_record_debug_log_message(&record)")
+            && source.contains("usage_record_failure_warning_message(failure_context, error)"),
+        "response pipeline should own reusable usage sink scheduling"
+    );
+    assert!(
+        source.contains("pub(crate) fn record_forward_error_usage(")
+            && source.contains("pub(crate) fn record_forward_core_error_usage(")
+            && source.contains("pub(crate) struct ForwardErrorUsageContext")
+            && source.contains("pub(crate) struct ForwardErrorUsageRecordContext")
+            && source.contains("pub(crate) fn record_forward_error_usage_from_context")
+            && source.contains(
+                "pub(crate) fn error_usage_record_from_provider_facts_with_request_id_fallback"
+            )
+            && source.contains("pub(crate) fn forward_error_usage_record_from_response_context")
+            && source.contains("UsageRecordFailureLogContext::ForwardError")
+            && source.contains("fallback_response_usage_provider_facts(")
+            && source.contains("error_usage_record_with_request_id_fallback("),
+        "response pipeline should own forward-error usage record orchestration"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
+            && adapter_source.contains("record_usage_with_proxy_services")
+            && adapter_source.contains("spawn_usage_record_with_proxy_services")
+            && adapter_source.contains("spawn_usage_record_with_proxy_services_context")
+            && adapter_source.contains("record_forward_error_usage")
+            && adapter_source.contains("record_forward_core_error_usage")
+            && adapter_source.contains("ForwardErrorUsageContext")
+            && adapter_source.contains("ForwardErrorUsageRecordContext")
+            && adapter_source.contains("record_forward_error_usage_from_context")
+            && adapter_source
+                .contains("error_usage_record_from_provider_facts_with_request_id_fallback")
+            && adapter_source.contains("forward_error_usage_record_from_response_context")
+            && !adapter_source.contains("pub(crate) fn spawn_usage_record_with_proxy_services")
+            && !adapter_source
+                .contains("pub(crate) fn spawn_usage_record_with_proxy_services_context")
+            && !adapter_source.contains("pub(crate) fn record_forward_error_usage(")
+            && !adapter_source.contains("pub(crate) fn record_forward_core_error_usage(")
+            && !adapter_source.contains("pub(crate) struct ForwardErrorUsageContext")
+            && !adapter_source.contains("pub(crate) struct ForwardErrorUsageRecordContext")
+            && !adapter_source.contains("pub(crate) fn record_forward_error_usage_from_context")
+            && !adapter_source.contains(
+                "pub(crate) fn error_usage_record_from_provider_facts_with_request_id_fallback"
+            )
+            && !adapter_source
+                .contains("pub(crate) fn forward_error_usage_record_from_response_context"),
+        "proxy_core_adapter should re-export, not own, forward-error usage and sink scheduling"
+    );
+}
+
+#[test]
 fn response_pipeline_owns_transformed_sse_stream_wrappers() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
