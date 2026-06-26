@@ -6449,9 +6449,6 @@ fn forward_failure_message_from_proxy_error(error: &ProxyError) -> String {
     )
 }
 
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::apply_channel_route_model_override;
-
 pub(crate) use crate::proxy_core::api::transport::apply_resolved_channel_model_override;
 
 pub(crate) fn apply_channel_provider_overrides(
@@ -15772,7 +15769,7 @@ command = "latest-command"
 
         let mut body = json!({"model": "sonnet-public"});
         assert_eq!(
-            apply_channel_route_model_override(
+            crate::proxy_core::api::transport::apply_channel_route_model_override(
                 &mut body,
                 Some("sonnet-public"),
                 Some("upstream-sonnet")

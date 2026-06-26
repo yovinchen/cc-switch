@@ -1406,6 +1406,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn codex_provider_catalog_model_ids_from_settings(",
     "fn apply_codex_chat_upstream_model_policy(",
     "fn resolve_response_runtime_policy(",
+    "pub(crate) use crate::proxy_core::api::transport::apply_channel_route_model_override",
     "fn apply_channel_route_model_override(",
     "fn apply_resolved_channel_model_override(",
     "fn decode_response_body(",
@@ -2390,7 +2391,7 @@ fn proxy_core_adapter_delegates_forward_failure_message_policy_to_core() {
     let function = function_slice(
         &source,
         "fn forward_failure_message_from_proxy_error",
-        "#[cfg(test)]\npub(crate) use crate::proxy_core::api::transport::apply_channel_route_model_override",
+        "pub(crate) use crate::proxy_core::api::transport::apply_resolved_channel_model_override",
     );
 
     assert!(
