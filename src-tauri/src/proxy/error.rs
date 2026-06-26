@@ -1,6 +1,6 @@
+use crate::proxy::error_mapper::proxy_error_status_kind;
 use crate::proxy_core_adapter::{
-    proxy_error_http_status_code, proxy_error_response_body, proxy_error_status_kind,
-    upstream_proxy_error_response_body,
+    proxy_error_http_status_code, proxy_error_response_body, upstream_proxy_error_response_body,
 };
 use axum::{
     http::StatusCode,

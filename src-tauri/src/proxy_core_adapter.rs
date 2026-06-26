@@ -14,6 +14,9 @@ use crate::proxy::engine::routing::{ProviderFailoverRouterSources, ProviderRoute
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::forward_error_to_core_error;
 pub(crate) use crate::proxy::error_mapper::proxy_core_error_to_proxy_error;
+pub(crate) use crate::proxy::error_mapper::{
+    proxy_error_display_message, proxy_error_status_code, proxy_error_status_kind,
+};
 use crate::proxy::events::ProxyEventBus;
 #[allow(unused_imports)]
 pub(crate) use crate::proxy::host::cc_switch::channel_health_store::CcSwitchChannelHealthStore;
@@ -105,61 +108,8 @@ pub use crate::proxy_core::api::auth::{
 pub(crate) type ProxyErrorStatusKind = crate::proxy_core::api::errors::ProxyErrorStatusKind;
 
 pub(crate) use crate::proxy_core::api::errors::{
-    proxy_core_error_from_status_kind, proxy_error_display_message_from_status,
     proxy_error_http_status_code, proxy_error_response_body, upstream_proxy_error_response_body,
 };
-
-pub(crate) fn proxy_error_status_kind(error: &ProxyError) -> ProxyErrorStatusKind {
-    match error {
-        ProxyError::AlreadyRunning => ProxyErrorStatusKind::AlreadyRunning,
-        ProxyError::NotRunning => ProxyErrorStatusKind::NotRunning,
-        ProxyError::BindFailed(_) => ProxyErrorStatusKind::BindFailed,
-        ProxyError::StopTimeout => ProxyErrorStatusKind::StopTimeout,
-        ProxyError::StopFailed(_) => ProxyErrorStatusKind::StopFailed,
-        ProxyError::ForwardFailed(_) => ProxyErrorStatusKind::ForwardFailed,
-        ProxyError::NoAvailableProvider => ProxyErrorStatusKind::NoAvailableProvider,
-        ProxyError::AllProvidersCircuitOpen => ProxyErrorStatusKind::AllProvidersCircuitOpen,
-        ProxyError::NoProvidersConfigured => ProxyErrorStatusKind::NoProvidersConfigured,
-        ProxyError::ProviderUnhealthy(_) => ProxyErrorStatusKind::ProviderUnhealthy,
-        ProxyError::UpstreamError { status, .. } => ProxyErrorStatusKind::UpstreamError(*status),
-        ProxyError::MaxRetriesExceeded => ProxyErrorStatusKind::MaxRetriesExceeded,
-        ProxyError::DatabaseError(_) => ProxyErrorStatusKind::DatabaseError,
-        ProxyError::ConfigError(_) => ProxyErrorStatusKind::ConfigError,
-        ProxyError::TransformError(_) => ProxyErrorStatusKind::TransformError,
-        ProxyError::InvalidRequest(_) => ProxyErrorStatusKind::InvalidRequest,
-        ProxyError::Timeout(_) => ProxyErrorStatusKind::Timeout,
-        ProxyError::StreamIdleTimeout(_) => ProxyErrorStatusKind::StreamIdleTimeout,
-        ProxyError::AuthError(_) => ProxyErrorStatusKind::AuthError,
-        ProxyError::Internal(_) => ProxyErrorStatusKind::Internal,
-    }
-}
-
-pub(crate) fn proxy_error_status_code(error: &ProxyError) -> u16 {
-    proxy_error_http_status_code(proxy_error_status_kind(error))
-}
-
-pub(crate) fn proxy_error_display_message(error: &ProxyError) -> String {
-    let raw_message = match error {
-        ProxyError::Timeout(message)
-        | ProxyError::ForwardFailed(message)
-        | ProxyError::ProviderUnhealthy(message)
-        | ProxyError::DatabaseError(message)
-        | ProxyError::TransformError(message) => message.as_str(),
-        _ => "",
-    };
-    let upstream_body = match error {
-        ProxyError::UpstreamError { body, .. } => body.as_deref(),
-        _ => None,
-    };
-    let display_message = error.to_string();
-
-    proxy_error_display_message_from_status(
-        proxy_error_status_kind(error),
-        raw_message,
-        upstream_body,
-        &display_message,
-    )
-}
 
 pub(crate) use crate::proxy_core::api::errors::{
     config_error_with_context as core_config_error_with_context,

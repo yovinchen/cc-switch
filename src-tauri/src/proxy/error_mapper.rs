@@ -3,6 +3,10 @@
 //! 将 ProxyError 映射到合适的 HTTP 状态码，用于日志记录和手动构建错误响应
 
 use super::{error::ProxyError, ForwardError};
+use crate::proxy_core::api::errors::{
+    proxy_core_error_from_status_kind, proxy_error_display_message_from_status,
+    proxy_error_http_status_code, ProxyCoreError, ProxyErrorStatusKind,
+};
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     codex_proxy_error_json_from_proxy_error as core_codex_proxy_error_json, ProxyResponseBody,
@@ -10,14 +14,65 @@ use crate::proxy_core_adapter::{
 use crate::proxy_core_adapter::{
     codex_proxy_error_response_from_proxy_error as core_codex_proxy_error_response,
     log_unlabeled_sse_fallback_event, parse_upstream_json_or_unlabeled_sse,
-    proxy_core_error_from_status_kind, proxy_error_status_kind,
     upstream_response_parse_failure_log_message, upstream_send_error_projection,
-    CoreResponseBuildFailureContext, CoreResponseTransformFailureContext, ProxyCoreError,
-    ProxyCoreResponse, ProxyCoreResult, ProxyErrorStatusKind, UnlabeledSseFallbackLogContext,
-    UpstreamResponseParseFailureLogContext, UpstreamSendErrorInput, UpstreamSseAggregationKind,
+    CoreResponseBuildFailureContext, CoreResponseTransformFailureContext, ProxyCoreResponse,
+    ProxyCoreResult, UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
+    UpstreamSendErrorInput, UpstreamSseAggregationKind,
 };
 use http::HeaderMap;
 use serde_json::Value;
+
+pub(crate) fn proxy_error_status_kind(error: &ProxyError) -> ProxyErrorStatusKind {
+    match error {
+        ProxyError::AlreadyRunning => ProxyErrorStatusKind::AlreadyRunning,
+        ProxyError::NotRunning => ProxyErrorStatusKind::NotRunning,
+        ProxyError::BindFailed(_) => ProxyErrorStatusKind::BindFailed,
+        ProxyError::StopTimeout => ProxyErrorStatusKind::StopTimeout,
+        ProxyError::StopFailed(_) => ProxyErrorStatusKind::StopFailed,
+        ProxyError::ForwardFailed(_) => ProxyErrorStatusKind::ForwardFailed,
+        ProxyError::NoAvailableProvider => ProxyErrorStatusKind::NoAvailableProvider,
+        ProxyError::AllProvidersCircuitOpen => ProxyErrorStatusKind::AllProvidersCircuitOpen,
+        ProxyError::NoProvidersConfigured => ProxyErrorStatusKind::NoProvidersConfigured,
+        ProxyError::ProviderUnhealthy(_) => ProxyErrorStatusKind::ProviderUnhealthy,
+        ProxyError::UpstreamError { status, .. } => ProxyErrorStatusKind::UpstreamError(*status),
+        ProxyError::MaxRetriesExceeded => ProxyErrorStatusKind::MaxRetriesExceeded,
+        ProxyError::DatabaseError(_) => ProxyErrorStatusKind::DatabaseError,
+        ProxyError::ConfigError(_) => ProxyErrorStatusKind::ConfigError,
+        ProxyError::TransformError(_) => ProxyErrorStatusKind::TransformError,
+        ProxyError::InvalidRequest(_) => ProxyErrorStatusKind::InvalidRequest,
+        ProxyError::Timeout(_) => ProxyErrorStatusKind::Timeout,
+        ProxyError::StreamIdleTimeout(_) => ProxyErrorStatusKind::StreamIdleTimeout,
+        ProxyError::AuthError(_) => ProxyErrorStatusKind::AuthError,
+        ProxyError::Internal(_) => ProxyErrorStatusKind::Internal,
+    }
+}
+
+pub(crate) fn proxy_error_status_code(error: &ProxyError) -> u16 {
+    proxy_error_http_status_code(proxy_error_status_kind(error))
+}
+
+pub(crate) fn proxy_error_display_message(error: &ProxyError) -> String {
+    let raw_message = match error {
+        ProxyError::Timeout(message)
+        | ProxyError::ForwardFailed(message)
+        | ProxyError::ProviderUnhealthy(message)
+        | ProxyError::DatabaseError(message)
+        | ProxyError::TransformError(message) => message.as_str(),
+        _ => "",
+    };
+    let upstream_body = match error {
+        ProxyError::UpstreamError { body, .. } => body.as_deref(),
+        _ => None,
+    };
+    let display_message = error.to_string();
+
+    proxy_error_display_message_from_status(
+        proxy_error_status_kind(error),
+        raw_message,
+        upstream_body,
+        &display_message,
+    )
+}
 
 pub(crate) fn proxy_core_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
     match error {
@@ -191,7 +246,6 @@ pub(crate) fn codex_proxy_error_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core_adapter::{proxy_error_display_message, proxy_error_status_code};
 
     #[test]
     fn adapter_status_contract_maps_upstream_error() {
