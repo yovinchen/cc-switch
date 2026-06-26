@@ -1,4 +1,5 @@
 use crate::app_config::AppType;
+use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::database::{
     Database, FailoverQueueItem, ProxyChannelKeyRecord, ProxyChannelMaterializeResult,
     ProxyChannelMigrationPreview, ProxyChannelModelRecord, ProxyChannelRecord,
@@ -52,6 +53,7 @@ use rust_decimal::Decimal;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use tauri::Manager;
 use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
@@ -3090,6 +3092,116 @@ impl<T> ManagedAccountRuntimeSource for T where
 {
 }
 
+async fn copilot_api_endpoint_from_app_handle(
+    app_handle: Option<&tauri::AppHandle>,
+    account_id: Option<&str>,
+) -> Option<String> {
+    let app_handle = app_handle?;
+    let copilot_state = app_handle.state::<CopilotAuthState>();
+    let copilot_auth = copilot_state.0.read().await;
+
+    Some(match account_id {
+        Some(id) => copilot_auth.get_api_endpoint(id).await,
+        None => copilot_auth.get_default_api_endpoint().await,
+    })
+}
+
+async fn copilot_live_models_from_app_handle(
+    app_handle: Option<&tauri::AppHandle>,
+    account_id: Option<&str>,
+) -> Result<Option<Vec<CopilotModel>>, String> {
+    let Some(app_handle) = app_handle else {
+        return Ok(None);
+    };
+
+    let copilot_state = app_handle.state::<CopilotAuthState>();
+    let copilot_auth = copilot_state.0.read().await;
+
+    match account_id {
+        Some(id) => copilot_auth.fetch_models_for_account(id).await,
+        None => copilot_auth.fetch_models().await,
+    }
+    .map(Some)
+    .map_err(|error| error.to_string())
+}
+
+async fn copilot_model_vendor_from_app_handle(
+    app_handle: Option<&tauri::AppHandle>,
+    account_id: Option<&str>,
+    model_id: &str,
+) -> Option<String> {
+    let Some(app_handle) = app_handle else {
+        log::debug!("[Copilot] AppHandle unavailable, fallback to chat/completions");
+        return None;
+    };
+
+    let copilot_state = app_handle.state::<CopilotAuthState>();
+    let copilot_auth = copilot_state.0.read().await;
+
+    let vendor_result = match account_id {
+        Some(id) => {
+            copilot_auth
+                .get_model_vendor_for_account(id, model_id)
+                .await
+        }
+        None => copilot_auth.get_model_vendor(model_id).await,
+    };
+
+    match vendor_result {
+        Ok(Some(vendor)) => Some(vendor),
+        Ok(None) => {
+            log::debug!(
+                "[Copilot] Model vendor unavailable for {model_id}, fallback to chat/completions"
+            );
+            None
+        }
+        Err(error) => {
+            log::warn!(
+                "[Copilot] Failed to resolve model vendor for {model_id}, fallback to chat/completions: {error}"
+            );
+            None
+        }
+    }
+}
+
+async fn copilot_token_from_app_handle(
+    app_handle: &tauri::AppHandle,
+    account_id: Option<&str>,
+) -> Result<String, String> {
+    let copilot_state = app_handle.state::<CopilotAuthState>();
+    let copilot_auth = copilot_state.0.read().await;
+
+    match account_id {
+        Some(id) => copilot_auth.get_valid_token_for_account(id).await,
+        None => copilot_auth.get_valid_token().await,
+    }
+    .map_err(|error| error.to_string())
+}
+
+async fn codex_oauth_token_from_app_handle(
+    app_handle: &tauri::AppHandle,
+    account_id: Option<&str>,
+) -> Result<(String, Option<String>), String> {
+    let codex_state = app_handle.state::<CodexOAuthState>();
+    let codex_auth = codex_state.0.read().await;
+
+    let token_result = match account_id {
+        Some(id) => codex_auth.get_valid_token_for_account(id).await,
+        None => codex_auth.get_valid_token().await,
+    };
+
+    match token_result {
+        Ok(token) => {
+            let resolved_account_id = match account_id {
+                Some(id) => Some(id.to_string()),
+                None => codex_auth.default_account_id().await,
+            };
+            Ok((token, resolved_account_id))
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
     type Error = ProxyError;
 
@@ -3114,11 +3226,7 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                 managed_account_token_request_log_message(runtime, account_id)
             );
 
-            match crate::proxy::managed_account_auth::copilot_token_from_app_handle(
-                app_handle, account_id,
-            )
-            .await
-            {
+            match copilot_token_from_app_handle(app_handle, account_id).await {
                 Ok(token) => {
                     log::debug!(
                         "{}",
@@ -3160,12 +3268,7 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                 managed_account_token_request_log_message(runtime, account_id.as_deref())
             );
 
-            match crate::proxy::managed_account_auth::codex_oauth_token_from_app_handle(
-                app_handle,
-                account_id.as_deref(),
-            )
-            .await
-            {
+            match codex_oauth_token_from_app_handle(app_handle, account_id.as_deref()).await {
                 Ok((token, resolved_account_id)) => {
                     log::debug!(
                         "{}",
@@ -3198,11 +3301,7 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
         account_id: Option<&'a str>,
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
-            crate::proxy::managed_account_auth::resolve_copilot_api_endpoint(
-                self.app_handle.as_ref(),
-                account_id,
-            )
-            .await
+            copilot_api_endpoint_from_app_handle(self.app_handle.as_ref(), account_id).await
         })
     }
 
@@ -3211,11 +3310,7 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
         account_id: Option<&'a str>,
     ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
         Box::pin(async move {
-            crate::proxy::managed_account_auth::fetch_copilot_live_models(
-                self.app_handle.as_ref(),
-                account_id,
-            )
-            .await
+            copilot_live_models_from_app_handle(self.app_handle.as_ref(), account_id).await
         })
     }
 
@@ -3225,12 +3320,8 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
         model_id: &'a str,
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
-            crate::proxy::managed_account_auth::resolve_copilot_model_vendor(
-                self.app_handle.as_ref(),
-                account_id,
-                model_id,
-            )
-            .await
+            copilot_model_vendor_from_app_handle(self.app_handle.as_ref(), account_id, model_id)
+                .await
         })
     }
 }
@@ -12742,6 +12833,88 @@ mod tests {
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
     use crate::proxy_core::api::transport::UpstreamTransportKind;
+
+    #[tokio::test]
+    async fn non_managed_auth_passes_through_without_app_handle() {
+        let auth = ProviderAuthInfo::new("sk-test".to_string(), ProviderAuthStrategy::Bearer);
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            serde_json::json!({}),
+            None,
+        );
+
+        let runtime_source = default_managed_account_runtime_source();
+        let resolved = resolve_managed_account_auth_from_runtime_source(
+            runtime_source.as_ref(),
+            &provider,
+            auth.clone(),
+        )
+        .await
+        .expect("non managed auth");
+
+        assert_eq!(resolved.auth, auth);
+        assert_eq!(resolved.codex_oauth_account_id, None);
+        assert!(!resolved.should_send_codex_oauth_session_headers);
+    }
+
+    #[tokio::test]
+    async fn managed_auth_requires_app_handle() {
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            serde_json::json!({}),
+            None,
+        );
+
+        let runtime_source = default_managed_account_runtime_source();
+        let copilot = resolve_managed_account_auth_from_runtime_source(
+            runtime_source.as_ref(),
+            &provider,
+            ProviderAuthInfo::new(
+                "PROXY_MANAGED".to_string(),
+                ProviderAuthStrategy::GitHubCopilot,
+            ),
+        )
+        .await
+        .expect_err("copilot app handle error");
+        assert!(matches!(
+            copilot,
+            ProxyError::AuthError(message)
+                if message == "GitHub Copilot 认证不可用（无 AppHandle）"
+        ));
+
+        let codex = resolve_managed_account_auth_from_runtime_source(
+            runtime_source.as_ref(),
+            &provider,
+            ProviderAuthInfo::new(
+                "PROXY_MANAGED".to_string(),
+                ProviderAuthStrategy::CodexOAuth,
+            ),
+        )
+        .await
+        .expect_err("codex app handle error");
+        assert!(matches!(
+            codex,
+            ProxyError::AuthError(message)
+                if message == "Codex OAuth 认证不可用（无 AppHandle）"
+        ));
+    }
+
+    #[tokio::test]
+    async fn copilot_runtime_helpers_skip_without_app_handle() {
+        assert_eq!(copilot_api_endpoint_from_app_handle(None, None).await, None);
+        assert_eq!(
+            copilot_live_models_from_app_handle(None, None)
+                .await
+                .expect("skip"),
+            None
+        );
+        assert_eq!(
+            copilot_model_vendor_from_app_handle(None, None, "gpt-5").await,
+            None
+        );
+    }
 
     #[test]
     fn app_type_conversion_preserves_known_and_custom_names() {
