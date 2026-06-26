@@ -14434,6 +14434,32 @@ fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_management_auth_source_to_host_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/management_auth_source.rs");
+    let source = fs::read_to_string(&source_path).expect("read management_auth_source.rs");
+
+    assert!(
+        source.contains("pub(crate) struct CcSwitchManagementAuthSource")
+            && source.contains("impl ManagementAuthSource for CcSwitchManagementAuthSource")
+            && source.contains("PROXY_MANAGEMENT_AUTH_TOKEN_ENV")
+            && source.contains("ManagementAuthRuntimeConfig::new(")
+            && source.contains("config.management_auth_token.clone()"),
+        "CC Switch management auth source should live in host/cc_switch/management_auth_source.rs"
+    );
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::management_auth_source::CcSwitchManagementAuthSource"
+        ) && !adapter_source.contains("struct CcSwitchManagementAuthSource")
+            && !adapter_source.contains("impl ManagementAuthSource for CcSwitchManagementAuthSource")
+            && !adapter_source.contains("PROXY_MANAGEMENT_AUTH_TOKEN_ENV"),
+        "proxy_core_adapter should re-export, not own, the CC Switch management auth source"
+    );
+}
+
+#[test]
 fn production_proxy_core_host_delegates_event_sink_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");

@@ -23,6 +23,7 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::host::cc_switch::database_channel_source::CcSwitchChannelSource;
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
+pub(crate) use crate::proxy::host::cc_switch::management_auth_source::CcSwitchManagementAuthSource;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::http::server::ProxyServer;
@@ -426,34 +427,6 @@ use crate::proxy_core::api::ports::{
 pub(crate) use crate::proxy_core::api::ports::{
     provider_credential_issue_spec, ProviderCredentialIssue,
 };
-
-const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
-
-#[derive(Clone)]
-struct CcSwitchManagementAuthSource {
-    config: Arc<RwLock<ProxyConfig>>,
-}
-
-impl CcSwitchManagementAuthSource {
-    fn new(config: Arc<RwLock<ProxyConfig>>) -> Self {
-        Self { config }
-    }
-}
-
-impl ManagementAuthSource for CcSwitchManagementAuthSource {
-    fn load_management_auth_config<'a>(
-        &'a self,
-    ) -> BoxFuture<'a, ProxyCoreResult<ManagementAuthRuntimeConfig>> {
-        Box::pin(async move {
-            let config = self.config.read().await;
-            Ok(ManagementAuthRuntimeConfig::new(
-                config.listen_address.clone(),
-                config.management_auth_token.clone(),
-                std::env::var(PROXY_MANAGEMENT_AUTH_TOKEN_ENV).ok(),
-            ))
-        })
-    }
-}
 
 pub(crate) fn record_forward_success_status(
     status: &mut ProxyRuntimeStatus,
