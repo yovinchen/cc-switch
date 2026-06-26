@@ -2559,6 +2559,7 @@ pub(crate) use crate::proxy_core::api::transport::build_codex_oauth_session_head
 pub(crate) use crate::proxy_core::api::transport::build_copilot_auth_headers;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::build_gemini_auth_headers;
+#[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::extract_gemini_model_from_path;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::interface_kind_for_forward;

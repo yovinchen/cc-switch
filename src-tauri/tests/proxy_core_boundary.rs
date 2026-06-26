@@ -17766,6 +17766,7 @@ fn proxy_response_adapter_owns_core_transport_imports() {
 
     assert!(
         source.contains("use crate::proxy_core::api::transport::{")
+            && source.contains("extract_gemini_model_from_path")
             && source.contains("use crate::proxy_core::api::events::ProxyEventEnvelope;")
             && source.contains("use crate::proxy_core::api::usage::{"),
         "response_adapter should import core transport/event/usage contracts directly"
@@ -17774,6 +17775,7 @@ fn proxy_response_adapter_owns_core_transport_imports() {
     let mut violations = Vec::new();
     for marker in [
         "append_query_to_endpoint_path",
+        "extract_gemini_model_from_path",
         "rebuilt_json_proxy_response",
         "request_body_read_error_message",
         "strip_endpoint_prefix",

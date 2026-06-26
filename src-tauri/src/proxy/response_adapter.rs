@@ -17,9 +17,10 @@ use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy_core::api::events::ProxyEventEnvelope;
 use crate::proxy_core::api::transport::{
-    append_query_to_endpoint_path, rebuilt_json_proxy_response, request_body_read_error_message,
-    strip_endpoint_prefix, transformed_sse_proxy_response, ProxyCoreResponse, ProxyRequest,
-    ProxyResult, ProxyTransportResponse, ProxyTransportResponseBody, UpstreamSseAggregationKind,
+    append_query_to_endpoint_path, extract_gemini_model_from_path, rebuilt_json_proxy_response,
+    request_body_read_error_message, strip_endpoint_prefix, transformed_sse_proxy_response,
+    ProxyCoreResponse, ProxyRequest, ProxyResult, ProxyTransportResponse,
+    ProxyTransportResponseBody, UpstreamSseAggregationKind,
 };
 use crate::proxy_core::api::usage::{
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
@@ -29,7 +30,7 @@ use crate::proxy_core_adapter::{
     codex_auto_transformed_json_response_from_context,
     codex_auto_transformed_sse_stream_from_context, codex_chat_error_proxy_response,
     codex_chat_transform_streaming_decision, codex_responses_proxy_request_from_input,
-    extract_gemini_model_from_path, json_proxy_request_from_input, parse_json_proxy_request_body,
+    json_proxy_request_from_input, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, provider_claude_transform_streaming_decision,
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
     record_forward_core_error_usage, ActiveConnectionGuard, AppChannelListQuery,
