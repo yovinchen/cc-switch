@@ -3389,6 +3389,11 @@ fn proxy_core_adapter_uses_host_reachability_probe_source() {
         "impl<R> CcSwitchProxyServices",
     );
     let services_impl = services_source.as_str();
+    let probe_adapter_import = function_slice(
+        &probe_source,
+        "use crate::proxy_core_adapter::{",
+        "};\nuse crate::services::stream_check::StreamCheckService;",
+    );
 
     assert!(
         (adapter_source.contains(
@@ -3401,10 +3406,38 @@ fn proxy_core_adapter_uses_host_reachability_probe_source() {
         "DB-backed reachability probe implementation should live in the host cc_switch module"
     );
     assert!(
+        !adapter_source
+            .contains("pub(crate) use crate::proxy_core::api::ports::ChannelReachabilityProbe")
+            && !adapter_source.contains(
+                "pub(crate) use crate::proxy_core::api::ports::{\n    ChannelReachabilityProbe"
+            ),
+        "proxy_core_adapter should not re-export the ChannelReachabilityProbe port trait"
+    );
+    assert!(
         probe_source.contains("impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe")
             && probe_source.contains("probe_channel_reachability_from_db_source("),
         "host reachability module should implement the proxy-core reachability probe port"
     );
+    assert!(
+        probe_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && probe_source.contains(
+                "use crate::proxy_core::api::management::{ChannelReachabilityResult, ChannelTestProbeRequest};"
+            )
+            && probe_source
+                .contains("use crate::proxy_core::api::ports::ChannelReachabilityProbe;"),
+        "host reachability module should import core reachability contracts directly"
+    );
+    for adapter_type in [
+        "ChannelReachabilityProbe",
+        "ChannelReachabilityResult",
+        "ChannelTestProbeRequest",
+        "ProxyCoreResult",
+    ] {
+        assert!(
+            !probe_adapter_import.contains(adapter_type),
+            "host reachability module should not import core contract {adapter_type} through proxy_core_adapter"
+        );
+    }
     assert!(
         probe_source.contains(".get_provider_by_id(")
             && probe_source.contains(".get_stream_check_config(")

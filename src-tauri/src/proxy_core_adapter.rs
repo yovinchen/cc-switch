@@ -2436,12 +2436,11 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeInput,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
     ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelPathRequest,
-    ChannelReachabilityResult, ChannelRecordResponse, ChannelRouteRejected,
-    ChannelTestProbeRequest, ChannelTestResponse, CurrentRouteResponse, GroupListQuery,
-    GroupListRequest, HealthCheckRequest, HealthCheckResponse, ManagementAppPathRequest,
-    ProviderListResponse, ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest,
-    ProxyStatusRequest, ProxyStatusResponse, RouteGroupListResponse, RouteResolveManagementRequest,
-    StreamCheckConfigOverride, CHANNEL_HEALTH_UNKNOWN_STATUS,
+    ChannelRecordResponse, ChannelRouteRejected, ChannelTestResponse, CurrentRouteResponse,
+    GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
+    ManagementAppPathRequest, ProviderListResponse, ProxyChannelModelsReplaceRequest,
+    ProxyChannelTestRequest, ProxyStatusRequest, ProxyStatusResponse, RouteGroupListResponse,
+    RouteResolveManagementRequest, StreamCheckConfigOverride, CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;
@@ -2453,7 +2452,6 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogResponse, ClientModelCatalogSource,
     RoutableModelList,
 };
-pub(crate) use crate::proxy_core::api::ports::ChannelReachabilityProbe;
 pub(crate) use crate::proxy_core::api::ports::{
     channel_breaker_stats_from_parts, channel_health_reset_from_parts, AuthProvider,
     ChannelBreakerStats, ChannelHealthReset, ChannelSource, ProxyServices,
@@ -7907,7 +7905,7 @@ mod tests {
         upstream_proxy_error_response_body, ProxyCoreError, ProxyErrorStatusKind,
     };
     use crate::proxy_core::api::events::ProxyEventEnvelope;
-    use crate::proxy_core::api::management::ChannelKeyRuntimeCandidate;
+    use crate::proxy_core::api::management::{ChannelKeyRuntimeCandidate, ChannelTestProbeRequest};
     use crate::proxy_core::api::model_catalog::CopilotModel;
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
