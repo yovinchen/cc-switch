@@ -870,6 +870,35 @@ pub(crate) async fn record_proxy_server_started_runtime_source(
     *start_time.write().await = Some(std::time::Instant::now());
 }
 
+pub(crate) fn record_proxy_server_bound_runtime_source(
+    state: &ProxyState,
+    bound_address: &str,
+    port: u16,
+) {
+    emit_proxy_server_started_event_source(state.events.as_ref(), bound_address, port);
+    record_proxy_server_listen_port_runtime_source(port);
+}
+
+pub(crate) async fn record_proxy_server_started_info_runtime_source(
+    state: &ProxyState,
+    listen_address: &str,
+    port: u16,
+) -> ProxyServerInfo {
+    record_proxy_server_started_runtime_source(
+        state.status.as_ref(),
+        state.start_time.as_ref(),
+        listen_address,
+        port,
+    )
+    .await;
+
+    proxy_server_info_from_parts(
+        listen_address.to_string(),
+        port,
+        chrono::Utc::now().to_rfc3339(),
+    )
+}
+
 pub(crate) async fn record_proxy_server_stopped_runtime_source(
     status: &RwLock<ProxyRuntimeStatus>,
     start_time: &RwLock<Option<std::time::Instant>>,
@@ -879,6 +908,12 @@ pub(crate) async fn record_proxy_server_stopped_runtime_source(
         record_proxy_server_stopped_status(&mut status);
     }
     *start_time.write().await = None;
+}
+
+pub(crate) async fn record_proxy_server_stopped_runtime_event_source(state: &ProxyState) {
+    record_proxy_server_stopped_runtime_source(state.status.as_ref(), state.start_time.as_ref())
+        .await;
+    emit_proxy_server_stopped_event_source(state.events.as_ref());
 }
 
 pub(crate) async fn proxy_runtime_status_from_runtime_sources(

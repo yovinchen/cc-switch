@@ -15,10 +15,9 @@ use crate::database::Database;
 use crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source;
 use crate::proxy_core_adapter::ProxyState;
 use crate::proxy_core_adapter::{
-    emit_proxy_server_started_event_source, emit_proxy_server_stopped_event_source,
-    provider_circuit_breaker_stats_source, proxy_server_info_from_parts,
-    record_proxy_server_listen_port_runtime_source, record_proxy_server_started_runtime_source,
-    record_proxy_server_stopped_runtime_source, reset_provider_circuit_breaker_source,
+    provider_circuit_breaker_stats_source, record_proxy_server_bound_runtime_source,
+    record_proxy_server_started_info_runtime_source,
+    record_proxy_server_stopped_runtime_event_source, reset_provider_circuit_breaker_source,
     server_log_codes as log_srv, set_active_route_target_runtime_source,
     update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
     CircuitBreakerConfig, CircuitBreakerStats, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
@@ -95,21 +94,14 @@ impl ProxyServer {
         let actual_port = local_addr.port();
 
         log::info!("[{}] 代理服务器启动于 {local_addr}", log_srv::STARTED);
-        emit_proxy_server_started_event_source(
-            self.state.events.as_ref(),
-            &local_addr.ip().to_string(),
-            actual_port,
-        );
-
-        // 更新全局代理端口，用于系统代理检测
-        record_proxy_server_listen_port_runtime_source(actual_port);
+        let bound_address = local_addr.ip().to_string();
+        record_proxy_server_bound_runtime_source(&self.state, &bound_address, actual_port);
 
         // 保存关闭句柄
         *self.shutdown_tx.write().await = Some(shutdown_tx);
 
-        record_proxy_server_started_runtime_source(
-            self.state.status.as_ref(),
-            self.state.start_time.as_ref(),
+        let server_info = record_proxy_server_started_info_runtime_source(
+            &self.state,
             &self.config.listen_address,
             actual_port,
         )
@@ -187,22 +179,13 @@ impl ProxyServer {
                 }
             }
 
-            record_proxy_server_stopped_runtime_source(
-                state.status.as_ref(),
-                state.start_time.as_ref(),
-            )
-            .await;
-            emit_proxy_server_stopped_event_source(state.events.as_ref());
+            record_proxy_server_stopped_runtime_event_source(&state).await;
         });
 
         // 保存服务器任务句柄
         *self.server_handle.write().await = Some(handle);
 
-        Ok(proxy_server_info_from_parts(
-            self.config.listen_address.clone(),
-            actual_port,
-            chrono::Utc::now().to_rfc3339(),
-        ))
+        Ok(server_info)
     }
 
     pub async fn stop(&self) -> Result<(), ProxyError> {

@@ -679,6 +679,13 @@ const FORBIDDEN_PROXY_SERVER_CIRCUIT_RUNTIME_MARKERS: &[&str] = &[
     ".reset_provider_breaker(",
 ];
 const FORBIDDEN_PROXY_SERVER_RUNTIME_STATE_MARKERS: &[&str] = &[
+    "emit_proxy_server_started_event_source(",
+    "emit_proxy_server_stopped_event_source(",
+    "record_proxy_server_listen_port_runtime_source(",
+    "record_proxy_server_started_runtime_source(",
+    "record_proxy_server_stopped_runtime_source(",
+    "proxy_server_info_from_parts(",
+    "chrono::Utc::now()",
     "record_proxy_server_started_status(",
     "record_proxy_server_stopped_status(",
     "apply_proxy_runtime_uptime(",
@@ -14620,6 +14627,40 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
     let path = manifest_dir.join("src/proxy/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
     let runtime_state = function_slice(&source, "    pub async fn start", "    fn build_router");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let bound_source = function_slice(
+        &adapter_source,
+        "pub(crate) fn record_proxy_server_bound_runtime_source",
+        "pub(crate) async fn record_proxy_server_started_info_runtime_source",
+    );
+    let started_source = function_slice(
+        &adapter_source,
+        "pub(crate) async fn record_proxy_server_started_info_runtime_source",
+        "pub(crate) async fn record_proxy_server_stopped_runtime_source",
+    );
+    let stopped_source = function_slice(
+        &adapter_source,
+        "pub(crate) async fn record_proxy_server_stopped_runtime_event_source",
+        "pub(crate) async fn proxy_runtime_status_from_runtime_sources",
+    );
+
+    assert!(
+        runtime_state.contains("record_proxy_server_bound_runtime_source(")
+            && runtime_state.contains("record_proxy_server_started_info_runtime_source(")
+            && runtime_state.contains("record_proxy_server_stopped_runtime_event_source("),
+        "production ProxyServer must use adapter-owned start/stop runtime side-effect helpers"
+    );
+
+    assert!(
+        bound_source.contains("emit_proxy_server_started_event_source(")
+            && bound_source.contains("record_proxy_server_listen_port_runtime_source(")
+            && started_source.contains("record_proxy_server_started_runtime_source(")
+            && started_source.contains("proxy_server_info_from_parts(")
+            && stopped_source.contains("record_proxy_server_stopped_runtime_source(")
+            && stopped_source.contains("emit_proxy_server_stopped_event_source("),
+        "proxy_core_adapter must own server start/stop event, status, port, and info side effects"
+    );
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(runtime_state) {
