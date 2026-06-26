@@ -15232,10 +15232,30 @@ fn proxy_engine_delegates_route_policy_raw_contract() {
 }
 
 #[test]
-fn production_provider_router_delegates_channel_route_source_to_adapter() {
+fn production_proxy_provider_router_legacy_module_is_reexport_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider_router.rs");
     let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let production_code: Vec<&str> = production_lines(&source)
+        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert_eq!(
+        production_code,
+        vec![
+            "#[allow(unused_imports)]",
+            "pub(crate) use super::engine::routing::*;",
+        ],
+        "legacy proxy/provider_router.rs must remain a re-export shim after engine/routing.rs split"
+    );
+}
+
+#[test]
+fn production_provider_router_delegates_channel_route_source_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -15243,7 +15263,7 @@ fn production_provider_router_delegates_channel_route_source_to_adapter() {
         for marker in FORBIDDEN_PROVIDER_ROUTER_CHANNEL_ROUTE_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/provider_router.rs:{} contains channel route source marker `{}`",
+                    "src/proxy/engine/routing.rs:{} contains channel route source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -15261,8 +15281,8 @@ fn production_provider_router_delegates_channel_route_source_to_adapter() {
 #[test]
 fn production_provider_router_delegates_provider_selection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -15270,7 +15290,7 @@ fn production_provider_router_delegates_provider_selection_to_adapter() {
         for marker in FORBIDDEN_PROVIDER_ROUTER_SELECTION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/provider_router.rs:{} contains provider selection marker `{}`",
+                    "src/proxy/engine/routing.rs:{} contains provider selection marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -15288,8 +15308,8 @@ fn production_provider_router_delegates_provider_selection_to_adapter() {
 #[test]
 fn production_provider_router_selects_provider_ids_not_provider_records() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -15297,7 +15317,7 @@ fn production_provider_router_selects_provider_ids_not_provider_records() {
         for marker in FORBIDDEN_PROVIDER_ROUTER_PROVIDER_RECORD_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/provider_router.rs:{} contains provider record marker `{}`",
+                    "src/proxy/engine/routing.rs:{} contains provider record marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -15315,8 +15335,8 @@ fn production_provider_router_selects_provider_ids_not_provider_records() {
 #[test]
 fn production_provider_router_delegates_failover_config_fallback_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -15324,7 +15344,7 @@ fn production_provider_router_delegates_failover_config_fallback_to_adapter() {
         for marker in FORBIDDEN_PROVIDER_ROUTER_FAILOVER_CONFIG_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/provider_router.rs:{} contains failover config marker `{}`",
+                    "src/proxy/engine/routing.rs:{} contains failover config marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -15342,8 +15362,8 @@ fn production_provider_router_delegates_failover_config_fallback_to_adapter() {
 #[test]
 fn production_provider_router_delegates_circuit_config_fallback_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -15351,7 +15371,7 @@ fn production_provider_router_delegates_circuit_config_fallback_to_adapter() {
         for marker in FORBIDDEN_PROVIDER_ROUTER_CIRCUIT_CONFIG_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/provider_router.rs:{} contains circuit config marker `{}`",
+                    "src/proxy/engine/routing.rs:{} contains circuit config marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -15383,8 +15403,8 @@ fn production_circuit_breaker_keeps_state_accessor_test_only() {
 #[test]
 fn production_provider_router_delegates_route_rejection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -15392,7 +15412,7 @@ fn production_provider_router_delegates_route_rejection_to_adapter() {
         for marker in FORBIDDEN_PROVIDER_ROUTER_ROUTE_REJECTION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/provider_router.rs:{} contains route rejection marker `{}`",
+                    "src/proxy/engine/routing.rs:{} contains route rejection marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -15410,8 +15430,8 @@ fn production_provider_router_delegates_route_rejection_to_adapter() {
 #[test]
 fn production_provider_router_delegates_management_route_resolution_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -15419,7 +15439,7 @@ fn production_provider_router_delegates_management_route_resolution_to_adapter()
         for marker in FORBIDDEN_PROVIDER_ROUTER_MANAGEMENT_ROUTE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/provider_router.rs:{} contains management route marker `{}`",
+                    "src/proxy/engine/routing.rs:{} contains management route marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -15437,8 +15457,8 @@ fn production_provider_router_delegates_management_route_resolution_to_adapter()
 #[test]
 fn production_provider_router_delegates_health_persistence_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -15446,7 +15466,7 @@ fn production_provider_router_delegates_health_persistence_to_adapter() {
         for marker in FORBIDDEN_PROVIDER_ROUTER_HEALTH_PERSISTENCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/provider_router.rs:{} contains health persistence marker `{}`",
+                    "src/proxy/engine/routing.rs:{} contains health persistence marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -15464,8 +15484,8 @@ fn production_provider_router_delegates_health_persistence_to_adapter() {
 #[test]
 fn production_provider_router_uses_injected_source_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -15473,7 +15493,7 @@ fn production_provider_router_uses_injected_source_adapter() {
         for marker in FORBIDDEN_PROVIDER_ROUTER_CONCRETE_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/provider_router.rs:{} contains concrete router source marker `{}`",
+                    "src/proxy/engine/routing.rs:{} contains concrete router source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -15491,8 +15511,8 @@ fn production_provider_router_uses_injected_source_adapter() {
 #[test]
 fn production_provider_router_uses_split_source_ports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -15500,7 +15520,7 @@ fn production_provider_router_uses_split_source_ports() {
         for marker in FORBIDDEN_PROVIDER_ROUTER_COARSE_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/provider_router.rs:{} contains coarse router source marker `{}`",
+                    "src/proxy/engine/routing.rs:{} contains coarse router source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -15518,8 +15538,8 @@ fn production_provider_router_uses_split_source_ports() {
 #[test]
 fn production_provider_router_uses_route_channel_inputs() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -15527,7 +15547,7 @@ fn production_provider_router_uses_route_channel_inputs() {
         for marker in FORBIDDEN_PROVIDER_ROUTER_CHANNEL_DAO_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/provider_router.rs:{} contains channel DAO marker `{}`",
+                    "src/proxy/engine/routing.rs:{} contains channel DAO marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -15727,8 +15747,8 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
 #[test]
 fn production_provider_router_resets_channel_health_with_core_reset_fact() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
     let router_slice = function_slice(
         &source,
         "pub(crate) trait ProviderRouterHealthStore",
@@ -15766,8 +15786,8 @@ fn production_channel_health_store_reads_channel_breaker_stats_through_core_port
         "ChannelHealthStore adapter must expose channel breaker stats through a core stats fact"
     );
 
-    let router_path = manifest_dir.join("src/proxy/provider_router.rs");
-    let router_source = fs::read_to_string(&router_path).expect("read provider_router.rs");
+    let router_path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let router_source = fs::read_to_string(&router_path).expect("read engine/routing.rs");
     let stats_slice = function_slice(
         &router_source,
         "pub async fn get_channel_circuit_breaker_stats",
@@ -15783,8 +15803,8 @@ fn production_channel_health_store_reads_channel_breaker_stats_through_core_port
 #[test]
 fn production_provider_router_records_channel_health_with_core_attempt_fact() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
     let router_slice = function_slice(
         &source,
         "pub(crate) trait ProviderRouterHealthStore",
@@ -15806,8 +15826,8 @@ fn production_provider_router_records_channel_health_with_core_attempt_fact() {
 #[test]
 fn production_provider_router_delegates_live_circuit_map_to_runtime() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let path = manifest_dir.join("src/proxy/engine/routing.rs");
+    let source = fs::read_to_string(&path).expect("read engine/routing.rs");
     let struct_slice = function_slice(&source, "pub struct ProviderRouter", "impl ProviderRouter");
 
     assert!(
@@ -15816,7 +15836,7 @@ fn production_provider_router_delegates_live_circuit_map_to_runtime() {
     );
     assert!(
         source.contains("struct ProviderRoutingCircuitRuntime"),
-        "provider_router.rs must keep live circuit map in ProviderRoutingCircuitRuntime"
+        "engine/routing.rs must keep live circuit map in ProviderRoutingCircuitRuntime"
     );
 
     let mut violations = Vec::new();
@@ -15825,7 +15845,7 @@ fn production_provider_router_delegates_live_circuit_map_to_runtime() {
         for marker in FORBIDDEN_PROVIDER_ROUTER_LIVE_CIRCUIT_MAP_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/provider_router.rs ProviderRouter:{} contains live circuit map marker `{}`",
+                    "src/proxy/engine/routing.rs ProviderRouter:{} contains live circuit map marker `{}`",
                     line_index + 1,
                     marker
                 ));
