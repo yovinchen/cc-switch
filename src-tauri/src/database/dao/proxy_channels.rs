@@ -7,6 +7,10 @@
 use crate::app_config::AppType;
 use crate::database::{lock_conn, to_json_string, Database};
 use crate::error::AppError;
+#[cfg(test)]
+use crate::proxy::host::cc_switch::channel_key_runtime_source::select_enabled_proxy_channel_key_runtime_candidate;
+#[cfg(test)]
+use crate::proxy_core_adapter::ChannelKeyRuntimeCandidate;
 use crate::proxy_core_adapter::{
     channel_health_update_from_input, legacy_channel_migration_preview_from_providers,
     normalize_channel_base_url as normalize_base_url,
@@ -19,10 +23,6 @@ use crate::proxy_core_adapter::{
     ChannelRequestValidationError, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
     ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelWriteRequest, CHANNEL_HEALTH_UNKNOWN_STATUS,
-};
-#[cfg(test)]
-use crate::proxy_core_adapter::{
-    select_enabled_proxy_channel_key_runtime_candidate, ChannelKeyRuntimeCandidate,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};

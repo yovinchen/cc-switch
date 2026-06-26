@@ -12642,6 +12642,8 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     assert!(
         !source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::channel_key_runtime_source::{"
+        ) && !source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::channel_key_runtime_source::"
         ) && runtime_source.contains("impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource")
             && !source.contains("impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource")
             && !source.contains("fn load_channel_key_candidate_from_database"),
