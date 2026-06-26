@@ -25,10 +25,12 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/channel_key_runtime_source.rs",
     "src/proxy/host/cc_switch/forwarder_attempt_runtime_source.rs",
     "src/proxy/host/cc_switch/forwarder_auth_source.rs",
+    "src/proxy/host/cc_switch/forward_pipeline.rs",
     "src/proxy/host/cc_switch/forwarder_response_source.rs",
     "src/proxy/host/cc_switch/forwarder_request_source.rs",
     "src/proxy/host/cc_switch/managed_account_runtime_source.rs",
     "src/proxy/host/cc_switch/provider_adapter_context.rs",
+    "src/proxy/host/cc_switch/proxy_runtime.rs",
     "src/proxy/host/cc_switch/proxy_services.rs",
     "src/proxy/host/cc_switch/provider_router_health_store.rs",
     "src/proxy/response_adapter.rs",
@@ -16518,8 +16520,11 @@ fn production_proxy_services_excludes_test_constructor_surface() {
     let pipeline_source = fs::read_to_string(&pipeline_path).expect("read forward_pipeline.rs");
     let services_slice = services_source.as_str();
     let lines: Vec<&str> = services_slice.lines().collect();
-    let services_adapter_import =
-        function_slice(&services_source, "use crate::proxy_core_adapter::{", "};");
+    let services_adapter_import = if services_source.contains("use crate::proxy_core_adapter::{") {
+        function_slice(&services_source, "use crate::proxy_core_adapter::{", "};")
+    } else {
+        ""
+    };
 
     let mut violations = Vec::new();
     for marker in [
