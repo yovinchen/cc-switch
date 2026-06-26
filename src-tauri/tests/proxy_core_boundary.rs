@@ -1540,6 +1540,10 @@ const FORBIDDEN_HANDLER_TRANSFORMED_USAGE_POLICY_MARKERS: &[&str] = &[
     "TransformedResponseUsageFormat::",
     "claude_stream_usage_event_filter",
     "codex_stream_usage_event_filter",
+    "claude_transformed_streaming_usage_collector(",
+    "codex_auto_transformed_streaming_usage_collector(",
+    "create_logged_passthrough_stream(",
+    "ctx.streaming_timeout_config()",
     " record_transformed_response_usage(",
     " transformed_streaming_usage_collector(",
 ];

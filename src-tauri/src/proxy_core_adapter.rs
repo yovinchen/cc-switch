@@ -11638,6 +11638,46 @@ pub(crate) fn codex_auto_transformed_streaming_usage_collector(
     )
 }
 
+pub(crate) fn create_claude_transformed_logged_stream<G>(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: u16,
+    connection_guard: Option<G>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
+where
+    G: Send + 'static,
+{
+    let usage_collector = claude_transformed_streaming_usage_collector(state, ctx, status_code);
+    create_logged_passthrough_stream(
+        stream,
+        "Claude/OpenRouter",
+        usage_collector,
+        ctx.streaming_timeout_config(),
+        connection_guard,
+    )
+}
+
+pub(crate) fn create_codex_auto_transformed_logged_stream<G>(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: u16,
+    connection_guard: Option<G>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
+where
+    G: Send + 'static,
+{
+    let usage_collector = codex_auto_transformed_streaming_usage_collector(state, ctx, status_code);
+    create_logged_passthrough_stream(
+        stream,
+        ctx.tag,
+        usage_collector,
+        ctx.streaming_timeout_config(),
+        connection_guard,
+    )
+}
+
 pub(crate) struct ForwardErrorUsageContext<'a> {
     pub(crate) provider: Option<&'a Provider>,
     pub(crate) fallback_provider_id: &'a str,

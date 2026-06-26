@@ -29,10 +29,10 @@ use super::{
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
-    append_query_to_endpoint_path, claude_transformed_streaming_usage_collector,
-    codex_auto_transformed_streaming_usage_collector, codex_chat_transform_streaming_decision,
-    create_logged_passthrough_stream, extract_anthropic_tool_schema_hints,
-    extract_gemini_model_from_path, json_proxy_request_from_input, parse_json_proxy_request_body,
+    append_query_to_endpoint_path, codex_chat_transform_streaming_decision,
+    create_claude_transformed_logged_stream, create_codex_auto_transformed_logged_stream,
+    extract_anthropic_tool_schema_hints, extract_gemini_model_from_path,
+    json_proxy_request_from_input, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, provider_claude_transform_response_for_api_format,
     provider_claude_transform_sse_for_api_format, provider_claude_transform_streaming_decision,
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
@@ -688,18 +688,11 @@ async fn handle_claude_transform(
             tool_schema_hints.clone(),
         );
 
-        // 创建使用量收集器；关闭 usage logging 时不要再解析转换后的 SSE。
-        let usage_collector =
-            claude_transformed_streaming_usage_collector(state, ctx, status.as_u16());
-
-        // 获取流式超时配置
-        let timeout_config = ctx.streaming_timeout_config();
-
-        let logged_stream = create_logged_passthrough_stream(
+        let logged_stream = create_claude_transformed_logged_stream(
             sse_stream,
-            "Claude/OpenRouter",
-            usage_collector,
-            timeout_config,
+            state,
+            ctx,
+            status.as_u16(),
             connection_guard,
         );
 
@@ -947,14 +940,11 @@ async fn handle_codex_chat_to_responses_transform(
             state.codex_chat_history.clone(),
         );
 
-        let usage_collector =
-            codex_auto_transformed_streaming_usage_collector(state, ctx, status.as_u16());
-
-        let logged_stream = create_logged_passthrough_stream(
+        let logged_stream = create_codex_auto_transformed_logged_stream(
             sse_stream,
-            ctx.tag,
-            usage_collector,
-            ctx.streaming_timeout_config(),
+            state,
+            ctx,
+            status.as_u16(),
             connection_guard,
         );
 
