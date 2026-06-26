@@ -20,7 +20,7 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::handler_context::RequestContext;
 use crate::proxy::handlers;
-use crate::proxy::hyper_client::ProxyResponse;
+use crate::proxy::hyper_client::{OriginalHeaderCases, ProxyResponse};
 use crate::proxy::provider_router::{
     ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelSource,
     ProviderRouterConfigSource, ProviderRouterHealthStore, ProviderRouterProviderSource,
@@ -55,13 +55,15 @@ use axum::{
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
 use http::{HeaderMap, Method};
+use hyper_util::rt::TokioIo;
 use indexmap::IndexMap;
 use rust_decimal::Decimal;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tauri::Manager;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{oneshot, Mutex, RwLock};
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 pub(crate) const COPILOT_EDITOR_VERSION: &str = "vscode/1.110.1";
@@ -816,6 +818,91 @@ pub(crate) fn proxy_http_router_from_state(state: ProxyState) -> AxumRouter {
         .route("/gemini/v1/*path", any(handlers::handle_gemini))
         .layer(DefaultBodyLimit::max(200 * 1024 * 1024))
         .with_state(state)
+}
+
+pub(crate) fn spawn_proxy_http_accept_loop(
+    listener: tokio::net::TcpListener,
+    app: AxumRouter,
+    shutdown_rx: oneshot::Receiver<()>,
+    state: ProxyState,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut shutdown_rx = shutdown_rx;
+        loop {
+            tokio::select! {
+                result = listener.accept() => {
+                    let (stream, _remote_addr) = match result {
+                        Ok(v) => v,
+                        Err(e) => {
+                            log::error!(
+                                "[{SRV}] accept 失败: {e}",
+                                SRV = server_log_codes::ACCEPT_ERR
+                            );
+                            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                            continue;
+                        }
+                    };
+
+                    let app = app.clone();
+                    tokio::spawn(async move {
+                        let original_cases = {
+                            let mut peek_buf = vec![0u8; 8192];
+                            match stream.peek(&mut peek_buf).await {
+                                Ok(n) => {
+                                    let cases =
+                                        OriginalHeaderCases::from_raw_bytes(&peek_buf[..n]);
+                                    log::debug!(
+                                        "[ProxyServer] Peeked {} bytes, captured {} header casings",
+                                        n,
+                                        cases.cases.len()
+                                    );
+                                    cases
+                                }
+                                Err(e) => {
+                                    log::debug!("[ProxyServer] peek failed (non-fatal): {e}");
+                                    OriginalHeaderCases::default()
+                                }
+                            }
+                        };
+
+                        let service = hyper::service::service_fn(
+                            move |req: hyper::Request<hyper::body::Incoming>| {
+                                let mut router = app.clone();
+                                let cases = original_cases.clone();
+                                async move {
+                                    let (mut parts, body) = req.into_parts();
+                                    parts.extensions.insert(cases);
+
+                                    let body = axum::body::Body::new(body);
+                                    let axum_req = http::Request::from_parts(parts, body);
+                                    <AxumRouter as tower::Service<
+                                        http::Request<axum::body::Body>,
+                                    >>::call(&mut router, axum_req)
+                                    .await
+                                }
+                            },
+                        );
+
+                        if let Err(e) = hyper::server::conn::http1::Builder::new()
+                            .preserve_header_case(true)
+                            .serve_connection(TokioIo::new(stream), service)
+                            .await
+                        {
+                            log::debug!(
+                                "[{SRV}] connection error: {e}",
+                                SRV = server_log_codes::CONN_ERR
+                            );
+                        }
+                    });
+                }
+                _ = &mut shutdown_rx => {
+                    break;
+                }
+            }
+        }
+
+        record_proxy_server_stopped_runtime_event_source(&state).await;
+    })
 }
 
 pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;

@@ -17,13 +17,12 @@ use crate::proxy_core_adapter::ProxyState;
 use crate::proxy_core_adapter::{
     provider_circuit_breaker_stats_source, proxy_http_router_from_state,
     record_proxy_server_bound_runtime_source, record_proxy_server_started_info_runtime_source,
-    record_proxy_server_stopped_runtime_event_source, reset_provider_circuit_breaker_source,
-    server_log_codes as log_srv, set_active_route_target_runtime_source,
+    reset_provider_circuit_breaker_source, server_log_codes as log_srv,
+    set_active_route_target_runtime_source, spawn_proxy_http_accept_loop,
     update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
     CircuitBreakerConfig, CircuitBreakerStats, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
 };
 use axum::Router;
-use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{oneshot, RwLock};
@@ -104,78 +103,7 @@ impl ProxyServer {
 
         // 启动服务器 — 使用手动 hyper HTTP/1.1 accept loop
         // 开启 preserve_header_case 以捕获客户端请求头的原始大小写
-        let state = self.state.clone();
-        let handle = tokio::spawn(async move {
-            let mut shutdown_rx = shutdown_rx;
-            loop {
-                tokio::select! {
-                    result = listener.accept() => {
-                        let (stream, _remote_addr) = match result {
-                            Ok(v) => v,
-                            Err(e) => {
-                                log::error!("[{SRV}] accept 失败: {e}", SRV = log_srv::ACCEPT_ERR);
-                                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                                continue;
-                            }
-                        };
-
-                        let app = app.clone();
-                        tokio::spawn(async move {
-                            // Peek raw TCP bytes to capture original header casing
-                            // before hyper parses (and lowercases) the header names.
-                            let original_cases = {
-                                let mut peek_buf = vec![0u8; 8192];
-                                match stream.peek(&mut peek_buf).await {
-                                    Ok(n) => {
-                                        let cases = super::hyper_client::OriginalHeaderCases::from_raw_bytes(&peek_buf[..n]);
-                                        log::debug!(
-                                            "[ProxyServer] Peeked {} bytes, captured {} header casings",
-                                            n, cases.cases.len()
-                                        );
-                                        cases
-                                    }
-                                    Err(e) => {
-                                        log::debug!("[ProxyServer] peek failed (non-fatal): {e}");
-                                        super::hyper_client::OriginalHeaderCases::default()
-                                    }
-                                }
-                            };
-
-                            // service_fn 将 axum Router（tower::Service）桥接到 hyper
-                            let service = hyper::service::service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
-                                let mut router = app.clone();
-                                let cases = original_cases.clone();
-                                async move {
-                                    // 将 hyper::body::Incoming 转为 axum::body::Body，保留 extensions
-                                    let (mut parts, body) = req.into_parts();
-
-                                    // Insert our own header case map alongside hyper's internal one
-                                    parts.extensions.insert(cases);
-
-                                    let body = axum::body::Body::new(body);
-                                    let axum_req = http::Request::from_parts(parts, body);
-                                    <Router as tower::Service<http::Request<axum::body::Body>>>::call(&mut router, axum_req).await
-                                }
-                            });
-
-                            if let Err(e) = hyper::server::conn::http1::Builder::new()
-                                .preserve_header_case(true)
-                                .serve_connection(TokioIo::new(stream), service)
-                                .await
-                            {
-                                // Connection reset / broken pipe 等在代理场景下很常见，debug 级别
-                                log::debug!("[{SRV}] connection error: {e}", SRV = log_srv::CONN_ERR);
-                            }
-                        });
-                    }
-                    _ = &mut shutdown_rx => {
-                        break;
-                    }
-                }
-            }
-
-            record_proxy_server_stopped_runtime_event_source(&state).await;
-        });
+        let handle = spawn_proxy_http_accept_loop(listener, app, shutdown_rx, self.state.clone());
 
         // 保存服务器任务句柄
         *self.server_handle.write().await = Some(handle);

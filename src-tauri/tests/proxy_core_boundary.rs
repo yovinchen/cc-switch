@@ -713,6 +713,16 @@ const FORBIDDEN_PROXY_SERVER_ROUTE_ASSEMBLY_MARKERS: &[&str] = &[
     ".merge(",
     ".with_state(",
 ];
+const FORBIDDEN_PROXY_SERVER_ACCEPT_LOOP_MARKERS: &[&str] = &[
+    "listener.accept()",
+    "OriginalHeaderCases",
+    "preserve_header_case(",
+    "serve_connection(",
+    "TokioIo::new(",
+    "hyper::service::service_fn(",
+    "record_proxy_server_stopped_runtime_event_source(",
+    "tokio::select!",
+];
 const FORBIDDEN_PROXY_CORE_CONFIG_SOURCE_APP_CATALOG_MARKERS: &[&str] = &[
     "AppKind::Claude",
     "AppKind::ClaudeDesktop",
@@ -14654,12 +14664,22 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
         "pub(crate) async fn record_proxy_server_stopped_runtime_event_source",
         "pub(crate) async fn proxy_runtime_status_from_runtime_sources",
     );
+    let accept_loop_source = function_slice(
+        &adapter_source,
+        "pub(crate) fn spawn_proxy_http_accept_loop",
+        "pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts",
+    );
 
     assert!(
         runtime_state.contains("record_proxy_server_bound_runtime_source(")
-            && runtime_state.contains("record_proxy_server_started_info_runtime_source(")
-            && runtime_state.contains("record_proxy_server_stopped_runtime_event_source("),
+            && runtime_state.contains("record_proxy_server_started_info_runtime_source("),
         "production ProxyServer must use adapter-owned start/stop runtime side-effect helpers"
+    );
+
+    assert!(
+        accept_loop_source
+            .contains("record_proxy_server_stopped_runtime_event_source(&state).await"),
+        "proxy_core_adapter accept loop must own stopped runtime side effects"
     );
 
     assert!(
@@ -14740,6 +14760,57 @@ fn production_proxy_server_delegates_route_assembly_to_adapter() {
     assert!(
         violations.is_empty(),
         "production ProxyServer must delegate Axum route assembly to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_server_delegates_accept_loop_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/server.rs");
+    let source = fs::read_to_string(&path).expect("read server.rs");
+    let start_slice = function_slice(&source, "    pub async fn start", "    pub async fn stop");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let accept_loop = function_slice(
+        &adapter_source,
+        "pub(crate) fn spawn_proxy_http_accept_loop",
+        "pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts",
+    );
+
+    assert!(
+        start_slice.contains(
+            "spawn_proxy_http_accept_loop(listener, app, shutdown_rx, self.state.clone())"
+        ),
+        "ProxyServer::start must delegate Hyper accept-loop execution to proxy_core_adapter"
+    );
+
+    assert!(
+        accept_loop.contains("listener.accept()")
+            && accept_loop.contains("OriginalHeaderCases::from_raw_bytes(")
+            && accept_loop.contains(".preserve_header_case(true)")
+            && accept_loop.contains("serve_connection(TokioIo::new(stream), service)")
+            && accept_loop.contains("record_proxy_server_stopped_runtime_event_source(&state).await"),
+        "proxy_core_adapter must own accept-loop, header-case capture, connection serving, and stop side effects"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(start_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVER_ACCEPT_LOOP_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/server.rs ProxyServer::start:{} contains accept-loop marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production ProxyServer must delegate Hyper accept-loop and header-case capture to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
