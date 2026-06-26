@@ -51,6 +51,7 @@ use crate::proxy_core::api::routing::{
     RouteResolveModelRecordInput,
 };
 use crate::proxy_core::api::session::SessionIdResult;
+use crate::proxy_core::api::transforms::AnthropicToolSchemaHints;
 use crate::settings::CustomEndpoint;
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
@@ -2426,10 +2427,10 @@ pub(crate) use crate::proxy_core::api::transforms::{
     claude_request_transform_for_api_format, claude_response_to_anthropic_message_for_api_format,
     claude_transform_streaming_decision as core_claude_transform_streaming_decision,
     create_claude_to_anthropic_sse_stream_for_api_format,
-    create_codex_chat_to_responses_sse_stream_with_context, extract_anthropic_tool_schema_hints,
-    inspect_codex_chat_history_sse_block, should_preserve_reasoning_content_for_openai_chat,
-    take_sse_block, AnthropicToolSchemaHints, ClaudeApiFormatRequestTransformContext,
-    ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
+    create_codex_chat_to_responses_sse_stream_with_context, inspect_codex_chat_history_sse_block,
+    should_preserve_reasoning_content_for_openai_chat, take_sse_block,
+    ClaudeApiFormatRequestTransformContext, ClaudeApiFormatSseTransformContext,
+    ClaudeTransformStreamingDecision,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::build_claude_auth_headers;

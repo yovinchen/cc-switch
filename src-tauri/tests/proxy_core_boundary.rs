@@ -6740,6 +6740,8 @@ fn response_pipeline_owns_core_usage_transport_imports() {
             && source.contains("use crate::proxy_core::api::transforms::{")
             && source.contains("claude_stream_usage_event_filter")
             && source.contains("codex_stream_usage_event_filter")
+            && source.contains("extract_anthropic_tool_schema_hints")
+            && source.contains("AnthropicToolSchemaHints")
             && source.contains("CodexToolContext")
             && source.contains("SsePassthroughStreamState")
             && source.contains("SseUsageAccumulator"),
@@ -6769,6 +6771,8 @@ fn response_pipeline_owns_core_usage_transport_imports() {
         "usage_selected_provider_missing_log_message",
         "claude_stream_usage_event_filter",
         "codex_stream_usage_event_filter",
+        "extract_anthropic_tool_schema_hints",
+        "AnthropicToolSchemaHints",
         "CodexToolContext",
         "SsePassthroughStreamState",
         "SseUsageAccumulator",
@@ -6792,8 +6796,9 @@ fn response_pipeline_owns_core_usage_transport_imports() {
         !adapter_source.contains("pub(crate) type SsePassthroughStreamState")
             && !adapter_source.contains("pub(crate) type SseUsageAccumulator")
             && !adapter_source.contains("claude_stream_usage_event_filter,")
-            && !adapter_source.contains("codex_stream_usage_event_filter,"),
-        "proxy_core_adapter should not keep response-pipeline-only SSE usage state/filter shims"
+            && !adapter_source.contains("codex_stream_usage_event_filter,")
+            && !adapter_source.contains("extract_anthropic_tool_schema_hints,"),
+        "proxy_core_adapter should not keep response-pipeline-only SSE usage state/filter or tool-schema extractor shims"
     );
 }
 

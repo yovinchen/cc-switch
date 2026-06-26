@@ -17,7 +17,8 @@ use crate::proxy_core::api::domain::{AppKind, ProviderKind};
 use crate::proxy_core::api::errors::{selected_provider_not_applied_message, ProxyCoreError};
 use crate::proxy_core::api::ports::ProxyServices;
 use crate::proxy_core::api::transforms::{
-    claude_stream_usage_event_filter, codex_stream_usage_event_filter, CodexToolContext,
+    claude_stream_usage_event_filter, codex_stream_usage_event_filter,
+    extract_anthropic_tool_schema_hints, AnthropicToolSchemaHints, CodexToolContext,
     SsePassthroughStreamState, SseUsageAccumulator,
 };
 use crate::proxy_core::api::transport::{
@@ -42,10 +43,9 @@ use crate::proxy_core::api::usage::{
     UsageRouteContext, UsageSelectedProviderMissingPhase,
 };
 use crate::proxy_core_adapter::{
-    extract_anthropic_tool_schema_hints, provider_claude_transform_response_for_api_format,
+    provider_claude_transform_response_for_api_format,
     provider_claude_transform_sse_for_api_format, transform_codex_chat_response_with_history,
-    transform_codex_chat_sse_with_history, ActiveConnectionGuard, AnthropicToolSchemaHints,
-    ProxyState,
+    transform_codex_chat_sse_with_history, ActiveConnectionGuard, ProxyState,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
