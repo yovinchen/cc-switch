@@ -8429,12 +8429,16 @@ fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
 #[test]
 fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let request_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
+    let request_source =
+        fs::read_to_string(&request_source_path).expect("read forwarder_request_source.rs");
     let impl_slice = function_slice(
-        &source,
+        &request_source,
         "impl ForwarderRequestSource for CcSwitchForwarderRequestSource",
-        "pub(crate) fn anthropic_redacted_thinking_placeholder",
+        "pub(crate) fn forwarder_rectifier_error_message",
     );
     let function = function_slice(
         impl_slice,
@@ -8453,7 +8457,7 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
         "pub(crate) fn forward_upstream_url_plan(",
     ] {
         assert!(
-            !source.contains(marker),
+            !adapter_source.contains(marker),
             "proxy_core_adapter must not keep upstream URL plan policy marker `{marker}`"
         );
     }
@@ -11354,11 +11358,13 @@ fn production_forwarder_uses_managed_auth_runtime_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let source = fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/forwarder_auth_source.rs");
     let auth_source =
         fs::read_to_string(&auth_source_path).expect("read forwarder_auth_source.rs");
+    let request_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
+    let request_source =
+        fs::read_to_string(&request_source_path).expect("read forwarder_request_source.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -11370,7 +11376,7 @@ fn production_forwarder_uses_managed_auth_runtime_source_resource() {
         "impl ForwarderAuthSource for CcSwitchForwarderAuthSource",
     );
     let request_source_slice = function_slice(
-        &adapter_source,
+        &request_source,
         "struct CcSwitchForwarderRequestSource",
         "impl ForwarderRequestSource for CcSwitchForwarderRequestSource",
     );
@@ -12026,8 +12032,10 @@ fn production_forwarder_uses_request_source_for_managed_account_runtime() {
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let forwarder_source =
         fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let request_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
+    let request_source =
+        fs::read_to_string(&request_source_path).expect("read forwarder_request_source.rs");
     let struct_slice = function_slice(
         &forwarder_source,
         "pub struct RequestForwarder",
@@ -12035,7 +12043,7 @@ fn production_forwarder_uses_request_source_for_managed_account_runtime() {
     );
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
     let request_source_slice = function_slice(
-        &adapter_source,
+        &request_source,
         "struct CcSwitchForwarderRequestSource",
         "impl ForwarderRequestSource for CcSwitchForwarderRequestSource",
     );
@@ -12426,17 +12434,17 @@ fn production_forwarder_uses_runtime_state_source_resource() {
 #[test]
 fn proxy_core_adapter_delegates_rectifier_error_message_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder_request_source.rs");
     let function = function_slice(
         &source,
-        "fn forwarder_rectifier_error_message",
+        "pub(crate) fn forwarder_rectifier_error_message",
         "pub(crate) fn forwarder_request_source_from_managed_account_runtime_source",
     );
 
     assert!(
         function.contains("core_forwarder_rectifier_error_message("),
-        "adapter must delegate rectifier error-message selection to proxy-core"
+        "default request source must delegate rectifier error-message selection to proxy-core"
     );
     assert!(
         function.contains("ForwarderRectifierErrorInput::Upstream"),
@@ -13215,6 +13223,10 @@ fn production_forwarder_uses_request_source_resource() {
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let request_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
+    let request_source =
+        fs::read_to_string(&request_source_path).expect("read forwarder_request_source.rs");
     let core_transport_path = manifest_dir.join("crates/proxy-core/src/request_transport.rs");
     let core_transport_source =
         fs::read_to_string(&core_transport_path).expect("read request_transport.rs");
@@ -13225,12 +13237,12 @@ fn production_forwarder_uses_request_source_resource() {
     );
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
     let request_impl_slice = function_slice(
-        &adapter_source,
+        &request_source,
         "impl ForwarderRequestSource for CcSwitchForwarderRequestSource",
-        "pub(crate) fn forwarder_request_source_from_managed_account_runtime_source",
+        "pub(crate) fn forwarder_rectifier_error_message",
     );
     let request_private_impl_slice = function_slice(
-        &adapter_source,
+        &request_source,
         "impl CcSwitchForwarderRequestSource",
         "fn apply_forwarder_media_prevention_with_log",
     );
@@ -13506,29 +13518,29 @@ fn production_forwarder_uses_request_source_resource() {
         );
     }
     assert!(
-        adapter_source.contains("forwarder_request_body_model("),
+        request_source.contains("forwarder_request_body_model("),
         "default ForwarderRequestSource implementation must retain request body model projection"
     );
     assert!(
-        adapter_source.contains("fn transform_provider_request_body"),
+        request_source.contains("fn transform_provider_request_body"),
         "default ForwarderRequestSource implementation must retain provider transform wrapping"
     );
     assert!(
-        adapter_source.contains("fn convert_codex_responses_to_chat_body"),
+        request_source.contains("fn convert_codex_responses_to_chat_body"),
         "default ForwarderRequestSource implementation must retain Codex Responses to Chat body conversion"
     );
     assert!(
-        adapter_source.contains("fn optimize_copilot_request"),
+        request_source.contains("fn optimize_copilot_request"),
         "default ForwarderRequestSource implementation must retain Copilot optimizer sequencing"
     );
     assert!(
-        !adapter_source.contains("fn apply_media_prevention"),
+        !request_source.contains("fn apply_media_prevention"),
         "default ForwarderRequestSource implementation must not retain a private media prevention replacement method"
     );
     assert!(
-        adapter_source.contains("fn apply_forwarder_media_prevention_with_log")
+        request_source.contains("fn apply_forwarder_media_prevention_with_log")
             && request_impl_slice.contains("apply_forwarder_media_prevention_with_log("),
-        "default ForwarderRequestSource implementation should delegate media prevention to the adapter helper"
+        "default ForwarderRequestSource implementation should delegate media prevention to the host helper"
     );
     assert!(
         impl_slice.contains("adapter.provider_url_facts(provider)")
@@ -13555,7 +13567,7 @@ fn production_forwarder_uses_request_source_resource() {
     let request_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderRequestSource",
-        "struct CcSwitchForwarderRequestSource",
+        "pub(crate) use crate::proxy::host::cc_switch::forwarder_request_source",
     );
     assert!(
         !request_trait_slice.contains("request_body_model")
@@ -13567,6 +13579,11 @@ fn production_forwarder_uses_request_source_resource() {
             && !request_trait_slice.contains("adapter_facts")
             && !request_trait_slice.contains("provider_url_facts"),
         "ForwarderRequestSource trait must not expose internal request body model, provider transform, Codex bridge body/gate, Copilot optimizer, media prevention, adapter facts, or provider URL facts helpers"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_request_source::forwarder_request_source_from_managed_account_runtime_source")
+            && !adapter_source.contains("struct CcSwitchForwarderRequestSource"),
+        "proxy_core_adapter should re-export, not own, the default forwarder request source"
     );
 
     let impl_forbidden_markers = [
