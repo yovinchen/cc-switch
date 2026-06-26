@@ -5867,6 +5867,56 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
 }
 
 #[test]
+fn response_pipeline_owns_transformed_sse_stream_wrappers() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn claude_transform_tool_schema_hints",
+        "pub(crate) fn record_non_streaming_response_usage",
+    );
+
+    assert!(
+        function.contains("pub(crate) struct ClaudeTransformedSseStreamContext")
+            && function.contains("pub(crate) fn claude_transformed_sse_stream_from_context")
+            && function.contains("pub(crate) struct CodexAutoTransformedSseStreamContext")
+            && function.contains("pub(crate) fn codex_auto_transformed_sse_stream_from_context")
+            && function.contains("provider_claude_transform_sse_for_api_format(")
+            && function.contains("transform_codex_chat_sse_with_history(")
+            && function.contains("create_claude_transformed_logged_stream(")
+            && function.contains("create_codex_auto_transformed_logged_stream("),
+        "response pipeline should own transformed SSE wrapper orchestration"
+    );
+    assert!(
+        !function.contains("create_logged_passthrough_stream(")
+            && !function.contains("SsePassthroughStreamState::new()")
+            && !function.contains("async_stream::stream!")
+            && !function
+                .contains("transformed_streaming_response_usage_record_from_response_context(")
+            && !function.contains("spawn_usage_record_with_proxy_services_context("),
+        "response pipeline should keep shared logged-stream internals and usage records delegated"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
+            && adapter_source.contains("claude_transform_tool_schema_hints")
+            && adapter_source.contains("ClaudeTransformedSseStreamContext")
+            && adapter_source.contains("claude_transformed_sse_stream_from_context")
+            && adapter_source.contains("CodexAutoTransformedSseStreamContext")
+            && adapter_source.contains("codex_auto_transformed_sse_stream_from_context")
+            && !adapter_source.contains("fn claude_transform_tool_schema_hints(")
+            && !adapter_source.contains("pub(crate) struct ClaudeTransformedSseStreamContext")
+            && !adapter_source.contains("pub(crate) fn claude_transformed_sse_stream_from_context")
+            && !adapter_source.contains("pub(crate) struct CodexAutoTransformedSseStreamContext")
+            && !adapter_source
+                .contains("pub(crate) fn codex_auto_transformed_sse_stream_from_context"),
+        "proxy_core_adapter should re-export, not own, transformed SSE wrapper orchestration"
+    );
+}
+
+#[test]
 fn response_pipeline_owns_body_decode_transport_bridge() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");

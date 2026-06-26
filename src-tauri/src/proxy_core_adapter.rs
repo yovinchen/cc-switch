@@ -6495,14 +6495,16 @@ type UsageCallbackWithTiming = Arc<dyn Fn(Vec<Value>, Option<u64>) + Send + Sync
 
 #[allow(unused_imports)]
 pub(crate) use crate::proxy::engine::response_pipeline::{
-    claude_transformed_streaming_usage_collector, codex_auto_transformed_streaming_usage_collector,
-    create_claude_transformed_logged_stream, create_codex_auto_transformed_logged_stream,
-    create_passthrough_logged_stream, decode_raw_proxy_response_body,
-    log_non_streaming_proxy_response_body, log_streaming_proxy_response_received,
-    passthrough_non_stream_proxy_response_from_context,
+    claude_transform_tool_schema_hints, claude_transformed_sse_stream_from_context,
+    claude_transformed_streaming_usage_collector, codex_auto_transformed_sse_stream_from_context,
+    codex_auto_transformed_streaming_usage_collector, create_claude_transformed_logged_stream,
+    create_codex_auto_transformed_logged_stream, create_passthrough_logged_stream,
+    decode_raw_proxy_response_body, log_non_streaming_proxy_response_body,
+    log_streaming_proxy_response_received, passthrough_non_stream_proxy_response_from_context,
     passthrough_stream_proxy_response_from_context, passthrough_streaming_usage_collector,
     read_decoded_proxy_response_body, record_non_streaming_response_usage,
-    transformed_streaming_usage_collector, DecodedProxyResponseBody,
+    transformed_streaming_usage_collector, ClaudeTransformedSseStreamContext,
+    CodexAutoTransformedSseStreamContext, DecodedProxyResponseBody,
 };
 
 #[derive(Clone)]
@@ -8482,16 +8484,6 @@ pub(crate) fn record_codex_auto_transformed_response_usage(
     );
 }
 
-pub(crate) struct ClaudeTransformedSseStreamContext<'a, G> {
-    pub(crate) state: &'a ProxyState,
-    pub(crate) ctx: &'a RequestContext,
-    pub(crate) provider: &'a Provider,
-    pub(crate) api_format: &'a str,
-    pub(crate) original_body: &'a Value,
-    pub(crate) status_code: u16,
-    pub(crate) connection_guard: Option<G>,
-}
-
 pub(crate) struct ClaudeTransformedJsonResponseContext<'a> {
     pub(crate) state: &'a ProxyState,
     pub(crate) ctx: &'a RequestContext,
@@ -8499,11 +8491,6 @@ pub(crate) struct ClaudeTransformedJsonResponseContext<'a> {
     pub(crate) api_format: &'a str,
     pub(crate) original_body: &'a Value,
     pub(crate) status_code: u16,
-}
-
-fn claude_transform_tool_schema_hints(original_body: &Value) -> Option<AnthropicToolSchemaHints> {
-    let tool_schema_hints = extract_anthropic_tool_schema_hints(original_body);
-    (!tool_schema_hints.is_empty()).then_some(tool_schema_hints)
 }
 
 pub(crate) fn claude_transformed_json_response_from_context(
@@ -8527,62 +8514,6 @@ pub(crate) fn claude_transformed_json_response_from_context(
         context.status_code,
     );
     Ok(anthropic_response)
-}
-
-pub(crate) fn claude_transformed_sse_stream_from_context<G>(
-    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-    context: ClaudeTransformedSseStreamContext<'_, G>,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
-where
-    G: Send + 'static,
-{
-    let tool_schema_hints = claude_transform_tool_schema_hints(context.original_body);
-    let sse_stream = provider_claude_transform_sse_for_api_format(
-        stream,
-        context.api_format,
-        Some(context.state.gemini_shadow.clone()),
-        Some(context.provider.id.clone()),
-        Some(context.ctx.session_id.clone()),
-        tool_schema_hints,
-    );
-
-    create_claude_transformed_logged_stream(
-        sse_stream,
-        context.state,
-        context.ctx,
-        context.status_code,
-        context.connection_guard,
-    )
-}
-
-pub(crate) struct CodexAutoTransformedSseStreamContext<'a, G> {
-    pub(crate) state: &'a ProxyState,
-    pub(crate) ctx: &'a RequestContext,
-    pub(crate) tool_context: CodexToolContext,
-    pub(crate) status_code: u16,
-    pub(crate) connection_guard: Option<G>,
-}
-
-pub(crate) fn codex_auto_transformed_sse_stream_from_context<G>(
-    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-    context: CodexAutoTransformedSseStreamContext<'_, G>,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
-where
-    G: Send + 'static,
-{
-    let sse_stream = transform_codex_chat_sse_with_history(
-        stream,
-        context.tool_context,
-        context.state.codex_chat_history.clone(),
-    );
-
-    create_codex_auto_transformed_logged_stream(
-        sse_stream,
-        context.state,
-        context.ctx,
-        context.status_code,
-        context.connection_guard,
-    )
 }
 
 pub(crate) struct CodexAutoTransformedJsonResponseContext<'a> {

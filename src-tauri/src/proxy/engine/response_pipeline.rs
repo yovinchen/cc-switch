@@ -3,6 +3,7 @@
 //! 统一处理流式和非流式 API 响应
 
 use super::context::RequestContext;
+use crate::provider::Provider;
 use crate::proxy::{
     error::ProxyError, response_adapter::proxy_core_response_to_axum_response,
     transport::upstream::hyper_client::ProxyResponse,
@@ -15,11 +16,13 @@ use crate::proxy_core::api::transport::{
 };
 use crate::proxy_core_adapter::{
     claude_stream_usage_event_filter, codex_stream_usage_event_filter,
-    create_logged_passthrough_stream, passthrough_bytes_proxy_response,
-    passthrough_stream_proxy_response, record_non_streaming_response_usage_from_context,
+    create_logged_passthrough_stream, extract_anthropic_tool_schema_hints,
+    passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
+    provider_claude_transform_sse_for_api_format, record_non_streaming_response_usage_from_context,
     response_headers_indicate_sse, streaming_usage_collector_from_context,
-    transformed_streaming_usage_collector_from_context, usage_logging_enabled_from_proxy_config,
-    ActiveConnectionGuard, AxumResponseBuildErrorContext, NonStreamingUsageRecordContext,
+    transform_codex_chat_sse_with_history, transformed_streaming_usage_collector_from_context,
+    usage_logging_enabled_from_proxy_config, ActiveConnectionGuard, AnthropicToolSchemaHints,
+    AxumResponseBuildErrorContext, CodexToolContext, NonStreamingUsageRecordContext,
     ProxyCoreResponse, ProxyState, SseUsageCollector, StreamUsageEventFilter,
     StreamingUsageCollectorContext, TransformedResponseUsageFormat,
     TransformedStreamingUsageCollectorContext, UsageParserConfig,
@@ -33,6 +36,7 @@ use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures::Stream;
 use http::HeaderMap;
+use serde_json::Value;
 
 // ============================================================================
 // 公共接口
@@ -354,6 +358,79 @@ where
         usage_collector,
         ctx.streaming_timeout_config(),
         connection_guard,
+    )
+}
+
+pub(crate) fn claude_transform_tool_schema_hints(
+    original_body: &Value,
+) -> Option<AnthropicToolSchemaHints> {
+    let tool_schema_hints = extract_anthropic_tool_schema_hints(original_body);
+    (!tool_schema_hints.is_empty()).then_some(tool_schema_hints)
+}
+
+pub(crate) struct ClaudeTransformedSseStreamContext<'a, G> {
+    pub(crate) state: &'a ProxyState,
+    pub(crate) ctx: &'a RequestContext,
+    pub(crate) provider: &'a Provider,
+    pub(crate) api_format: &'a str,
+    pub(crate) original_body: &'a Value,
+    pub(crate) status_code: u16,
+    pub(crate) connection_guard: Option<G>,
+}
+
+pub(crate) fn claude_transformed_sse_stream_from_context<G>(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    context: ClaudeTransformedSseStreamContext<'_, G>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
+where
+    G: Send + 'static,
+{
+    let tool_schema_hints = claude_transform_tool_schema_hints(context.original_body);
+    let sse_stream = provider_claude_transform_sse_for_api_format(
+        stream,
+        context.api_format,
+        Some(context.state.gemini_shadow.clone()),
+        Some(context.provider.id.clone()),
+        Some(context.ctx.session_id.clone()),
+        tool_schema_hints,
+    );
+
+    create_claude_transformed_logged_stream(
+        sse_stream,
+        context.state,
+        context.ctx,
+        context.status_code,
+        context.connection_guard,
+    )
+}
+
+pub(crate) struct CodexAutoTransformedSseStreamContext<'a, G> {
+    pub(crate) state: &'a ProxyState,
+    pub(crate) ctx: &'a RequestContext,
+    pub(crate) tool_context: CodexToolContext,
+    pub(crate) status_code: u16,
+    pub(crate) connection_guard: Option<G>,
+}
+
+pub(crate) fn codex_auto_transformed_sse_stream_from_context<G>(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    context: CodexAutoTransformedSseStreamContext<'_, G>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
+where
+    G: Send + 'static,
+{
+    let sse_stream = transform_codex_chat_sse_with_history(
+        stream,
+        context.tool_context,
+        context.state.codex_chat_history.clone(),
+    );
+
+    create_codex_auto_transformed_logged_stream(
+        sse_stream,
+        context.state,
+        context.ctx,
+        context.status_code,
+        context.connection_guard,
     )
 }
 
