@@ -8284,20 +8284,7 @@ pub(crate) trait ForwarderTransportSource {
     ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
 }
 
-struct CcSwitchForwarderTransportSource;
-
-impl ForwarderTransportSource for CcSwitchForwarderTransportSource {
-    fn send_upstream_request<'a>(
-        &'a self,
-        request: ForwarderUpstreamTransportRequest,
-    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>> {
-        Box::pin(async move { crate::proxy::transport::upstream::send_request(request).await })
-    }
-}
-
-pub(crate) fn default_forwarder_transport_source() -> ForwarderTransportSourceRef {
-    Arc::new(CcSwitchForwarderTransportSource)
-}
+pub(crate) use crate::proxy::host::cc_switch::forwarder_transport_source::default_forwarder_transport_source;
 
 pub(crate) type ForwarderResponseSourceRef = Arc<dyn ForwarderResponseSource + Send + Sync>;
 

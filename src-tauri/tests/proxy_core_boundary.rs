@@ -13102,6 +13102,10 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let transport_source = fs::read_to_string(
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_transport_source.rs"),
+    )
+    .expect("read forwarder_transport_source.rs");
     let upstream_source =
         fs::read_to_string(manifest_dir.join("src/proxy/transport/upstream/mod.rs"))
             .expect("read transport/upstream/mod.rs");
@@ -13109,14 +13113,19 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
         fs::read_to_string(manifest_dir.join("src/proxy/transport/upstream/reqwest_client.rs"))
             .expect("read transport/upstream/reqwest_client.rs");
     let impl_slice = function_slice(
-        &adapter_source,
+        &transport_source,
         "impl ForwarderTransportSource for CcSwitchForwarderTransportSource",
         "pub(crate) fn default_forwarder_transport_source",
     );
 
     assert!(
-        impl_slice.contains("crate::proxy::transport::upstream::send_request(request).await"),
+        impl_slice.contains("send_request(request).await"),
         "default ForwarderTransportSource must delegate upstream transport execution to proxy::transport::upstream"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_transport_source::default_forwarder_transport_source")
+            && !adapter_source.contains("struct CcSwitchForwarderTransportSource"),
+        "proxy_core_adapter should re-export, not own, the default forwarder transport source"
     );
 
     let forbidden_adapter_markers = [
@@ -13137,7 +13146,7 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
         for marker in forbidden_adapter_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs default transport source:{} contains direct upstream transport marker `{}`",
+                    "src/proxy/host/cc_switch/forwarder_transport_source.rs default transport source:{} contains direct upstream transport marker `{}`",
                     line_index + 1,
                     marker
                 ));
