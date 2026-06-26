@@ -1363,10 +1363,6 @@ pub(crate) type ProviderAuthStrategy = crate::proxy_core::api::auth::ProviderAut
 #[cfg(test)]
 pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 
-#[cfg(test)]
-pub(crate) use crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_provider_config;
-#[cfg(test)]
-pub(crate) use crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_route_context;
 pub(crate) use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 pub(crate) use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
 pub(crate) use crate::proxy_core::api::auth::codex_auth_info_from_api_key as core_codex_auth_info_from_api_key;
@@ -10992,7 +10988,10 @@ base_url = "https://api.openai.com/v1"
     #[test]
     fn auth_adapter_projects_cc_switch_provider_config_source() {
         let auth_profile = AuthProfileRef::new("provider:claude:anthropic-main");
-        let auth = auth_info_from_cc_switch_provider_config(Some(&auth_profile));
+        let auth =
+            crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_provider_config(
+                Some(&auth_profile),
+            );
         assert!(auth.headers.is_empty());
         assert_eq!(
             auth.account_ref.as_deref(),
@@ -11000,7 +10999,10 @@ base_url = "https://api.openai.com/v1"
         );
         assert_eq!(auth.metadata["source"], json!("cc_switch_provider_config"));
 
-        let fallback = auth_info_from_cc_switch_provider_config(None);
+        let fallback =
+            crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_provider_config(
+                None,
+            );
         assert!(fallback.account_ref.is_none());
         assert_eq!(
             fallback.metadata["source"],
@@ -11042,7 +11044,12 @@ base_url = "https://api.openai.com/v1"
             review_reasons: Vec::new(),
         });
 
-        let auth = auth_info_from_cc_switch_route_context(&AppKind::Claude, &provider, &channel);
+        let auth =
+            crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_route_context(
+                &AppKind::Claude,
+                &provider,
+                &channel,
+            );
 
         assert!(auth.headers.is_empty());
         assert_eq!(

@@ -17083,14 +17083,14 @@ fn proxy_core_adapter_delegates_auth_provider_source_to_host_module() {
         );
     }
     assert!(
-        adapter_runtime_source.contains(
-            "pub(crate) use crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_route_context;",
-        ) && !adapter_runtime_source.contains("CcSwitchAuthProvider")
+        !adapter_runtime_source.contains("auth_info_from_cc_switch_provider_config")
+            && !adapter_runtime_source.contains("auth_info_from_cc_switch_route_context")
+            && !adapter_runtime_source.contains("CcSwitchAuthProvider")
             && !adapter_runtime_source.contains("provider_with_channel_auth_key")
             && !adapter_source.contains("pub(crate) struct CcSwitchAuthProvider")
             && !adapter_source.contains("impl AuthProvider for CcSwitchAuthProvider")
             && !adapter_source.contains("pub(crate) fn auth_info_from_cc_switch_route_context("),
-        "proxy_core_adapter should not expose the host CC Switch auth provider source beyond the test-only auth-info bridge"
+        "proxy_core_adapter should not expose the host CC Switch auth provider source"
     );
 }
 
