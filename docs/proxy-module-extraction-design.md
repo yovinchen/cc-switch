@@ -565,7 +565,7 @@
 551. Claude Desktop gateway bearer token 校验与 auth error 类型入口已迁入 `proxy_core_adapter`；host auth adapter 只负责委托 `ProxyEngine` 并映射为 `ProxyError`，gateway token DB source 归 adapter 维护。
 552. global proxy URL masking、显式代理 URL parse/scheme 校验、系统代理 env key 与 loopback 自环检测 helper 已迁入 `proxy_core_adapter`；global proxy command 和 host HTTP client 只负责 DB 状态、reqwest client 生命周期、reqwest proxy 应用和环境变量读取。
 553. 模型拉取 command/service 边界使用的 `FetchedModel` DTO 入口已迁入 `proxy_core_adapter`；model fetch transport 继续只负责 reqwest 执行并复用 core request planning/response parsing ports。
-554. host `ProxyError` 到 HTTP status/display 的 `ProxyErrorStatusKind`、状态码和展示文案投影入口已迁入 `proxy::error_mapper`；`proxy_core_adapter` 仅保留兼容 re-export，host error 模块只负责 `ProxyError` 枚举、Axum response body 和 core body helper 调用。
+554. host `ProxyError` 到 HTTP status/display 的 `ProxyErrorStatusKind`、状态码和展示文案投影入口已迁入 `proxy::error_mapper`；host error 模块直接经 `proxy_core::api::errors` 消费 HTTP status/body helper，`proxy_core_adapter` 不再作为这些 pure error response contract 的中转 re-export。
 555. settings command/DAO 使用的 rectifier、optimizer 与 Copilot optimizer 配置 DTO 入口已迁入 `proxy_core_adapter`；host settings DAO 继续负责 settings key、JSON 持久化与 `AppError` 映射。
 556. proxy management command/service/DAO 使用的 proxy config、runtime status、server info、takeover status、provider health 与 circuit breaker DTO 入口已迁入 `proxy_core_adapter`；host 继续负责代理服务生命周期、DB 行映射和运行时热更新。
 557. proxy channel DAO 使用的 legacy channel projection、channel identity、request validation、normalization helper 与 channel write DTO 入口已迁入 `proxy_core_adapter`；host DAO 继续负责 SQLite row mapping、source kind 与 `AppError` 映射。
@@ -786,7 +786,7 @@
 761. provider-switched 事件名、source 常量与 payload contract 已经通过 `proxy_core_adapter::{provider_switched_failover_event_message,provider_switched_failover_enabled_event_message}` 投影为 Tauri event message：failover manager 与 command 只负责切换副作用和 emit 时机。
 762. proxy-official-warning 事件名与 payload contract 已经通过 `proxy_core_adapter::proxy_official_warning_event_message` 投影为 Tauri event message：service 继续负责官方供应商风险判断和 Tauri emit，前端 warning payload shape 由 adapter/core 维护。
 763. 未运行代理的 runtime status 默认 DTO 已迁入 `proxy-core::proxy_runtime_status_stopped`：service 只负责判定是否存在 server，stopped 状态字段 shape 由 core 维护。
-764. `ProxyError` HTTP JSON body contract 已迁入 `proxy-core::{proxy_error_response_body,upstream_proxy_error_response_body}`：host 仍负责错误枚举并通过 `proxy::error_mapper` 投影 HTTP status，上游 JSON 透传/文本包装/proxy_error envelope 由 core 统一维护。
+764. `ProxyError` HTTP JSON body contract 已迁入 `proxy-core::{proxy_error_http_status_code,proxy_error_response_body,upstream_proxy_error_response_body}`，并由 `proxy/error.rs` 直接经 `proxy_core::api::errors` 引用：host 仍负责错误枚举并通过 `proxy::error_mapper` 投影 status kind，上游 JSON 透传/文本包装/proxy_error envelope 由 core 统一维护。
 765. forwarder 的 route_selected 事件名与 `ForwardAttempt` 到 bus message 的投影已切到 `proxy_core_adapter::route_selected_event_message_from_forward_attempt`：forwarder 只负责 active target 写入和 emit 时机，不再手写事件名或 route-selected payload 组合。
 766. request_started 事件名与 payload message 已迁入 `proxy_core_adapter::request_started_event_message`：forwarder 继续负责请求开始时机，不再分别引用事件名常量和 payload builder。
 767. `ForwardAttempt` 到 attempt event bus message 的 host 投影已迁入 `proxy_core_adapter::attempt_event_message_from_forward_attempt`：forwarder 只负责 emit 时机和 attempt phase，不再手写 provider/channel 字段拆箱或 attempt 事件名/payload 组合。
