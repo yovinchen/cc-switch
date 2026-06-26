@@ -6,6 +6,7 @@ use crate::config::{
     write_json_file, write_text_file,
 };
 use crate::error::AppError;
+use crate::proxy_core::api::model_catalog::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW;
 use serde_json::{json, Value};
 use std::fs;
 use std::process::Command;
@@ -526,7 +527,7 @@ fn codex_model_catalog_from_settings(
     }
 
     let default_context_window = extract_codex_top_level_u64(config_text, "model_context_window")
-        .unwrap_or(crate::proxy_core_adapter::CODEX_DEFAULT_MODEL_CONTEXT_WINDOW);
+        .unwrap_or(DEFAULT_CODEX_MODEL_CONTEXT_WINDOW);
     let template = load_codex_model_catalog_template()?;
     Ok(
         crate::proxy_core_adapter::codex_model_catalog_from_settings(
@@ -620,7 +621,7 @@ pub fn read_codex_model_catalog_simplified_from_live() -> Result<Option<Value>, 
         return Ok(None);
     };
     let default_context_window = extract_codex_top_level_u64(&config_text, "model_context_window")
-        .unwrap_or(crate::proxy_core_adapter::CODEX_DEFAULT_MODEL_CONTEXT_WINDOW);
+        .unwrap_or(DEFAULT_CODEX_MODEL_CONTEXT_WINDOW);
     Ok(crate::proxy_core_adapter::simplify_codex_model_catalog(
         &catalog_text,
         default_context_window,

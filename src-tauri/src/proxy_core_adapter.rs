@@ -5460,12 +5460,13 @@ pub(crate) fn claude_desktop_model_routes_to_core_inputs(
         .collect()
 }
 
+#[cfg(test)]
+use crate::proxy_core::api::model_catalog::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW;
 pub(crate) use crate::proxy_core::api::model_catalog::{
     build_codex_model_catalog_from_settings as codex_model_catalog_from_settings,
     client_model_catalog_raw_from_text, empty_client_model_catalog_raw,
     has_codex_model_catalog_specs as codex_settings_have_model_catalog_specs,
     provider_model_catalog_from_settings, simplify_codex_model_catalog,
-    DEFAULT_CODEX_MODEL_CONTEXT_WINDOW as CODEX_DEFAULT_MODEL_CONTEXT_WINDOW,
 };
 
 pub(crate) fn provider_model_catalog_from_db_source(

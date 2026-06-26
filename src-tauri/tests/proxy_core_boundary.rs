@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
+    "src/codex_config.rs",
     "src/commands/codex_oauth.rs",
     "src/commands/copilot.rs",
     "src/commands/model_fetch.rs",
@@ -174,6 +175,10 @@ const FORBIDDEN_MODEL_FETCH_COMMAND_PROVIDER_DETAIL_MARKERS: &[&str] =
 const FORBIDDEN_COPILOT_MODEL_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
     "type CopilotModel = crate::proxy_core::api::model_catalog::CopilotModel",
     "pub use crate::proxy_core::api::model_catalog::CopilotModel",
+];
+const FORBIDDEN_CODEX_MODEL_CONTEXT_ADAPTER_CONST_EXPORT_MARKERS: &[&str] = &[
+    "DEFAULT_CODEX_MODEL_CONTEXT_WINDOW as CODEX_DEFAULT_MODEL_CONTEXT_WINDOW",
+    "CODEX_DEFAULT_MODEL_CONTEXT_WINDOW",
 ];
 const FORBIDDEN_SETTINGS_CONFIG_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
     "type RectifierConfig = crate::proxy_core::api::ports::RectifierConfig",
@@ -10181,6 +10186,67 @@ fn settings_runtime_config_callers_use_core_dto_entrypoint() {
     assert!(
         violations.is_empty(),
         "settings runtime config callers must use proxy_core::api::ports as the DTO entrypoint:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn codex_config_uses_core_model_context_window_constant() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let codex_config_path = manifest_dir.join("src/codex_config.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let codex_config_source = fs::read_to_string(&codex_config_path).expect("read codex_config.rs");
+    let required_import =
+        "use crate::proxy_core::api::model_catalog::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW;";
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&adapter_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_CODEX_MODEL_CONTEXT_ADAPTER_CONST_EXPORT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains Codex model context const export marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    for (line_index, line) in production_lines(&codex_config_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        if code.contains("proxy_core_adapter")
+            && (code.contains("CODEX_DEFAULT_MODEL_CONTEXT_WINDOW")
+                || code.contains("DEFAULT_CODEX_MODEL_CONTEXT_WINDOW"))
+        {
+            violations.push(format!(
+                "src/codex_config.rs:{} imports Codex model context window constant from proxy_core_adapter",
+                line_index + 1
+            ));
+        }
+        let direct_core =
+            code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
+        if direct_core && code.trim() != required_import {
+            violations.push(format!(
+                "src/codex_config.rs:{} contains non-Codex-model-context direct proxy-core import `{}`",
+                line_index + 1,
+                code.trim()
+            ));
+        }
+    }
+
+    assert!(
+        codex_config_source.contains(required_import),
+        "codex_config.rs must import the Codex model context fallback constant directly from proxy_core"
+    );
+    assert!(
+        codex_config_source.contains(".unwrap_or(DEFAULT_CODEX_MODEL_CONTEXT_WINDOW)"),
+        "codex_config.rs should use the direct core Codex model context fallback"
+    );
+    assert!(
+        violations.is_empty(),
+        "Codex model context fallback constant must bypass proxy_core_adapter aliases:\n{}",
         violations.join("\n")
     );
 }
