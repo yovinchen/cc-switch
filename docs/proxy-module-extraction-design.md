@@ -561,7 +561,7 @@
 547. Codex 官方客户端 User-Agent 判定已迁入 `proxy_core_adapter::is_official_codex_client_user_agent`；Codex provider 测试不再直连 core policy helper。
 548. Claude provider 的 API format transform predicate、OpenAI stream usage 注入、Anthropic tool-thinking history normalize 与 DeepSeek thinking-disabled effort 清理已迁入 `proxy_core_adapter`；Claude provider 只负责 provider settings、API format dispatch 和 transform 编排。
 549. Copilot GitHub domain normalize、GHES 判定、默认 public domain 与复合 account id 策略已迁入 `proxy_core_adapter`；Copilot auth 模块只负责 token/OAuth 流程、账号存储与 endpoint/model 缓存。
-550. Copilot OAuth/API URL 构造、Copilot API base fallback、模型列表响应解析与 `CopilotModel` 类型入口已迁入 `proxy_core_adapter`；Copilot auth 模块只负责 HTTP 调用、token/OAuth 状态和 endpoint/model 缓存。
+550. Copilot OAuth/API URL 构造、Copilot API base fallback 与模型列表响应解析入口仍由 host 适配层承接；`CopilotModel` DTO 入口已从 `proxy_core_adapter` 二次出口改为 Copilot 命令和 `copilot_auth` 直接引用 `proxy_core::api::model_catalog::CopilotModel`，Copilot auth 模块只负责 HTTP 调用、token/OAuth 状态和 endpoint/model 缓存。
 551. Claude Desktop gateway bearer token 校验与 auth error 类型入口已迁入 `proxy_core_adapter`；host auth adapter 只负责委托 `ProxyEngine` 并映射为 `ProxyError`，gateway token DB source 归 adapter 维护。
 552. global proxy URL masking、显式代理 URL parse/scheme 校验、系统代理 env key 与 loopback 自环检测 helper 已迁入 `proxy_core_adapter`；global proxy command 和 host HTTP client 只负责 DB 状态、reqwest client 生命周期、reqwest proxy 应用和环境变量读取。
 553. 模型拉取 command/service 边界使用的 `FetchedModel` DTO 入口已从 `proxy_core_adapter` 二次出口改为命令层直接引用 `proxy_core::api::model_catalog::FetchedModel`；model fetch transport 继续只负责 reqwest 执行并复用 core request planning/response parsing ports，boundary 测试禁止 adapter 重新导出该 DTO。
