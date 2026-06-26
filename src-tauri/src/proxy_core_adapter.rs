@@ -6498,16 +6498,18 @@ pub(crate) use crate::proxy::engine::response_pipeline::{
     codex_auto_transformed_json_response_from_context,
     codex_auto_transformed_sse_stream_from_context,
     codex_auto_transformed_streaming_usage_collector, create_claude_transformed_logged_stream,
-    create_codex_auto_transformed_logged_stream, create_passthrough_logged_stream,
-    decode_raw_proxy_response_body, log_non_streaming_proxy_response_body,
+    create_codex_auto_transformed_logged_stream, create_logged_passthrough_stream,
+    create_passthrough_logged_stream, decode_raw_proxy_response_body,
+    fallback_response_usage_provider_facts, log_non_streaming_proxy_response_body,
     log_streaming_proxy_response_received, passthrough_non_stream_proxy_response_from_context,
     passthrough_stream_proxy_response_from_context, passthrough_streaming_usage_collector,
     read_decoded_proxy_response_body, record_claude_transformed_response_usage,
     record_codex_auto_transformed_response_usage, record_non_streaming_response_usage,
-    record_transformed_response_usage, transformed_streaming_usage_collector,
+    record_transformed_response_usage, response_usage_provider_facts,
+    response_usage_provider_facts_from_optional, transformed_streaming_usage_collector,
     ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
     CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
-    DecodedProxyResponseBody, SseUsageCollector,
+    DecodedProxyResponseBody, ResponseUsageProviderFacts, SseUsageCollector,
 };
 
 pub(crate) trait ProxyServiceRuntimeResources:
@@ -8015,46 +8017,6 @@ pub(crate) use crate::proxy_core::api::usage::{
     streaming_response_usage_record_with_optional_outbound_model, usage_record_with_route_context,
     usage_route_context_from_selection,
 };
-
-#[derive(Debug, Clone)]
-pub(crate) struct ResponseUsageProviderFacts {
-    provider_id: String,
-    provider_kind: Option<ProviderKind>,
-    app: AppKind,
-}
-
-pub(crate) fn response_usage_provider_facts(
-    provider: &Provider,
-    app_type: &str,
-) -> ResponseUsageProviderFacts {
-    ResponseUsageProviderFacts {
-        provider_id: provider.id.clone(),
-        provider_kind: provider_kind_from_provider(provider),
-        app: AppKind::from(app_type),
-    }
-}
-
-pub(crate) fn fallback_response_usage_provider_facts(
-    provider_id: String,
-    app_type: &str,
-) -> ResponseUsageProviderFacts {
-    ResponseUsageProviderFacts {
-        provider_id,
-        provider_kind: None,
-        app: AppKind::from(app_type),
-    }
-}
-
-pub(crate) fn response_usage_provider_facts_from_optional(
-    provider: Option<&Provider>,
-    app_type: &str,
-    tag: &str,
-    phase: UsageSelectedProviderMissingPhase,
-) -> Result<ResponseUsageProviderFacts, String> {
-    provider
-        .map(|provider| response_usage_provider_facts(provider, app_type))
-        .ok_or_else(|| usage_selected_provider_missing_log_message(tag, phase))
-}
 
 pub(crate) struct StreamingResponseUsageContext<'a> {
     pub(crate) events: &'a [Value],

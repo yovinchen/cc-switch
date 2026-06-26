@@ -22,17 +22,18 @@ use crate::proxy_core_adapter::{
     record_transformed_response_usage_from_context, response_headers_indicate_sse,
     streaming_usage_collector_from_context, transform_codex_chat_response_with_history,
     transform_codex_chat_sse_with_history, transformed_streaming_usage_collector_from_context,
-    usage_logging_enabled_from_proxy_config, ActiveConnectionGuard, AnthropicToolSchemaHints,
-    AxumResponseBuildErrorContext, CodexToolContext, NonStreamingUsageRecordContext,
-    ProxyCoreResponse, ProxyState, SsePassthroughStreamState, SseUsageAccumulator,
-    StreamUsageEventFilter, StreamingTimeoutConfig, StreamingUsageCollectorContext,
-    TransformedResponseUsageFormat, TransformedResponseUsageRecordContext,
-    TransformedStreamingUsageCollectorContext, UsageParserConfig,
+    usage_logging_enabled_from_proxy_config, usage_selected_provider_missing_log_message,
+    ActiveConnectionGuard, AnthropicToolSchemaHints, AppKind, AxumResponseBuildErrorContext,
+    CodexToolContext, NonStreamingUsageRecordContext, ProviderKind, ProxyCoreResponse, ProxyState,
+    SsePassthroughStreamState, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
+    StreamingUsageCollectorContext, TransformedResponseUsageFormat,
+    TransformedResponseUsageRecordContext, TransformedStreamingUsageCollectorContext,
+    UsageParserConfig, UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     provider_router_from_database, success_usage_record_from_app_type_with_request_id_fallback,
-    ProviderKind, TokenUsage,
+    TokenUsage,
 };
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
@@ -203,6 +204,46 @@ pub async fn process_response(
     } else {
         handle_non_streaming(response, ctx, state, parser_config, connection_guard).await
     }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ResponseUsageProviderFacts {
+    pub(crate) provider_id: String,
+    pub(crate) provider_kind: Option<ProviderKind>,
+    pub(crate) app: AppKind,
+}
+
+pub(crate) fn response_usage_provider_facts(
+    provider: &Provider,
+    app_type: &str,
+) -> ResponseUsageProviderFacts {
+    ResponseUsageProviderFacts {
+        provider_id: provider.id.clone(),
+        provider_kind: crate::proxy_core_adapter::provider_kind_from_provider(provider),
+        app: AppKind::from(app_type),
+    }
+}
+
+pub(crate) fn fallback_response_usage_provider_facts(
+    provider_id: String,
+    app_type: &str,
+) -> ResponseUsageProviderFacts {
+    ResponseUsageProviderFacts {
+        provider_id,
+        provider_kind: None,
+        app: AppKind::from(app_type),
+    }
+}
+
+pub(crate) fn response_usage_provider_facts_from_optional(
+    provider: Option<&Provider>,
+    app_type: &str,
+    tag: &str,
+    phase: UsageSelectedProviderMissingPhase,
+) -> Result<ResponseUsageProviderFacts, String> {
+    provider
+        .map(|provider| response_usage_provider_facts(provider, app_type))
+        .ok_or_else(|| usage_selected_provider_missing_log_message(tag, phase))
 }
 
 #[derive(Clone)]

@@ -1590,14 +1590,10 @@ const FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS: &[&str] = &[
     "resolve_management_auth_decision(",
     "validate_management_bearer_header(",
 ];
-const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
+const FORBIDDEN_RESPONSE_PIPELINE_USAGE_RECORD_HELPER_MARKERS: &[&str] = &[
     "fn create_usage_collector(",
     "SseUsageCollector::new(",
-    "provider_kind_from_provider(",
-    "AppKind::from(",
     "ctx.provider()?",
-    "response_usage_provider_facts(",
-    "response_usage_provider_facts_from_optional(",
     "streaming_response_usage_record_from_provider_facts(",
     " streaming_response_usage_record_from_response_context(",
     "non_streaming_response_usage_record_from_response_context(",
@@ -5681,29 +5677,46 @@ fn production_proxy_response_processor_legacy_module_is_reexport_only() {
 }
 
 #[test]
-fn response_processor_delegates_usage_provider_projection_to_adapter() {
+fn response_pipeline_owns_usage_provider_facts_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(&source) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy/engine/response_pipeline.rs:{} contains usage provider projection marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) struct ResponseUsageProviderFacts",
+        "pub(crate) struct SseUsageCollector",
+    );
 
     assert!(
-        violations.is_empty(),
-        "response processor must build provider usage facts through proxy_core_adapter helpers:\n{}",
-        violations.join("\n")
+        function.contains("pub(crate) struct ResponseUsageProviderFacts")
+            && function.contains("pub(crate) fn response_usage_provider_facts")
+            && function.contains("pub(crate) fn fallback_response_usage_provider_facts")
+            && function.contains("pub(crate) fn response_usage_provider_facts_from_optional")
+            && function.contains("provider_kind_from_provider(provider)")
+            && function.contains("AppKind::from(app_type)")
+            && function.contains("usage_selected_provider_missing_log_message("),
+        "response pipeline should own response usage provider facts projection"
+    );
+    for marker in FORBIDDEN_RESPONSE_PIPELINE_USAGE_RECORD_HELPER_MARKERS {
+        assert!(
+            !function.contains(marker),
+            "response pipeline provider facts projection must not own usage record helper marker `{marker}`"
+        );
+    }
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
+            && adapter_source.contains("ResponseUsageProviderFacts")
+            && adapter_source.contains("response_usage_provider_facts")
+            && adapter_source.contains("fallback_response_usage_provider_facts")
+            && adapter_source.contains("response_usage_provider_facts_from_optional")
+            && !adapter_source.contains("pub(crate) struct ResponseUsageProviderFacts")
+            && !adapter_source.contains("pub(crate) fn response_usage_provider_facts")
+            && !adapter_source.contains("pub(crate) fn fallback_response_usage_provider_facts")
+            && !adapter_source
+                .contains("pub(crate) fn response_usage_provider_facts_from_optional"),
+        "proxy_core_adapter should re-export, not own, response usage provider facts"
     );
 }
 
