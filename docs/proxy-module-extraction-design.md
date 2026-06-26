@@ -1636,7 +1636,8 @@ managed-account runtime source 已彻底归并到 `proxy_core_adapter::CcSwitchM
 1157. 非流式 upstream response 的整包读取、body timeout 包装和 decode bridge 已收敛到 `proxy_core_adapter::read_decoded_proxy_response_body`；host `handlers` 与 `response_processor` 不再直接调用 `ProxyResponse::bytes()` 或维护 `read_decoded_body` 兼容函数。
 1158. Claude/Codex transformed streaming 的 usage collector 选择、timeout config 和 logged passthrough wrapper 已收敛到 `proxy_core_adapter::{create_claude_transformed_logged_stream,create_codex_auto_transformed_logged_stream}`；host `handlers` 只生成协议转换后的 SSE stream 并交给 response adapter。
 1159. 通用 passthrough streaming 的 usage collector 选择、timeout config 和 logged passthrough wrapper 已收敛到 `proxy_core_adapter::create_passthrough_logged_stream`；host `response_processor` 只保留 upstream `bytes_stream` 提取、headers/status 保存和 Axum response bridge。
-1160. ChannelSource 的 spec/list/get 与 materialized-vs-legacy fallback helper 已从 `proxy_core_adapter.rs` 迁入 `proxy/host/cc_switch/database_channel_source.rs`：host source 模块现在拥有 DB channel 查询、legacy projection 回退、`ChannelSpec` 投影和 `ChannelQuery` 过滤；`proxy_core_adapter` 只保留生产所需的 `channel_route_records_from_db_source` 兼容导出和少量测试导出。
+1160. ChannelSource 的 spec/list/get 与 materialized-vs-legacy fallback helper 已从 `proxy_core_adapter.rs` 迁入 `proxy/host/cc_switch/database_channel_source.rs`：host source 模块现在拥有 DB channel 查询、legacy projection 回退、`ChannelSpec` 投影和 `ChannelQuery` 过滤；`proxy_core_adapter` 只保留少量测试导出。
+1161. ChannelSource 的 record CRUD/list、key/model 管理和 migration preview/materialize DB helper 已继续迁入 `proxy/host/cc_switch/database_channel_source.rs`：该模块现在完整拥有 DB-backed `ChannelSource` 管理面和 record/key/model DTO 投影，`proxy_core_adapter` 只保留 channel-key runtime candidate selection、auth-profile runtime glue 与 reachability probe 等尚未迁出的运行态 helper。
 
 ## 背景
 
@@ -2418,7 +2419,7 @@ Channel 管理 API 的部分 contract 也已开始收敛到 core：`management_a
 
 materialized channel 优先、空表才 fallback 到 legacy projection 的 source 选择规则已由 `channel_route_source_for_materialized_count` 固化，并经 `CcSwitchChannelSource::list_channel_records` 包装为 core-facing `ChannelSource` 入口；`ProviderRouter` 只接收 adapter 投影后的 `RouteResolveChannelInput` 路由字段，不再直接读取 materialized records、legacy preview、完整 `ProxyChannelRecord` DAO 形状或 router-local channel DTO。management channel specs/records 与 router dry-run route 输入现在复用同一个 core `ChannelRecord` 投影来源。
 
-`CcSwitchChannelSource` 的 core-facing `ChannelSource` wrapper 已从 `proxy_core_adapter.rs` 下沉到 `proxy/host/cc_switch/database_channel_source.rs`；该 host 模块已继续接收 spec/list/get helper、`ChannelQuery` 过滤和 materialized-vs-legacy fallback 选择。`proxy_core_adapter` 只负责装配该宿主模块类型，并为旧调用点保留必要兼容导出；剩余 channel record/key/model/migration helper 后续继续分组迁出。
+`CcSwitchChannelSource` 的 core-facing `ChannelSource` wrapper 已从 `proxy_core_adapter.rs` 下沉到 `proxy/host/cc_switch/database_channel_source.rs`；该 host 模块已继续接收 spec/list/get helper、`ChannelQuery` 过滤、materialized-vs-legacy fallback 选择，以及 record CRUD/list、key/model 管理和 migration preview/materialize DB helper。`proxy_core_adapter` 只负责装配该宿主模块类型，剩余 channel 相关迁移应聚焦 channel-key runtime selection、auth-profile runtime glue 与 reachability probe 等运行态边界。
 
 dry-run route 的 circuit-open 识别也继续收敛：`route_candidate_channel_circuit_keys` 负责把 `RouteResolveResponse` 的候选投影成 channel circuit lookup facts，`proxy_core_adapter::management_route_response_from_router_source` 负责调用 core resolver、向 `ProviderRouter` 查询已有 breaker 可用性并把 availability facts 交给 `apply_route_candidate_circuit_availability`，由 adapter/core 生成 rejected:circuit_open response mutation。
 
@@ -2549,7 +2550,7 @@ ProxyRequest
 | `http_client.rs` | `transport/upstream/reqwest_client.rs` 或 host shared | pooled reqwest 上游发送执行已迁到 `proxy/transport/upstream/reqwest_client.rs`，`transport/upstream/mod.rs` 负责 reqwest/raw-hyper 分流；应用全局 HTTP client、proxy lifecycle 和系统代理自环保护已迁到 `proxy/host/cc_switch/global_http_client.rs`，旧 `proxy/http_client.rs` 仅保留兼容 re-export |
 | `types.rs` | `domain/config.rs`, `domain/status.rs` | 拆分领域类型 |
 | `services/proxy.rs` | `host/cc_switch/live_takeover.rs` | `ProxyService` live takeover/restore/hot-switch/live-config 宿主副作用实现已迁到 `proxy/host/cc_switch/live_takeover.rs`，旧 `services/proxy.rs` 仅保留 `services::ProxyService` API 兼容 re-export |
-| `provider_endpoints` 相关 DB 访问 | `host/cc_switch/database_channel_source.rs` | `CcSwitchChannelSource` wrapper 已迁到 `proxy/host/cc_switch/database_channel_source.rs` 并包装 provider 主 URL、`provider_endpoints` 与 materialized channel 的 core-facing `ChannelSource` 入口；spec/list/get 与 materialized-vs-legacy fallback helper 已迁入该 host 模块，剩余 record/key/model/migration helper 后续继续迁出并最终迁移到独立 channel 表 |
+| `provider_endpoints` / `proxy_channels` 相关 DB 访问 | `host/cc_switch/database_channel_source.rs` | `CcSwitchChannelSource` wrapper 已迁到 `proxy/host/cc_switch/database_channel_source.rs` 并包装 provider 主 URL、`provider_endpoints` 与 materialized channel 的 core-facing `ChannelSource` 入口；spec/list/get、record CRUD/list、key/model 管理和 migration preview/materialize helper 已迁入该 host 模块，后续继续拆 runtime key selection、auth-profile glue 与 channel reachability probe 边界 |
 
 ## 分阶段实施计划
 
