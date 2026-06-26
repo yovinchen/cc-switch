@@ -12560,6 +12560,9 @@ fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
 
     assert!(
         state_source.contains("pub struct ProxyState")
+            && state_source.contains(
+                "pub proxy_core_services: Arc<CcSwitchProxyServices<CcSwitchProxyRuntime>>"
+            )
             && !state_source.contains("ProxyEngine::new(")
             && !state_source.contains("impl ProxyState"),
         "CC Switch proxy state data shape should live in host/cc_switch/proxy_state.rs"
@@ -12568,9 +12571,12 @@ fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
         adapter_source
             .contains("pub(crate) use crate::proxy::host::cc_switch::proxy_state::ProxyState")
             && !adapter_source.contains("\npub struct ProxyState")
+            && !adapter_source.contains("type CcSwitchProxyRuntimeServices")
             && adapter_source.contains("\nimpl ProxyState")
+            && adapter_source
+                .contains("ProxyEngine<CcSwitchProxyServices<CcSwitchProxyRuntime>>")
             && adapter_source.contains("ProxyEngine::new(self.proxy_core_services.clone())"),
-        "proxy_core_adapter should re-export the state and keep the ProxyEngine construction boundary"
+        "proxy_core_adapter should re-export the state and keep only the ProxyEngine construction boundary"
     );
 }
 
@@ -12590,9 +12596,10 @@ fn proxy_core_adapter_delegates_proxy_services_to_host_module() {
     assert!(
         adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices"
-        ) && !adapter_source.contains("pub(crate) struct CcSwitchProxyServices")
+        ) && !adapter_source.contains("type CcSwitchProxyRuntimeServices")
+            && !adapter_source.contains("pub(crate) struct CcSwitchProxyServices")
             && !adapter_source.contains("impl<R> ProxyServices for CcSwitchProxyServices"),
-        "proxy_core_adapter should re-export, not own, the CC Switch proxy service container"
+        "proxy_core_adapter should re-export the generic CC Switch proxy service container without a runtime alias"
     );
 }
 

@@ -76,10 +76,8 @@ pub(crate) const COPILOT_USER_AGENT: &str = "GitHubCopilotChat/0.38.2";
 pub(crate) const COPILOT_API_VERSION: &str = "2025-10-01";
 pub(crate) const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
 
-pub(crate) type CcSwitchProxyRuntimeServices = CcSwitchProxyServices<CcSwitchProxyRuntime>;
-
 impl ProxyState {
-    pub(crate) fn proxy_engine(&self) -> ProxyEngine<CcSwitchProxyRuntimeServices> {
+    pub(crate) fn proxy_engine(&self) -> ProxyEngine<CcSwitchProxyServices<CcSwitchProxyRuntime>> {
         ProxyEngine::new(self.proxy_core_services.clone())
     }
 }

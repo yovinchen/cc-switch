@@ -29,7 +29,10 @@ use tokio::sync::RwLock;
 use crate::proxy_core_adapter::DEFAULT_ROUTE_GROUP;
 
 #[cfg(test)]
-pub(crate) use crate::proxy_core_adapter::CcSwitchProxyRuntimeServices as CcSwitchProxyServices;
+pub(crate) type CcSwitchProxyServices =
+    crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices<
+        crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime,
+    >;
 
 #[cfg(test)]
 mod tests {

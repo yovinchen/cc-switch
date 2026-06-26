@@ -4,9 +4,10 @@ use crate::database::Database;
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::events::ProxyEventBus;
+use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
+use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices;
 use crate::proxy_core_adapter::{
-    CcSwitchProxyRuntimeServices, CurrentRouteTarget, GeminiShadowStore, ProxyConfig,
-    ProxyRuntimeStatus,
+    CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyRuntimeStatus,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -24,7 +25,7 @@ pub struct ProxyState {
     /// 共享的 ProviderRouter（持有熔断器状态，跨请求保持）
     pub provider_router: Arc<ProviderRouter>,
     /// Host adapter surface for the neutral proxy core contracts.
-    pub proxy_core_services: Arc<CcSwitchProxyRuntimeServices>,
+    pub proxy_core_services: Arc<CcSwitchProxyServices<CcSwitchProxyRuntime>>,
     /// Gemini Native shadow state，用于 thoughtSignature / tool call 回放
     pub gemini_shadow: Arc<GeminiShadowStore>,
     /// Codex Chat bridge history，用于恢复 previous_response_id 指向的 tool call
