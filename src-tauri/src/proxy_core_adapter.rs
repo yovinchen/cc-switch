@@ -12,11 +12,8 @@ use crate::provider::{
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::engine::routing::{ProviderFailoverRouterSources, ProviderRouter};
 use crate::proxy::error::ProxyError;
-use crate::proxy::error_mapper::forward_error_to_core_error;
 pub(crate) use crate::proxy::error_mapper::proxy_core_error_to_proxy_error;
-pub(crate) use crate::proxy::error_mapper::{
-    proxy_error_display_message, proxy_error_status_code, proxy_error_status_kind,
-};
+use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status_kind};
 use crate::proxy::events::ProxyEventBus;
 #[allow(unused_imports)]
 pub(crate) use crate::proxy::host::cc_switch::channel_health_store::CcSwitchChannelHealthStore;
@@ -6777,10 +6774,6 @@ pub(crate) use crate::proxy_core::api::transport::decompress_body;
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::strip_sse_field;
-
-pub(crate) use crate::proxy_core::api::transport::{
-    passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
-};
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::is_official_codex_client_user_agent;

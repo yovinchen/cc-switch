@@ -5,7 +5,10 @@
 use super::context::RequestContext;
 use crate::provider::Provider;
 use crate::proxy::{
-    error::ProxyError, error_mapper::proxy_core_error_to_proxy_error,
+    error::ProxyError,
+    error_mapper::{
+        proxy_core_error_to_proxy_error, proxy_error_display_message, proxy_error_status_code,
+    },
     response_adapter::proxy_core_response_to_axum_response,
     transport::upstream::hyper_client::ProxyResponse,
 };
@@ -14,6 +17,7 @@ use crate::proxy_core::api::errors::{selected_provider_not_applied_message, Prox
 use crate::proxy_core::api::transport::{
     decode_response_body, non_streaming_body_timeout_message,
     non_streaming_response_body_log_event, non_streaming_response_received_log_event,
+    passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
     response_headers_indicate_sse, streaming_response_received_log_events, ProxyCoreResponse,
     ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext, ResponseBodyDecodeLogLevel,
     ResponseLogEvent, ResponseLogLevel,
@@ -32,10 +36,8 @@ use crate::proxy_core::api::usage::{
 };
 use crate::proxy_core_adapter::{
     claude_stream_usage_event_filter, codex_stream_usage_event_filter,
-    extract_anthropic_tool_schema_hints, passthrough_bytes_proxy_response,
-    passthrough_stream_proxy_response, provider_claude_transform_response_for_api_format,
-    provider_claude_transform_sse_for_api_format, proxy_error_display_message,
-    proxy_error_status_code, transform_codex_chat_response_with_history,
+    extract_anthropic_tool_schema_hints, provider_claude_transform_response_for_api_format,
+    provider_claude_transform_sse_for_api_format, transform_codex_chat_response_with_history,
     transform_codex_chat_sse_with_history, usage_logging_enabled_from_proxy_config,
     ActiveConnectionGuard, AnthropicToolSchemaHints, AppKind, CodexToolContext, ProviderKind,
     ProxyServices, ProxyState, SsePassthroughStreamState, SseUsageAccumulator,

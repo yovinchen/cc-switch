@@ -2464,14 +2464,14 @@ fn proxy_error_status_projection_lives_in_error_mapper() {
         "error_mapper should own host ProxyError to core status-kind projection"
     );
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::error_mapper::{")
-            && adapter_source.contains("proxy_error_display_message")
-            && adapter_source.contains("proxy_error_status_code")
+        adapter_source.contains("use crate::proxy::error_mapper::{")
             && adapter_source.contains("proxy_error_status_kind")
+            && !adapter_source.contains("proxy_error_display_message")
+            && !adapter_source.contains("proxy_error_status_code")
             && !adapter_source.contains("pub(crate) fn proxy_error_status_kind")
             && !adapter_source.contains("pub(crate) fn proxy_error_status_code")
             && !adapter_source.contains("pub(crate) fn proxy_error_display_message"),
-        "proxy_core_adapter should re-export, not own, ProxyError status/display projection"
+        "proxy_core_adapter should only retain the local status-kind dependency it still needs"
     );
     assert!(
         !proxy_error_source.contains("fn proxy_error_status_kind("),
@@ -6377,6 +6377,15 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::{",
+        "};\n#[cfg(test)]",
+    );
+    let adapter_import_identifiers: Vec<&str> = adapter_import
+        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        .filter(|identifier| !identifier.is_empty())
+        .collect();
 
     assert!(
         source.contains("pub(crate) async fn record_usage_with_proxy_services")
@@ -6392,6 +6401,9 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
     assert!(
         source.contains("pub(crate) fn record_forward_error_usage(")
             && source.contains("pub(crate) fn record_forward_core_error_usage(")
+            && source.contains("error_mapper::{")
+            && source.contains("proxy_error_display_message")
+            && source.contains("proxy_error_status_code")
             && source.contains("pub(crate) struct ForwardErrorUsageContext")
             && source.contains("pub(crate) struct ForwardErrorUsageRecordContext")
             && source.contains("pub(crate) fn record_forward_error_usage_from_context")
@@ -6403,6 +6415,22 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
             && source.contains("fallback_response_usage_provider_facts(")
             && source.contains("error_usage_record_with_request_id_fallback("),
         "response pipeline should own forward-error usage record orchestration"
+    );
+    let mut import_violations = Vec::new();
+    for marker in ["proxy_error_display_message", "proxy_error_status_code"] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == &marker)
+        {
+            import_violations.push(format!(
+                "response_pipeline still imports error projection marker `{marker}` from proxy_core_adapter"
+            ));
+        }
+    }
+    assert!(
+        import_violations.is_empty(),
+        "response_pipeline should route ProxyError display/status projection through error_mapper:\n{}",
+        import_violations.join("\n")
     );
     assert!(
         adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
@@ -6631,6 +6659,8 @@ fn response_pipeline_owns_core_usage_transport_imports() {
     assert!(
         source.contains("use crate::proxy_core::api::config::StreamingTimeoutConfig;")
             && source.contains("use crate::proxy_core::api::transport::{")
+            && source.contains("passthrough_bytes_proxy_response")
+            && source.contains("passthrough_stream_proxy_response")
             && source.contains("response_headers_indicate_sse")
             && source.contains("ProxyCoreResponse")
             && source.contains("ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext")
@@ -6648,6 +6678,8 @@ fn response_pipeline_owns_core_usage_transport_imports() {
     for marker in [
         "response_headers_indicate_sse",
         "ProxyCoreResponse",
+        "passthrough_bytes_proxy_response",
+        "passthrough_stream_proxy_response",
         "AxumResponseBuildErrorContext",
         "ProxyResponseBuildErrorContext",
         "StreamUsageEventFilter",
