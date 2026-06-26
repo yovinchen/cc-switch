@@ -11833,6 +11833,33 @@ where
     )
 }
 
+pub(crate) struct CodexAutoTransformedJsonResponseContext<'a> {
+    pub(crate) state: &'a ProxyState,
+    pub(crate) ctx: &'a RequestContext,
+    pub(crate) tool_context: &'a CodexToolContext,
+    pub(crate) status_code: u16,
+}
+
+pub(crate) async fn codex_auto_transformed_json_response_from_context(
+    chat_response: &Value,
+    context: CodexAutoTransformedJsonResponseContext<'_>,
+) -> Result<Value, String> {
+    let responses_response = transform_codex_chat_response_with_history(
+        chat_response,
+        context.tool_context,
+        &context.state.codex_chat_history,
+    )
+    .await?;
+
+    record_codex_auto_transformed_response_usage(
+        context.state,
+        context.ctx,
+        &responses_response,
+        context.status_code,
+    );
+    Ok(responses_response)
+}
+
 pub(crate) struct ForwardErrorUsageContext<'a> {
     pub(crate) provider: Option<&'a Provider>,
     pub(crate) fallback_provider_id: &'a str,

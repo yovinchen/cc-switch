@@ -30,34 +30,34 @@ use super::{
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
     append_query_to_endpoint_path, claude_transformed_json_response_from_context,
-    claude_transformed_sse_stream_from_context, codex_auto_transformed_sse_stream_from_context,
-    codex_chat_transform_streaming_decision, extract_anthropic_tool_schema_hints,
-    extract_gemini_model_from_path, json_proxy_request_from_input, parse_json_proxy_request_body,
+    claude_transformed_sse_stream_from_context, codex_auto_transformed_json_response_from_context,
+    codex_auto_transformed_sse_stream_from_context, codex_chat_transform_streaming_decision,
+    extract_anthropic_tool_schema_hints, extract_gemini_model_from_path,
+    json_proxy_request_from_input, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, provider_claude_transform_streaming_decision,
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
-    read_decoded_proxy_response_body, record_codex_auto_transformed_response_usage,
-    record_forward_core_error_usage, strip_endpoint_prefix,
-    transform_codex_chat_response_with_history, ActiveConnectionGuard, AppChannelListQuery,
-    AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest, AppListResponse,
-    AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse, ChannelCreateRequest,
-    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
-    ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
-    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
-    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
-    CodexToolContext, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest,
-    HealthCheckRequest, HealthCheckResponse, InterfaceKind, JsonProxyRequestInput,
-    ManagementAppPathRequest, ProviderListResponse, ProxyChannelKeyPatchRequest,
-    ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyState,
-    ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
-    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse, CLAUDE_PARSER_CONFIG,
-    CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    read_decoded_proxy_response_body, record_forward_core_error_usage, strip_endpoint_prefix,
+    ActiveConnectionGuard, AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse,
+    AppKind, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
+    ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
+    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord,
+    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
+    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CodexToolContext,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
+    HealthCheckResponse, InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest,
+    ProviderListResponse, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
+    ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyState, ProxyStatusRequest,
+    ProxyStatusResponse, RoutableModelList, RouteGroupListResponse, RouteResolveManagementRequest,
+    RouteResolveRequest, RouteResolveResponse, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
+    GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
     ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
-    CodexAutoTransformedSseStreamContext,
+    CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -960,15 +960,17 @@ async fn handle_codex_chat_to_responses_transform(
         &response_headers,
         streaming_decision.response_sse_aggregation,
     )?;
-    let responses_response = transform_codex_chat_response_with_history(
+    let responses_response = codex_auto_transformed_json_response_from_context(
         &chat_response,
-        &tool_context,
-        &state.codex_chat_history,
+        CodexAutoTransformedJsonResponseContext {
+            state,
+            ctx,
+            tool_context: &tool_context,
+            status_code: status.as_u16(),
+        },
     )
     .await
     .map_err(codex_chat_to_responses_transform_error_to_proxy_error)?;
-
-    record_codex_auto_transformed_response_usage(state, ctx, &responses_response, status.as_u16());
 
     codex_transformed_json_response_to_axum_response(status, response_headers, responses_response)
 }
