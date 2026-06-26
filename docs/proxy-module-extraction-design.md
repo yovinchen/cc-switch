@@ -716,7 +716,7 @@
 692. route plan 到 host Provider 列表的匹配过滤已移入 `proxy_core_adapter::host_providers_for_plan`：`proxy_core_host` 不再展开 `RoutePlanProviderMatch`，只负责读取 DB provider map 并接收 adapter 返回的执行 provider 集合。
 693. host `ForwardResult` 到 `ProxyResult` 的 selected route、metadata、outbound model 和 response bridge 组合已移入 `proxy_core_adapter::forward_result_to_proxy_result`：`proxy_core_host` 不再拆 host forward result，只把 runtime 结果交给 adapter。
 694. `AppKind` 到 host `AppType` 的 required/optional 解析桥接已新增 `proxy_core_adapter::app_type_from_proxy_core_app` 与 `app_type_option_from_proxy_core_app`：`proxy_core_host` 不再直接调用 `AppType::from_str` 或包装 unsupported app kind 错误。
-695. channel-key auth profile 的 missing-key 错误包装与 provider settings patch 已移入 `proxy_core_adapter::channel_key_auth_error` / `provider_with_channel_auth_key`：`proxy_core_host` 只保留 channel key DB 查询和 attempts 变更，不再 clone provider 或注入 auth key settings。
+695. channel-key auth profile 的 missing-key 错误包装已移入 `proxy-core::provider_auth::channel_auth_profile_missing_key_error`，provider settings patch helper 已迁入 `proxy/host/cc_switch/auth_provider.rs::provider_with_channel_auth_key` 并经 adapter re-export：`proxy_core_host` 只保留 channel key DB 查询和 attempts 变更，不再 clone provider 或注入 auth key settings。
 696. host `AppError` 到 `ProxyCoreError::Config/Internal` 的上下文包装已移入 `proxy_core_adapter::app_error` / `usage_error`：`proxy_core_host` 不再直接调用 `error_message_with_context` 或选择 core error variant。
 697. current-provider 的 DB fallback 查询判定已新增 `proxy-core::current_provider_db_fallback_required` 并经 adapter 接入：forward runtime 不再手写 `settings_current_provider_id.is_none()`，空 settings 值仍按已存在来源处理而不回退 DB。
 698. forward pipeline 缺少 runtime 时的 Unsupported 错误包装已移入 `proxy_core_adapter::forwarding_runtime_unavailable_error`：`proxy_core_host` 不再直接选择 `ProxyCoreError::Unsupported` 或复制 runtime-required 文案。
@@ -1171,7 +1171,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续把 route plan 的 host provider 匹配过滤收敛到 adapter，host forward runtime 不再直接展开 `RoutePlanProviderMatch`。
 本轮进一步把 host `ForwardResult` 到 core `ProxyResult` 的整体投影收敛到 adapter，forward runtime 不再拆 response/provider/channel 结果字段。
 本轮也把 `AppKind` 到 host `AppType` 的解析/错误包装收敛到 adapter，host config/provider/runtime source 不再直接执行 app type parse。
-本轮继续把 channel-key auth profile 的错误包装和 provider settings patch 收敛到 adapter，host auth-profile 应用逻辑只保留 DB key 查询。
+本轮继续把 channel-key auth profile 的错误包装收敛到 core，并把 provider settings patch helper 收敛到 `proxy/host/cc_switch/auth_provider.rs`；host auth-profile 应用逻辑只保留 DB key 查询和 attempt auth provider 替换。
 本轮还把 host `AppError` 到 core error 的 Config/Internal 包装收敛到 adapter，host source/sink 只保留错误发生位置。
 本轮继续把 current-provider 的 DB fallback 查询判定收敛到 core，forward runtime 只负责按 core 决策读取 DB 当前 provider。
 本轮也把 forward pipeline 缺 runtime 的 Unsupported 错误包装收敛到 adapter，host forward pipeline 只负责 runtime 存取。
@@ -1446,7 +1446,7 @@ managed-account runtime source 已彻底归并到 `proxy_core_adapter::CcSwitchM
 本轮继续把 live takeover 是否匹配当前代理地址的 app 分派收敛到 `proxy-core::ports::live_takeover_config_matches_proxy_for_app`：core 维护 Claude/Gemini env base URL 与 Codex config facts 的组合规则，adapter 只投影 Codex config.toml base_url 是否匹配当前 `/v1` 代理地址。
 本轮继续把 live backup snapshot 的占位符跳过策略收敛到 `proxy-core::ports::live_backup_snapshot_from_live_config`：core 维护“接管中的 live config 不作为备份来源”的规则，adapter 只投影 Codex config.toml bearer-token 是否命中的宿主解析事实。
 本轮继续把 takeover hot-switch 的 live 持有、Codex backup refresh、Codex/Claude live sync gate 收敛到 `proxy-core::ports`：core 维护纯布尔策略，adapter 只把 `AppType` 投影为 `AppKind`。
-本轮继续把 channel-key 覆盖 provider settings 的 app 选择入口从字符串推进到 `proxy-core::auth::settings_config_with_channel_auth_key_for_app`：core 接收 `AppKind` 维护 Claude/Gemini/Codex/自定义 app 的 key 注入字段规则，adapter 只负责克隆宿主 `Provider` 并投影 `AppType`。
+本轮继续把 channel-key 覆盖 provider settings 的 app 选择入口从字符串推进到 `proxy-core::auth::settings_config_with_channel_auth_key_for_app`：core 接收 `AppKind` 维护 Claude/Gemini/Codex/自定义 app 的 key 注入字段规则，`proxy/host/cc_switch/auth_provider.rs` 负责克隆宿主 `Provider` 并投影 `AppType`，adapter 只 re-export helper。
 本轮继续把 `ProxyError` 的用户展示文案策略收敛到 `proxy-core::errors::proxy_error_display_message_from_status`：core 维护上游错误、超时、转发失败、不可用 provider、数据库和转换错误的稳定中文 contract，adapter 只把 host `ProxyError` 投影为状态 kind、原始 message、上游 body 与 fallback display message，`error_mapper` 保留兼容 wrapper。
 本轮继续把显式上游代理 URL 的解析失败文案和 scheme allowlist 收敛到 `proxy-core::transport::{validate_explicit_proxy_url,invalid_explicit_proxy_url_message}`：core 维护 `http/https/socks5/socks5h` 支持矩阵、URL 脱敏和错误文本，host `http_client` 仍负责实际构造 `reqwest::Proxy`。
 本轮继续把非流式上游响应 JSON/SSE 解析失败的日志上下文与 body lossy 投影收敛到 `proxy-core::response_parse::upstream_response_parse_failure_log_message`：core 维护 Claude/Codex 前缀、Chat 专用文案和 body 展示策略，adapter 只负责把日志级别分发给宿主 logger。
@@ -1641,7 +1641,7 @@ managed-account runtime source 已彻底归并到 `proxy_core_adapter::CcSwitchM
 1162. DB-backed channel-key runtime source 已迁入 `proxy/host/cc_switch/channel_key_runtime_source.rs`：该 host 模块拥有 raw key record 查询、runtime candidate 投影、enabled-key core selection 和 `ChannelKeyRuntimeSource` 实现；`proxy_core_adapter` 只 re-export factory/type。
 1163. DB-backed channel reachability probe 已迁入 `proxy/host/cc_switch/channel_reachability_probe.rs`：该 host 模块拥有 app type parse、provider/config DB 读取、`StreamCheckService` 副作用和 core reachability 投影；`proxy_core_adapter` 只 re-export probe 类型并继续在 `CcSwitchProxyServices` 中装配。
 1164. Auth-profile attempt source 已迁入 `proxy/host/cc_switch/channel_auth_profile_attempts.rs`：该 host 模块拥有 route plan host-provider 过滤、`ForwardAttempt` 构造、provider auth-profile 替换、channel-key runtime lookup 与 provider settings patch 调用；`proxy_core_adapter` 只 re-export helper。
-1165. `CcSwitchAuthProvider` 与 provider-config/route-context auth info helper 已迁入 `proxy/host/cc_switch/auth_provider.rs`：该 host 模块拥有默认 AuthProvider wrapper 与 `cc_switch_provider_config` source label，`proxy_core_adapter` 只 re-export provider/helper，剩余鉴权迁移焦点转向 provider settings fallback 和 managed-account/token runtime 等更深端口。
+1165. `CcSwitchAuthProvider`、provider-config/route-context auth info helper 与 channel-key provider settings patch helper 已迁入 `proxy/host/cc_switch/auth_provider.rs`：该 host 模块拥有默认 AuthProvider wrapper、`cc_switch_provider_config` source label 和 `provider_with_channel_auth_key` 的 host Provider clone/patch，`proxy_core_adapter` 只 re-export provider/helper，剩余鉴权迁移焦点转向 provider adapter fallback header 组装和 managed-account/token runtime 等更深端口。
 
 ## 背景
 
@@ -2423,7 +2423,7 @@ Channel 管理 API 的部分 contract 也已开始收敛到 core：`management_a
 
 materialized channel 优先、空表才 fallback 到 legacy projection 的 source 选择规则已由 `channel_route_source_for_materialized_count` 固化，并经 `CcSwitchChannelSource::list_channel_records` 包装为 core-facing `ChannelSource` 入口；`ProviderRouter` 只接收 adapter 投影后的 `RouteResolveChannelInput` 路由字段，不再直接读取 materialized records、legacy preview、完整 `ProxyChannelRecord` DAO 形状或 router-local channel DTO。management channel specs/records 与 router dry-run route 输入现在复用同一个 core `ChannelRecord` 投影来源。
 
-`CcSwitchChannelSource` 的 core-facing `ChannelSource` wrapper 已从 `proxy_core_adapter.rs` 下沉到 `proxy/host/cc_switch/database_channel_source.rs`；该 host 模块已继续接收 spec/list/get helper、`ChannelQuery` 过滤、materialized-vs-legacy fallback 选择，以及 record CRUD/list、key/model 管理和 migration preview/materialize DB helper。DB-backed channel-key runtime source 已迁入 `proxy/host/cc_switch/channel_key_runtime_source.rs`，DB-backed channel reachability probe 已迁入 `proxy/host/cc_switch/channel_reachability_probe.rs`，auth-profile attempt source 已迁入 `proxy/host/cc_switch/channel_auth_profile_attempts.rs`，默认 `CcSwitchAuthProvider` 已迁入 `proxy/host/cc_switch/auth_provider.rs`；剩余 channel/auth 相关迁移应聚焦 provider settings fallback 和 managed-account/token runtime 等更深鉴权边界。
+`CcSwitchChannelSource` 的 core-facing `ChannelSource` wrapper 已从 `proxy_core_adapter.rs` 下沉到 `proxy/host/cc_switch/database_channel_source.rs`；该 host 模块已继续接收 spec/list/get helper、`ChannelQuery` 过滤、materialized-vs-legacy fallback 选择，以及 record CRUD/list、key/model 管理和 migration preview/materialize DB helper。DB-backed channel-key runtime source 已迁入 `proxy/host/cc_switch/channel_key_runtime_source.rs`，DB-backed channel reachability probe 已迁入 `proxy/host/cc_switch/channel_reachability_probe.rs`，auth-profile attempt source 已迁入 `proxy/host/cc_switch/channel_auth_profile_attempts.rs`，默认 `CcSwitchAuthProvider` 已迁入 `proxy/host/cc_switch/auth_provider.rs`；剩余 channel/auth 相关迁移应聚焦 provider adapter fallback header 组装和 managed-account/token runtime 等更深鉴权边界。
 
 dry-run route 的 circuit-open 识别也继续收敛：`route_candidate_channel_circuit_keys` 负责把 `RouteResolveResponse` 的候选投影成 channel circuit lookup facts，`proxy_core_adapter::management_route_response_from_router_source` 负责调用 core resolver、向 `ProviderRouter` 查询已有 breaker 可用性并把 availability facts 交给 `apply_route_candidate_circuit_availability`，由 adapter/core 生成 rejected:circuit_open response mutation。
 
@@ -2558,7 +2558,7 @@ ProxyRequest
 | `proxy_channel_keys` runtime lookup | `host/cc_switch/channel_key_runtime_source.rs` | DB-backed `CcSwitchChannelKeyRuntimeSource`、raw key record 查询、runtime candidate 投影和 enabled-key core selection 已迁到 `proxy/host/cc_switch/channel_key_runtime_source.rs`；adapter 仅 re-export factory/type |
 | channel test reachability probe | `host/cc_switch/channel_reachability_probe.rs` | DB-backed `CcSwitchChannelReachabilityProbe`、app type parse、provider/config DB 读取、`StreamCheckService` 执行和 reachability result 投影已迁到 `proxy/host/cc_switch/channel_reachability_probe.rs`；adapter 仅 re-export probe 类型并在 services 中装配 |
 | forward attempt auth-profile source | `host/cc_switch/channel_auth_profile_attempts.rs` | route plan host-provider 过滤、ForwardAttempt 构造、provider auth-profile 替换、channel-key runtime lookup 与 settings patch 调用已迁到 `proxy/host/cc_switch/channel_auth_profile_attempts.rs`；adapter 仅 re-export helper 供 forward runtime 和兼容测试使用 |
-| default auth provider source | `host/cc_switch/auth_provider.rs` | `CcSwitchAuthProvider`、provider-config auth profile helper 与 route-context auth info helper 已迁到 `proxy/host/cc_switch/auth_provider.rs`；adapter 仅 re-export provider/helper，后续继续拆 provider settings fallback 和 managed-account/token runtime |
+| default auth provider source | `host/cc_switch/auth_provider.rs` | `CcSwitchAuthProvider`、provider-config auth profile helper、route-context auth info helper 与 `provider_with_channel_auth_key` settings patch helper 已迁到 `proxy/host/cc_switch/auth_provider.rs`；adapter 仅 re-export provider/helper，后续继续拆 provider adapter fallback header 组装和 managed-account/token runtime |
 
 ## 分阶段实施计划
 
@@ -2619,7 +2619,7 @@ node_modules/.bin/tsc --noEmit
 5. `CcSwitchChannelHealthStore` 包装 channel health 写入；兼容期可同时写 provider health 聚合。
 6. `CcSwitchUsageSink` 作为 adapter-owned 端口包装 `UsageLogger`；写入必须使用完整 `UsageRecord`，不能用简化 hint 直接写账单。
 7. `CcSwitchEventSink` 作为 adapter-owned 端口包装 `ProxyEventBus`，再由宿主决定是否转发到 Tauri/UI/托盘。
-8. `CcSwitchAuthProvider` 作为 host-owned source 包装 provider config auth profile 到 `AuthInfo` 的默认投影，并由 adapter re-export；Codex/Copilot OAuth token、provider settings fallback 和 channel-key 注入继续由 forward runtime adapter/source 渐进收敛。
+8. `CcSwitchAuthProvider` 作为 host-owned source 包装 provider config auth profile 到 `AuthInfo` 的默认投影，并由 adapter re-export；Codex/Copilot OAuth token、provider adapter fallback header 组装和 channel-key runtime source 继续由 forward runtime adapter/source 渐进收敛。
 
 验收：
 
