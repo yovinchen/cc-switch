@@ -8,6 +8,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/error_mapper.rs",
     "src/proxy/error.rs",
     "src/proxy/events.rs",
+    "src/proxy/host/cc_switch/forwarder_request_source.rs",
     "src/proxy/response_adapter.rs",
     "src/proxy_core_adapter.rs",
     "src/services/model_fetch_transport.rs",
