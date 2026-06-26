@@ -13,10 +13,11 @@ use super::{
     error_mapper::{management_api_error_to_proxy_error, proxy_core_error_to_proxy_error},
     handler_context::RequestContext,
     response_adapter::{
-        claude_proxy_result_to_proxy_response, claude_transformed_sse_response_to_axum_response,
+        claude_proxy_result_to_proxy_response, claude_response_needs_transform,
+        claude_transformed_sse_response_to_axum_response,
         claude_transformed_upstream_json_response_to_axum_response,
         codex_chat_upstream_error_response_to_axum_response, codex_proxy_error_to_axum_response,
-        codex_transformed_sse_response_to_axum_response,
+        codex_response_needs_chat_transform, codex_transformed_sse_response_to_axum_response,
         codex_transformed_upstream_json_response_to_axum_response, collect_axum_request_body,
         proxy_event_envelope_to_axum_sse_event, proxy_result_to_proxy_response,
     },
@@ -29,7 +30,6 @@ use crate::proxy_core_adapter::{
     codex_responses_proxy_request_from_input, extract_gemini_model_from_path,
     json_proxy_request_from_input, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, provider_claude_transform_streaming_decision,
-    provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
     record_forward_core_error_usage, strip_endpoint_prefix, ActiveConnectionGuard,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
@@ -627,7 +627,7 @@ async fn handle_messages_for_app(
     let (response, api_format) = claude_proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
     // 检查是否需要格式转换（OpenRouter 等中转服务）
-    let needs_transform = provider_needs_claude_transform(ctx.provider()?);
+    let needs_transform = claude_response_needs_transform(&ctx)?;
 
     // Claude 特有：格式转换处理
     if needs_transform {
@@ -801,7 +801,7 @@ pub async fn handle_responses(
 
     let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
-    if provider_should_convert_codex_responses_to_chat(ctx.provider()?, &endpoint) {
+    if codex_response_needs_chat_transform(&ctx, &endpoint)? {
         return handle_codex_chat_to_responses_transform(
             response,
             &ctx,
@@ -865,7 +865,7 @@ pub async fn handle_responses_compact(
 
     let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
-    if provider_should_convert_codex_responses_to_chat(ctx.provider()?, &endpoint) {
+    if codex_response_needs_chat_transform(&ctx, &endpoint)? {
         return handle_codex_chat_to_responses_transform(
             response,
             &ctx,

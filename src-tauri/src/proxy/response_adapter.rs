@@ -15,6 +15,7 @@ use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     claude_transformed_json_response_from_context,
     codex_auto_transformed_json_response_from_context, codex_chat_error_proxy_response,
+    provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
     read_decoded_proxy_response_body, rebuilt_json_proxy_response, request_body_read_error_message,
     transformed_sse_proxy_response, AxumResponseBuildErrorContext,
     ClaudeTransformedJsonResponseContext, CodexAutoTransformedJsonResponseContext,
@@ -77,6 +78,20 @@ pub(crate) fn claude_proxy_result_to_proxy_response(
     let api_format = ctx.claude_api_format_for_proxy_result(&result)?;
     let response = proxy_core_response_to_proxy_response(result.response)?;
     Ok((response, api_format))
+}
+
+pub(crate) fn claude_response_needs_transform(ctx: &RequestContext) -> Result<bool, ProxyError> {
+    Ok(provider_needs_claude_transform(ctx.provider()?))
+}
+
+pub(crate) fn codex_response_needs_chat_transform(
+    ctx: &RequestContext,
+    endpoint: &str,
+) -> Result<bool, ProxyError> {
+    Ok(provider_should_convert_codex_responses_to_chat(
+        ctx.provider()?,
+        endpoint,
+    ))
 }
 
 pub(crate) fn proxy_core_response_to_axum_response(

@@ -817,6 +817,10 @@ const FORBIDDEN_HANDLER_PROVIDER_ADAPTER_DECISION_MARKERS: &[&str] = &[
     ".needs_transform(",
     "super::providers::should_convert_codex_responses_to_chat(",
 ];
+const FORBIDDEN_HANDLER_RESPONSE_BRANCH_GATE_MARKERS: &[&str] = &[
+    "provider_needs_claude_transform(",
+    "provider_should_convert_codex_responses_to_chat(",
+];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
 const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
@@ -3195,6 +3199,33 @@ fn production_handlers_delegate_provider_decisions_to_adapter() {
     assert!(
         violations.is_empty(),
         "production handlers must delegate provider decisions to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_handlers_delegate_response_branch_gates_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_RESPONSE_BRANCH_GATE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains response branch gate marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production handlers must delegate response branch gates to response_adapter helpers:\n{}",
         violations.join("\n")
     );
 }
