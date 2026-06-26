@@ -6494,8 +6494,6 @@ pub(crate) fn apply_channel_provider_overrides(
     }
 }
 
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::build_codex_tool_context_from_request as codex_tool_context_from_request;
 pub(crate) use crate::proxy_core::api::transforms::normalize_claude_anthropic_messages;
 
 pub(crate) fn provider_claude_normalize_anthropic_messages(
@@ -15993,14 +15991,15 @@ command = "latest-command"
 
     #[test]
     fn codex_handler_adapter_projects_tool_context_and_chat_error() {
-        let context = codex_tool_context_from_request(&json!({
-            "tools": [
-                {
-                    "type": "custom",
-                    "name": "apply_patch"
-                }
-            ]
-        }));
+        let context =
+            crate::proxy_core::api::transforms::build_codex_tool_context_from_request(&json!({
+                "tools": [
+                    {
+                        "type": "custom",
+                        "name": "apply_patch"
+                    }
+                ]
+            }));
 
         assert_eq!(context.chat_tools().len(), 1);
         assert!(context.is_custom_tool_chat_name("apply_patch"));
