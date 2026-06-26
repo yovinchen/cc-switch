@@ -1419,7 +1419,7 @@ pub(crate) async fn proxy_runtime_config_from_db_source(
     Ok(proxy_runtime_config_from_config(config, false))
 }
 
-pub(crate) type ProviderAttemptResult = crate::proxy_core::api::ports::ProviderAttemptResult;
+use crate::proxy_core::api::ports::ProviderAttemptResult;
 pub(crate) type ProviderKind = crate::proxy_core::api::domain::ProviderKind;
 pub(crate) type ProviderAuthInfo = crate::proxy_core::api::auth::ProviderAuthInfo;
 pub(crate) type ProviderAuthStrategy = crate::proxy_core::api::auth::ProviderAuthStrategy;

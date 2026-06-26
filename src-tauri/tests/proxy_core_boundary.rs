@@ -28,6 +28,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/forwarder_request_source.rs",
     "src/proxy/host/cc_switch/managed_account_runtime_source.rs",
     "src/proxy/host/cc_switch/provider_adapter_context.rs",
+    "src/proxy/host/cc_switch/provider_router_health_store.rs",
     "src/proxy/response_adapter.rs",
     "src/proxy/transport/upstream/mod.rs",
     "src/proxy/transport/upstream/reqwest_client.rs",
@@ -205,6 +206,8 @@ const FORBIDDEN_PROXY_MANAGEMENT_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
     "type ProviderHealth = crate::proxy_core::api::ports::ProviderHealth",
     "pub(crate) use crate::proxy_core::api::ports::ProviderHealth",
     "pub(crate) use crate::proxy_core::api::ports::ProviderHealthUpdateInput",
+    "type ProviderAttemptResult = crate::proxy_core::api::ports::ProviderAttemptResult",
+    "pub(crate) use crate::proxy_core::api::ports::ProviderAttemptResult",
 ];
 const FORBIDDEN_STREAM_CHECK_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
     "proxy::providers",
@@ -18220,12 +18223,18 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_router_health_store.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_router_health_store.rs");
+    let provider_attempt_result_import =
+        "use crate::proxy_core::api::ports::ProviderAttemptResult;";
 
     assert!(
         source.contains("impl ProviderHealthStore for CcSwitchProviderRouterHealthStore")
             && source.contains("ProviderAttemptResult")
             && source.contains("record_provider_attempt_in_db_source"),
         "ProviderRouter health store must write provider health through core ProviderHealthStore attempt projection"
+    );
+    assert!(
+        source.contains(provider_attempt_result_import),
+        "ProviderRouter health store must import ProviderAttemptResult directly from proxy_core"
     );
     assert!(
         source.contains("fn record_channel_health<'a>(")
@@ -18249,8 +18258,35 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
     );
 
     let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&adapter_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_MANAGEMENT_ADAPTER_DTO_EXPORT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains proxy management DTO export marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
     for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
+        if code.contains("proxy_core_adapter") && code.contains("ProviderAttemptResult") {
+            violations.push(format!(
+                "src/proxy/host/cc_switch/provider_router_health_store.rs:{} imports ProviderAttemptResult from proxy_core_adapter",
+                line_index + 1
+            ));
+        }
+        let direct_core =
+            code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
+        if direct_core && code.trim() != provider_attempt_result_import {
+            violations.push(format!(
+                "src/proxy/host/cc_switch/provider_router_health_store.rs:{} contains non-ProviderAttemptResult direct proxy-core import `{}`",
+                line_index + 1,
+                code.trim()
+            ));
+        }
         for marker in FORBIDDEN_PROVIDER_ROUTER_HEALTH_STORE_ADAPTER_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
