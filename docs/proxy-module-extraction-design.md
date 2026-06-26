@@ -1028,7 +1028,7 @@
 
 本轮继续把 channel-key 缺失/禁用 key 的 runtime 错误文案收敛为 core helper，避免 host 在 auth profile 迁移路径中维护第二份错误 contract。
 
-本轮还把 client model catalog 的 app source 选择收敛到 adapter，后续再把 ModelCatalogProvider 端口实现本身迁为 adapter-owned。
+本轮还把 client model catalog 的 app source 选择收敛到 adapter；后续已由 host-owned `CcSwitchModelCatalogProvider` 承接端口实现，adapter 不再作为 `ModelCatalogProvider` contract facade。
 
 本轮继续把 `/proxy/v1/apps/{app}/models` 的模型目录 envelope 收敛到 `proxy-core::management_api`：新增 `AppModelCatalogSource` 与 `AppModelCatalogRequest::response(_from_source)`，`ProxyEngine::list_model_catalog_for_request` 只负责读取 route-visible models facts，app/group/interface JSON envelope 由 management contract 统一生成，并经 `api::prelude` 暴露给外部中转集成。
 
@@ -1112,7 +1112,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮后续已把 `CcSwitchRoutePolicySource` 的 failover queue DB 读取与 `RoutePolicy` 投影迁入 host-owned source，adapter 只保留 helper，host services 只装配 source。
 本轮后续已把 channel health attempt DB 更新、reset app lookup、breaker reset 与 `ChannelHealthReset` 投影迁入 host-owned `CcSwitchChannelHealthStore`，adapter 只保留 helper，host services 只装配 store。
 本轮继续把 `CcSwitchChannelReachabilityProbe` 的 probe request app/provider 投影、provider/config DB 读取、stream-check 调用与 reachability 结果投影迁入 `proxy/host/cc_switch/channel_reachability_probe.rs`，adapter 只 re-export probe 类型，host services 只装配 probe。
-本轮后续已把 `CcSwitchModelCatalogProvider` 的 provider catalog DB 读取、client catalog source 选择、Claude Desktop provider route 选择与 model route 投影收敛到 host-owned source wrapper，adapter 只保留 model catalog helper 和默认 provider re-export。
+本轮后续已把 `CcSwitchModelCatalogProvider` 的 provider catalog DB 读取、client catalog source 选择、Claude Desktop provider route 选择与 model route 投影收敛到 host-owned source wrapper；该模块直接消费 core `ModelCatalogProvider` / `ModelCatalog` / `ClaudeDesktopModelRouteInput` / `AppKind` contract，adapter 只保留 model catalog helper 和默认 provider re-export。
 本轮继续把 `CcSwitchUsageSink` 的 usage pricing lookup、pricing model 解析、request log 投影、缺价告警与 usage log 写入收敛到 adapter-owned source wrapper，host services 只装配 sink。
 本轮后续已把 `CcSwitchProviderSource` 的 route candidate provider router selection 与 provider-id 投影收敛到 host-owned source wrapper，adapter 只保留 projection helper。
 本轮后续已把 `CcSwitchRouteResolver` 的 core route plan 委托、management dry-run router 调用与错误映射迁入 host-owned resolver，adapter 只保留 helper，host services 只装配 resolver。
@@ -1667,7 +1667,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1186. `CcSwitchRouteResolver` 已迁入 `proxy/host/cc_switch/route_resolver.rs`：该 host 模块拥有默认 `RouteResolver` 实现，直接导入 core route contract 并调用 `proxy-core::build_route_plan`，同时包装 `ProviderRouter` 复用 adapter 的 management dry-run projection helper；`proxy_core_adapter` 不再保留 `route_plan_from_request`、`RouteRequest` 或 `RouteResolver` facade，只保留 management helper 和默认 resolver re-export/装配。
 1187. `CcSwitchChannelHealthStore` 已迁入 `proxy/host/cc_switch/channel_health_store.rs`：该 host 模块拥有默认 `ChannelHealthStore` 实现，包装 DB 与 `ProviderRouter` 并复用 adapter 的 channel attempt/reset/stats projection helper，`proxy_core_adapter` 只保留 helper 和默认 store re-export/装配。
 1188. `CcSwitchProviderSource` 已迁入 `proxy/host/cc_switch/provider_source.rs`：该 host 模块拥有默认 `ProviderSource` 实现，包装 DB、`ProviderRouter` 与 active-route runtime map 并复用 adapter 的 provider/current/active-route/route-candidate projection helper，`proxy_core_adapter` 只保留 helper 和默认 source re-export/装配。
-1189. `CcSwitchModelCatalogProvider` 已迁入 `proxy/host/cc_switch/model_catalog_provider.rs`：该 host 模块拥有默认 `ModelCatalogProvider` 实现，包装 DB 与 `ProviderRouter` 并复用 adapter 的 provider/client/Claude Desktop model catalog helper，`proxy_core_adapter` 只保留 helper 和默认 provider re-export/装配。
+1189. `CcSwitchModelCatalogProvider` 已迁入 `proxy/host/cc_switch/model_catalog_provider.rs`：该 host 模块拥有默认 `ModelCatalogProvider` 实现，直接引用 core `ModelCatalogProvider` / `ModelCatalog` / `ClaudeDesktopModelRouteInput` / `AppKind` / `ProxyCoreResult` contract，包装 DB 与 `ProviderRouter` 并复用 adapter 的 provider/client/Claude Desktop model catalog helper；`proxy_core_adapter` 不再 re-export `ModelCatalogProvider` port trait，只保留 helper 和默认 provider re-export/装配。
 1190. `CcSwitchConfigSource` 已迁入 `proxy/host/cc_switch/config_source.rs`：该 host 模块拥有默认 `ProxyConfigSource` 实现，包装 DB 并复用 adapter 的 app catalog、global/app/app-summary/runtime config helper，`proxy_core_adapter` 只保留 helper 和默认 source re-export/装配。
 1191. `CcSwitchProviderRouterSources` 与 `provider_router_from_database` 已迁入 `proxy/host/cc_switch/provider_router_sources.rs`：该 host 模块拥有 DB-backed ProviderRouter source assembly，直接装配 config/provider/channel source 与 health store，`proxy_core_adapter` 只 re-export `provider_router_from_database` 工厂。
 1192. `CcSwitchForwarderRequestSource` 的请求准备、上游 URL planning、媒体/rectifier plan、Codex Responses->Chat 转换、请求 body/header 构造与 transport policy helper 已改为直接引用 `proxy_core::api::{transport,transforms}`；`proxy_core_adapter` 不再为这些纯 request helper/type 提供生产 re-export，仅保留 trait/input/type alias、factory 和必要的 `#[cfg(test)]` 兼容桥接。
@@ -2487,7 +2487,7 @@ auto failover 开关启用的计划也已收敛：`plan_auto_failover_toggle` �
 
 管理 API 查询类入口已基本收敛到 `ProxyEngine`：`list_proxy_providers`、`list_proxy_channels` 的 route-aware 分支、`list_proxy_groups` 和 `test_proxy_channel` 都只保留 HTTP path/query/body 提取与错误映射；固定 app catalog 已从 `proxy-core` 的端口默认实现移出，改由 host-owned `CcSwitchConfigSource` 显式提供；RoutePolicy 的 failover provider id 读取也已由 domain/routing helper 维护，engine 不再直接读 raw JSON 字段；managed-auth 的单测入口也已切到 runtime source surface；下一步应继续减少 host runtime 对 Tauri runtime smoke 覆盖和外部集成契约的隐性依赖。
 
-默认 `CcSwitchModelCatalogProvider` 已迁入 `proxy/host/cc_switch/model_catalog_provider.rs`：host provider 持有 DB 与 `ProviderRouter`，继续调用 adapter-owned `provider_model_catalog_from_db_source`、`client_model_catalog_from_app_source` 和 `claude_desktop_model_routes_from_router_source`，adapter 保留 provider/client/Claude Desktop model catalog 的 shared helper 和 re-export 装配入口。
+默认 `CcSwitchModelCatalogProvider` 已迁入 `proxy/host/cc_switch/model_catalog_provider.rs`：host provider 持有 DB 与 `ProviderRouter`，直接消费 core `ModelCatalogProvider` / `ModelCatalog` / `ClaudeDesktopModelRouteInput` / `AppKind` contract，继续调用 adapter-owned `provider_model_catalog_from_db_source`、`client_model_catalog_from_app_source` 和 `claude_desktop_model_routes_from_router_source`；adapter 保留 provider/client/Claude Desktop model catalog 的 shared helper 和默认 provider re-export/装配入口，但不再 re-export `ModelCatalogProvider` port trait。
 
 默认 `CcSwitchConfigSource` 已迁入 `proxy/host/cc_switch/config_source.rs`：host source 持有 DB，继续调用 adapter-owned `cc_switch_app_kinds`、`proxy_global_config_from_db_source`、`proxy_app_config_from_db_source`、`app_summary_config_from_db_source` 和 `proxy_runtime_config_from_db_source`，adapter 保留 config source/projection helper 和 re-export 装配入口。
 
@@ -2634,7 +2634,7 @@ ProxyRequest
 | runtime status source | `host/cc_switch/runtime_status_source.rs` | `CcSwitchRuntimeStatusSource` 默认实现已迁到 `proxy/host/cc_switch/runtime_status_source.rs`，负责直接引用 core runtime status contract、读取 runtime status/start time/current route targets 并投影 uptime/active target；adapter 仅保留默认 source re-export |
 | Claude Desktop gateway auth source | `host/cc_switch/claude_desktop_gateway_auth_source.rs` | `CcSwitchClaudeDesktopGatewayAuthSource` 默认实现已迁到 `proxy/host/cc_switch/claude_desktop_gateway_auth_source.rs`，负责直接引用 core gateway auth contract，并通过 adapter-owned DB token helper 加载 gateway bearer token、映射 core auth 错误；adapter 仅保留 token helper 和默认 source re-export |
 | provider source | `host/cc_switch/provider_source.rs` | `CcSwitchProviderSource` 默认实现已迁到 `proxy/host/cc_switch/provider_source.rs`，负责 provider list/get/current-provider、active route target 和 route candidate provider ids；adapter 仅保留 provider/current/active-route/route-candidate projection helper、factory 装配和 re-export |
-| model catalog provider | `host/cc_switch/model_catalog_provider.rs` | `CcSwitchModelCatalogProvider` 默认实现已迁到 `proxy/host/cc_switch/model_catalog_provider.rs`，负责 provider/client/Claude Desktop model catalog 端口实现；adapter 仅保留 model catalog source/projection helper、factory 装配和 re-export |
+| model catalog provider | `host/cc_switch/model_catalog_provider.rs` | `CcSwitchModelCatalogProvider` 默认实现已迁到 `proxy/host/cc_switch/model_catalog_provider.rs`，直接引用 core model catalog port/DTO/request/result contract，负责 provider/client/Claude Desktop model catalog 端口实现；adapter 仅保留 model catalog source/projection helper、factory 装配和默认 provider re-export，不再 re-export `ModelCatalogProvider` port trait |
 | channel health store | `host/cc_switch/channel_health_store.rs` | `CcSwitchChannelHealthStore` 默认实现已迁到 `proxy/host/cc_switch/channel_health_store.rs`，负责 channel health attempt 写入、channel breaker reset 和 stats 查询；adapter 仅保留 attempt/reset/stats projection helper、factory 装配和 re-export |
 | route policy source | `host/cc_switch/route_policy_source.rs` | `CcSwitchRoutePolicySource` 默认实现已迁到 `proxy/host/cc_switch/route_policy_source.rs`，负责读取 failover queue 并生成 core-facing `RoutePolicySource`；adapter 仅保留 queue-to-policy projection helper、factory 装配和 re-export |
 | route resolver | `host/cc_switch/route_resolver.rs` | `CcSwitchRouteResolver` 默认实现已迁到 `proxy/host/cc_switch/route_resolver.rs`，负责直接引用 core route contract、调用 `build_route_plan`，并包装 ProviderRouter-backed management dry-run route response；adapter 仅保留 management dry-run projection helper、factory 装配和 re-export |
@@ -2714,7 +2714,7 @@ node_modules/.bin/tsc --noEmit
 12. `CcSwitchProviderRouterChannelSource` 作为 host-owned source 包装 `CcSwitchChannelSource` 到 ProviderRouter route inputs 的默认桥接，并由 host-owned `CcSwitchProviderRouterSources` 装配。
 13. `CcSwitchProviderRouterConfigSource` 作为 host-owned source 包装 `CcSwitchConfigSource` 到 ProviderRouter config inputs 的默认桥接，并由 host-owned `CcSwitchProviderRouterSources` 装配。
 14. `CcSwitchProviderRouterHealthStore` 作为 host-owned store 包装 ProviderRouter provider/channel health side effect，并由 host-owned `CcSwitchProviderRouterSources` 装配；`provider_router_from_database` 继续经 adapter re-export 保持既有调用面。
-15. `CcSwitchModelCatalogProvider` 作为 host-owned source 包装 provider/client/Claude Desktop model catalog 默认端口实现，并由 adapter re-export/装配；model catalog source/projection helper 继续留在 adapter。
+15. `CcSwitchModelCatalogProvider` 作为 host-owned source 直接消费 core model catalog contract 并包装 provider/client/Claude Desktop model catalog 默认端口实现，由 adapter re-export 默认 provider 并参与装配；`ModelCatalogProvider` port trait 不再经 adapter re-export，model catalog source/projection helper 继续留在 adapter。
 16. `CcSwitchAuthProvider` 作为 host-owned source 包装 provider config auth profile 到 `AuthInfo` 的默认投影，并由 adapter re-export；`CcSwitchManagedAccountRuntimeSource` 作为 host-owned source 包装 Codex/Copilot OAuth token runtime；`CcSwitchForwarderProtocolStateSource` 作为 host-owned source 包装默认协议状态副作用；`CcSwitchForwarderAttemptRuntimeSource` 作为 host-owned source 包装默认 attempt allow/health/circuit runtime；`CcSwitchForwarderRuntimeStateSource` 作为 host-owned source 包装默认 runtime status/current-target/event 副作用；`ForwarderAdapterContext` 作为 host-owned context 包装 provider adapter trait 调用；`CcSwitchForwarderAuthSource` 作为 host-owned source 包装默认上游 auth header 组装；`CcSwitchForwarderTransportSource` 作为 host-owned source 包装默认上游 transport delegate；`CcSwitchForwarderResponseSource` 作为 host-owned source 包装默认上游 response finalization；`CcSwitchFailoverSwitchScheduler` 作为 host-owned source 包装默认 failover switch 调度副作用；token 缓存/刷新、channel-key 轮询/随机和失败回退策略继续由 forward runtime adapter/source 渐进收敛。
 
 验收：
@@ -2947,7 +2947,7 @@ CC Switch 前端可以继续用 Tauri commands；外部集成用 HTTP API。
 - host-owned `CcSwitchProviderRouterConfigSource` 可以通过 core-facing `ProxyConfigSource` 生成 ProviderRouter config inputs，adapter 只保留 projection helper。
 - host-owned `CcSwitchProviderRouterHealthStore` 可以通过 core attempt/reset facts 写入 ProviderRouter health side effect，adapter 只保留 projection helper。
 - host-owned `CcSwitchProviderRouterSources` 可以组装 DB-backed ProviderRouter provider/channel/config/health 四个端口，adapter 只 re-export `provider_router_from_database`。
-- host-owned `CcSwitchModelCatalogProvider` 可以通过 adapter helper 加载 provider/client/Claude Desktop model catalog，adapter 只保留 source/projection helper 和装配。
+- host-owned `CcSwitchModelCatalogProvider` 可以直接依赖 core model catalog contract，并通过 adapter helper 加载 provider/client/Claude Desktop model catalog；adapter 只保留 source/projection helper、默认 provider re-export 和装配，不再 re-export `ModelCatalogProvider` port trait。
 - `ProxyService` start/stop/update_config 行为不变。
 - takeover on/off 不被核心 crate 影响。
 
