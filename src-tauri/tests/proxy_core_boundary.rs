@@ -12155,9 +12155,10 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
         "adapter managed-auth provider extension must delegate runtime-token resolution to proxy-core"
     );
     assert!(
-        method.contains("provider_managed_account_binding_input")
-            && method.contains("github_account_id.as_deref()"),
-        "adapter managed-auth provider extension must project CC Switch ProviderMeta into core binding input"
+        method.contains("provider_managed_account_binding_context")
+            && method.contains("binding_context.binding")
+            && method.contains("binding_context.legacy_github_copilot_account_id"),
+        "adapter managed-auth provider extension must consume structured CC Switch ProviderMeta binding context"
     );
 
     let mut violations = Vec::new();

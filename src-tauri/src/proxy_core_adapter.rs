@@ -7059,15 +7059,31 @@ pub(crate) fn provider_managed_account_binding_input(
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProviderManagedAccountBindingContext<'a> {
+    pub binding: Option<ManagedAccountBindingInput<'a>>,
+    pub legacy_github_copilot_account_id: Option<&'a str>,
+}
+
+pub(crate) fn provider_managed_account_binding_context(
+    provider: &Provider,
+) -> ProviderManagedAccountBindingContext<'_> {
+    let meta = provider.meta.as_ref();
+    ProviderManagedAccountBindingContext {
+        binding: meta.and_then(provider_managed_account_binding_input),
+        legacy_github_copilot_account_id: meta.and_then(|meta| meta.github_account_id.as_deref()),
+    }
+}
+
 pub(crate) fn provider_managed_account_id_for(
     provider: &Provider,
     auth_provider: &str,
 ) -> Option<String> {
-    let meta = provider.meta.as_ref()?;
+    let context = provider_managed_account_binding_context(provider);
     core_managed_account_id_for_auth_provider(
         auth_provider,
-        provider_managed_account_binding_input(meta),
-        meta.github_account_id.as_deref(),
+        context.binding,
+        context.legacy_github_copilot_account_id,
     )
 }
 
@@ -18585,6 +18601,12 @@ command = "latest-command"
             provider_github_copilot_managed_account_id(&legacy_provider).as_deref(),
             Some("legacy-acct")
         );
+        let legacy_context = provider_managed_account_binding_context(&legacy_provider);
+        assert_eq!(legacy_context.binding, None);
+        assert_eq!(
+            legacy_context.legacy_github_copilot_account_id,
+            Some("legacy-acct")
+        );
         assert_eq!(
             account_ref(&legacy_provider).as_deref(),
             Some("github_copilot:legacy-acct")
@@ -18610,6 +18632,15 @@ command = "latest-command"
         assert_eq!(
             provider_github_copilot_managed_account_id(&default_account_provider),
             None
+        );
+        let default_context = provider_managed_account_binding_context(&default_account_provider);
+        let binding = default_context.binding.expect("managed account binding");
+        assert_eq!(binding.source, ManagedAccountBindingSource::ManagedAccount);
+        assert_eq!(binding.auth_provider, Some("github_copilot"));
+        assert_eq!(binding.account_id, None);
+        assert_eq!(
+            default_context.legacy_github_copilot_account_id,
+            Some("legacy-acct")
         );
         assert_eq!(account_ref(&default_account_provider), None);
     }

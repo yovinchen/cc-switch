@@ -12,7 +12,7 @@ use crate::proxy_core_adapter::{
     managed_account_app_handle_unavailable_log_message,
     managed_account_token_failure_error_message, managed_account_token_failure_log_message,
     managed_account_token_request_log_message, managed_account_token_success_log_message,
-    provider_managed_account_binding_input,
+    provider_managed_account_binding_context,
     resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source,
     resolve_core_copilot_live_model_for_binding_with_runtime_source,
     resolve_core_copilot_model_vendor_for_binding_with_runtime_source,
@@ -53,12 +53,12 @@ pub(crate) trait ManagedAccountRuntimeSource:
         auth: ProviderAuthInfo,
     ) -> BoxFuture<'a, Result<ManagedAccountAuthResolution, ProxyError>> {
         Box::pin(async move {
-            let meta = auth_provider.meta.as_ref();
+            let binding_context = provider_managed_account_binding_context(auth_provider);
             resolve_core_managed_account_auth_for_binding_with_runtime_source(
                 self,
                 auth,
-                meta.and_then(provider_managed_account_binding_input),
-                meta.and_then(|meta| meta.github_account_id.as_deref()),
+                binding_context.binding,
+                binding_context.legacy_github_copilot_account_id,
             )
             .await
         })
@@ -72,11 +72,11 @@ pub(crate) trait ManagedAccountRuntimeSource:
         is_full_url: bool,
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
-            let meta = auth_provider.meta.as_ref();
+            let binding_context = provider_managed_account_binding_context(auth_provider);
             resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source(
                 self,
-                meta.and_then(provider_managed_account_binding_input),
-                meta.and_then(|meta| meta.github_account_id.as_deref()),
+                binding_context.binding,
+                binding_context.legacy_github_copilot_account_id,
                 current_base_url,
                 is_copilot,
                 is_full_url,
@@ -120,11 +120,11 @@ pub(crate) trait ManagedAccountRuntimeSource:
         model_id: &'a str,
     ) -> BoxFuture<'a, Result<Option<String>, String>> {
         Box::pin(async move {
-            let meta = auth_provider.meta.as_ref();
+            let binding_context = provider_managed_account_binding_context(auth_provider);
             resolve_core_copilot_live_model_for_binding_with_runtime_source(
                 self,
-                meta.and_then(provider_managed_account_binding_input),
-                meta.and_then(|meta| meta.github_account_id.as_deref()),
+                binding_context.binding,
+                binding_context.legacy_github_copilot_account_id,
                 model_id,
             )
             .await
@@ -184,11 +184,11 @@ pub(crate) trait ManagedAccountRuntimeSource:
         Box::pin(async move {
             let model = body.get("model").and_then(Value::as_str);
             let copilot_model_vendor = if let Some(model_id) = model {
-                let meta = auth_provider.meta.as_ref();
+                let binding_context = provider_managed_account_binding_context(auth_provider);
                 resolve_core_copilot_model_vendor_for_binding_with_runtime_source(
                     self,
-                    meta.and_then(provider_managed_account_binding_input),
-                    meta.and_then(|meta| meta.github_account_id.as_deref()),
+                    binding_context.binding,
+                    binding_context.legacy_github_copilot_account_id,
                     model_id,
                     is_copilot,
                 )
