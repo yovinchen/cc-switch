@@ -2853,7 +2853,7 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
     let adapter_core_ports_import = function_slice(
         &source,
         "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+        "};\nuse crate::proxy_core::api::ports::{",
     );
     assert!(
         !adapter_core_ports_import.contains("ClaudeDesktopGatewayAuthSource"),
@@ -12380,7 +12380,7 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     let adapter_core_ports_import = function_slice(
         &source,
         "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+        "};\nuse crate::proxy_core::api::ports::{",
     );
 
     assert!(
@@ -12508,7 +12508,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let adapter_core_ports_import = function_slice(
         &source,
         "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+        "};\nuse crate::proxy_core::api::ports::{",
     );
     let adapter_production_routing_import = function_slice(
         &source,
@@ -15848,6 +15848,16 @@ fn proxy_core_adapter_delegates_config_source_to_host_module() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/config_source.rs");
     let source = fs::read_to_string(&source_path).expect("read config_source.rs");
+    let adapter_core_ports_import = function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
+        "};\nuse crate::proxy_core::api::ports::{",
+    );
+    let source_adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::{",
+        "};\nuse futures::future::BoxFuture;",
+    );
 
     assert!(
         source.contains("pub(crate) struct CcSwitchConfigSource")
@@ -15865,6 +15875,34 @@ fn proxy_core_adapter_delegates_config_source_to_host_module() {
         ) && !adapter_source.contains("pub(crate) struct CcSwitchConfigSource")
             && !adapter_source.contains("impl ProxyConfigSource for CcSwitchConfigSource"),
         "proxy_core_adapter should re-export, not own, the CC Switch config source"
+    );
+    assert!(
+        source.contains(
+            "use crate::proxy_core::api::config::{ProxyAppConfig, ProxyGlobalConfig, ProxyRuntimeConfig};"
+        ) && source.contains("use crate::proxy_core::api::domain::AppKind;")
+            && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && source
+                .contains("use crate::proxy_core::api::ports::{AppSummaryConfig, ProxyConfigSource};"),
+        "CC Switch config source should import core config/source contracts directly"
+    );
+    for adapter_type in [
+        "AppSummaryConfig",
+        "ProxyAppConfig",
+        "ProxyConfigSource",
+        "ProxyCoreAppKind",
+        "ProxyCoreResult",
+        "ProxyGlobalConfig",
+        "ProxyRuntimeConfig",
+    ] {
+        assert!(
+            !source_adapter_import.contains(adapter_type),
+            "config source should not import {adapter_type} through proxy_core_adapter"
+        );
+    }
+    assert!(
+        !adapter_core_ports_import.contains("AppSummaryConfig")
+            && !adapter_core_ports_import.contains("ProxyConfigSource"),
+        "proxy_core_adapter should not re-export config source port contracts"
     );
 }
 
@@ -16094,6 +16132,16 @@ fn proxy_core_adapter_delegates_route_policy_source_to_host_module() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/route_policy_source.rs");
     let source = fs::read_to_string(&source_path).expect("read route_policy_source.rs");
+    let adapter_core_ports_import = function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
+        "};\nuse crate::proxy_core::api::ports::{",
+    );
+    let source_adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::route_policy_from_db_source;",
+        "use futures::future::BoxFuture;",
+    );
 
     assert!(
         source.contains("pub(crate) struct CcSwitchRoutePolicySource")
@@ -16107,6 +16155,24 @@ fn proxy_core_adapter_delegates_route_policy_source_to_host_module() {
         ) && !adapter_source.contains("pub(crate) struct CcSwitchRoutePolicySource")
             && !adapter_source.contains("impl RoutePolicySource for CcSwitchRoutePolicySource"),
         "proxy_core_adapter should re-export, not own, the CC Switch route policy source"
+    );
+    assert!(
+        source.contains("use crate::proxy_core::api::domain::AppKind;")
+            && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && source.contains("use crate::proxy_core::api::ports::RoutePolicySource;")
+            && source.contains("use crate::proxy_core::api::routing::RoutePolicy;"),
+        "CC Switch route policy source should import core route-policy contracts directly"
+    );
+    assert!(
+        !source_adapter_import.contains("ProxyCoreAppKind")
+            && !source_adapter_import.contains("ProxyCoreResult")
+            && !source_adapter_import.contains("RoutePolicy")
+            && !source_adapter_import.contains("RoutePolicySource"),
+        "route policy source should not import route-policy contracts through proxy_core_adapter"
+    );
+    assert!(
+        !adapter_core_ports_import.contains("RoutePolicySource"),
+        "proxy_core_adapter should not re-export the RoutePolicySource port trait"
     );
 }
 
@@ -16191,7 +16257,7 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
     let adapter_core_ports_import = function_slice(
         &adapter_source,
         "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+        "};\nuse crate::proxy_core::api::ports::{",
     );
     assert!(
         !adapter_core_ports_import.contains("RouteResolver"),
@@ -16382,7 +16448,7 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
     let adapter_core_ports_import = function_slice(
         &adapter_source,
         "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+        "};\nuse crate::proxy_core::api::ports::{",
     );
     assert!(
         !adapter_core_ports_import.contains("ModelCatalogProvider"),
@@ -16470,7 +16536,7 @@ fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
     let adapter_core_ports_import = function_slice(
         &adapter_source,
         "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+        "};\nuse crate::proxy_core::api::ports::{",
     );
 
     assert!(
@@ -16550,7 +16616,7 @@ fn proxy_core_adapter_delegates_management_auth_source_to_host_module() {
     let adapter_core_ports_import = function_slice(
         &adapter_source,
         "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+        "};\nuse crate::proxy_core::api::ports::{",
     );
     for adapter_type in ["ManagementAuthRuntimeConfig", "ManagementAuthSource"] {
         assert!(
@@ -16605,7 +16671,7 @@ fn proxy_core_adapter_delegates_runtime_status_source_to_host_module() {
     let adapter_core_ports_import = function_slice(
         &adapter_source,
         "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+        "};\nuse crate::proxy_core::api::ports::{",
     );
     assert!(
         !adapter_core_ports_import.contains("RuntimeStatusSource"),
@@ -16690,7 +16756,7 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
     let adapter_core_ports_import = function_slice(
         &adapter_source,
         "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+        "};\nuse crate::proxy_core::api::ports::{",
     );
     assert!(
         !adapter_core_ports_import.contains("ProxyEventSink"),

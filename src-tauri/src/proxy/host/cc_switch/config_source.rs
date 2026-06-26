@@ -1,11 +1,13 @@
 //! CC Switch proxy config source.
 
 use crate::database::Database;
+use crate::proxy_core::api::config::{ProxyAppConfig, ProxyGlobalConfig, ProxyRuntimeConfig};
+use crate::proxy_core::api::domain::AppKind;
+use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::ports::{AppSummaryConfig, ProxyConfigSource};
 use crate::proxy_core_adapter::{
     app_summary_config_from_db_source, cc_switch_app_kinds, proxy_app_config_from_db_source,
-    proxy_global_config_from_db_source, proxy_runtime_config_from_db_source, AppSummaryConfig,
-    ProxyAppConfig, ProxyConfigSource, ProxyCoreAppKind as AppKind, ProxyCoreResult,
-    ProxyGlobalConfig, ProxyRuntimeConfig,
+    proxy_global_config_from_db_source, proxy_runtime_config_from_db_source,
 };
 use futures::future::BoxFuture;
 use std::sync::Arc;

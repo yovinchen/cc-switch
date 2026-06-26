@@ -2454,12 +2454,13 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogResponse, ClientModelCatalogSource,
     RoutableModelList,
 };
-use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
 pub(crate) use crate::proxy_core::api::ports::ChannelReachabilityProbe;
 pub(crate) use crate::proxy_core::api::ports::{
-    channel_breaker_stats_from_parts, channel_health_reset_from_parts, AppSummaryConfig,
-    AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelSource, ProviderSource,
-    ProxyConfigSource, ProxyServices, RoutePolicySource,
+    channel_breaker_stats_from_parts, channel_health_reset_from_parts, AuthProvider,
+    ChannelBreakerStats, ChannelHealthReset, ChannelSource, ProviderSource, ProxyServices,
+};
+use crate::proxy_core::api::ports::{
+    AppSummaryConfig, ChannelKeyRuntimeSource, ProxyConfigSource, RoutePolicySource,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;

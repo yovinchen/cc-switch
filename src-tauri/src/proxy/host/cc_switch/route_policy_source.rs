@@ -1,10 +1,11 @@
 //! CC Switch route policy source.
 
 use crate::database::Database;
-use crate::proxy_core_adapter::{
-    route_policy_from_db_source, ProxyCoreAppKind as AppKind, ProxyCoreResult, RoutePolicy,
-    RoutePolicySource,
-};
+use crate::proxy_core::api::domain::AppKind;
+use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::ports::RoutePolicySource;
+use crate::proxy_core::api::routing::RoutePolicy;
+use crate::proxy_core_adapter::route_policy_from_db_source;
 use futures::future::BoxFuture;
 use std::sync::Arc;
 
