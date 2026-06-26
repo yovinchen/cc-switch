@@ -4,11 +4,12 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::proxy::engine::routing::{ProviderFailoverRouterSources, ProviderRouterProviderSource};
 use crate::proxy_core_adapter::{
-    CcSwitchRoutePolicySource, ProviderSource, ProviderSpec, ProxyCoreAppKind as AppKind,
-    ProxyCoreResult, app_type_from_proxy_core_app, current_provider_id_from_router_sources,
+    app_type_from_proxy_core_app, current_provider_id_from_router_sources,
     failover_provider_ids_from_route_policy_source,
     provider_failover_sources_from_router_provider_source, provider_spec_from_db_source,
     provider_specs_from_db_source, select_current_provider_ids_from_router_provider_source,
+    CcSwitchRoutePolicySource, ProviderSource, ProviderSpec, ProxyCoreAppKind as AppKind,
+    ProxyCoreResult,
 };
 use futures::future::BoxFuture;
 use std::sync::Arc;

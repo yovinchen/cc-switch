@@ -4,12 +4,12 @@ use crate::database::Database;
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy_core_adapter::{
-    ChannelKeyRuntimeSource, CurrentRouteTarget, FailoverSwitchSchedulerRef,
-    ForwarderAttemptRuntimeSourceRef, ForwarderAuthSourceRef, ForwarderProtocolStateSourceRef,
-    ForwarderRequestSourceRef, ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef,
-    ForwarderTransportSourceRef, HostForwardRuntime, ProxyConfig, ProxyCoreResult, ProxyRequest,
-    ProxyResult, ProxyRuntimeStatus, ProxyServiceRuntimeResources, RoutePlan,
-    forward_proxy_request_with_cc_switch_runtime,
+    forward_proxy_request_with_cc_switch_runtime, ChannelKeyRuntimeSource, CurrentRouteTarget,
+    FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderAuthSourceRef,
+    ForwarderProtocolStateSourceRef, ForwarderRequestSourceRef, ForwarderResponseSourceRef,
+    ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef, HostForwardRuntime, ProxyConfig,
+    ProxyCoreResult, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServiceRuntimeResources,
+    RoutePlan,
 };
 use futures::future::BoxFuture;
 use std::collections::HashMap;

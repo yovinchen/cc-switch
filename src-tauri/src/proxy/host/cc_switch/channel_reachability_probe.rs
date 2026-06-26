@@ -1,9 +1,9 @@
 use crate::app_config::AppType;
 use crate::database::Database;
 use crate::proxy_core_adapter::{
-    ChannelReachabilityProbe, ChannelReachabilityResult, ChannelTestProbeRequest, ProxyCoreResult,
     app_error, channel_reachability_probe_error, channel_test_app_type_error,
     channel_test_provider_not_found_error, stream_check_result_to_channel_reachability,
+    ChannelReachabilityProbe, ChannelReachabilityResult, ChannelTestProbeRequest, ProxyCoreResult,
 };
 use crate::services::stream_check::StreamCheckService;
 use futures::future::BoxFuture;

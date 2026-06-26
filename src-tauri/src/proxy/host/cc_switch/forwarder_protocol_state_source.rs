@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy_core_adapter::{
-    ForwarderClaudeProtocolTransformInput, ForwarderCodexChatProtocolEnrichmentInput,
-    ForwarderProtocolStateSource, ForwarderProtocolStateSourceRef, GeminiShadowStore,
-    provider_claude_transform_request_for_api_format,
+    provider_claude_transform_request_for_api_format, ForwarderClaudeProtocolTransformInput,
+    ForwarderCodexChatProtocolEnrichmentInput, ForwarderProtocolStateSource,
+    ForwarderProtocolStateSourceRef, GeminiShadowStore,
 };
 
 pub(crate) struct CcSwitchForwarderProtocolStateSource {

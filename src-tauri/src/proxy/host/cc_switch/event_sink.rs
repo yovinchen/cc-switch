@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy_core_adapter::{
-    ProxyCoreEvent, ProxyCoreResult, ProxyEventSink, emit_proxy_core_event_bus_source,
+    emit_proxy_core_event_bus_source, ProxyCoreEvent, ProxyCoreResult, ProxyEventSink,
 };
 
 #[derive(Clone, Default)]

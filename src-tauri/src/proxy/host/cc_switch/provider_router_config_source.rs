@@ -2,9 +2,10 @@
 
 use crate::proxy::engine::routing::ProviderRouterConfigSource;
 use crate::proxy_core_adapter::{
-    CcSwitchConfigSource, CircuitBreakerConfig, auto_failover_enabled_from_router_config_source,
+    auto_failover_enabled_from_router_config_source,
     circuit_breaker_config_from_router_config_source,
-    circuit_failure_threshold_from_router_config_source,
+    circuit_failure_threshold_from_router_config_source, CcSwitchConfigSource,
+    CircuitBreakerConfig,
 };
 use futures::future::BoxFuture;
 

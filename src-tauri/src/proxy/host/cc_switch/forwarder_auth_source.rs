@@ -5,13 +5,13 @@ use futures::future::BoxFuture;
 use crate::proxy::error::ProxyError;
 use crate::proxy::host::cc_switch::auth_provider::CcSwitchAuthProvider;
 use crate::proxy_core_adapter::{
+    auth_channel_spec_from_attempt, auth_provider_proxy_request_from_context,
+    finalize_forwarder_auth_headers, prepare_optional_copilot_auth_optimization_for_forwarder,
+    proxy_core_error_to_proxy_error, proxy_provider_to_core_spec, resolve_auth_provider_headers,
     AppKind, AuthProviderHeaderResolution, AuthProviderRef, ForwarderAuthHeaderFinalizationInput,
     ForwarderAuthHeaders, ForwarderAuthHeadersInput, ForwarderAuthSource, ForwarderAuthSourceRef,
     ForwarderMaybeCopilotAuthOptimizationInput, ForwarderPreparedCopilotAuthOptimization,
-    ManagedAccountRuntimeSourceRef, auth_channel_spec_from_attempt,
-    auth_provider_proxy_request_from_context, finalize_forwarder_auth_headers,
-    prepare_optional_copilot_auth_optimization_for_forwarder, proxy_core_error_to_proxy_error,
-    proxy_provider_to_core_spec, resolve_auth_provider_headers,
+    ManagedAccountRuntimeSourceRef,
 };
 
 #[cfg(test)]

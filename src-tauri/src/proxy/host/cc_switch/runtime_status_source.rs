@@ -1,8 +1,8 @@
 //! CC Switch proxy runtime status source.
 
 use crate::proxy_core_adapter::{
-    CurrentRouteTarget, ProxyCoreResult, ProxyRuntimeStatus, RuntimeStatusSource,
-    apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
+    apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime, CurrentRouteTarget,
+    ProxyCoreResult, ProxyRuntimeStatus, RuntimeStatusSource,
 };
 use futures::future::BoxFuture;
 use std::collections::HashMap;

@@ -2,8 +2,8 @@
 
 use crate::proxy::host::cc_switch::channel_key_runtime_source::CcSwitchChannelKeyRuntimeSource;
 use crate::proxy_core_adapter::{
-    ForwardPipeline, HostForwardRuntime, ProxyCoreResult, ProxyRequest, ProxyResult, RoutePlan,
-    forward_with_optional_host_runtime,
+    forward_with_optional_host_runtime, ForwardPipeline, HostForwardRuntime, ProxyCoreResult,
+    ProxyRequest, ProxyResult, RoutePlan,
 };
 use futures::future::BoxFuture;
 

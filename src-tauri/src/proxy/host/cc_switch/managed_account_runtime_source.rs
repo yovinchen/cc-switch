@@ -8,8 +8,6 @@ use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
-    CopilotModel, CoreManagedAccountRuntimeSource, ManagedAccountAuthResolution,
-    ManagedAccountAuthRuntime, ProviderAuthInfo,
     managed_account_app_handle_unavailable_error_message,
     managed_account_app_handle_unavailable_log_message,
     managed_account_token_failure_error_message, managed_account_token_failure_log_message,
@@ -19,7 +17,8 @@ use crate::proxy_core_adapter::{
     resolve_core_copilot_live_model_for_binding_with_runtime_source,
     resolve_core_copilot_model_vendor_for_binding_with_runtime_source,
     resolve_core_managed_account_auth_for_binding_with_runtime_source,
-    resolve_forwarder_claude_api_format,
+    resolve_forwarder_claude_api_format, CopilotModel, CoreManagedAccountRuntimeSource,
+    ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ProviderAuthInfo,
 };
 
 pub(crate) type ManagedAccountRuntimeSourceRef = Arc<dyn ManagedAccountRuntimeSource + Send + Sync>;

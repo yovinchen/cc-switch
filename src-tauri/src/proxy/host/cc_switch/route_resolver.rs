@@ -2,8 +2,8 @@
 
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy_core_adapter::{
-    ProxyCoreResult, RoutePlan, RouteRequest, RouteResolveRequest, RouteResolveResponse,
-    RouteResolver, management_route_response_from_router_source, route_plan_from_request,
+    management_route_response_from_router_source, route_plan_from_request, ProxyCoreResult,
+    RoutePlan, RouteRequest, RouteResolveRequest, RouteResolveResponse, RouteResolver,
 };
 use futures::future::BoxFuture;
 use std::sync::Arc;

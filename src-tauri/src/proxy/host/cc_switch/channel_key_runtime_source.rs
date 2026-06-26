@@ -1,8 +1,8 @@
 use crate::database::{Database, ProxyChannelKeyRecord};
 use crate::proxy_core_adapter::{
-    ChannelKeyRuntimeCandidate, ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeSource,
-    ProxyCoreResult, app_error, channel_key_runtime_candidate_from_input,
-    core_select_enabled_channel_key_runtime_candidate,
+    app_error, channel_key_runtime_candidate_from_input,
+    core_select_enabled_channel_key_runtime_candidate, ChannelKeyRuntimeCandidate,
+    ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeSource, ProxyCoreResult,
 };
 use std::sync::Arc;
 

@@ -9,9 +9,6 @@ use crate::proxy::error::ProxyError;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy_core_adapter::{
-    AttemptEventPhase, CurrentRouteTarget, ForwardFailureCategory, ForwarderFailoverSwitchTarget,
-    ForwarderFailureDecision, ForwarderRectifierRetryFailureDecision, ForwarderRectifierRetryKind,
-    ForwarderRuntimeStateSource, ForwarderRuntimeStateSourceRef, ProxyRuntimeStatus,
     categorize_forward_failure, emit_attempt_event_source, emit_request_started_event_source,
     forward_failure_kind_from_proxy_error, forwarder_no_available_provider_status_message,
     forwarder_rectifier_retry_failure_log_line, forwarder_rectifier_retry_success_log_line,
@@ -24,7 +21,10 @@ use crate::proxy_core_adapter::{
     record_forward_provider_rectifier_retry_failure_runtime_source,
     record_forward_request_started_runtime_source, record_forward_success_runtime_source,
     retryable_forward_failure_log_line, should_failover_after_rectifier_retry_failure,
-    terminal_forward_failure_log_line_for_error,
+    terminal_forward_failure_log_line_for_error, AttemptEventPhase, CurrentRouteTarget,
+    ForwardFailureCategory, ForwarderFailoverSwitchTarget, ForwarderFailureDecision,
+    ForwarderRectifierRetryFailureDecision, ForwarderRectifierRetryKind,
+    ForwarderRuntimeStateSource, ForwarderRuntimeStateSourceRef, ProxyRuntimeStatus,
 };
 
 pub(crate) struct CcSwitchForwarderRuntimeStateSource {

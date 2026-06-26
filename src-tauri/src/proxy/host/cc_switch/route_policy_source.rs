@@ -2,8 +2,8 @@
 
 use crate::database::Database;
 use crate::proxy_core_adapter::{
-    ProxyCoreAppKind as AppKind, ProxyCoreResult, RoutePolicy, RoutePolicySource,
-    route_policy_from_db_source,
+    route_policy_from_db_source, ProxyCoreAppKind as AppKind, ProxyCoreResult, RoutePolicy,
+    RoutePolicySource,
 };
 use futures::future::BoxFuture;
 use std::sync::Arc;

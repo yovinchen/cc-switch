@@ -3,9 +3,9 @@
 use crate::database::Database;
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy_core_adapter::{
-    ClaudeDesktopModelRouteInput, ModelCatalog, ModelCatalogProvider, ProxyCoreAppKind as AppKind,
-    ProxyCoreResult, claude_desktop_model_routes_from_router_source,
-    client_model_catalog_from_app_source, provider_model_catalog_from_db_source,
+    claude_desktop_model_routes_from_router_source, client_model_catalog_from_app_source,
+    provider_model_catalog_from_db_source, ClaudeDesktopModelRouteInput, ModelCatalog,
+    ModelCatalogProvider, ProxyCoreAppKind as AppKind, ProxyCoreResult,
 };
 use futures::future::BoxFuture;
 use std::sync::Arc;

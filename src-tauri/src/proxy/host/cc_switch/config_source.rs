@@ -2,10 +2,10 @@
 
 use crate::database::Database;
 use crate::proxy_core_adapter::{
-    AppSummaryConfig, ProxyAppConfig, ProxyConfigSource, ProxyCoreAppKind as AppKind,
-    ProxyCoreResult, ProxyGlobalConfig, ProxyRuntimeConfig, app_summary_config_from_db_source,
-    cc_switch_app_kinds, proxy_app_config_from_db_source, proxy_global_config_from_db_source,
-    proxy_runtime_config_from_db_source,
+    app_summary_config_from_db_source, cc_switch_app_kinds, proxy_app_config_from_db_source,
+    proxy_global_config_from_db_source, proxy_runtime_config_from_db_source, AppSummaryConfig,
+    ProxyAppConfig, ProxyConfigSource, ProxyCoreAppKind as AppKind, ProxyCoreResult,
+    ProxyGlobalConfig, ProxyRuntimeConfig,
 };
 use futures::future::BoxFuture;
 use std::sync::Arc;

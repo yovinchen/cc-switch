@@ -3,9 +3,9 @@
 use crate::database::Database;
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy_core_adapter::{
-    ChannelAttemptResult, ChannelBreakerStats, ChannelHealthReset, ChannelHealthStore,
-    ProxyCoreResult, channel_breaker_stats_with_router_source, record_channel_attempt_in_db_source,
-    reset_channel_health_with_router_source,
+    channel_breaker_stats_with_router_source, record_channel_attempt_in_db_source,
+    reset_channel_health_with_router_source, ChannelAttemptResult, ChannelBreakerStats,
+    ChannelHealthReset, ChannelHealthStore, ProxyCoreResult,
 };
 use futures::future::BoxFuture;
 use std::sync::Arc;

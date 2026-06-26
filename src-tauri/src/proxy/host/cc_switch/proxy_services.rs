@@ -7,7 +7,7 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::host::cc_switch::auth_provider::CcSwitchAuthProvider;
 use crate::proxy::host::cc_switch::channel_health_store::CcSwitchChannelHealthStore;
 use crate::proxy::host::cc_switch::channel_key_runtime_source::{
-    CcSwitchChannelKeyRuntimeSource, channel_key_runtime_source_from_database,
+    channel_key_runtime_source_from_database, CcSwitchChannelKeyRuntimeSource,
 };
 use crate::proxy::host::cc_switch::channel_reachability_probe::CcSwitchChannelReachabilityProbe;
 use crate::proxy::host::cc_switch::claude_desktop_gateway_auth_source::CcSwitchClaudeDesktopGatewayAuthSource;

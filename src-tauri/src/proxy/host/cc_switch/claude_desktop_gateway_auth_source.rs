@@ -2,8 +2,8 @@
 
 use crate::database::Database;
 use crate::proxy_core_adapter::{
-    ClaudeDesktopGatewayAuthSource, ProxyCoreResult, claude_desktop_gateway_token_error,
-    get_or_create_claude_desktop_gateway_token_from_db_source,
+    claude_desktop_gateway_token_error, get_or_create_claude_desktop_gateway_token_from_db_source,
+    ClaudeDesktopGatewayAuthSource, ProxyCoreResult,
 };
 use futures::future::BoxFuture;
 use std::sync::Arc;

@@ -1,13 +1,13 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    AppKind, AuthInfo, AuthProvider, ChannelSpec, ProviderSpec, ProxyCoreResult, ProxyRequest,
-    auth_info_from_route_context, settings_config_with_channel_auth_key_for_app,
+    auth_info_from_route_context, settings_config_with_channel_auth_key_for_app, AppKind, AuthInfo,
+    AuthProvider, ChannelSpec, ProviderSpec, ProxyCoreResult, ProxyRequest,
 };
 use futures::future::BoxFuture;
 
 #[cfg(test)]
-use crate::proxy_core_adapter::{AuthProfileRef, auth_info_from_profile_ref};
+use crate::proxy_core_adapter::{auth_info_from_profile_ref, AuthProfileRef};
 
 const CC_SWITCH_PROVIDER_CONFIG_AUTH_SOURCE: &str = "cc_switch_provider_config";
 

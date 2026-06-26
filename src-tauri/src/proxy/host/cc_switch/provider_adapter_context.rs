@@ -1,10 +1,10 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
-use crate::proxy::provider::{ProviderAdapter, get_adapter};
+use crate::proxy::provider::{get_adapter, ProviderAdapter};
 use crate::proxy_core_adapter::{
-    ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput, ProviderAuthInfo,
-    forwarder_provider_url_facts, provider_is_full_url,
+    forwarder_provider_url_facts, provider_is_full_url, ForwarderProviderUrlFacts,
+    ForwarderProviderUrlFactsInput, ProviderAuthInfo,
 };
 
 type ForwarderAdapterHandle = dyn ProviderAdapter;
