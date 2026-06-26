@@ -15,7 +15,8 @@ use crate::proxy_core::api::transport::{
     decode_response_body, non_streaming_body_timeout_message,
     non_streaming_response_body_log_event, non_streaming_response_received_log_event,
     response_headers_indicate_sse, streaming_response_received_log_events, ProxyCoreResponse,
-    ResponseBodyDecodeLogLevel, ResponseLogEvent, ResponseLogLevel,
+    ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext, ResponseBodyDecodeLogLevel,
+    ResponseLogEvent, ResponseLogLevel,
 };
 use crate::proxy_core::api::usage::{
     error_usage_record_with_request_id_fallback,
@@ -36,9 +37,8 @@ use crate::proxy_core_adapter::{
     provider_claude_transform_sse_for_api_format, proxy_error_display_message,
     proxy_error_status_code, transform_codex_chat_response_with_history,
     transform_codex_chat_sse_with_history, usage_logging_enabled_from_proxy_config,
-    ActiveConnectionGuard, AnthropicToolSchemaHints, AppKind, AxumResponseBuildErrorContext,
-    CodexToolContext, ProviderKind, ProxyServices, ProxyState, SsePassthroughStreamState,
-    SseUsageAccumulator,
+    ActiveConnectionGuard, AnthropicToolSchemaHints, AppKind, CodexToolContext, ProviderKind,
+    ProxyServices, ProxyState, SsePassthroughStreamState, SseUsageAccumulator,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{

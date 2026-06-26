@@ -6637,6 +6637,7 @@ fn response_pipeline_owns_core_usage_transport_imports() {
             && source.contains("use crate::proxy_core::api::transport::{")
             && source.contains("response_headers_indicate_sse")
             && source.contains("ProxyCoreResponse")
+            && source.contains("ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext")
             && source.contains("use crate::proxy_core::api::usage::{")
             && source.contains("usage_selected_provider_missing_log_message")
             && source.contains("StreamUsageEventFilter")
@@ -6651,6 +6652,8 @@ fn response_pipeline_owns_core_usage_transport_imports() {
     for marker in [
         "response_headers_indicate_sse",
         "ProxyCoreResponse",
+        "AxumResponseBuildErrorContext",
+        "ProxyResponseBuildErrorContext",
         "StreamUsageEventFilter",
         "StreamingTimeoutConfig",
         "TokenUsage",
@@ -6761,8 +6764,11 @@ fn response_pipeline_delegates_sse_passthrough_policy_to_core() {
 }
 
 #[test]
-fn response_pipeline_delegates_axum_build_context_to_adapter() {
+fn response_pipeline_uses_core_axum_build_context_policy() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let response_pipeline_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/response_pipeline.rs"))
+            .expect("read engine/response_pipeline.rs");
     let files = [
         ("src/proxy/transport/http/handlers.rs", "read handlers.rs"),
         (
@@ -6790,8 +6796,13 @@ fn response_pipeline_delegates_axum_build_context_to_adapter() {
     }
 
     assert!(
+        response_pipeline_source
+            .contains("ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext"),
+        "response_pipeline should import Axum response build context from proxy_core::api::transport"
+    );
+    assert!(
         violations.is_empty(),
-        "response handlers must delegate Axum response build context projection to proxy_core_adapter:\n{}",
+        "response handlers must delegate Axum response build context policy to proxy-core:\n{}",
         violations.join("\n")
     );
 }
@@ -6829,19 +6840,17 @@ fn response_adapter_delegates_build_error_message_policy_to_core() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_response_build_context_policy_to_core() {
+fn proxy_core_adapter_excludes_response_build_context_facade() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
 
     assert!(
-        source.contains("ProxyResponseBuildErrorContext"),
-        "proxy_core_adapter should expose the core response build context type"
-    );
-    assert!(
-        !source.contains("CoreResponseBuildFailureContext")
+        !source.contains("AxumResponseBuildErrorContext")
+            && !source.contains("CoreResponseBuildFailureContext")
+            && !source.contains("ProxyResponseBuildErrorContext")
             && !source.contains("ProxyResponseBuildFailureContext"),
-        "proxy_core_adapter should no longer expose response build failure context; response_adapter/error_mapper import it directly"
+        "proxy_core_adapter should no longer expose response build contexts; response_pipeline/response_adapter/error_mapper import them directly"
     );
 
     let mut violations = Vec::new();
@@ -6860,7 +6869,7 @@ fn proxy_core_adapter_delegates_response_build_context_policy_to_core() {
 
     assert!(
         violations.is_empty(),
-        "proxy_core_adapter must delegate response build context message policy to proxy-core:\n{}",
+        "proxy_core_adapter must not keep response build context message policy facades:\n{}",
         violations.join("\n")
     );
 }

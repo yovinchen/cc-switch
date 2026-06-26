@@ -606,9 +606,6 @@ pub(crate) type UsageRouteContext = crate::proxy_core::api::usage::UsageRouteCon
 pub(crate) type UsageTokens = crate::proxy_core::api::usage::UsageTokens;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::api::ports::CurrentRouteTarget;
 
-pub(crate) type AxumResponseBuildErrorContext<'a> =
-    crate::proxy_core::api::transport::ProxyResponseBuildErrorContext<'a>;
-
 pub(crate) fn log_codex_chat_error_normalization(normalized: &CodexChatErrorNormalization) {
     if let Some(message) = normalized.non_json_body_log_message() {
         log::warn!("{message}");
