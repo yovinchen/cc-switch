@@ -5210,11 +5210,6 @@ pub(crate) async fn route_candidate_provider_ids_from_router_source(
 }
 
 #[cfg(test)]
-pub(crate) use crate::proxy::host::cc_switch::database_channel_source::{
-    channel_route_records_from_sources, channel_spec_from_source, proxy_channel_record_to_core_spec,
-};
-
-#[cfg(test)]
 pub(crate) fn proxy_channel_record_to_route_resolve_channel_input(
     channel: ProxyChannelRecord,
 ) -> RouteResolveChannelInput {
@@ -7678,6 +7673,10 @@ mod tests {
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{
         AuthBinding, AuthBindingSource, ClaudeDesktopMode, ClaudeDesktopModelRoute, ProviderMeta,
+    };
+    use crate::proxy::host::cc_switch::database_channel_source::{
+        channel_route_records_from_sources, channel_spec_from_source,
+        proxy_channel_record_to_core_spec,
     };
     use crate::proxy::host::cc_switch::managed_account_runtime_source::{
         copilot_api_endpoint_from_app_handle, copilot_live_models_from_app_handle,

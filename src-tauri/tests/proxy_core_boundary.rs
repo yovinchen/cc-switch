@@ -18954,6 +18954,11 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
             && !adapter_source.contains("impl ChannelSource for CcSwitchChannelSource"),
         "CcSwitchChannelSource implementation must not remain embedded in proxy_core_adapter.rs"
     );
+    assert!(
+        !adapter_source
+            .contains("pub(crate) use crate::proxy::host::cc_switch::database_channel_source::{"),
+        "proxy_core_adapter should not re-export database channel source test helpers"
+    );
     for marker in [
         "pub(crate) fn channel_model_records_from_db_source",
         "pub(crate) fn replace_channel_model_records_from_db_source",
