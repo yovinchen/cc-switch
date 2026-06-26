@@ -11399,6 +11399,28 @@ pub(crate) fn passthrough_streaming_usage_collector(
     })
 }
 
+pub(crate) fn create_passthrough_logged_stream<G>(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: u16,
+    parser_config: &UsageParserConfig,
+    connection_guard: Option<G>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
+where
+    G: Send + 'static,
+{
+    let usage_collector =
+        passthrough_streaming_usage_collector(state, ctx, status_code, parser_config);
+    create_logged_passthrough_stream(
+        stream,
+        ctx.tag,
+        usage_collector,
+        ctx.streaming_timeout_config(),
+        connection_guard,
+    )
+}
+
 pub(crate) struct NonStreamingResponseUsageContext<'a> {
     pub(crate) body: &'a [u8],
     pub(crate) response_parser: fn(&Value) -> Option<TokenUsage>,

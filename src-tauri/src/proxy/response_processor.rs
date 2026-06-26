@@ -7,12 +7,11 @@ use super::{
     response_adapter::proxy_core_response_to_axum_response,
 };
 use crate::proxy_core_adapter::{
-    create_logged_passthrough_stream, log_non_streaming_proxy_response_body,
+    create_passthrough_logged_stream, log_non_streaming_proxy_response_body,
     log_streaming_proxy_response_received, passthrough_bytes_proxy_response,
-    passthrough_stream_proxy_response, passthrough_streaming_usage_collector,
-    read_decoded_proxy_response_body, record_non_streaming_response_usage,
-    response_headers_indicate_sse, ActiveConnectionGuard, AxumResponseBuildErrorContext,
-    ProxyState, UsageParserConfig,
+    passthrough_stream_proxy_response, read_decoded_proxy_response_body,
+    record_non_streaming_response_usage, response_headers_indicate_sse, ActiveConnectionGuard,
+    AxumResponseBuildErrorContext, ProxyState, UsageParserConfig,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -46,19 +45,12 @@ pub async fn handle_streaming(
     let response_headers = response.headers().clone();
     let stream = response.bytes_stream();
 
-    // 创建使用量收集器；关闭 usage logging 时不要在流式热路径上解析每个 SSE event。
-    let usage_collector =
-        passthrough_streaming_usage_collector(state, ctx, status.as_u16(), parser_config);
-
-    // 获取流式超时配置
-    let timeout_config = ctx.streaming_timeout_config();
-
-    // 创建带日志和超时的透传流
-    let logged_stream = create_logged_passthrough_stream(
+    let logged_stream = create_passthrough_logged_stream(
         stream,
-        ctx.tag,
-        usage_collector,
-        timeout_config,
+        state,
+        ctx,
+        status.as_u16(),
+        parser_config,
         connection_guard,
     );
 
