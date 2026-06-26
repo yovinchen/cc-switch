@@ -16,6 +16,7 @@ pub(crate) mod forwarder_request_source;
 pub(crate) mod forwarder_response_source;
 pub(crate) mod forwarder_runtime_state_source;
 pub(crate) mod forwarder_transport_source;
+pub(crate) mod forward_pipeline;
 pub(crate) mod global_http_client;
 pub(crate) mod live_takeover;
 pub(crate) mod management_auth_source;

@@ -11095,6 +11095,8 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let pipeline_path = manifest_dir.join("src/proxy/host/cc_switch/forward_pipeline.rs");
+    let pipeline_source = fs::read_to_string(&pipeline_path).expect("read forward_pipeline.rs");
     let runtime_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs");
     let runtime_source = fs::read_to_string(&runtime_path).expect("read proxy_runtime.rs");
     let attempt_source_path =
@@ -11102,20 +11104,16 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let attempt_source =
         fs::read_to_string(&attempt_source_path).expect("read channel_auth_profile_attempts.rs");
     let pipeline_struct = function_slice(
-        &source,
+        &pipeline_source,
         "pub(crate) struct CcSwitchForwardPipeline",
         "impl<R> CcSwitchForwardPipeline",
     );
     let pipeline_constructors = function_slice(
-        &source,
+        &pipeline_source,
         "impl<R> CcSwitchForwardPipeline",
         "impl<R> ForwardPipeline for CcSwitchForwardPipeline",
     );
-    let pipeline_impl = function_slice(
-        &source,
-        "impl<R> ForwardPipeline for CcSwitchForwardPipeline",
-        "type UsageCallbackWithTiming",
-    );
+    let pipeline_impl = pipeline_source.as_str();
     let host_runtime_trait = function_slice(
         &source,
         "pub(crate) trait HostForwardRuntime",
@@ -11130,10 +11128,16 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let host_forward_function = function_slice(
         &source,
         "pub(crate) async fn forward_proxy_request_with_host_runtime",
-        "#[derive(Clone)]\npub(crate) struct CcSwitchForwardPipeline",
+        "type UsageCallbackWithTiming",
     );
     let attempt_source_function = attempt_source.as_str();
 
+    assert!(
+        source.contains("pub(crate) use crate::proxy::host::cc_switch::forward_pipeline::CcSwitchForwardPipeline")
+            && !source.contains("pub(crate) struct CcSwitchForwardPipeline")
+            && !source.contains("impl<R> ForwardPipeline for CcSwitchForwardPipeline"),
+        "proxy_core_adapter should re-export, not own, the CC Switch forward pipeline"
+    );
     assert!(
         pipeline_struct.contains("channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource"),
         "CC Switch forward pipeline should own the DB-backed channel key runtime source"
@@ -14810,6 +14814,8 @@ fn production_proxy_services_excludes_test_constructor_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let pipeline_path = manifest_dir.join("src/proxy/host/cc_switch/forward_pipeline.rs");
+    let pipeline_source = fs::read_to_string(&pipeline_path).expect("read forward_pipeline.rs");
     let services_slice = function_slice(
         &source,
         "pub(crate) struct CcSwitchProxyServices",
@@ -14867,9 +14873,9 @@ fn production_proxy_services_excludes_test_constructor_surface() {
                 .to_string(),
         );
     }
-    if !source.contains("    #[cfg(test)]\n    pub(crate) fn without_runtime(") {
+    if !pipeline_source.contains("    #[cfg(test)]\n    pub(crate) fn without_runtime(") {
         violations.push(
-            "src/proxy_core_adapter.rs keeps no-runtime forward pipeline constructor outside test cfg"
+            "src/proxy/host/cc_switch/forward_pipeline.rs keeps no-runtime forward pipeline constructor outside test cfg"
                 .to_string(),
         );
     }

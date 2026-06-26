@@ -22,6 +22,7 @@ pub(crate) use crate::proxy::host::cc_switch::config_source::CcSwitchConfigSourc
 use crate::proxy::host::cc_switch::database_channel_source::CcSwitchChannelSource;
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
+pub(crate) use crate::proxy::host::cc_switch::forward_pipeline::CcSwitchForwardPipeline;
 pub(crate) use crate::proxy::host::cc_switch::management_auth_source::CcSwitchManagementAuthSource;
 pub(crate) use crate::proxy::host::cc_switch::model_catalog_provider::CcSwitchModelCatalogProvider;
 pub(crate) use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource;
@@ -6855,52 +6856,6 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
         attempts,
     )
     .await
-}
-
-#[derive(Clone)]
-pub(crate) struct CcSwitchForwardPipeline<R> {
-    runtime: Option<R>,
-    channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource,
-}
-
-impl<R> CcSwitchForwardPipeline<R> {
-    #[cfg(test)]
-    pub(crate) fn without_runtime(
-        channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource,
-    ) -> Self {
-        Self {
-            runtime: None,
-            channel_key_runtime_source,
-        }
-    }
-
-    pub(crate) fn with_runtime(
-        runtime: R,
-        channel_key_runtime_source: CcSwitchChannelKeyRuntimeSource,
-    ) -> Self {
-        Self {
-            runtime: Some(runtime),
-            channel_key_runtime_source,
-        }
-    }
-}
-
-impl<R> ForwardPipeline for CcSwitchForwardPipeline<R>
-where
-    R: HostForwardRuntime + Send + Sync,
-{
-    fn forward<'a>(
-        &'a self,
-        request: ProxyRequest,
-        plan: RoutePlan,
-    ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
-        forward_with_optional_host_runtime(
-            self.runtime.as_ref(),
-            &self.channel_key_runtime_source,
-            request,
-            plan,
-        )
-    }
 }
 
 type UsageCallbackWithTiming = Arc<dyn Fn(Vec<Value>, Option<u64>) + Send + Sync + 'static>;
