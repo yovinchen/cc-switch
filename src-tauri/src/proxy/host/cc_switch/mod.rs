@@ -1,3 +1,4 @@
+pub(crate) mod channel_key_runtime_source;
 pub(crate) mod database_channel_source;
 pub(crate) mod database_usage_sink;
 pub(crate) mod failover_switch;
