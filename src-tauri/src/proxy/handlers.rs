@@ -17,7 +17,7 @@ use super::{
         claude_response_needs_transform, claude_transformed_response_to_axum_response,
         codex_chat_to_responses_transformed_response_to_axum_response,
         codex_passthrough_response_to_axum_response, codex_proxy_error_to_axum_response,
-        codex_response_needs_chat_transform, collect_axum_request_body,
+        codex_response_needs_chat_transform, collect_axum_request_body, dispatch_proxy_request,
         gemini_passthrough_response_to_axum_response,
         openai_chat_passthrough_response_to_axum_response, proxy_event_envelope_to_axum_sse_event,
         proxy_result_to_proxy_response,
@@ -27,23 +27,22 @@ use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
     append_query_to_endpoint_path, codex_responses_proxy_request_from_input,
     extract_gemini_model_from_path, json_proxy_request_from_input, parse_json_proxy_request_body,
-    parse_json_proxy_request_body_or_null, record_forward_core_error_usage, strip_endpoint_prefix,
-    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
-    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
-    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
-    ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
-    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
-    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
-    CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
-    InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest, ProviderListResponse,
-    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
-    ProxyRuntimeStatus, ProxyState, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
-    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse,
+    parse_json_proxy_request_body_or_null, strip_endpoint_prefix, AppChannelListQuery,
+    AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest, AppListResponse,
+    AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse, ChannelCreateRequest,
+    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
+    ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
+    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
+    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
+    HealthCheckResponse, InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest,
+    ProviderListResponse, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
+    ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyState, ProxyStatusRequest,
+    ProxyStatusResponse, RoutableModelList, RouteGroupListResponse, RouteResolveManagementRequest,
+    RouteResolveRequest, RouteResolveResponse,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -607,14 +606,7 @@ async fn handle_messages_for_app(
         extensions,
     });
 
-    let engine = state.proxy_engine();
-    let result = match engine.handle(proxy_request).await {
-        Ok(result) => result,
-        Err(error) => {
-            let error = record_forward_core_error_usage(&state, &ctx, is_stream, error);
-            return Err(error);
-        }
-    };
+    let result = dispatch_proxy_request(&state, &ctx, proxy_request, is_stream).await?;
 
     let (response, api_format) = claude_proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 
@@ -674,11 +666,9 @@ pub async fn handle_chat_completions(
         extensions,
     });
 
-    let engine = state.proxy_engine();
-    let result = match engine.handle(proxy_request).await {
+    let result = match dispatch_proxy_request(&state, &ctx, proxy_request, is_stream).await {
         Ok(result) => result,
         Err(error) => {
-            let error = record_forward_core_error_usage(&state, &ctx, is_stream, error);
             return codex_proxy_error_to_axum_response(
                 ctx.provider_name_for_error(),
                 &ctx.request_model,
@@ -726,11 +716,9 @@ pub async fn handle_responses(
     let proxy_request = codex_proxy_request.request;
     let codex_tool_context = codex_proxy_request.tool_context;
 
-    let engine = state.proxy_engine();
-    let result = match engine.handle(proxy_request).await {
+    let result = match dispatch_proxy_request(&state, &ctx, proxy_request, is_stream).await {
         Ok(result) => result,
         Err(error) => {
-            let error = record_forward_core_error_usage(&state, &ctx, is_stream, error);
             return codex_proxy_error_to_axum_response(
                 ctx.provider_name_for_error(),
                 &ctx.request_model,
@@ -790,11 +778,9 @@ pub async fn handle_responses_compact(
     let proxy_request = codex_proxy_request.request;
     let codex_tool_context = codex_proxy_request.tool_context;
 
-    let engine = state.proxy_engine();
-    let result = match engine.handle(proxy_request).await {
+    let result = match dispatch_proxy_request(&state, &ctx, proxy_request, is_stream).await {
         Ok(result) => result,
         Err(error) => {
-            let error = record_forward_core_error_usage(&state, &ctx, is_stream, error);
             return codex_proxy_error_to_axum_response(
                 ctx.provider_name_for_error(),
                 &ctx.request_model,
@@ -860,14 +846,7 @@ pub async fn handle_gemini(
         extensions,
     });
 
-    let engine = state.proxy_engine();
-    let result = match engine.handle(proxy_request).await {
-        Ok(result) => result,
-        Err(error) => {
-            let error = record_forward_core_error_usage(&state, &ctx, is_stream, error);
-            return Err(error);
-        }
-    };
+    let result = dispatch_proxy_request(&state, &ctx, proxy_request, is_stream).await?;
 
     let response = proxy_result_to_proxy_response(result, &mut ctx, &state)?;
 

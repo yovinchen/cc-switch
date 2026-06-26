@@ -19,13 +19,14 @@ use crate::proxy_core_adapter::{
     codex_auto_transformed_sse_stream_from_context, codex_chat_error_proxy_response,
     codex_chat_transform_streaming_decision, provider_claude_transform_streaming_decision,
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
-    read_decoded_proxy_response_body, rebuilt_json_proxy_response, request_body_read_error_message,
-    transformed_sse_proxy_response, ActiveConnectionGuard, AxumResponseBuildErrorContext,
-    ClaudeTransformStreamingDecision, ClaudeTransformedJsonResponseContext,
-    ClaudeTransformedSseStreamContext, CodexAutoTransformedJsonResponseContext,
-    CodexAutoTransformedSseStreamContext, CodexChatTransformStreamingDecision, CodexToolContext,
-    CoreResponseBuildFailureContext, ProxyCoreResponse, ProxyEventEnvelope, ProxyResult,
-    ProxyState, ProxyTransportResponse, ProxyTransportResponseBody, UpstreamSseAggregationKind,
+    read_decoded_proxy_response_body, rebuilt_json_proxy_response, record_forward_core_error_usage,
+    request_body_read_error_message, transformed_sse_proxy_response, ActiveConnectionGuard,
+    AxumResponseBuildErrorContext, ClaudeTransformStreamingDecision,
+    ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
+    CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
+    CodexChatTransformStreamingDecision, CodexToolContext, CoreResponseBuildFailureContext,
+    ProxyCoreResponse, ProxyEventEnvelope, ProxyRequest, ProxyResult, ProxyState,
+    ProxyTransportResponse, ProxyTransportResponseBody, UpstreamSseAggregationKind,
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::response::sse::Event;
@@ -63,6 +64,19 @@ pub(crate) fn proxy_core_response_to_proxy_response(
     };
 
     Ok(response)
+}
+
+pub(crate) async fn dispatch_proxy_request(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    proxy_request: ProxyRequest,
+    is_stream: bool,
+) -> Result<ProxyResult, ProxyError> {
+    state
+        .proxy_engine()
+        .handle(proxy_request)
+        .await
+        .map_err(|error| record_forward_core_error_usage(state, ctx, is_stream, error))
 }
 
 pub(crate) fn proxy_result_to_proxy_response(

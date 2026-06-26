@@ -826,6 +826,9 @@ const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
 const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
     "proxy_core_error_to_proxy_error(error)",
     "record_forward_error_usage(",
+    "record_forward_core_error_usage(",
+    "let engine = state.proxy_engine();",
+    "engine.handle(proxy_request).await",
 ];
 const FORBIDDEN_PROVIDER_ADAPTER_BASE_URL_ERROR_MARKERS: &[&str] = &[
     "缺少 base_url 配置",
