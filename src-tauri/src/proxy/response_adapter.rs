@@ -1,4 +1,5 @@
 use super::{
+    engine::context::RequestContext,
     error::ProxyError,
     error_mapper::{
         claude_response_transform_error_to_proxy_error,
@@ -9,7 +10,6 @@ use super::{
         parse_codex_chat_upstream_json_or_unlabeled_sse, proxy_core_error_to_proxy_error,
         response_build_error_to_proxy_error,
     },
-    handler_context::RequestContext,
     hyper_client::ProxyResponse,
     response_processor::process_response,
 };

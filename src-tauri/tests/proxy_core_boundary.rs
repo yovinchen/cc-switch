@@ -2033,10 +2033,30 @@ fn proxy_core_public_prelude_smoke_uses_public_prelude_only() {
 }
 
 #[test]
-fn request_context_does_not_preselect_provider() {
+fn production_proxy_handler_context_legacy_module_is_reexport_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handler_context.rs");
     let source = fs::read_to_string(&path).expect("read handler_context.rs");
+    let production_code: Vec<&str> = production_lines(&source)
+        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert_eq!(
+        production_code,
+        vec![
+            "#[allow(unused_imports)]",
+            "pub(crate) use super::engine::context::*;",
+        ],
+        "legacy proxy/handler_context.rs must remain a re-export shim after engine/context.rs split"
+    );
+}
+
+#[test]
+fn request_context_does_not_preselect_provider() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/engine/context.rs");
+    let source = fs::read_to_string(&path).expect("read engine/context.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -2044,7 +2064,7 @@ fn request_context_does_not_preselect_provider() {
         for marker in FORBIDDEN_REQUEST_CONTEXT_PROVIDER_PRESELECT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handler_context.rs:{} contains provider preselection marker `{}`",
+                    "src/proxy/engine/context.rs:{} contains provider preselection marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -2062,8 +2082,8 @@ fn request_context_does_not_preselect_provider() {
 #[test]
 fn request_context_uses_adapter_for_provider_facts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handler_context.rs");
-    let source = fs::read_to_string(&path).expect("read handler_context.rs");
+    let path = manifest_dir.join("src/proxy/engine/context.rs");
+    let source = fs::read_to_string(&path).expect("read engine/context.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -2071,7 +2091,7 @@ fn request_context_uses_adapter_for_provider_facts() {
         for marker in FORBIDDEN_REQUEST_CONTEXT_PROVIDER_ADAPTER_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handler_context.rs:{} contains provider adapter marker `{}`",
+                    "src/proxy/engine/context.rs:{} contains provider adapter marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -14567,7 +14587,7 @@ fn production_proxy_state_imports_use_adapter_path() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let files = [
         "src/proxy/auth_adapter.rs",
-        "src/proxy/handler_context.rs",
+        "src/proxy/engine/context.rs",
         "src/proxy/transport/http/handlers.rs",
         "src/proxy/response_processor.rs",
         "src/proxy/transport/http/server.rs",

@@ -12,13 +12,13 @@ use crate::provider::{
     UsageScript,
 };
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
+use crate::proxy::engine::context::RequestContext;
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::{
     forward_error_to_core_error, proxy_core_error_to_proxy_error, reqwest_send_error_to_proxy_error,
 };
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
-use crate::proxy::handler_context::RequestContext;
 use crate::proxy::hyper_client::{OriginalHeaderCases, ProxyResponse};
 use crate::proxy::provider_router::{
     ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelSource,
