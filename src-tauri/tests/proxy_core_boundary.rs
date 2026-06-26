@@ -5917,6 +5917,62 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
 }
 
 #[test]
+fn response_pipeline_owns_transformed_json_response_wrappers() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn record_transformed_response_usage",
+        "pub(crate) fn record_non_streaming_response_usage",
+    );
+
+    assert!(
+        function.contains("TransformedResponseUsageRecordContext {")
+            && function.contains("usage_logging_enabled_from_proxy_config(state.config.as_ref())")
+            && function.contains("state.proxy_core_services.clone()")
+            && function.contains("pub(crate) struct ClaudeTransformedJsonResponseContext")
+            && function.contains("pub(crate) fn claude_transformed_json_response_from_context")
+            && function.contains("provider_claude_transform_response_for_api_format(")
+            && function.contains("TransformedResponseUsageFormat::Claude")
+            && function.contains("pub(crate) struct CodexAutoTransformedJsonResponseContext")
+            && function.contains("pub(crate) async fn codex_auto_transformed_json_response_from_context")
+            && function.contains("transform_codex_chat_response_with_history(")
+            && function.contains("TransformedResponseUsageFormat::CodexAuto"),
+        "response pipeline should own transformed JSON wrapper orchestration and usage runtime source"
+    );
+    assert!(
+        !function.contains("transformed_response_usage_record_from_response_context(")
+            && !function.contains("spawn_usage_record_with_proxy_services_context(")
+            && !function.contains("create_logged_passthrough_stream(")
+            && !function.contains("SsePassthroughStreamState::new()")
+            && !function.contains("async_stream::stream!"),
+        "response pipeline should delegate transformed usage record construction and stream internals"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
+            && adapter_source.contains("record_transformed_response_usage")
+            && adapter_source.contains("record_claude_transformed_response_usage")
+            && adapter_source.contains("record_codex_auto_transformed_response_usage")
+            && adapter_source.contains("ClaudeTransformedJsonResponseContext")
+            && adapter_source.contains("claude_transformed_json_response_from_context")
+            && adapter_source.contains("CodexAutoTransformedJsonResponseContext")
+            && adapter_source.contains("codex_auto_transformed_json_response_from_context")
+            && !adapter_source.contains("pub(crate) fn record_transformed_response_usage(")
+            && !adapter_source.contains("pub(crate) struct ClaudeTransformedJsonResponseContext")
+            && !adapter_source
+                .contains("pub(crate) fn claude_transformed_json_response_from_context")
+            && !adapter_source
+                .contains("pub(crate) struct CodexAutoTransformedJsonResponseContext")
+            && !adapter_source
+                .contains("pub(crate) async fn codex_auto_transformed_json_response_from_context"),
+        "proxy_core_adapter should re-export, not own, transformed JSON wrapper orchestration"
+    );
+}
+
+#[test]
 fn response_pipeline_owns_body_decode_transport_bridge() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");

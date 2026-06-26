@@ -18,14 +18,17 @@ use crate::proxy_core_adapter::{
     claude_stream_usage_event_filter, codex_stream_usage_event_filter,
     create_logged_passthrough_stream, extract_anthropic_tool_schema_hints,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
+    provider_claude_transform_response_for_api_format,
     provider_claude_transform_sse_for_api_format, record_non_streaming_response_usage_from_context,
-    response_headers_indicate_sse, streaming_usage_collector_from_context,
+    record_transformed_response_usage_from_context, response_headers_indicate_sse,
+    streaming_usage_collector_from_context, transform_codex_chat_response_with_history,
     transform_codex_chat_sse_with_history, transformed_streaming_usage_collector_from_context,
     usage_logging_enabled_from_proxy_config, ActiveConnectionGuard, AnthropicToolSchemaHints,
     AxumResponseBuildErrorContext, CodexToolContext, NonStreamingUsageRecordContext,
     ProxyCoreResponse, ProxyState, SseUsageCollector, StreamUsageEventFilter,
     StreamingUsageCollectorContext, TransformedResponseUsageFormat,
-    TransformedStreamingUsageCollectorContext, UsageParserConfig,
+    TransformedResponseUsageRecordContext, TransformedStreamingUsageCollectorContext,
+    UsageParserConfig,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -432,6 +435,119 @@ where
         context.status_code,
         context.connection_guard,
     )
+}
+
+pub(crate) fn record_transformed_response_usage(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    body: &Value,
+    format: TransformedResponseUsageFormat,
+    status_code: u16,
+) {
+    record_transformed_response_usage_from_context(TransformedResponseUsageRecordContext {
+        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
+        services: state.proxy_core_services.clone(),
+        body,
+        format,
+        provider: ctx.provider_for_usage(),
+        tag: ctx.tag,
+        app_type: ctx.app_type_str,
+        request_model: &ctx.request_model,
+        outbound_model: ctx.outbound_model.as_deref(),
+        route_context: ctx.usage_route_context.as_ref(),
+        latency_ms: ctx.latency_ms(),
+        status_code,
+        session_id: &ctx.session_id,
+    });
+}
+
+pub(crate) fn record_claude_transformed_response_usage(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    body: &Value,
+    status_code: u16,
+) {
+    record_transformed_response_usage(
+        state,
+        ctx,
+        body,
+        TransformedResponseUsageFormat::Claude,
+        status_code,
+    );
+}
+
+pub(crate) fn record_codex_auto_transformed_response_usage(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    body: &Value,
+    status_code: u16,
+) {
+    record_transformed_response_usage(
+        state,
+        ctx,
+        body,
+        TransformedResponseUsageFormat::CodexAuto,
+        status_code,
+    );
+}
+
+pub(crate) struct ClaudeTransformedJsonResponseContext<'a> {
+    pub(crate) state: &'a ProxyState,
+    pub(crate) ctx: &'a RequestContext,
+    pub(crate) provider: &'a Provider,
+    pub(crate) api_format: &'a str,
+    pub(crate) original_body: &'a Value,
+    pub(crate) status_code: u16,
+}
+
+pub(crate) fn claude_transformed_json_response_from_context(
+    upstream_response: &Value,
+    context: ClaudeTransformedJsonResponseContext<'_>,
+) -> Result<Value, String> {
+    let tool_schema_hints = claude_transform_tool_schema_hints(context.original_body);
+    let anthropic_response = provider_claude_transform_response_for_api_format(
+        upstream_response,
+        context.api_format,
+        Some(context.state.gemini_shadow.as_ref()),
+        Some(&context.provider.id),
+        Some(&context.ctx.session_id),
+        tool_schema_hints.as_ref(),
+    )?;
+
+    record_claude_transformed_response_usage(
+        context.state,
+        context.ctx,
+        &anthropic_response,
+        context.status_code,
+    );
+    Ok(anthropic_response)
+}
+
+pub(crate) struct CodexAutoTransformedJsonResponseContext<'a> {
+    pub(crate) state: &'a ProxyState,
+    pub(crate) ctx: &'a RequestContext,
+    pub(crate) tool_context: &'a CodexToolContext,
+    pub(crate) status_code: u16,
+}
+
+pub(crate) async fn codex_auto_transformed_json_response_from_context(
+    chat_response: &Value,
+    context: CodexAutoTransformedJsonResponseContext<'_>,
+) -> Result<Value, String> {
+    let responses_response = transform_codex_chat_response_with_history(
+        chat_response,
+        context.tool_context,
+        &context.state.codex_chat_history,
+    )
+    .await?;
+
+    record_codex_auto_transformed_response_usage(
+        context.state,
+        context.ctx,
+        &responses_response,
+        context.status_code,
+    );
+    Ok(responses_response)
 }
 
 pub(crate) fn record_non_streaming_response_usage(
