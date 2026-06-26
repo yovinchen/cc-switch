@@ -756,7 +756,8 @@ mod tests {
     use crate::ports::{
         auth_info_from_profile_ref, channel_key_record_from_input, channel_model_record_from_input,
         channel_record_from_input, AppChannelListResponse, AuthInfo, AuthProvider,
-        ChannelHealthStore, ChannelKeyRecordInput, ChannelKeyRuntimeSource,
+        ChannelHealthStore, ChannelKeyRecordInput, ChannelKeyRuntimeCandidate,
+        ChannelKeyRuntimeSource,
         ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelModelRecordInput,
         ChannelReachabilityProbe, ChannelReachabilityResult, ChannelRecordInput,
         ChannelRouteSource, ChannelSource, ChannelTestProbeRequest, ClaudeDesktopGatewayAuthSource,
@@ -1442,11 +1443,11 @@ mod tests {
     }
 
     impl ChannelKeyRuntimeSource for TestServices {
-        fn load_channel_key_value(
+        fn load_channel_key_candidate(
             &self,
             _channel_id: &str,
             _key_ref: &str,
-        ) -> ProxyCoreResult<Option<String>> {
+        ) -> ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>> {
             Ok(None)
         }
     }

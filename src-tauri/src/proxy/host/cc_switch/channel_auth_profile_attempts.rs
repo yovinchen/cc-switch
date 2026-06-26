@@ -79,8 +79,8 @@ pub(crate) fn apply_channel_auth_profile_providers_from_source(
                 channel_id,
                 key_ref,
             } => {
-                let Some(key_value) =
-                    channel_key_runtime_source.load_channel_key_value(&channel_id, &key_ref)?
+                let Some(key_candidate) =
+                    channel_key_runtime_source.load_channel_key_candidate(&channel_id, &key_ref)?
                 else {
                     return Err(channel_auth_profile_missing_key_error(
                         &channel_id,
@@ -90,7 +90,7 @@ pub(crate) fn apply_channel_auth_profile_providers_from_source(
                 attempt.set_auth_provider(provider_with_channel_auth_key(
                     app_type,
                     attempt.provider(),
-                    &key_value,
+                    &key_candidate.key_value,
                 ));
             }
             ChannelAuthProfileProviderApplication::Ignore => {

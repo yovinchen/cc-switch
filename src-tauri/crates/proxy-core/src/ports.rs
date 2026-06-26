@@ -356,11 +356,11 @@ pub trait AuthProvider: Send + Sync {
 }
 
 pub trait ChannelKeyRuntimeSource: Send + Sync {
-    fn load_channel_key_value(
+    fn load_channel_key_candidate(
         &self,
         channel_id: &str,
         key_ref: &str,
-    ) -> ProxyCoreResult<Option<String>>;
+    ) -> ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>>;
 }
 
 pub trait ModelCatalogProvider: Send + Sync {

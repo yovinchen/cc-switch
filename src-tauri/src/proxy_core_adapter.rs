@@ -8676,21 +8676,21 @@ mod tests {
 
         struct TestChannelKeyRuntimeSource {
             expected: Option<(&'static str, &'static str)>,
-            key_value: Option<String>,
+            candidate: Option<ChannelKeyRuntimeCandidate>,
         }
 
         impl ChannelKeyRuntimeSource for TestChannelKeyRuntimeSource {
-            fn load_channel_key_value(
+            fn load_channel_key_candidate(
                 &self,
                 channel_id: &str,
                 key_ref: &str,
-            ) -> ProxyCoreResult<Option<String>> {
+            ) -> ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>> {
                 let Some((expected_channel_id, expected_key_ref)) = self.expected else {
                     panic!("provider auth should not load channel keys");
                 };
                 assert_eq!(channel_id, expected_channel_id);
                 assert_eq!(key_ref, expected_key_ref);
-                Ok(self.key_value.clone())
+                Ok(self.candidate.clone())
             }
         }
 
@@ -8710,7 +8710,7 @@ mod tests {
         );
         let provider_runtime_source = TestChannelKeyRuntimeSource {
             expected: None,
-            key_value: None,
+            candidate: None,
         };
         apply_channel_auth_profile_providers_from_source(
             &AppType::Claude,
@@ -8725,7 +8725,15 @@ mod tests {
             attempt_with_auth_ref(&route_provider, "channel-key", "channel-key:primary");
         let channel_key_runtime_source = TestChannelKeyRuntimeSource {
             expected: Some(("channel-key", "primary")),
-            key_value: Some("loaded-channel-key".to_string()),
+            candidate: Some(ChannelKeyRuntimeCandidate {
+                channel_id: "channel-key".to_string(),
+                key_ref: "primary".to_string(),
+                key_value: "loaded-channel-key".to_string(),
+                status: "enabled".to_string(),
+                priority: 10,
+                weight: 100,
+                last_failure_at: Some(1_771_000_003),
+            }),
         };
         apply_channel_auth_profile_providers_from_source(
             &AppType::Claude,

@@ -3147,21 +3147,21 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core_adapter() {
     let dao_source = fs::read_to_string(&dao_path).expect("read proxy_channels.rs");
     let function = function_slice(
         &runtime_source,
-        "fn load_channel_key_value_from_database",
+        "fn load_channel_key_candidate_from_database",
         "impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource",
     );
 
     assert!(
         adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::channel_key_runtime_source::{"
-        ) && !adapter_source.contains("fn load_channel_key_value_from_database"),
+        ) && !adapter_source.contains("fn load_channel_key_candidate_from_database"),
         "proxy_core_adapter should re-export, not own, the DB-backed channel-key runtime source"
     );
     assert!(
         function.contains(".get_proxy_channel_key(")
             && function.contains("select_enabled_proxy_channel_key_runtime_candidate(")
-            && function.contains("selected_key.map(|key| key.key_value)"),
-        "channel key runtime source must load raw DB key records, delegate enabled-key selection to core, and project the selected runtime key"
+            && !function.contains(".key_value"),
+        "channel key runtime source must load raw DB key records, delegate enabled-key selection to core, and return the selected runtime candidate"
     );
     assert!(
         !function.contains(".get_enabled_proxy_channel_key("),
@@ -11755,7 +11755,7 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     let services_impl = services_source.as_str();
     let runtime_source_lookup = function_slice(
         &runtime_source,
-        "fn load_channel_key_value_from_database",
+        "fn load_channel_key_candidate_from_database",
         "impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource",
     );
     let source_function = function_slice(
@@ -11767,6 +11767,11 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     assert!(
         core_ports_source.contains("pub trait ChannelKeyRuntimeSource"),
         "proxy-core ports should expose channel key lookup behind a runtime source trait"
+    );
+    assert!(
+        core_ports_source.contains("fn load_channel_key_candidate(")
+            && core_ports_source.contains("ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>>"),
+        "ChannelKeyRuntimeSource should return the selected runtime candidate, not only the key value"
     );
     assert!(
         services_trait.contains("channel_key_runtime_source("),
@@ -11785,7 +11790,7 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
             "pub(crate) use crate::proxy::host::cc_switch::channel_key_runtime_source::{"
         ) && runtime_source.contains("impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource")
             && !source.contains("impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource")
-            && !source.contains("fn load_channel_key_value_from_database"),
+            && !source.contains("fn load_channel_key_candidate_from_database"),
         "DB-backed channel-key runtime source implementation should live in the host cc_switch module"
     );
     assert!(
@@ -11803,7 +11808,8 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         ) && !source.contains("fn apply_channel_auth_profile_providers_from_source(")
             && !source.contains("fn required_forward_attempts_from_sources(")
             && source_function.contains("dyn ChannelKeyRuntimeSource")
-            && source_function.contains(".load_channel_key_value("),
+            && source_function.contains(".load_channel_key_candidate(")
+            && source_function.contains("key_candidate.key_value"),
         "host auth-profile attempt source should consume the channel key runtime source contract"
     );
     assert!(
@@ -11815,12 +11821,12 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     assert!(
         runtime_source_lookup.contains(".get_proxy_channel_key(")
             && runtime_source_lookup.contains("select_enabled_proxy_channel_key_runtime_candidate(")
-            && runtime_source_lookup.contains("selected_key.map(|key| key.key_value)"),
-        "CC Switch channel key runtime lookup helper should own raw DB lookup, core selection, and selected key projection"
+            && !runtime_source_lookup.contains(".key_value"),
+        "CC Switch channel key runtime lookup helper should own raw DB lookup, core selection, and preserve selected candidate metadata"
     );
     assert!(
         runtime_source.contains("impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource")
-            && runtime_source.contains("load_channel_key_value_from_database("),
+            && runtime_source.contains("load_channel_key_candidate_from_database("),
         "owned CC Switch channel key runtime source should delegate through the shared lookup helper"
     );
 }

@@ -577,11 +577,11 @@ impl AuthProvider for ExternalRelayServices {
 }
 
 impl ChannelKeyRuntimeSource for ExternalRelayServices {
-    fn load_channel_key_value(
+    fn load_channel_key_candidate(
         &self,
         _channel_id: &str,
         _key_ref: &str,
-    ) -> ProxyCoreResult<Option<String>> {
+    ) -> ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>> {
         Ok(None)
     }
 }

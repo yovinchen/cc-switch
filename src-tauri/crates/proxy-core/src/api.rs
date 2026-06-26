@@ -391,8 +391,9 @@ pub mod prelude {
         ChannelModelRecordInput, ChannelModelsResponse, ChannelModelsSource, ChannelPathRequest,
         ChannelReachabilityInput, ChannelReachabilityResult, ChannelReachabilityStatus,
         ChannelRecord, ChannelRecordInput,
-        ChannelRecordResponse, ChannelRecordSource, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
-        ChannelTestInput, ChannelTestPlan, ChannelTestProbeRequest, ChannelTestResponse, CurrentRouteProviderSummary,
+        ChannelKeyRuntimeCandidate, ChannelRecordResponse, ChannelRecordSource,
+        ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, ChannelTestInput,
+        ChannelTestPlan, ChannelTestProbeRequest, ChannelTestResponse, CurrentRouteProviderSummary,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteSource,
         GroupListChannelRecordInput, GroupListChannelSource, GroupListQuery, GroupListRequest,
         channel_reachability_probe_error, channel_test_app_type_error,
@@ -896,11 +897,11 @@ mod tests {
         }
 
         impl ChannelKeyRuntimeSource for StubServices {
-            fn load_channel_key_value(
+            fn load_channel_key_candidate(
                 &self,
                 _channel_id: &str,
                 _key_ref: &str,
-            ) -> ProxyCoreResult<Option<String>> {
+            ) -> ProxyCoreResult<Option<management::ChannelKeyRuntimeCandidate>> {
                 Ok(None)
             }
         }
