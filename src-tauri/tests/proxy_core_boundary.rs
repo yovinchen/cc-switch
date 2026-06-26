@@ -8,6 +8,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/error_mapper.rs",
     "src/proxy/error.rs",
     "src/proxy/events.rs",
+    "src/proxy/host/cc_switch/forwarder_response_source.rs",
     "src/proxy/host/cc_switch/forwarder_request_source.rs",
     "src/proxy/response_adapter.rs",
     "src/proxy_core_adapter.rs",
@@ -14749,6 +14750,10 @@ fn production_forwarder_uses_response_source_resource() {
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let response_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_response_source.rs");
     let response_source =
@@ -14820,6 +14825,27 @@ fn production_forwarder_uses_response_source_resource() {
         adapter_source.contains("pub(crate) struct ForwarderResponseFinalizationInput"),
         "ForwarderResponseSource must receive response finalization facts through an input DTO"
     );
+    let response_core_transport_import_slice = function_slice(
+        &response_source,
+        "use crate::proxy_core::api::transport::{",
+        "};\nuse crate::proxy_core_adapter::{",
+    );
+    for marker in [
+        "non_streaming_body_timeout_message",
+        "resolve_channel_response_status_mapping",
+        "streaming_body_ended_before_first_chunk_message",
+        "streaming_body_first_chunk_read_error_message",
+        "streaming_body_first_chunk_timeout_message",
+    ] {
+        assert!(
+            response_core_transport_import_slice.contains(marker),
+            "default ForwarderResponseSource should import pure response helper `{marker}` directly from proxy_core::api::transport"
+        );
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not re-export pure response helper `{marker}` once response source owns the call site"
+        );
+    }
     assert!(
         adapter_source.contains("response: ProxyResponse")
             && adapter_source.contains("request_is_streaming: bool")

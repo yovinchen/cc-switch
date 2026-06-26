@@ -6781,8 +6781,6 @@ pub(crate) use crate::proxy_core::api::routing::default_route_candidate_from_sel
 pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate;
 pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_selection;
 
-pub(crate) use crate::proxy_core::api::transport::resolve_channel_response_status_mapping;
-
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_code;
 
@@ -6940,11 +6938,7 @@ pub(crate) use crate::proxy_core::api::transport::decompress_body;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::strip_sse_field;
 
-pub(crate) use crate::proxy_core::api::transport::{
-    non_streaming_body_timeout_message, streaming_body_ended_before_first_chunk_message,
-    streaming_body_first_chunk_read_error_message, streaming_body_first_chunk_timeout_message,
-    streaming_header_timeout_message,
-};
+pub(crate) use crate::proxy_core::api::transport::streaming_header_timeout_message;
 
 pub(crate) use crate::proxy_core::api::transport::{
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
