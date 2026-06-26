@@ -690,7 +690,7 @@
 666. legacy channel migration 的 provider settings 投影已从 DAO 移到 host adapter `legacy_provider_projection_input`：DAO 不再解析 Codex TOML、env/modelCatalog 或 Claude Desktop model routes，只把 provider fact 投影交给 adapter 后调用 core legacy projection。
 667. legacy channel projection 到 `ProxyChannelRecord` / `ProxyChannelModelRecord` 的 host 映射已移入 `proxy_core_adapter::proxy_channel_record_from_legacy_projection`：DAO 不再逐字段展开 core legacy projection，也不再手写 preview 去重，只负责读取 legacy provider 事实和物化落库。
 668. forward result 到 `ProxyResult` 的 selected route、metadata 和 outbound model 投影已移入 host adapter `proxy_result_from_forward_parts`：`proxy_core_host` 只保留 `ProxyResponse`/connection guard 到 core response 的 runtime 桥接，结果 contract 由 adapter 统一生成。
-669. `CcSwitchChannelSource` 的 channel record 到 `ChannelSpec` 投影与 `ChannelQuery` 过滤已收敛到 host adapter `proxy_channel_records_to_core_specs_for_query`：adapter-owned source 负责选择 legacy/materialized 数据来源、读取 DB/router 并映射 host 错误，`proxy_core_host` 只装配 source。
+669. `CcSwitchChannelSource` 的 channel record 到 `ChannelSpec` 投影与 `ChannelQuery` 过滤已收敛到 `proxy/host/cc_switch/database_channel_source.rs`：adapter-owned source 负责选择 legacy/materialized 数据来源、读取 DB/router 并映射 host 错误，`proxy_core_host` 只装配 source。
 670. `CcSwitchProviderSource` 的 DB provider 到 `ProviderSpec` 投影已收敛到 host adapter `proxy_provider_to_core_spec` / `proxy_providers_to_core_specs`：adapter-owned source 负责 provider list/get/current 查询与 active-route runtime map 读取，metadata 脱敏和 provider kind 推断继续由 adapter/core 投影规则生成。
 671. route policy 的 failover queue provider id 到 `RoutePolicy` raw contract 投影已新增 `proxy-core::route_policy_from_failover_provider_ids` 并经 host adapter `route_policy_from_failover_queue` 接入：adapter-owned `CcSwitchRoutePolicySource` 负责读取 DB 队列和错误映射，host 只装配 source。
 672. `CcSwitchConfigSource` 的 global/app/runtime config DTO 投影已新增 `proxy-core` helpers 并由 adapter-owned source wrapper 接入：config source 负责读取 DB/settings，`ProxyGlobalConfig`、`ProxyAppConfig`、optimizer specs 与 `ProxyRuntimeConfig` 的 raw contract 由 core 统一生成。
@@ -728,7 +728,7 @@
 704. app config source 的当前 provider settings 读取与 `ProxyAppConfig` parts 组装已移入 `proxy_core_adapter::current_provider_id_from_settings_for_app` / `proxy_app_config_from_config_source_parts`：adapter-owned `CcSwitchConfigSource` 保留 DB 配置和优化器配置读取，`proxy_core_host` 只装配 source。
 705. runtime config source 的 host 默认 privacy-filter flag 包装已移入 `proxy_core_adapter::proxy_runtime_config_from_config_source`：`proxy_core_host` 不再直接传入固定 `false` 构造 runtime config。
 706. ProviderSource 的列表/单条 provider 到 `ProviderSpec` 投影已移入 `proxy_core_adapter::provider_specs_from_source` / `provider_spec_from_source`：`proxy_core_host` 不再直接解析 app kind 或调用 provider spec conversion。
-707. ChannelSource 的列表/单条 channel 到 `ChannelSpec` 投影已移入 `proxy_core_adapter::channel_specs_from_source` / `channel_spec_from_source`：`proxy_core_host` 不再直接调用 channel record conversion。
+707. ChannelSource 的列表/单条 channel 到 `ChannelSpec` 投影已移入 `proxy/host/cc_switch/database_channel_source.rs` 的 `channel_specs_from_source` / `channel_spec_from_source`：`proxy_core_host` 不再直接调用 channel record conversion，`proxy_core_adapter` 只保留测试兼容导出。
 708. ChannelHealthStore 的 attempt 写库参数投影已移入 `proxy_core_adapter::channel_health_attempt_db_update`，adapter-owned `CcSwitchChannelHealthStore` 负责调用 DB 写入；`proxy_core_host` 只装配该 store。
 709. `ProxyCoreEvent` 到 host event bus name/payload 的投影已移入 `proxy_core_adapter::proxy_core_event_to_bus_message`：`proxy_core_host` 的 event sink 不再直接调用 `event_name()` 或 `into_event_payload()`。
 710. RoutePolicySource 的 failover queue 到 optional `RoutePolicy` source 投影、DB queue 查询与错误映射已由 adapter-owned `CcSwitchRoutePolicySource` 包装；`proxy_core_host` 不再保留该桥接实现。
@@ -1636,6 +1636,7 @@ managed-account runtime source 已彻底归并到 `proxy_core_adapter::CcSwitchM
 1157. 非流式 upstream response 的整包读取、body timeout 包装和 decode bridge 已收敛到 `proxy_core_adapter::read_decoded_proxy_response_body`；host `handlers` 与 `response_processor` 不再直接调用 `ProxyResponse::bytes()` 或维护 `read_decoded_body` 兼容函数。
 1158. Claude/Codex transformed streaming 的 usage collector 选择、timeout config 和 logged passthrough wrapper 已收敛到 `proxy_core_adapter::{create_claude_transformed_logged_stream,create_codex_auto_transformed_logged_stream}`；host `handlers` 只生成协议转换后的 SSE stream 并交给 response adapter。
 1159. 通用 passthrough streaming 的 usage collector 选择、timeout config 和 logged passthrough wrapper 已收敛到 `proxy_core_adapter::create_passthrough_logged_stream`；host `response_processor` 只保留 upstream `bytes_stream` 提取、headers/status 保存和 Axum response bridge。
+1160. ChannelSource 的 spec/list/get 与 materialized-vs-legacy fallback helper 已从 `proxy_core_adapter.rs` 迁入 `proxy/host/cc_switch/database_channel_source.rs`：host source 模块现在拥有 DB channel 查询、legacy projection 回退、`ChannelSpec` 投影和 `ChannelQuery` 过滤；`proxy_core_adapter` 只保留生产所需的 `channel_route_records_from_db_source` 兼容导出和少量测试导出。
 
 ## 背景
 
@@ -2417,7 +2418,7 @@ Channel 管理 API 的部分 contract 也已开始收敛到 core：`management_a
 
 materialized channel 优先、空表才 fallback 到 legacy projection 的 source 选择规则已由 `channel_route_source_for_materialized_count` 固化，并经 `CcSwitchChannelSource::list_channel_records` 包装为 core-facing `ChannelSource` 入口；`ProviderRouter` 只接收 adapter 投影后的 `RouteResolveChannelInput` 路由字段，不再直接读取 materialized records、legacy preview、完整 `ProxyChannelRecord` DAO 形状或 router-local channel DTO。management channel specs/records 与 router dry-run route 输入现在复用同一个 core `ChannelRecord` 投影来源。
 
-`CcSwitchChannelSource` 的 core-facing `ChannelSource` wrapper 已从 `proxy_core_adapter.rs` 下沉到 `proxy/host/cc_switch/database_channel_source.rs`；`proxy_core_adapter` 只负责装配该宿主模块类型。当前 channel DB helper、legacy projection 到 `ProxyChannelRecord`/`ChannelRecord` 的投影函数仍保留在 adapter 中，后续应继续按 spec/list/record/key/model/migration helper 分组迁出。
+`CcSwitchChannelSource` 的 core-facing `ChannelSource` wrapper 已从 `proxy_core_adapter.rs` 下沉到 `proxy/host/cc_switch/database_channel_source.rs`；该 host 模块已继续接收 spec/list/get helper、`ChannelQuery` 过滤和 materialized-vs-legacy fallback 选择。`proxy_core_adapter` 只负责装配该宿主模块类型，并为旧调用点保留必要兼容导出；剩余 channel record/key/model/migration helper 后续继续分组迁出。
 
 dry-run route 的 circuit-open 识别也继续收敛：`route_candidate_channel_circuit_keys` 负责把 `RouteResolveResponse` 的候选投影成 channel circuit lookup facts，`proxy_core_adapter::management_route_response_from_router_source` 负责调用 core resolver、向 `ProviderRouter` 查询已有 breaker 可用性并把 availability facts 交给 `apply_route_candidate_circuit_availability`，由 adapter/core 生成 rejected:circuit_open response mutation。
 
@@ -2548,7 +2549,7 @@ ProxyRequest
 | `http_client.rs` | `transport/upstream/reqwest_client.rs` 或 host shared | pooled reqwest 上游发送执行已迁到 `proxy/transport/upstream/reqwest_client.rs`，`transport/upstream/mod.rs` 负责 reqwest/raw-hyper 分流；应用全局 HTTP client、proxy lifecycle 和系统代理自环保护已迁到 `proxy/host/cc_switch/global_http_client.rs`，旧 `proxy/http_client.rs` 仅保留兼容 re-export |
 | `types.rs` | `domain/config.rs`, `domain/status.rs` | 拆分领域类型 |
 | `services/proxy.rs` | `host/cc_switch/live_takeover.rs` | `ProxyService` live takeover/restore/hot-switch/live-config 宿主副作用实现已迁到 `proxy/host/cc_switch/live_takeover.rs`，旧 `services/proxy.rs` 仅保留 `services::ProxyService` API 兼容 re-export |
-| `provider_endpoints` 相关 DB 访问 | `host/cc_switch/database_channel_source.rs` | `CcSwitchChannelSource` wrapper 已迁到 `proxy/host/cc_switch/database_channel_source.rs` 并包装 provider 主 URL、`provider_endpoints` 与 materialized channel 的 core-facing `ChannelSource` 入口；兼容投影 helper 仍在 `proxy_core_adapter.rs`，后续继续迁出到该 host 模块并最终迁移到独立 channel 表 |
+| `provider_endpoints` 相关 DB 访问 | `host/cc_switch/database_channel_source.rs` | `CcSwitchChannelSource` wrapper 已迁到 `proxy/host/cc_switch/database_channel_source.rs` 并包装 provider 主 URL、`provider_endpoints` 与 materialized channel 的 core-facing `ChannelSource` 入口；spec/list/get 与 materialized-vs-legacy fallback helper 已迁入该 host 模块，剩余 record/key/model/migration helper 后续继续迁出并最终迁移到独立 channel 表 |
 
 ## 分阶段实施计划
 
