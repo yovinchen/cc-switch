@@ -6839,8 +6839,9 @@ fn proxy_core_adapter_delegates_response_build_context_policy_to_core() {
         "proxy_core_adapter should expose the core response build context type"
     );
     assert!(
-        source.contains("ProxyResponseBuildFailureContext"),
-        "proxy_core_adapter should expose the core response build failure context type"
+        !source.contains("CoreResponseBuildFailureContext")
+            && !source.contains("ProxyResponseBuildFailureContext"),
+        "proxy_core_adapter should no longer expose response build failure context; response_adapter/error_mapper import it directly"
     );
 
     let mut violations = Vec::new();
@@ -19317,17 +19318,24 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         .collect();
 
     assert!(
-        source.contains("use crate::proxy_core::api::transport::{")
+        source.contains("use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;")
+            && source.contains("use crate::proxy_core::api::domain::AppKind;")
+            && source.contains("use crate::proxy_core::api::transport::{")
             && source.contains("extract_gemini_model_from_path")
             && source.contains("use crate::proxy_core::api::events::ProxyEventEnvelope;")
             && source.contains("use crate::proxy_core::api::management::{")
             && source.contains("use crate::proxy_core::api::model_catalog::{")
+            && source.contains("use crate::proxy_core::api::ports::{")
+            && source.contains("use crate::proxy_core::api::routing::InterfaceKind;")
+            && source.contains("use crate::proxy_core::api::transforms::{")
             && source.contains("use crate::proxy_core::api::usage::{"),
-        "response_adapter should import core transport/event/management/model_catalog/usage contracts directly"
+        "response_adapter should import core auth/domain/transport/event/management/model_catalog/ports/routing/transforms/usage contracts directly"
     );
 
     let mut violations = Vec::new();
     for marker in [
+        "AppKind",
+        "InterfaceKind",
         "append_query_to_endpoint_path",
         "extract_gemini_model_from_path",
         "rebuilt_json_proxy_response",
@@ -19340,6 +19348,14 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         "ProxyResult",
         "ProxyTransportResponse",
         "ProxyTransportResponseBody",
+        "AxumResponseBuildErrorContext",
+        "CoreResponseBuildFailureContext",
+        "ClaudeDesktopModelListResponse",
+        "ClaudeTransformStreamingDecision",
+        "CodexChatTransformStreamingDecision",
+        "CodexToolContext",
+        "CurrentRouteTarget",
+        "ProxyRuntimeStatus",
         "ClientModelCatalogResponse",
         "RoutableModelList",
         "AppChannelListQuery",
@@ -19408,7 +19424,7 @@ fn proxy_response_adapter_owns_core_transport_imports() {
 
     assert!(
         violations.is_empty(),
-        "response_adapter should not route pure core transport/event/management/model_catalog/usage contracts through proxy_core_adapter:\n{}",
+        "response_adapter should not route pure core auth/domain/transport/event/management/model_catalog/ports/routing/transforms/usage contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

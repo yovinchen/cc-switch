@@ -15,6 +15,8 @@ use super::{
 };
 use crate::app_config::AppType;
 use crate::provider::Provider;
+use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
+use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::events::ProxyEventEnvelope;
 use crate::proxy_core::api::management::{
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppListRequest,
@@ -33,11 +35,18 @@ use crate::proxy_core::api::management::{
     RouteResolveResponse,
 };
 use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};
+use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
+use crate::proxy_core::api::routing::InterfaceKind;
+use crate::proxy_core::api::transforms::{
+    ClaudeTransformStreamingDecision, CodexChatTransformStreamingDecision, CodexToolContext,
+};
 use crate::proxy_core::api::transport::{
     append_query_to_endpoint_path, extract_gemini_model_from_path, rebuilt_json_proxy_response,
     request_body_read_error_message, strip_endpoint_prefix, transformed_sse_proxy_response,
-    ProxyCoreResponse, ProxyRequest, ProxyResult, ProxyTransportResponse,
-    ProxyTransportResponseBody, UpstreamSseAggregationKind,
+    ProxyCoreResponse, ProxyRequest,
+    ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext,
+    ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext, ProxyResult,
+    ProxyTransportResponse, ProxyTransportResponseBody, UpstreamSseAggregationKind,
 };
 use crate::proxy_core::api::usage::{
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
@@ -50,13 +59,10 @@ use crate::proxy_core_adapter::{
     json_proxy_request_from_input, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, provider_claude_transform_streaming_decision,
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
-    record_forward_core_error_usage, ActiveConnectionGuard, AppKind, AxumResponseBuildErrorContext,
-    ClaudeDesktopModelListResponse, ClaudeTransformStreamingDecision,
-    ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
-    CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
-    CodexChatTransformStreamingDecision, CodexResponsesProxyRequest, CodexToolContext,
-    CoreResponseBuildFailureContext, CurrentRouteTarget, InterfaceKind, JsonProxyRequestInput,
-    ProxyRuntimeStatus, ProxyState,
+    record_forward_core_error_usage, ActiveConnectionGuard, ClaudeTransformedJsonResponseContext,
+    ClaudeTransformedSseStreamContext, CodexAutoTransformedJsonResponseContext,
+    CodexAutoTransformedSseStreamContext, CodexResponsesProxyRequest, JsonProxyRequestInput,
+    ProxyState,
 };
 use axum::{
     response::sse::{Event, KeepAlive, Sse},
