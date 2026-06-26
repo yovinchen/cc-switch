@@ -16170,36 +16170,43 @@ fn production_provider_router_config_source_uses_core_config_source() {
 #[test]
 fn production_provider_router_provider_source_uses_core_provider_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let adapter_slice = function_slice(
-        &source,
-        "struct CcSwitchProviderRouterProviderSource",
-        "pub(crate) fn current_provider_id_from_router_sources",
-    );
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/provider_router_provider_source.rs");
+    let source = fs::read_to_string(&source_path).expect("read provider_router_provider_source.rs");
 
     assert!(
-        adapter_slice.contains("impl ProviderSource for CcSwitchProviderRouterProviderSource"),
-        "ProviderRouter provider source adapter must expose a core-facing ProviderSource"
+        source.contains("impl ProviderSource for CcSwitchProviderRouterProviderSource"),
+        "ProviderRouter provider source must expose a core-facing ProviderSource"
     );
     assert!(
-        adapter_slice.contains("route_policies: CcSwitchRoutePolicySource")
-            && adapter_slice.contains("failover_provider_ids_from_route_policy_source"),
-        "ProviderRouter provider source adapter must read failover queue facts through RoutePolicySource"
+        source.contains("route_policies: CcSwitchRoutePolicySource")
+            && source.contains("failover_provider_ids_from_route_policy_source"),
+        "ProviderRouter provider source must read failover queue facts through RoutePolicySource"
     );
     assert!(
-        adapter_slice.contains("provider_ids_from_router_provider_source")
-            && adapter_slice.contains("select_current_provider_ids_from_router_provider_source"),
-        "ProviderRouter provider source adapter must project provider ids through ProviderSource helpers"
+        source.contains("provider_failover_sources_from_router_provider_source")
+            && source.contains("select_current_provider_ids_from_router_provider_source"),
+        "ProviderRouter provider source must project provider ids through ProviderSource helpers"
+    );
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::provider_router_provider_source::CcSwitchProviderRouterProviderSource"
+        ) && adapter_source.contains("CcSwitchProviderRouterProviderSource::new(")
+            && !adapter_source.contains("struct CcSwitchProviderRouterProviderSource")
+            && !adapter_source.contains("impl ProviderSource for CcSwitchProviderRouterProviderSource")
+            && !adapter_source.contains("impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource"),
+        "proxy_core_adapter should re-export and instantiate, not own, the ProviderRouter provider source"
     );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(adapter_slice) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROVIDER_ROUTER_PROVIDER_SOURCE_ADAPTER_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs CcSwitchProviderRouterProviderSource:{} contains provider source adapter marker `{}`",
+                    "src/proxy/host/cc_switch/provider_router_provider_source.rs:{} contains provider source adapter marker `{}`",
                     line_index + 1,
                     marker
                 ));

@@ -12,8 +12,7 @@ use crate::provider::{
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::engine::context::RequestContext;
 use crate::proxy::engine::routing::{
-    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterProviderSource,
-    ProviderRouterSources,
+    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterSources,
 };
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::forward_error_to_core_error;
@@ -28,6 +27,7 @@ pub(crate) use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRun
 pub(crate) use crate::proxy::host::cc_switch::provider_router_channel_source::CcSwitchProviderRouterChannelSource;
 pub(crate) use crate::proxy::host::cc_switch::provider_router_config_source::CcSwitchProviderRouterConfigSource;
 pub(crate) use crate::proxy::host::cc_switch::provider_router_health_store::CcSwitchProviderRouterHealthStore;
+pub(crate) use crate::proxy::host::cc_switch::provider_router_provider_source::CcSwitchProviderRouterProviderSource;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::http::server::ProxyServer;
@@ -5100,10 +5100,10 @@ impl CcSwitchProviderRouterSources {
             Arc::new(CcSwitchProviderRouterConfigSource::new(
                 CcSwitchConfigSource::new(db.clone()),
             )),
-            Arc::new(CcSwitchProviderRouterProviderSource {
-                db: db.clone(),
-                route_policies: CcSwitchRoutePolicySource::new(db.clone()),
-            }),
+            Arc::new(CcSwitchProviderRouterProviderSource::new(
+                db.clone(),
+                CcSwitchRoutePolicySource::new(db.clone()),
+            )),
             Arc::new(CcSwitchProviderRouterChannelSource::new(
                 CcSwitchChannelSource::new(db.clone()),
             )),
@@ -5114,79 +5114,6 @@ impl CcSwitchProviderRouterSources {
 
 pub(crate) fn provider_router_from_database(db: Arc<Database>) -> ProviderRouter {
     ProviderRouter::with_sources(CcSwitchProviderRouterSources::from_database(db))
-}
-
-struct CcSwitchProviderRouterProviderSource {
-    db: Arc<Database>,
-    route_policies: CcSwitchRoutePolicySource,
-}
-
-impl ProviderSource for CcSwitchProviderRouterProviderSource {
-    fn list_providers<'a>(
-        &'a self,
-        app: &'a AppKind,
-    ) -> BoxFuture<'a, ProxyCoreResult<Vec<ProviderSpec>>> {
-        Box::pin(async move { provider_specs_from_db_source(&self.db, app) })
-    }
-
-    fn get_provider<'a>(
-        &'a self,
-        app: &'a AppKind,
-        provider_id: &'a str,
-    ) -> BoxFuture<'a, ProxyCoreResult<Option<ProviderSpec>>> {
-        Box::pin(async move { provider_spec_from_db_source(&self.db, app, provider_id) })
-    }
-
-    fn current_provider_id<'a>(
-        &'a self,
-        app: &'a AppKind,
-    ) -> BoxFuture<'a, ProxyCoreResult<Option<String>>> {
-        Box::pin(async move {
-            let app_type = app_type_from_proxy_core_app(app)?;
-            Ok(current_provider_id_from_router_sources(
-                app_type.as_str(),
-                |app_enum| {
-                    crate::settings::get_effective_current_provider(&self.db, app_enum)
-                        .ok()
-                        .flatten()
-                },
-                || {
-                    self.db
-                        .get_current_provider(app_type.as_str())
-                        .ok()
-                        .flatten()
-                },
-            ))
-        })
-    }
-}
-
-impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource {
-    fn failover_sources<'a>(
-        &'a self,
-        app_type: &'a str,
-    ) -> BoxFuture<'a, Result<ProviderFailoverRouterSources, AppError>> {
-        Box::pin(async move {
-            let failover_provider_ids =
-                failover_provider_ids_from_route_policy_source(&self.route_policies, app_type)
-                    .await?;
-            provider_failover_sources_from_router_provider_source(
-                self,
-                app_type,
-                failover_provider_ids,
-            )
-            .await
-        })
-    }
-
-    fn current_provider_ids<'a>(
-        &'a self,
-        app_type: &'a str,
-    ) -> BoxFuture<'a, Result<Vec<String>, AppError>> {
-        Box::pin(async move {
-            select_current_provider_ids_from_router_provider_source(self, app_type).await
-        })
-    }
 }
 
 pub(crate) fn current_provider_id_from_router_sources(
