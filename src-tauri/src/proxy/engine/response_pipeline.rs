@@ -14,12 +14,15 @@ use crate::proxy_core::api::transport::{
     ResponseLogLevel,
 };
 use crate::proxy_core_adapter::{
+    claude_stream_usage_event_filter, codex_stream_usage_event_filter,
     create_logged_passthrough_stream, passthrough_bytes_proxy_response,
     passthrough_stream_proxy_response, record_non_streaming_response_usage_from_context,
     response_headers_indicate_sse, streaming_usage_collector_from_context,
-    usage_logging_enabled_from_proxy_config, ActiveConnectionGuard, AxumResponseBuildErrorContext,
-    NonStreamingUsageRecordContext, ProxyCoreResponse, ProxyState, SseUsageCollector,
-    StreamingUsageCollectorContext, UsageParserConfig,
+    transformed_streaming_usage_collector_from_context, usage_logging_enabled_from_proxy_config,
+    ActiveConnectionGuard, AxumResponseBuildErrorContext, NonStreamingUsageRecordContext,
+    ProxyCoreResponse, ProxyState, SseUsageCollector, StreamUsageEventFilter,
+    StreamingUsageCollectorContext, TransformedResponseUsageFormat,
+    TransformedStreamingUsageCollectorContext, UsageParserConfig,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -260,6 +263,98 @@ where
         connection_guard,
     );
     passthrough_stream_proxy_response(status, headers, logged_stream)
+}
+
+pub(crate) fn transformed_streaming_usage_collector(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: u16,
+    usage_format: TransformedResponseUsageFormat,
+    stream_event_filter: StreamUsageEventFilter,
+) -> Option<SseUsageCollector> {
+    transformed_streaming_usage_collector_from_context(TransformedStreamingUsageCollectorContext {
+        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
+        services: state.proxy_core_services.clone(),
+        provider: ctx.provider_for_usage(),
+        app_type: ctx.app_type_str,
+        tag: ctx.tag,
+        request_model: &ctx.request_model,
+        outbound_model: ctx.outbound_model.as_deref(),
+        route_context: ctx.usage_route_context.as_ref(),
+        start_time: ctx.start_time,
+        status_code,
+        session_id: &ctx.session_id,
+        usage_format,
+        stream_event_filter,
+    })
+}
+
+pub(crate) fn claude_transformed_streaming_usage_collector(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: u16,
+) -> Option<SseUsageCollector> {
+    transformed_streaming_usage_collector(
+        state,
+        ctx,
+        status_code,
+        TransformedResponseUsageFormat::Claude,
+        claude_stream_usage_event_filter,
+    )
+}
+
+pub(crate) fn codex_auto_transformed_streaming_usage_collector(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: u16,
+) -> Option<SseUsageCollector> {
+    transformed_streaming_usage_collector(
+        state,
+        ctx,
+        status_code,
+        TransformedResponseUsageFormat::CodexAuto,
+        codex_stream_usage_event_filter,
+    )
+}
+
+pub(crate) fn create_claude_transformed_logged_stream<G>(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: u16,
+    connection_guard: Option<G>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
+where
+    G: Send + 'static,
+{
+    let usage_collector = claude_transformed_streaming_usage_collector(state, ctx, status_code);
+    create_logged_passthrough_stream(
+        stream,
+        "Claude/OpenRouter",
+        usage_collector,
+        ctx.streaming_timeout_config(),
+        connection_guard,
+    )
+}
+
+pub(crate) fn create_codex_auto_transformed_logged_stream<G>(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: u16,
+    connection_guard: Option<G>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
+where
+    G: Send + 'static,
+{
+    let usage_collector = codex_auto_transformed_streaming_usage_collector(state, ctx, status_code);
+    create_logged_passthrough_stream(
+        stream,
+        ctx.tag,
+        usage_collector,
+        ctx.streaming_timeout_config(),
+        connection_guard,
+    )
 }
 
 pub(crate) fn record_non_streaming_response_usage(

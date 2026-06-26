@@ -6495,12 +6495,14 @@ type UsageCallbackWithTiming = Arc<dyn Fn(Vec<Value>, Option<u64>) + Send + Sync
 
 #[allow(unused_imports)]
 pub(crate) use crate::proxy::engine::response_pipeline::{
+    claude_transformed_streaming_usage_collector, codex_auto_transformed_streaming_usage_collector,
+    create_claude_transformed_logged_stream, create_codex_auto_transformed_logged_stream,
     create_passthrough_logged_stream, decode_raw_proxy_response_body,
     log_non_streaming_proxy_response_body, log_streaming_proxy_response_received,
     passthrough_non_stream_proxy_response_from_context,
     passthrough_stream_proxy_response_from_context, passthrough_streaming_usage_collector,
     read_decoded_proxy_response_body, record_non_streaming_response_usage,
-    DecodedProxyResponseBody,
+    transformed_streaming_usage_collector, DecodedProxyResponseBody,
 };
 
 #[derive(Clone)]
@@ -8480,78 +8482,6 @@ pub(crate) fn record_codex_auto_transformed_response_usage(
     );
 }
 
-pub(crate) fn transformed_streaming_usage_collector(
-    state: &ProxyState,
-    ctx: &RequestContext,
-    status_code: u16,
-    usage_format: TransformedResponseUsageFormat,
-    stream_event_filter: StreamUsageEventFilter,
-) -> Option<SseUsageCollector> {
-    transformed_streaming_usage_collector_from_context(TransformedStreamingUsageCollectorContext {
-        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
-        services: state.proxy_core_services.clone(),
-        provider: ctx.provider_for_usage(),
-        app_type: ctx.app_type_str,
-        tag: ctx.tag,
-        request_model: &ctx.request_model,
-        outbound_model: ctx.outbound_model.as_deref(),
-        route_context: ctx.usage_route_context.as_ref(),
-        start_time: ctx.start_time,
-        status_code,
-        session_id: &ctx.session_id,
-        usage_format,
-        stream_event_filter,
-    })
-}
-
-pub(crate) fn claude_transformed_streaming_usage_collector(
-    state: &ProxyState,
-    ctx: &RequestContext,
-    status_code: u16,
-) -> Option<SseUsageCollector> {
-    transformed_streaming_usage_collector(
-        state,
-        ctx,
-        status_code,
-        TransformedResponseUsageFormat::Claude,
-        claude_stream_usage_event_filter,
-    )
-}
-
-pub(crate) fn codex_auto_transformed_streaming_usage_collector(
-    state: &ProxyState,
-    ctx: &RequestContext,
-    status_code: u16,
-) -> Option<SseUsageCollector> {
-    transformed_streaming_usage_collector(
-        state,
-        ctx,
-        status_code,
-        TransformedResponseUsageFormat::CodexAuto,
-        codex_stream_usage_event_filter,
-    )
-}
-
-pub(crate) fn create_claude_transformed_logged_stream<G>(
-    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-    state: &ProxyState,
-    ctx: &RequestContext,
-    status_code: u16,
-    connection_guard: Option<G>,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
-where
-    G: Send + 'static,
-{
-    let usage_collector = claude_transformed_streaming_usage_collector(state, ctx, status_code);
-    create_logged_passthrough_stream(
-        stream,
-        "Claude/OpenRouter",
-        usage_collector,
-        ctx.streaming_timeout_config(),
-        connection_guard,
-    )
-}
-
 pub(crate) struct ClaudeTransformedSseStreamContext<'a, G> {
     pub(crate) state: &'a ProxyState,
     pub(crate) ctx: &'a RequestContext,
@@ -8622,26 +8552,6 @@ where
         context.ctx,
         context.status_code,
         context.connection_guard,
-    )
-}
-
-pub(crate) fn create_codex_auto_transformed_logged_stream<G>(
-    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-    state: &ProxyState,
-    ctx: &RequestContext,
-    status_code: u16,
-    connection_guard: Option<G>,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
-where
-    G: Send + 'static,
-{
-    let usage_collector = codex_auto_transformed_streaming_usage_collector(state, ctx, status_code);
-    create_logged_passthrough_stream(
-        stream,
-        ctx.tag,
-        usage_collector,
-        ctx.streaming_timeout_config(),
-        connection_guard,
     )
 }
 

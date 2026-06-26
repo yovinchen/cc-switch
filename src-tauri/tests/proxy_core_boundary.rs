@@ -5820,6 +5820,53 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
 }
 
 #[test]
+fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn transformed_streaming_usage_collector",
+        "pub(crate) fn record_non_streaming_response_usage",
+    );
+
+    assert!(
+        function.contains("TransformedStreamingUsageCollectorContext {")
+            && function.contains("usage_logging_enabled_from_proxy_config(state.config.as_ref())")
+            && function.contains("state.proxy_core_services.clone()")
+            && function.contains("TransformedResponseUsageFormat::Claude")
+            && function.contains("TransformedResponseUsageFormat::CodexAuto")
+            && function.contains("claude_stream_usage_event_filter")
+            && function.contains("codex_stream_usage_event_filter")
+            && function.contains("create_logged_passthrough_stream(")
+            && function.contains("ctx.streaming_timeout_config()"),
+        "response pipeline should own transformed streaming usage runtime-source selection"
+    );
+    assert!(
+        !function.contains("TransformedStreamingResponseUsageContext")
+            && !function.contains("transformed_streaming_response_usage_record_from_response_context(")
+            && !function.contains("spawn_usage_record_with_proxy_services_context(")
+            && !function.contains("SsePassthroughStreamState::new()")
+            && !function.contains("async_stream::stream!"),
+        "response pipeline should delegate transformed usage record construction and stream internals"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
+            && adapter_source.contains("transformed_streaming_usage_collector")
+            && adapter_source.contains("claude_transformed_streaming_usage_collector")
+            && adapter_source.contains("codex_auto_transformed_streaming_usage_collector")
+            && adapter_source.contains("create_claude_transformed_logged_stream")
+            && adapter_source.contains("create_codex_auto_transformed_logged_stream")
+            && !adapter_source.contains("pub(crate) fn transformed_streaming_usage_collector(")
+            && !adapter_source.contains("pub(crate) fn create_claude_transformed_logged_stream(")
+            && !adapter_source.contains("pub(crate) fn create_codex_auto_transformed_logged_stream("),
+        "proxy_core_adapter should re-export, not own, transformed streaming runtime-source wrappers"
+    );
+}
+
+#[test]
 fn response_pipeline_owns_body_decode_transport_bridge() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
