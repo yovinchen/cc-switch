@@ -11727,6 +11727,37 @@ pub(crate) struct ClaudeTransformedSseStreamContext<'a, G> {
     pub(crate) connection_guard: Option<G>,
 }
 
+pub(crate) struct ClaudeTransformedJsonResponseContext<'a> {
+    pub(crate) state: &'a ProxyState,
+    pub(crate) ctx: &'a RequestContext,
+    pub(crate) provider: &'a Provider,
+    pub(crate) api_format: &'a str,
+    pub(crate) tool_schema_hints: Option<&'a AnthropicToolSchemaHints>,
+    pub(crate) status_code: u16,
+}
+
+pub(crate) fn claude_transformed_json_response_from_context(
+    upstream_response: &Value,
+    context: ClaudeTransformedJsonResponseContext<'_>,
+) -> Result<Value, String> {
+    let anthropic_response = provider_claude_transform_response_for_api_format(
+        upstream_response,
+        context.api_format,
+        Some(context.state.gemini_shadow.as_ref()),
+        Some(&context.provider.id),
+        Some(&context.ctx.session_id),
+        context.tool_schema_hints,
+    )?;
+
+    record_claude_transformed_response_usage(
+        context.state,
+        context.ctx,
+        &anthropic_response,
+        context.status_code,
+    );
+    Ok(anthropic_response)
+}
+
 pub(crate) fn claude_transformed_sse_stream_from_context<G>(
     stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
     context: ClaudeTransformedSseStreamContext<'_, G>,

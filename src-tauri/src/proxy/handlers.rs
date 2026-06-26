@@ -29,14 +29,13 @@ use super::{
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
-    append_query_to_endpoint_path, claude_transformed_sse_stream_from_context,
-    codex_auto_transformed_sse_stream_from_context, codex_chat_transform_streaming_decision,
-    extract_anthropic_tool_schema_hints, extract_gemini_model_from_path,
-    json_proxy_request_from_input, parse_json_proxy_request_body,
-    parse_json_proxy_request_body_or_null, provider_claude_transform_response_for_api_format,
-    provider_claude_transform_streaming_decision, provider_needs_claude_transform,
-    provider_should_convert_codex_responses_to_chat, read_decoded_proxy_response_body,
-    record_claude_transformed_response_usage, record_codex_auto_transformed_response_usage,
+    append_query_to_endpoint_path, claude_transformed_json_response_from_context,
+    claude_transformed_sse_stream_from_context, codex_auto_transformed_sse_stream_from_context,
+    codex_chat_transform_streaming_decision, extract_anthropic_tool_schema_hints,
+    extract_gemini_model_from_path, json_proxy_request_from_input, parse_json_proxy_request_body,
+    parse_json_proxy_request_body_or_null, provider_claude_transform_streaming_decision,
+    provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
+    read_decoded_proxy_response_body, record_codex_auto_transformed_response_usage,
     record_forward_core_error_usage, strip_endpoint_prefix,
     transform_codex_chat_response_with_history, ActiveConnectionGuard, AppChannelListQuery,
     AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest, AppListResponse,
@@ -57,7 +56,8 @@ use crate::proxy_core_adapter::{
     CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    ClaudeTransformedSseStreamContext, CodexAutoTransformedSseStreamContext,
+    ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
+    CodexAutoTransformedSseStreamContext,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -711,17 +711,18 @@ async fn handle_claude_transform(
         streaming_decision.aggregate_codex_oauth_responses_sse,
     )?;
 
-    let anthropic_response = provider_claude_transform_response_for_api_format(
+    let anthropic_response = claude_transformed_json_response_from_context(
         &upstream_response,
-        api_format,
-        Some(state.gemini_shadow.as_ref()),
-        Some(&provider.id),
-        Some(&ctx.session_id),
-        tool_schema_hints.as_ref(),
+        ClaudeTransformedJsonResponseContext {
+            state,
+            ctx,
+            provider,
+            api_format,
+            tool_schema_hints: tool_schema_hints.as_ref(),
+            status_code: status.as_u16(),
+        },
     )
     .map_err(claude_response_transform_error_to_proxy_error)?;
-
-    record_claude_transformed_response_usage(state, ctx, &anthropic_response, status.as_u16());
 
     claude_transformed_json_response_to_axum_response(status, response_headers, anthropic_response)
 }
