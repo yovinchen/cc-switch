@@ -14322,6 +14322,33 @@ fn production_proxy_core_host_delegates_auth_provider_source_to_adapter() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_auth_provider_source_to_host_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/auth_provider.rs");
+    let auth_source = fs::read_to_string(&auth_source_path).expect("read auth_provider.rs");
+
+    assert!(
+        auth_source.contains("pub(crate) struct CcSwitchAuthProvider")
+            && auth_source.contains("impl AuthProvider for CcSwitchAuthProvider")
+            && auth_source.contains("auth_info_from_cc_switch_route_context(")
+            && auth_source.contains("cc_switch_provider_config"),
+        "CC Switch auth provider implementation should live in host/cc_switch/auth_provider.rs"
+    );
+    assert!(
+        adapter_source
+            .contains("pub(crate) use crate::proxy::host::cc_switch::auth_provider::")
+            && adapter_source.contains("CcSwitchAuthProvider")
+            && adapter_source.contains("auth_info_from_cc_switch_route_context")
+            && !adapter_source.contains("pub(crate) struct CcSwitchAuthProvider")
+            && !adapter_source.contains("impl AuthProvider for CcSwitchAuthProvider")
+            && !adapter_source.contains("pub(crate) fn auth_info_from_cc_switch_route_context("),
+        "proxy_core_adapter should re-export, not own, the CC Switch auth provider source"
+    );
+}
+
+#[test]
 fn production_proxy_services_excludes_test_constructor_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

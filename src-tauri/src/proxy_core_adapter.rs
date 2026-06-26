@@ -2049,38 +2049,10 @@ pub(crate) use crate::proxy_core::api::ports::auth_info_from_profile_ref;
 pub(crate) use crate::proxy_core::api::ports::auth_info_from_route_context;
 
 #[cfg(test)]
-pub(crate) fn auth_info_from_cc_switch_provider_config(
-    auth_profile: Option<&AuthProfileRef>,
-) -> AuthInfo {
-    auth_info_from_profile_ref(auth_profile, "cc_switch_provider_config")
-}
-
-pub(crate) fn auth_info_from_cc_switch_route_context(
-    app: &AppKind,
-    provider: &ProviderSpec,
-    channel: &ChannelSpec,
-) -> AuthInfo {
-    auth_info_from_route_context(app, provider, channel, "cc_switch_provider_config")
-}
-
-#[derive(Clone, Default)]
-pub(crate) struct CcSwitchAuthProvider;
-
-impl AuthProvider for CcSwitchAuthProvider {
-    fn resolve_auth<'a>(
-        &'a self,
-        app: &'a AppKind,
-        provider: &'a ProviderSpec,
-        channel: &'a ChannelSpec,
-        _request: &'a ProxyRequest,
-    ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
-        Box::pin(async move {
-            Ok(auth_info_from_cc_switch_route_context(
-                app, provider, channel,
-            ))
-        })
-    }
-}
+pub(crate) use crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_provider_config;
+#[cfg(test)]
+pub(crate) use crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_route_context;
+pub(crate) use crate::proxy::host::cc_switch::auth_provider::CcSwitchAuthProvider;
 
 #[derive(Clone)]
 struct CcSwitchClaudeDesktopGatewayAuthSource {
