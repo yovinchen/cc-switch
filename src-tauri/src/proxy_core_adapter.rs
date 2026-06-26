@@ -6186,10 +6186,7 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
 
 #[allow(unused_imports)]
 pub(crate) use crate::proxy::engine::response_pipeline::{
-    claude_transform_tool_schema_hints, claude_transformed_json_response_from_context,
-    claude_transformed_sse_stream_from_context, claude_transformed_streaming_usage_collector,
-    codex_auto_transformed_json_response_from_context,
-    codex_auto_transformed_sse_stream_from_context,
+    claude_transform_tool_schema_hints, claude_transformed_streaming_usage_collector,
     codex_auto_transformed_streaming_usage_collector, create_claude_transformed_logged_stream,
     create_codex_auto_transformed_logged_stream, create_logged_passthrough_stream,
     create_passthrough_logged_stream, decode_raw_proxy_response_body,
@@ -6215,8 +6212,6 @@ pub(crate) use crate::proxy::engine::response_pipeline::{
     transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback,
     transformed_streaming_response_usage_record_from_response_context,
     transformed_streaming_usage_collector, transformed_streaming_usage_collector_from_context,
-    ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
-    CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
     DecodedProxyResponseBody, ForwardErrorUsageContext, ForwardErrorUsageRecordContext,
     NonStreamingResponseUsageContext, NonStreamingUsageRecordContext, ResponseUsageProviderFacts,
     SseUsageCollector, StreamingResponseUsageContext, StreamingUsageCollectorContext,

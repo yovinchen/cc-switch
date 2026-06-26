@@ -6492,6 +6492,9 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let response_adapter_source =
+        fs::read_to_string(&response_adapter_path).expect("read proxy/response_adapter.rs");
     let function = function_slice(
         &source,
         "pub(crate) fn claude_transform_tool_schema_hints",
@@ -6521,17 +6524,31 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
     assert!(
         adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
             && adapter_source.contains("claude_transform_tool_schema_hints")
-            && adapter_source.contains("ClaudeTransformedSseStreamContext")
-            && adapter_source.contains("claude_transformed_sse_stream_from_context")
-            && adapter_source.contains("CodexAutoTransformedSseStreamContext")
-            && adapter_source.contains("codex_auto_transformed_sse_stream_from_context")
+            && !adapter_source.contains("ClaudeTransformedSseStreamContext")
+            && !adapter_source.contains("claude_transformed_sse_stream_from_context")
+            && !adapter_source.contains("CodexAutoTransformedSseStreamContext")
+            && !adapter_source.contains("codex_auto_transformed_sse_stream_from_context")
             && !adapter_source.contains("fn claude_transform_tool_schema_hints(")
             && !adapter_source.contains("pub(crate) struct ClaudeTransformedSseStreamContext")
             && !adapter_source.contains("pub(crate) fn claude_transformed_sse_stream_from_context")
             && !adapter_source.contains("pub(crate) struct CodexAutoTransformedSseStreamContext")
             && !adapter_source
                 .contains("pub(crate) fn codex_auto_transformed_sse_stream_from_context"),
-        "proxy_core_adapter should re-export, not own, transformed SSE wrapper orchestration"
+        "proxy_core_adapter should not route transformed SSE wrapper orchestration"
+    );
+    assert!(
+        response_adapter_source.contains("engine::response_pipeline::{")
+            && response_adapter_source.contains("ClaudeTransformedSseStreamContext")
+            && response_adapter_source.contains("claude_transformed_sse_stream_from_context")
+            && response_adapter_source.contains("CodexAutoTransformedSseStreamContext")
+            && response_adapter_source.contains("codex_auto_transformed_sse_stream_from_context")
+            && !function_slice(
+                &response_adapter_source,
+                "use crate::proxy_core_adapter::{",
+                "};\nuse axum::",
+            )
+            .contains("TransformedSseStreamContext"),
+        "response_adapter should import transformed SSE wrappers directly from response_pipeline"
     );
 }
 
@@ -6542,6 +6559,9 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let response_adapter_source =
+        fs::read_to_string(&response_adapter_path).expect("read proxy/response_adapter.rs");
     let function = function_slice(
         &source,
         "pub(crate) fn record_transformed_response_usage(",
@@ -6575,10 +6595,10 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
             && adapter_source.contains("record_transformed_response_usage")
             && adapter_source.contains("record_claude_transformed_response_usage")
             && adapter_source.contains("record_codex_auto_transformed_response_usage")
-            && adapter_source.contains("ClaudeTransformedJsonResponseContext")
-            && adapter_source.contains("claude_transformed_json_response_from_context")
-            && adapter_source.contains("CodexAutoTransformedJsonResponseContext")
-            && adapter_source.contains("codex_auto_transformed_json_response_from_context")
+            && !adapter_source.contains("ClaudeTransformedJsonResponseContext")
+            && !adapter_source.contains("claude_transformed_json_response_from_context")
+            && !adapter_source.contains("CodexAutoTransformedJsonResponseContext")
+            && !adapter_source.contains("codex_auto_transformed_json_response_from_context")
             && !adapter_source.contains("pub(crate) fn record_transformed_response_usage(")
             && !adapter_source.contains("pub(crate) struct ClaudeTransformedJsonResponseContext")
             && !adapter_source
@@ -6587,7 +6607,22 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
                 .contains("pub(crate) struct CodexAutoTransformedJsonResponseContext")
             && !adapter_source
                 .contains("pub(crate) async fn codex_auto_transformed_json_response_from_context"),
-        "proxy_core_adapter should re-export, not own, transformed JSON wrapper orchestration"
+        "proxy_core_adapter should not route transformed JSON wrapper orchestration"
+    );
+    assert!(
+        response_adapter_source.contains("engine::response_pipeline::{")
+            && response_adapter_source.contains("ClaudeTransformedJsonResponseContext")
+            && response_adapter_source.contains("claude_transformed_json_response_from_context")
+            && response_adapter_source.contains("CodexAutoTransformedJsonResponseContext")
+            && response_adapter_source
+                .contains("codex_auto_transformed_json_response_from_context")
+            && !function_slice(
+                &response_adapter_source,
+                "use crate::proxy_core_adapter::{",
+                "};\nuse axum::",
+            )
+            .contains("TransformedJsonResponseContext"),
+        "response_adapter should import transformed JSON wrappers directly from response_pipeline"
     );
 }
 
