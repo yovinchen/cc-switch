@@ -13,7 +13,13 @@ use crate::proxy::{
     transport::upstream::hyper_client::ProxyResponse,
 };
 use crate::proxy_core::api::config::StreamingTimeoutConfig;
+use crate::proxy_core::api::domain::{AppKind, ProviderKind};
 use crate::proxy_core::api::errors::{selected_provider_not_applied_message, ProxyCoreError};
+use crate::proxy_core::api::ports::ProxyServices;
+use crate::proxy_core::api::transforms::{
+    claude_stream_usage_event_filter, codex_stream_usage_event_filter, CodexToolContext,
+    SsePassthroughStreamState, SseUsageAccumulator,
+};
 use crate::proxy_core::api::transport::{
     decode_response_body, non_streaming_body_timeout_message,
     non_streaming_response_body_log_event, non_streaming_response_received_log_event,
@@ -36,12 +42,10 @@ use crate::proxy_core::api::usage::{
     UsageRouteContext, UsageSelectedProviderMissingPhase,
 };
 use crate::proxy_core_adapter::{
-    claude_stream_usage_event_filter, codex_stream_usage_event_filter,
     extract_anthropic_tool_schema_hints, provider_claude_transform_response_for_api_format,
     provider_claude_transform_sse_for_api_format, transform_codex_chat_response_with_history,
     transform_codex_chat_sse_with_history, ActiveConnectionGuard, AnthropicToolSchemaHints,
-    AppKind, CodexToolContext, ProviderKind, ProxyServices, ProxyState, SsePassthroughStreamState,
-    SseUsageAccumulator,
+    ProxyState,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{

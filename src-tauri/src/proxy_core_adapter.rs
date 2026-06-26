@@ -951,9 +951,6 @@ pub(crate) type ForwarderTransformPlan = crate::proxy_core::api::transport::Forw
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
 #[cfg(test)]
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig;
-pub(crate) type SsePassthroughStreamState =
-    crate::proxy_core::api::transforms::SsePassthroughStreamState;
-pub(crate) type SseUsageAccumulator = crate::proxy_core::api::transforms::SseUsageAccumulator;
 #[cfg(test)]
 use crate::proxy_core::api::ports::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::api::config::AppProxyConfig;
@@ -2427,9 +2424,8 @@ pub(crate) use crate::proxy_core::api::transforms::{
     append_utf8_safe, build_gemini_upstream_url, chat_completion_to_response_with_context,
     claude_provider_transform_required as core_claude_provider_transform_required,
     claude_request_transform_for_api_format, claude_response_to_anthropic_message_for_api_format,
-    claude_stream_usage_event_filter,
     claude_transform_streaming_decision as core_claude_transform_streaming_decision,
-    codex_stream_usage_event_filter, create_claude_to_anthropic_sse_stream_for_api_format,
+    create_claude_to_anthropic_sse_stream_for_api_format,
     create_codex_chat_to_responses_sse_stream_with_context, extract_anthropic_tool_schema_hints,
     inspect_codex_chat_history_sse_block, should_preserve_reasoning_content_for_openai_chat,
     take_sse_block, AnthropicToolSchemaHints, ClaudeApiFormatRequestTransformContext,

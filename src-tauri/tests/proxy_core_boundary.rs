@@ -6683,7 +6683,10 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
                 && !code.contains("crate::proxy_core::api::transport")
                 && !code.contains("crate::proxy_core::api::usage")
                 && !code.contains("crate::proxy_core::api::config")
-                && !code.contains("crate::proxy_core::api::errors"))
+                && !code.contains("crate::proxy_core::api::domain")
+                && !code.contains("crate::proxy_core::api::errors")
+                && !code.contains("crate::proxy_core::api::ports")
+                && !code.contains("crate::proxy_core::api::transforms"))
             .then(|| {
                 format!(
                     "src/proxy/engine/response_pipeline.rs:{} contains non-response proxy-core marker",
@@ -6694,7 +6697,7 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
         .collect();
     assert!(
         direct_core_refs.is_empty(),
-        "response pipeline direct proxy-core access should stay limited to response config/transport/usage/error APIs:\n{}",
+        "response pipeline direct proxy-core access should stay limited to response-facing core config/domain/error/ports/transport/transforms/usage APIs:\n{}",
         direct_core_refs.join("\n")
     );
 }
@@ -6704,6 +6707,8 @@ fn response_pipeline_owns_core_usage_transport_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let adapter_import = function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
@@ -6716,6 +6721,8 @@ fn response_pipeline_owns_core_usage_transport_imports() {
 
     assert!(
         source.contains("use crate::proxy_core::api::config::StreamingTimeoutConfig;")
+            && source.contains("use crate::proxy_core::api::domain::{AppKind, ProviderKind};")
+            && source.contains("use crate::proxy_core::api::ports::ProxyServices;")
             && source.contains("use crate::proxy_core::api::transport::{")
             && source.contains("passthrough_bytes_proxy_response")
             && source.contains("passthrough_stream_proxy_response")
@@ -6729,12 +6736,21 @@ fn response_pipeline_owns_core_usage_transport_imports() {
             && source.contains("TransformedResponseUsageFormat")
             && source.contains("UsageParserConfig")
             && source.contains("UsageRecordFailureLogContext")
-            && source.contains("UsageSelectedProviderMissingPhase"),
-        "response_pipeline should import pure core usage/transport contracts directly"
+            && source.contains("UsageSelectedProviderMissingPhase")
+            && source.contains("use crate::proxy_core::api::transforms::{")
+            && source.contains("claude_stream_usage_event_filter")
+            && source.contains("codex_stream_usage_event_filter")
+            && source.contains("CodexToolContext")
+            && source.contains("SsePassthroughStreamState")
+            && source.contains("SseUsageAccumulator"),
+        "response_pipeline should import pure core response contracts directly"
     );
 
     let mut violations = Vec::new();
     for marker in [
+        "AppKind",
+        "ProviderKind",
+        "ProxyServices",
         "response_headers_indicate_sse",
         "ProxyCoreResponse",
         "passthrough_bytes_proxy_response",
@@ -6751,6 +6767,11 @@ fn response_pipeline_owns_core_usage_transport_imports() {
         "UsageSelectedProviderMissingPhase",
         "usage_logging_enabled_from_config_flag",
         "usage_selected_provider_missing_log_message",
+        "claude_stream_usage_event_filter",
+        "codex_stream_usage_event_filter",
+        "CodexToolContext",
+        "SsePassthroughStreamState",
+        "SseUsageAccumulator",
     ] {
         if adapter_import_identifiers
             .iter()
@@ -6766,6 +6787,13 @@ fn response_pipeline_owns_core_usage_transport_imports() {
         violations.is_empty(),
         "response_pipeline should not route pure core usage/transport contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) type SsePassthroughStreamState")
+            && !adapter_source.contains("pub(crate) type SseUsageAccumulator")
+            && !adapter_source.contains("claude_stream_usage_event_filter,")
+            && !adapter_source.contains("codex_stream_usage_event_filter,"),
+        "proxy_core_adapter should not keep response-pipeline-only SSE usage state/filter shims"
     );
 }
 
