@@ -576,7 +576,7 @@
 562. route attempt 使用的 route candidate、resolved channel attempt、route plan 与 route selection DTO 入口已迁入 `proxy_core_adapter`；host `ForwardAttempt` 继续只负责 provider override、provider-shaped attempt 编排和 model override log。
 563. usage stats/logger/session usage 使用的 cost calculator、pricing、token usage、cost breakdown 与 session request id prefix 入口已迁入 `proxy_core_adapter`；host 继续负责 DB 查询、日志文件解析、dedup 与 request log 落库。
 564. handler context 使用的 app config DTO、proxy result/services trait、response runtime policy DTO、Gemini path model 提取、Claude metadata API-format 提取与 session id 提取入口已迁入 `proxy_core_adapter`；host `RequestContext` 只保留 route result 后的 DB provider 回填与 response/usage 生命周期事实。
-565. proxy server 使用的 runtime config/status/info、current route target、Gemini shadow store、ProxyEngine、route resolve request 与 server log code 入口已迁入 `proxy_core_adapter`；server 启动/停止时的 started/stopped event、监听端口记录、runtime status/start_time 写入和 `ProxyServerInfo` 组装也已收敛到 adapter 组合 helper，Axum route tree、管理 API middleware 和 body limit 已由 `proxy_http_router_from_state` 承接，Hyper HTTP/1.1 accept loop、raw header-case capture、connection serving 与 stopped runtime side effect 也已由 `spawn_proxy_http_accept_loop` 接管，host server 继续负责 listener bind、shutdown/server handle 生命周期和 transport server 拆分边界。
+565. proxy server 使用的 runtime config/status/info、current route target、Gemini shadow store、ProxyEngine、route resolve request 与 server log code 入口已迁入 `proxy_core_adapter`；server 启动/停止时的 started/stopped event、监听端口记录、runtime status/start_time 写入和 `ProxyServerInfo` 组装也已收敛到 adapter 组合 helper，Axum route tree、管理 API middleware 和 body limit 已由 `proxy_http_router_from_state` 承接，Hyper HTTP/1.1 accept loop、raw header-case capture、connection serving 与 stopped runtime side effect 已由 `spawn_proxy_http_accept_loop` 接管，accept-loop stop wait 超时、日志和 `StopFailed`/`StopTimeout` 映射已由 `await_proxy_http_accept_loop_stop` 接管，host server 继续负责 listener bind、shutdown sender/server handle storage、AlreadyRunning/NotRunning gate 和 transport server 拆分边界。
 566. provider adapters 使用的 provider auth info 与 auth strategy DTO 入口已迁入 `proxy_core_adapter`；host provider adapters 继续负责从 desktop Provider 配置提取凭证、构建上游 URL 与 header。
 567. provider kind、Claude provider kind inference 与 Gemini OAuth key shape detection 入口已迁入 `proxy_core_adapter`；host provider 模块继续负责把 desktop Provider 存储形态投影为 core provider kind。
 568. Codex Chat history 使用的 SSE UTF-8 append/block split helper、SSE inspection DTO 与 history state DTO 入口已迁入 `proxy_core_adapter`；host provider 模块继续负责 tokio lock、stream wrapping 与跨请求 history store 生命周期。
@@ -2526,7 +2526,7 @@ ProxyRequest
 
 | 现文件 | 目标位置 | 处理方式 |
 | --- | --- | --- |
-| `server.rs` | `transport/http/server.rs` | 去掉 `Database`/`tauri`，只持有 `ProxyEngine`；当前启动/停止 runtime side effects、route assembly 与 Hyper accept loop/header-case capture 已通过 `proxy_core_adapter` 组合 helper 收口，剩余重点是 listener binding、shutdown/server handle 生命周期与 transport server 边界 |
+| `server.rs` | `transport/http/server.rs` | 去掉 `Database`/`tauri`，只持有 `ProxyEngine`；当前启动/停止 runtime side effects、route assembly、Hyper accept loop/header-case capture 与 stop wait/error mapping 已通过 `proxy_core_adapter` 组合 helper 收口，剩余重点是 listener binding、shutdown sender/server handle storage、AlreadyRunning/NotRunning gate 与 transport server 边界 |
 | `handlers.rs` | `transport/http/handlers.rs` + `engine` | HTTP 解析留 transport，业务处理移到 engine |
 | `handler_context.rs` | `engine/context.rs` | DB/settings 读取改为 service traits |
 | `forwarder.rs` | `engine/forward_pipeline.rs` | 切掉 Tauri/AppHandle/Database 依赖 |
