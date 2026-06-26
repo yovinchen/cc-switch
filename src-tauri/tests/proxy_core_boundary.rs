@@ -23,6 +23,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/channel_auth_profile_attempts.rs",
     "src/proxy/host/cc_switch/channel_health_store.rs",
     "src/proxy/host/cc_switch/channel_key_runtime_source.rs",
+    "src/proxy/host/cc_switch/claude_desktop_gateway_auth_source.rs",
     "src/proxy/host/cc_switch/event_sink.rs",
     "src/proxy/host/cc_switch/forwarder_attempt_runtime_source.rs",
     "src/proxy/host/cc_switch/forwarder_auth_source.rs",
@@ -2823,6 +2824,23 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
         "CC Switch Claude Desktop gateway auth source implementation should live in host/cc_switch"
     );
     assert!(
+        auth_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && auth_source
+                .contains("use crate::proxy_core::api::ports::ClaudeDesktopGatewayAuthSource;"),
+        "CC Switch Claude Desktop gateway auth source should import auth contracts directly from proxy_core"
+    );
+    let adapter_import = function_slice(
+        &auth_source,
+        "use crate::proxy_core_adapter::{",
+        "};\nuse futures::future::BoxFuture;",
+    );
+    for adapter_type in ["ClaudeDesktopGatewayAuthSource", "ProxyCoreResult"] {
+        assert!(
+            !adapter_import.contains(adapter_type),
+            "CC Switch Claude Desktop gateway auth source must not import {adapter_type} through proxy_core_adapter"
+        );
+    }
+    assert!(
         source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::claude_desktop_gateway_auth_source::CcSwitchClaudeDesktopGatewayAuthSource"
         ) && !source.contains("struct CcSwitchClaudeDesktopGatewayAuthSource")
@@ -2830,6 +2848,15 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
                 .contains("impl ClaudeDesktopGatewayAuthSource for CcSwitchClaudeDesktopGatewayAuthSource")
             && !source.contains("fn load_gateway_token<'a>(&'a self)"),
         "proxy_core_adapter should re-export, not own, the Claude Desktop gateway auth source"
+    );
+    let adapter_core_ports_import = function_slice(
+        &source,
+        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
+        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+    );
+    assert!(
+        !adapter_core_ports_import.contains("ClaudeDesktopGatewayAuthSource"),
+        "proxy_core_adapter should not re-export ClaudeDesktopGatewayAuthSource"
     );
 
     let forbidden_markers = [
