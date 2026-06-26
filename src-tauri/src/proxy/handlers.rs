@@ -14,8 +14,10 @@ use super::{
     handler_context::RequestContext,
     response_adapter::{
         claude_proxy_result_to_proxy_response, claude_response_needs_transform,
+        claude_transform_streaming_decision_for_response,
         claude_transformed_sse_response_to_axum_response,
         claude_transformed_upstream_json_response_to_axum_response,
+        codex_chat_transform_streaming_decision_for_response,
         codex_chat_upstream_error_response_to_axum_response, codex_proxy_error_to_axum_response,
         codex_response_needs_chat_transform, codex_transformed_sse_response_to_axum_response,
         codex_transformed_upstream_json_response_to_axum_response, collect_axum_request_body,
@@ -26,19 +28,17 @@ use super::{
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
     append_query_to_endpoint_path, claude_transformed_sse_stream_from_context,
-    codex_auto_transformed_sse_stream_from_context, codex_chat_transform_streaming_decision,
-    codex_responses_proxy_request_from_input, extract_gemini_model_from_path,
-    json_proxy_request_from_input, parse_json_proxy_request_body,
-    parse_json_proxy_request_body_or_null, provider_claude_transform_streaming_decision,
-    record_forward_core_error_usage, strip_endpoint_prefix, ActiveConnectionGuard,
-    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
-    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
-    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
-    ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
-    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
+    codex_auto_transformed_sse_stream_from_context, codex_responses_proxy_request_from_input,
+    extract_gemini_model_from_path, json_proxy_request_from_input, parse_json_proxy_request_body,
+    parse_json_proxy_request_body_or_null, record_forward_core_error_usage, strip_endpoint_prefix,
+    ActiveConnectionGuard, AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse,
+    AppKind, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
+    ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
+    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord,
+    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
     ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CodexToolContext,
     CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
     HealthCheckResponse, InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest,
@@ -661,7 +661,7 @@ async fn handle_claude_transform(
 ) -> Result<axum::response::Response, ProxyError> {
     let status = response.status();
     let provider = ctx.provider()?;
-    let streaming_decision = provider_claude_transform_streaming_decision(
+    let streaming_decision = claude_transform_streaming_decision_for_response(
         provider,
         is_stream,
         response.headers(),
@@ -897,7 +897,8 @@ async fn handle_codex_chat_to_responses_transform(
         return codex_chat_upstream_error_response_to_axum_response(response, ctx).await;
     }
 
-    let streaming_decision = codex_chat_transform_streaming_decision(is_stream, response.headers());
+    let streaming_decision =
+        codex_chat_transform_streaming_decision_for_response(is_stream, response.headers());
 
     if streaming_decision.use_streaming {
         let stream = response.bytes_stream();

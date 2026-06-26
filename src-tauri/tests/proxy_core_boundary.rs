@@ -1623,6 +1623,10 @@ const FORBIDDEN_HANDLER_CODEX_STREAMING_DECISION_MARKERS: &[&str] = &[
     "response_headers_indicate_sse(response.headers())",
     "Some(UpstreamSseAggregationKind::ChatCompletions)",
 ];
+const FORBIDDEN_HANDLER_TRANSFORM_STREAMING_DECISION_CALL_MARKERS: &[&str] = &[
+    "provider_claude_transform_streaming_decision(",
+    "codex_chat_transform_streaming_decision(",
+];
 const FORBIDDEN_PROXY_CORE_ADAPTER_CLAUDE_STREAMING_DECISION_MARKERS: &[&str] = &[
     "should_aggregate_codex_oauth_responses_sse(",
     "should_use_claude_transform_streaming(",
@@ -6738,6 +6742,33 @@ fn handlers_delegate_codex_chat_streaming_decision_to_adapter() {
     assert!(
         violations.is_empty(),
         "Codex Chat->Responses handler must delegate streaming/aggregation decisions to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn handlers_delegate_transform_streaming_decision_calls_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_TRANSFORM_STREAMING_DECISION_CALL_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains transform streaming decision call marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "protocol handlers must call transform streaming decisions through response_adapter helpers:\n{}",
         violations.join("\n")
     );
 }
