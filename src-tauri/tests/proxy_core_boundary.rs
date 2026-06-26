@@ -11095,6 +11095,8 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let runtime_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs");
+    let runtime_source = fs::read_to_string(&runtime_path).expect("read proxy_runtime.rs");
     let attempt_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/channel_auth_profile_attempts.rs");
     let attempt_source =
@@ -11117,13 +11119,9 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let host_runtime_trait = function_slice(
         &source,
         "pub(crate) trait HostForwardRuntime",
-        "impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime",
-    );
-    let host_runtime_impl = function_slice(
-        &source,
-        "impl HostForwardRuntime for CcSwitchProxyRuntime",
         "pub(crate) fn forward_with_optional_host_runtime",
     );
+    let host_runtime_impl = runtime_source.as_str();
     let optional_runtime_function = function_slice(
         &source,
         "pub(crate) fn forward_with_optional_host_runtime",
@@ -11169,6 +11167,32 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     assert!(
         attempt_source_function.contains("apply_channel_auth_profile_providers_from_source("),
         "required forward attempts source helper should delegate auth profile application through the source contract"
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_proxy_runtime_to_host_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let runtime_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs");
+    let runtime_source = fs::read_to_string(&runtime_path).expect("read proxy_runtime.rs");
+
+    assert!(
+        runtime_source.contains("pub(crate) struct CcSwitchProxyRuntime")
+            && runtime_source.contains("impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime")
+            && runtime_source.contains("impl HostForwardRuntime for CcSwitchProxyRuntime")
+            && runtime_source.contains("forward_proxy_request_with_cc_switch_runtime("),
+        "CC Switch proxy runtime data shape and runtime trait impls should live in host/cc_switch/proxy_runtime.rs"
+    );
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime"
+        ) && !adapter_source.contains("pub(crate) struct CcSwitchProxyRuntime")
+            && !adapter_source
+                .contains("impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime")
+            && !adapter_source.contains("impl HostForwardRuntime for CcSwitchProxyRuntime"),
+        "proxy_core_adapter should re-export, not own, the CC Switch proxy runtime"
     );
 }
 

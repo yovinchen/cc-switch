@@ -27,6 +27,7 @@ pub(crate) use crate::proxy::host::cc_switch::model_catalog_provider::CcSwitchMo
 pub(crate) use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource;
 pub(crate) use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 pub(crate) use crate::proxy::host::cc_switch::provider_source::CcSwitchProviderSource;
+pub(crate) use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 pub(crate) use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource;
 pub(crate) use crate::proxy::host::cc_switch::route_resolver::CcSwitchRouteResolver;
 use crate::proxy::route_attempt::ForwardAttempt;
@@ -72,25 +73,6 @@ pub(crate) const COPILOT_PLUGIN_VERSION: &str = "copilot-chat/0.38.2";
 pub(crate) const COPILOT_USER_AGENT: &str = "GitHubCopilotChat/0.38.2";
 pub(crate) const COPILOT_API_VERSION: &str = "2025-10-01";
 pub(crate) const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
-
-#[derive(Clone)]
-pub(crate) struct CcSwitchProxyRuntime {
-    pub(crate) db: Arc<Database>,
-    pub(crate) config: Arc<RwLock<ProxyConfig>>,
-    pub(crate) provider_router: Arc<ProviderRouter>,
-    pub(crate) status: Arc<RwLock<ProxyRuntimeStatus>>,
-    pub(crate) start_time: Arc<RwLock<Option<std::time::Instant>>>,
-    pub(crate) events: Arc<ProxyEventBus>,
-    pub(crate) current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
-    pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
-    pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
-    pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
-    pub(crate) auth_source: ForwarderAuthSourceRef,
-    pub(crate) request_source: ForwarderRequestSourceRef,
-    pub(crate) transport_source: ForwarderTransportSourceRef,
-    pub(crate) response_source: ForwarderResponseSourceRef,
-    pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
-}
 
 pub(crate) type CcSwitchProxyRuntimeServices = CcSwitchProxyServices<CcSwitchProxyRuntime>;
 
@@ -7385,55 +7367,6 @@ pub(crate) trait HostForwardRuntime {
         request: ProxyRequest,
         plan: RoutePlan,
     ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>>;
-}
-
-impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime {
-    fn db(&self) -> Arc<Database> {
-        self.db.clone()
-    }
-
-    fn config(&self) -> Arc<RwLock<ProxyConfig>> {
-        self.config.clone()
-    }
-
-    fn provider_router(&self) -> Arc<ProviderRouter> {
-        self.provider_router.clone()
-    }
-
-    fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>> {
-        self.status.clone()
-    }
-
-    fn start_time(&self) -> Arc<RwLock<Option<std::time::Instant>>> {
-        self.start_time.clone()
-    }
-
-    fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>> {
-        self.current_providers.clone()
-    }
-
-    fn events(&self) -> Arc<ProxyEventBus> {
-        self.events.clone()
-    }
-}
-
-impl HostForwardRuntime for CcSwitchProxyRuntime {
-    fn forward_host<'a>(
-        &'a self,
-        channel_key_runtime_source: &'a (dyn ChannelKeyRuntimeSource + Send + Sync),
-        request: ProxyRequest,
-        plan: RoutePlan,
-    ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
-        Box::pin(async move {
-            forward_proxy_request_with_cc_switch_runtime(
-                self,
-                channel_key_runtime_source,
-                request,
-                plan,
-            )
-            .await
-        })
-    }
 }
 
 pub(crate) fn forward_with_optional_host_runtime<'a, R>(
