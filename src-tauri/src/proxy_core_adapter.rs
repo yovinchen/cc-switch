@@ -6181,6 +6181,7 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
     .await
 }
 
+#[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use crate::proxy::engine::response_pipeline::{
     error_usage_record_from_provider_facts_with_request_id_fallback,

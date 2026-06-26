@@ -6082,6 +6082,11 @@ fn response_pipeline_owns_usage_provider_facts_projection() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_reexport = function_slice(
+        &adapter_source,
+        "#[cfg(test)]\n#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
+        "};\n\npub(crate) use crate::proxy_core::api::routing::{",
+    );
     let function = function_slice(
         &source,
         "pub(crate) struct ResponseUsageProviderFacts",
@@ -6105,17 +6110,16 @@ fn response_pipeline_owns_usage_provider_facts_projection() {
         );
     }
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
-            && adapter_source.contains("ResponseUsageProviderFacts")
-            && adapter_source.contains("response_usage_provider_facts")
-            && adapter_source.contains("fallback_response_usage_provider_facts")
-            && adapter_source.contains("response_usage_provider_facts_from_optional")
+        adapter_reexport.contains("ResponseUsageProviderFacts")
+            && adapter_reexport.contains("response_usage_provider_facts")
+            && adapter_reexport.contains("fallback_response_usage_provider_facts")
+            && adapter_reexport.contains("response_usage_provider_facts_from_optional")
             && !adapter_source.contains("pub(crate) struct ResponseUsageProviderFacts")
             && !adapter_source.contains("pub(crate) fn response_usage_provider_facts")
             && !adapter_source.contains("pub(crate) fn fallback_response_usage_provider_facts")
             && !adapter_source
                 .contains("pub(crate) fn response_usage_provider_facts_from_optional"),
-        "proxy_core_adapter should re-export, not own, response usage provider facts"
+        "proxy_core_adapter should expose response usage provider facts only to adapter tests"
     );
 }
 
@@ -6128,7 +6132,7 @@ fn response_pipeline_owns_logged_stream_runtime_loop() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let adapter_reexport = function_slice(
         &adapter_source,
-        "#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
+        "#[cfg(test)]\n#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
         "};\n\npub(crate) use crate::proxy_core::api::routing::{",
     );
     let function = function_slice(
@@ -6208,7 +6212,7 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let adapter_reexport = function_slice(
         &adapter_source,
-        "#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
+        "#[cfg(test)]\n#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
         "};\n\npub(crate) use crate::proxy_core::api::routing::{",
     );
     let usage_slice = function_slice(
@@ -6300,7 +6304,7 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let adapter_reexport = function_slice(
         &adapter_source,
-        "#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
+        "#[cfg(test)]\n#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
         "};\n\npub(crate) use crate::proxy_core::api::routing::{",
     );
     let function = function_slice(
@@ -6507,7 +6511,7 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let adapter_reexport = function_slice(
         &adapter_source,
-        "#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
+        "#[cfg(test)]\n#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
         "};\n\npub(crate) use crate::proxy_core::api::routing::{",
     );
     let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
@@ -12696,7 +12700,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let host_forward_function = function_slice(
         &source,
         "pub(crate) async fn forward_proxy_request_with_host_runtime",
-        "#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
+        "#[cfg(test)]\n#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
     );
     let adapter_core_ports_import = function_slice(
         &source,
