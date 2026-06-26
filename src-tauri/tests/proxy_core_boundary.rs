@@ -810,10 +810,15 @@ const FORBIDDEN_HANDLER_PROXY_RESULT_RESPONSE_BRIDGE_MARKERS: &[&str] = &[
 const FORBIDDEN_HANDLER_RAW_JSON_BODY_PARSE_MARKERS: &[&str] = &[
     "parse_json_request_body(",
     "parse_json_request_body_or_null(",
+    "parse_json_proxy_request_body(",
+    "parse_json_proxy_request_body_or_null(",
     "request_body_stream_flag(",
 ];
-const FORBIDDEN_HANDLER_DIRECT_BODY_COLLECTION_MARKERS: &[&str] =
-    &[".collect()", "request_body_read_error_message("];
+const FORBIDDEN_HANDLER_DIRECT_BODY_COLLECTION_MARKERS: &[&str] = &[
+    ".collect()",
+    "collect_axum_request_body(",
+    "request_body_read_error_message(",
+];
 const FORBIDDEN_HANDLER_PROVIDER_ADAPTER_DECISION_MARKERS: &[&str] = &[
     "get_adapter(",
     ".needs_transform(",

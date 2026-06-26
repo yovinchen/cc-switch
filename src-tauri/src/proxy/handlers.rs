@@ -17,33 +17,34 @@ use super::{
         claude_transformed_response_to_axum_response,
         codex_chat_to_responses_transformed_response_to_axum_response,
         codex_passthrough_response_to_axum_response, codex_response_needs_chat_transform,
-        collect_axum_request_body, dispatch_claude_proxy_request_to_proxy_response,
+        collect_json_or_null_proxy_request, collect_json_proxy_request,
+        dispatch_claude_proxy_request_to_proxy_response,
         dispatch_codex_proxy_request_to_proxy_response, dispatch_proxy_request_to_proxy_response,
         gemini_passthrough_response_to_axum_response,
         openai_chat_passthrough_response_to_axum_response, proxy_event_envelope_to_axum_sse_event,
-        CodexProxyDispatchResponse,
+        CodexProxyDispatchResponse, ParsedAxumJsonProxyRequest,
     },
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
     append_query_to_endpoint_path, codex_responses_proxy_request_from_input,
-    extract_gemini_model_from_path, json_proxy_request_from_input, parse_json_proxy_request_body,
-    parse_json_proxy_request_body_or_null, strip_endpoint_prefix, AppChannelListQuery,
-    AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest, AppListResponse,
-    AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse, ChannelCreateRequest,
-    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
-    ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
-    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
-    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
-    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
-    HealthCheckResponse, InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest,
-    ProviderListResponse, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-    ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyState, ProxyStatusRequest,
-    ProxyStatusResponse, RoutableModelList, RouteGroupListResponse, RouteResolveManagementRequest,
-    RouteResolveRequest, RouteResolveResponse,
+    extract_gemini_model_from_path, json_proxy_request_from_input, strip_endpoint_prefix,
+    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
+    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
+    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
+    ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
+    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
+    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
+    CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
+    InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest, ProviderListResponse,
+    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
+    ProxyRuntimeStatus, ProxyState, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
+    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
+    RouteResolveResponse,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -579,16 +580,14 @@ async fn handle_messages_for_app(
     app_type_str: &'static str,
     strip_prefix: Option<&'static str>,
 ) -> Result<axum::response::Response, ProxyError> {
-    let (parts, body) = request.into_parts();
-    let method = parts.method.clone();
-    let uri = parts.uri;
-    let headers = parts.headers;
-    let extensions = parts.extensions;
-    let body_bytes = collect_axum_request_body(body).await?;
-    let parsed_body = parse_json_proxy_request_body(&body_bytes)
-        .map_err(|e| ProxyError::Internal(e.to_string()))?;
-    let body = parsed_body.body;
-    let is_stream = parsed_body.is_stream;
+    let ParsedAxumJsonProxyRequest {
+        method,
+        uri,
+        headers,
+        extensions,
+        body,
+        is_stream,
+    } = collect_json_proxy_request(request).await?;
 
     let mut ctx =
         RequestContext::new(&state, &body, &headers, app_type.clone(), tag, app_type_str).await?;
@@ -641,16 +640,14 @@ pub async fn handle_chat_completions(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let (parts, req_body) = request.into_parts();
-    let method = parts.method.clone();
-    let uri = parts.uri;
-    let headers = parts.headers;
-    let extensions = parts.extensions;
-    let body_bytes = collect_axum_request_body(req_body).await?;
-    let parsed_body = parse_json_proxy_request_body(&body_bytes)
-        .map_err(|e| ProxyError::Internal(e.to_string()))?;
-    let body = parsed_body.body;
-    let is_stream = parsed_body.is_stream;
+    let ParsedAxumJsonProxyRequest {
+        method,
+        uri,
+        headers,
+        extensions,
+        body,
+        is_stream,
+    } = collect_json_proxy_request(request).await?;
 
     let mut ctx =
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
@@ -688,16 +685,14 @@ pub async fn handle_responses(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let (parts, req_body) = request.into_parts();
-    let method = parts.method.clone();
-    let uri = parts.uri;
-    let headers = parts.headers;
-    let extensions = parts.extensions;
-    let body_bytes = collect_axum_request_body(req_body).await?;
-    let parsed_body = parse_json_proxy_request_body(&body_bytes)
-        .map_err(|e| ProxyError::Internal(e.to_string()))?;
-    let body = parsed_body.body;
-    let is_stream = parsed_body.is_stream;
+    let ParsedAxumJsonProxyRequest {
+        method,
+        uri,
+        headers,
+        extensions,
+        body,
+        is_stream,
+    } = collect_json_proxy_request(request).await?;
 
     let mut ctx =
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
@@ -749,16 +744,14 @@ pub async fn handle_responses_compact(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let (parts, req_body) = request.into_parts();
-    let method = parts.method.clone();
-    let uri = parts.uri;
-    let headers = parts.headers;
-    let extensions = parts.extensions;
-    let body_bytes = collect_axum_request_body(req_body).await?;
-    let parsed_body = parse_json_proxy_request_body(&body_bytes)
-        .map_err(|e| ProxyError::Internal(e.to_string()))?;
-    let body = parsed_body.body;
-    let is_stream = parsed_body.is_stream;
+    let ParsedAxumJsonProxyRequest {
+        method,
+        uri,
+        headers,
+        extensions,
+        body,
+        is_stream,
+    } = collect_json_proxy_request(request).await?;
 
     let mut ctx =
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
@@ -815,15 +808,14 @@ pub async fn handle_gemini(
     uri: axum::http::Uri,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let (parts, req_body) = request.into_parts();
-    let method = parts.method.clone();
-    let headers = parts.headers;
-    let extensions = parts.extensions;
-    let body_bytes = collect_axum_request_body(req_body).await?;
-    let parsed_body = parse_json_proxy_request_body_or_null(&body_bytes)
-        .map_err(|e| ProxyError::Internal(e.to_string()))?;
-    let body = parsed_body.body;
-    let is_stream = parsed_body.is_stream;
+    let ParsedAxumJsonProxyRequest {
+        method,
+        headers,
+        extensions,
+        body,
+        is_stream,
+        ..
+    } = collect_json_or_null_proxy_request(request).await?;
 
     // Gemini 的模型名称在 URI 中
     let mut ctx = RequestContext::new(&state, &body, &headers, AppType::Gemini, "Gemini", "gemini")
