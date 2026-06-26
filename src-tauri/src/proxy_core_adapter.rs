@@ -6459,15 +6459,6 @@ pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_json;
 pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_response;
 
 #[cfg(test)]
-pub(crate) use crate::proxy::error_mapper::codex_proxy_error_response as codex_proxy_error_response_from_proxy_error;
-#[cfg(test)]
-pub(crate) use crate::proxy::error_mapper::{
-    codex_proxy_error_json as codex_proxy_error_json_from_proxy_error,
-    codex_proxy_error_json_from_host_facts, codex_proxy_error_response_from_host_facts,
-    CodexProxyHostErrorFacts,
-};
-
-#[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::apply_channel_route_model_override;
 
 pub(crate) use crate::proxy_core::api::transport::apply_resolved_channel_model_override;
@@ -15847,11 +15838,11 @@ command = "latest-command"
             upstream_body: None,
         });
         assert_eq!(json_body["error"]["provider"], "Relay");
-        let facts_body = codex_proxy_error_json_from_host_facts(
+        let facts_body = crate::proxy::error_mapper::codex_proxy_error_json_from_host_facts(
             "Relay",
             "model-a",
             "/responses",
-            CodexProxyHostErrorFacts {
+            crate::proxy::error_mapper::CodexProxyHostErrorFacts {
                 status: ProxyErrorStatusKind::ForwardFailed,
                 message: "failed",
                 kind: CodexProxyErrorKind::ForwardFailed,
@@ -15861,7 +15852,7 @@ command = "latest-command"
         );
         assert_eq!(facts_body["error"]["code"], "cc_switch_forward_failed");
         assert_eq!(facts_body["error"]["provider"], "Relay");
-        let proxy_error_body = codex_proxy_error_json_from_proxy_error(
+        let proxy_error_body = crate::proxy::error_mapper::codex_proxy_error_json(
             "Relay",
             "model-a",
             "/responses",
@@ -15869,7 +15860,7 @@ command = "latest-command"
         );
         assert_eq!(proxy_error_body["error"]["code"], "cc_switch_timeout");
 
-        let upstream_error_body = codex_proxy_error_json_from_proxy_error(
+        let upstream_error_body = crate::proxy::error_mapper::codex_proxy_error_json(
             "Relay",
             "model-a",
             "/responses",
@@ -15902,21 +15893,22 @@ command = "latest-command"
         )
         .expect("codex error response");
         assert_eq!(response.status.as_u16(), 401);
-        let facts_response = codex_proxy_error_response_from_host_facts(
-            "Relay",
-            "model-a",
-            "/responses",
-            CodexProxyHostErrorFacts {
-                status: ProxyErrorStatusKind::AuthError,
-                message: "bad token",
-                kind: CodexProxyErrorKind::AuthError,
-                upstream_status: None,
-                upstream_body: None,
-            },
-        )
-        .expect("codex facts error response");
+        let facts_response =
+            crate::proxy::error_mapper::codex_proxy_error_response_from_host_facts(
+                "Relay",
+                "model-a",
+                "/responses",
+                crate::proxy::error_mapper::CodexProxyHostErrorFacts {
+                    status: ProxyErrorStatusKind::AuthError,
+                    message: "bad token",
+                    kind: CodexProxyErrorKind::AuthError,
+                    upstream_status: None,
+                    upstream_body: None,
+                },
+            )
+            .expect("codex facts error response");
         assert_eq!(facts_response.status.as_u16(), 401);
-        let proxy_error_response = codex_proxy_error_response_from_proxy_error(
+        let proxy_error_response = crate::proxy::error_mapper::codex_proxy_error_response(
             "Relay",
             "model-a",
             "/responses",

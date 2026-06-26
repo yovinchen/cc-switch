@@ -2306,19 +2306,15 @@ fn proxy_error_mapper_owns_codex_error_projection() {
 }
 
 #[test]
-fn proxy_core_adapter_reexports_codex_error_projection() {
+fn proxy_core_adapter_excludes_codex_error_projection_reexports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
 
-    assert!(
-        source.contains("pub(crate) use crate::proxy::error_mapper::{")
-            && source.contains("codex_proxy_error_response_from_host_facts")
-            && source.contains("codex_proxy_error_response_from_proxy_error")
-            && source.contains("CodexProxyHostErrorFacts"),
-        "proxy_core_adapter should re-export Codex proxy error projection for compatibility"
-    );
     for marker in [
+        "pub(crate) use crate::proxy::error_mapper::codex_proxy_error_response",
+        "pub(crate) use crate::proxy::error_mapper::{",
+        "codex_proxy_error_json as codex_proxy_error_json_from_proxy_error",
         "struct CodexProxyHostErrorFacts",
         "fn codex_proxy_error_facts_from_proxy_error",
         "fn codex_proxy_error_kind_from_proxy_error",
