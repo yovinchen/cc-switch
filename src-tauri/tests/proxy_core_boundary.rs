@@ -32,6 +32,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/forwarder_request_source.rs",
     "src/proxy/host/cc_switch/management_auth_source.rs",
     "src/proxy/host/cc_switch/managed_account_runtime_source.rs",
+    "src/proxy/host/cc_switch/model_catalog_provider.rs",
     "src/proxy/host/cc_switch/provider_adapter_context.rs",
     "src/proxy/host/cc_switch/proxy_runtime.rs",
     "src/proxy/host/cc_switch/proxy_services.rs",
@@ -16323,12 +16324,46 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
         "CC Switch model catalog provider should live in host/cc_switch/model_catalog_provider.rs"
     );
     assert!(
+        source.contains("use crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;")
+            && source.contains("use crate::proxy_core::api::domain::AppKind;")
+            && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && source.contains("use crate::proxy_core::api::model_catalog::ModelCatalog;")
+            && source.contains("use crate::proxy_core::api::ports::ModelCatalogProvider;"),
+        "CC Switch model catalog provider should import model catalog contracts directly from proxy_core"
+    );
+    let adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::{",
+        "};\nuse futures::future::BoxFuture;",
+    );
+    for adapter_type in [
+        "ClaudeDesktopModelRouteInput",
+        "ModelCatalog",
+        "ModelCatalogProvider",
+        "ProxyCoreAppKind",
+        "ProxyCoreResult",
+    ] {
+        assert!(
+            !adapter_import.contains(adapter_type),
+            "CC Switch model catalog provider must not import {adapter_type} through proxy_core_adapter"
+        );
+    }
+    assert!(
         adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::model_catalog_provider::CcSwitchModelCatalogProvider"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchModelCatalogProvider")
             && !adapter_source
                 .contains("impl ModelCatalogProvider for CcSwitchModelCatalogProvider"),
         "proxy_core_adapter should re-export, not own, the CC Switch model catalog provider"
+    );
+    let adapter_core_ports_import = function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
+        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+    );
+    assert!(
+        !adapter_core_ports_import.contains("ModelCatalogProvider"),
+        "proxy_core_adapter should not re-export ModelCatalogProvider"
     );
 }
 
