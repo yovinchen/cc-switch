@@ -661,7 +661,7 @@
 637. `authProfileRef` 的 `provider:<app>:<providerId>` / `channel-key:<keyRef>` 格式解析已迁入 `proxy-core::domain`：channel 写请求校验与 host auth-profile 应用共用同一 parser，host 只负责 DB/provider/key 查找和密钥注入。
 638. legacy channel migration preview/materialize 的 response source 已可由 `ChannelMigrationPreviewInput` / `ChannelMigrationMaterializeInput` 构造：handler 不再逐字段拼 source，只把 DB 结果投影为 core input。
 639. channel reachability 的健康状态枚举已复用 `proxy-core::ChannelReachabilityStatus`：stream check service 不再定义宿主侧重复 `HealthStatus`，adapter 也不再做状态枚举转换。
-640. stream check 的配置 DTO/默认值/camelCase 序列化契约已迁入 `proxy-core::StreamCheckConfig`：host 只 re-export 同名配置并继续负责 reqwest 探测与 provider 覆盖合并。
+640. stream check 的配置 DTO/默认值/camelCase 序列化契约已迁入 `proxy-core::StreamCheckConfig`：host 只 re-export 同名配置并继续负责 reqwest 探测与 provider 覆盖合并；service 的公开 `StreamCheckConfig` / `StreamCheckResult` 出口已从 `proxy_core_adapter` 二次别名改为直接 re-export `proxy_core::api::management`。
 641. stream check 的结果 DTO/历史字段兼容契约已迁入 `proxy-core::StreamCheckResult`：host service 不再定义重复 response struct，commands/DAO/handler 通过同名 re-export 保持现有调用路径。
 642. stream check result 到 channel reachability result 的投影已迁入 `proxy-core::channel_reachability_result_from_stream_check_result`：adapter 只保留边界包装，不再逐字段手写转换。
 643. OpenCode/OpenClaw/Hermes 的 stream-check base URL 解析策略已迁入 `proxy-core::domain`：core 统一识别 `options.baseURL`、`baseUrl`、`base_url` 与 OpenCode npm 默认端点，并维护缺失 base URL 的本地化错误规格；host 只负责 app 分支和错误类型包装。
