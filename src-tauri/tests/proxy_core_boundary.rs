@@ -8475,12 +8475,14 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
 #[test]
 fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/provider_adapter_context.rs");
+    let source = fs::read_to_string(&path).expect("read provider_adapter_context.rs");
     let function = function_slice(
         &source,
-        "pub(crate) fn provider_url_facts(",
-        "fn provider_transform_required",
+        "    pub(crate) fn provider_url_facts(",
+        "    pub(crate) fn provider_transform_required",
     );
 
     assert!(
@@ -8499,13 +8501,23 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs provider_url_facts:{} contains host-local marker `{}`",
+                    "src/proxy/host/cc_switch/provider_adapter_context.rs provider_url_facts:{} contains host-local marker `{}`",
                     line_index + 1,
                     marker
                 ));
             }
         }
     }
+
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::provider_adapter_context::{")
+            && adapter_source.contains("ForwarderAdapterContext"),
+        "proxy_core_adapter should expose provider adapter context through a host-module re-export"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) struct ForwarderAdapterContext"),
+        "proxy_core_adapter must not own ForwarderAdapterContext after host split"
+    );
 
     assert!(
         violations.is_empty(),

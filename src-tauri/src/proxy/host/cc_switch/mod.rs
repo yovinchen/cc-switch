@@ -8,3 +8,4 @@ pub(crate) mod failover_switch;
 pub(crate) mod global_http_client;
 pub(crate) mod live_takeover;
 pub(crate) mod managed_account_runtime_source;
+pub(crate) mod provider_adapter_context;

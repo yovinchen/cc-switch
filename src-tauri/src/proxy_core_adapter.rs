@@ -22,7 +22,6 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::host::cc_switch::database_channel_source::CcSwitchChannelSource;
 use crate::proxy::host::cc_switch::database_usage_sink::{RequestLog, UsageLogger};
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
-use crate::proxy::provider::{get_adapter, ProviderAdapter};
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::http::server::ProxyServer;
@@ -4386,78 +4385,9 @@ pub(crate) fn provider_gemini_auth_headers(
 }
 
 pub(crate) use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;
-
-pub(crate) type ForwarderAdapterHandle = dyn ProviderAdapter;
-
-pub(crate) struct ForwarderAdapterContext {
-    adapter: Box<ForwarderAdapterHandle>,
-    facts: ForwarderAdapterFacts,
-}
-
-impl ForwarderAdapterContext {
-    fn new(adapter: Box<ForwarderAdapterHandle>) -> Self {
-        let facts = ForwarderAdapterFacts::from_adapter(adapter.as_ref());
-        Self { adapter, facts }
-    }
-
-    fn adapter(&self) -> &ForwarderAdapterHandle {
-        self.adapter.as_ref()
-    }
-
-    pub(crate) fn facts(&self) -> &ForwarderAdapterFacts {
-        &self.facts
-    }
-
-    fn provider_auth_info(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
-        self.adapter().extract_auth(provider)
-    }
-
-    fn provider_auth_headers(
-        &self,
-        auth: &ProviderAuthInfo,
-    ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
-        self.adapter().get_auth_headers(auth)
-    }
-
-    pub(crate) fn provider_url_facts(
-        &self,
-        provider: &Provider,
-    ) -> Result<ForwarderProviderUrlFacts, ProxyError> {
-        let base_url = self.adapter().extract_base_url(provider)?;
-        Ok(forwarder_provider_url_facts(
-            ForwarderProviderUrlFactsInput {
-                provider_type: provider
-                    .meta
-                    .as_ref()
-                    .and_then(|meta| meta.provider_type.as_deref()),
-                is_full_url: provider_is_full_url(provider),
-                base_url,
-            },
-        ))
-    }
-
-    fn provider_transform_required(&self, provider: &Provider) -> bool {
-        self.adapter().needs_transform(provider)
-    }
-
-    fn transform_provider_request(
-        &self,
-        body: Value,
-        provider: &Provider,
-    ) -> Result<Value, ProxyError> {
-        self.adapter().transform_request(body, provider)
-    }
-
-    fn provider_upstream_url(&self, base_url: &str, endpoint: &str) -> String {
-        self.adapter().build_url(base_url, endpoint)
-    }
-}
-
-pub(crate) fn forwarder_provider_adapter_context_for_app(
-    app_type: &AppType,
-) -> ForwarderAdapterContext {
-    ForwarderAdapterContext::new(get_adapter(app_type))
-}
+pub(crate) use crate::proxy::host::cc_switch::provider_adapter_context::{
+    forwarder_provider_adapter_context_for_app, ForwarderAdapterContext,
+};
 
 pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
     let meta = provider.meta.as_ref();
@@ -4493,9 +4423,9 @@ pub(crate) fn stream_check_provider_base_url(
             .ok_or_else(|| missing_stream_check_base_url_error(app_type))
         }
         _ => {
-            let adapter = get_adapter(app_type);
-            adapter
-                .extract_base_url(provider)
+            forwarder_provider_adapter_context_for_app(app_type)
+                .provider_url_facts(provider)
+                .map(|facts| facts.base_url)
                 .map_err(|e| AppError::Message(format!("Failed to extract base_url: {e}")))
         }
     }
@@ -7610,22 +7540,6 @@ pub(crate) struct ForwarderProviderRequestBodyInput<'a> {
     pub(crate) provider: &'a Provider,
     pub(crate) channel: Option<&'a ResolvedChannelAttempt>,
     pub(crate) is_copilot: bool,
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct ForwarderAdapterFacts {
-    pub(crate) adapter_name: &'static str,
-    pub(crate) is_claude_adapter: bool,
-}
-
-impl ForwarderAdapterFacts {
-    fn from_adapter(adapter: &ForwarderAdapterHandle) -> Self {
-        let adapter_name = adapter.name();
-        Self {
-            adapter_name,
-            is_claude_adapter: adapter_name == "Claude",
-        }
-    }
 }
 
 pub(crate) struct ForwarderClaudeBodyPolicyInput<'a> {
@@ -12293,6 +12207,7 @@ mod tests {
     use crate::provider::{
         AuthBinding, AuthBindingSource, ClaudeDesktopMode, ClaudeDesktopModelRoute, ProviderMeta,
     };
+    use crate::proxy::provider::ProviderAdapter;
     use crate::proxy_core::api::errors::ProxyCoreError;
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
