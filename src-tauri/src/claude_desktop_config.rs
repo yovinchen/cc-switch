@@ -15,7 +15,8 @@ use crate::proxy_core_adapter::{
     ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProviderDirectGatewayProfileIssue,
     ClaudeDesktopProviderDirectValidationIssue, ClaudeDesktopProviderProxyRequestBodyIssue,
     ClaudeDesktopProviderProxyRouteIssue, ClaudeDesktopProviderProxyValidationIssue,
-    ClaudeDesktopProxyProviderConfigValidationIssue, ClaudeDesktopProxyRequestBodyIssue,
+    ClaudeDesktopProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
+    ClaudeDesktopProxyRequestBodyIssue,
 };
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
@@ -180,7 +181,7 @@ pub fn default_proxy_routes() -> Vec<ClaudeDesktopDefaultRoute> {
 
 #[cfg(test)]
 pub fn is_compatible_direct_provider(provider: &Provider) -> bool {
-    validate_direct_provider(provider).is_ok()
+    crate::proxy_core_adapter::provider_claude_desktop_direct_provider_validation(provider).is_ok()
 }
 
 pub fn is_official_provider(provider: &Provider) -> bool {
@@ -224,24 +225,6 @@ fn direct_gateway_credential_issue_to_error(
             "Claude Desktop direct provider is missing ANTHROPIC_AUTH_TOKEN (Bearer Token)",
         ),
     }
-}
-
-pub fn validate_direct_provider(provider: &Provider) -> Result<(), AppError> {
-    if is_official_provider(provider) {
-        return Ok(());
-    }
-
-    crate::proxy_core_adapter::provider_claude_desktop_direct_provider_validation(provider)
-        .map_err(direct_provider_validation_issue_to_error)
-}
-
-pub fn validate_proxy_provider(provider: &Provider) -> Result<(), AppError> {
-    if is_official_provider(provider) {
-        return Ok(());
-    }
-
-    crate::proxy_core_adapter::provider_claude_desktop_proxy_provider_validation(provider)
-        .map_err(proxy_provider_validation_issue_to_error)
 }
 
 fn direct_validation_issue_to_error(issue: ClaudeDesktopDirectProviderValidationIssue) -> AppError {
@@ -335,6 +318,17 @@ fn proxy_provider_credentials_missing_error() -> AppError {
     )
 }
 
+fn provider_validation_issue_to_error(issue: ClaudeDesktopProviderValidationIssue) -> AppError {
+    match issue {
+        ClaudeDesktopProviderValidationIssue::Direct(issue) => {
+            direct_provider_validation_issue_to_error(issue)
+        }
+        ClaudeDesktopProviderValidationIssue::Proxy(issue) => {
+            proxy_provider_validation_issue_to_error(issue)
+        }
+    }
+}
+
 fn direct_model_route_issue_to_error(issue: ClaudeDesktopDirectModelRouteIssue) -> AppError {
     match issue {
         ClaudeDesktopDirectModelRouteIssue::InvalidRouteId { route_id } => AppError::localized(
@@ -366,10 +360,8 @@ pub fn validate_provider(provider: &Provider) -> Result<(), AppError> {
         return Ok(());
     }
 
-    match provider_mode(provider) {
-        ClaudeDesktopMode::Direct => validate_direct_provider(provider),
-        ClaudeDesktopMode::Proxy => validate_proxy_provider(provider),
-    }
+    crate::proxy_core_adapter::provider_claude_desktop_provider_validation(provider)
+        .map_err(provider_validation_issue_to_error)
 }
 
 pub fn proxy_model_routes(provider: &Provider) -> Result<Vec<ResolvedModelRoute>, AppError> {
@@ -1006,7 +998,7 @@ mod tests {
             ("codex_oauth", "openai_responses"),
         ] {
             let provider = oauth_proxy_provider(provider_type, provider_type, api_format);
-            validate_proxy_provider(&provider).expect("oauth proxy provider should validate");
+            validate_provider(&provider).expect("oauth proxy provider should validate");
 
             let temp = TempDir::new().expect("tempdir");
             let paths = test_paths(temp.path());

@@ -10799,6 +10799,12 @@ pub(crate) enum ClaudeDesktopProviderProxyValidationIssue {
     CredentialsMissing,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ClaudeDesktopProviderValidationIssue {
+    Direct(ClaudeDesktopProviderDirectValidationIssue),
+    Proxy(ClaudeDesktopProviderProxyValidationIssue),
+}
+
 pub(crate) fn provider_claude_desktop_proxy_model_routes(
     provider: &Provider,
 ) -> Result<Vec<ClaudeDesktopResolvedProxyRoute>, ClaudeDesktopProviderProxyRouteIssue> {
@@ -10839,6 +10845,21 @@ pub(crate) fn provider_claude_desktop_proxy_provider_validation(
     }
 
     Ok(())
+}
+
+pub(crate) fn provider_claude_desktop_provider_validation(
+    provider: &Provider,
+) -> Result<(), ClaudeDesktopProviderValidationIssue> {
+    match provider_claude_desktop_mode(provider) {
+        crate::provider::ClaudeDesktopMode::Direct => {
+            provider_claude_desktop_direct_provider_validation(provider)
+                .map_err(ClaudeDesktopProviderValidationIssue::Direct)
+        }
+        crate::provider::ClaudeDesktopMode::Proxy => {
+            provider_claude_desktop_proxy_provider_validation(provider)
+                .map_err(ClaudeDesktopProviderValidationIssue::Proxy)
+        }
+    }
 }
 
 pub(crate) fn provider_claude_desktop_proxy_gateway_profile_model_specs(

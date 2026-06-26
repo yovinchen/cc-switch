@@ -5242,6 +5242,54 @@ fn proxy_core_adapter_owns_claude_desktop_proxy_provider_validation() {
 }
 
 #[test]
+fn proxy_core_adapter_owns_claude_desktop_provider_validation_dispatch() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let validation_slice = function_slice(
+        &source,
+        "pub(crate) fn provider_claude_desktop_provider_validation(",
+        "pub(crate) fn provider_claude_desktop_proxy_gateway_profile_model_specs(",
+    );
+
+    assert!(
+        validation_slice.contains("provider_claude_desktop_mode(provider)")
+            && validation_slice.contains("provider_claude_desktop_direct_provider_validation(")
+            && validation_slice.contains("provider_claude_desktop_proxy_provider_validation(")
+            && validation_slice.contains("ClaudeDesktopProviderValidationIssue::Direct")
+            && validation_slice.contains("ClaudeDesktopProviderValidationIssue::Proxy"),
+        "proxy_core_adapter should own Claude Desktop provider validation mode dispatch"
+    );
+
+    let forbidden_markers = [
+        "crate::claude_desktop_config",
+        "state.db",
+        "get_effective_current_provider",
+        "proxy_gateway_base_url_from_db",
+        "get_or_create_gateway_token",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(validation_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs provider_claude_desktop_provider_validation:{} contains host-owned validation dispatch marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must keep Claude Desktop provider validation dispatch free of host side effects:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_owns_claude_desktop_proxy_model_routes_provider_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
@@ -5536,78 +5584,59 @@ fn claude_desktop_config_delegates_mimo_thinking_history_normalization_to_adapte
 }
 
 #[test]
-fn claude_desktop_config_delegates_direct_provider_validation_to_adapter() {
+fn claude_desktop_config_does_not_retain_direct_provider_validation_wrapper() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/claude_desktop_config.rs");
     let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
-    let direct_validation_slice = function_slice(
-        &source,
-        "pub fn validate_direct_provider(",
-        "pub fn validate_proxy_provider(",
-    );
 
     assert!(
-        direct_validation_slice.contains("provider_claude_desktop_direct_provider_validation("),
-        "claude_desktop_config should delegate Direct provider validation assembly to proxy_core_adapter"
-    );
-
-    let forbidden_markers = [
-        "provider_claude_desktop_direct_validation_issue(",
-        "direct_inference_model_specs(provider)",
-        "direct_gateway_credentials(provider)",
-        "claude_desktop_direct_gateway_credentials(",
-        "claude_desktop_direct_inference_model_specs(",
-    ];
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(direct_validation_slice) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in forbidden_markers {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/claude_desktop_config.rs validate_direct_provider:{} contains direct validation policy marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "claude_desktop_config must keep Direct provider validation assembly in proxy_core_adapter:\n{}",
-        violations.join("\n")
+        !source.contains("pub fn validate_direct_provider("),
+        "claude_desktop_config should not retain a Direct provider validation wrapper after provider validation dispatch moved to proxy_core_adapter"
     );
 }
 
 #[test]
-fn claude_desktop_config_delegates_proxy_provider_validation_to_adapter() {
+fn claude_desktop_config_does_not_retain_proxy_provider_validation_wrapper() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/claude_desktop_config.rs");
     let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
-    let proxy_validation_slice = function_slice(
+
+    assert!(
+        !source.contains("pub fn validate_proxy_provider("),
+        "claude_desktop_config should not retain a Proxy provider validation wrapper after provider validation dispatch moved to proxy_core_adapter"
+    );
+}
+
+#[test]
+fn claude_desktop_config_delegates_provider_validation_dispatch_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let validation_slice = function_slice(
         &source,
-        "pub fn validate_proxy_provider(",
-        "fn direct_validation_issue_to_error(",
+        "pub fn validate_provider(",
+        "pub fn proxy_model_routes(",
     );
 
     assert!(
-        proxy_validation_slice.contains("provider_claude_desktop_proxy_provider_validation("),
-        "claude_desktop_config should delegate Proxy provider validation assembly to proxy_core_adapter"
+        validation_slice.contains("provider_claude_desktop_provider_validation("),
+        "claude_desktop_config should delegate provider validation mode dispatch to proxy_core_adapter"
     );
 
     let forbidden_markers = [
-        "provider_claude_desktop_proxy_config_validation_issue(",
-        "proxy_model_routes(provider)",
-        "provider_claude_desktop_proxy_has_base_url_and_key(",
-        "claude_desktop.provider.credentials_missing",
+        "match provider_mode(provider)",
+        "validate_direct_provider(provider)",
+        "validate_proxy_provider(provider)",
+        "ClaudeDesktopMode::Direct",
+        "ClaudeDesktopMode::Proxy",
     ];
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(proxy_validation_slice) {
+    for (line_index, line) in production_lines(validation_slice) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/claude_desktop_config.rs validate_proxy_provider:{} contains proxy validation policy marker `{}`",
+                    "src/claude_desktop_config.rs validate_provider:{} contains validation dispatch marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5617,7 +5646,7 @@ fn claude_desktop_config_delegates_proxy_provider_validation_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "claude_desktop_config must keep Proxy provider validation assembly in proxy_core_adapter:\n{}",
+        "claude_desktop_config must keep provider validation mode dispatch in proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
