@@ -40,7 +40,7 @@ use crate::proxy_core_adapter::{
 
 const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;
 
-pub use crate::proxy_core_adapter::CopilotUsageResponse;
+pub use crate::proxy_core::api::model_catalog::CopilotUsageResponse;
 pub use crate::proxy_core_adapter::{CopilotAuthStatus, GitHubAccount, GitHubDeviceCodeResponse};
 
 /// Copilot 认证错误

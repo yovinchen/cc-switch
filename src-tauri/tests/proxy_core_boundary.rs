@@ -12833,10 +12833,15 @@ fn production_copilot_auth_delegates_usage_contract_to_core() {
 
     assert!(
         !source.contains("pub struct CopilotUsageResponse")
+            && !source.contains("proxy_core_adapter::CopilotUsageResponse")
             && !source.contains("pub struct CopilotEndpoints")
             && !source.contains("pub struct QuotaSnapshots")
             && !source.contains("pub struct QuotaDetail"),
         "copilot_auth.rs should not own Copilot usage DTO contracts"
+    );
+    assert!(
+        source.contains("pub use crate::proxy_core::api::model_catalog::CopilotUsageResponse;"),
+        "copilot_auth.rs should re-export CopilotUsageResponse directly from proxy_core"
     );
     assert!(
         fetch_usage_slice.contains("parse_copilot_usage_response_bytes(")
