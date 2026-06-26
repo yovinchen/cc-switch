@@ -14109,6 +14109,10 @@ fn production_forwarder_uses_request_source_resource() {
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let request_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
     let request_source =
@@ -14438,6 +14442,104 @@ fn production_forwarder_uses_request_source_resource() {
         assert!(
             !adapter_source.contains(marker),
             "proxy_core_adapter should not re-export pure Copilot optimizer helper `{marker}` once request source owns the call site"
+        );
+    }
+    let request_transport_import_slice = function_slice(
+        &request_source,
+        "use crate::proxy_core::api::transport::{",
+        "};\nuse crate::proxy_core_adapter::*;",
+    );
+    for marker in [
+        "anthropic_beta_header_value",
+        "build_upstream_request_headers",
+        "forward_upstream_url_plan",
+        "forwarder_media_retry_plan_from_facts",
+        "forwarder_protocol_preparation_from_transform_plan",
+        "forwarder_rectifier_error_message as core_forwarder_rectifier_error_message",
+        "forwarder_request_body_model",
+        "forwarder_request_body_transform_action_from_plan",
+        "forwarder_transform_plan_from_facts",
+        "is_openai_o_series",
+        "is_unsupported_image_error",
+        "prepare_upstream_request_body_with_report",
+        "prompt_cache_trace_log_message",
+        "request_body_filter_log_message",
+        "request_body_serialize_error_message",
+        "resolve_upstream_request_transport_policy",
+        "serialize_upstream_request_body",
+        "should_preserve_exact_request_header_case",
+        "should_send_anthropic_request_headers",
+        "supports_reasoning_effort",
+        "upstream_host_header_from_url",
+        "ForwardUpstreamUrlPlanInput",
+        "ForwarderMediaRetryPlanFacts",
+        "ForwarderRectifierErrorInput",
+        "ForwarderRequestBodyTransformAction",
+        "ForwarderTransformPlanFacts",
+        "PromptCacheTraceLogInput",
+        "UpstreamRequestHeadersInput",
+        "UNSUPPORTED_IMAGE_MARKER",
+    ] {
+        assert!(
+            request_transport_import_slice.contains(marker),
+            "default ForwarderRequestSource should import pure request helper/type `{marker}` directly from proxy_core::api::transport"
+        );
+    }
+    assert!(
+        request_source.contains(
+            "use crate::proxy_core::api::transforms::responses_to_chat_completions_with_options;"
+        ),
+        "default ForwarderRequestSource should import Codex Responses-to-Chat conversion directly from proxy_core::api::transforms"
+    );
+    let adapter_runtime_lines: Vec<&str> = adapter_runtime_source.lines().collect();
+    for marker in [
+        "type ForwarderTransformPlanFacts",
+        "type ForwarderMediaRetryPlanFacts",
+        "type PromptCacheTraceLogInput",
+        "type UpstreamRequestHeadersInput",
+        "responses_to_chat_completions_with_options",
+        "forward_upstream_url_plan",
+        "forwarder_media_retry_plan_from_facts",
+        "forwarder_protocol_preparation_from_transform_plan",
+        "core_forwarder_rectifier_error_message",
+        "forwarder_request_body_model",
+        "forwarder_request_body_transform_action_from_plan",
+        "forwarder_transform_plan_from_facts",
+        "is_openai_o_series",
+        "is_unsupported_image_error",
+        "prepare_upstream_request_body_with_report",
+        "prompt_cache_trace_log_message",
+        "request_body_filter_log_message",
+        "request_body_serialize_error_message",
+        "resolve_upstream_request_transport_policy",
+        "should_preserve_exact_request_header_case",
+        "should_send_anthropic_request_headers",
+        "supports_reasoning_effort",
+        "ForwardUpstreamUrlPlanInput",
+        "ForwarderRectifierErrorInput",
+        "ForwarderRequestBodyTransformAction",
+        "UNSUPPORTED_IMAGE_MARKER",
+        "anthropic_beta_header_value",
+        "build_upstream_request_headers",
+        "serialize_upstream_request_body",
+        "upstream_host_header_from_url",
+    ] {
+        let has_production_marker =
+            adapter_runtime_lines
+                .iter()
+                .enumerate()
+                .any(|(line_index, line)| {
+                    let previous = line_index
+                        .checked_sub(1)
+                        .and_then(|previous_index| adapter_runtime_lines.get(previous_index))
+                        .map(|line| line.trim())
+                        .unwrap_or("");
+                    let code = line.split("//").next().unwrap_or_default();
+                    previous != "#[cfg(test)]" && code.contains(marker)
+                });
+        assert!(
+            !has_production_marker,
+            "proxy_core_adapter should not re-export pure request helper/type `{marker}` once request source owns the call site"
         );
     }
     assert!(

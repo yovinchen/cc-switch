@@ -4,9 +4,23 @@ use std::sync::Arc;
 
 use crate::app_config::AppType;
 use crate::proxy::error::ProxyError;
+use crate::proxy_core::api::transforms::responses_to_chat_completions_with_options;
 use crate::proxy_core::api::transport::{
-    apply_copilot_warmup_model_override, classify_copilot_request, merge_copilot_tool_results,
-    sanitize_copilot_orphan_tool_results, strip_copilot_thinking_blocks,
+    anthropic_beta_header_value, apply_copilot_warmup_model_override,
+    build_upstream_request_headers, classify_copilot_request, forward_upstream_url_plan,
+    forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
+    forwarder_rectifier_error_message as core_forwarder_rectifier_error_message,
+    forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
+    forwarder_transform_plan_from_facts, is_openai_o_series, is_unsupported_image_error,
+    merge_copilot_tool_results, prepare_upstream_request_body_with_report,
+    prompt_cache_trace_log_message, request_body_filter_log_message,
+    request_body_serialize_error_message, resolve_upstream_request_transport_policy,
+    sanitize_copilot_orphan_tool_results, serialize_upstream_request_body,
+    should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
+    strip_copilot_thinking_blocks, supports_reasoning_effort, upstream_host_header_from_url,
+    ForwardUpstreamUrlPlanInput, ForwarderMediaRetryPlanFacts, ForwarderRectifierErrorInput,
+    ForwarderRequestBodyTransformAction, ForwarderTransformPlanFacts, PromptCacheTraceLogInput,
+    UpstreamRequestHeadersInput, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_adapter::*;
 

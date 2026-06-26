@@ -995,8 +995,6 @@ pub(crate) type ForwarderProtocolPreparation =
 pub(crate) type ForwarderProtocolPreparationInput<'a> =
     crate::proxy_core::api::transport::ForwarderProtocolPreparationInput<'a>;
 pub(crate) type ForwarderTransformPlan = crate::proxy_core::api::transport::ForwarderTransformPlan;
-pub(crate) type ForwarderTransformPlanFacts<'a> =
-    crate::proxy_core::api::transport::ForwarderTransformPlanFacts<'a>;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
 #[cfg(test)]
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig;
@@ -1544,10 +1542,6 @@ pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
     crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD;
 pub(crate) type ForwarderMediaPreventionFacts<'a> =
     crate::proxy_core::api::transport::ForwarderMediaPreventionFacts<'a>;
-pub(crate) type ForwarderMediaRetryPlanFacts<'a> =
-    crate::proxy_core::api::transport::ForwarderMediaRetryPlanFacts<'a>;
-pub(crate) type PromptCacheTraceLogInput<'a> =
-    crate::proxy_core::api::transport::PromptCacheTraceLogInput<'a>;
 pub(crate) type AllowResult = crate::proxy_core::api::config::AllowResult;
 pub(crate) type CircuitBreakerConfig = crate::proxy_core::api::config::CircuitBreakerConfig;
 pub(crate) type CircuitBreakerStats = crate::proxy_core::api::config::CircuitBreakerStats;
@@ -2247,8 +2241,6 @@ pub(crate) use crate::proxy_core::api::domain::{
 
 #[cfg(test)]
 pub(crate) type ProxyCoreUpstreamEndpoint = crate::proxy_core::api::domain::UpstreamEndpoint;
-pub(crate) type UpstreamRequestHeadersInput<'a> =
-    crate::proxy_core::api::transport::UpstreamRequestHeadersInput<'a>;
 pub(crate) type UpstreamSendPolicyInput =
     crate::proxy_core::api::transport::UpstreamSendPolicyInput;
 pub(crate) type UpstreamTransportKind = crate::proxy_core::api::transport::UpstreamTransportKind;
@@ -2526,6 +2518,7 @@ pub(crate) use crate::proxy_core::api::routing::{
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::claude_api_format_from_metadata;
+pub(crate) use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 pub(crate) use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::{
@@ -2548,9 +2541,6 @@ pub(crate) use crate::proxy_core::api::transforms::{
     ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
     CodexChatTransformStreamingDecision,
 };
-pub(crate) use crate::proxy_core::api::transforms::{
-    resolve_claude_forward_api_format, responses_to_chat_completions_with_options,
-};
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::build_claude_auth_headers;
 #[cfg(test)]
@@ -2566,7 +2556,13 @@ pub(crate) use crate::proxy_core::api::transport::extract_gemini_model_from_path
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::interface_kind_for_forward;
 #[cfg(test)]
+pub(crate) use crate::proxy_core::api::transport::prepare_upstream_request_body_with_report;
+#[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::request_model_for_forward;
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transport::resolve_upstream_request_transport_policy;
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transport::should_preserve_exact_request_header_case;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, claude_transform_endpoint_rewrite_input_from_body,
@@ -2581,29 +2577,19 @@ pub(crate) use crate::proxy_core::api::transport::{
     build_terminal_forward_failure_log, categorize_forward_failure,
     finalize_forwarder_auth_headers,
     forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
-    forward_upstream_url_plan, forwarder_all_providers_circuit_open_log_line,
-    forwarder_attempt_runtime_decision, forwarder_failure_log_line,
-    forwarder_media_retry_plan_from_facts, forwarder_no_available_provider_status_message,
-    forwarder_no_providers_configured_log_line, forwarder_protocol_preparation_from_transform_plan,
-    forwarder_rectifier_error_message as core_forwarder_rectifier_error_message,
-    forwarder_rectifier_retry_failure_label,
+    forwarder_all_providers_circuit_open_log_line, forwarder_attempt_runtime_decision,
+    forwarder_failure_log_line, forwarder_no_available_provider_status_message,
+    forwarder_no_providers_configured_log_line, forwarder_rectifier_retry_failure_label,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
-    forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
-    forwarder_terminal_failure_status_message, forwarder_transform_plan_from_facts,
-    invalid_upstream_url_error_message, is_openai_o_series, is_unsupported_image_error,
+    forwarder_terminal_failure_status_message, invalid_upstream_url_error_message,
     parse_json_request_body, parse_json_request_body_or_null,
-    prepare_optional_copilot_auth_optimization_for_forwarder,
-    prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    request_body_filter_log_message, request_body_serialize_error_message,
-    resolve_auth_provider_headers, should_apply_bedrock_pre_send_optimizer,
-    should_apply_forwarder_media_prevention_for_app, should_failover_after_rectifier_retry_failure,
-    should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-    supports_reasoning_effort, AuthProviderHeaderResolution, CodexProviderChatCompletionsFacts,
-    CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan, ForwardUpstreamUrlPlanInput,
+    prepare_optional_copilot_auth_optimization_for_forwarder, resolve_auth_provider_headers,
+    should_apply_bedrock_pre_send_optimizer, should_apply_forwarder_media_prevention_for_app,
+    should_failover_after_rectifier_retry_failure, AuthProviderHeaderResolution,
+    CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan,
     ForwarderAttemptRuntimeDecisionInput, ForwarderProviderUrlFacts,
-    ForwarderProviderUrlFactsInput, ForwarderRectifierErrorInput,
-    ForwarderRequestBodyTransformAction, UNSUPPORTED_IMAGE_MARKER,
+    ForwarderProviderUrlFactsInput,
 };
 pub(crate) use crate::proxy_core::api::transport::{
     codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
@@ -6939,16 +6925,6 @@ pub(crate) use crate::proxy_core::api::transforms::claude_api_format_needs_trans
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::resolve_gemini_native_url;
 
-pub(crate) use crate::proxy_core::api::transport::{
-    anthropic_beta_header_value, build_upstream_request_headers,
-};
-
-pub(crate) use crate::proxy_core::api::transport::upstream_host_header_from_url;
-
-pub(crate) use crate::proxy_core::api::transport::{
-    resolve_upstream_request_transport_policy, serialize_upstream_request_body,
-};
-
 pub(crate) use crate::proxy_core::api::transport::request_body_stream_flag;
 
 #[cfg(test)]
@@ -8032,7 +8008,10 @@ mod tests {
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
     use crate::proxy_core::api::transport::{
-        ProxyTransportResponseBody, UpstreamSseAggregationKind, UpstreamTransportKind,
+        anthropic_beta_header_value, build_upstream_request_headers, forward_upstream_url_plan,
+        resolve_upstream_request_transport_policy, serialize_upstream_request_body,
+        ForwardUpstreamUrlPlanInput, ProxyTransportResponseBody, UpstreamRequestHeadersInput,
+        UpstreamSseAggregationKind, UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
     };
     use crate::proxy_core::api::usage::{
         usage_selected_provider_missing_log_message, TransformedResponseUsageFormat,
