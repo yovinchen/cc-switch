@@ -2496,7 +2496,6 @@ pub(crate) use crate::proxy_core::api::transport::{
 pub(crate) use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest};
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback;
-pub(crate) use crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag;
 pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
     PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
@@ -7569,12 +7568,6 @@ pub(crate) fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
 pub(crate) use crate::proxy_core::api::usage::{
     is_placeholder_pricing_model, usage_route_context_from_selection,
 };
-
-pub(crate) fn usage_logging_enabled_from_proxy_config(config: &RwLock<ProxyConfig>) -> bool {
-    usage_logging_enabled_from_config_flag(
-        config.try_read().ok().map(|config| config.enable_logging),
-    )
-}
 
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
@@ -16842,9 +16835,11 @@ command = "latest-command"
             usage_record_debug_log_message(&record),
             "[claude] 记录请求日志: provider=provider-a, model=upstream-sonnet, streaming=true, status=200, latency_ms=42, first_token_ms=Some(7), session=session-a, input=1000, output=500, cache_read=0, cache_creation=0"
         );
-        assert!(usage_logging_enabled_from_config_flag(Some(true)));
-        assert!(!usage_logging_enabled_from_config_flag(Some(false)));
-        assert!(usage_logging_enabled_from_config_flag(None));
+        assert!(crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag(Some(true)));
+        assert!(
+            !crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag(Some(false))
+        );
+        assert!(crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag(None));
     }
 
     #[test]

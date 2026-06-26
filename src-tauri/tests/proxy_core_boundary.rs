@@ -6213,6 +6213,7 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
                 .contains("pub(crate) fn record_non_streaming_response_usage_from_context")
             && usage_slice.contains("non_streaming_response_usage_record_from_response_context(")
             && usage_slice.contains("UsageSelectedProviderMissingPhase::StreamingPassthrough")
+            && usage_slice.contains("fn usage_logging_enabled_from_state(state: &ProxyState)")
             && usage_slice.contains("context.parser_config.stream_parser")
             && usage_slice.contains("context.parser_config.response_parser")
             && usage_slice.contains("output.log_event(context.body.len())"),
@@ -6253,6 +6254,7 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
             && adapter_source.contains("passthrough_streaming_usage_collector")
             && adapter_source.contains("create_passthrough_logged_stream")
             && adapter_source.contains("record_non_streaming_response_usage")
+            && !adapter_source.contains("pub(crate) fn usage_logging_enabled_from_proxy_config")
             && !adapter_source.contains("pub(crate) struct StreamingUsageCollectorContext")
             && !adapter_source.contains("pub(crate) fn streaming_usage_collector_from_context")
             && !adapter_source.contains("pub(crate) struct NonStreamingUsageRecordContext")
@@ -6298,7 +6300,7 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
             && function.contains("pub(crate) struct TransformedResponseUsageRecordContext")
             && function.contains("pub(crate) fn record_transformed_response_usage_from_context")
             && function.contains("transformed_response_usage_record_from_response_context(")
-            && function.contains("usage_logging_enabled_from_proxy_config(state.config.as_ref())")
+            && function.contains("usage_logging_enabled_from_state(state)")
             && function.contains("state.proxy_core_services.clone()")
             && function.contains("TransformedResponseUsageFormat::Claude")
             && function.contains("TransformedResponseUsageFormat::CodexAuto")
@@ -6527,7 +6529,7 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
 
     assert!(
         function.contains("TransformedResponseUsageRecordContext {")
-            && function.contains("usage_logging_enabled_from_proxy_config(state.config.as_ref())")
+            && function.contains("usage_logging_enabled_from_state(state)")
             && function.contains("state.proxy_core_services.clone()")
             && function.contains("pub(crate) struct ClaudeTransformedJsonResponseContext")
             && function.contains("pub(crate) fn claude_transformed_json_response_from_context")
@@ -6665,6 +6667,7 @@ fn response_pipeline_owns_core_usage_transport_imports() {
             && source.contains("ProxyCoreResponse")
             && source.contains("ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext")
             && source.contains("use crate::proxy_core::api::usage::{")
+            && source.contains("usage_logging_enabled_from_config_flag")
             && source.contains("usage_selected_provider_missing_log_message")
             && source.contains("StreamUsageEventFilter")
             && source.contains("TransformedResponseUsageFormat")
@@ -6690,6 +6693,7 @@ fn response_pipeline_owns_core_usage_transport_imports() {
         "UsageRecordFailureLogContext",
         "UsageRouteContext",
         "UsageSelectedProviderMissingPhase",
+        "usage_logging_enabled_from_config_flag",
         "usage_selected_provider_missing_log_message",
     ] {
         if adapter_import_identifiers

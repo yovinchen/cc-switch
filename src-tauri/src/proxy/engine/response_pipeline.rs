@@ -28,19 +28,20 @@ use crate::proxy_core::api::usage::{
     streaming_response_usage_record_with_optional_outbound_model,
     transformed_response_usage_record_with_request_id_fallback,
     transformed_streaming_response_usage_record_with_request_id_fallback,
-    usage_record_debug_log_message, usage_record_failure_warning_message,
-    usage_record_with_route_context, usage_selected_provider_missing_log_message,
-    NonStreamingResponseUsageRecord, StreamUsageEventFilter, StreamingResponseUsageRecord,
-    TokenUsage, TransformedResponseUsageFormat, UsageParserConfig, UsageRecord,
-    UsageRecordFailureLogContext, UsageRouteContext, UsageSelectedProviderMissingPhase,
+    usage_logging_enabled_from_config_flag, usage_record_debug_log_message,
+    usage_record_failure_warning_message, usage_record_with_route_context,
+    usage_selected_provider_missing_log_message, NonStreamingResponseUsageRecord,
+    StreamUsageEventFilter, StreamingResponseUsageRecord, TokenUsage,
+    TransformedResponseUsageFormat, UsageParserConfig, UsageRecord, UsageRecordFailureLogContext,
+    UsageRouteContext, UsageSelectedProviderMissingPhase,
 };
 use crate::proxy_core_adapter::{
     claude_stream_usage_event_filter, codex_stream_usage_event_filter,
     extract_anthropic_tool_schema_hints, provider_claude_transform_response_for_api_format,
     provider_claude_transform_sse_for_api_format, transform_codex_chat_response_with_history,
-    transform_codex_chat_sse_with_history, usage_logging_enabled_from_proxy_config,
-    ActiveConnectionGuard, AnthropicToolSchemaHints, AppKind, CodexToolContext, ProviderKind,
-    ProxyServices, ProxyState, SsePassthroughStreamState, SseUsageAccumulator,
+    transform_codex_chat_sse_with_history, ActiveConnectionGuard, AnthropicToolSchemaHints,
+    AppKind, CodexToolContext, ProviderKind, ProxyServices, ProxyState, SsePassthroughStreamState,
+    SseUsageAccumulator,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -269,6 +270,16 @@ pub(crate) struct StreamingResponseUsageContext<'a> {
     pub(crate) first_token_ms: Option<u64>,
     pub(crate) status_code: u16,
     pub(crate) session_id: &'a str,
+}
+
+fn usage_logging_enabled_from_state(state: &ProxyState) -> bool {
+    usage_logging_enabled_from_config_flag(
+        state
+            .config
+            .try_read()
+            .ok()
+            .map(|config| config.enable_logging),
+    )
 }
 
 #[allow(dead_code)]
@@ -1168,7 +1179,7 @@ pub(crate) fn passthrough_streaming_usage_collector(
     parser_config: &UsageParserConfig,
 ) -> Option<SseUsageCollector> {
     streaming_usage_collector_from_context(StreamingUsageCollectorContext {
-        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
+        usage_logging_enabled: usage_logging_enabled_from_state(state),
         services: state.proxy_core_services.clone(),
         provider: ctx.provider_for_usage(),
         app_type: ctx.app_type_str,
@@ -1237,7 +1248,7 @@ pub(crate) fn transformed_streaming_usage_collector(
     stream_event_filter: StreamUsageEventFilter,
 ) -> Option<SseUsageCollector> {
     transformed_streaming_usage_collector_from_context(TransformedStreamingUsageCollectorContext {
-        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
+        usage_logging_enabled: usage_logging_enabled_from_state(state),
         services: state.proxy_core_services.clone(),
         provider: ctx.provider_for_usage(),
         app_type: ctx.app_type_str,
@@ -1402,7 +1413,7 @@ pub(crate) fn record_transformed_response_usage(
     status_code: u16,
 ) {
     record_transformed_response_usage_from_context(TransformedResponseUsageRecordContext {
-        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
+        usage_logging_enabled: usage_logging_enabled_from_state(state),
         services: state.proxy_core_services.clone(),
         body,
         format,
@@ -1515,7 +1526,7 @@ pub(crate) fn record_non_streaming_response_usage(
     status_code: u16,
 ) -> Result<(), String> {
     record_non_streaming_response_usage_from_context(NonStreamingUsageRecordContext {
-        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
+        usage_logging_enabled: usage_logging_enabled_from_state(state),
         services: state.proxy_core_services.clone(),
         body,
         parser_config,
