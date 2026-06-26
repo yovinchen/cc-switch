@@ -467,10 +467,7 @@ pub(crate) fn record_proxy_server_started_status(
     );
 }
 
-pub(crate) use crate::proxy_core::api::ports::{
-    apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
-    record_proxy_server_stopped_status,
-};
+pub(crate) use crate::proxy_core::api::ports::record_proxy_server_stopped_status;
 
 pub(crate) type ProxyRuntimeConfig = crate::proxy_core::api::config::ProxyRuntimeConfig;
 pub(crate) type ProxyGlobalConfig = crate::proxy_core::api::config::ProxyGlobalConfig;
@@ -2463,7 +2460,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelKeyRuntimeSource, ChannelSource,
     ClaudeDesktopGatewayAuthSource, ManagementAuthRuntimeConfig, ManagementAuthSource,
     ModelCatalogProvider, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
-    RoutePolicySource, RuntimeStatusSource, UsageSink,
+    RoutePolicySource, UsageSink,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;

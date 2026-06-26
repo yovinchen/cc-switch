@@ -34,6 +34,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/proxy_services.rs",
     "src/proxy/host/cc_switch/provider_router_health_store.rs",
     "src/proxy/host/cc_switch/route_resolver.rs",
+    "src/proxy/host/cc_switch/runtime_status_source.rs",
     "src/proxy/response_adapter.rs",
     "src/proxy/transport/upstream/mod.rs",
     "src/proxy/transport/upstream/reqwest_client.rs",
@@ -16440,6 +16441,23 @@ fn proxy_core_adapter_delegates_runtime_status_source_to_host_module() {
         "CC Switch runtime status source should live in host/cc_switch/runtime_status_source.rs"
     );
     assert!(
+        source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && source.contains("use crate::proxy_core::api::ports::{")
+            && source.contains("CurrentRouteTarget")
+            && source.contains("ProxyRuntimeStatus")
+            && source.contains("RuntimeStatusSource"),
+        "CC Switch runtime status source should import runtime status contracts directly from proxy_core"
+    );
+    let adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core",
+        ";\nuse futures::future::BoxFuture;",
+    );
+    assert!(
+        !adapter_import.contains("proxy_core_adapter"),
+        "CC Switch runtime status source must not import runtime status contracts through proxy_core_adapter"
+    );
+    assert!(
         adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource"
         ) && !adapter_source.contains("struct CcSwitchRuntimeStatusSource")
@@ -16448,6 +16466,24 @@ fn proxy_core_adapter_delegates_runtime_status_source_to_host_module() {
                 .contains("pub(crate) async fn proxy_runtime_status_from_runtime_sources("),
         "proxy_core_adapter should re-export, not own, the CC Switch runtime status source"
     );
+    let adapter_core_ports_import = function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
+        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;",
+    );
+    assert!(
+        !adapter_core_ports_import.contains("RuntimeStatusSource"),
+        "proxy_core_adapter should not re-export RuntimeStatusSource"
+    );
+    for adapter_helper in [
+        "apply_proxy_runtime_active_targets",
+        "apply_proxy_runtime_uptime",
+    ] {
+        assert!(
+            !adapter_source.contains(adapter_helper),
+            "proxy_core_adapter should not re-export runtime status helper {adapter_helper}"
+        );
+    }
 }
 
 #[test]
