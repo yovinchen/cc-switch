@@ -40,8 +40,8 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
 pub(crate) use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
 use crate::proxy_core::api::routing::InterfaceKind;
 use crate::proxy_core::api::transforms::{
-    codex_chat_transform_streaming_decision, ClaudeTransformStreamingDecision,
-    CodexChatTransformStreamingDecision, CodexToolContext,
+    codex_chat_transform_streaming_decision, normalize_codex_chat_error_body,
+    ClaudeTransformStreamingDecision, CodexChatTransformStreamingDecision, CodexToolContext,
 };
 use crate::proxy_core::api::transport::{
     append_query_to_endpoint_path, extract_gemini_model_from_path, rebuilt_json_proxy_response,
@@ -57,14 +57,14 @@ use crate::proxy_core::api::usage::{
 use crate::proxy_core_adapter::{
     claude_transformed_json_response_from_context, claude_transformed_sse_stream_from_context,
     codex_auto_transformed_json_response_from_context,
-    codex_auto_transformed_sse_stream_from_context, codex_chat_error_proxy_response,
-    codex_responses_proxy_request_from_input, json_proxy_request_from_input,
-    parse_json_proxy_request_body, parse_json_proxy_request_body_or_null,
-    provider_claude_transform_streaming_decision, provider_needs_claude_transform,
-    provider_should_convert_codex_responses_to_chat, record_forward_core_error_usage,
-    ActiveConnectionGuard, ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
-    CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
-    CodexResponsesProxyRequest, JsonProxyRequestInput, ProxyState,
+    codex_auto_transformed_sse_stream_from_context, codex_responses_proxy_request_from_input,
+    json_proxy_request_from_input, parse_json_proxy_request_body,
+    parse_json_proxy_request_body_or_null, provider_claude_transform_streaming_decision,
+    provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
+    record_forward_core_error_usage, ActiveConnectionGuard, ClaudeTransformedJsonResponseContext,
+    ClaudeTransformedSseStreamContext, CodexAutoTransformedJsonResponseContext,
+    CodexAutoTransformedSseStreamContext, CodexResponsesProxyRequest, JsonProxyRequestInput,
+    ProxyState,
 };
 use axum::{
     response::sse::{Event, KeepAlive, Sse},
@@ -1309,7 +1309,11 @@ pub(crate) fn codex_chat_error_response_to_axum_response(
     response_headers: HeaderMap,
     body_bytes: &[u8],
 ) -> Result<axum::response::Response, ProxyError> {
-    let response = codex_chat_error_proxy_response(status, response_headers, body_bytes)
+    let normalized = normalize_codex_chat_error_body(body_bytes);
+    if let Some(message) = normalized.non_json_body_log_message() {
+        log::warn!("{message}");
+    }
+    let response = rebuilt_json_proxy_response(status, response_headers, normalized.response_error)
         .map_err(codex_responses_error_body_build_error_to_proxy_error)?;
     proxy_core_response_to_axum_response(
         response,

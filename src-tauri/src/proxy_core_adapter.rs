@@ -589,8 +589,6 @@ pub(crate) type ProxyCoreEvent = crate::proxy_core::api::events::ProxyCoreEvent;
 pub(crate) type CodexChatHistorySseRecord =
     crate::proxy_core::api::transforms::CodexChatHistorySseRecord;
 pub(crate) type CodexChatHistoryState = crate::proxy_core::api::transforms::CodexChatHistoryState;
-pub(crate) type CodexChatErrorNormalization =
-    crate::proxy_core::api::transforms::CodexChatErrorNormalization;
 pub(crate) type CodexChatReasoningOptions =
     crate::proxy_core::api::transforms::CodexChatReasoningOptions;
 pub(crate) type CodexChatReasoningProfile =
@@ -605,22 +603,6 @@ pub(crate) type UsageRouteContext = crate::proxy_core::api::usage::UsageRouteCon
 #[cfg(test)]
 pub(crate) type UsageTokens = crate::proxy_core::api::usage::UsageTokens;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::api::ports::CurrentRouteTarget;
-
-pub(crate) fn log_codex_chat_error_normalization(normalized: &CodexChatErrorNormalization) {
-    if let Some(message) = normalized.non_json_body_log_message() {
-        log::warn!("{message}");
-    }
-}
-
-pub(crate) fn codex_chat_error_proxy_response(
-    status: http::StatusCode,
-    headers: HeaderMap,
-    body: &[u8],
-) -> ProxyCoreResult<ProxyCoreResponse> {
-    let normalized = normalize_codex_chat_error_body(body);
-    log_codex_chat_error_normalization(&normalized);
-    rebuilt_json_proxy_response(status, headers, normalized.response_error)
-}
 
 pub(crate) async fn record_codex_chat_response_history(
     history: &CodexChatHistoryStore,
@@ -2510,13 +2492,11 @@ pub(crate) use crate::proxy_core::api::transport::{
     parse_custom_user_agent,
     provider_custom_user_agent_header as core_provider_custom_user_agent_header,
 };
-pub(crate) use crate::proxy_core::api::transport::{
-    rebuilt_json_proxy_response, ProxyBody, ProxyRequest,
-};
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::{
     resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
 };
+pub(crate) use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest};
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback;
 pub(crate) use crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag;
@@ -6692,7 +6672,7 @@ pub(crate) fn apply_channel_provider_overrides(
 
 pub(crate) use crate::proxy_core::api::transforms::{
     build_codex_tool_context_from_request as codex_tool_context_from_request,
-    normalize_claude_anthropic_messages, normalize_codex_chat_error_body,
+    normalize_claude_anthropic_messages,
 };
 
 pub(crate) fn provider_claude_normalize_anthropic_messages(
@@ -16219,7 +16199,8 @@ command = "latest-command"
         assert_eq!(context.chat_tools().len(), 1);
         assert!(context.is_custom_tool_chat_name("apply_patch"));
 
-        let normalized = normalize_codex_chat_error_body(b"Unauthorized");
+        let normalized =
+            crate::proxy_core::api::transforms::normalize_codex_chat_error_body(b"Unauthorized");
         assert!(normalized.non_json_body_log_message().is_some());
         assert!(normalized.response_error.get("error").is_some());
     }
