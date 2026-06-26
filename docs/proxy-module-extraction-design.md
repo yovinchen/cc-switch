@@ -1707,6 +1707,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1221. `proxy_core_adapter` 的 test-only `ClaudeDesktopGatewayAuthError` alias 与 `validate_claude_desktop_gateway_bearer_header` re-export 已删除；adapter 自测直接调用 `proxy_core::api::auth` owning symbols，Claude Desktop gateway 边界测试防止 bearer validation helper 回流到 adapter facade。
 1222. `proxy_core_adapter` 的 test-only `ResponseTimeoutConfig` type alias 已删除；adapter 自测直接调用 `proxy_core::api::config` owning DTO，request-context 边界测试防止 runtime timeout DTO 再通过 adapter facade 暴露。
 1223. `proxy_core_adapter` 的 test-only auth header builder re-export 与 `ClaudeAuthHeaderKind`/`CopilotAuthHeadersInput` alias 已删除；adapter/forward-pipeline 单测直接调用 `proxy_core::api::transport` owning symbols，forwarder auth source 边界测试防止纯 header helper 再通过 adapter facade 暴露。
+1224. `proxy_core_adapter` 的 test-only `AuthInfo` type alias 已删除；adapter 自测直接调用 `proxy_core::api::ports` owning DTO，auth-provider 边界测试防止 core port DTO 再作为 adapter facade 暴露。
 
 ## 背景
 
