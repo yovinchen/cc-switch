@@ -1844,7 +1844,7 @@ const FORBIDDEN_HANDLER_TRANSFORM_RESPONSE_ORCHESTRATION_MARKERS: &[&str] = &[
     "codex_transformed_upstream_json_response_to_axum_response(",
 ];
 const FORBIDDEN_HANDLER_PASSTHROUGH_RESPONSE_PROCESSING_MARKERS: &[&str] = &[
-    "response_processor::process_response",
+    "engine::response_pipeline::process_response",
     "process_response(",
     "CLAUDE_PARSER_CONFIG",
     "CODEX_PARSER_CONFIG",
@@ -5591,10 +5591,30 @@ fn production_handlers_delegate_management_auth_decisions_to_adapter() {
 }
 
 #[test]
-fn response_processor_delegates_usage_provider_projection_to_adapter() {
+fn production_proxy_response_processor_legacy_module_is_reexport_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/response_processor.rs");
     let source = fs::read_to_string(&path).expect("read response_processor.rs");
+    let production_code: Vec<&str> = production_lines(&source)
+        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert_eq!(
+        production_code,
+        vec![
+            "#[allow(unused_imports)]",
+            "pub(crate) use super::engine::response_pipeline::*;",
+        ],
+        "legacy proxy/response_processor.rs must remain a re-export shim after engine/response_pipeline.rs split"
+    );
+}
+
+#[test]
+fn response_processor_delegates_usage_provider_projection_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -5602,7 +5622,7 @@ fn response_processor_delegates_usage_provider_projection_to_adapter() {
         for marker in FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/response_processor.rs:{} contains usage provider projection marker `{}`",
+                    "src/proxy/engine/response_pipeline.rs:{} contains usage provider projection marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5620,8 +5640,8 @@ fn response_processor_delegates_usage_provider_projection_to_adapter() {
 #[test]
 fn response_processor_delegates_stream_orchestration_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/response_processor.rs");
-    let source = fs::read_to_string(&path).expect("read response_processor.rs");
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -5629,7 +5649,7 @@ fn response_processor_delegates_stream_orchestration_to_adapter() {
         for marker in FORBIDDEN_RESPONSE_PROCESSOR_STREAM_ORCHESTRATION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/response_processor.rs:{} contains stream orchestration marker `{}`",
+                    "src/proxy/engine/response_pipeline.rs:{} contains stream orchestration marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5647,8 +5667,8 @@ fn response_processor_delegates_stream_orchestration_to_adapter() {
 #[test]
 fn response_processor_delegates_body_decode_projection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/response_processor.rs");
-    let source = fs::read_to_string(&path).expect("read response_processor.rs");
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -5656,7 +5676,7 @@ fn response_processor_delegates_body_decode_projection_to_adapter() {
         for marker in FORBIDDEN_RESPONSE_PROCESSOR_BODY_DECODE_PROJECTION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/response_processor.rs:{} contains body decode projection marker `{}`",
+                    "src/proxy/engine/response_pipeline.rs:{} contains body decode projection marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5674,8 +5694,8 @@ fn response_processor_delegates_body_decode_projection_to_adapter() {
 #[test]
 fn response_processor_delegates_response_log_projection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/response_processor.rs");
-    let source = fs::read_to_string(&path).expect("read response_processor.rs");
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -5686,7 +5706,7 @@ fn response_processor_delegates_response_log_projection_to_adapter() {
         for marker in markers {
             if code.contains(*marker) {
                 violations.push(format!(
-                    "src/proxy/response_processor.rs:{} contains response log projection marker `{}`",
+                    "src/proxy/engine/response_pipeline.rs:{} contains response log projection marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5759,8 +5779,8 @@ fn response_pipeline_delegates_axum_build_context_to_adapter() {
     let files = [
         ("src/proxy/transport/http/handlers.rs", "read handlers.rs"),
         (
-            "src/proxy/response_processor.rs",
-            "read response_processor.rs",
+            "src/proxy/engine/response_pipeline.rs",
+            "read engine/response_pipeline.rs",
         ),
     ];
 
@@ -7625,8 +7645,8 @@ fn handlers_delegate_transformed_usage_policy_to_adapter() {
 #[test]
 fn response_processor_delegates_response_construction_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/response_processor.rs");
-    let source = fs::read_to_string(&path).expect("read response_processor.rs");
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -7634,7 +7654,7 @@ fn response_processor_delegates_response_construction_to_adapter() {
         for marker in FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_CONSTRUCTION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/response_processor.rs:{} contains response construction marker `{}`",
+                    "src/proxy/engine/response_pipeline.rs:{} contains response construction marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -7937,8 +7957,8 @@ fn response_pipeline_uses_core_sse_header_decision() {
     let hyper_client = fs::read_to_string(manifest_dir.join("src/proxy/hyper_client.rs"))
         .expect("read hyper_client.rs");
     let response_processor =
-        fs::read_to_string(manifest_dir.join("src/proxy/response_processor.rs"))
-            .expect("read response_processor.rs");
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/response_pipeline.rs"))
+            .expect("read engine/response_pipeline.rs");
     let adapter = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
 
@@ -14589,7 +14609,7 @@ fn production_proxy_state_imports_use_adapter_path() {
         "src/proxy/auth_adapter.rs",
         "src/proxy/engine/context.rs",
         "src/proxy/transport/http/handlers.rs",
-        "src/proxy/response_processor.rs",
+        "src/proxy/engine/response_pipeline.rs",
         "src/proxy/transport/http/server.rs",
     ];
 

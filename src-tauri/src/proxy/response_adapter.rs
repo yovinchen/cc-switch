@@ -1,5 +1,6 @@
 use super::{
     engine::context::RequestContext,
+    engine::response_pipeline::process_response,
     error::ProxyError,
     error_mapper::{
         claude_response_transform_error_to_proxy_error,
@@ -11,7 +12,6 @@ use super::{
         response_build_error_to_proxy_error,
     },
     hyper_client::ProxyResponse,
-    response_processor::process_response,
 };
 use crate::app_config::AppType;
 use crate::provider::Provider;
