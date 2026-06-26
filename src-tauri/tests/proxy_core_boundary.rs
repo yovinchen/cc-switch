@@ -3158,14 +3158,22 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core_adapter() {
         "proxy_core_adapter should re-export, not own, the DB-backed channel-key runtime source"
     );
     assert!(
-        function.contains(".get_proxy_channel_key(")
-            && function.contains("select_enabled_proxy_channel_key_runtime_candidate(")
+        function.contains(".list_proxy_channel_key_runtime_candidates(")
+            && function.contains("select_proxy_channel_key_runtime_candidate(")
             && !function.contains(".key_value"),
-        "channel key runtime source must load raw DB key records, delegate enabled-key selection to core, and return the selected runtime candidate"
+        "channel key runtime source must load runtime DB key records, delegate key-ref/enabled selection to core, and return the selected runtime candidate"
+    );
+    assert!(
+        !function.contains(".get_proxy_channel_key("),
+        "channel key runtime source must not perform exact-key DB lookup before core candidate selection"
     );
     assert!(
         !function.contains(".get_enabled_proxy_channel_key("),
         "channel key runtime source must not rely on the DAO test convenience selector"
+    );
+    assert!(
+        dao_source.contains("pub(crate) fn list_proxy_channel_key_runtime_candidates"),
+        "DAO should expose a runtime-only channel key candidate list separate from management key listing"
     );
     assert!(
         dao_source.contains("#[cfg(test)]\n    pub(crate) fn get_enabled_proxy_channel_key"),
@@ -11770,8 +11778,9 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     );
     assert!(
         core_ports_source.contains("fn load_channel_key_candidate(")
-            && core_ports_source.contains("ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>>"),
-        "ChannelKeyRuntimeSource should return the selected runtime candidate, not only the key value"
+            && core_ports_source.contains("ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>>")
+            && core_ports_source.contains("pub fn select_channel_key_runtime_candidate"),
+        "ChannelKeyRuntimeSource should return the selected runtime candidate and core should own key-ref candidate selection"
     );
     assert!(
         services_trait.contains("channel_key_runtime_source("),
@@ -11819,10 +11828,10 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "adapter must not retain test-only DB auth-profile convenience wrappers after source injection"
     );
     assert!(
-        runtime_source_lookup.contains(".get_proxy_channel_key(")
-            && runtime_source_lookup.contains("select_enabled_proxy_channel_key_runtime_candidate(")
+        runtime_source_lookup.contains(".list_proxy_channel_key_runtime_candidates(")
+            && runtime_source_lookup.contains("select_proxy_channel_key_runtime_candidate(")
             && !runtime_source_lookup.contains(".key_value"),
-        "CC Switch channel key runtime lookup helper should own raw DB lookup, core selection, and preserve selected candidate metadata"
+        "CC Switch channel key runtime lookup helper should own runtime DB candidate loading, core key-ref selection, and preserve selected candidate metadata"
     );
     assert!(
         runtime_source.contains("impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource")

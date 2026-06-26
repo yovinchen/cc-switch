@@ -5997,6 +5997,25 @@ where
         })
 }
 
+pub fn select_channel_key_runtime_candidate<I>(
+    candidates: I,
+    key_ref: &str,
+) -> Option<ChannelKeyRuntimeCandidate>
+where
+    I: IntoIterator<Item = ChannelKeyRuntimeCandidate>,
+{
+    let key_ref = key_ref.trim();
+    if key_ref.is_empty() {
+        return None;
+    }
+
+    select_enabled_channel_key_runtime_candidate(
+        candidates
+            .into_iter()
+            .filter(|candidate| candidate.key_ref == key_ref),
+    )
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ChannelKeyRecordResponse<T> {
@@ -6389,7 +6408,8 @@ mod tests {
         remove_codex_takeover_auth_placeholder_if_present,
         remove_gemini_common_config_from_settings, remove_gemini_takeover_env_fields_if_present,
         required_provider_base_url, sanitize_claude_settings_for_live,
-        select_enabled_channel_key_runtime_candidate, serialize_gemini_env_file,
+        select_channel_key_runtime_candidate, select_enabled_channel_key_runtime_candidate,
+        serialize_gemini_env_file,
         should_emit_proxy_official_warning_for_provider_category,
         should_reapply_codex_official_live_for_provider_category,
         should_restore_codex_provider_token_for_backfill_from_parts,
@@ -11286,6 +11306,49 @@ GEMINI_API_KEY=sk-test123
         assert_eq!(selected.priority, 10);
         assert_eq!(selected.weight, 80);
         assert_eq!(selected.last_failure_at, Some(1_771_000_003));
+    }
+
+    #[test]
+    fn channel_key_runtime_candidate_selection_filters_requested_key_ref_first() {
+        fn candidate(
+            key_ref: &str,
+            key_value: &str,
+            status: &str,
+            priority: i64,
+            weight: u32,
+        ) -> super::ChannelKeyRuntimeCandidate {
+            channel_key_runtime_candidate_from_input(ChannelKeyRuntimeCandidateInput {
+                channel_id: "ch-1".to_string(),
+                key_ref: key_ref.to_string(),
+                key_value: key_value.to_string(),
+                status: status.to_string(),
+                priority,
+                weight,
+                last_failure_at: None,
+            })
+        }
+
+        let selected = select_channel_key_runtime_candidate(
+            vec![
+                candidate("backup", "sk-backup", "enabled", 100, 100),
+                candidate("primary", "sk-primary-disabled", "disabled", 200, 100),
+                candidate("primary", "sk-primary", "enabled", 10, 20),
+            ],
+            "primary",
+        )
+        .expect("selected requested key candidate");
+
+        assert_eq!(selected.key_ref, "primary");
+        assert_eq!(selected.key_value, "sk-primary");
+        assert_eq!(selected.priority, 10);
+        assert!(
+            select_channel_key_runtime_candidate(
+                vec![candidate("backup", "sk-backup", "enabled", 100, 100)],
+                "missing",
+            )
+            .is_none(),
+            "keys with a different key_ref should not satisfy the requested runtime ref"
+        );
     }
 
     #[test]

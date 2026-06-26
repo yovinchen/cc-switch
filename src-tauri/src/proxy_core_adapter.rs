@@ -2272,10 +2272,12 @@ pub(crate) type ChannelModelRecordInput =
     crate::proxy_core::api::management::ChannelModelRecordInput;
 pub(crate) type ChannelRecordInput = crate::proxy_core::api::management::ChannelRecordInput;
 
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::management::select_enabled_channel_key_runtime_candidate as core_select_enabled_channel_key_runtime_candidate;
 pub(crate) use crate::proxy_core::api::management::{
     channel_key_record_from_input, channel_key_runtime_candidate_from_input,
     channel_model_record_from_input, channel_record_from_input,
-    select_enabled_channel_key_runtime_candidate as core_select_enabled_channel_key_runtime_candidate,
+    select_channel_key_runtime_candidate as core_select_channel_key_runtime_candidate,
 };
 
 pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;

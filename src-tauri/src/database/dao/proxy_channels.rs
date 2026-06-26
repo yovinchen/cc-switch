@@ -571,6 +571,20 @@ impl Database {
         Ok(Some(list_proxy_channel_keys_on_conn(&conn, channel_id)?))
     }
 
+    pub(crate) fn list_proxy_channel_key_runtime_candidates(
+        &self,
+        channel_id: &str,
+    ) -> Result<Option<Vec<ProxyChannelKeyRecord>>, AppError> {
+        let conn = lock_conn!(self.conn);
+        if get_proxy_channel_on_conn(&conn, channel_id)?.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(list_proxy_channel_key_runtime_candidates_on_conn(
+            &conn, channel_id,
+        )?))
+    }
+
+    #[cfg(test)]
     pub(crate) fn get_proxy_channel_key(
         &self,
         channel_id: &str,
@@ -831,6 +845,37 @@ fn list_proxy_channel_keys_on_conn(
                 priority: row.get(3)?,
                 weight: row.get::<_, i64>(4)?.max(0) as u32,
                 last_failure_at: row.get(5)?,
+            })
+        })
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| AppError::Database(e.to_string()))
+}
+
+fn list_proxy_channel_key_runtime_candidates_on_conn(
+    conn: &Connection,
+    channel_id: &str,
+) -> Result<Vec<ProxyChannelKeyRecord>, AppError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT channel_id, key_ref, key_value, status, priority, weight, last_failure_at
+             FROM proxy_channel_keys
+             WHERE channel_id = ?1
+             ORDER BY priority DESC, weight DESC, key_ref ASC",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+    let rows = stmt
+        .query_map([channel_id], |row| {
+            Ok(ProxyChannelKeyRecord {
+                channel_id: row.get(0)?,
+                key_ref: row.get(1)?,
+                key_value: row.get(2)?,
+                status: row.get(3)?,
+                priority: row.get(4)?,
+                weight: row.get::<_, i64>(5)?.max(0) as u32,
+                last_failure_at: row.get(6)?,
             })
         })
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -1394,6 +1439,20 @@ mod tests {
         assert_eq!(listed[0].weight, 80);
         let listed_serialized = serde_json::to_value(&listed[0]).expect("serialize listed key");
         assert!(listed_serialized.get("keyValue").is_none());
+
+        let runtime_candidates = db
+            .list_proxy_channel_key_runtime_candidates(&created.id)
+            .expect("list runtime channel keys")
+            .expect("channel exists");
+        assert_eq!(runtime_candidates.len(), 1);
+        assert_eq!(runtime_candidates[0].key_ref, "primary");
+        assert_eq!(runtime_candidates[0].key_value, "sk-channel-secret");
+        let runtime_candidate_serialized =
+            serde_json::to_value(&runtime_candidates[0]).expect("serialize runtime candidate");
+        assert!(
+            runtime_candidate_serialized.get("keyValue").is_none(),
+            "runtime DB records should keep secret material in memory but not expose it through serde"
+        );
 
         let patched = db
             .update_proxy_channel_key(
