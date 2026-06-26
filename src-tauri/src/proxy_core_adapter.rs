@@ -32,10 +32,9 @@ use crate::proxy::transport::upstream::hyper_client::{OriginalHeaderCases, Proxy
 use crate::proxy::RequestForwarder;
 #[cfg(test)]
 use crate::proxy_core::api::domain::{ChannelHealthPolicy, ChannelOverrides, UpstreamEndpoint};
-use crate::proxy_core::api::domain::{
-    ChannelSpecInput, ModelRouteInput, ProviderMetadata, ProviderMetadataInput,
-};
+use crate::proxy_core::api::domain::{ProviderMetadata, ProviderMetadataInput};
 pub(crate) use crate::proxy_core::api::management::ChannelReachabilityResult;
+pub(crate) use crate::proxy_core::api::management::channel_route_source_for_materialized_count;
 #[cfg(test)]
 use crate::proxy_core::api::routing::RouteResolveModelInput;
 use crate::proxy_core::api::routing::{
@@ -2885,13 +2884,15 @@ pub(crate) fn provider_from_opencode_live_config(
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::domain::channel_auth_profile_missing_provider_warning;
-pub(crate) use crate::proxy_core::api::domain::channel_spec_from_input;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::domain::{
     channel_auth_profile_action, ChannelAuthProfileAction,
 };
 pub(crate) use crate::proxy_core::api::domain::{
     channel_auth_profile_provider_application, ChannelAuthProfileProviderApplication,
+};
+pub(crate) use crate::proxy_core::api::domain::{
+    channel_spec_from_input, ChannelSpecInput, ModelRouteInput,
 };
 
 #[cfg(test)]
@@ -6926,109 +6927,12 @@ impl ProviderSource for CcSwitchProviderSource {
     }
 }
 
-pub(crate) fn proxy_channel_record_to_core_spec(channel: &ProxyChannelRecord) -> ChannelSpec {
-    channel_spec_from_input(ChannelSpecInput {
-        id: channel.id.clone(),
-        provider_id: channel.provider_id.clone(),
-        app_type: channel.app_type.clone(),
-        name: channel.name.clone(),
-        status: channel.status.clone(),
-        base_url: channel.base_url.clone(),
-        interface_kind: channel.interface_kind.clone(),
-        auth_profile_ref: channel.auth_profile_ref.clone(),
-        models: channel
-            .models
-            .iter()
-            .map(ProxyChannelModelRecord::to_proxy_core_model_route_input)
-            .collect(),
-        groups: channel.groups.clone(),
-        priority: channel.priority,
-        weight: channel.weight,
-        retry_policy: channel.retry_policy.clone(),
-        health_policy: channel.health_policy.clone(),
-        header_overrides: channel.header_overrides.clone(),
-        param_overrides: channel.param_overrides.clone(),
-        status_code_mapping: channel.status_code_mapping.clone(),
-        tags: channel.tags.clone(),
-        metadata: channel.metadata.clone(),
-        source_ref: channel.source_endpoint_url.clone(),
-        needs_review: channel.needs_review,
-        review_reasons: channel.review_reasons.clone(),
-    })
-}
+pub(crate) use crate::proxy::host::cc_switch::database_channel_source::channel_route_records_from_db_source;
 
-pub(crate) fn proxy_channel_records_to_core_specs_for_query(
-    channels: impl IntoIterator<Item = ProxyChannelRecord>,
-    query: &ChannelQuery<'_>,
-) -> Vec<ChannelSpec> {
-    channels
-        .into_iter()
-        .map(|channel| proxy_channel_record_to_core_spec(&channel))
-        .filter(|channel| channel_matches_query(channel, query))
-        .collect()
-}
-
-pub(crate) fn channel_specs_from_source(
-    channels: impl IntoIterator<Item = ProxyChannelRecord>,
-    query: &ChannelQuery<'_>,
-) -> Vec<ChannelSpec> {
-    proxy_channel_records_to_core_specs_for_query(channels, query)
-}
-
-pub(crate) fn channel_specs_from_source_lookup(
-    db: &Database,
-    query: ChannelQuery<'_>,
-) -> ProxyCoreResult<Vec<ChannelSpec>> {
-    let channels = if query.allow_legacy_projection {
-        channel_route_records_from_db_source(db, query.app.as_str())?.0
-    } else {
-        db.list_proxy_channels_for_app(query.app.as_str())
-            .map_err(|error| app_error("list materialized channels", error))?
-    };
-    Ok(channel_specs_from_source(channels, &query))
-}
-
-pub(crate) fn channel_spec_from_source(channel: Option<ProxyChannelRecord>) -> Option<ChannelSpec> {
-    channel.map(|channel| proxy_channel_record_to_core_spec(&channel))
-}
-
-pub(crate) fn channel_spec_from_source_lookup(
-    db: &Database,
-    channel_id: &str,
-) -> ProxyCoreResult<Option<ChannelSpec>> {
-    let channel = db
-        .get_proxy_channel(channel_id)
-        .map_err(|error| app_error("get channel", error))?;
-    Ok(channel_spec_from_source(channel))
-}
-
-pub(crate) fn channel_route_records_from_sources(
-    materialized_channels: Vec<ProxyChannelRecord>,
-    load_legacy_projection: impl FnOnce() -> Result<ProxyChannelMigrationPreview, AppError>,
-) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
-    let source = crate::proxy_core::api::management::channel_route_source_for_materialized_count(
-        materialized_channels.len(),
-    );
-    if source != ChannelRouteSource::LegacyProjection {
-        return Ok((materialized_channels, source));
-    }
-
-    let preview = load_legacy_projection()?;
-    Ok((preview.channels, source))
-}
-
-pub(crate) fn channel_route_records_from_db_source(
-    db: &Database,
-    app_type: &str,
-) -> ProxyCoreResult<(Vec<ProxyChannelRecord>, ChannelRouteSource)> {
-    let channels = db
-        .list_proxy_channels_for_app(app_type)
-        .map_err(|error| app_error("list channel route records", error))?;
-    channel_route_records_from_sources(channels, || {
-        db.preview_legacy_proxy_channel_migration(app_type)
-    })
-    .map_err(|error| app_error("load channel route records", error))
-}
+#[cfg(test)]
+pub(crate) use crate::proxy::host::cc_switch::database_channel_source::{
+    channel_route_records_from_sources, channel_spec_from_source, proxy_channel_record_to_core_spec,
+};
 
 #[cfg(test)]
 pub(crate) fn proxy_channel_record_to_route_resolve_channel_input(
@@ -12941,19 +12845,6 @@ pub(crate) fn apply_claude_takeover_fields_for_provider(
             is_github_copilot: provider_is_github_copilot(provider),
         },
     );
-}
-
-impl ProxyChannelModelRecord {
-    fn to_proxy_core_model_route_input(&self) -> ModelRouteInput {
-        ModelRouteInput {
-            public_model: self.public_model.clone(),
-            upstream_model: self.upstream_model.clone(),
-            capabilities: self.capabilities.clone(),
-            pricing_model: self.pricing_model.clone(),
-            request_overrides: self.request_overrides.clone(),
-            response_overrides: self.response_overrides.clone(),
-        }
-    }
 }
 
 impl ProxyChannelModelRecord {
