@@ -11356,13 +11356,16 @@ fn production_forwarder_uses_managed_auth_runtime_source_resource() {
     let source = fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/forwarder_auth_source.rs");
+    let auth_source =
+        fs::read_to_string(&auth_source_path).expect("read forwarder_auth_source.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
         "impl RequestForwarder",
     );
     let auth_source_slice = function_slice(
-        &adapter_source,
+        &auth_source,
         "struct CcSwitchForwarderAuthSource",
         "impl ForwarderAuthSource for CcSwitchForwarderAuthSource",
     );
@@ -12079,6 +12082,9 @@ fn production_forwarder_uses_auth_source_resource() {
 
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/forwarder_auth_source.rs");
+    let auth_source =
+        fs::read_to_string(&auth_source_path).expect("read forwarder_auth_source.rs");
     assert!(
         adapter_source.contains(
             "type ForwarderAuthHeaders = crate::proxy_core::api::transport::ForwarderAuthHeaders"
@@ -12091,17 +12097,17 @@ fn production_forwarder_uses_auth_source_resource() {
         "pub(crate) trait ForwarderAuthSource",
     );
     let auth_source_slice = function_slice(
-        &adapter_source,
+        &auth_source,
         "struct CcSwitchForwarderAuthSource",
         "impl ForwarderAuthSource for CcSwitchForwarderAuthSource",
     );
     let auth_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderAuthSource",
-        "struct CcSwitchForwarderAuthSource",
+        "pub(crate) use crate::proxy::host::cc_switch::forwarder_auth_source::",
     );
     let auth_impl_slice = function_slice(
-        &adapter_source,
+        &auth_source,
         "impl ForwarderAuthSource for CcSwitchForwarderAuthSource",
         "pub(crate) fn forwarder_auth_source_from_managed_account_runtime_source",
     );
@@ -12137,6 +12143,11 @@ fn production_forwarder_uses_auth_source_resource() {
         !auth_trait_slice.contains("prepare_copilot_auth_optimization"),
         "ForwarderAuthSource trait must not expose direct Copilot auth override helper"
     );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source")
+            && !adapter_source.contains("struct CcSwitchForwarderAuthSource"),
+        "proxy_core_adapter should re-export the forwarder auth source factory without owning the implementation"
+    );
     let auth_source_forbidden_markers = [
         "forwarder_provider_auth_info(",
         "forwarder_provider_auth_headers(",
@@ -12147,7 +12158,7 @@ fn production_forwarder_uses_auth_source_resource() {
         for marker in auth_source_forbidden_markers {
             if code.contains(marker) {
                 auth_source_violations.push(format!(
-                    "src/proxy_core_adapter.rs ForwarderAuthSource impl:{} contains direct provider adapter auth marker `{}`",
+                    "src/proxy/host/cc_switch/forwarder_auth_source.rs ForwarderAuthSource impl:{} contains direct provider adapter auth marker `{}`",
                     line_index + 1,
                     marker
                 ));
