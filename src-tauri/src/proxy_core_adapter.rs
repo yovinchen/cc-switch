@@ -24,6 +24,7 @@ use crate::proxy::host::cc_switch::database_channel_source::CcSwitchChannelSourc
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
 pub(crate) use crate::proxy::host::cc_switch::management_auth_source::CcSwitchManagementAuthSource;
+pub(crate) use crate::proxy::host::cc_switch::model_catalog_provider::CcSwitchModelCatalogProvider;
 pub(crate) use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource;
 pub(crate) use crate::proxy::host::cc_switch::provider_router_channel_source::CcSwitchProviderRouterChannelSource;
 pub(crate) use crate::proxy::host::cc_switch::provider_router_config_source::CcSwitchProviderRouterConfigSource;
@@ -6182,44 +6183,6 @@ pub(crate) fn client_model_catalog_from_app_source(app: &AppKind) -> ProxyCoreRe
             raw,
         ),
     )
-}
-
-#[derive(Clone)]
-pub(crate) struct CcSwitchModelCatalogProvider {
-    db: Arc<Database>,
-    router: Arc<ProviderRouter>,
-}
-
-impl CcSwitchModelCatalogProvider {
-    pub(crate) fn new(db: Arc<Database>, router: Arc<ProviderRouter>) -> Self {
-        Self { db, router }
-    }
-}
-
-impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
-    fn load_catalog<'a>(
-        &'a self,
-        app: &'a AppKind,
-        provider_id: &'a str,
-    ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
-        Box::pin(async move { provider_model_catalog_from_db_source(&self.db, app, provider_id) })
-    }
-
-    fn load_client_catalog<'a>(
-        &'a self,
-        app: &'a AppKind,
-    ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
-        Box::pin(async move { client_model_catalog_from_app_source(app) })
-    }
-
-    fn load_claude_desktop_model_routes<'a>(
-        &'a self,
-        app: &'a AppKind,
-    ) -> BoxFuture<'a, ProxyCoreResult<Vec<ClaudeDesktopModelRouteInput>>> {
-        Box::pin(async move {
-            claude_desktop_model_routes_from_router_source(&self.db, &self.router, app).await
-        })
-    }
 }
 
 pub(crate) fn codex_client_model_catalog_raw_from_active_config() -> Value {

@@ -19,6 +19,7 @@ pub(crate) mod global_http_client;
 pub(crate) mod live_takeover;
 pub(crate) mod management_auth_source;
 pub(crate) mod managed_account_runtime_source;
+pub(crate) mod model_catalog_provider;
 pub(crate) mod provider_adapter_context;
 pub(crate) mod provider_router_channel_source;
 pub(crate) mod provider_router_config_source;
