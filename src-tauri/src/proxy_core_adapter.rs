@@ -9209,6 +9209,27 @@ pub(crate) fn decode_raw_proxy_response_body(
     }
 }
 
+/// 读取非流式响应体并在需要时解压，确保 headers 与返回 body 一致。
+pub(crate) async fn read_decoded_proxy_response_body(
+    response: ProxyResponse,
+    tag: &str,
+    body_timeout: std::time::Duration,
+) -> Result<DecodedProxyResponseBody, ProxyError> {
+    let headers = response.headers().clone();
+    let status = response.status();
+    let raw_bytes = if body_timeout.is_zero() {
+        response.bytes().await?
+    } else {
+        tokio::time::timeout(body_timeout, response.bytes())
+            .await
+            .map_err(|_| ProxyError::Timeout(non_streaming_body_timeout_message(body_timeout)))??
+    };
+
+    Ok(decode_raw_proxy_response_body(
+        headers, status, raw_bytes, tag,
+    ))
+}
+
 pub(crate) fn log_streaming_proxy_response_received(
     headers: &HeaderMap,
     status: http::StatusCode,

@@ -1430,6 +1430,12 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SSE_PASSTHROUGH_POLICY_MARKERS: &[&str] = &[
     "已接收上游流式首包",
 ];
 const FORBIDDEN_RESPONSE_PROCESSOR_BODY_DECODE_PROJECTION_MARKERS: &[&str] = &[
+    "read_decoded_body(",
+    "decode_raw_proxy_response_body(",
+    "response.bytes().await",
+    "response.bytes()",
+    "tokio::time::timeout(",
+    "non_streaming_body_timeout_message(",
     "已接收上游响应体",
     "decode_response_body(",
     "ResponseBodyDecodeLogLevel::",

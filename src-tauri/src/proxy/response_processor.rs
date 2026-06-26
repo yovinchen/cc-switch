@@ -7,46 +7,19 @@ use super::{
     response_adapter::proxy_core_response_to_axum_response,
 };
 use crate::proxy_core_adapter::{
-    create_logged_passthrough_stream, decode_raw_proxy_response_body,
-    log_non_streaming_proxy_response_body, log_streaming_proxy_response_received,
-    non_streaming_body_timeout_message, passthrough_bytes_proxy_response,
+    create_logged_passthrough_stream, log_non_streaming_proxy_response_body,
+    log_streaming_proxy_response_received, passthrough_bytes_proxy_response,
     passthrough_stream_proxy_response, passthrough_streaming_usage_collector,
-    record_non_streaming_response_usage, response_headers_indicate_sse, ActiveConnectionGuard,
-    AxumResponseBuildErrorContext, ProxyState, UsageParserConfig,
+    read_decoded_proxy_response_body, record_non_streaming_response_usage,
+    response_headers_indicate_sse, ActiveConnectionGuard, AxumResponseBuildErrorContext,
+    ProxyState, UsageParserConfig,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     provider_router_from_database, success_usage_record_from_app_type_with_request_id_fallback,
     ProviderKind, TokenUsage,
 };
-use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
-use bytes::Bytes;
-use std::time::Duration;
-
-/// 读取响应体并在需要时解压，确保 headers 与返回 body 一致。
-///
-/// `body_timeout`: 整包超时。当非零时用 `tokio::time::timeout` 包住 `.bytes()` 调用，
-/// 防止上游发完响应头后卡住 body 导致请求永远挂住。
-/// 传入 `Duration::ZERO` 表示不启用超时（故障转移关闭时）。
-pub(crate) async fn read_decoded_body(
-    response: ProxyResponse,
-    tag: &str,
-    body_timeout: Duration,
-) -> Result<(HeaderMap, http::StatusCode, Bytes), ProxyError> {
-    let headers = response.headers().clone();
-    let status = response.status();
-    let raw_bytes = if body_timeout.is_zero() {
-        response.bytes().await?
-    } else {
-        tokio::time::timeout(body_timeout, response.bytes())
-            .await
-            .map_err(|_| ProxyError::Timeout(non_streaming_body_timeout_message(body_timeout)))??
-    };
-
-    let decoded = decode_raw_proxy_response_body(headers, status, raw_bytes, tag);
-    Ok((decoded.headers, decoded.status, decoded.body))
-}
 
 // ============================================================================
 // 公共接口
@@ -108,8 +81,11 @@ pub async fn handle_non_streaming(
     // guard 在函数 scope 内持有，整包响应读取完成后随函数返回一并 drop
     _connection_guard: Option<ActiveConnectionGuard>,
 ) -> Result<Response, ProxyError> {
-    let (response_headers, status, body_bytes) =
-        read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
+    let decoded =
+        read_decoded_proxy_response_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
+    let response_headers = decoded.headers;
+    let status = decoded.status;
+    let body_bytes = decoded.body;
 
     log_non_streaming_proxy_response_body(&body_bytes, ctx.tag);
 

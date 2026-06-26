@@ -25,7 +25,7 @@ use super::{
         codex_transformed_sse_response_to_axum_response, collect_axum_request_body,
         proxy_core_response_to_proxy_response, proxy_event_envelope_to_axum_sse_event,
     },
-    response_processor::{process_response, read_decoded_body},
+    response_processor::process_response,
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
@@ -36,26 +36,26 @@ use crate::proxy_core_adapter::{
     parse_json_proxy_request_body_or_null, provider_claude_transform_response_for_api_format,
     provider_claude_transform_sse_for_api_format, provider_claude_transform_streaming_decision,
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
-    record_claude_transformed_response_usage, record_codex_auto_transformed_response_usage,
-    record_forward_core_error_usage, strip_endpoint_prefix,
-    transform_codex_chat_response_with_history, transform_codex_chat_sse_with_history,
-    ActiveConnectionGuard, AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse,
-    AppKind, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
-    ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord,
-    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
-    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
-    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
-    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CodexToolContext,
-    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
-    HealthCheckResponse, InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest,
-    ProviderListResponse, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-    ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyState, ProxyStatusRequest,
-    ProxyStatusResponse, RoutableModelList, RouteGroupListResponse, RouteResolveManagementRequest,
-    RouteResolveRequest, RouteResolveResponse, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
-    GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    read_decoded_proxy_response_body, record_claude_transformed_response_usage,
+    record_codex_auto_transformed_response_usage, record_forward_core_error_usage,
+    strip_endpoint_prefix, transform_codex_chat_response_with_history,
+    transform_codex_chat_sse_with_history, ActiveConnectionGuard, AppChannelListQuery,
+    AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest, AppListResponse,
+    AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse, ChannelCreateRequest,
+    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
+    ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
+    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
+    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
+    CodexToolContext, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest,
+    HealthCheckRequest, HealthCheckResponse, InterfaceKind, JsonProxyRequestInput,
+    ManagementAppPathRequest, ProviderListResponse, ProxyChannelKeyPatchRequest,
+    ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyState,
+    ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
+    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse, CLAUDE_PARSER_CONFIG,
+    CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -707,8 +707,10 @@ async fn handle_claude_transform(
     }
 
     // 非流式响应转换 (OpenAI/Responses → Anthropic)
-    let (response_headers, _status, body_bytes) =
-        read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
+    let decoded =
+        read_decoded_proxy_response_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
+    let response_headers = decoded.headers;
+    let body_bytes = decoded.body;
 
     let upstream_response = parse_claude_transform_upstream_json_or_unlabeled_sse(
         body_bytes.as_ref(),
@@ -960,8 +962,11 @@ async fn handle_codex_chat_to_responses_transform(
     }
 
     let _connection_guard = connection_guard;
-    let (response_headers, status, body_bytes) =
-        read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
+    let decoded =
+        read_decoded_proxy_response_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
+    let response_headers = decoded.headers;
+    let status = decoded.status;
+    let body_bytes = decoded.body;
     // 与 Claude 侧 handle_claude_transform 对称的兜底嗅探（#2234）：
     // 上游对 stream:false 返回未标记 Content-Type 的 SSE 体时按 Chat SSE 聚合。
     let chat_response = parse_codex_chat_upstream_json_or_unlabeled_sse(
@@ -993,8 +998,10 @@ async fn handle_codex_chat_error_response(
     ctx: &RequestContext,
     status: axum::http::StatusCode,
 ) -> Result<axum::response::Response, ProxyError> {
-    let (response_headers, _status, body_bytes) =
-        read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
+    let decoded =
+        read_decoded_proxy_response_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
+    let response_headers = decoded.headers;
+    let body_bytes = decoded.body;
 
     codex_chat_error_response_to_axum_response(status, response_headers, &body_bytes)
 }
