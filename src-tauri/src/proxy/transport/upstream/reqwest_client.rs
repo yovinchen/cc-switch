@@ -19,7 +19,7 @@ pub(crate) async fn send_request(
         is_socks_proxy
     );
 
-    let client = crate::proxy::http_client::get();
+    let client = crate::proxy::host::cc_switch::global_http_client::get();
     let mut outbound = client.request(request.method, &request.url);
     if let Some(request_timeout) = reqwest_request_timeout {
         outbound = outbound.timeout(request_timeout);

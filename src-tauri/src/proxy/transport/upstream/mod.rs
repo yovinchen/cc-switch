@@ -11,7 +11,8 @@ use crate::proxy_core_adapter::{
 pub(crate) async fn send_request(
     request: ForwarderUpstreamTransportRequest,
 ) -> Result<ProxyResponse, ProxyError> {
-    let upstream_proxy_url: Option<String> = crate::proxy::http_client::get_current_proxy_url();
+    let upstream_proxy_url: Option<String> =
+        crate::proxy::host::cc_switch::global_http_client::get_current_proxy_url();
     let is_socks_proxy = is_socks_proxy_url(upstream_proxy_url.as_deref());
     let send_policy = resolve_upstream_send_policy(UpstreamSendPolicyInput {
         is_socks_proxy,

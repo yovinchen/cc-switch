@@ -23,7 +23,7 @@ impl OpenAiCompatibleModelsTransport for ReqwestModelFetchTransport {
     ) -> BoxFuture<'a, Result<ModelFetchHttpResponse, String>> {
         Box::pin(async move {
             log::debug!("[ModelFetch] Trying endpoint: {}", request_plan.url);
-            let client = crate::proxy::http_client::get();
+            let client = crate::proxy::host::cc_switch::global_http_client::get();
             let mut request = client
                 .get(request_plan.url)
                 .header(
@@ -53,7 +53,7 @@ impl CodexOAuthModelsTransport for ReqwestModelFetchTransport {
         request_plan: CodexOAuthModelsRequest<'a>,
     ) -> BoxFuture<'a, Result<ModelFetchHttpResponse, String>> {
         Box::pin(async move {
-            let client = crate::proxy::http_client::get();
+            let client = crate::proxy::host::cc_switch::global_http_client::get();
             let response = client
                 .get(request_plan.url)
                 .query(&[request_plan.client_version_query])

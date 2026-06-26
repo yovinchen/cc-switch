@@ -2,7 +2,7 @@
 //!
 //! 提供获取、设置和测试全局代理的 Tauri 命令。
 
-use crate::proxy::http_client;
+use crate::proxy::host::cc_switch::global_http_client as http_client;
 use crate::proxy_core_adapter::mask_url_for_log;
 use crate::store::AppState;
 use serde::Serialize;

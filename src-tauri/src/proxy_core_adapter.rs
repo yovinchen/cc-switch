@@ -1049,7 +1049,7 @@ pub(crate) async fn stop_proxy_http_server(
 }
 
 pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
-    crate::proxy::http_client::set_proxy_port(port);
+    crate::proxy::host::cc_switch::global_http_client::set_proxy_port(port);
 }
 
 pub(crate) type ProxyTakeoverStatus = crate::proxy_core::api::ports::ProxyTakeoverStatus;

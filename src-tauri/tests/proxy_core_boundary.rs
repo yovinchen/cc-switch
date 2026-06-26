@@ -4864,8 +4864,8 @@ fn proxy_core_adapter_delegates_generic_error_construction_to_core() {
 #[test]
 fn production_http_client_delegates_explicit_proxy_url_validation_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/http_client.rs");
-    let source = fs::read_to_string(&path).expect("read http_client.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/global_http_client.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/global_http_client.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -4873,7 +4873,7 @@ fn production_http_client_delegates_explicit_proxy_url_validation_to_adapter() {
         for marker in FORBIDDEN_HTTP_CLIENT_PROXY_URL_VALIDATION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/http_client.rs:{} contains explicit proxy URL validation marker `{}`",
+                    "src/proxy/host/cc_switch/global_http_client.rs:{} contains explicit proxy URL validation marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -4891,14 +4891,14 @@ fn production_http_client_delegates_explicit_proxy_url_validation_to_adapter() {
 #[test]
 fn production_http_client_excludes_legacy_update_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/http_client.rs");
-    let source = fs::read_to_string(&path).expect("read http_client.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/global_http_client.rs");
+    let source = fs::read_to_string(&path).expect("read host/cc_switch/global_http_client.rs");
 
     let mut violations = Vec::new();
     for marker in ["pub fn update_proxy", "pub fn is_proxy_enabled"] {
         if source.contains(marker) {
             violations.push(format!(
-                "src/proxy/http_client.rs keeps legacy global proxy facade `{marker}`"
+                "src/proxy/host/cc_switch/global_http_client.rs keeps legacy global proxy facade `{marker}`"
             ));
         }
     }
@@ -4907,7 +4907,7 @@ fn production_http_client_excludes_legacy_update_facades() {
         let code = line.split("//").next().unwrap_or_default();
         if code.contains("#[allow(dead_code)]") {
             violations.push(format!(
-                "src/proxy/http_client.rs:{} keeps dead-code allowance",
+                "src/proxy/host/cc_switch/global_http_client.rs:{} keeps dead-code allowance",
                 line_index + 1
             ));
         }
@@ -4917,6 +4917,26 @@ fn production_http_client_excludes_legacy_update_facades() {
         violations.is_empty(),
         "production HTTP client must expose only active global proxy lifecycle operations:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_http_client_legacy_module_is_reexport_only() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/http_client.rs");
+    let source = fs::read_to_string(&path).expect("read http_client.rs");
+    let production_code: Vec<&str> = production_lines(&source)
+        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert_eq!(
+        production_code,
+        vec![
+            "#[allow(unused_imports)]",
+            "pub use super::host::cc_switch::global_http_client::*;",
+        ],
+        "legacy proxy/http_client.rs must remain a re-export shim after host global HTTP client split"
     );
 }
 
@@ -12941,6 +12961,8 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
     let forbidden_adapter_markers = [
         "crate::proxy::http_client::get_current_proxy_url(",
         "crate::proxy::http_client::get(",
+        "crate::proxy::host::cc_switch::global_http_client::get_current_proxy_url(",
+        "crate::proxy::host::cc_switch::global_http_client::get(",
         "resolve_upstream_send_policy(",
         "UpstreamSendPolicyInput",
         "UpstreamTransportKind::",
@@ -12974,7 +12996,7 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
         "transport/upstream/mod.rs must own upstream transport policy dispatch"
     );
     assert!(
-        reqwest_source.contains("crate::proxy::http_client::get()")
+        reqwest_source.contains("crate::proxy::host::cc_switch::global_http_client::get()")
             && reqwest_source.contains("reqwest_send_error_to_proxy_error"),
         "transport/upstream/reqwest_client.rs must own pooled reqwest upstream send execution"
     );

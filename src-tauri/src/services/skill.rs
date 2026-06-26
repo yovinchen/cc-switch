@@ -2243,7 +2243,7 @@ impl SkillService {
 
     /// 下载并解压 ZIP
     async fn download_and_extract(&self, url: &str, dest: &Path) -> Result<()> {
-        let client = crate::proxy::http_client::get();
+        let client = crate::proxy::host::cc_switch::global_http_client::get();
         let response = client.get(url).send().await?;
         if !response.status().is_success() {
             let status = response.status().as_u16().to_string();
@@ -2803,7 +2803,7 @@ impl SkillService {
         limit: usize,
         offset: usize,
     ) -> Result<SkillsShSearchResult> {
-        let client = crate::proxy::http_client::get();
+        let client = crate::proxy::host::cc_switch::global_http_client::get();
 
         let url = url::Url::parse_with_params(
             "https://skills.sh/api/search",
