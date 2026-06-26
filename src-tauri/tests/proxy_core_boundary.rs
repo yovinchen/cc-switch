@@ -3081,20 +3081,18 @@ fn proxy_core_adapter_uses_host_reachability_probe_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let services_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_services.rs");
+    let services_source = fs::read_to_string(&services_path).expect("read proxy_services.rs");
     let probe_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/channel_reachability_probe.rs");
     let probe_source =
         fs::read_to_string(&probe_source_path).expect("read channel_reachability_probe.rs");
     let services_struct = function_slice(
-        &adapter_source,
+        &services_source,
         "pub(crate) struct CcSwitchProxyServices",
         "impl<R> CcSwitchProxyServices",
     );
-    let services_impl = function_slice(
-        &adapter_source,
-        "impl<R> ProxyServices for CcSwitchProxyServices",
-        "pub(crate) trait HostForwardRuntime",
-    );
+    let services_impl = services_source.as_str();
 
     assert!(
         adapter_source.contains(
@@ -11008,16 +11006,14 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "pub trait ProxyServices",
         "pub trait ProxyConfigSource",
     );
+    let services_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_services.rs");
+    let services_source = fs::read_to_string(&services_path).expect("read proxy_services.rs");
     let services_struct = function_slice(
-        &source,
+        &services_source,
         "pub(crate) struct CcSwitchProxyServices",
         "impl<R> CcSwitchProxyServices",
     );
-    let services_impl = function_slice(
-        &source,
-        "impl<R> ProxyServices for CcSwitchProxyServices",
-        "pub(crate) trait HostForwardRuntime",
-    );
+    let services_impl = services_source.as_str();
     let runtime_source_lookup = function_slice(
         &runtime_source,
         "fn load_channel_key_value_from_database",
@@ -11221,6 +11217,28 @@ fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
             && adapter_source.contains("\nimpl ProxyState")
             && adapter_source.contains("ProxyEngine::new(self.proxy_core_services.clone())"),
         "proxy_core_adapter should re-export the state and keep the ProxyEngine construction boundary"
+    );
+}
+
+#[test]
+fn proxy_core_adapter_delegates_proxy_services_to_host_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let services_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_services.rs");
+    let services_source = fs::read_to_string(&services_path).expect("read proxy_services.rs");
+
+    assert!(
+        services_source.contains("pub(crate) struct CcSwitchProxyServices")
+            && services_source.contains("impl<R> ProxyServices for CcSwitchProxyServices"),
+        "CC Switch proxy service container should live in host/cc_switch/proxy_services.rs"
+    );
+    assert!(
+        adapter_source
+            .contains("pub(crate) use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices")
+            && !adapter_source.contains("pub(crate) struct CcSwitchProxyServices")
+            && !adapter_source.contains("impl<R> ProxyServices for CcSwitchProxyServices"),
+        "proxy_core_adapter should re-export, not own, the CC Switch proxy service container"
     );
 }
 
@@ -14812,15 +14830,11 @@ fn proxy_core_adapter_delegates_auth_provider_source_to_host_module() {
 #[test]
 fn production_proxy_services_excludes_test_constructor_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let services_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_services.rs");
+    let services_source = fs::read_to_string(&services_path).expect("read proxy_services.rs");
     let pipeline_path = manifest_dir.join("src/proxy/host/cc_switch/forward_pipeline.rs");
     let pipeline_source = fs::read_to_string(&pipeline_path).expect("read forward_pipeline.rs");
-    let services_slice = function_slice(
-        &source,
-        "pub(crate) struct CcSwitchProxyServices",
-        "impl<R> ProxyServices for CcSwitchProxyServices",
-    );
+    let services_slice = services_source.as_str();
     let lines: Vec<&str> = services_slice.lines().collect();
 
     let mut violations = Vec::new();
@@ -14841,7 +14855,7 @@ fn production_proxy_services_excludes_test_constructor_surface() {
                 .unwrap_or_default();
             if previous != "#[cfg(test)]" {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs CcSwitchProxyServices:{} keeps test service constructor in production: `{}`",
+                    "src/proxy/host/cc_switch/proxy_services.rs CcSwitchProxyServices:{} keeps test service constructor in production: `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -14853,23 +14867,25 @@ fn production_proxy_services_excludes_test_constructor_surface() {
         let code = line.split("//").next().unwrap_or_default();
         if code.contains("#[allow(dead_code)]") {
             violations.push(format!(
-                "src/proxy_core_adapter.rs service container:{} keeps dead-code allowance",
+                "src/proxy/host/cc_switch/proxy_services.rs service container:{} keeps dead-code allowance",
                 line_index + 1
             ));
         }
     }
 
-    if !source
+    if !services_source
         .contains("#[cfg(test)]\n#[derive(Clone, Default)]\nstruct DefaultRuntimeStatusSource;")
     {
         violations.push(
-            "src/proxy_core_adapter.rs keeps default runtime status source outside test cfg"
+            "src/proxy/host/cc_switch/proxy_services.rs keeps default runtime status source outside test cfg"
                 .to_string(),
         );
     }
-    if !source.contains("#[cfg(test)]\nimpl RuntimeStatusSource for DefaultRuntimeStatusSource") {
+    if !services_source
+        .contains("#[cfg(test)]\nimpl RuntimeStatusSource for DefaultRuntimeStatusSource")
+    {
         violations.push(
-            "src/proxy_core_adapter.rs keeps default runtime status source impl outside test cfg"
+            "src/proxy/host/cc_switch/proxy_services.rs keeps default runtime status source impl outside test cfg"
                 .to_string(),
         );
     }
@@ -16501,15 +16517,17 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let services_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_services.rs");
+    let services_source = fs::read_to_string(&services_path).expect("read proxy_services.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/database_channel_source.rs");
     let source = fs::read_to_string(&source_path)
         .expect("read host/cc_switch/database_channel_source.rs");
 
     assert!(
-        adapter_source.contains(
+        services_source.contains(
             "use crate::proxy::host::cc_switch::database_channel_source::CcSwitchChannelSource;"
         ),
-        "proxy_core_adapter should import the CC Switch channel source from the host database module"
+        "proxy_services should import the CC Switch channel source from the host database module"
     );
     assert!(
         !adapter_source.contains("struct CcSwitchChannelSource")

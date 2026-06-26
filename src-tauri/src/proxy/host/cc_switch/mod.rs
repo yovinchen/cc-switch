@@ -30,6 +30,7 @@ pub(crate) mod provider_router_provider_source;
 pub(crate) mod provider_router_sources;
 pub(crate) mod provider_source;
 pub(crate) mod proxy_runtime;
+pub(crate) mod proxy_services;
 pub(crate) mod proxy_state;
 pub(crate) mod runtime_status_source;
 pub(crate) mod route_policy_source;
