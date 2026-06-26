@@ -2148,8 +2148,6 @@ pub(crate) type ChannelRequestValidationError =
 pub(crate) type ChannelRouteSource = crate::proxy_core::api::management::ChannelRouteSource;
 pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecord;
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::management::ChannelReachabilityStatus;
-#[cfg(test)]
 use crate::proxy_core::api::management::StreamCheckResult;
 #[cfg(test)]
 pub(crate) type ChannelKeyRuntimeCandidate =
@@ -16780,6 +16778,8 @@ command = "latest-command"
 
     #[test]
     fn stream_check_adapter_preserves_reachability_fields() {
+        use crate::proxy_core::api::management::ChannelReachabilityStatus;
+
         let result = StreamCheckResult {
             status: ChannelReachabilityStatus::Degraded,
             success: true,

@@ -76,7 +76,6 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core_adapter::ChannelReachabilityStatus as HealthStatus;
     use serde_json::json;
 
     #[test]
@@ -115,7 +114,7 @@ mod tests {
     fn stream_check_log_status_uses_core_contract() {
         let db = Database::memory().expect("memory db");
         let result = StreamCheckResult {
-            status: HealthStatus::Degraded,
+            status: serde_json::from_value(json!("degraded")).expect("degraded status"),
             success: true,
             message: "Reachable".to_string(),
             response_time_ms: Some(6100),

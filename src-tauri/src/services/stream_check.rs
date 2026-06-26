@@ -202,7 +202,7 @@ impl StreamCheckService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core_adapter::ChannelReachabilityStatus as HealthStatus;
+    use crate::proxy_core::api::management::ChannelReachabilityStatus as HealthStatus;
 
     fn make_provider(settings_config: serde_json::Value) -> Provider {
         Provider::with_id(

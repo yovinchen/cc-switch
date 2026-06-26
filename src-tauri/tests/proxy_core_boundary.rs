@@ -212,6 +212,7 @@ const FORBIDDEN_SETTINGS_CONFIG_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
 const FORBIDDEN_STREAM_CHECK_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
     "type StreamCheckConfig = crate::proxy_core::api::management::StreamCheckConfig",
     "type StreamCheckResult = crate::proxy_core::api::management::StreamCheckResult",
+    "type ChannelReachabilityStatus = crate::proxy_core::api::management::ChannelReachabilityStatus",
     "pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult",
 ];
 const FORBIDDEN_GEMINI_AUTH_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
@@ -1309,6 +1310,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "opencode_settings_have_live_provider_fields as opencode_live_provider_fragment_has_provider_fields",
     "fn channel_health_reset_from_parts(",
     "fn channel_health_reset_from_plan(",
+    "pub(crate) use crate::proxy_core::api::management::ChannelReachabilityStatus",
     "fn stream_check_result_to_channel_reachability(",
     "fn channel_reachability_status_from_latency(",
     "fn should_retry_channel_reachability_failure(",
@@ -10734,8 +10736,8 @@ fn stream_check_service_owns_core_dto_reexports() {
     let service_path = manifest_dir.join("src/services/stream_check.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let service_source = fs::read_to_string(&service_path).expect("read stream_check.rs");
-    let required_reexport =
-        "pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};";
+    let required_reexports =
+        ["pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};"];
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&adapter_source) {
@@ -10763,7 +10765,7 @@ fn stream_check_service_owns_core_dto_reexports() {
         }
         let direct_core =
             code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
-        if direct_core && code.trim() != required_reexport {
+        if direct_core && !required_reexports.contains(&code.trim()) {
             violations.push(format!(
                 "src/services/stream_check.rs:{} contains non-stream-check direct proxy-core import `{}`",
                 line_index + 1,
@@ -10772,10 +10774,12 @@ fn stream_check_service_owns_core_dto_reexports() {
         }
     }
 
-    assert!(
-        service_source.contains(required_reexport),
-        "stream_check service must re-export public stream check DTOs directly from proxy_core"
-    );
+    for required_reexport in required_reexports {
+        assert!(
+            service_source.contains(required_reexport),
+            "stream_check service must re-export public stream check DTOs directly from proxy_core"
+        );
+    }
     assert!(
         violations.is_empty(),
         "stream_check public DTOs must bypass proxy_core_adapter aliases:\n{}",
