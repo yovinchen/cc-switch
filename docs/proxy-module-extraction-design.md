@@ -747,7 +747,7 @@
 729. channel test 管理路由的 preflight 规划已进入 `ProxyEngine::channel_test_response`：handler 不再读取 channel record、provider 或 stream-check 配置，也不再直接执行 reachability probe。
 730. channel delete/key delete 管理路由的 delete source 组装已新增 `proxy_core_adapter::channel_delete_source_from_deleted` / `channel_key_delete_source_from_deleted`：handler 不再直接调用 delete source DTO。
 731. channel health reset 管理路由的 reset source 组装已新增 `proxy_core_adapter::channel_health_reset_source_from_response`：handler 不再直接调用 `ChannelHealthResetSource`。
-732. health/status/app list 基础管理路由已继续收敛：health/status 直接调用 core request response helper，app list 走 `ProxyEngine::app_list_response`，handler 不再直接调用这些 response source DTO。
+732. health/status/Claude Desktop model-list/app list 基础管理路由已继续收敛：health/status 的 request/response helper、runtime status engine 调用和 Claude Desktop model-list typed JSON bridge 已迁入 `proxy::response_adapter`，app list 走 `ProxyEngine::app_list_response`，handler 不再直接调用这些 response source DTO，只保留 Axum 提取和 Claude Desktop gateway auth。
 733. provider list/current route 管理路由的 source 组装已新增 `proxy_core_adapter::provider_list_source_from_providers` 与 `current_route_source_from_provider`：handler 不再直接调用 provider/current route source DTO 或 ProviderSpec summary 投影。
 734. host 生产路径的 `ProxyEngine` 构造入口先前收敛到 `proxy_core_adapter::proxy_engine_from_services`，使 `ProxyState` 和 forwarder 的 materialized route planning 不再散落直连 `ProxyEngine::new`；后续 1059 已删除该一跳 facade，由 adapter 所有权边界内的 `ProxyState::proxy_engine` 直接构造 engine。
 735. `proxy_core_boundary` 已新增生产代码 `ProxyEngine::new` 禁用扫描：除 `proxy_core_adapter.rs` 外，host 生产源码必须通过 adapter 构造 core engine，测试模块中的直接实例化仍可用于验证 services。
@@ -2636,7 +2636,7 @@ node_modules/.bin/tsc --noEmit
 
 把 handler 内业务逻辑移到 engine。
 
-1. HTTP handler 只负责触发 transport adapter 读取 body、鉴权、事件流入口转发和管理 API path/query/body/state 转发；协议入口的 app/tag/prefix/endpoint metadata、endpoint path/query bridge、`RequestContext` 初始化、`ProxyRequest` 构造、`ProxyEngine::handle` dispatch 与 `ProxyResult` 到 HTTP response 的宿主 bridge 由 adapter 承接；Claude/Codex/Gemini protocol handlers 已先降为 `response_adapter` 编排入口调用，`/proxy/v1/events` 的 SSE transport bridge，apps/providers/app-models/client-model-catalog 读查询，channel/group/current-route/route-resolve dry-run，channel CRUD/key/model/test mutation，以及 channel migration/breaker endpoints 的 typed JSON bridge 也由 `response_adapter` 承接。
+1. HTTP handler 只负责触发 transport adapter 读取 body、鉴权、事件流入口转发和管理 API path/query/body/state 转发；协议入口的 app/tag/prefix/endpoint metadata、endpoint path/query bridge、`RequestContext` 初始化、`ProxyRequest` 构造、`ProxyEngine::handle` dispatch 与 `ProxyResult` 到 HTTP response 的宿主 bridge 由 adapter 承接；Claude/Codex/Gemini protocol handlers 已先降为 `response_adapter` 编排入口调用，`/proxy/v1/events` 的 SSE transport bridge，health/status/Claude Desktop model-list，apps/providers/app-models/client-model-catalog 读查询，channel/group/current-route/route-resolve dry-run，channel CRUD/key/model/test mutation，以及 channel migration/breaker endpoints 的 typed JSON bridge 也由 `response_adapter` 承接。
 2. `ProxyEngine::handle` 负责 route 解析、forward pipeline、response pipeline。
 3. Claude/Codex/Gemini 特殊处理改成 protocol handler，挂在 engine 内部。
 
