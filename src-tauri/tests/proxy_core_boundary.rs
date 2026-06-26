@@ -23,6 +23,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/channel_auth_profile_attempts.rs",
     "src/proxy/host/cc_switch/channel_health_store.rs",
     "src/proxy/host/cc_switch/channel_key_runtime_source.rs",
+    "src/proxy/host/cc_switch/channel_reachability_probe.rs",
     "src/proxy/host/cc_switch/claude_desktop_gateway_auth_source.rs",
     "src/proxy/host/cc_switch/config_source.rs",
     "src/proxy/host/cc_switch/database_usage_sink.rs",
