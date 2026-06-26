@@ -730,6 +730,9 @@ const FORBIDDEN_PROXY_SERVER_STOP_WAIT_MARKERS: &[&str] = &[
     "ProxyError::StopTimeout",
     "log_srv::STOPPED",
     "log_srv::STOP_TIMEOUT",
+    "signal_shutdown(",
+    "take_server_handle(",
+    "await_proxy_http_accept_loop_stop(",
 ];
 const FORBIDDEN_PROXY_SERVER_LISTENER_BIND_MARKERS: &[&str] = &[
     "SocketAddr",
@@ -14908,8 +14911,8 @@ fn production_proxy_server_delegates_stop_wait_to_adapter() {
     );
 
     assert!(
-        stop_slice.contains("await_proxy_http_accept_loop_stop(handle).await"),
-        "ProxyServer::stop must delegate accept-loop wait/error mapping to proxy_core_adapter"
+        stop_slice.contains("stop_proxy_http_server(&self.http_server_handles).await"),
+        "ProxyServer::stop must delegate shutdown, handle take, and accept-loop wait to proxy_core_adapter"
     );
 
     assert!(
@@ -14918,8 +14921,11 @@ fn production_proxy_server_delegates_stop_wait_to_adapter() {
             && stop_wait.contains("server_log_codes::TASK_ERROR")
             && stop_wait.contains("server_log_codes::STOP_TIMEOUT")
             && stop_wait.contains("ProxyError::StopFailed(e.to_string())")
-            && stop_wait.contains("ProxyError::StopTimeout"),
-        "proxy_core_adapter must own accept-loop stop wait timeout, logging, and error mapping"
+            && stop_wait.contains("ProxyError::StopTimeout")
+            && stop_wait.contains("handles.signal_shutdown().await?")
+            && stop_wait.contains("handles.take_server_handle().await")
+            && stop_wait.contains("await_proxy_http_accept_loop_stop(handle).await"),
+        "proxy_core_adapter must own accept-loop stop wait timeout, shutdown signaling, handle taking, logging, and error mapping"
     );
 
     let mut violations = Vec::new();
@@ -14968,8 +14974,7 @@ fn production_proxy_server_delegates_handle_storage_to_adapter() {
             && server_lifecycle.contains("proxy_http_shutdown_channel()")
             && server_lifecycle.contains(".store_shutdown_sender(shutdown_tx)")
             && server_lifecycle.contains(".store_server_handle(handle).await")
-            && server_lifecycle.contains("self.http_server_handles.signal_shutdown().await?")
-            && server_lifecycle.contains("self.http_server_handles.take_server_handle().await"),
+            && server_lifecycle.contains("stop_proxy_http_server(&self.http_server_handles).await"),
         "ProxyServer must delegate shutdown sender/server handle storage and running gates to proxy_core_adapter"
     );
 

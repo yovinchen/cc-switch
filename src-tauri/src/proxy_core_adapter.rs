@@ -1004,6 +1004,18 @@ pub(crate) async fn await_proxy_http_accept_loop_stop(
     }
 }
 
+pub(crate) async fn stop_proxy_http_server(
+    handles: &ProxyHttpServerHandles,
+) -> Result<(), ProxyError> {
+    handles.signal_shutdown().await?;
+
+    if let Some(handle) = handles.take_server_handle().await {
+        await_proxy_http_accept_loop_stop(handle).await
+    } else {
+        Ok(())
+    }
+}
+
 pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
     crate::proxy::http_client::set_proxy_port(port);
 }

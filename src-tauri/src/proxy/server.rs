@@ -13,14 +13,14 @@ use crate::database::Database;
 use crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source;
 use crate::proxy_core_adapter::ProxyState;
 use crate::proxy_core_adapter::{
-    await_proxy_http_accept_loop_stop, bind_proxy_http_listener,
-    provider_circuit_breaker_stats_source, proxy_http_router_from_state,
+    bind_proxy_http_listener, provider_circuit_breaker_stats_source, proxy_http_router_from_state,
     proxy_http_shutdown_channel, record_proxy_server_bound_runtime_source,
     record_proxy_server_started_info_runtime_source, reset_provider_circuit_breaker_source,
     server_log_codes as log_srv, set_active_route_target_runtime_source,
-    spawn_proxy_http_accept_loop, update_all_circuit_breaker_configs_source,
-    update_app_circuit_breaker_config_source, CircuitBreakerConfig, CircuitBreakerStats,
-    ProxyConfig, ProxyHttpServerHandles, ProxyRuntimeStatus, ProxyServerInfo,
+    spawn_proxy_http_accept_loop, stop_proxy_http_server,
+    update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
+    CircuitBreakerConfig, CircuitBreakerStats, ProxyConfig, ProxyHttpServerHandles,
+    ProxyRuntimeStatus, ProxyServerInfo,
 };
 use axum::Router;
 #[cfg(test)]
@@ -97,15 +97,7 @@ impl ProxyServer {
     }
 
     pub async fn stop(&self) -> Result<(), ProxyError> {
-        // 1. 发送关闭信号
-        self.http_server_handles.signal_shutdown().await?;
-
-        // 2. 等待服务器任务结束（带 5 秒超时保护）
-        if let Some(handle) = self.http_server_handles.take_server_handle().await {
-            await_proxy_http_accept_loop_stop(handle).await
-        } else {
-            Ok(())
-        }
+        stop_proxy_http_server(&self.http_server_handles).await
     }
 
     pub async fn get_status(&self) -> ProxyRuntimeStatus {
