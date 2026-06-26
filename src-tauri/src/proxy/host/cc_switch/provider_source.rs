@@ -2,11 +2,13 @@
 
 use crate::database::Database;
 use crate::proxy::engine::routing::ProviderRouter;
+use crate::proxy_core::api::domain::{AppKind, ProviderSpec};
+use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::ports::{CurrentRouteTarget, ProviderSource};
 use crate::proxy_core_adapter::{
     active_route_target_from_runtime_source, current_provider_id_from_db_source,
     provider_spec_from_db_source, provider_specs_from_db_source,
-    route_candidate_provider_ids_from_router_source, CurrentRouteTarget, ProviderSource,
-    ProviderSpec, ProxyCoreAppKind as AppKind, ProxyCoreResult,
+    route_candidate_provider_ids_from_router_source,
 };
 use futures::future::BoxFuture;
 use std::collections::HashMap;

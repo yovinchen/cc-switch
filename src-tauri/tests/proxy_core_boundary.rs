@@ -36,6 +36,8 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/managed_account_runtime_source.rs",
     "src/proxy/host/cc_switch/model_catalog_provider.rs",
     "src/proxy/host/cc_switch/provider_adapter_context.rs",
+    "src/proxy/host/cc_switch/provider_router_provider_source.rs",
+    "src/proxy/host/cc_switch/provider_source.rs",
     "src/proxy/host/cc_switch/proxy_runtime.rs",
     "src/proxy/host/cc_switch/proxy_services.rs",
     "src/proxy/host/cc_switch/provider_router_health_store.rs",
@@ -15943,6 +15945,16 @@ fn proxy_core_adapter_delegates_provider_source_to_host_module() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_source.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_source.rs");
+    let adapter_core_ports_import = function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
+        "};\nuse crate::proxy_core::api::ports::{",
+    );
+    let source_adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::{",
+        "};\nuse futures::future::BoxFuture;",
+    );
 
     assert!(
         source.contains("pub(crate) struct CcSwitchProviderSource")
@@ -15963,6 +15975,30 @@ fn proxy_core_adapter_delegates_provider_source_to_host_module() {
         ) && !adapter_source.contains("pub(crate) struct CcSwitchProviderSource")
             && !adapter_source.contains("impl ProviderSource for CcSwitchProviderSource"),
         "proxy_core_adapter should re-export, not own, the CC Switch provider source"
+    );
+    assert!(
+        source.contains("use crate::proxy_core::api::domain::{AppKind, ProviderSpec};")
+            && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && source.contains(
+                "use crate::proxy_core::api::ports::{CurrentRouteTarget, ProviderSource};"
+            ),
+        "CC Switch provider source should import core provider/source contracts directly"
+    );
+    for adapter_type in [
+        "CurrentRouteTarget",
+        "ProviderSource",
+        "ProviderSpec",
+        "ProxyCoreAppKind",
+        "ProxyCoreResult",
+    ] {
+        assert!(
+            !source_adapter_import.contains(adapter_type),
+            "provider source should not import {adapter_type} through proxy_core_adapter"
+        );
+    }
+    assert!(
+        !adapter_core_ports_import.contains("ProviderSource"),
+        "proxy_core_adapter should not re-export the ProviderSource port trait"
     );
 }
 
@@ -16153,11 +16189,11 @@ fn proxy_core_adapter_delegates_route_policy_source_to_host_module() {
         "CC Switch route policy source should live in host/cc_switch/route_policy_source.rs"
     );
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchRoutePolicySource")
             && !adapter_source.contains("impl RoutePolicySource for CcSwitchRoutePolicySource"),
-        "proxy_core_adapter should re-export, not own, the CC Switch route policy source"
+        "proxy_core_adapter should not own or re-export the CC Switch route policy source"
     );
     assert!(
         source.contains("use crate::proxy_core::api::domain::AppKind;")
@@ -18484,6 +18520,16 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
     let source_path =
         manifest_dir.join("src/proxy/host/cc_switch/provider_router_provider_source.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_router_provider_source.rs");
+    let adapter_core_ports_import = function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
+        "};\nuse crate::proxy_core::api::ports::{",
+    );
+    let source_adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::{",
+        "};\nuse futures::future::BoxFuture;",
+    );
 
     assert!(
         source.contains("impl ProviderSource for CcSwitchProviderRouterProviderSource"),
@@ -18507,6 +18553,30 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
                 "impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource"
             ),
         "proxy_core_adapter should not own the ProviderRouter provider source"
+    );
+    assert!(
+        source.contains(
+            "use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource;"
+        ) && source.contains("use crate::proxy_core::api::domain::{AppKind, ProviderSpec};")
+            && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && source.contains("use crate::proxy_core::api::ports::ProviderSource;"),
+        "ProviderRouter provider source should import host route-policy source and core provider contracts directly"
+    );
+    for adapter_type in [
+        "CcSwitchRoutePolicySource",
+        "ProviderSource",
+        "ProviderSpec",
+        "ProxyCoreAppKind",
+        "ProxyCoreResult",
+    ] {
+        assert!(
+            !source_adapter_import.contains(adapter_type),
+            "ProviderRouter provider source should not import {adapter_type} through proxy_core_adapter"
+        );
+    }
+    assert!(
+        !adapter_core_ports_import.contains("ProviderSource"),
+        "proxy_core_adapter should not re-export ProviderSource"
     );
 
     let mut violations = Vec::new();

@@ -37,7 +37,6 @@ pub(crate) use crate::proxy::host::cc_switch::provider_source::CcSwitchProviderS
 pub(crate) use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 pub(crate) use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices;
 pub(crate) use crate::proxy::host::cc_switch::proxy_state::ProxyState;
-pub(crate) use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource;
 #[allow(unused_imports)]
 pub(crate) use crate::proxy::host::cc_switch::route_resolver::CcSwitchRouteResolver;
 #[allow(unused_imports)]
@@ -2457,10 +2456,10 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
 pub(crate) use crate::proxy_core::api::ports::ChannelReachabilityProbe;
 pub(crate) use crate::proxy_core::api::ports::{
     channel_breaker_stats_from_parts, channel_health_reset_from_parts, AuthProvider,
-    ChannelBreakerStats, ChannelHealthReset, ChannelSource, ProviderSource, ProxyServices,
+    ChannelBreakerStats, ChannelHealthReset, ChannelSource, ProxyServices,
 };
 use crate::proxy_core::api::ports::{
-    AppSummaryConfig, ChannelKeyRuntimeSource, ProxyConfigSource, RoutePolicySource,
+    AppSummaryConfig, ChannelKeyRuntimeSource, ProviderSource, ProxyConfigSource, RoutePolicySource,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
