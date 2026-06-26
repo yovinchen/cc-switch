@@ -2561,18 +2561,17 @@ fn proxy_server_claude_desktop_gateway_smoke_uses_adapter_token_source() {
 }
 
 #[test]
-fn proxy_core_adapter_owns_claude_desktop_gateway_token_source() {
+fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let auth_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/claude_desktop_gateway_auth_source.rs");
+    let auth_source =
+        fs::read_to_string(&auth_source_path).expect("read claude_desktop_gateway_auth_source.rs");
     let token_source_slice = function_slice(
         &source,
         "pub(crate) fn get_or_create_claude_desktop_gateway_token_from_db_source(",
-        "impl ClaudeDesktopGatewayAuthSource for CcSwitchClaudeDesktopGatewayAuthSource",
-    );
-    let auth_source_slice = function_slice(
-        &source,
-        "impl ClaudeDesktopGatewayAuthSource for CcSwitchClaudeDesktopGatewayAuthSource",
         "pub(crate) type AttemptEventChannel",
     );
 
@@ -2580,10 +2579,25 @@ fn proxy_core_adapter_owns_claude_desktop_gateway_token_source() {
         token_source_slice.contains("CLAUDE_DESKTOP_GATEWAY_TOKEN_SETTING_KEY")
             && token_source_slice.contains(".get_setting(")
             && token_source_slice.contains(".set_setting(")
-            && token_source_slice.contains("uuid::Uuid::new_v4()")
-            && auth_source_slice
-                .contains("get_or_create_claude_desktop_gateway_token_from_db_source("),
-        "proxy_core_adapter should own Claude Desktop gateway token DB source and auth-source lookup"
+            && token_source_slice.contains("uuid::Uuid::new_v4()"),
+        "proxy_core_adapter should keep Claude Desktop gateway token DB helper"
+    );
+    assert!(
+        auth_source.contains("pub(crate) struct CcSwitchClaudeDesktopGatewayAuthSource")
+            && auth_source
+                .contains("impl ClaudeDesktopGatewayAuthSource for CcSwitchClaudeDesktopGatewayAuthSource")
+            && auth_source.contains("get_or_create_claude_desktop_gateway_token_from_db_source(")
+            && auth_source.contains("claude_desktop_gateway_token_error"),
+        "CC Switch Claude Desktop gateway auth source implementation should live in host/cc_switch"
+    );
+    assert!(
+        source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::claude_desktop_gateway_auth_source::CcSwitchClaudeDesktopGatewayAuthSource"
+        ) && !source.contains("struct CcSwitchClaudeDesktopGatewayAuthSource")
+            && !source
+                .contains("impl ClaudeDesktopGatewayAuthSource for CcSwitchClaudeDesktopGatewayAuthSource")
+            && !source.contains("fn load_gateway_token<'a>(&'a self)"),
+        "proxy_core_adapter should re-export, not own, the Claude Desktop gateway auth source"
     );
 
     let forbidden_markers = [
@@ -2598,7 +2612,7 @@ fn proxy_core_adapter_owns_claude_desktop_gateway_token_source() {
         ),
         (
             "CcSwitchClaudeDesktopGatewayAuthSource::load_gateway_token",
-            auth_source_slice,
+            auth_source.as_str(),
         ),
     ] {
         for (line_index, line) in production_lines(slice) {

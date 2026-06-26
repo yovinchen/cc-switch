@@ -1,4 +1,5 @@
 pub(crate) mod auth_provider;
+pub(crate) mod claude_desktop_gateway_auth_source;
 pub(crate) mod channel_auth_profile_attempts;
 pub(crate) mod channel_key_runtime_source;
 pub(crate) mod channel_reachability_probe;

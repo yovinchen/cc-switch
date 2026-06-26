@@ -20,6 +20,7 @@ use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::forward_error_to_core_error;
 pub(crate) use crate::proxy::error_mapper::proxy_core_error_to_proxy_error;
 use crate::proxy::events::ProxyEventBus;
+pub(crate) use crate::proxy::host::cc_switch::claude_desktop_gateway_auth_source::CcSwitchClaudeDesktopGatewayAuthSource;
 use crate::proxy::host::cc_switch::database_channel_source::CcSwitchChannelSource;
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
@@ -1977,17 +1978,6 @@ pub(crate) use crate::proxy::host::cc_switch::auth_provider::{
     CcSwitchAuthProvider, provider_with_channel_auth_key,
 };
 
-#[derive(Clone)]
-struct CcSwitchClaudeDesktopGatewayAuthSource {
-    db: Arc<Database>,
-}
-
-impl CcSwitchClaudeDesktopGatewayAuthSource {
-    fn new(db: Arc<Database>) -> Self {
-        Self { db }
-    }
-}
-
 pub(crate) const CLAUDE_DESKTOP_GATEWAY_TOKEN_SETTING_KEY: &str = "claude_desktop_gateway_token";
 
 pub(crate) fn claude_desktop_gateway_token_configured_from_db_source(db: &Database) -> bool {
@@ -2010,15 +2000,6 @@ pub(crate) fn get_or_create_claude_desktop_gateway_token_from_db_source(
     let token = format!("ccs-{}", uuid::Uuid::new_v4().simple());
     db.set_setting(CLAUDE_DESKTOP_GATEWAY_TOKEN_SETTING_KEY, &token)?;
     Ok(token)
-}
-
-impl ClaudeDesktopGatewayAuthSource for CcSwitchClaudeDesktopGatewayAuthSource {
-    fn load_gateway_token<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<String>> {
-        Box::pin(async move {
-            get_or_create_claude_desktop_gateway_token_from_db_source(self.db.as_ref())
-                .map_err(claude_desktop_gateway_token_error)
-        })
-    }
 }
 
 pub(crate) type AttemptEventChannel<'a> = crate::proxy_core::api::events::AttemptEventChannel<'a>;
