@@ -1591,15 +1591,18 @@ mod tests {
     use crate::error::AppError;
     use crate::provider::ProviderMeta;
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
+    use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
+    use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices as GenericCcSwitchProxyServices;
     use crate::proxy_core_adapter::{
         decompress_body, strip_sse_field, GeminiShadowStore, ProxyConfig, ProxyRuntimeStatus,
     };
-    use crate::proxy_core_host::CcSwitchProxyServices;
     use rust_decimal::Decimal;
     use std::collections::HashMap;
     use std::str::FromStr;
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    type CcSwitchProxyServices = GenericCcSwitchProxyServices<CcSwitchProxyRuntime>;
 
     #[test]
     fn decompress_body_deflate_handles_zlib_wrapped_per_rfc9110() {
