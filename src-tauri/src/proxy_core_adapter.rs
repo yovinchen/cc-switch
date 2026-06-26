@@ -645,22 +645,6 @@ pub(crate) type AxumResponseBuildErrorContext<'a> =
 pub(crate) type CoreResponseBuildFailureContext =
     crate::proxy_core::api::transport::ProxyResponseBuildFailureContext;
 
-pub(crate) use crate::proxy_core::api::transport::{
-    upstream_response_parse_failure_log_message, UpstreamResponseParseFailureLogContext,
-};
-
-pub(crate) fn log_unlabeled_sse_fallback_event(
-    source: UpstreamJsonBodySource,
-    context: UnlabeledSseFallbackLogContext<'_>,
-) {
-    if let Some(event) = source.unlabeled_sse_fallback_log_event(context) {
-        match event.level {
-            UnlabeledSseFallbackLogLevel::Debug => log::debug!("{}", event.message),
-            UnlabeledSseFallbackLogLevel::Warn => log::warn!("{}", event.message),
-        }
-    }
-}
-
 pub(crate) fn log_codex_chat_error_normalization(normalized: &CodexChatErrorNormalization) {
     if let Some(message) = normalized.non_json_body_log_message() {
         log::warn!("{message}");
@@ -2284,7 +2268,6 @@ pub(crate) type UpstreamRequestHeadersInput<'a> =
     crate::proxy_core::api::transport::UpstreamRequestHeadersInput<'a>;
 pub(crate) type UpstreamSendPolicyInput =
     crate::proxy_core::api::transport::UpstreamSendPolicyInput;
-pub(crate) type UpstreamSendErrorInput = crate::proxy_core::api::transport::UpstreamSendErrorInput;
 pub(crate) type UpstreamTransportKind = crate::proxy_core::api::transport::UpstreamTransportKind;
 pub(crate) type ChannelRequestValidationError =
     crate::proxy_core::api::routing::ChannelRequestValidationError;
@@ -2595,10 +2578,8 @@ pub(crate) use crate::proxy_core::api::transport::build_gemini_auth_headers;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::interface_kind_for_forward;
 pub(crate) use crate::proxy_core::api::transport::{
-    append_query_to_endpoint_path, parse_upstream_json_or_unlabeled_sse,
-    rebuilt_json_proxy_response, strip_endpoint_prefix, transformed_sse_proxy_response, ProxyBody,
-    ProxyRequest, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
-    UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    append_query_to_endpoint_path, rebuilt_json_proxy_response, strip_endpoint_prefix,
+    transformed_sse_proxy_response, ProxyBody, ProxyRequest, UpstreamSseAggregationKind,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::{
@@ -7128,8 +7109,6 @@ pub(crate) use crate::proxy_core::api::transport::is_streaming_upstream_request;
 pub(crate) use crate::proxy_core::api::transport::is_socks_proxy_url;
 
 pub(crate) use crate::proxy_core::api::transport::resolve_upstream_send_policy;
-
-pub(crate) use crate::proxy_core::api::transport::upstream_send_error_projection;
 
 pub(crate) use crate::proxy_core::api::transport::response_headers_indicate_sse;
 

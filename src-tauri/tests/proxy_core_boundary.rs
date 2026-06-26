@@ -4984,33 +4984,67 @@ fn proxy_core_adapter_delegates_explicit_proxy_url_validation_to_core() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_response_parse_failure_log_policy_to_core() {
+fn proxy_error_mapper_delegates_response_parse_failure_log_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let path = manifest_dir.join("src/proxy/error_mapper.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/error_mapper.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn parse_logged_upstream_json_or_unlabeled_sse",
+        "pub(crate) fn parse_claude_transform_upstream_json_or_unlabeled_sse",
+    );
 
     assert!(
-        source.contains("upstream_response_parse_failure_log_message"),
-        "proxy_core_adapter should expose the core response parse failure log helper"
+        function.contains("parse_upstream_json_or_unlabeled_sse(")
+            && function.contains("upstream_response_parse_failure_log_message(")
+            && function.contains("response_body_parse_error_to_proxy_error("),
+        "error_mapper should call core response parse/log helpers and keep host error mapping local"
     );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(&source) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_RESPONSE_PARSE_LOG_MARKERS {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy_core_adapter.rs:{} contains response parse log marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
+    for marker in FORBIDDEN_PROXY_CORE_ADAPTER_RESPONSE_PARSE_LOG_MARKERS {
+        if function.contains(marker) {
+            violations.push(format!(
+                "src/proxy/error_mapper.rs parse helper contains response parse log marker `{marker}`"
+            ));
         }
     }
 
     assert!(
         violations.is_empty(),
-        "proxy_core_adapter must delegate response parse failure log text and body projection to proxy-core:\n{}",
+        "error_mapper must delegate response parse failure log text and body projection to proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_excludes_error_mapper_transport_facades() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    let mut violations = Vec::new();
+    for marker in [
+        "parse_upstream_json_or_unlabeled_sse",
+        "upstream_response_parse_failure_log_message",
+        "UpstreamResponseParseFailureLogContext",
+        "UnlabeledSseFallbackLogContext",
+        "UpstreamJsonBodySource",
+        "UnlabeledSseFallbackLogLevel",
+        "log_unlabeled_sse_fallback_event",
+        "upstream_send_error_projection",
+        "UpstreamSendErrorInput",
+    ] {
+        if source.contains(marker) {
+            violations.push(format!(
+                "src/proxy_core_adapter.rs still exposes error_mapper transport facade `{marker}`"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter should not re-export transport helpers that are now owned by error_mapper:\n{}",
         violations.join("\n")
     );
 }
