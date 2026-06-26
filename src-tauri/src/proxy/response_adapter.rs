@@ -27,12 +27,13 @@ use crate::proxy_core_adapter::{
     request_body_read_error_message, strip_endpoint_prefix, transformed_sse_proxy_response,
     ActiveConnectionGuard, AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse,
     AppKind, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
-    AxumResponseBuildErrorContext, ChannelCreateRequest, ChannelDeleteResponse,
-    ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
-    ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
-    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
-    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
-    ClaudeTransformStreamingDecision, ClaudeTransformedJsonResponseContext,
+    AxumResponseBuildErrorContext, ChannelBreakerStatsResponse, ChannelCreateRequest,
+    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
+    ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
+    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
+    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelTestResponse, ClaudeTransformStreamingDecision, ClaudeTransformedJsonResponseContext,
     ClaudeTransformedSseStreamContext, ClientModelCatalogResponse,
     CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
     CodexChatTransformStreamingDecision, CodexResponsesProxyRequest, CodexToolContext,
@@ -564,6 +565,66 @@ pub(crate) async fn dispatch_proxy_channel_test_request_to_axum_json_response(
     let response = state
         .proxy_engine()
         .channel_test_response(path_request, request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
+}
+
+pub(crate) async fn dispatch_preview_proxy_channel_migration_request_to_axum_json_response(
+    state: &ProxyState,
+    app_type: String,
+) -> Result<Json<ChannelMigrationPreviewResponse<ChannelRecord>>, ProxyError> {
+    let request = ManagementAppPathRequest::from_path(app_type)
+        .map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .channel_migration_preview_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
+}
+
+pub(crate) async fn dispatch_materialize_proxy_channel_migration_request_to_axum_json_response(
+    state: &ProxyState,
+    app_type: String,
+) -> Result<Json<ChannelMigrationMaterializeResponse>, ProxyError> {
+    let request = ManagementAppPathRequest::from_path(app_type)
+        .map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .channel_migration_materialize_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
+}
+
+pub(crate) async fn dispatch_proxy_channel_breaker_stats_request_to_axum_json_response(
+    state: &ProxyState,
+    channel_id: String,
+) -> Result<Json<ChannelBreakerStatsResponse>, ProxyError> {
+    let request =
+        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .channel_breaker_stats_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
+}
+
+pub(crate) async fn dispatch_reset_proxy_channel_breaker_request_to_axum_json_response(
+    state: &ProxyState,
+    channel_id: String,
+) -> Result<Json<ChannelHealthResetResponse>, ProxyError> {
+    let request =
+        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .reset_channel_health_response(request)
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
 
