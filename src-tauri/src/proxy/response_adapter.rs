@@ -50,6 +50,34 @@ pub(crate) struct ParsedAxumJsonProxyRequest {
 }
 
 impl ParsedAxumJsonProxyRequest {
+    pub(crate) async fn request_context(
+        &self,
+        state: &ProxyState,
+        app_type: AppType,
+        tag: &'static str,
+        app_type_str: &'static str,
+    ) -> Result<RequestContext, ProxyError> {
+        RequestContext::new(
+            state,
+            &self.body,
+            &self.headers,
+            app_type,
+            tag,
+            app_type_str,
+        )
+        .await
+    }
+
+    pub(crate) async fn gemini_request_context(
+        &self,
+        state: &ProxyState,
+        uri: &Uri,
+    ) -> Result<RequestContext, ProxyError> {
+        self.request_context(state, AppType::Gemini, "Gemini", "gemini")
+            .await
+            .map(|ctx| ctx.with_model_from_uri(uri))
+    }
+
     pub(crate) fn endpoint_from_request_uri(&self) -> String {
         endpoint_from_uri(&self.uri)
     }

@@ -11,7 +11,6 @@ use super::{
     auth_adapter::validate_claude_desktop_gateway_auth,
     error::ProxyError,
     error_mapper::{management_api_error_to_proxy_error, proxy_core_error_to_proxy_error},
-    handler_context::RequestContext,
     response_adapter::{
         claude_passthrough_response_to_axum_response, claude_response_needs_transform,
         claude_transformed_response_to_axum_response,
@@ -580,15 +579,9 @@ async fn handle_messages_for_app(
     let parsed_request = collect_json_proxy_request(request).await?;
     let is_stream = parsed_request.is_stream;
 
-    let mut ctx = RequestContext::new(
-        &state,
-        &parsed_request.body,
-        &parsed_request.headers,
-        app_type.clone(),
-        tag,
-        app_type_str,
-    )
-    .await?;
+    let mut ctx = parsed_request
+        .request_context(&state, app_type.clone(), tag, app_type_str)
+        .await?;
 
     let endpoint = parsed_request.endpoint_from_request_uri_stripping_prefix(strip_prefix);
     let original_body = parsed_request.body.clone();
@@ -636,15 +629,9 @@ pub async fn handle_chat_completions(
     let parsed_request = collect_json_proxy_request(request).await?;
     let is_stream = parsed_request.is_stream;
 
-    let mut ctx = RequestContext::new(
-        &state,
-        &parsed_request.body,
-        &parsed_request.headers,
-        AppType::Codex,
-        "Codex",
-        "codex",
-    )
-    .await?;
+    let mut ctx = parsed_request
+        .request_context(&state, AppType::Codex, "Codex", "codex")
+        .await?;
     let endpoint = parsed_request.endpoint_for_path("/chat/completions");
 
     let proxy_request = parsed_request
@@ -674,15 +661,9 @@ pub async fn handle_responses(
     let parsed_request = collect_json_proxy_request(request).await?;
     let is_stream = parsed_request.is_stream;
 
-    let mut ctx = RequestContext::new(
-        &state,
-        &parsed_request.body,
-        &parsed_request.headers,
-        AppType::Codex,
-        "Codex",
-        "codex",
-    )
-    .await?;
+    let mut ctx = parsed_request
+        .request_context(&state, AppType::Codex, "Codex", "codex")
+        .await?;
     let endpoint = parsed_request.endpoint_for_path("/responses");
 
     let codex_proxy_request = parsed_request
@@ -726,15 +707,9 @@ pub async fn handle_responses_compact(
     let parsed_request = collect_json_proxy_request(request).await?;
     let is_stream = parsed_request.is_stream;
 
-    let mut ctx = RequestContext::new(
-        &state,
-        &parsed_request.body,
-        &parsed_request.headers,
-        AppType::Codex,
-        "Codex",
-        "codex",
-    )
-    .await?;
+    let mut ctx = parsed_request
+        .request_context(&state, AppType::Codex, "Codex", "codex")
+        .await?;
     let endpoint = parsed_request.endpoint_for_path("/responses/compact");
 
     let codex_proxy_request = parsed_request
@@ -784,16 +759,7 @@ pub async fn handle_gemini(
     let is_stream = parsed_request.is_stream;
 
     // Gemini 的模型名称在 URI 中
-    let mut ctx = RequestContext::new(
-        &state,
-        &parsed_request.body,
-        &parsed_request.headers,
-        AppType::Gemini,
-        "Gemini",
-        "gemini",
-    )
-    .await?
-    .with_model_from_uri(&uri);
+    let mut ctx = parsed_request.gemini_request_context(&state, &uri).await?;
 
     // 提取完整的路径和查询参数
     let endpoint = endpoint_from_uri(&uri);
