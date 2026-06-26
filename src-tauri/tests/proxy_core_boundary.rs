@@ -2601,23 +2601,9 @@ fn proxy_error_mapper_delegates_reqwest_send_error_policy_to_core() {
 }
 
 #[test]
-fn production_proxy_handlers_legacy_module_is_reexport_only() {
+fn production_proxy_handlers_legacy_module_removed_after_transport_split() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
-    let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let production_code: Vec<&str> = production_lines(&source)
-        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
-        .filter(|line| !line.is_empty())
-        .collect();
-
-    assert_eq!(
-        production_code,
-        vec![
-            "#[allow(unused_imports)]",
-            "pub(crate) use super::transport::http::handlers::*;",
-        ],
-        "legacy proxy/handlers.rs must remain a re-export shim after transport/http/handlers.rs split"
-    );
+    assert_proxy_legacy_module_removed(&manifest_dir, "handlers.rs", "handlers");
 }
 
 #[test]
@@ -5335,23 +5321,9 @@ fn production_http_client_excludes_legacy_update_facades() {
 }
 
 #[test]
-fn production_proxy_http_client_legacy_module_is_reexport_only() {
+fn production_proxy_http_client_legacy_module_removed_after_host_split() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/http_client.rs");
-    let source = fs::read_to_string(&path).expect("read http_client.rs");
-    let production_code: Vec<&str> = production_lines(&source)
-        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
-        .filter(|line| !line.is_empty())
-        .collect();
-
-    assert_eq!(
-        production_code,
-        vec![
-            "#[allow(unused_imports)]",
-            "pub use super::host::cc_switch::global_http_client::*;",
-        ],
-        "legacy proxy/http_client.rs must remain a re-export shim after host global HTTP client split"
-    );
+    assert_proxy_legacy_module_removed(&manifest_dir, "http_client.rs", "http_client");
 }
 
 #[test]
@@ -6059,22 +6031,12 @@ fn production_handlers_delegate_management_auth_decisions_to_adapter() {
 }
 
 #[test]
-fn production_proxy_response_processor_legacy_module_is_reexport_only() {
+fn production_proxy_response_processor_legacy_module_removed_after_engine_split() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/response_processor.rs");
-    let source = fs::read_to_string(&path).expect("read response_processor.rs");
-    let production_code: Vec<&str> = production_lines(&source)
-        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
-        .filter(|line| !line.is_empty())
-        .collect();
-
-    assert_eq!(
-        production_code,
-        vec![
-            "#[allow(unused_imports)]",
-            "pub(crate) use super::engine::response_pipeline::*;",
-        ],
-        "legacy proxy/response_processor.rs must remain a re-export shim after engine/response_pipeline.rs split"
+    assert_proxy_legacy_module_removed(
+        &manifest_dir,
+        "response_processor.rs",
+        "response_processor",
     );
 }
 
@@ -9108,23 +9070,9 @@ fn proxy_core_adapter_delegates_claude_transform_streaming_decision_to_core() {
 }
 
 #[test]
-fn production_proxy_hyper_client_legacy_module_is_reexport_only() {
+fn production_proxy_hyper_client_legacy_module_removed_after_transport_split() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/hyper_client.rs");
-    let source = fs::read_to_string(&path).expect("read hyper_client.rs");
-    let production_code: Vec<&str> = production_lines(&source)
-        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
-        .filter(|line| !line.is_empty())
-        .collect();
-
-    assert_eq!(
-        production_code,
-        vec![
-            "#[allow(unused_imports)]",
-            "pub(crate) use super::transport::upstream::hyper_client::*;",
-        ],
-        "legacy proxy/hyper_client.rs must remain a re-export shim after transport/upstream/hyper_client.rs split"
-    );
+    assert_proxy_legacy_module_removed(&manifest_dir, "hyper_client.rs", "hyper_client");
 }
 
 #[test]
@@ -9171,23 +9119,10 @@ fn usage_sink_bridge_module_removed_after_adapter_migration() {
 }
 
 #[test]
-fn production_proxy_usage_logger_legacy_module_is_reexport_only() {
+fn production_proxy_usage_legacy_module_removed_after_host_sink_split() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/usage/logger.rs");
-    let source = fs::read_to_string(&path).expect("read usage/logger.rs");
-    let production_code: Vec<&str> = production_lines(&source)
-        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
-        .filter(|line| !line.is_empty())
-        .collect();
-
-    assert_eq!(
-        production_code,
-        vec![
-            "#[allow(unused_imports)]",
-            "pub use super::super::host::cc_switch::database_usage_sink::*;",
-        ],
-        "legacy proxy/usage/logger.rs must remain a re-export shim after host database usage sink split"
-    );
+    assert_proxy_legacy_module_removed(&manifest_dir, "usage/mod.rs", "usage");
+    assert_proxy_legacy_module_removed(&manifest_dir, "usage/logger.rs", "usage");
 }
 
 #[test]
@@ -9228,23 +9163,9 @@ fn production_forwarder_stays_preplanned_only() {
 }
 
 #[test]
-fn production_proxy_forwarder_legacy_module_is_reexport_only() {
+fn production_proxy_forwarder_legacy_module_removed_after_engine_split() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
-    let production_code: Vec<&str> = production_lines(&source)
-        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
-        .filter(|line| !line.is_empty())
-        .collect();
-
-    assert_eq!(
-        production_code,
-        vec![
-            "#[allow(unused_imports)]",
-            "pub(crate) use super::engine::forward_pipeline::*;",
-        ],
-        "legacy proxy/forwarder.rs must remain a re-export shim after engine/forward_pipeline.rs split"
-    );
+    assert_proxy_legacy_module_removed(&manifest_dir, "forwarder.rs", "forwarder");
 }
 
 #[test]
@@ -10165,20 +10086,9 @@ fn production_provider_module_excludes_managed_auth_modules() {
 }
 
 #[test]
-fn production_proxy_providers_legacy_module_is_reexport_only() {
+fn production_proxy_providers_legacy_module_removed_after_provider_split() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/providers/mod.rs");
-    let source = fs::read_to_string(&path).expect("read providers/mod.rs");
-    let production_code: Vec<&str> = production_lines(&source)
-        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
-        .filter(|line| !line.is_empty())
-        .collect();
-
-    assert_eq!(
-        production_code,
-        vec!["#[allow(unused_imports)]", "pub use super::provider::*;",],
-        "legacy proxy/providers/mod.rs must remain a re-export shim after provider module split"
-    );
+    assert_proxy_legacy_module_removed(&manifest_dir, "providers/mod.rs", "providers");
 }
 
 #[test]
@@ -14809,23 +14719,9 @@ fn production_failover_switch_delegates_proxy_config_to_adapter() {
 }
 
 #[test]
-fn production_proxy_failover_switch_legacy_module_is_reexport_only() {
+fn production_proxy_failover_switch_legacy_module_removed_after_host_split() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/failover_switch.rs");
-    let source = fs::read_to_string(&path).expect("read failover_switch.rs");
-    let production_code: Vec<&str> = production_lines(&source)
-        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
-        .filter(|line| !line.is_empty())
-        .collect();
-
-    assert_eq!(
-        production_code,
-        vec![
-            "#[allow(unused_imports)]",
-            "pub(crate) use super::host::cc_switch::failover_switch::*;",
-        ],
-        "legacy proxy/failover_switch.rs must remain a re-export shim after host/cc_switch split"
-    );
+    assert_proxy_legacy_module_removed(&manifest_dir, "failover_switch.rs", "failover_switch");
 }
 
 #[test]
@@ -17674,23 +17570,9 @@ fn production_proxy_server_imports_runtime_services_from_adapter() {
 }
 
 #[test]
-fn production_proxy_server_legacy_module_is_reexport_only() {
+fn production_proxy_server_legacy_module_removed_after_transport_split() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/server.rs");
-    let source = fs::read_to_string(&path).expect("read server.rs");
-    let production_code: Vec<&str> = production_lines(&source)
-        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
-        .filter(|line| !line.is_empty())
-        .collect();
-
-    assert_eq!(
-        production_code,
-        vec![
-            "#[allow(unused_imports)]",
-            "pub(crate) use super::transport::http::server::ProxyServer;",
-        ],
-        "legacy proxy/server.rs must remain a re-export shim after transport/http/server.rs split"
-    );
+    assert_proxy_legacy_module_removed(&manifest_dir, "server.rs", "server");
 }
 
 #[test]
@@ -18360,23 +18242,9 @@ fn proxy_engine_delegates_route_policy_raw_contract() {
 }
 
 #[test]
-fn production_proxy_provider_router_legacy_module_is_reexport_only() {
+fn production_proxy_provider_router_legacy_module_removed_after_engine_split() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/provider_router.rs");
-    let source = fs::read_to_string(&path).expect("read provider_router.rs");
-    let production_code: Vec<&str> = production_lines(&source)
-        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
-        .filter(|line| !line.is_empty())
-        .collect();
-
-    assert_eq!(
-        production_code,
-        vec![
-            "#[allow(unused_imports)]",
-            "pub(crate) use super::engine::routing::*;",
-        ],
-        "legacy proxy/provider_router.rs must remain a re-export shim after engine/routing.rs split"
-    );
+    assert_proxy_legacy_module_removed(&manifest_dir, "provider_router.rs", "provider_router");
 }
 
 #[test]
@@ -19888,6 +19756,31 @@ fn production_lines(source: &str) -> impl Iterator<Item = (usize, &str)> {
         .unwrap_or(lines.len());
 
     lines.into_iter().take(production_len).enumerate()
+}
+
+fn assert_proxy_legacy_module_removed(manifest_dir: &Path, legacy_path: &str, module_name: &str) {
+    let path = manifest_dir.join("src/proxy").join(legacy_path);
+    assert!(
+        !path.exists(),
+        "legacy proxy facade `{legacy_path}` should stay deleted; call the owning module directly"
+    );
+
+    let proxy_mod =
+        fs::read_to_string(manifest_dir.join("src/proxy/mod.rs")).expect("read src/proxy/mod.rs");
+    for (line_index, line) in production_lines(&proxy_mod) {
+        let code = line.split("//").next().unwrap_or_default().trim();
+        if code.starts_with("mod ")
+            || code.starts_with("pub mod ")
+            || code.starts_with("pub(crate) mod ")
+        {
+            let declaration = format!("mod {module_name}");
+            assert!(
+                !code.contains(&declaration),
+                "src/proxy/mod.rs:{} declares removed legacy module `{module_name}`",
+                line_index + 1
+            );
+        }
+    }
 }
 
 fn collect_rust_files(dir: &Path, files: &mut Vec<PathBuf>) {
