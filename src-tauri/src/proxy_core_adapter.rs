@@ -11772,6 +11772,36 @@ where
     )
 }
 
+pub(crate) struct CodexAutoTransformedSseStreamContext<'a, G> {
+    pub(crate) state: &'a ProxyState,
+    pub(crate) ctx: &'a RequestContext,
+    pub(crate) tool_context: CodexToolContext,
+    pub(crate) status_code: u16,
+    pub(crate) connection_guard: Option<G>,
+}
+
+pub(crate) fn codex_auto_transformed_sse_stream_from_context<G>(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    context: CodexAutoTransformedSseStreamContext<'_, G>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
+where
+    G: Send + 'static,
+{
+    let sse_stream = transform_codex_chat_sse_with_history(
+        stream,
+        context.tool_context,
+        context.state.codex_chat_history.clone(),
+    );
+
+    create_codex_auto_transformed_logged_stream(
+        sse_stream,
+        context.state,
+        context.ctx,
+        context.status_code,
+        context.connection_guard,
+    )
+}
+
 pub(crate) struct ForwardErrorUsageContext<'a> {
     pub(crate) provider: Option<&'a Provider>,
     pub(crate) fallback_provider_id: &'a str,

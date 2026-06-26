@@ -1554,6 +1554,7 @@ const FORBIDDEN_HANDLER_TRANSFORMED_USAGE_POLICY_MARKERS: &[&str] = &[
     "codex_auto_transformed_streaming_usage_collector(",
     "create_logged_passthrough_stream(",
     "create_claude_transformed_logged_stream(",
+    "create_codex_auto_transformed_logged_stream(",
     "ctx.streaming_timeout_config()",
     " record_transformed_response_usage(",
     " transformed_streaming_usage_collector(",
@@ -1595,6 +1596,7 @@ const FORBIDDEN_HANDLER_CODEX_NON_STREAM_TRANSFORM_MARKERS: &[&str] = &[
 const FORBIDDEN_HANDLER_CODEX_STREAM_TRANSFORM_MARKERS: &[&str] = &[
     "create_responses_sse_stream_from_chat_with_context(",
     "record_codex_chat_response_sse_history(",
+    "transform_codex_chat_sse_with_history(",
 ];
 const FORBIDDEN_HANDLER_CODEX_STREAMING_DECISION_MARKERS: &[&str] = &[
     "response_headers_indicate_sse(response.headers())",
