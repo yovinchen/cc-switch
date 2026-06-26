@@ -15,12 +15,11 @@ use crate::proxy_core::api::transport::{
 };
 use crate::proxy_core_adapter::{
     create_logged_passthrough_stream, passthrough_bytes_proxy_response,
-    passthrough_stream_proxy_response_from_context,
-    record_non_streaming_response_usage_from_context, response_headers_indicate_sse,
-    streaming_usage_collector_from_context, usage_logging_enabled_from_proxy_config,
-    ActiveConnectionGuard, AxumResponseBuildErrorContext, NonStreamingUsageRecordContext,
-    ProxyCoreResponse, ProxyState, SseUsageCollector, StreamingUsageCollectorContext,
-    UsageParserConfig,
+    passthrough_stream_proxy_response, record_non_streaming_response_usage_from_context,
+    response_headers_indicate_sse, streaming_usage_collector_from_context,
+    usage_logging_enabled_from_proxy_config, ActiveConnectionGuard, AxumResponseBuildErrorContext,
+    NonStreamingUsageRecordContext, ProxyCoreResponse, ProxyState, SseUsageCollector,
+    StreamingUsageCollectorContext, UsageParserConfig,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -237,6 +236,30 @@ where
         ctx.streaming_timeout_config(),
         connection_guard,
     )
+}
+
+pub(crate) fn passthrough_stream_proxy_response_from_context<G>(
+    status: http::StatusCode,
+    headers: HeaderMap,
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    state: &ProxyState,
+    ctx: &RequestContext,
+    parser_config: &UsageParserConfig,
+    connection_guard: Option<G>,
+) -> ProxyCoreResponse
+where
+    G: Send + 'static,
+{
+    log_streaming_proxy_response_received(&headers, status, ctx.tag);
+    let logged_stream = create_passthrough_logged_stream(
+        stream,
+        state,
+        ctx,
+        status.as_u16(),
+        parser_config,
+        connection_guard,
+    );
+    passthrough_stream_proxy_response(status, headers, logged_stream)
 }
 
 pub(crate) fn record_non_streaming_response_usage(

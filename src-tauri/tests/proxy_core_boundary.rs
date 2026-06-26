@@ -1623,7 +1623,6 @@ const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = 
 ];
 const FORBIDDEN_RESPONSE_PROCESSOR_STREAM_ORCHESTRATION_MARKERS: &[&str] = &[
     "fn create_logged_passthrough_stream(",
-    "passthrough_stream_proxy_response(",
     "async_stream::stream!",
     "SseEventScanner",
     "SsePassthroughEventKind",
@@ -5735,6 +5734,42 @@ fn response_processor_delegates_stream_orchestration_to_adapter() {
         violations.is_empty(),
         "response processor must delegate stream scanner/timeout orchestration to proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn response_pipeline_owns_passthrough_stream_response_construction() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn passthrough_stream_proxy_response_from_context",
+        "pub(crate) fn record_non_streaming_response_usage",
+    );
+
+    assert!(
+        function.contains("log_streaming_proxy_response_received(&headers, status, ctx.tag)")
+            && function.contains("create_passthrough_logged_stream(")
+            && function
+                .contains("passthrough_stream_proxy_response(status, headers, logged_stream)"),
+        "response pipeline should own passthrough streaming response construction"
+    );
+    assert!(
+        !function.contains("async_stream::stream!")
+            && !function.contains("SsePassthroughStreamState::new()")
+            && !function.contains("SseUsageFinishGuard")
+            && !function.contains("tokio::time::timeout(duration, stream.next())"),
+        "response pipeline should still delegate logged-stream internals"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
+            && adapter_source.contains("passthrough_stream_proxy_response_from_context")
+            && !adapter_source
+                .contains("pub(crate) fn passthrough_stream_proxy_response_from_context"),
+        "proxy_core_adapter should re-export, not own, passthrough streaming construction"
     );
 }
 

@@ -6497,7 +6497,8 @@ type UsageCallbackWithTiming = Arc<dyn Fn(Vec<Value>, Option<u64>) + Send + Sync
 pub(crate) use crate::proxy::engine::response_pipeline::{
     create_passthrough_logged_stream, decode_raw_proxy_response_body,
     log_non_streaming_proxy_response_body, log_streaming_proxy_response_received,
-    passthrough_non_stream_proxy_response_from_context, passthrough_streaming_usage_collector,
+    passthrough_non_stream_proxy_response_from_context,
+    passthrough_stream_proxy_response_from_context, passthrough_streaming_usage_collector,
     read_decoded_proxy_response_body, record_non_streaming_response_usage,
     DecodedProxyResponseBody,
 };
@@ -8314,30 +8315,6 @@ where
             spawn_usage_record_with_proxy_services(services.clone(), output.record);
         },
     ))
-}
-
-pub(crate) fn passthrough_stream_proxy_response_from_context<G>(
-    status: http::StatusCode,
-    headers: HeaderMap,
-    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-    state: &ProxyState,
-    ctx: &RequestContext,
-    parser_config: &UsageParserConfig,
-    connection_guard: Option<G>,
-) -> ProxyCoreResponse
-where
-    G: Send + 'static,
-{
-    log_streaming_proxy_response_received(&headers, status, ctx.tag);
-    let logged_stream = create_passthrough_logged_stream(
-        stream,
-        state,
-        ctx,
-        status.as_u16(),
-        parser_config,
-        connection_guard,
-    );
-    passthrough_stream_proxy_response(status, headers, logged_stream)
 }
 
 pub(crate) struct NonStreamingResponseUsageContext<'a> {
