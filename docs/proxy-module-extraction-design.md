@@ -693,7 +693,7 @@
 669. `CcSwitchChannelSource` 的 channel record 到 `ChannelSpec` 投影与 `ChannelQuery` 过滤已收敛到 `proxy/host/cc_switch/database_channel_source.rs`：adapter-owned source 负责选择 legacy/materialized 数据来源、读取 DB/router 并映射 host 错误，`proxy_core_host` 只装配 source。
 670. `CcSwitchProviderSource` 的 DB provider 到 `ProviderSpec` 投影已收敛到 host adapter `proxy_provider_to_core_spec` / `proxy_providers_to_core_specs`：当前默认 source 已迁到 host-owned `provider_source.rs`，负责 provider list/get/current 查询与 active-route runtime map 读取，metadata 脱敏和 provider kind 推断继续由 adapter/core 投影规则生成。
 671. route policy 的 failover queue provider id 到 `RoutePolicy` raw contract 投影已新增 `proxy-core::route_policy_from_failover_provider_ids` 并经 host adapter `route_policy_from_failover_queue` 接入：当前默认 `CcSwitchRoutePolicySource` 已迁到 host-owned source，adapter 只保留 DB 队列错误映射与 policy 投影 helper。
-672. `CcSwitchConfigSource` 的 global/app/runtime config DTO 投影已新增 `proxy-core` helpers 并由 adapter-owned source wrapper 接入：config source 负责读取 DB/settings，`ProxyGlobalConfig`、`ProxyAppConfig`、optimizer specs 与 `ProxyRuntimeConfig` 的 raw contract 由 core 统一生成。
+672. `CcSwitchConfigSource` 的 global/app/runtime config DTO 投影已新增 `proxy-core` helpers 并由 host-owned source wrapper 接入：config source 负责读取 DB/settings，`ProxyGlobalConfig`、`ProxyAppConfig`、optimizer specs 与 `ProxyRuntimeConfig` 的 raw contract 由 core 统一生成。
 673. `CcSwitchAuthProvider` 的 `AuthProfileRef` 到 `AuthInfo` 默认投影已新增 `proxy-core::auth_info_from_profile_ref` 并由 `proxy/host/cc_switch/auth_provider.rs` 包装：`proxy_core_adapter` 只 re-export provider/helper，`proxy_core_host` 不再保留 auth provider 实现，也不再手写 headers/accountRef/source metadata envelope。
 674. channel health reset fact 已新增 `proxy-core::channel_health_reset_from_parts` 并经 host adapter 接入：`CcSwitchChannelHealthStore` 在 reset 后只传 channel_id/app_type，`ChannelHealthReset` 的 app-kind 投影由 core 统一生成。
 675. client model catalog 的空目录默认 raw contract 已新增 `proxy-core::client_model_catalog_from_optional_raw` 并经 host adapter 接入：host-owned `CcSwitchModelCatalogProvider` 通过 adapter helper 读取 Codex 本地 catalog raw，非 Codex 默认空模型列表由 core 统一生成。
@@ -709,7 +709,7 @@
 685. unsupported app kind 的 parse 错误文案已新增 `proxy-core::unsupported_app_kind_error_message` 并经 host adapter 接入：host `parse_app_type` 只负责 `AppKind -> AppType` 转换和 `ProxyCoreError::Config` 包装。
 686. host adapter 的 context/error 拼接格式已新增 `proxy-core::error_message_with_context` 并经 adapter 接入：`proxy_core_host` 的 `app_error` / `usage_error` 只负责选择 `Config` 或 `Internal` variant，不再维护 `{context}: {error}` 文案格式。
 687. channel authProfileRef 缺失 provider warning 的 optional fallback 已收敛到 `proxy-core::channel_auth_profile_missing_provider_warning`：host 不再对 `auth_profile_ref` 手写 `unwrap_or_default()`，只传递原始 optional ref。
-688. current provider 来源优先级的 `Option<String>` 形态已新增 `proxy-core::current_provider_id_option_from_sources`：adapter-owned `CcSwitchConfigSource::load_app` 负责读取 settings 当前 provider 事实，`ProxyAppConfig.raw.currentProviderId` 的 option contract 由 core helper 统一生成；forward runtime 的 string helper 继续复用同一来源选择规则。
+688. current provider 来源优先级的 `Option<String>` 形态已新增 `proxy-core::current_provider_id_option_from_sources`：host-owned `CcSwitchConfigSource::load_app` 负责读取 settings 当前 provider 事实，`ProxyAppConfig.raw.currentProviderId` 的 option contract 由 core helper 统一生成；forward runtime 的 string helper 继续复用同一来源选择规则。
 689. Codex client model catalog raw JSON 解析和空 models fallback 已新增 `proxy-core::client_model_catalog_raw_from_text` / `empty_client_model_catalog_raw`：host 只负责解析 Codex 配置路径与读取文件文本，raw catalog contract 由 core 统一生成。
 690. legacy provider settings JSON 的 config/env/modelCatalog 形状投影已新增 `proxy-core::legacy_provider_config_text_from_settings`、`legacy_provider_env_from_settings` 与 `legacy_provider_codex_catalog_models_from_settings`：host adapter 不再手写 env string-map 和 Codex catalog model id 展开，只负责把 Provider/meta 事实拼入 legacy projection input。
 691. host `ProxyResponse` 到 `ProxyCoreResponse` 的 buffered/streamed bridge 已移入 `proxy_core_adapter::proxy_response_to_core_response`：`proxy_core_host` 不再维护响应体/stream guard 转换细节，只负责把 forward result 交给 adapter 投影。
@@ -725,7 +725,7 @@
 701. provider config auth profile 的 metadata source label 已移入 `proxy/host/cc_switch/auth_provider.rs` 并经 `proxy_core_adapter` re-export：`proxy_core_host` 不再硬编码 `cc_switch_provider_config` 字符串。
 702. Codex client model catalog 的 active config 路径解析、文件读取与 stale guard fallback 已移入 `proxy_core_adapter::codex_client_model_catalog_raw_from_active_config`：`proxy_core_host` 的 `ModelCatalogProvider` 只保留 app 分派和 catalog envelope 组装。
 703. host Provider 到 provider model catalog 的 settings 投影已移入 `proxy_core_adapter::provider_model_catalog_from_provider`：`proxy_core_host` 不再直接读取 `Provider.settings_config` 构造 catalog。
-704. app config source 的当前 provider settings 读取与 `ProxyAppConfig` parts 组装已移入 `proxy_core_adapter::current_provider_id_from_settings_for_app` / `proxy_app_config_from_config_source_parts`：adapter-owned `CcSwitchConfigSource` 保留 DB 配置和优化器配置读取，`proxy_core_host` 只装配 source。
+704. app config source 的当前 provider settings 读取与 `ProxyAppConfig` parts 组装已移入 `proxy_core_adapter::current_provider_id_from_settings_for_app` / `proxy_app_config_from_config_source_parts`：host-owned `CcSwitchConfigSource` 保留 DB 配置和优化器配置读取，`proxy_core_host` 只装配 source。
 705. runtime config source 的 host 默认 privacy-filter flag 包装已移入 `proxy_core_adapter::proxy_runtime_config_from_config_source`：`proxy_core_host` 不再直接传入固定 `false` 构造 runtime config。
 706. ProviderSource 的列表/单条 provider 到 `ProviderSpec` 投影已移入 `proxy_core_adapter::provider_specs_from_source` / `provider_spec_from_source`：`proxy_core_host` 不再直接解析 app kind 或调用 provider spec conversion。
 707. ChannelSource 的列表/单条 channel 到 `ChannelSpec` 投影已移入 `proxy/host/cc_switch/database_channel_source.rs` 的 `channel_specs_from_source` / `channel_spec_from_source`：`proxy_core_host` 不再直接调用 channel record conversion，`proxy_core_adapter` 只保留测试兼容导出。
@@ -1083,7 +1083,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续把 forward runtime 的 provider DB 读取、plan provider 过滤、required attempts 构造与 auth profile DB 注入统一收敛到 adapter wrapper，host forward runtime 只接收最终 attempts。
 本轮继续把 `RequestForwarder::new_preplanned` 构造、预规划 attempts 执行和 forward error 到 core error 的映射收敛到 adapter runtime launcher，host forward runtime 只传入资源包和已解析 runtime facts。
 本轮继续把 `ProxyRequest` 解析、forwarder runtime config/current-provider/attempt source 读取和 preplanned launcher 串联为单一 adapter forward runtime 入口，host forward runtime 只保留资源包委托。
-本轮继续把 `CcSwitchConfigSource` 的 global/app/summary/runtime 配置 DB 读取和 core DTO 投影收敛到 adapter-owned source wrapper，host services 只装配 source。
+本轮后续已把 `CcSwitchConfigSource` 的 global/app/summary/runtime 配置 DB 读取和 core DTO 投影收敛到 host-owned source wrapper，adapter 只保留 config helper 和默认 source re-export。
 本轮后续已把 `CcSwitchProviderSource` 的 provider list/get/current-provider DB 读取和 `ProviderSpec` 投影收敛到 host-owned source wrapper，adapter 只保留 projection helper。
 本轮继续把 `CcSwitchChannelSource` 的 channel spec list/get 读取与 `ChannelSpec` 投影收敛到 adapter-owned source wrapper。
 本轮继续把 `CcSwitchChannelSource` 的 channel record create/get/update/delete DB 操作与 `ChannelRecord` 投影收敛到 adapter-owned source wrapper。
@@ -1199,7 +1199,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续把 Claude/OpenAI Chat/Codex/Gemini passthrough response 的 parser config 选择和 `process_response` 调用收敛到 `proxy::response_adapter::*_passthrough_response_to_axum_response`；`handlers` 不再直接引用 `*_PARSER_CONFIG` 或 `engine::response_pipeline::process_response`。
 本轮还把 Codex client model catalog 的 active config 读取与 stale guard fallback 收敛到 adapter，`proxy_core_host` 不再维护 catalog 文件解析 helper。
 本轮继续把 host Provider 到 provider model catalog 的 settings 投影收敛到 adapter，`proxy_core_host` 不再直接拆 provider 字段。
-本轮也把 app config source 的当前 provider settings 查询和 `ProxyAppConfig` parts 组装收敛到 adapter-owned source wrapper。
+本轮也把 app config source 的当前 provider settings 查询和 `ProxyAppConfig` parts 组装收敛到 host-owned source wrapper。
 本轮继续把 runtime config source 的默认 privacy-filter flag 包装收敛到 adapter，`proxy_core_host` 不再维护该固定参数。
 本轮还把 ProviderSource 的 provider 列表/单条投影收敛到 adapter，host ProviderSource 只保留 DB provider 查询。
 本轮继续把 ChannelSource 的 channel 列表/单条投影收敛到 adapter，host ChannelSource 只保留 DB/router channel 查询。
@@ -1666,6 +1666,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1187. `CcSwitchChannelHealthStore` 已迁入 `proxy/host/cc_switch/channel_health_store.rs`：该 host 模块拥有默认 `ChannelHealthStore` 实现，包装 DB 与 `ProviderRouter` 并复用 adapter 的 channel attempt/reset/stats projection helper，`proxy_core_adapter` 只保留 helper 和默认 store re-export/装配。
 1188. `CcSwitchProviderSource` 已迁入 `proxy/host/cc_switch/provider_source.rs`：该 host 模块拥有默认 `ProviderSource` 实现，包装 DB、`ProviderRouter` 与 active-route runtime map 并复用 adapter 的 provider/current/active-route/route-candidate projection helper，`proxy_core_adapter` 只保留 helper 和默认 source re-export/装配。
 1189. `CcSwitchModelCatalogProvider` 已迁入 `proxy/host/cc_switch/model_catalog_provider.rs`：该 host 模块拥有默认 `ModelCatalogProvider` 实现，包装 DB 与 `ProviderRouter` 并复用 adapter 的 provider/client/Claude Desktop model catalog helper，`proxy_core_adapter` 只保留 helper 和默认 provider re-export/装配。
+1190. `CcSwitchConfigSource` 已迁入 `proxy/host/cc_switch/config_source.rs`：该 host 模块拥有默认 `ProxyConfigSource` 实现，包装 DB 并复用 adapter 的 app catalog、global/app/app-summary/runtime config helper，`proxy_core_adapter` 只保留 helper 和默认 source re-export/装配。
 
 ## 背景
 
@@ -2465,9 +2466,11 @@ auto failover 开关启用的计划也已收敛：`plan_auto_failover_toggle` �
 
 熔断 reset 后的恢复切回也已进一步收敛：`restored_provider_switchback_decision` 接收 failover queue position facts，返回是否切回以及日志所需的 restored/current sort_index；`reset_circuit_breaker` 只负责读取 DB 队列、查询 provider 名称并调用 `FailoverSwitchManager` 执行宿主副作用。
 
-管理 API 查询类入口已基本收敛到 `ProxyEngine`：`list_proxy_providers`、`list_proxy_channels` 的 route-aware 分支、`list_proxy_groups` 和 `test_proxy_channel` 都只保留 HTTP path/query/body 提取与错误映射；固定 app catalog 已从 `proxy-core` 的端口默认实现移出，改由 adapter-owned `CcSwitchConfigSource` 显式提供；RoutePolicy 的 failover provider id 读取也已由 domain/routing helper 维护，engine 不再直接读 raw JSON 字段；managed-auth 的单测入口也已切到 runtime source surface；下一步应继续减少 host runtime 对 Tauri runtime smoke 覆盖和外部集成契约的隐性依赖。
+管理 API 查询类入口已基本收敛到 `ProxyEngine`：`list_proxy_providers`、`list_proxy_channels` 的 route-aware 分支、`list_proxy_groups` 和 `test_proxy_channel` 都只保留 HTTP path/query/body 提取与错误映射；固定 app catalog 已从 `proxy-core` 的端口默认实现移出，改由 host-owned `CcSwitchConfigSource` 显式提供；RoutePolicy 的 failover provider id 读取也已由 domain/routing helper 维护，engine 不再直接读 raw JSON 字段；managed-auth 的单测入口也已切到 runtime source surface；下一步应继续减少 host runtime 对 Tauri runtime smoke 覆盖和外部集成契约的隐性依赖。
 
 默认 `CcSwitchModelCatalogProvider` 已迁入 `proxy/host/cc_switch/model_catalog_provider.rs`：host provider 持有 DB 与 `ProviderRouter`，继续调用 adapter-owned `provider_model_catalog_from_db_source`、`client_model_catalog_from_app_source` 和 `claude_desktop_model_routes_from_router_source`，adapter 保留 provider/client/Claude Desktop model catalog 的 shared helper 和 re-export 装配入口。
+
+默认 `CcSwitchConfigSource` 已迁入 `proxy/host/cc_switch/config_source.rs`：host source 持有 DB，继续调用 adapter-owned `cc_switch_app_kinds`、`proxy_global_config_from_db_source`、`proxy_app_config_from_db_source`、`app_summary_config_from_db_source` 和 `proxy_runtime_config_from_db_source`，adapter 保留 config source/projection helper 和 re-export 装配入口。
 
 CC Switch 桌面宿主通过 host-owned `CcSwitchModelCatalogProvider::load_client_catalog` 实现 Codex `model_catalog_json` 文件读取和 stale guard；外部宿主可以返回自己的模型目录。后续如需让 Codex `/v1/models` 完全使用 route-visible 目录，应在 core 内生成 Codex 兼容 raw catalog，而不是让 handler 重新拼装。
 
@@ -2599,6 +2602,7 @@ ProxyRequest
 | failover switch scheduler | `host/cc_switch/failover_switch.rs` | `CcSwitchFailoverSwitchScheduler` 默认实现已迁到 `proxy/host/cc_switch/failover_switch.rs`，负责把 forwarder 的切换目标投影到 `FailoverSwitchManager`、Tauri AppHandle、托盘/UI 和 Live hot-switch 副作用；adapter 仅保留 trait/type alias、noop 测试 source 与 factory re-export |
 | event sink | `host/cc_switch/event_sink.rs` | `CcSwitchEventSink` 默认实现已迁到 `proxy/host/cc_switch/event_sink.rs`，负责把 `ProxyCoreEvent` 分发到可选 `ProxyEventBus`；adapter 仅保留 event message/helper contract 并 re-export source |
 | usage sink | `host/cc_switch/database_usage_sink.rs` | `CcSwitchUsageSink` 默认实现已迁到 `proxy/host/cc_switch/database_usage_sink.rs`，负责 `UsageLogger`、pricing lookup、缺失定价 warning、`RequestLog` 写入和 DB 持久化；adapter 仅保留 usage projection helper 并 re-export source |
+| config source | `host/cc_switch/config_source.rs` | `CcSwitchConfigSource` 默认实现已迁到 `proxy/host/cc_switch/config_source.rs`，负责 global/app/app-summary/runtime config 和 app catalog 端口实现；adapter 仅保留 config source/projection helper、factory 装配和 re-export |
 | management auth source | `host/cc_switch/management_auth_source.rs` | `CcSwitchManagementAuthSource` 默认实现已迁到 `proxy/host/cc_switch/management_auth_source.rs`，负责读取 `ProxyConfig` 与 `CC_SWITCH_PROXY_MANAGEMENT_TOKEN` fallback 并组装 `ManagementAuthRuntimeConfig`；adapter 仅保留 contract 并 re-export source |
 | runtime status source | `host/cc_switch/runtime_status_source.rs` | `CcSwitchRuntimeStatusSource` 默认实现已迁到 `proxy/host/cc_switch/runtime_status_source.rs`，负责读取 runtime status、start time 和 current route targets 并投影 uptime/active target；adapter 仅保留 contract、test-only default source 与 re-export |
 | Claude Desktop gateway auth source | `host/cc_switch/claude_desktop_gateway_auth_source.rs` | `CcSwitchClaudeDesktopGatewayAuthSource` 默认实现已迁到 `proxy/host/cc_switch/claude_desktop_gateway_auth_source.rs`，负责通过 adapter-owned DB token helper 加载 gateway bearer token 并映射 core auth 错误；adapter 仅保留 token helper/contract 并 re-export source |
@@ -2668,7 +2672,7 @@ node_modules/.bin/tsc --noEmit
 
 新增 traits 和 CC Switch adapter 实现。
 
-1. `CcSwitchConfigSource` 作为 adapter-owned 端口包装现有 DB/settings 读取。
+1. `CcSwitchConfigSource` 作为 host-owned 端口包装现有 DB/settings 读取，并由 adapter re-export/装配；config source/projection helper 继续留在 adapter。
 2. `CcSwitchProviderSource` 作为 host-owned source 包装 provider/current provider、active route target 和 route candidate provider ids，并由 adapter re-export/装配。
 3. `CcSwitchChannelSource` 作为 adapter-owned 端口包装 provider 主 URL、`provider_endpoints` 和未来 channel 表读取。
 4. `CcSwitchRoutePolicySource` 作为 host-owned source 包装 failover queue 到 core `RoutePolicy` 的默认桥接，并由 adapter re-export/装配；`CcSwitchRouteResolver` 作为 host-owned resolver 包装 core route plan 与 management dry-run route resolution，并由 adapter re-export/装配。
@@ -2899,6 +2903,7 @@ CC Switch 前端可以继续用 Tauri commands；外部集成用 HTTP API。
 ### 宿主适配测试
 
 - host-owned `CcSwitchProviderSource` 与现有 DB provider 表兼容，并通过 adapter helper 暴露 current provider、active route target 和 route candidate provider ids。
+- host-owned `CcSwitchConfigSource` 与现有 DB/settings 配置兼容，并通过 adapter helper 暴露 app catalog、global/app/app-summary/runtime config。
 - adapter-owned `CcSwitchChannelSource` 可以从 provider 主 URL、`provider_endpoints` 和新 channel 表生成一致候选。
 - 旧配置迁移 dry-run 可以输出新增、重复、需人工确认的 channel。
 - host-owned `CcSwitchUsageSink` 写入 `proxy_request_logs` 字段完整，adapter 只保留 projection helper 并 re-export sink。
