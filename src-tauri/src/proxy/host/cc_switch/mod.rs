@@ -21,4 +21,5 @@ pub(crate) mod managed_account_runtime_source;
 pub(crate) mod provider_adapter_context;
 pub(crate) mod provider_router_channel_source;
 pub(crate) mod provider_router_config_source;
+pub(crate) mod provider_router_health_store;
 pub(crate) mod runtime_status_source;

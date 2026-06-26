@@ -16175,7 +16175,7 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
     let adapter_slice = function_slice(
         &source,
         "struct CcSwitchProviderRouterProviderSource",
-        "struct CcSwitchProviderRouterHealthStore",
+        "pub(crate) fn current_provider_id_from_router_sources",
     );
 
     assert!(
@@ -16321,40 +16321,46 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
 #[test]
 fn production_provider_router_health_store_uses_core_attempt_facts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let adapter_slice = function_slice(
-        &source,
-        "struct CcSwitchProviderRouterHealthStore",
-        "pub(crate) fn current_provider_id_from_router_sources",
-    );
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_router_health_store.rs");
+    let source = fs::read_to_string(&source_path).expect("read provider_router_health_store.rs");
 
     assert!(
-        adapter_slice.contains("impl ProviderHealthStore for CcSwitchProviderRouterHealthStore")
-            && adapter_slice.contains("ProviderAttemptResult")
-            && adapter_slice.contains("record_provider_attempt_in_db_source"),
-        "ProviderRouter health store adapter must write provider health through core ProviderHealthStore attempt projection"
+        source.contains("impl ProviderHealthStore for CcSwitchProviderRouterHealthStore")
+            && source.contains("ProviderAttemptResult")
+            && source.contains("record_provider_attempt_in_db_source"),
+        "ProviderRouter health store must write provider health through core ProviderHealthStore attempt projection"
     );
     assert!(
-        adapter_slice.contains("fn record_channel_health<'a>(")
-            && adapter_slice.contains("result: ChannelAttemptResult")
-            && adapter_slice.contains("BoxFuture<'a, Result<(), AppError>>")
-            && adapter_slice.contains("record_channel_health_attempt_from_router_db(&self.db, result)"),
-        "ProviderRouter health store adapter must write channel health through core ChannelAttemptResult projection"
+        source.contains("fn record_channel_health<'a>(")
+            && source.contains("result: ChannelAttemptResult")
+            && source.contains("BoxFuture<'a, Result<(), AppError>>")
+            && source.contains("record_channel_health_attempt_from_router_db(&self.db, result)"),
+        "ProviderRouter health store must write channel health through core ChannelAttemptResult projection"
     );
     assert!(
-        adapter_slice.contains("fn reset_channel_health(&self, reset: ChannelHealthReset)")
-            && adapter_slice.contains("reset_channel_health_from_router_db(&self.db, reset)"),
-        "ProviderRouter health store adapter must reset channel health through core ChannelHealthReset facts"
+        source.contains("fn reset_channel_health(&self, reset: ChannelHealthReset)")
+            && source.contains("reset_channel_health_from_router_db(&self.db, reset)"),
+        "ProviderRouter health store must reset channel health through core ChannelHealthReset facts"
+    );
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::provider_router_health_store::CcSwitchProviderRouterHealthStore"
+        ) && adapter_source.contains("CcSwitchProviderRouterHealthStore::new(")
+            && !adapter_source.contains("struct CcSwitchProviderRouterHealthStore")
+            && !adapter_source.contains("impl ProviderHealthStore for CcSwitchProviderRouterHealthStore")
+            && !adapter_source.contains("impl ProviderRouterHealthStore for CcSwitchProviderRouterHealthStore"),
+        "proxy_core_adapter should re-export and instantiate, not own, the ProviderRouter health store"
     );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(adapter_slice) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROVIDER_ROUTER_HEALTH_STORE_ADAPTER_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs CcSwitchProviderRouterHealthStore:{} contains health store adapter marker `{}`",
+                    "src/proxy/host/cc_switch/provider_router_health_store.rs:{} contains health store adapter marker `{}`",
                     line_index + 1,
                     marker
                 ));

@@ -12,8 +12,8 @@ use crate::provider::{
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::engine::context::RequestContext;
 use crate::proxy::engine::routing::{
-    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterHealthStore,
-    ProviderRouterProviderSource, ProviderRouterSources,
+    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterProviderSource,
+    ProviderRouterSources,
 };
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::forward_error_to_core_error;
@@ -27,6 +27,7 @@ pub(crate) use crate::proxy::host::cc_switch::management_auth_source::CcSwitchMa
 pub(crate) use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource;
 pub(crate) use crate::proxy::host::cc_switch::provider_router_channel_source::CcSwitchProviderRouterChannelSource;
 pub(crate) use crate::proxy::host::cc_switch::provider_router_config_source::CcSwitchProviderRouterConfigSource;
+pub(crate) use crate::proxy::host::cc_switch::provider_router_health_store::CcSwitchProviderRouterHealthStore;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::http::server::ProxyServer;
@@ -5106,7 +5107,7 @@ impl CcSwitchProviderRouterSources {
             Arc::new(CcSwitchProviderRouterChannelSource::new(
                 CcSwitchChannelSource::new(db.clone()),
             )),
-            Arc::new(CcSwitchProviderRouterHealthStore { db }),
+            Arc::new(CcSwitchProviderRouterHealthStore::new(db)),
         )
     }
 }
@@ -5185,56 +5186,6 @@ impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource {
         Box::pin(async move {
             select_current_provider_ids_from_router_provider_source(self, app_type).await
         })
-    }
-}
-
-struct CcSwitchProviderRouterHealthStore {
-    db: Arc<Database>,
-}
-
-impl ProviderHealthStore for CcSwitchProviderRouterHealthStore {
-    fn record_attempt<'a>(
-        &'a self,
-        result: ProviderAttemptResult,
-    ) -> BoxFuture<'a, ProxyCoreResult<()>> {
-        Box::pin(async move { record_provider_attempt_in_db_source(&self.db, result).await })
-    }
-}
-
-impl ProviderRouterHealthStore for CcSwitchProviderRouterHealthStore {
-    fn record_provider_health<'a>(
-        &'a self,
-        provider_id: &'a str,
-        app_type: &'a str,
-        success: bool,
-        error_msg: Option<String>,
-        failure_threshold: u32,
-    ) -> BoxFuture<'a, Result<(), AppError>> {
-        Box::pin(async move {
-            ProviderHealthStore::record_attempt(
-                self,
-                ProviderAttemptResult {
-                    provider_id: provider_id.to_string(),
-                    app: AppKind::from(app_type),
-                    success,
-                    failure_threshold,
-                    error_message: error_msg,
-                },
-            )
-            .await
-            .map_err(app_error_from_proxy_core_error)
-        })
-    }
-
-    fn record_channel_health<'a>(
-        &'a self,
-        result: ChannelAttemptResult,
-    ) -> BoxFuture<'a, Result<(), AppError>> {
-        Box::pin(async move { record_channel_health_attempt_from_router_db(&self.db, result) })
-    }
-
-    fn reset_channel_health(&self, reset: ChannelHealthReset) -> Result<(), AppError> {
-        reset_channel_health_from_router_db(&self.db, reset)
     }
 }
 
