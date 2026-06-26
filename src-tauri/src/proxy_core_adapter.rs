@@ -5638,9 +5638,9 @@ pub(crate) trait ForwarderAuthSource {
         input: ForwarderAuthHeadersInput<'a>,
     ) -> BoxFuture<'a, Result<ForwarderAuthHeaders, ProxyError>>;
 }
-pub(crate) use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source;
+use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source;
 #[cfg(test)]
-pub(crate) use crate::proxy::host::cc_switch::forwarder_auth_source::{
+use crate::proxy::host::cc_switch::forwarder_auth_source::{
     default_forwarder_auth_source, forwarder_auth_source_from_sources,
 };
 

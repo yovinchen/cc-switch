@@ -13940,7 +13940,7 @@ fn production_forwarder_uses_auth_source_resource() {
     let auth_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderAuthSource",
-        "pub(crate) use crate::proxy::host::cc_switch::forwarder_auth_source::",
+        "use crate::proxy::host::cc_switch::forwarder_auth_source::",
     );
     let auth_impl_slice = function_slice(
         &auth_source,
@@ -14008,9 +14008,10 @@ fn production_forwarder_uses_auth_source_resource() {
         );
     }
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source")
+        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source")
+            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source")
             && !adapter_source.contains("struct CcSwitchForwarderAuthSource"),
-        "proxy_core_adapter should re-export the forwarder auth source factory without owning the implementation"
+        "proxy_core_adapter should use the forwarder auth source factory without re-exporting or owning the implementation"
     );
     let auth_source_forbidden_markers = [
         "forwarder_provider_auth_info(",

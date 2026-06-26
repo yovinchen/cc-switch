@@ -1122,7 +1122,9 @@ mod tests {
                     current_providers,
                     events.clone(),
                 ),
-            auth_source: crate::proxy_core_adapter::default_forwarder_auth_source(),
+            auth_source:
+                crate::proxy::host::cc_switch::forwarder_auth_source::default_forwarder_auth_source(
+                ),
             request_source: crate::proxy_core_adapter::default_forwarder_request_source(),
             transport_source:
                 crate::proxy::host::cc_switch::forwarder_transport_source::default_forwarder_transport_source(
