@@ -2402,6 +2402,8 @@ provider adapter 仍负责 CC Switch 默认 fallback 的 provider settings 到 h
 
 本轮继续把 managed-account token runtime 的日志/错误文案 contract 收进 `proxy-core::managed_account_auth`：core 统一生成 Copilot/Codex OAuth 的无 AppHandle、指定/默认账号取 token、成功和失败文本；Tauri state 读取和 token 获取调用现在由 `proxy/host/cc_switch/managed_account_runtime_source.rs::CcSwitchManagedAccountRuntimeSource` 默认实现持有，`src/proxy/managed_account_auth.rs` 已删除。这让外部中转宿主可以复用相同 runtime 反馈 contract，而不复制 CC Switch 桌面 host 的中文文案分支。
 
+本轮继续把 CC Switch `Provider.meta` 到 managed-account binding 的投影收敛为 `proxy_core_adapter::ProviderManagedAccountBindingContext`：host runtime source 不再在认证、动态 endpoint、live model 和 Claude API format 路径分别展开 `auth_binding`/legacy `github_account_id`，而是统一消费结构化 binding context 后交给 core runtime helper。后续外部中转宿主替换 Provider 形状时，只需要提供等价 binding facts，而不需要复制 CC Switch `ProviderMeta` 字段读取。
+
 本轮继续把 Codex live/settings 的 JSON 形状契约收进 `proxy-core::ports`：auth 对象提取、live write parts、restore parts、live settings parts、snapshot parts 和 provider validation parts 都由 core 基于 `settings + category` 生成；`proxy_core_adapter` 只负责把 CC Switch `Provider` 拆成中立输入。这样后续中转迁移可以让不同地址绑定不同认证、接口和模型信息，同时不让宿主 adapter 重新承载 Codex 配置形状规则。
 
 随后又把 provider settings validation 的 app 分派和 localized issue spec 收进 `proxy-core::ports`：core 基于 `AppKind + settings` 决定 Claude/OpenCode/OpenClaw/Hermes 是否要求 JSON object，并复用 Codex validation parts 输出 Codex config 文本；host 仍只负责执行 ClaudeDesktop/Gemini 这类宿主专属校验和实际 TOML 语义校验。
