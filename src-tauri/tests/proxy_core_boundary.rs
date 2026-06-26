@@ -6633,6 +6633,9 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let response_adapter_source =
+        fs::read_to_string(&response_adapter_path).expect("read proxy/response_adapter.rs");
     let decode_slice = function_slice(
         &source,
         "pub(crate) struct DecodedProxyResponseBody",
@@ -6669,12 +6672,17 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
         "response pipeline should own the non-streaming transport body read/decode bridge"
     );
     assert!(
-        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
-            && adapter_source.contains("read_decoded_proxy_response_body")
-            && adapter_source.contains("DecodedProxyResponseBody")
+        !adapter_source.contains("read_decoded_proxy_response_body")
+            && !adapter_source.contains("DecodedProxyResponseBody")
+            && !adapter_source.contains("decode_raw_proxy_response_body")
             && !adapter_source.contains("pub(crate) struct DecodedProxyResponseBody")
             && !adapter_source.contains("pub(crate) fn decode_raw_proxy_response_body"),
-        "proxy_core_adapter should re-export, not own, response body decode bridge helpers"
+        "proxy_core_adapter should not re-export response body decode bridge helpers"
+    );
+    assert!(
+        response_adapter_source.contains("engine::response_pipeline::{")
+            && response_adapter_source.contains("read_decoded_proxy_response_body"),
+        "response_adapter should import response body decode bridge helpers directly from response_pipeline"
     );
     let direct_core_refs: Vec<String> = production_lines(&source)
         .filter_map(|(line_index, line)| {
