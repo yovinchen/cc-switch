@@ -618,6 +618,7 @@
 604. `/proxy/v1/channels/{channel_id}/keys` 的 GET/PUT/PATCH/DELETE 管理接口已接入 `proxy-core::ChannelKeyRecord`、`ChannelKeysResponse`、`ChannelKeyDeleteResponse` 与 key path helper：外部集成方可以按 channel 独立创建、列出、轮换、禁用或移除 key，`keyValue` 仅作为写入字段进入 DAO/runtime，所有公开响应只返回 keyRef/status/priority/weight/lastFailureAt/deleted 等脱敏元数据。
 605. 显式 `channel-key:<keyRef>` auth profile 已改为 fail-closed：如果 key 缺失或被禁用，runtime 返回认证错误而不是静默回退到 provider 原始凭据，避免“地址声明了独立 key 但实际走错 key”的中转隔离风险。
 606. `authProfileRef` 的显式 profile 形状校验已迁入 `proxy-core::channel_request`，channel 写入和 patch 会在入库前拒绝空 `channel-key:`、空 provider ref 或未知 profile 前缀，避免运行期把 malformed channel key profile 回退成 provider 凭据。
+- raw Hyper 上游 transport、`ProxyResponse` 与 header-case preservation 实现已迁到 `proxy/transport/upstream/hyper_client.rs`，旧 `proxy/hyper_client.rs` 仅保留兼容 re-export；raw-hyper 发送仍与 reqwest/global HTTP client 迁移分开处理。
 607. host crate 新增 `proxy_core_boundary` 集成测试，固定除 `src/lib.rs` re-export 与 `src/proxy_core_adapter.rs` 外不得直接引用 `crate::proxy_core::` 或 `cc_switch_proxy_core::`，确保后续 Tauri host 继续通过 adapter 集中接入 core。
 608. 模型目录服务层删除 `services::model_fetch` 与 `services::codex_oauth_models` 纯转发 facade，Tauri commands 直接调用 `model_fetch_transport` 这个 host reqwest adapter；URL 规划、请求契约、失败映射与响应解析继续由 `proxy-core::model_fetch` 维护。
 609. stream check 的延迟状态判定与 timeout-like retry 判定已迁入 `proxy-core` 的 channel reachability contract；host `StreamCheckService` 保留 reqwest 探测、provider base URL 提取和现有 DTO/DAO 兼容映射。
@@ -2535,7 +2536,7 @@ ProxyRequest
 | `response_processor.rs` | `engine/response_pipeline.rs` | response pipeline 实现已迁到 `proxy/engine/response_pipeline.rs`，旧 `proxy/response_processor.rs` 仅保留兼容 re-export；后续继续把用量落库改为 `UsageSink` |
 | `usage/logger.rs` | `host/cc_switch/database_usage_sink.rs` | 只保留 parser/calculator 在核心 |
 | `providers/*` | `provider/*` | 先迁移类型依赖，再移动文件 |
-| `hyper_client.rs` | `transport/upstream/hyper_client.rs` | 保留 header casing 行为 |
+| `hyper_client.rs` | `transport/upstream/hyper_client.rs` | raw Hyper 上游 transport、`ProxyResponse` 与 header-case preservation 实现已迁到 `proxy/transport/upstream/hyper_client.rs`，旧 `proxy/hyper_client.rs` 仅保留兼容 re-export；后续继续区分 raw-hyper 上游 transport 与 reqwest/global HTTP client |
 | `http_client.rs` | `transport/upstream/reqwest_client.rs` 或 host shared | 需区分“上游请求客户端”和“应用全局 HTTP 客户端” |
 | `types.rs` | `domain/config.rs`, `domain/status.rs` | 拆分领域类型 |
 | `services/proxy.rs` | `host/cc_switch/live_takeover.rs` | 保留桌面宿主逻辑 |
