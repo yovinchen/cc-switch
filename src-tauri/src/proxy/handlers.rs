@@ -13,13 +13,10 @@ use super::{
     error_mapper::{management_api_error_to_proxy_error, proxy_core_error_to_proxy_error},
     response_adapter::{
         claude_passthrough_response_to_axum_response, claude_response_needs_transform,
-        claude_transformed_response_to_axum_response,
-        codex_chat_to_responses_transformed_response_to_axum_response,
-        codex_passthrough_response_to_axum_response, codex_response_needs_chat_transform,
-        collect_json_proxy_request, dispatch_claude_proxy_request_to_proxy_response,
-        dispatch_codex_proxy_request_to_proxy_response, dispatch_gemini_request_to_axum_response,
-        openai_chat_passthrough_response_to_axum_response, proxy_event_envelope_to_axum_sse_event,
-        CodexProxyDispatchResponse,
+        claude_transformed_response_to_axum_response, codex_chat_proxy_request_to_axum_response,
+        codex_responses_proxy_request_to_axum_response, collect_json_proxy_request,
+        dispatch_claude_proxy_request_to_proxy_response, dispatch_gemini_request_to_axum_response,
+        proxy_event_envelope_to_axum_sse_event,
     },
 };
 use crate::app_config::AppType;
@@ -635,20 +632,8 @@ pub async fn handle_chat_completions(
     let proxy_request = parsed_request
         .into_codex_chat_proxy_request(endpoint.clone(), Some(ctx.request_model.clone()));
 
-    let response = match dispatch_codex_proxy_request_to_proxy_response(
-        &state,
-        &mut ctx,
-        proxy_request,
-        &endpoint,
-        is_stream,
-    )
-    .await?
-    {
-        CodexProxyDispatchResponse::ProxyResponse(response) => response,
-        CodexProxyDispatchResponse::ErrorResponse(response) => return Ok(response),
-    };
-
-    openai_chat_passthrough_response_to_axum_response(response, &ctx, &state).await
+    codex_chat_proxy_request_to_axum_response(&state, &mut ctx, proxy_request, &endpoint, is_stream)
+        .await
 }
 
 /// 处理 /v1/responses 请求（OpenAI Responses API - Codex CLI 透传）
@@ -669,32 +654,15 @@ pub async fn handle_responses(
     let proxy_request = codex_proxy_request.request;
     let codex_tool_context = codex_proxy_request.tool_context;
 
-    let response = match dispatch_codex_proxy_request_to_proxy_response(
+    codex_responses_proxy_request_to_axum_response(
         &state,
         &mut ctx,
         proxy_request,
         &endpoint,
         is_stream,
+        codex_tool_context,
     )
-    .await?
-    {
-        CodexProxyDispatchResponse::ProxyResponse(response) => response,
-        CodexProxyDispatchResponse::ErrorResponse(response) => return Ok(response),
-    };
-
-    if codex_response_needs_chat_transform(&ctx, &endpoint)? {
-        return codex_chat_to_responses_transformed_response_to_axum_response(
-            response,
-            &ctx,
-            &state,
-            is_stream,
-            None,
-            codex_tool_context,
-        )
-        .await;
-    }
-
-    codex_passthrough_response_to_axum_response(response, &ctx, &state).await
+    .await
 }
 
 /// 处理 /v1/responses/compact 请求（OpenAI Responses Compact API - Codex CLI 透传）
@@ -715,32 +683,15 @@ pub async fn handle_responses_compact(
     let proxy_request = codex_proxy_request.request;
     let codex_tool_context = codex_proxy_request.tool_context;
 
-    let response = match dispatch_codex_proxy_request_to_proxy_response(
+    codex_responses_proxy_request_to_axum_response(
         &state,
         &mut ctx,
         proxy_request,
         &endpoint,
         is_stream,
+        codex_tool_context,
     )
-    .await?
-    {
-        CodexProxyDispatchResponse::ProxyResponse(response) => response,
-        CodexProxyDispatchResponse::ErrorResponse(response) => return Ok(response),
-    };
-
-    if codex_response_needs_chat_transform(&ctx, &endpoint)? {
-        return codex_chat_to_responses_transformed_response_to_axum_response(
-            response,
-            &ctx,
-            &state,
-            is_stream,
-            None,
-            codex_tool_context,
-        )
-        .await;
-    }
-
-    codex_passthrough_response_to_axum_response(response, &ctx, &state).await
+    .await
 }
 
 // ============================================================================
