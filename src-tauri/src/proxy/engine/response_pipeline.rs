@@ -14,12 +14,13 @@ use crate::proxy_core::api::transport::{
     ResponseLogLevel,
 };
 use crate::proxy_core_adapter::{
-    create_logged_passthrough_stream, passthrough_non_stream_proxy_response_from_context,
+    create_logged_passthrough_stream, passthrough_bytes_proxy_response,
     passthrough_stream_proxy_response_from_context,
     record_non_streaming_response_usage_from_context, response_headers_indicate_sse,
     streaming_usage_collector_from_context, usage_logging_enabled_from_proxy_config,
     ActiveConnectionGuard, AxumResponseBuildErrorContext, NonStreamingUsageRecordContext,
-    ProxyState, SseUsageCollector, StreamingUsageCollectorContext, UsageParserConfig,
+    ProxyCoreResponse, ProxyState, SseUsageCollector, StreamingUsageCollectorContext,
+    UsageParserConfig,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -260,6 +261,19 @@ pub(crate) fn record_non_streaming_response_usage(
         status_code,
         session_id: &ctx.session_id,
     })
+}
+
+pub(crate) fn passthrough_non_stream_proxy_response_from_context(
+    status: http::StatusCode,
+    headers: HeaderMap,
+    body: Bytes,
+    state: &ProxyState,
+    ctx: &RequestContext,
+    parser_config: &UsageParserConfig,
+) -> Result<ProxyCoreResponse, String> {
+    log_non_streaming_proxy_response_body(&body, ctx.tag);
+    record_non_streaming_response_usage(state, ctx, &body, parser_config, status.as_u16())?;
+    Ok(passthrough_bytes_proxy_response(status, headers, body))
 }
 
 /// 内部使用量记录函数

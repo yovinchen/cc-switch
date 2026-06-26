@@ -1650,8 +1650,6 @@ const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_PROJECTION_MARKERS: &[&str] = &[
     "String::from_utf8_lossy(",
 ];
 const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_CALL_MARKERS: &[&str] = &[];
-const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_CONSTRUCTION_MARKERS: &[&str] =
-    &["passthrough_bytes_proxy_response("];
 const FORBIDDEN_RESPONSE_BUILD_CONTEXT_LITERAL_MARKERS: &[&str] = &[
     "Failed to build response",
     "Failed to build streaming response",
@@ -7808,29 +7806,36 @@ fn handlers_delegate_transformed_usage_policy_to_adapter() {
 }
 
 #[test]
-fn response_processor_delegates_response_construction_to_adapter() {
+fn response_pipeline_owns_non_stream_passthrough_response_construction() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(&source) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_CONSTRUCTION_MARKERS {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy/engine/response_pipeline.rs:{} contains response construction marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn passthrough_non_stream_proxy_response_from_context",
+        "/// 内部使用量记录函数",
+    );
 
     assert!(
-        violations.is_empty(),
-        "response processor must delegate core response construction to proxy_core_adapter:\n{}",
-        violations.join("\n")
+        function.contains("log_non_streaming_proxy_response_body(&body, ctx.tag)")
+            && function.contains("record_non_streaming_response_usage(")
+            && function.contains("passthrough_bytes_proxy_response(status, headers, body)"),
+        "response pipeline should own non-streaming passthrough response construction"
+    );
+    assert!(
+        !function.contains("non_streaming_response_usage_record_from_response_context(")
+            && !function.contains("response_usage_provider_facts_from_optional(")
+            && !function.contains("spawn_usage_record_with_proxy_services("),
+        "response pipeline should still delegate usage projection and persistence internals"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
+            && adapter_source.contains("passthrough_non_stream_proxy_response_from_context")
+            && !adapter_source
+                .contains("pub(crate) fn passthrough_non_stream_proxy_response_from_context"),
+        "proxy_core_adapter should re-export, not own, non-streaming passthrough construction"
     );
 }
 

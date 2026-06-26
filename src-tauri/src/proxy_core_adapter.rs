@@ -6497,8 +6497,9 @@ type UsageCallbackWithTiming = Arc<dyn Fn(Vec<Value>, Option<u64>) + Send + Sync
 pub(crate) use crate::proxy::engine::response_pipeline::{
     create_passthrough_logged_stream, decode_raw_proxy_response_body,
     log_non_streaming_proxy_response_body, log_streaming_proxy_response_received,
-    passthrough_streaming_usage_collector, read_decoded_proxy_response_body,
-    record_non_streaming_response_usage, DecodedProxyResponseBody,
+    passthrough_non_stream_proxy_response_from_context, passthrough_streaming_usage_collector,
+    read_decoded_proxy_response_body, record_non_streaming_response_usage,
+    DecodedProxyResponseBody,
 };
 
 #[derive(Clone)]
@@ -8407,19 +8408,6 @@ where
 
     spawn_usage_record_with_proxy_services(context.services, output.record);
     Ok(())
-}
-
-pub(crate) fn passthrough_non_stream_proxy_response_from_context(
-    status: http::StatusCode,
-    headers: HeaderMap,
-    body: Bytes,
-    state: &ProxyState,
-    ctx: &RequestContext,
-    parser_config: &UsageParserConfig,
-) -> Result<ProxyCoreResponse, String> {
-    log_non_streaming_proxy_response_body(&body, ctx.tag);
-    record_non_streaming_response_usage(state, ctx, &body, parser_config, status.as_u16())?;
-    Ok(passthrough_bytes_proxy_response(status, headers, body))
 }
 
 pub(crate) fn usage_logging_enabled_from_proxy_config(config: &RwLock<ProxyConfig>) -> bool {
