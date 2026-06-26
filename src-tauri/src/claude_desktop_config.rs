@@ -172,10 +172,6 @@ pub fn provider_mode(provider: &Provider) -> ClaudeDesktopMode {
     crate::proxy_core_adapter::provider_claude_desktop_mode(provider)
 }
 
-pub fn get_or_create_gateway_token(db: &Database) -> Result<String, AppError> {
-    crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source(db)
-}
-
 fn direct_gateway_credential_issue_to_error(
     issue: ClaudeDesktopDirectGatewayCredentialIssue,
 ) -> AppError {
@@ -448,7 +444,10 @@ fn apply_provider_to_paths_inner(
         }
         ClaudeDesktopMode::Proxy => {
             let base_url = proxy_gateway_base_url_from_db(db)?;
-            let api_key = get_or_create_gateway_token(db)?;
+            let api_key =
+                crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source(
+                    db,
+                )?;
             let model_specs =
                 crate::proxy_core_adapter::provider_claude_desktop_proxy_gateway_profile_model_specs(
                     provider,

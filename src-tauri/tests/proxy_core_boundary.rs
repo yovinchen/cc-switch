@@ -5897,19 +5897,21 @@ fn claude_desktop_config_delegates_gateway_token_source_to_adapter() {
         "pub fn get_status(",
         "pub fn get_config_library_path(",
     );
-    let token_slice = function_slice(
+    let apply_slice = function_slice(
         &source,
-        "pub fn get_or_create_gateway_token(",
-        "fn direct_gateway_credential_issue_to_error(",
+        "fn apply_provider_to_paths_inner(",
+        "fn write_deployment_mode(",
     );
 
     assert!(
         status_slice.contains("claude_desktop_gateway_token_configured_from_db_source(")
-            && token_slice.contains("get_or_create_claude_desktop_gateway_token_from_db_source("),
-        "claude_desktop_config should delegate gateway token status and creation to proxy_core_adapter"
+            && apply_slice.contains("get_or_create_claude_desktop_gateway_token_from_db_source(")
+            && !source.contains("pub fn get_or_create_gateway_token("),
+        "claude_desktop_config should use proxy_core_adapter gateway token source without retaining a host wrapper"
     );
 
     let forbidden_markers = [
+        "get_or_create_gateway_token(",
         "GATEWAY_TOKEN_SETTING_KEY",
         "\"claude_desktop_gateway_token\"",
         ".get_setting(",
@@ -5919,7 +5921,7 @@ fn claude_desktop_config_delegates_gateway_token_source_to_adapter() {
     let mut violations = Vec::new();
     for (label, slice) in [
         ("get_status", status_slice),
-        ("get_or_create_gateway_token", token_slice),
+        ("apply_provider_to_paths_inner", apply_slice),
     ] {
         for (line_index, line) in production_lines(slice) {
             let code = line.split("//").next().unwrap_or_default();
@@ -5950,7 +5952,7 @@ fn claude_desktop_config_delegates_provider_mode_to_adapter() {
     let mode_slice = function_slice(
         &source,
         "pub fn provider_mode(",
-        "pub fn get_or_create_gateway_token(",
+        "fn direct_gateway_credential_issue_to_error(",
     );
 
     assert!(
