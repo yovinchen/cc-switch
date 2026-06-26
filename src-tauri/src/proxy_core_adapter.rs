@@ -1000,7 +1000,6 @@ pub(crate) type ForwarderTransformPlanFacts<'a> =
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
 #[cfg(test)]
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig;
-pub(crate) type StreamingTimeoutConfig = crate::proxy_core::api::config::StreamingTimeoutConfig;
 pub(crate) type SsePassthroughStreamState =
     crate::proxy_core::api::transforms::SsePassthroughStreamState;
 pub(crate) type SseUsageAccumulator = crate::proxy_core::api::transforms::SseUsageAccumulator;

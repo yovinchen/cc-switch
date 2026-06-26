@@ -6429,6 +6429,7 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
             (code.contains("crate::proxy_core::")
                 && !code.contains("crate::proxy_core::api::transport")
                 && !code.contains("crate::proxy_core::api::usage")
+                && !code.contains("crate::proxy_core::api::config")
                 && !code.contains("crate::proxy_core::api::errors"))
             .then(|| {
                 format!(
@@ -6440,7 +6441,7 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
         .collect();
     assert!(
         direct_core_refs.is_empty(),
-        "response pipeline direct proxy-core access should stay limited to response transport/usage/error APIs:\n{}",
+        "response pipeline direct proxy-core access should stay limited to response config/transport/usage/error APIs:\n{}",
         direct_core_refs.join("\n")
     );
 }
@@ -6461,7 +6462,8 @@ fn response_pipeline_owns_core_usage_transport_imports() {
         .collect();
 
     assert!(
-        source.contains("use crate::proxy_core::api::transport::{")
+        source.contains("use crate::proxy_core::api::config::StreamingTimeoutConfig;")
+            && source.contains("use crate::proxy_core::api::transport::{")
             && source.contains("response_headers_indicate_sse")
             && source.contains("ProxyCoreResponse")
             && source.contains("use crate::proxy_core::api::usage::{")
@@ -6479,6 +6481,7 @@ fn response_pipeline_owns_core_usage_transport_imports() {
         "response_headers_indicate_sse",
         "ProxyCoreResponse",
         "StreamUsageEventFilter",
+        "StreamingTimeoutConfig",
         "TokenUsage",
         "TransformedResponseUsageFormat",
         "UsageParserConfig",

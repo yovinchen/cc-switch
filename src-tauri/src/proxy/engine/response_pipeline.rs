@@ -9,6 +9,7 @@ use crate::proxy::{
     response_adapter::proxy_core_response_to_axum_response,
     transport::upstream::hyper_client::ProxyResponse,
 };
+use crate::proxy_core::api::config::StreamingTimeoutConfig;
 use crate::proxy_core::api::errors::{selected_provider_not_applied_message, ProxyCoreError};
 use crate::proxy_core::api::transport::{
     decode_response_body, non_streaming_body_timeout_message,
@@ -37,7 +38,7 @@ use crate::proxy_core_adapter::{
     transform_codex_chat_sse_with_history, usage_logging_enabled_from_proxy_config,
     ActiveConnectionGuard, AnthropicToolSchemaHints, AppKind, AxumResponseBuildErrorContext,
     CodexToolContext, ProviderKind, ProxyServices, ProxyState, SsePassthroughStreamState,
-    SseUsageAccumulator, StreamingTimeoutConfig,
+    SseUsageAccumulator,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
