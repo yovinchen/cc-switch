@@ -23,7 +23,7 @@ use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_core_error_t
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::host::cc_switch::database_usage_sink::{RequestLog, UsageLogger};
 use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
-use crate::proxy::providers::{get_adapter, ProviderAdapter};
+use crate::proxy::provider::{get_adapter, ProviderAdapter};
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::http::server::ProxyServer;
@@ -19693,7 +19693,7 @@ reasoning = "medium"
         assert_eq!(oauth.strategy, ProviderAuthStrategy::GoogleOAuth);
         assert_eq!(oauth.masked_access_token(), Some("ya29...2345".to_string()));
 
-        let codex_adapter = crate::proxy::providers::CodexAdapter::new();
+        let codex_adapter = crate::proxy::provider::CodexAdapter::new();
         let codex_provider = Provider::with_id(
             "codex".to_string(),
             "Codex".to_string(),
@@ -21995,7 +21995,7 @@ command = "latest-command"
 
     #[test]
     fn upstream_url_adapter_projects_codex_and_gemini_url_rules() {
-        let codex_adapter = crate::proxy::providers::CodexAdapter::new();
+        let codex_adapter = crate::proxy::provider::CodexAdapter::new();
         assert_eq!(
             codex_adapter.build_url("https://api.openai.com/v1", "/chat/completions"),
             "https://api.openai.com/v1/chat/completions"
@@ -22082,8 +22082,8 @@ command = "latest-command"
             api_format: Some("openai_chat".to_string()),
             ..ProviderMeta::default()
         });
-        let claude_adapter = crate::proxy::providers::ClaudeAdapter::new();
-        let codex_adapter = crate::proxy::providers::CodexAdapter::new();
+        let claude_adapter = crate::proxy::provider::ClaudeAdapter::new();
+        let codex_adapter = crate::proxy::provider::CodexAdapter::new();
         assert_eq!(claude_adapter.name(), "Claude");
         assert_eq!(codex_adapter.name(), "Codex");
         let forwarder_claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);

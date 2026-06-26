@@ -4363,7 +4363,7 @@ fn production_status_and_desktop_model_handlers_delegate_json_bridge_to_response
 #[test]
 fn production_provider_adapter_registry_uses_core_app_policy() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/providers/mod.rs");
+    let path = manifest_dir.join("src/proxy/provider/mod.rs");
     let source = fs::read_to_string(&path).expect("read provider adapter registry");
     let get_adapter = function_slice(
         &source,
@@ -4391,7 +4391,7 @@ fn production_provider_adapter_registry_uses_core_app_policy() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/providers/mod.rs get_adapter:{} contains host app branch marker `{}`",
+                    "src/proxy/provider/mod.rs get_adapter:{} contains host app branch marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -4429,9 +4429,9 @@ fn proxy_core_adapter_delegates_provider_adapter_selection_to_core() {
 fn production_provider_adapters_delegate_base_url_errors_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let provider_paths = [
-        "src/proxy/providers/claude.rs",
-        "src/proxy/providers/codex.rs",
-        "src/proxy/providers/gemini.rs",
+        "src/proxy/provider/claude.rs",
+        "src/proxy/provider/codex.rs",
+        "src/proxy/provider/gemini.rs",
     ];
 
     let mut violations = Vec::new();
@@ -4463,7 +4463,7 @@ fn production_provider_adapters_delegate_base_url_errors_to_adapter() {
 #[test]
 fn production_gemini_provider_adapter_delegates_auth_info_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/providers/gemini.rs");
+    let path = manifest_dir.join("src/proxy/provider/gemini.rs");
     let source = fs::read_to_string(&path).expect("read gemini provider adapter source");
     let extract_auth = function_slice(
         &source,
@@ -4477,7 +4477,7 @@ fn production_gemini_provider_adapter_delegates_auth_info_to_adapter() {
         for marker in FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/providers/gemini.rs extract_auth:{} contains auth info marker `{}`",
+                    "src/proxy/provider/gemini.rs extract_auth:{} contains auth info marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -4496,8 +4496,8 @@ fn production_gemini_provider_adapter_delegates_auth_info_to_adapter() {
 fn production_provider_adapters_exclude_provider_kind_test_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let provider_paths = [
-        "src/proxy/providers/claude.rs",
-        "src/proxy/providers/gemini.rs",
+        "src/proxy/provider/claude.rs",
+        "src/proxy/provider/gemini.rs",
     ];
 
     let mut violations = Vec::new();
@@ -4529,7 +4529,7 @@ fn production_provider_adapters_exclude_provider_kind_test_facades() {
 #[test]
 fn production_codex_provider_adapter_excludes_strategy_test_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let relative = "src/proxy/providers/codex.rs";
+    let relative = "src/proxy/provider/codex.rs";
     let source = fs::read_to_string(manifest_dir.join(relative)).expect("read Codex provider");
 
     let mut violations = Vec::new();
@@ -4557,7 +4557,7 @@ fn production_codex_provider_adapter_excludes_strategy_test_facades() {
 #[test]
 fn production_codex_provider_adapter_delegates_auth_info_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/providers/codex.rs");
+    let path = manifest_dir.join("src/proxy/provider/codex.rs");
     let source = fs::read_to_string(&path).expect("read codex provider adapter source");
     let extract_auth = function_slice(
         &source,
@@ -4571,7 +4571,7 @@ fn production_codex_provider_adapter_delegates_auth_info_to_adapter() {
         for marker in FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/providers/codex.rs extract_auth:{} contains auth info marker `{}`",
+                    "src/proxy/provider/codex.rs extract_auth:{} contains auth info marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -4589,7 +4589,7 @@ fn production_codex_provider_adapter_delegates_auth_info_to_adapter() {
 #[test]
 fn production_claude_provider_adapter_delegates_auth_info_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/providers/claude.rs");
+    let path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
     let extract_auth = function_slice(
         &source,
@@ -4603,7 +4603,7 @@ fn production_claude_provider_adapter_delegates_auth_info_to_adapter() {
         for marker in FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/providers/claude.rs extract_auth:{} contains auth info marker `{}`",
+                    "src/proxy/provider/claude.rs extract_auth:{} contains auth info marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -4622,8 +4622,8 @@ fn production_claude_provider_adapter_delegates_auth_info_to_adapter() {
 fn production_simple_provider_adapters_delegate_auth_headers_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let provider_paths = [
-        "src/proxy/providers/codex.rs",
-        "src/proxy/providers/gemini.rs",
+        "src/proxy/provider/codex.rs",
+        "src/proxy/provider/gemini.rs",
     ];
 
     let mut violations = Vec::new();
@@ -4657,7 +4657,7 @@ fn production_simple_provider_adapters_delegate_auth_headers_to_adapter() {
 #[test]
 fn production_claude_provider_adapter_delegates_auth_headers_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/providers/claude.rs");
+    let path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
     let get_auth_headers = function_slice(
         &source,
@@ -4671,7 +4671,7 @@ fn production_claude_provider_adapter_delegates_auth_headers_to_adapter() {
         for marker in FORBIDDEN_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/providers/claude.rs get_auth_headers:{} contains auth header marker `{}`",
+                    "src/proxy/provider/claude.rs get_auth_headers:{} contains auth header marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -4690,9 +4690,9 @@ fn production_claude_provider_adapter_delegates_auth_headers_to_adapter() {
 fn production_provider_adapters_delegate_url_building_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let provider_paths = [
-        "src/proxy/providers/claude.rs",
-        "src/proxy/providers/codex.rs",
-        "src/proxy/providers/gemini.rs",
+        "src/proxy/provider/claude.rs",
+        "src/proxy/provider/codex.rs",
+        "src/proxy/provider/gemini.rs",
     ];
 
     let mut violations = Vec::new();
@@ -5408,7 +5408,7 @@ fn proxy_core_adapter_delegates_gemini_live_config_policy_to_core() {
 #[test]
 fn production_claude_provider_adapter_delegates_transform_decision_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/providers/claude.rs");
+    let path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
     let needs_transform = function_slice(
         &source,
@@ -5422,7 +5422,7 @@ fn production_claude_provider_adapter_delegates_transform_decision_to_adapter() 
         for marker in FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/providers/claude.rs needs_transform:{} contains transform decision marker `{}`",
+                    "src/proxy/provider/claude.rs needs_transform:{} contains transform decision marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5440,7 +5440,7 @@ fn production_claude_provider_adapter_delegates_transform_decision_to_adapter() 
 #[test]
 fn production_claude_provider_adapter_excludes_compat_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/providers/claude.rs");
+    let path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
 
     let mut violations = Vec::new();
@@ -5449,7 +5449,7 @@ fn production_claude_provider_adapter_excludes_compat_facades() {
         for marker in FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_COMPAT_FACADE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/providers/claude.rs:{} contains Claude compat facade marker `{}`",
+                    "src/proxy/provider/claude.rs:{} contains Claude compat facade marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5467,7 +5467,7 @@ fn production_claude_provider_adapter_excludes_compat_facades() {
 #[test]
 fn production_claude_provider_adapter_delegates_request_transforms_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/providers/claude.rs");
+    let path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
     let transform_request_helper = function_slice(
         &source,
@@ -5481,7 +5481,7 @@ fn production_claude_provider_adapter_delegates_request_transforms_to_adapter() 
         for marker in FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_REQUEST_TRANSFORM_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/providers/claude.rs transform_claude_request_for_api_format:{} contains request transform marker `{}`",
+                    "src/proxy/provider/claude.rs transform_claude_request_for_api_format:{} contains request transform marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5499,7 +5499,7 @@ fn production_claude_provider_adapter_delegates_request_transforms_to_adapter() 
 #[test]
 fn production_claude_provider_adapter_delegates_message_normalization_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/providers/claude.rs");
+    let path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
 
     let mut violations = Vec::new();
@@ -5508,7 +5508,7 @@ fn production_claude_provider_adapter_delegates_message_normalization_to_adapter
         for marker in FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_NORMALIZE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/providers/claude.rs:{} contains message normalization marker `{}`",
+                    "src/proxy/provider/claude.rs:{} contains message normalization marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5527,8 +5527,8 @@ fn production_claude_provider_adapter_delegates_message_normalization_to_adapter
 fn production_provider_adapter_excludes_response_transform_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let files = [
-        "src/proxy/providers/adapter.rs",
-        "src/proxy/providers/claude.rs",
+        "src/proxy/provider/adapter.rs",
+        "src/proxy/provider/claude.rs",
     ];
 
     let mut violations = Vec::new();
@@ -8868,7 +8868,7 @@ fn production_forwarder_delegates_channel_status_mapping_to_adapter() {
 #[test]
 fn production_provider_module_excludes_codex_chat_history_state() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let provider_mod_path = manifest_dir.join("src/proxy/providers/mod.rs");
+    let provider_mod_path = manifest_dir.join("src/proxy/provider/mod.rs");
     let provider_mod = fs::read_to_string(&provider_mod_path).expect("read providers/mod.rs");
     let proxy_paths = [
         "src/proxy/engine/forward_pipeline.rs",
@@ -8882,7 +8882,7 @@ fn production_provider_module_excludes_codex_chat_history_state() {
         for marker in FORBIDDEN_PROVIDER_MODULE_CODEX_HISTORY_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/providers/mod.rs:{} contains Codex history marker `{}`",
+                    "src/proxy/provider/mod.rs:{} contains Codex history marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8914,7 +8914,7 @@ fn production_provider_module_excludes_codex_chat_history_state() {
 #[test]
 fn production_provider_module_excludes_provider_kind_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let provider_mod_path = manifest_dir.join("src/proxy/providers/mod.rs");
+    let provider_mod_path = manifest_dir.join("src/proxy/provider/mod.rs");
     let provider_mod = fs::read_to_string(&provider_mod_path).expect("read providers/mod.rs");
 
     let mut violations = Vec::new();
@@ -8923,7 +8923,7 @@ fn production_provider_module_excludes_provider_kind_facades() {
         for marker in FORBIDDEN_PROVIDER_MODULE_KIND_FACADE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/providers/mod.rs:{} contains provider kind facade marker `{}`",
+                    "src/proxy/provider/mod.rs:{} contains provider kind facade marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8941,7 +8941,7 @@ fn production_provider_module_excludes_provider_kind_facades() {
 #[test]
 fn production_provider_module_excludes_managed_auth_modules() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let provider_mod_path = manifest_dir.join("src/proxy/providers/mod.rs");
+    let provider_mod_path = manifest_dir.join("src/proxy/provider/mod.rs");
     let provider_mod = fs::read_to_string(&provider_mod_path).expect("read providers/mod.rs");
 
     let mut violations = Vec::new();
@@ -8950,7 +8950,7 @@ fn production_provider_module_excludes_managed_auth_modules() {
         for marker in FORBIDDEN_PROVIDER_MODULE_MANAGED_AUTH_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/providers/mod.rs:{} contains managed auth marker `{}`",
+                    "src/proxy/provider/mod.rs:{} contains managed auth marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8962,6 +8962,23 @@ fn production_provider_module_excludes_managed_auth_modules() {
         violations.is_empty(),
         "Managed account auth modules must live at proxy module scope, not under provider adapters:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_providers_legacy_module_is_reexport_only() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/providers/mod.rs");
+    let source = fs::read_to_string(&path).expect("read providers/mod.rs");
+    let production_code: Vec<&str> = production_lines(&source)
+        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert_eq!(
+        production_code,
+        vec!["#[allow(unused_imports)]", "pub use super::provider::*;",],
+        "legacy proxy/providers/mod.rs must remain a re-export shim after provider module split"
     );
 }
 
