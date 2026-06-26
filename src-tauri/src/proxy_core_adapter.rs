@@ -28,6 +28,7 @@ pub(crate) use crate::proxy::host::cc_switch::provider_router_channel_source::Cc
 pub(crate) use crate::proxy::host::cc_switch::provider_router_config_source::CcSwitchProviderRouterConfigSource;
 pub(crate) use crate::proxy::host::cc_switch::provider_router_health_store::CcSwitchProviderRouterHealthStore;
 pub(crate) use crate::proxy::host::cc_switch::provider_router_provider_source::CcSwitchProviderRouterProviderSource;
+pub(crate) use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::http::server::ProxyServer;
@@ -7653,26 +7654,6 @@ pub(crate) fn route_policy_from_db_source(
         .get_failover_queue(app.as_str())
         .map_err(|error| app_error("load route policy", error))?;
     Ok(route_policy_from_source(app.clone(), queue))
-}
-
-#[derive(Clone)]
-pub(crate) struct CcSwitchRoutePolicySource {
-    db: Arc<Database>,
-}
-
-impl CcSwitchRoutePolicySource {
-    pub(crate) fn new(db: Arc<Database>) -> Self {
-        Self { db }
-    }
-}
-
-impl RoutePolicySource for CcSwitchRoutePolicySource {
-    fn load_policy<'a>(
-        &'a self,
-        app: &'a AppKind,
-    ) -> BoxFuture<'a, ProxyCoreResult<Option<RoutePolicy>>> {
-        Box::pin(async move { route_policy_from_db_source(&self.db, app) })
-    }
 }
 
 #[derive(Clone)]
