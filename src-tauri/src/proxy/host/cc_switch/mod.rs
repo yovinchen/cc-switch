@@ -9,6 +9,7 @@ pub(crate) mod forwarder_attempt_runtime_source;
 pub(crate) mod forwarder_auth_source;
 pub(crate) mod forwarder_protocol_state_source;
 pub(crate) mod forwarder_response_source;
+pub(crate) mod forwarder_runtime_state_source;
 pub(crate) mod forwarder_transport_source;
 pub(crate) mod global_http_client;
 pub(crate) mod live_takeover;

@@ -12222,18 +12222,22 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let runtime_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_runtime_state_source.rs");
+    let runtime_source =
+        fs::read_to_string(&runtime_source_path).expect("read forwarder_runtime_state_source.rs");
     let runtime_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderRuntimeStateSource",
-        "struct CcSwitchForwarderRuntimeStateSource",
+        "pub(crate) use crate::proxy::host::cc_switch::forwarder_runtime_state_source",
     );
     let runtime_source_slice = function_slice(
-        &adapter_source,
+        &runtime_source,
         "struct CcSwitchForwarderRuntimeStateSource",
         "impl CcSwitchForwarderRuntimeStateSource",
     );
     let runtime_inherent_impl_slice = function_slice(
-        &adapter_source,
+        &runtime_source,
         "impl CcSwitchForwarderRuntimeStateSource",
         "impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource",
     );
@@ -12267,6 +12271,11 @@ fn production_forwarder_uses_runtime_state_source_resource() {
             && runtime_source_slice.contains("current_providers: Arc<RwLock")
             && runtime_source_slice.contains("events: Arc<ProxyEventBus>"),
         "default ForwarderRuntimeStateSource implementation must own status/current-provider/events runtime resources"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_runtime_state_source::forwarder_runtime_state_source_from_runtime_parts")
+            && !adapter_source.contains("struct CcSwitchForwarderRuntimeStateSource"),
+        "proxy_core_adapter should re-export, not own, the default forwarder runtime state source"
     );
     assert!(
         !runtime_trait_slice.contains("fn status(") && !runtime_trait_slice.contains("fn events("),
