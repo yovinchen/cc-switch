@@ -11,7 +11,6 @@ pub(crate) mod engine;
 pub mod error;
 pub mod error_mapper;
 pub(crate) mod events;
-pub mod handler_context;
 pub(crate) mod host;
 pub mod provider;
 pub(crate) mod response_adapter;

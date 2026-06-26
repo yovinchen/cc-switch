@@ -2116,23 +2116,9 @@ fn proxy_core_public_prelude_smoke_uses_public_prelude_only() {
 }
 
 #[test]
-fn production_proxy_handler_context_legacy_module_is_reexport_only() {
+fn production_proxy_handler_context_legacy_module_removed_after_engine_split() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handler_context.rs");
-    let source = fs::read_to_string(&path).expect("read handler_context.rs");
-    let production_code: Vec<&str> = production_lines(&source)
-        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
-        .filter(|line| !line.is_empty())
-        .collect();
-
-    assert_eq!(
-        production_code,
-        vec![
-            "#[allow(unused_imports)]",
-            "pub(crate) use super::engine::context::*;",
-        ],
-        "legacy proxy/handler_context.rs must remain a re-export shim after engine/context.rs split"
-    );
+    assert_proxy_legacy_module_removed(&manifest_dir, "handler_context.rs", "handler_context");
 }
 
 #[test]
