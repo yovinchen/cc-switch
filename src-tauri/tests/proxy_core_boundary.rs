@@ -8,6 +8,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/error_mapper.rs",
     "src/proxy/error.rs",
     "src/proxy/events.rs",
+    "src/proxy/host/cc_switch/forwarder_auth_source.rs",
     "src/proxy/host/cc_switch/forwarder_response_source.rs",
     "src/proxy/host/cc_switch/forwarder_request_source.rs",
     "src/proxy/response_adapter.rs",
@@ -12978,6 +12979,10 @@ fn production_forwarder_uses_auth_source_resource() {
 
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/forwarder_auth_source.rs");
     let auth_source = fs::read_to_string(&auth_source_path).expect("read forwarder_auth_source.rs");
     assert!(
@@ -13038,6 +13043,34 @@ fn production_forwarder_uses_auth_source_resource() {
         !auth_trait_slice.contains("prepare_copilot_auth_optimization"),
         "ForwarderAuthSource trait must not expose direct Copilot auth override helper"
     );
+    assert!(
+        auth_source.contains("use crate::proxy_core::api::domain::AppKind;")
+            && auth_source.contains(
+                "use crate::proxy_core::api::routing::auth_channel_spec_from_attempt;"
+            )
+            && auth_source.contains("use crate::proxy_core::api::transport::{")
+            && auth_source.contains("auth_provider_proxy_request_from_context")
+            && auth_source.contains("finalize_forwarder_auth_headers")
+            && auth_source.contains("prepare_optional_copilot_auth_optimization_for_forwarder")
+            && auth_source.contains("resolve_auth_provider_headers")
+            && auth_source.contains("AuthProviderHeaderResolution")
+            && auth_source.contains("ForwarderAuthHeaderFinalizationInput"),
+        "default ForwarderAuthSource should import pure auth/header helper contracts directly from proxy_core::api"
+    );
+    for marker in [
+        "type ForwarderAuthHeaderFinalizationInput",
+        "auth_channel_spec_from_attempt",
+        "auth_provider_proxy_request_from_context",
+        "finalize_forwarder_auth_headers",
+        "prepare_optional_copilot_auth_optimization_for_forwarder",
+        "resolve_auth_provider_headers",
+        "AuthProviderHeaderResolution",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not re-export pure auth helper/type `{marker}` once auth source owns the call site"
+        );
+    }
     assert!(
         adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source")
             && !adapter_source.contains("struct CcSwitchForwarderAuthSource"),

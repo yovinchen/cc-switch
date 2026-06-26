@@ -986,8 +986,6 @@ pub(crate) type CopilotClassification = crate::proxy_core::api::transport::Copil
 pub(crate) type ForwarderMaybeCopilotAuthOptimizationInput<'a> =
     crate::proxy_core::api::transport::OptionalCopilotAuthOptimizationPreparationInput<'a>;
 pub(crate) type ForwarderAuthHeaders = crate::proxy_core::api::transport::ForwarderAuthHeaders;
-pub(crate) type ForwarderAuthHeaderFinalizationInput<'a> =
-    crate::proxy_core::api::transport::ForwarderAuthHeaderFinalizationInput<'a>;
 pub(crate) type ForwarderPreparedCopilotAuthOptimization =
     crate::proxy_core::api::transport::PreparedCopilotAuthOptimization;
 pub(crate) type ForwarderProtocolPreparation =
@@ -2512,9 +2510,8 @@ pub(crate) use crate::proxy_core::api::ports::{
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
 pub(crate) use crate::proxy_core::api::routing::{
-    auth_channel_spec_from_attempt, failover_config_read_error_log_line,
-    provider_router_auto_failover_enabled_decision, route_policy_failover_provider_ids,
-    RoutePolicy, RouteRequest,
+    failover_config_read_error_log_line, provider_router_auto_failover_enabled_decision,
+    route_policy_failover_provider_ids, RoutePolicy, RouteRequest,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::claude_api_format_from_metadata;
@@ -2570,12 +2567,10 @@ pub(crate) use crate::proxy_core::api::transport::{
 };
 pub(crate) use crate::proxy_core::api::transport::{
     apply_bedrock_pre_send_optimizers, apply_forwarder_media_prevention_from_facts,
-    auth_provider_proxy_request_from_context, bedrock_env_flag_from_provider_settings,
-    build_claude_provider_auth_headers, build_claude_upstream_url,
-    build_codex_provider_auth_headers, build_codex_upstream_url,
+    bedrock_env_flag_from_provider_settings, build_claude_provider_auth_headers,
+    build_claude_upstream_url, build_codex_provider_auth_headers, build_codex_upstream_url,
     build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, categorize_forward_failure,
-    finalize_forwarder_auth_headers,
     forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
     forwarder_all_providers_circuit_open_log_line, forwarder_attempt_runtime_decision,
     forwarder_failure_log_line, forwarder_no_available_provider_status_message,
@@ -2584,10 +2579,9 @@ pub(crate) use crate::proxy_core::api::transport::{
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
     forwarder_terminal_failure_status_message, invalid_upstream_url_error_message,
     parse_json_request_body, parse_json_request_body_or_null,
-    prepare_optional_copilot_auth_optimization_for_forwarder, resolve_auth_provider_headers,
     should_apply_bedrock_pre_send_optimizer, should_apply_forwarder_media_prevention_for_app,
-    should_failover_after_rectifier_retry_failure, AuthProviderHeaderResolution,
-    CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan,
+    should_failover_after_rectifier_retry_failure, CodexProviderChatCompletionsFacts,
+    CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan,
     ForwarderAttemptRuntimeDecisionInput, ForwarderProviderUrlFacts,
     ForwarderProviderUrlFactsInput,
 };
