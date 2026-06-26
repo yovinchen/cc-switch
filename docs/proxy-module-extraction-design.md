@@ -1364,6 +1364,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 本轮继续把上游 URL planning 的 endpoint rewrite、full-endpoint/query 透传和 channel param override 策略收敛到 `proxy-core::request_url::forward_upstream_url_plan`：`ForwarderRequestSource` 只投影 base URL、endpoint、Claude/Codex/Gemini transform facts 与 host adapter URL builder，不再维护本地 plan 策略。
 本轮继续把 all-providers-circuit-open 的 FO-004 warning 日志行收敛到 `proxy-core::forward_failure::forwarder_all_providers_circuit_open_log_line`：provider selection failure adapter 只负责在 host 边界发出 warning，不再维护 `[FO-004] 所有供应商均已熔断` payload。
 Claude Desktop gateway token DB source 已收敛到 `proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source` 和 `claude_desktop_gateway_token_configured_from_db_source`；host `get_or_create_gateway_token` wrapper 已删除，profile apply 与 status token configured 直接消费 adapter-owned token source，`CcSwitchClaudeDesktopGatewayAuthSource` 不再回调 `claude_desktop_config` 获取 token，边界测试防止 gateway token setting key、DB read/write 和 token 生成逻辑回流到 host config。
+managed-account runtime source 已彻底归并到 `proxy_core_adapter::CcSwitchManagedAccountRuntimeSource`：`src/proxy/managed_account_auth.rs` 模块已删除，Copilot/Codex OAuth 的 Tauri state 读取、token/account fact 获取和 no-AppHandle 测试都随默认 source 留在 adapter 边界内，边界测试防止 proxy 模块重新声明 managed-account runtime helper 或 adapter 回调 `proxy::managed_account_auth`。
 本轮继续把 no-providers-configured 的 FO-005 warning 日志行收敛到 `proxy-core::forward_failure::forwarder_no_providers_configured_log_line`：provider selection failure adapter 保留 AppError 映射与日志副作用，不再维护 `[FO-005] 未配置供应商` payload。
 本轮继续把 failover switch 配置读取失败的 FO-002 warning 日志行收敛到 `proxy-core::provider_selection::failover_config_read_error_log_line`：adapter 仍负责读取 config、默认返回 false 和发 warning，不再维护 `[FO-002] 无法读取...跳过切换` payload。
 本轮继续把 ProviderRouter 读取 auto-failover 配置失败时默认禁用的决策收敛到 `proxy-core::provider_selection::provider_router_auto_failover_enabled_decision`：adapter 只把 `AppProxyConfig.auto_failover_enabled` 投影为 bool、按 core 返回的 log line 发 error，不再维护读取失败 fallback 策略。
@@ -1553,7 +1554,7 @@ Claude Desktop gateway token DB source 已收敛到 `proxy_core_adapter::get_or_
 1107. 管理 query DTO 已补齐 Rust API 构造器：`AppChannelListQuery::list/route`、`AppModelListQuery::new`、`ChannelListQuery::all/for_app` 与 `GroupListQuery::all/for_app` 让外部宿主不必通过 JSON roundtrip 构造管理请求；`external_relay_host` example 已改用这些构造器，boundary guard 同步禁止示例直接引用 `http::`/`serde_json::`，继续把外部集成入口收敛到 public prelude。
 1108. crate 外 public prelude smoke 已去除对 `http` 与 `serde_json` 的直接 import/限定调用：测试现在只经 `cc_switch_proxy_core::api::prelude::*` 使用 HTTP 基础类型、JSON macro/value/parser 和管理 query builders，并新增 boundary guard 防止 smoke test 绕过 public prelude。
 1109. 外部宿主自定义 app namespace 已补充集成证据：`external_relay_host` example 现在注册 `opencode` 自定义 app、独立 provider/channel、OpenAI Chat interface、tools route group 和自定义模型目录；crate 外 public prelude smoke 也直接验证 `AppKind::Custom`、`ManagementAppPathRequest`、`AppModelCatalogRequest`、`AppChannelManagementRequest` 与 `RouteResolveManagementRequest` 均接受该 namespace，避免独立中转模块被固定在 CC Switch 内置 app 枚举上。
-1110. managed-account token runtime 继续向可替换 source 收口：`CcSwitchManagedAccountRuntimeSource` 现在拥有无 AppHandle、token 请求/成功/失败日志与 `ProxyError` 包装契约，`proxy::managed_account_auth` 只保留 Tauri state 读取和原始 token/account fact 获取；边界测试同步禁止 runtime text contract 回流到薄 helper 文件，外部中转宿主可替换 runtime source 而无需复制 CC Switch 的 Tauri state 包装。
+1110. managed-account token runtime 继续向可替换 source 收口：`CcSwitchManagedAccountRuntimeSource` 现在拥有无 AppHandle、token 请求/成功/失败日志、`ProxyError` 包装契约以及 Copilot/Codex OAuth 的 Tauri state 原始读取；`proxy::managed_account_auth` helper 模块已删除，边界测试同步禁止 proxy 模块重新声明该 helper 或 adapter 回调旧模块，外部中转宿主可替换 runtime source 而无需复制 CC Switch 的 Tauri state 包装。
 1111. Codex 客户端模型目录生成能力已先行收进 `proxy-core::model_fetch`：`client_model_catalog_from_routable_models` 可把 route-visible `RoutableModel` 列表转换为 Codex 兼容 raw catalog，并复用 capabilities 中的 `contextWindow/context_window`；crate 外 public prelude smoke 证明外部宿主可直接从 app model catalog 结果生成客户端模型目录。生产 `/v1/models` handler 尚未切换，后续可用该 helper 避免 host 重新拼装 raw catalog。
 1112. reqwest 上游发送失败的 timeout/connect/other 分类与兼容中文文案已迁入 `proxy-core::request_transport::upstream_send_error_projection`；host `error_mapper` 只负责把 `reqwest::Error` 投影为 `is_timeout/is_connect/message` fact 并映射回现有 `ProxyError` variant，新增 boundary 防止发送错误文案重新回流到 host。
 1113. response pipeline 的已接收上游响应、流式 content-encoding warning 和非流式 body 内容日志 spec 已迁入 `proxy-core::response_diagnostics`；host adapter 只按 core 返回的 `ResponseLogEvent` 执行 debug/warn 输出，不再手写 header summary、content-encoding 或 body lossy 文案。
@@ -1654,7 +1655,7 @@ Claude Desktop gateway token DB source 已收敛到 `proxy_core_adapter::get_or_
 | `crate::app_config::AppType` | handlers、adapter、provider type 推断 | 外部调用方无法定义自己的 app namespace |
 | `crate::provider::Provider` | provider adapter、router、media sanitizer | provider 数据模型绑在 CC Switch 配置结构上 |
 | `crate::settings` | 当前 provider 读取、有效 provider 读取 | 核心逻辑隐式读宿主全局配置 |
-| `crate::commands::{CodexOAuthState, CopilotAuthState}` | `proxy::managed_account_auth` 托管账号 token/runtime 读取 | 当前仍是 CC Switch host 适配层能力，后续应替换为外部宿主可注入的 `AuthProvider` |
+| `crate::commands::{CodexOAuthState, CopilotAuthState}` | `proxy_core_adapter::CcSwitchManagedAccountRuntimeSource` 托管账号 token/runtime 读取 | 当前仍是 CC Switch host 适配层能力，但已在 adapter-owned source 后面，可由外部宿主替换 `ManagedAccountRuntimeSource` |
 | `crate::services::usage_stats` | `UsageLogger` 定价查询 | 用量记录无法替换为外部 sink |
 | `crate::claude_desktop_config`, `crate::codex_config` | model list、gateway auth | 协议入口混入桌面配置文件细节 |
 
@@ -2302,7 +2303,7 @@ pub trait ProxyEventSink: Send + Sync {
 
 ### 认证接口
 
-当前 `forwarder.rs` 已不再直接依赖 Codex OAuth/Copilot token 刷新 manager，也不再直接读取 Copilot 动态 endpoint、live model list 或 model vendor 状态；这一步先用 `proxy::managed_account_auth` 把 refresh/read state 副作用收口。独立模块最终应把“获取/刷新可用 token”和“读取账号运行态能力”抽象成宿主可替换端口。
+当前 `forwarder.rs` 已不再直接依赖 Codex OAuth/Copilot token 刷新 manager，也不再直接读取 Copilot 动态 endpoint、live model list 或 model vendor 状态；这些 refresh/read state 副作用已收口到 `proxy_core_adapter::CcSwitchManagedAccountRuntimeSource`，外部中转宿主可替换 `ManagedAccountRuntimeSource` 来提供“获取/刷新可用 token”和“读取账号运行态能力”。
 
 ```rust
 pub trait AuthProvider: Send + Sync {
@@ -2328,7 +2329,7 @@ provider adapter 仍负责 CC Switch 默认 fallback 的 provider settings 到 h
 
 本轮继续让 `CcSwitchForwardPipeline` 持有并传递 `ChannelKeyRuntimeSource`：host forward runtime 生成 `ForwardAttempt` 时走 source-injected helper，DB convenience helper 已删除。这样后续把 forward pipeline 抽到独立中转宿主时，可以直接替换 channel key runtime，而不用把 CC Switch 的数据库读取路径带过去。
 
-本轮继续把 managed-account token runtime 的日志/错误文案 contract 收进 `proxy-core::managed_account_auth`：core 统一生成 Copilot/Codex OAuth 的无 AppHandle、指定/默认账号取 token、成功和失败文本；`src/proxy/managed_account_auth.rs` 只保留 Tauri state 读取和 token 获取调用。这让外部中转宿主可以复用相同 runtime 反馈 contract，而不复制 CC Switch 桌面 host 的中文文案分支。
+本轮继续把 managed-account token runtime 的日志/错误文案 contract 收进 `proxy-core::managed_account_auth`：core 统一生成 Copilot/Codex OAuth 的无 AppHandle、指定/默认账号取 token、成功和失败文本；Tauri state 读取和 token 获取调用现在由 `proxy_core_adapter::CcSwitchManagedAccountRuntimeSource` 默认实现持有，`src/proxy/managed_account_auth.rs` 已删除。这让外部中转宿主可以复用相同 runtime 反馈 contract，而不复制 CC Switch 桌面 host 的中文文案分支。
 
 本轮继续把 Codex live/settings 的 JSON 形状契约收进 `proxy-core::ports`：auth 对象提取、live write parts、restore parts、live settings parts、snapshot parts 和 provider validation parts 都由 core 基于 `settings + category` 生成；`proxy_core_adapter` 只负责把 CC Switch `Provider` 拆成中立输入。这样后续中转迁移可以让不同地址绑定不同认证、接口和模型信息，同时不让宿主 adapter 重新承载 Codex 配置形状规则。
 
