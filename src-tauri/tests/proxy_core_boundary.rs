@@ -15878,6 +15878,36 @@ fn production_provider_router_channel_source_uses_core_channel_source() {
 }
 
 #[test]
+fn production_cc_switch_channel_source_lives_in_host_database_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/database_channel_source.rs");
+    let source = fs::read_to_string(&source_path)
+        .expect("read host/cc_switch/database_channel_source.rs");
+
+    assert!(
+        adapter_source.contains(
+            "use crate::proxy::host::cc_switch::database_channel_source::CcSwitchChannelSource;"
+        ),
+        "proxy_core_adapter should import the CC Switch channel source from the host database module"
+    );
+    assert!(
+        !adapter_source.contains("struct CcSwitchChannelSource")
+            && !adapter_source.contains("impl ChannelSource for CcSwitchChannelSource"),
+        "CcSwitchChannelSource implementation must not remain embedded in proxy_core_adapter.rs"
+    );
+    assert!(
+        source.contains("struct CcSwitchChannelSource")
+            && source.contains("impl ChannelSource for CcSwitchChannelSource")
+            && source.contains("channel_specs_from_source_lookup")
+            && source.contains("channel_records_from_db_source")
+            && source.contains("channel_migration_materialize_from_db_source"),
+        "host/cc_switch/database_channel_source.rs must own the DB-backed ChannelSource wrapper"
+    );
+}
+
+#[test]
 fn production_provider_router_health_store_uses_core_attempt_facts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
