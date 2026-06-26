@@ -15689,7 +15689,7 @@ command = "latest-command"
         });
 
         assert!(codex_settings_have_model_catalog_specs(&settings));
-        assert_eq!(CODEX_DEFAULT_MODEL_CONTEXT_WINDOW, 128_000);
+        assert_eq!(DEFAULT_CODEX_MODEL_CONTEXT_WINDOW, 128_000);
 
         let catalog =
             codex_model_catalog_from_settings(&settings, 128_000, &template).expect("catalog");
