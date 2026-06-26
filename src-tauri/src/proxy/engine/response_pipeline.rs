@@ -7,11 +7,16 @@ use crate::proxy::{
     error::ProxyError, response_adapter::proxy_core_response_to_axum_response,
     transport::upstream::hyper_client::ProxyResponse,
 };
+use crate::proxy_core::api::transport::{
+    decode_response_body, non_streaming_body_timeout_message,
+    non_streaming_response_body_log_event, non_streaming_response_received_log_event,
+    streaming_response_received_log_events, ResponseBodyDecodeLogLevel, ResponseLogEvent,
+    ResponseLogLevel,
+};
 use crate::proxy_core_adapter::{
     passthrough_non_stream_proxy_response_from_context,
-    passthrough_stream_proxy_response_from_context, read_decoded_proxy_response_body,
-    response_headers_indicate_sse, ActiveConnectionGuard, AxumResponseBuildErrorContext,
-    ProxyState, UsageParserConfig,
+    passthrough_stream_proxy_response_from_context, response_headers_indicate_sse,
+    ActiveConnectionGuard, AxumResponseBuildErrorContext, ProxyState, UsageParserConfig,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -19,10 +24,88 @@ use crate::proxy_core_adapter::{
     ProviderKind, TokenUsage,
 };
 use axum::response::{IntoResponse, Response};
+use bytes::Bytes;
+use http::HeaderMap;
 
 // ============================================================================
 // 公共接口
 // ============================================================================
+
+pub(crate) struct DecodedProxyResponseBody {
+    pub(crate) headers: HeaderMap,
+    pub(crate) status: http::StatusCode,
+    pub(crate) body: Bytes,
+}
+
+pub(crate) fn emit_response_log_event(event: ResponseLogEvent) {
+    match event.level {
+        ResponseLogLevel::Debug => log::debug!("{}", event.message),
+        ResponseLogLevel::Warn => log::warn!("{}", event.message),
+    }
+}
+
+pub(crate) fn decode_raw_proxy_response_body(
+    mut headers: HeaderMap,
+    status: http::StatusCode,
+    raw_bytes: Bytes,
+    tag: &str,
+) -> DecodedProxyResponseBody {
+    emit_response_log_event(non_streaming_response_received_log_event(
+        tag,
+        status,
+        raw_bytes.len(),
+        &headers,
+    ));
+
+    let decoded = decode_response_body(&mut headers, &raw_bytes);
+    if let Some(event) = decoded.status.log_event() {
+        match event.level() {
+            ResponseBodyDecodeLogLevel::Debug => log::debug!("{}", event.message(tag)),
+            ResponseBodyDecodeLogLevel::Warn => log::warn!("{}", event.message(tag)),
+        }
+    }
+
+    DecodedProxyResponseBody {
+        headers,
+        status,
+        body: Bytes::from(decoded.body),
+    }
+}
+
+/// 读取非流式响应体并在需要时解压，确保 headers 与返回 body 一致。
+pub(crate) async fn read_decoded_proxy_response_body(
+    response: ProxyResponse,
+    tag: &str,
+    body_timeout: std::time::Duration,
+) -> Result<DecodedProxyResponseBody, ProxyError> {
+    let headers = response.headers().clone();
+    let status = response.status();
+    let raw_bytes = if body_timeout.is_zero() {
+        response.bytes().await?
+    } else {
+        tokio::time::timeout(body_timeout, response.bytes())
+            .await
+            .map_err(|_| ProxyError::Timeout(non_streaming_body_timeout_message(body_timeout)))??
+    };
+
+    Ok(decode_raw_proxy_response_body(
+        headers, status, raw_bytes, tag,
+    ))
+}
+
+pub(crate) fn log_streaming_proxy_response_received(
+    headers: &HeaderMap,
+    status: http::StatusCode,
+    tag: &str,
+) {
+    for event in streaming_response_received_log_events(tag, status, headers) {
+        emit_response_log_event(event);
+    }
+}
+
+pub(crate) fn log_non_streaming_proxy_response_body(body: &[u8], tag: &str) {
+    emit_response_log_event(non_streaming_response_body_log_event(tag, body));
+}
 
 /// 检测响应是否为 SSE 流式响应
 #[inline]

@@ -671,8 +671,6 @@ pub(crate) type ProxyResponseBody = crate::proxy_core::api::transport::ProxyResp
 pub(crate) type ProxyTransportResponse = crate::proxy_core::api::transport::ProxyTransportResponse;
 pub(crate) type ProxyTransportResponseBody =
     crate::proxy_core::api::transport::ProxyTransportResponseBody;
-pub(crate) type ResponseBodyDecodeLogLevel =
-    crate::proxy_core::api::transport::ResponseBodyDecodeLogLevel;
 pub(crate) type CostBreakdown = crate::proxy_core::api::usage::CostBreakdown;
 pub(crate) type CostCalculator = crate::proxy_core::api::usage::CostCalculator;
 pub(crate) type ModelPricing = crate::proxy_core::api::usage::ModelPricing;
@@ -6495,81 +6493,12 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
 
 type UsageCallbackWithTiming = Arc<dyn Fn(Vec<Value>, Option<u64>) + Send + Sync + 'static>;
 
-pub(crate) struct DecodedProxyResponseBody {
-    pub(crate) headers: HeaderMap,
-    pub(crate) status: http::StatusCode,
-    pub(crate) body: Bytes,
-}
-
-fn emit_response_log_event(event: ResponseLogEvent) {
-    match event.level {
-        ResponseLogLevel::Debug => log::debug!("{}", event.message),
-        ResponseLogLevel::Warn => log::warn!("{}", event.message),
-    }
-}
-
-pub(crate) fn decode_raw_proxy_response_body(
-    mut headers: HeaderMap,
-    status: http::StatusCode,
-    raw_bytes: Bytes,
-    tag: &str,
-) -> DecodedProxyResponseBody {
-    emit_response_log_event(non_streaming_response_received_log_event(
-        tag,
-        status,
-        raw_bytes.len(),
-        &headers,
-    ));
-
-    let decoded = decode_response_body(&mut headers, &raw_bytes);
-    if let Some(event) = decoded.status.log_event() {
-        match event.level() {
-            ResponseBodyDecodeLogLevel::Debug => log::debug!("{}", event.message(tag)),
-            ResponseBodyDecodeLogLevel::Warn => log::warn!("{}", event.message(tag)),
-        }
-    }
-
-    DecodedProxyResponseBody {
-        headers,
-        status,
-        body: Bytes::from(decoded.body),
-    }
-}
-
-/// 读取非流式响应体并在需要时解压，确保 headers 与返回 body 一致。
-pub(crate) async fn read_decoded_proxy_response_body(
-    response: ProxyResponse,
-    tag: &str,
-    body_timeout: std::time::Duration,
-) -> Result<DecodedProxyResponseBody, ProxyError> {
-    let headers = response.headers().clone();
-    let status = response.status();
-    let raw_bytes = if body_timeout.is_zero() {
-        response.bytes().await?
-    } else {
-        tokio::time::timeout(body_timeout, response.bytes())
-            .await
-            .map_err(|_| ProxyError::Timeout(non_streaming_body_timeout_message(body_timeout)))??
-    };
-
-    Ok(decode_raw_proxy_response_body(
-        headers, status, raw_bytes, tag,
-    ))
-}
-
-pub(crate) fn log_streaming_proxy_response_received(
-    headers: &HeaderMap,
-    status: http::StatusCode,
-    tag: &str,
-) {
-    for event in streaming_response_received_log_events(tag, status, headers) {
-        emit_response_log_event(event);
-    }
-}
-
-pub(crate) fn log_non_streaming_proxy_response_body(body: &[u8], tag: &str) {
-    emit_response_log_event(non_streaming_response_body_log_event(tag, body));
-}
+#[allow(unused_imports)]
+pub(crate) use crate::proxy::engine::response_pipeline::{
+    decode_raw_proxy_response_body, log_non_streaming_proxy_response_body,
+    log_streaming_proxy_response_received, read_decoded_proxy_response_body,
+    DecodedProxyResponseBody,
+};
 
 #[derive(Clone)]
 pub(crate) struct SseUsageCollector {
@@ -7396,12 +7325,7 @@ pub(crate) use crate::proxy_core::api::transport::resolve_upstream_send_policy;
 
 pub(crate) use crate::proxy_core::api::transport::upstream_send_error_projection;
 
-pub(crate) use crate::proxy_core::api::transport::{
-    non_streaming_response_body_log_event, non_streaming_response_received_log_event,
-    response_headers_indicate_sse, streaming_response_received_log_events,
-};
-
-use crate::proxy_core::api::transport::{decode_response_body, ResponseLogEvent, ResponseLogLevel};
+pub(crate) use crate::proxy_core::api::transport::response_headers_indicate_sse;
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::decompress_body;

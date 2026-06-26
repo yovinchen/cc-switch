@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/lib.rs",
+    "src/proxy/engine/response_pipeline.rs",
     "src/proxy_core_adapter.rs",
     "src/services/model_fetch_transport.rs",
 ];
@@ -1631,7 +1632,6 @@ const FORBIDDEN_RESPONSE_PROCESSOR_STREAM_ORCHESTRATION_MARKERS: &[&str] = &[
     "create_logged_passthrough_stream(",
     "passthrough_streaming_usage_collector(",
     "ctx.streaming_timeout_config()",
-    "log_streaming_proxy_response_received(",
     "passthrough_stream_proxy_response(",
     "async_stream::stream!",
     "SseEventScanner",
@@ -1648,18 +1648,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SSE_PASSTHROUGH_POLICY_MARKERS: &[&str] = &[
     "push_passthrough_bytes(",
     "已接收上游流式首包",
 ];
-const FORBIDDEN_RESPONSE_PROCESSOR_BODY_DECODE_PROJECTION_MARKERS: &[&str] = &[
-    "read_decoded_body(",
-    "decode_raw_proxy_response_body(",
-    "response.bytes().await",
-    "response.bytes()",
-    "tokio::time::timeout(",
-    "non_streaming_body_timeout_message(",
-    "已接收上游响应体",
-    "decode_response_body(",
-    "ResponseBodyDecodeLogLevel::",
-    ".status.log_event()",
-];
+const FORBIDDEN_RESPONSE_PROCESSOR_BODY_DECODE_PROJECTION_MARKERS: &[&str] =
+    &["read_decoded_body(", "已接收上游响应体"];
 const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_PROJECTION_MARKERS: &[&str] = &[
     "response_headers_log_summary(",
     "get_content_encoding(",
@@ -1668,8 +1658,7 @@ const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_PROJECTION_MARKERS: &[&str] = &[
     "上游响应体内容",
     "String::from_utf8_lossy(",
 ];
-const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_CALL_MARKERS: &[&str] =
-    &["log_non_streaming_proxy_response_body("];
+const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_CALL_MARKERS: &[&str] = &[];
 const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_CONSTRUCTION_MARKERS: &[&str] =
     &["passthrough_bytes_proxy_response("];
 const FORBIDDEN_RESPONSE_BUILD_CONTEXT_LITERAL_MARKERS: &[&str] = &[
@@ -5761,10 +5750,17 @@ fn response_processor_delegates_stream_orchestration_to_adapter() {
 }
 
 #[test]
-fn response_processor_delegates_body_decode_projection_to_adapter() {
+fn response_pipeline_owns_body_decode_transport_bridge() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let decode_slice = function_slice(
+        &source,
+        "pub(crate) struct DecodedProxyResponseBody",
+        "/// 检测响应是否为 SSE 流式响应",
+    );
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -5782,13 +5778,49 @@ fn response_processor_delegates_body_decode_projection_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "response processor must delegate body decode/log projection to proxy_core_adapter:\n{}",
+        "response processor must keep decode projection text in proxy-core and avoid local message formatting:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        decode_slice.contains("pub(crate) fn decode_raw_proxy_response_body")
+            && decode_slice.contains("pub(crate) async fn read_decoded_proxy_response_body")
+            && decode_slice.contains("response.bytes()")
+            && decode_slice.contains("tokio::time::timeout(")
+            && decode_slice.contains("non_streaming_body_timeout_message(")
+            && decode_slice.contains("decode_response_body(")
+            && decode_slice.contains("ResponseBodyDecodeLogLevel::"),
+        "response pipeline should own the non-streaming transport body read/decode bridge"
+    );
+    assert!(
+        adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
+            && adapter_source.contains("read_decoded_proxy_response_body")
+            && adapter_source.contains("DecodedProxyResponseBody")
+            && !adapter_source.contains("pub(crate) struct DecodedProxyResponseBody")
+            && !adapter_source.contains("pub(crate) fn decode_raw_proxy_response_body"),
+        "proxy_core_adapter should re-export, not own, response body decode bridge helpers"
+    );
+    let direct_core_refs: Vec<String> = production_lines(&source)
+        .filter_map(|(line_index, line)| {
+            let code = line.split("//").next().unwrap_or_default();
+            (code.contains("crate::proxy_core::")
+                && !code.contains("crate::proxy_core::api::transport"))
+            .then(|| {
+                format!(
+                    "src/proxy/engine/response_pipeline.rs:{} contains non-transport proxy-core marker",
+                    line_index + 1
+                )
+            })
+        })
+        .collect();
+    assert!(
+        direct_core_refs.is_empty(),
+        "response pipeline direct proxy-core access should stay limited to transport API:\n{}",
+        direct_core_refs.join("\n")
     );
 }
 
 #[test]
-fn response_processor_delegates_response_log_projection_to_adapter() {
+fn response_pipeline_keeps_response_log_projection_text_in_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
@@ -5812,20 +5844,20 @@ fn response_processor_delegates_response_log_projection_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "response processor must delegate response header log projection to proxy_core_adapter:\n{}",
+        "response pipeline must keep response log projection text in proxy-core event specs:\n{}",
         violations.join("\n")
     );
 }
 
 #[test]
-fn proxy_core_adapter_delegates_response_log_projection_to_core() {
+fn response_pipeline_delegates_response_log_projection_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let function = function_slice(
         &source,
         "pub(crate) fn decode_raw_proxy_response_body",
-        "#[derive(Clone)]\npub(crate) struct SseUsageCollector",
+        "/// 检测响应是否为 SSE 流式响应",
     );
 
     assert!(
@@ -5833,13 +5865,13 @@ fn proxy_core_adapter_delegates_response_log_projection_to_core() {
             && function.contains("streaming_response_received_log_events(")
             && function.contains("non_streaming_response_body_log_event(")
             && function.contains("emit_response_log_event("),
-        "proxy_core_adapter must consume response log event specs from proxy-core"
+        "response pipeline must consume response log event specs from proxy-core"
     );
 
     for marker in FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_PROJECTION_MARKERS {
         assert!(
             !function.contains(marker),
-            "proxy_core_adapter must not locally format response log projection marker `{marker}`"
+            "response pipeline must not locally format response log projection marker `{marker}`"
         );
     }
 }
