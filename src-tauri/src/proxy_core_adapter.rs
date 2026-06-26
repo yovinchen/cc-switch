@@ -47,7 +47,6 @@ use crate::proxy::RequestForwarder;
 #[cfg(test)]
 use crate::proxy_core::api::domain::{ChannelHealthPolicy, ChannelOverrides, UpstreamEndpoint};
 use crate::proxy_core::api::domain::{ProviderMetadata, ProviderMetadataInput};
-pub(crate) use crate::proxy_core::api::management::channel_route_source_for_materialized_count;
 #[cfg(test)]
 use crate::proxy_core::api::routing::RouteResolveModelInput;
 use crate::proxy_core::api::routing::{
@@ -1514,7 +1513,6 @@ pub(crate) fn route_selected_event_message_from_forward_attempt(
 }
 
 pub(crate) type ChannelAttemptResult = crate::proxy_core::api::ports::ChannelAttemptResult;
-pub(crate) type ChannelQuery<'a> = crate::proxy_core::api::routing::ChannelQuery<'a>;
 pub(crate) type ForwardFailureCategory = crate::proxy_core::api::transport::ForwardFailureCategory;
 
 pub(crate) const DEFAULT_PROXY_LISTEN_PORT: u16 =
@@ -1554,6 +1552,7 @@ pub(crate) mod server_log_codes {
 pub(crate) type ProxyCoreAppKind = crate::proxy_core::api::domain::AppKind;
 #[cfg(test)]
 pub(crate) type ProxyCoreChannelOverrides = crate::proxy_core::api::domain::ChannelOverrides;
+#[cfg(test)]
 pub(crate) type ChannelSpec = crate::proxy_core::api::routing::ChannelSpec;
 #[cfg(test)]
 pub(crate) type ProxyCoreChannelSpec = crate::proxy_core::api::routing::ChannelSpec;
@@ -2206,6 +2205,7 @@ pub(crate) fn provider_from_opencode_live_config(
     Ok(provider)
 }
 
+#[cfg(test)]
 pub(crate) use crate::proxy_core::api::domain::{
     channel_spec_from_input, ChannelSpecInput, ModelRouteInput,
 };
@@ -2221,18 +2221,10 @@ pub(crate) use crate::proxy_core::api::management::ChannelReachabilityStatus;
 #[cfg(test)]
 use crate::proxy_core::api::management::StreamCheckResult;
 pub(crate) type ChannelKeyRecord = crate::proxy_core::api::management::ChannelKeyRecord;
-pub(crate) type ChannelKeyRecordInput = crate::proxy_core::api::management::ChannelKeyRecordInput;
 #[cfg(test)]
 pub(crate) type ChannelKeyRuntimeCandidate =
     crate::proxy_core::api::management::ChannelKeyRuntimeCandidate;
 pub(crate) type ChannelModelRecord = crate::proxy_core::api::management::ChannelModelRecord;
-pub(crate) type ChannelModelRecordInput =
-    crate::proxy_core::api::management::ChannelModelRecordInput;
-pub(crate) type ChannelRecordInput = crate::proxy_core::api::management::ChannelRecordInput;
-
-pub(crate) use crate::proxy_core::api::management::{
-    channel_key_record_from_input, channel_model_record_from_input, channel_record_from_input,
-};
 
 pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
 pub(crate) type LegacyChannelModelProjection =
@@ -2414,7 +2406,6 @@ pub(crate) use crate::proxy_core::api::config::{
     should_rectify_thinking_budget, should_rectify_thinking_signature,
     thinking_optimization_log_message,
 };
-pub(crate) use crate::proxy_core::api::domain::channel_matches_query;
 use crate::proxy_core::api::events::{
     attempt_event_name, build_attempt_event_payload, build_provider_switched_event_payload,
     build_proxy_official_warning_event_payload, build_request_started_event_payload,
@@ -2432,8 +2423,7 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
     ChannelHealthResetResponse, ChannelHealthUpdateInput, ChannelKeyDeleteResponse,
     ChannelKeyPathRequest, ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery,
-    ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeInput,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
+    ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
     ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelPathRequest,
     ChannelRecordResponse, ChannelRouteRejected, ChannelTestResponse, CurrentRouteResponse,
     GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,

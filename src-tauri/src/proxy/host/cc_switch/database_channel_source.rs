@@ -3,17 +3,21 @@ use crate::database::{
     ProxyChannelModelRecord, ProxyChannelRecord,
 };
 use crate::error::AppError;
-use crate::proxy_core_adapter::{
-    app_error, app_write_error, channel_key_record_from_input, channel_matches_query,
-    channel_model_record_from_input, channel_record_from_input,
-    channel_route_source_for_materialized_count, channel_spec_from_input, AppKind,
-    ChannelKeyRecord, ChannelKeyRecordInput, ChannelMigrationMaterializeInput,
-    ChannelMigrationPreviewInput, ChannelModelRecord, ChannelModelRecordInput, ChannelQuery,
-    ChannelRecord, ChannelRecordInput, ChannelRouteSource, ChannelSource, ChannelSpec,
-    ChannelSpecInput, ModelRouteInput, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-    ProxyCoreResult,
+use crate::proxy_core::api::domain::{
+    channel_matches_query, channel_spec_from_input, AppKind, ChannelSpecInput, ModelRouteInput,
 };
+use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::management::{
+    channel_key_record_from_input, channel_model_record_from_input, channel_record_from_input,
+    channel_route_source_for_materialized_count, ChannelKeyRecord, ChannelKeyRecordInput,
+    ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelModelRecord,
+    ChannelModelRecordInput, ChannelRecord, ChannelRecordInput, ChannelRouteSource,
+    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+};
+use crate::proxy_core::api::ports::ChannelSource;
+use crate::proxy_core::api::routing::{ChannelQuery, ChannelSpec};
+use crate::proxy_core_adapter::{app_error, app_write_error};
 use futures::future::BoxFuture;
 use std::sync::Arc;
 

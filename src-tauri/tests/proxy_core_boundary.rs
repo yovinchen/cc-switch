@@ -26,6 +26,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/channel_reachability_probe.rs",
     "src/proxy/host/cc_switch/claude_desktop_gateway_auth_source.rs",
     "src/proxy/host/cc_switch/config_source.rs",
+    "src/proxy/host/cc_switch/database_channel_source.rs",
     "src/proxy/host/cc_switch/database_usage_sink.rs",
     "src/proxy/host/cc_switch/event_sink.rs",
     "src/proxy/host/cc_switch/forwarder_attempt_runtime_source.rs",
@@ -18727,6 +18728,11 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/database_channel_source.rs");
     let source =
         fs::read_to_string(&source_path).expect("read host/cc_switch/database_channel_source.rs");
+    let source_adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::{",
+        "};\nuse futures::future::BoxFuture;",
+    );
 
     assert!(
         services_source.contains(
@@ -18772,6 +18778,38 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
             && source.contains("channel_migration_materialize_from_db_source"),
         "host/cc_switch/database_channel_source.rs must own the DB-backed ChannelSource wrapper"
     );
+    assert!(
+        source.contains("use crate::proxy_core::api::domain::{")
+            && source.contains("channel_matches_query")
+            && source.contains("channel_spec_from_input")
+            && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && source.contains("use crate::proxy_core::api::management::{")
+            && source.contains("channel_record_from_input")
+            && source.contains("ChannelMigrationMaterializeInput")
+            && source.contains("use crate::proxy_core::api::ports::ChannelSource;")
+            && source.contains("use crate::proxy_core::api::routing::{ChannelQuery, ChannelSpec};"),
+        "host/cc_switch/database_channel_source.rs should import channel contracts directly from proxy_core"
+    );
+    for adapter_type in [
+        "AppKind",
+        "ChannelKeyRecord",
+        "ChannelMigrationMaterializeInput",
+        "ChannelMigrationPreviewInput",
+        "ChannelModelRecord",
+        "ChannelQuery",
+        "ChannelRecord",
+        "ChannelRouteSource",
+        "ChannelSource",
+        "ChannelSpec",
+        "ModelRouteInput",
+        "ProxyChannelWriteRequest",
+        "ProxyCoreResult",
+    ] {
+        assert!(
+            !source_adapter_import.contains(adapter_type),
+            "database channel source should not import {adapter_type} through proxy_core_adapter"
+        );
+    }
 }
 
 #[test]
