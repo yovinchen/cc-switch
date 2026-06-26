@@ -6298,6 +6298,11 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_reexport = function_slice(
+        &adapter_source,
+        "#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
+        "};\n\npub(crate) use crate::proxy_core::api::routing::{",
+    );
     let function = function_slice(
         &source,
         "pub(crate) struct TransformedResponseUsageContext",
@@ -6344,8 +6349,6 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
     );
     assert!(
         adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
-            && adapter_source.contains("TransformedStreamingUsageCollectorContext")
-            && adapter_source.contains("transformed_streaming_usage_collector_from_context")
             && adapter_source.contains("TransformedResponseUsageRecordContext")
             && adapter_source.contains("record_transformed_response_usage_from_context")
             && adapter_source
@@ -6356,11 +6359,13 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
             )
             && adapter_source
                 .contains("transformed_streaming_response_usage_record_from_response_context")
-            && adapter_source.contains("transformed_streaming_usage_collector")
-            && adapter_source.contains("claude_transformed_streaming_usage_collector")
-            && adapter_source.contains("codex_auto_transformed_streaming_usage_collector")
-            && adapter_source.contains("create_claude_transformed_logged_stream")
-            && adapter_source.contains("create_codex_auto_transformed_logged_stream")
+            && !adapter_reexport.contains("TransformedStreamingUsageCollectorContext")
+            && !adapter_reexport.contains("transformed_streaming_usage_collector_from_context")
+            && !adapter_reexport.contains("transformed_streaming_usage_collector")
+            && !adapter_reexport.contains("claude_transformed_streaming_usage_collector")
+            && !adapter_reexport.contains("codex_auto_transformed_streaming_usage_collector")
+            && !adapter_reexport.contains("create_claude_transformed_logged_stream")
+            && !adapter_reexport.contains("create_codex_auto_transformed_logged_stream")
             && !adapter_source
                 .contains("pub(crate) struct TransformedStreamingUsageCollectorContext")
             && !adapter_source
@@ -6383,7 +6388,7 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
             && !adapter_source.contains("pub(crate) fn create_claude_transformed_logged_stream(")
             && !adapter_source
                 .contains("pub(crate) fn create_codex_auto_transformed_logged_stream("),
-        "proxy_core_adapter should re-export, not own, transformed usage runtime orchestration"
+        "proxy_core_adapter should not re-export transformed streaming internals"
     );
 }
 
@@ -6500,6 +6505,11 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_reexport = function_slice(
+        &adapter_source,
+        "#[allow(unused_imports)]\npub(crate) use crate::proxy::engine::response_pipeline::{",
+        "};\n\npub(crate) use crate::proxy_core::api::routing::{",
+    );
     let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
     let response_adapter_source =
         fs::read_to_string(&response_adapter_path).expect("read proxy/response_adapter.rs");
@@ -6531,7 +6541,7 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
     );
     assert!(
         adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
-            && adapter_source.contains("claude_transform_tool_schema_hints")
+            && !adapter_reexport.contains("claude_transform_tool_schema_hints")
             && !adapter_source.contains("ClaudeTransformedSseStreamContext")
             && !adapter_source.contains("claude_transformed_sse_stream_from_context")
             && !adapter_source.contains("CodexAutoTransformedSseStreamContext")
