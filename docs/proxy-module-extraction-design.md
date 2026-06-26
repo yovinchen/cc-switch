@@ -624,6 +624,7 @@
 - DB-backed usage logging sink、`RequestLog` 与 `UsageLogger` 已迁到 `proxy/host/cc_switch/database_usage_sink.rs`，旧 `proxy/usage/logger.rs` 与 `proxy::usage` re-export 仅保留兼容入口；token/cost DTO 与纯计价策略继续通过 core/adapter 入口。
 - provider adapter 实现已从 `proxy/providers/*` 迁到 singular `proxy/provider/*`，`proxy_core_adapter` 已优先引用 `proxy::provider`；旧 `proxy/providers/mod.rs` 仅保留兼容 re-export。
 - 应用全局 reqwest client、global proxy lifecycle 与系统代理自环保护已迁到 `proxy/host/cc_switch/global_http_client.rs`，服务、命令、上游 transport 与 adapter 调用已优先引用 host 路径；旧 `proxy/http_client.rs` 仅保留兼容 re-export。
+- `ProxyService` 的 live takeover、restore、hot switch 与 live config 宿主副作用实现已迁到 `proxy/host/cc_switch/live_takeover.rs`，旧 `services/proxy.rs` 仅保留 `services::ProxyService` API 兼容 re-export。
 607. host crate 新增 `proxy_core_boundary` 集成测试，固定除 `src/lib.rs` re-export 与 `src/proxy_core_adapter.rs` 外不得直接引用 `crate::proxy_core::` 或 `cc_switch_proxy_core::`，确保后续 Tauri host 继续通过 adapter 集中接入 core。
 608. 模型目录服务层删除 `services::model_fetch` 与 `services::codex_oauth_models` 纯转发 facade，Tauri commands 直接调用 `model_fetch_transport` 这个 host reqwest adapter；URL 规划、请求契约、失败映射与响应解析继续由 `proxy-core::model_fetch` 维护。
 609. stream check 的延迟状态判定与 timeout-like retry 判定已迁入 `proxy-core` 的 channel reachability contract；host `StreamCheckService` 保留 reqwest 探测、provider base URL 提取和现有 DTO/DAO 兼容映射。
@@ -2544,7 +2545,7 @@ ProxyRequest
 | `hyper_client.rs` | `transport/upstream/hyper_client.rs` | raw Hyper 上游 transport、`ProxyResponse` 与 header-case preservation 实现已迁到 `proxy/transport/upstream/hyper_client.rs`，旧 `proxy/hyper_client.rs` 仅保留兼容 re-export；后续继续区分 raw-hyper 上游 transport 与 reqwest/global HTTP client |
 | `http_client.rs` | `transport/upstream/reqwest_client.rs` 或 host shared | pooled reqwest 上游发送执行已迁到 `proxy/transport/upstream/reqwest_client.rs`，`transport/upstream/mod.rs` 负责 reqwest/raw-hyper 分流；应用全局 HTTP client、proxy lifecycle 和系统代理自环保护已迁到 `proxy/host/cc_switch/global_http_client.rs`，旧 `proxy/http_client.rs` 仅保留兼容 re-export |
 | `types.rs` | `domain/config.rs`, `domain/status.rs` | 拆分领域类型 |
-| `services/proxy.rs` | `host/cc_switch/live_takeover.rs` | 保留桌面宿主逻辑 |
+| `services/proxy.rs` | `host/cc_switch/live_takeover.rs` | `ProxyService` live takeover/restore/hot-switch/live-config 宿主副作用实现已迁到 `proxy/host/cc_switch/live_takeover.rs`，旧 `services/proxy.rs` 仅保留 `services::ProxyService` API 兼容 re-export |
 | `provider_endpoints` 相关 DB 访问 | `host/cc_switch/database_channel_source.rs` | 兼容投影为 channel，后续迁移到独立 channel 表 |
 
 ## 分阶段实施计划
