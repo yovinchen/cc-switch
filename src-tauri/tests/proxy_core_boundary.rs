@@ -37,6 +37,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/managed_account_runtime_source.rs",
     "src/proxy/host/cc_switch/model_catalog_provider.rs",
     "src/proxy/host/cc_switch/provider_adapter_context.rs",
+    "src/proxy/host/cc_switch/provider_router_channel_source.rs",
     "src/proxy/host/cc_switch/provider_router_provider_source.rs",
     "src/proxy/host/cc_switch/provider_source.rs",
     "src/proxy/host/cc_switch/proxy_runtime.rs",
@@ -18642,6 +18643,11 @@ fn production_provider_router_channel_source_uses_core_channel_source() {
     let source_path =
         manifest_dir.join("src/proxy/host/cc_switch/provider_router_channel_source.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_router_channel_source.rs");
+    let source_adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::{",
+        "};\nuse futures::future::BoxFuture;",
+    );
 
     assert!(
         source.contains("source: CcSwitchChannelSource")
@@ -18652,6 +18658,18 @@ fn production_provider_router_channel_source_uses_core_channel_source() {
         source.contains("router_channel_route_inputs_from_channel_source"),
         "ProviderRouter channel source must project route inputs from ChannelSource"
     );
+    assert!(
+        source.contains("use crate::proxy_core::api::management::ChannelRouteSource;")
+            && source
+                .contains("use crate::proxy_core::api::routing::RouteResolveChannelInput;"),
+        "ProviderRouter channel source should import route input contracts directly from proxy_core"
+    );
+    for adapter_type in ["ChannelRouteSource", "RouteResolveChannelInput"] {
+        assert!(
+            !source_adapter_import.contains(adapter_type),
+            "ProviderRouter channel source should not import core route contract {adapter_type} through proxy_core_adapter"
+        );
+    }
     assert!(
         !adapter_source.contains("struct CcSwitchProviderRouterChannelSource")
             && !adapter_source.contains(
