@@ -5827,12 +5827,23 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
         "response pipeline should own passthrough usage runtime orchestration"
     );
     assert!(
-        !usage_slice.contains("streaming_response_usage_record_from_provider_facts(")
-            && !usage_slice.contains(
+        usage_slice.contains("pub(crate) fn streaming_response_usage_record_from_provider_facts")
+            && usage_slice
+                .contains("streaming_response_usage_record_with_optional_outbound_model(")
+            && usage_slice
+                .contains("pub(crate) fn streaming_response_usage_record_from_response_context")
+            && usage_slice.contains(
                 "non_streaming_response_usage_record_from_provider_body_with_request_id_fallback("
             )
+            && usage_slice.contains(
+                "pub(crate) fn non_streaming_response_usage_record_from_response_context"
+            )
+            && usage_slice.contains(
+                "non_streaming_response_usage_record_from_body_with_request_id_fallback("
+            )
+            && usage_slice.contains("usage_record_with_route_context(")
             && !usage_slice.contains("success_usage_record_with_request_id_fallback("),
-        "response pipeline should still delegate bottom usage-record construction"
+        "response pipeline should own bottom passthrough usage-record construction"
     );
     assert!(
         adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
@@ -5840,6 +5851,13 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
             && adapter_source.contains("streaming_usage_collector_from_context")
             && adapter_source.contains("NonStreamingUsageRecordContext")
             && adapter_source.contains("record_non_streaming_response_usage_from_context")
+            && adapter_source.contains("streaming_response_usage_record_from_provider_facts")
+            && adapter_source.contains("streaming_response_usage_record_from_response_context")
+            && adapter_source
+                .contains("non_streaming_response_usage_record_from_response_context")
+            && adapter_source.contains(
+                "non_streaming_response_usage_record_from_provider_body_with_request_id_fallback"
+            )
             && adapter_source.contains("passthrough_streaming_usage_collector")
             && adapter_source.contains("create_passthrough_logged_stream")
             && adapter_source.contains("record_non_streaming_response_usage")
@@ -5848,6 +5866,15 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
             && !adapter_source.contains("pub(crate) struct NonStreamingUsageRecordContext")
             && !adapter_source
                 .contains("pub(crate) fn record_non_streaming_response_usage_from_context")
+            && !adapter_source
+                .contains("pub(crate) fn streaming_response_usage_record_from_provider_facts")
+            && !adapter_source
+                .contains("pub(crate) fn streaming_response_usage_record_from_response_context")
+            && !adapter_source.contains(
+                "pub(crate) fn non_streaming_response_usage_record_from_provider_body_with_request_id_fallback"
+            )
+            && !adapter_source
+                .contains("pub(crate) fn non_streaming_response_usage_record_from_response_context")
             && !adapter_source.contains("pub(crate) fn passthrough_streaming_usage_collector")
             && !adapter_source.contains("pub(crate) fn create_passthrough_logged_stream")
             && !adapter_source.contains("pub(crate) fn record_non_streaming_response_usage("),
@@ -5890,11 +5917,21 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
         "response pipeline should own transformed usage runtime orchestration"
     );
     assert!(
-        !function.contains("transformed_response_usage_record_from_provider_facts_with_request_id_fallback(")
-            && !function
-                .contains("transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback(")
-            && !function.contains("transformed_response_usage_record_with_request_id_fallback("),
-        "response pipeline should still delegate bottom transformed usage-record construction"
+        function.contains(
+            "pub(crate) fn transformed_response_usage_record_from_provider_facts_with_request_id_fallback"
+        )
+            && function.contains("transformed_response_usage_record_with_request_id_fallback(")
+            && function.contains(
+                "pub(crate) fn transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback"
+            )
+            && function.contains(
+                "transformed_streaming_response_usage_record_with_request_id_fallback("
+            )
+            && function.contains("pub(crate) fn transformed_response_usage_record_from_response_context")
+            && function
+                .contains("pub(crate) fn transformed_streaming_response_usage_record_from_response_context")
+            && function.contains("usage_record_with_route_context("),
+        "response pipeline should own bottom transformed usage-record construction"
     );
     assert!(
         adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{")
@@ -5902,6 +5939,14 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
             && adapter_source.contains("transformed_streaming_usage_collector_from_context")
             && adapter_source.contains("TransformedResponseUsageRecordContext")
             && adapter_source.contains("record_transformed_response_usage_from_context")
+            && adapter_source
+                .contains("transformed_response_usage_record_from_provider_facts_with_request_id_fallback")
+            && adapter_source.contains("transformed_response_usage_record_from_response_context")
+            && adapter_source.contains(
+                "transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback"
+            )
+            && adapter_source
+                .contains("transformed_streaming_response_usage_record_from_response_context")
             && adapter_source.contains("transformed_streaming_usage_collector")
             && adapter_source.contains("claude_transformed_streaming_usage_collector")
             && adapter_source.contains("codex_auto_transformed_streaming_usage_collector")
@@ -5914,6 +5959,17 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
             && !adapter_source.contains("pub(crate) struct TransformedResponseUsageRecordContext")
             && !adapter_source
                 .contains("pub(crate) fn record_transformed_response_usage_from_context")
+            && !adapter_source.contains(
+                "pub(crate) fn transformed_response_usage_record_from_provider_facts_with_request_id_fallback"
+            )
+            && !adapter_source
+                .contains("pub(crate) fn transformed_response_usage_record_from_response_context")
+            && !adapter_source.contains(
+                "pub(crate) fn transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback"
+            )
+            && !adapter_source.contains(
+                "pub(crate) fn transformed_streaming_response_usage_record_from_response_context"
+            )
             && !adapter_source.contains("pub(crate) fn transformed_streaming_usage_collector(")
             && !adapter_source.contains("pub(crate) fn create_claude_transformed_logged_stream(")
             && !adapter_source
@@ -6082,10 +6138,12 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
         .filter_map(|(line_index, line)| {
             let code = line.split("//").next().unwrap_or_default();
             (code.contains("crate::proxy_core::")
-                && !code.contains("crate::proxy_core::api::transport"))
+                && !code.contains("crate::proxy_core::api::transport")
+                && !code.contains("crate::proxy_core::api::usage")
+                && !code.contains("crate::proxy_core::api::errors"))
             .then(|| {
                 format!(
-                    "src/proxy/engine/response_pipeline.rs:{} contains non-transport proxy-core marker",
+                    "src/proxy/engine/response_pipeline.rs:{} contains non-response proxy-core marker",
                     line_index + 1
                 )
             })
@@ -6093,7 +6151,7 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
         .collect();
     assert!(
         direct_core_refs.is_empty(),
-        "response pipeline direct proxy-core access should stay limited to transport API:\n{}",
+        "response pipeline direct proxy-core access should stay limited to response transport/usage/error APIs:\n{}",
         direct_core_refs.join("\n")
     );
 }
