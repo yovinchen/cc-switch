@@ -6,7 +6,9 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/commands/codex_oauth.rs",
     "src/commands/copilot.rs",
     "src/commands/model_fetch.rs",
+    "src/commands/proxy.rs",
     "src/commands/settings.rs",
+    "src/database/dao/proxy.rs",
     "src/database/dao/settings.rs",
     "src/lib.rs",
     "src/proxy/codex_oauth_auth.rs",
@@ -196,6 +198,10 @@ const FORBIDDEN_GEMINI_AUTH_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
     "GeminiAuthType, GeminiAuthTypeInput, GeminiEnvParseIssue",
     "pub(crate) type GeminiAuthType = crate::proxy_core::api::ports::GeminiAuthType",
     "pub(crate) use crate::proxy_core::api::ports::GeminiAuthType",
+];
+const FORBIDDEN_GLOBAL_PROXY_CONFIG_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
+    "type GlobalProxyConfig = crate::proxy_core::api::ports::GlobalProxyConfig",
+    "pub(crate) use crate::proxy_core::api::ports::GlobalProxyConfig",
 ];
 const FORBIDDEN_STREAM_CHECK_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
     "proxy::providers",
@@ -10254,6 +10260,64 @@ fn codex_config_uses_core_model_context_window_constant() {
     assert!(
         violations.is_empty(),
         "Codex model context fallback constant must bypass proxy_core_adapter aliases:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn global_proxy_config_callers_use_core_dto_entrypoint() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let caller_paths = ["src/commands/proxy.rs", "src/database/dao/proxy.rs"];
+    let required_import = "use crate::proxy_core::api::ports::GlobalProxyConfig;";
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&adapter_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_GLOBAL_PROXY_CONFIG_ADAPTER_DTO_EXPORT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains global proxy config DTO export marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    for relative in caller_paths {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read caller source");
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            if code.contains("proxy_core_adapter") && code.contains("GlobalProxyConfig") {
+                violations.push(format!(
+                    "{}:{} imports GlobalProxyConfig from proxy_core_adapter",
+                    relative,
+                    line_index + 1
+                ));
+            }
+            let direct_core =
+                code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
+            if direct_core && code.trim() != required_import {
+                violations.push(format!(
+                    "{}:{} contains non-GlobalProxyConfig direct proxy-core import `{}`",
+                    relative,
+                    line_index + 1,
+                    code.trim()
+                ));
+            }
+        }
+        assert!(
+            source.contains(required_import),
+            "{} must import GlobalProxyConfig directly from proxy_core",
+            relative
+        );
+    }
+
+    assert!(
+        violations.is_empty(),
+        "GlobalProxyConfig callers must use proxy_core::api::ports as the DTO entrypoint:\n{}",
         violations.join("\n")
     );
 }

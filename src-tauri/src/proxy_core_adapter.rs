@@ -992,7 +992,8 @@ pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::Response
 pub(crate) type SsePassthroughStreamState =
     crate::proxy_core::api::transforms::SsePassthroughStreamState;
 pub(crate) type SseUsageAccumulator = crate::proxy_core::api::transforms::SseUsageAccumulator;
-pub(crate) type GlobalProxyConfig = crate::proxy_core::api::ports::GlobalProxyConfig;
+#[cfg(test)]
+use crate::proxy_core::api::ports::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::api::config::AppProxyConfig;
 
 pub(crate) use crate::proxy_core::api::config::{

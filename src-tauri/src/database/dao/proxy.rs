@@ -3,10 +3,11 @@
 //! 处理代理配置、Provider健康状态和使用统计的数据库操作
 
 use crate::error::AppError;
+use crate::proxy_core::api::ports::GlobalProxyConfig;
 use crate::proxy_core_adapter::{
     app_proxy_config_defaults_for_app, normalize_pricing_source, provider_health_update_from_input,
     validate_cost_multiplier_value, AppProxyConfig, CircuitBreakerConfig,
-    CostMultiplierValidationError, GlobalProxyConfig, PricingSourceValidationError, ProviderHealth,
+    CostMultiplierValidationError, PricingSourceValidationError, ProviderHealth,
     ProviderHealthUpdateInput, ProxyConfig,
 };
 pub(crate) use crate::proxy_core_adapter::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
@@ -823,7 +824,6 @@ mod tests {
     use crate::database::Database;
     use crate::error::AppError;
     use crate::provider::Provider;
-    use crate::proxy_core_adapter::GlobalProxyConfig;
 
     #[tokio::test]
     async fn test_default_cost_multiplier_round_trip() -> Result<(), AppError> {

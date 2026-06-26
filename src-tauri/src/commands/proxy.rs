@@ -3,10 +3,11 @@
 //! 提供前端调用的 API 接口
 
 use crate::error::AppError;
+use crate::proxy_core::api::ports::GlobalProxyConfig;
 use crate::proxy_core_adapter::{
     reset_circuit_breaker_switchback_target_from_db, AppProxyConfig, CircuitBreakerConfig,
-    CircuitBreakerStats, GlobalProxyConfig, ProviderHealth, ProxyConfig, ProxyRuntimeStatus,
-    ProxyServerInfo, ProxyTakeoverStatus,
+    CircuitBreakerStats, ProviderHealth, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+    ProxyTakeoverStatus,
 };
 use crate::store::AppState;
 
