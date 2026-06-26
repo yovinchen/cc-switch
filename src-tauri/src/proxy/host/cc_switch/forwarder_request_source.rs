@@ -4,6 +4,10 @@ use std::sync::Arc;
 
 use crate::app_config::AppType;
 use crate::proxy::error::ProxyError;
+use crate::proxy_core::api::transport::{
+    apply_copilot_warmup_model_override, classify_copilot_request, merge_copilot_tool_results,
+    sanitize_copilot_orphan_tool_results, strip_copilot_thinking_blocks,
+};
 use crate::proxy_core_adapter::*;
 
 pub(crate) struct CcSwitchForwarderRequestSource {

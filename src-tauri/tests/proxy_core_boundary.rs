@@ -14419,6 +14419,27 @@ fn production_forwarder_uses_request_source_resource() {
         "default ForwarderRequestSource implementation must retain Copilot optimizer sequencing"
     );
     assert!(
+        request_source.contains("use crate::proxy_core::api::transport::{")
+            && request_source.contains("classify_copilot_request")
+            && request_source.contains("sanitize_copilot_orphan_tool_results")
+            && request_source.contains("merge_copilot_tool_results")
+            && request_source.contains("strip_copilot_thinking_blocks")
+            && request_source.contains("apply_copilot_warmup_model_override"),
+        "default ForwarderRequestSource should import pure Copilot optimizer helpers directly from proxy_core::api::transport"
+    );
+    for marker in [
+        "classify_copilot_request",
+        "sanitize_copilot_orphan_tool_results",
+        "merge_copilot_tool_results",
+        "strip_copilot_thinking_blocks",
+        "apply_copilot_warmup_model_override",
+    ] {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not re-export pure Copilot optimizer helper `{marker}` once request source owns the call site"
+        );
+    }
+    assert!(
         !request_source.contains("fn apply_media_prevention"),
         "default ForwarderRequestSource implementation must not retain a private media prevention replacement method"
     );
