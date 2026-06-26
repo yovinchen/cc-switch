@@ -20,29 +20,28 @@ use super::{
         collect_json_or_null_proxy_request, collect_json_proxy_request,
         dispatch_claude_proxy_request_to_proxy_response,
         dispatch_codex_proxy_request_to_proxy_response, dispatch_proxy_request_to_proxy_response,
-        gemini_passthrough_response_to_axum_response,
+        endpoint_from_uri, gemini_passthrough_response_to_axum_response,
         openai_chat_passthrough_response_to_axum_response, proxy_event_envelope_to_axum_sse_event,
         CodexProxyDispatchResponse,
     },
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
-    append_query_to_endpoint_path, strip_endpoint_prefix, AppChannelListQuery,
-    AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest, AppListResponse,
-    AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse, ChannelCreateRequest,
-    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
-    ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
-    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
-    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
-    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
-    HealthCheckResponse, ManagementAppPathRequest, ProviderListResponse,
-    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
-    ProxyRuntimeStatus, ProxyState, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
-    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse,
+    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
+    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
+    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
+    ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
+    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
+    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
+    CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
+    ManagementAppPathRequest, ProviderListResponse, ProxyChannelKeyPatchRequest,
+    ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyState,
+    ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
+    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -591,9 +590,7 @@ async fn handle_messages_for_app(
     )
     .await?;
 
-    let raw_endpoint =
-        append_query_to_endpoint_path(parsed_request.uri.path(), parsed_request.uri.query());
-    let endpoint = strip_endpoint_prefix(&raw_endpoint, strip_prefix);
+    let endpoint = parsed_request.endpoint_from_request_uri_stripping_prefix(strip_prefix);
     let original_body = parsed_request.body.clone();
 
     let proxy_request = parsed_request.into_anthropic_messages_proxy_request(
@@ -648,7 +645,7 @@ pub async fn handle_chat_completions(
         "codex",
     )
     .await?;
-    let endpoint = append_query_to_endpoint_path("/chat/completions", parsed_request.uri.query());
+    let endpoint = parsed_request.endpoint_for_path("/chat/completions");
 
     let proxy_request = parsed_request
         .into_codex_chat_proxy_request(endpoint.clone(), Some(ctx.request_model.clone()));
@@ -686,7 +683,7 @@ pub async fn handle_responses(
         "codex",
     )
     .await?;
-    let endpoint = append_query_to_endpoint_path("/responses", parsed_request.uri.query());
+    let endpoint = parsed_request.endpoint_for_path("/responses");
 
     let codex_proxy_request = parsed_request
         .into_codex_responses_proxy_request(endpoint.clone(), Some(ctx.request_model.clone()));
@@ -738,7 +735,7 @@ pub async fn handle_responses_compact(
         "codex",
     )
     .await?;
-    let endpoint = append_query_to_endpoint_path("/responses/compact", parsed_request.uri.query());
+    let endpoint = parsed_request.endpoint_for_path("/responses/compact");
 
     let codex_proxy_request = parsed_request
         .into_codex_responses_proxy_request(endpoint.clone(), Some(ctx.request_model.clone()));
@@ -799,7 +796,7 @@ pub async fn handle_gemini(
     .with_model_from_uri(&uri);
 
     // 提取完整的路径和查询参数
-    let endpoint = append_query_to_endpoint_path(uri.path(), uri.query());
+    let endpoint = endpoint_from_uri(&uri);
 
     let proxy_request = parsed_request.into_gemini_proxy_request(endpoint.clone());
 

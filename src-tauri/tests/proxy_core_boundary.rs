@@ -837,6 +837,8 @@ const FORBIDDEN_HANDLER_RESPONSE_BRANCH_GATE_MARKERS: &[&str] = &[
     "provider_needs_claude_transform(",
     "provider_should_convert_codex_responses_to_chat(",
 ];
+const FORBIDDEN_PROTOCOL_HANDLER_ENDPOINT_BRIDGE_MARKERS: &[&str] =
+    &["append_query_to_endpoint_path(", "strip_endpoint_prefix("];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
 const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
@@ -3270,6 +3272,62 @@ fn production_handlers_delegate_response_branch_gates_to_response_adapter() {
     assert!(
         violations.is_empty(),
         "production handlers must delegate response branch gates to response_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_protocol_handlers_delegate_endpoint_bridge_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let protocol_handlers = [
+        function_slice(
+            &source,
+            "async fn handle_messages_for_app(",
+            "\n}\n\n// ============================================================================\n// Codex API",
+        ),
+        function_slice(
+            &source,
+            "pub async fn handle_chat_completions(",
+            "\n}\n\n/// 处理 /v1/responses 请求",
+        ),
+        function_slice(
+            &source,
+            "pub async fn handle_responses(",
+            "\n}\n\n/// 处理 /v1/responses/compact 请求",
+        ),
+        function_slice(
+            &source,
+            "pub async fn handle_responses_compact(",
+            "\n}\n\n// ============================================================================\n// Gemini API",
+        ),
+        function_slice(
+            &source,
+            "pub async fn handle_gemini(",
+            "\n}\n\n#[cfg(test)]",
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    for handler in protocol_handlers {
+        for (line_index, line) in production_lines(handler) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROTOCOL_HANDLER_ENDPOINT_BRIDGE_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/proxy/handlers.rs:{} contains endpoint bridge marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "protocol handlers must delegate endpoint path/query bridge to response_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

@@ -15,16 +15,16 @@ use super::{
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    claude_transformed_json_response_from_context, claude_transformed_sse_stream_from_context,
-    codex_auto_transformed_json_response_from_context,
+    append_query_to_endpoint_path, claude_transformed_json_response_from_context,
+    claude_transformed_sse_stream_from_context, codex_auto_transformed_json_response_from_context,
     codex_auto_transformed_sse_stream_from_context, codex_chat_error_proxy_response,
     codex_chat_transform_streaming_decision, codex_responses_proxy_request_from_input,
     extract_gemini_model_from_path, json_proxy_request_from_input, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, provider_claude_transform_streaming_decision,
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
     read_decoded_proxy_response_body, rebuilt_json_proxy_response, record_forward_core_error_usage,
-    request_body_read_error_message, transformed_sse_proxy_response, ActiveConnectionGuard,
-    AxumResponseBuildErrorContext, ClaudeTransformStreamingDecision,
+    request_body_read_error_message, strip_endpoint_prefix, transformed_sse_proxy_response,
+    ActiveConnectionGuard, AxumResponseBuildErrorContext, ClaudeTransformStreamingDecision,
     ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
     CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
     CodexChatTransformStreamingDecision, CodexResponsesProxyRequest, CodexToolContext,
@@ -50,6 +50,21 @@ pub(crate) struct ParsedAxumJsonProxyRequest {
 }
 
 impl ParsedAxumJsonProxyRequest {
+    pub(crate) fn endpoint_from_request_uri(&self) -> String {
+        endpoint_from_uri(&self.uri)
+    }
+
+    pub(crate) fn endpoint_from_request_uri_stripping_prefix(
+        &self,
+        strip_prefix: Option<&str>,
+    ) -> String {
+        strip_endpoint_prefix(&self.endpoint_from_request_uri(), strip_prefix).to_string()
+    }
+
+    pub(crate) fn endpoint_for_path(&self, path: &str) -> String {
+        append_query_to_endpoint_path(path, self.uri.query())
+    }
+
     fn into_json_proxy_request(
         self,
         app_type: AppType,
@@ -122,6 +137,10 @@ impl ParsedAxumJsonProxyRequest {
             requested_model,
         )
     }
+}
+
+pub(crate) fn endpoint_from_uri(uri: &Uri) -> String {
+    append_query_to_endpoint_path(uri.path(), uri.query())
 }
 
 async fn collect_axum_request_body(body: axum::body::Body) -> Result<Bytes, ProxyError> {
