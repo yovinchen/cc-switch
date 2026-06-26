@@ -109,7 +109,7 @@
 98. `/proxy/v1/channels` POST 与 `/proxy/v1/channels/{channel_id}` GET/PATCH 已迁入 `proxy-core::ChannelRecord` 与透明 `ChannelRecordResponse<T>`；外部 JSON shape 不变，handler 不再暴露 DB channel record。
 99. 管理 API 鉴权错误的 `ManagementAuthError -> ProxyError` 宿主适配已从 `handlers` 抽到 `proxy::error_mapper::management_auth_error_to_proxy_error`；handler 只保留 header 提取和 core bearer 校验调用。
 100. 管理 API bearer `Authorization` header 解析已迁入 `proxy-core::management_auth::validate_management_bearer_header`；host middleware 不再手写 header parse，只把 Axum/header map 交给 core 并映射错误。
-101. Claude Desktop gateway 的 bearer header/token 校验和错误文案已迁入 `proxy-core::claude_desktop_gateway_auth`；host handler 只负责从 `claude_desktop_config` 读取/生成 gateway token 并映射 core auth 错误。
+101. Claude Desktop gateway 的 bearer header/token 校验和错误文案已迁入 `proxy-core::claude_desktop_gateway_auth`；gateway token 读取/生成通过 adapter-owned DB source 注入 `ProxyEngine`，host auth adapter 只负责委托 engine 并映射 core auth 错误。
 102. Claude 非流响应转换中未标记 SSE body 的 api_format -> 聚合策略映射已迁入 `proxy-core::response_transform::claude_transform_unlabeled_sse_aggregation`；当前由 `proxy-core::response_transform::claude_transform_streaming_decision` 统一携带给 JSON/SSE parse helper，host adapter 只投影 provider 是否 Codex OAuth，handler 不再直接选择聚合策略。
 103. `ProxyResult.metadata` 中 Claude API format 的 key 与 fallback 读取规则已迁入 `proxy-core::{CLAUDE_API_FORMAT_METADATA_KEY, claude_api_format_from_metadata}`；host forward adapter 和 handler 不再各自硬编码 `claudeApiFormat`。
 104. channel `interface_kind` 到 Claude/Codex 上游 `api_format` 的映射已迁入 `proxy-core::InterfaceKind`；host `route_attempt` 只把 core 返回的 format 写回当前兼容 Provider meta。
@@ -562,7 +562,7 @@
 548. Claude provider 的 API format transform predicate、OpenAI stream usage 注入、Anthropic tool-thinking history normalize 与 DeepSeek thinking-disabled effort 清理已迁入 `proxy_core_adapter`；Claude provider 只负责 provider settings、API format dispatch 和 transform 编排。
 549. Copilot GitHub domain normalize、GHES 判定、默认 public domain 与复合 account id 策略已迁入 `proxy_core_adapter`；Copilot auth 模块只负责 token/OAuth 流程、账号存储与 endpoint/model 缓存。
 550. Copilot OAuth/API URL 构造、Copilot API base fallback、模型列表响应解析与 `CopilotModel` 类型入口已迁入 `proxy_core_adapter`；Copilot auth 模块只负责 HTTP 调用、token/OAuth 状态和 endpoint/model 缓存。
-551. Claude Desktop gateway bearer token 校验与 auth error 类型入口已迁入 `proxy_core_adapter`；host auth adapter 只负责读取/创建 gateway token 并映射为 `ProxyError`。
+551. Claude Desktop gateway bearer token 校验与 auth error 类型入口已迁入 `proxy_core_adapter`；host auth adapter 只负责委托 `ProxyEngine` 并映射为 `ProxyError`，gateway token DB source 归 adapter 维护。
 552. global proxy URL masking、显式代理 URL parse/scheme 校验、系统代理 env key 与 loopback 自环检测 helper 已迁入 `proxy_core_adapter`；global proxy command 和 host HTTP client 只负责 DB 状态、reqwest client 生命周期、reqwest proxy 应用和环境变量读取。
 553. 模型拉取 command/service 边界使用的 `FetchedModel` DTO 入口已迁入 `proxy_core_adapter`；model fetch transport 继续只负责 reqwest 执行并复用 core request planning/response parsing ports。
 554. host `ProxyError` 到 HTTP status 的 `ProxyErrorStatusKind` 与状态码解析入口已迁入 `proxy_core_adapter`；host error 模块只负责 `ProxyError` 枚举、Axum response body 和 host/core error bridge。
@@ -1526,7 +1526,7 @@ Claude Desktop gateway token DB source 已收敛到 `proxy_core_adapter::get_or_
 1080. 删除 `ProxyError::{TransformError,InvalidRequest,Internal}` 上过时的 dead-code allowance；这些错误变体已由 provider transform、core error bridge、handler/response adapter 等生产路径构造，继续作为 host/core 错误映射 surface，而不是预留兼容占位。
 1081. `/proxy/v1/channels/{channel_id}` 与 `/proxy/v1/channels/{channel_id}/models` 已补充 `ProxyServer::start` 级 runtime smoke：真实本机监听端口验证单 channel PATCH/GET、模型 PUT/GET，以及临时 channel DELETE，补齐外部中转管理面最小 CRUD contract。
 1082. 管理 API bearer 鉴权已补充 `ProxyServer::start` 级 runtime smoke：`0.0.0.0` public listener 下无 token 与错误 token 请求 `/proxy/v1/apps` 均返回 401，配置 token 的 bearer 请求返回 200，固定外部宿主暴露管理面时的安全 contract。
-1083. `/claude-desktop/v1/models` 已补充 `ProxyServer::start` 级 runtime smoke：内存 DB 配置 Claude Desktop gateway provider 与 gateway token 后，真实本机监听端口验证无 bearer 返回 401、有效 bearer 返回模型列表和 `supports1m` contract。
+1083. `/claude-desktop/v1/models` 已补充 `ProxyServer::start` 级 runtime smoke：内存 DB 配置 Claude Desktop gateway provider，并通过 adapter-owned token source 创建 gateway token 后，真实本机监听端口验证无 bearer 返回 401、有效 bearer 返回模型列表和 `supports1m` contract。
 1084. 稳定管理接口表已将 `/proxy/v1/groups` 修正为 GET-only：当前 route group 是 `proxy_channels.groups_json` 的聚合视图，创建和变更入口统一走 channel create/patch 的 `groups` 字段，不再误导外部中转宿主实现独立 group create API。
 1085. `proxy-core::api::prelude` 已导出 `ClaudeDesktopModelListResponse` / `ClaudeDesktopModelListItem`，并扩展 crate 外 public prelude smoke：外部中转宿主只依赖 prelude 即可验证 gateway bearer、调用 `claude_desktop_model_list_response` 并命名模型列表 response contract。
 1086. crate 外 public prelude smoke 已覆盖管理 API bearer contract：外部宿主只依赖 prelude 配置 `ManagementAuthRuntimeConfig`，即可通过 `ProxyEngine::validate_management_auth` 验证 public listener 缺 bearer 被拒绝、正确 bearer 被接受。
