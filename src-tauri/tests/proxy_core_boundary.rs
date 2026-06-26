@@ -154,8 +154,10 @@ const FORBIDDEN_PROXY_PROVIDER_AUTH_PATH_MARKERS: &[&str] = &[
     "providers::copilot_auth",
     "providers::codex_oauth_auth",
 ];
-const FORBIDDEN_MODEL_FETCH_TRANSPORT_DTO_EXPORT_MARKERS: &[&str] =
-    &["pub use crate::proxy_core::api::model_catalog::FetchedModel"];
+const FORBIDDEN_MODEL_FETCH_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
+    "type FetchedModel = crate::proxy_core::api::model_catalog::FetchedModel",
+    "pub use crate::proxy_core::api::model_catalog::FetchedModel",
+];
 const FORBIDDEN_MODEL_FETCH_COMMAND_DTO_IMPORT_MARKERS: &[&str] =
     &["services::model_fetch_transport::FetchedModel"];
 const FORBIDDEN_MODEL_FETCH_COMMAND_PROVIDER_DETAIL_MARKERS: &[&str] =
@@ -9957,20 +9959,19 @@ fn proxy_core_adapter_excludes_model_fetch_transport_facades() {
 }
 
 #[test]
-fn model_fetch_commands_use_adapter_dto_entrypoint() {
+fn model_fetch_commands_use_core_dto_entrypoint() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let transport_path = manifest_dir.join("src/services/model_fetch_transport.rs");
-    let transport_source =
-        fs::read_to_string(&transport_path).expect("read model_fetch_transport.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let command_paths = ["src/commands/model_fetch.rs", "src/commands/codex_oauth.rs"];
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(&transport_source) {
+    for (line_index, line) in production_lines(&adapter_source) {
         let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_MODEL_FETCH_TRANSPORT_DTO_EXPORT_MARKERS {
+        for marker in FORBIDDEN_MODEL_FETCH_ADAPTER_DTO_EXPORT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/services/model_fetch_transport.rs:{} contains DTO export marker `{}`",
+                    "src/proxy_core_adapter.rs:{} contains DTO export marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -9992,12 +9993,24 @@ fn model_fetch_commands_use_adapter_dto_entrypoint() {
                     ));
                 }
             }
+            if code.contains("proxy_core_adapter") && code.contains("FetchedModel") {
+                violations.push(format!(
+                    "{}:{} imports FetchedModel from proxy_core_adapter",
+                    relative,
+                    line_index + 1
+                ));
+            }
         }
+        assert!(
+            source.contains("use crate::proxy_core::api::model_catalog::FetchedModel;"),
+            "{} must import FetchedModel directly from proxy_core",
+            relative
+        );
     }
 
     assert!(
         violations.is_empty(),
-        "model fetch commands must use proxy_core_adapter as the FetchedModel DTO entrypoint:\n{}",
+        "model fetch commands must use proxy_core::api::model_catalog as the FetchedModel DTO entrypoint:\n{}",
         violations.join("\n")
     );
 }

@@ -1582,7 +1582,6 @@ pub(crate) type ProxyCoreModelCapabilities = crate::proxy_core::api::domain::Mod
 #[cfg(test)]
 pub(crate) type ProxyCoreModelRoute = crate::proxy_core::api::domain::ModelRoute;
 pub(crate) type ModelCatalog = crate::proxy_core::api::model_catalog::ModelCatalog;
-pub(crate) type FetchedModel = crate::proxy_core::api::model_catalog::FetchedModel;
 #[cfg(test)]
 pub(crate) type ProxyCoreProviderMetadata = crate::proxy_core::api::domain::ProviderMetadata;
 pub(crate) type ProviderSpec = crate::proxy_core::api::domain::ProviderSpec;
