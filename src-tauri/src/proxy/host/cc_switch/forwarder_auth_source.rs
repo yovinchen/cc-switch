@@ -3,6 +3,7 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 
 use crate::proxy::error::ProxyError;
+use crate::proxy::error_mapper::proxy_core_error_to_proxy_error;
 use crate::proxy::host::cc_switch::auth_provider::CcSwitchAuthProvider;
 use crate::proxy::host::cc_switch::managed_account_runtime_source::ManagedAccountRuntimeSourceRef;
 use crate::proxy_core::api::domain::AppKind;
@@ -13,9 +14,9 @@ use crate::proxy_core::api::transport::{
     AuthProviderHeaderResolution, ForwarderAuthHeaderFinalizationInput,
 };
 use crate::proxy_core_adapter::{
-    proxy_core_error_to_proxy_error, proxy_provider_to_core_spec, AuthProviderRef,
-    ForwarderAuthHeaders, ForwarderAuthHeadersInput, ForwarderAuthSource, ForwarderAuthSourceRef,
-    ForwarderMaybeCopilotAuthOptimizationInput, ForwarderPreparedCopilotAuthOptimization,
+    proxy_provider_to_core_spec, AuthProviderRef, ForwarderAuthHeaders, ForwarderAuthHeadersInput,
+    ForwarderAuthSource, ForwarderAuthSourceRef, ForwarderMaybeCopilotAuthOptimizationInput,
+    ForwarderPreparedCopilotAuthOptimization,
 };
 
 #[cfg(test)]

@@ -5381,6 +5381,7 @@ fn proxy_core_adapter_excludes_error_mapper_transport_facades() {
 
     let mut violations = Vec::new();
     for marker in [
+        "proxy_core_error_to_proxy_error",
         "parse_upstream_json_or_unlabeled_sse",
         "upstream_response_parse_failure_log_message",
         "UpstreamResponseParseFailureLogContext",
