@@ -10,18 +10,14 @@
 use super::{
     auth_adapter::validate_claude_desktop_gateway_auth,
     error::ProxyError,
-    error_mapper::{
-        codex_chat_to_responses_transform_error_to_proxy_error,
-        management_api_error_to_proxy_error, parse_codex_chat_upstream_json_or_unlabeled_sse,
-        proxy_core_error_to_proxy_error,
-    },
+    error_mapper::{management_api_error_to_proxy_error, proxy_core_error_to_proxy_error},
     handler_context::RequestContext,
     response_adapter::{
         claude_transformed_sse_response_to_axum_response,
         claude_transformed_upstream_json_response_to_axum_response,
         codex_chat_upstream_error_response_to_axum_response, codex_proxy_error_to_axum_response,
-        codex_transformed_json_response_to_axum_response,
-        codex_transformed_sse_response_to_axum_response, collect_axum_request_body,
+        codex_transformed_sse_response_to_axum_response,
+        codex_transformed_upstream_json_response_to_axum_response, collect_axum_request_body,
         proxy_core_response_to_proxy_response, proxy_event_envelope_to_axum_sse_event,
     },
     response_processor::process_response,
@@ -29,21 +25,20 @@ use super::{
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
     append_query_to_endpoint_path, claude_transformed_sse_stream_from_context,
-    codex_auto_transformed_json_response_from_context,
     codex_auto_transformed_sse_stream_from_context, codex_chat_transform_streaming_decision,
     codex_responses_proxy_request_from_input, extract_gemini_model_from_path,
     json_proxy_request_from_input, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, provider_claude_transform_streaming_decision,
     provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
-    read_decoded_proxy_response_body, record_forward_core_error_usage, strip_endpoint_prefix,
-    ActiveConnectionGuard, AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse,
-    AppKind, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
-    ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord,
-    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
-    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
-    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
+    record_forward_core_error_usage, strip_endpoint_prefix, ActiveConnectionGuard,
+    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
+    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
+    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
+    ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
+    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
     ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CodexToolContext,
     CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
     HealthCheckResponse, InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest,
@@ -55,8 +50,7 @@ use crate::proxy_core_adapter::{
     GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    ClaudeTransformedSseStreamContext, CodexAutoTransformedJsonResponseContext,
-    CodexAutoTransformedSseStreamContext,
+    ClaudeTransformedSseStreamContext, CodexAutoTransformedSseStreamContext,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -927,31 +921,14 @@ async fn handle_codex_chat_to_responses_transform(
     }
 
     let _connection_guard = connection_guard;
-    let decoded =
-        read_decoded_proxy_response_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
-    let response_headers = decoded.headers;
-    let status = decoded.status;
-    let body_bytes = decoded.body;
-    // 与 Claude 侧 handle_claude_transform 对称的兜底嗅探（#2234）：
-    // 上游对 stream:false 返回未标记 Content-Type 的 SSE 体时按 Chat SSE 聚合。
-    let chat_response = parse_codex_chat_upstream_json_or_unlabeled_sse(
-        body_bytes.as_ref(),
-        &response_headers,
+    codex_transformed_upstream_json_response_to_axum_response(
+        response,
+        ctx,
+        state,
+        &tool_context,
         streaming_decision.response_sse_aggregation,
-    )?;
-    let responses_response = codex_auto_transformed_json_response_from_context(
-        &chat_response,
-        CodexAutoTransformedJsonResponseContext {
-            state,
-            ctx,
-            tool_context: &tool_context,
-            status_code: status.as_u16(),
-        },
     )
     .await
-    .map_err(codex_chat_to_responses_transform_error_to_proxy_error)?;
-
-    codex_transformed_json_response_to_axum_response(status, response_headers, responses_response)
 }
 
 // ============================================================================

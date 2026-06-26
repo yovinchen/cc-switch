@@ -2,21 +2,24 @@ use super::{
     error::ProxyError,
     error_mapper::{
         claude_response_transform_error_to_proxy_error,
+        codex_chat_to_responses_transform_error_to_proxy_error,
         codex_proxy_error_body_build_error_to_proxy_error, codex_proxy_error_response,
         codex_responses_error_body_build_error_to_proxy_error,
-        parse_claude_transform_upstream_json_or_unlabeled_sse, response_build_error_to_proxy_error,
+        parse_claude_transform_upstream_json_or_unlabeled_sse,
+        parse_codex_chat_upstream_json_or_unlabeled_sse, response_build_error_to_proxy_error,
     },
     handler_context::RequestContext,
     hyper_client::ProxyResponse,
 };
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    claude_transformed_json_response_from_context, codex_chat_error_proxy_response,
+    claude_transformed_json_response_from_context,
+    codex_auto_transformed_json_response_from_context, codex_chat_error_proxy_response,
     read_decoded_proxy_response_body, rebuilt_json_proxy_response, request_body_read_error_message,
     transformed_sse_proxy_response, AxumResponseBuildErrorContext,
-    ClaudeTransformedJsonResponseContext, CoreResponseBuildFailureContext, ProxyCoreResponse,
-    ProxyEventEnvelope, ProxyState, ProxyTransportResponse, ProxyTransportResponseBody,
-    UpstreamSseAggregationKind,
+    ClaudeTransformedJsonResponseContext, CodexAutoTransformedJsonResponseContext,
+    CodexToolContext, CoreResponseBuildFailureContext, ProxyCoreResponse, ProxyEventEnvelope,
+    ProxyState, ProxyTransportResponse, ProxyTransportResponseBody, UpstreamSseAggregationKind,
 };
 use axum::response::sse::Event;
 use bytes::Bytes;
@@ -191,6 +194,39 @@ pub(crate) fn codex_transformed_json_response_to_axum_response(
         CoreResponseBuildFailureContext::CodexResponses,
         AxumResponseBuildErrorContext::CodexResponses,
     )
+}
+
+pub(crate) async fn codex_transformed_upstream_json_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+    tool_context: &CodexToolContext,
+    response_sse_aggregation: Option<UpstreamSseAggregationKind>,
+) -> Result<axum::response::Response, ProxyError> {
+    let decoded =
+        read_decoded_proxy_response_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
+    let response_headers = decoded.headers;
+    let status = decoded.status;
+    let body_bytes = decoded.body;
+
+    let chat_response = parse_codex_chat_upstream_json_or_unlabeled_sse(
+        body_bytes.as_ref(),
+        &response_headers,
+        response_sse_aggregation,
+    )?;
+    let responses_response = codex_auto_transformed_json_response_from_context(
+        &chat_response,
+        CodexAutoTransformedJsonResponseContext {
+            state,
+            ctx,
+            tool_context,
+            status_code: status.as_u16(),
+        },
+    )
+    .await
+    .map_err(codex_chat_to_responses_transform_error_to_proxy_error)?;
+
+    codex_transformed_json_response_to_axum_response(status, response_headers, responses_response)
 }
 
 pub(crate) fn codex_chat_error_response_to_axum_response(
