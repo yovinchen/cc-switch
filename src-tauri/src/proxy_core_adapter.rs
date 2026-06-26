@@ -19,7 +19,6 @@ use crate::proxy::error_mapper::{
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::handler_context::RequestContext;
-use crate::proxy::handlers;
 use crate::proxy::hyper_client::{OriginalHeaderCases, ProxyResponse};
 use crate::proxy::provider_router::{
     ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelSource,
@@ -28,6 +27,7 @@ use crate::proxy::provider_router::{
 };
 use crate::proxy::providers::{get_adapter, ProviderAdapter};
 use crate::proxy::route_attempt::ForwardAttempt;
+use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;

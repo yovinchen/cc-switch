@@ -2335,9 +2335,29 @@ fn proxy_error_mapper_delegates_reqwest_send_error_policy_to_core() {
 }
 
 #[test]
-fn basic_health_status_handlers_use_management_contracts() {
+fn production_proxy_handlers_legacy_module_is_reexport_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let production_code: Vec<&str> = production_lines(&source)
+        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert_eq!(
+        production_code,
+        vec![
+            "#[allow(unused_imports)]",
+            "pub(crate) use super::transport::http::handlers::*;",
+        ],
+        "legacy proxy/handlers.rs must remain a re-export shim after transport/http/handlers.rs split"
+    );
+}
+
+#[test]
+fn basic_health_status_handlers_use_management_contracts() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read response_adapter.rs");
@@ -2378,7 +2398,7 @@ fn basic_health_status_handlers_use_management_contracts() {
             for marker in forbidden_markers {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs {}:{} contains basic status wrapper marker `{}`",
+                        "src/proxy/transport/http/handlers.rs {}:{} contains basic status wrapper marker `{}`",
                         handler_name,
                         line_index + 1,
                         marker
@@ -2585,7 +2605,7 @@ fn proxy_core_adapter_owns_claude_desktop_gateway_token_source() {
 #[test]
 fn provider_list_handler_delegates_sources_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -2608,7 +2628,7 @@ fn provider_list_handler_delegates_sources_to_proxy_engine() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs list_proxy_providers:{} contains runtime source marker `{}`",
+                    "src/proxy/transport/http/handlers.rs list_proxy_providers:{} contains runtime source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -2626,7 +2646,7 @@ fn provider_list_handler_delegates_sources_to_proxy_engine() {
 #[test]
 fn route_resolve_handler_delegates_dry_run_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -2645,7 +2665,7 @@ fn route_resolve_handler_delegates_dry_run_to_proxy_engine() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs resolve_proxy_route:{} contains route dry-run marker `{}`",
+                    "src/proxy/transport/http/handlers.rs resolve_proxy_route:{} contains route dry-run marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -2663,7 +2683,7 @@ fn route_resolve_handler_delegates_dry_run_to_proxy_engine() {
 #[test]
 fn app_list_handler_delegates_summary_sources_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -2687,7 +2707,7 @@ fn app_list_handler_delegates_summary_sources_to_proxy_engine() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs list_proxy_apps:{} contains app-list source marker `{}`",
+                    "src/proxy/transport/http/handlers.rs list_proxy_apps:{} contains app-list source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -2705,7 +2725,7 @@ fn app_list_handler_delegates_summary_sources_to_proxy_engine() {
 #[test]
 fn channel_list_handler_delegates_materialized_records_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -2727,7 +2747,7 @@ fn channel_list_handler_delegates_materialized_records_to_proxy_engine() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs list_all_proxy_channels:{} contains channel DB marker `{}`",
+                    "src/proxy/transport/http/handlers.rs list_all_proxy_channels:{} contains channel DB marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -2745,7 +2765,7 @@ fn channel_list_handler_delegates_materialized_records_to_proxy_engine() {
 #[test]
 fn channel_crud_handlers_delegate_records_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handlers = [
         (
@@ -2802,7 +2822,7 @@ fn channel_crud_handlers_delegate_records_to_proxy_engine() {
             for marker in forbidden_markers {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs {}:{} contains channel CRUD source marker `{}`",
+                        "src/proxy/transport/http/handlers.rs {}:{} contains channel CRUD source marker `{}`",
                         handler_name,
                         line_index + 1,
                         marker
@@ -2822,7 +2842,7 @@ fn channel_crud_handlers_delegate_records_to_proxy_engine() {
 #[test]
 fn channel_key_and_model_handlers_delegate_sources_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handlers = [
         (
@@ -2901,7 +2921,7 @@ fn channel_key_and_model_handlers_delegate_sources_to_proxy_engine() {
             for marker in forbidden_markers {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs {}:{} contains channel key/model source marker `{}`",
+                        "src/proxy/transport/http/handlers.rs {}:{} contains channel key/model source marker `{}`",
                         handler_name,
                         line_index + 1,
                         marker
@@ -2971,7 +2991,7 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core_adapter() {
 #[test]
 fn channel_test_handler_delegates_probe_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -2997,7 +3017,7 @@ fn channel_test_handler_delegates_probe_to_proxy_engine() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs test_proxy_channel:{} contains channel test source marker `{}`",
+                    "src/proxy/transport/http/handlers.rs test_proxy_channel:{} contains channel test source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3015,7 +3035,7 @@ fn channel_test_handler_delegates_probe_to_proxy_engine() {
 #[test]
 fn channel_list_route_branch_delegates_dry_run_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -3036,7 +3056,7 @@ fn channel_list_route_branch_delegates_dry_run_to_proxy_engine() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs list_proxy_channels:{} contains channel source marker `{}`",
+                    "src/proxy/transport/http/handlers.rs list_proxy_channels:{} contains channel source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3053,7 +3073,7 @@ fn channel_list_route_branch_delegates_dry_run_to_proxy_engine() {
 #[test]
 fn group_list_handler_delegates_sources_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -3076,7 +3096,7 @@ fn group_list_handler_delegates_sources_to_proxy_engine() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs list_proxy_groups:{} contains group source marker `{}`",
+                    "src/proxy/transport/http/handlers.rs list_proxy_groups:{} contains group source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3094,7 +3114,7 @@ fn group_list_handler_delegates_sources_to_proxy_engine() {
 #[test]
 fn current_route_handler_delegates_runtime_sources_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -3117,7 +3137,7 @@ fn current_route_handler_delegates_runtime_sources_to_proxy_engine() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs get_current_proxy_route:{} contains current-route source marker `{}`",
+                    "src/proxy/transport/http/handlers.rs get_current_proxy_route:{} contains current-route source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3135,7 +3155,7 @@ fn current_route_handler_delegates_runtime_sources_to_proxy_engine() {
 #[test]
 fn channel_migration_handlers_delegate_sources_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handlers = [
         (
@@ -3173,7 +3193,7 @@ fn channel_migration_handlers_delegate_sources_to_proxy_engine() {
             for marker in forbidden_markers {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs {}:{} contains migration source marker `{}`",
+                        "src/proxy/transport/http/handlers.rs {}:{} contains migration source marker `{}`",
                         handler_name,
                         line_index + 1,
                         marker
@@ -3193,7 +3213,7 @@ fn channel_migration_handlers_delegate_sources_to_proxy_engine() {
 #[test]
 fn channel_breaker_stats_handler_delegates_response_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -3213,7 +3233,7 @@ fn channel_breaker_stats_handler_delegates_response_to_proxy_engine() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs get_proxy_channel_breaker_stats:{} contains breaker stats source marker `{}`",
+                    "src/proxy/transport/http/handlers.rs get_proxy_channel_breaker_stats:{} contains breaker stats source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3231,7 +3251,7 @@ fn channel_breaker_stats_handler_delegates_response_to_proxy_engine() {
 #[test]
 fn channel_health_reset_handler_delegates_response_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -3250,7 +3270,7 @@ fn channel_health_reset_handler_delegates_response_to_proxy_engine() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs reset_proxy_channel_breaker:{} contains health reset source marker `{}`",
+                    "src/proxy/transport/http/handlers.rs reset_proxy_channel_breaker:{} contains health reset source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3268,7 +3288,7 @@ fn channel_health_reset_handler_delegates_response_to_proxy_engine() {
 #[test]
 fn claude_desktop_models_handler_delegates_provider_selection_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -3289,7 +3309,7 @@ fn claude_desktop_models_handler_delegates_provider_selection_to_proxy_engine() 
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs handle_claude_desktop_models:{} contains Claude Desktop provider marker `{}`",
+                    "src/proxy/transport/http/handlers.rs handle_claude_desktop_models:{} contains Claude Desktop provider marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3307,7 +3327,7 @@ fn claude_desktop_models_handler_delegates_provider_selection_to_proxy_engine() 
 #[test]
 fn production_handlers_build_proxy_requests_through_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -3316,7 +3336,7 @@ fn production_handlers_build_proxy_requests_through_adapter() {
         for marker in FORBIDDEN_HANDLER_PROXY_REQUEST_BRIDGE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains direct proxy request bridge marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains direct proxy request bridge marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3334,7 +3354,7 @@ fn production_handlers_build_proxy_requests_through_adapter() {
 #[test]
 fn production_handlers_delegate_proxy_result_response_bridge_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -3343,7 +3363,7 @@ fn production_handlers_delegate_proxy_result_response_bridge_to_adapter() {
         for marker in FORBIDDEN_HANDLER_PROXY_RESULT_RESPONSE_BRIDGE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains direct proxy result bridge marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains direct proxy result bridge marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3361,7 +3381,7 @@ fn production_handlers_delegate_proxy_result_response_bridge_to_adapter() {
 #[test]
 fn production_handlers_parse_json_bodies_through_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -3370,7 +3390,7 @@ fn production_handlers_parse_json_bodies_through_adapter() {
         for marker in FORBIDDEN_HANDLER_RAW_JSON_BODY_PARSE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains direct JSON body parse marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains direct JSON body parse marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3388,7 +3408,7 @@ fn production_handlers_parse_json_bodies_through_adapter() {
 #[test]
 fn production_handlers_collect_bodies_through_transport_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -3397,7 +3417,7 @@ fn production_handlers_collect_bodies_through_transport_adapter() {
         for marker in FORBIDDEN_HANDLER_DIRECT_BODY_COLLECTION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains direct body collection marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains direct body collection marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3415,7 +3435,7 @@ fn production_handlers_collect_bodies_through_transport_adapter() {
 #[test]
 fn production_handlers_delegate_provider_decisions_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -3424,7 +3444,7 @@ fn production_handlers_delegate_provider_decisions_to_adapter() {
         for marker in FORBIDDEN_HANDLER_PROVIDER_ADAPTER_DECISION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains provider decision marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains provider decision marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3442,7 +3462,7 @@ fn production_handlers_delegate_provider_decisions_to_adapter() {
 #[test]
 fn production_handlers_delegate_response_branch_gates_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -3451,7 +3471,7 @@ fn production_handlers_delegate_response_branch_gates_to_response_adapter() {
         for marker in FORBIDDEN_HANDLER_RESPONSE_BRANCH_GATE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains response branch gate marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains response branch gate marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3469,7 +3489,7 @@ fn production_handlers_delegate_response_branch_gates_to_response_adapter() {
 #[test]
 fn production_protocol_handlers_delegate_endpoint_bridge_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let protocol_handlers = [
         function_slice(
@@ -3511,7 +3531,7 @@ fn production_protocol_handlers_delegate_endpoint_bridge_to_response_adapter() {
             for marker in FORBIDDEN_PROTOCOL_HANDLER_ENDPOINT_BRIDGE_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs:{} contains endpoint bridge marker `{}`",
+                        "src/proxy/transport/http/handlers.rs:{} contains endpoint bridge marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -3530,7 +3550,7 @@ fn production_protocol_handlers_delegate_endpoint_bridge_to_response_adapter() {
 #[test]
 fn production_protocol_handlers_delegate_request_context_bridge_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let protocol_handlers = [
         function_slice(
@@ -3572,7 +3592,7 @@ fn production_protocol_handlers_delegate_request_context_bridge_to_response_adap
             for marker in FORBIDDEN_PROTOCOL_HANDLER_CONTEXT_BRIDGE_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs:{} contains request context bridge marker `{}`",
+                        "src/proxy/transport/http/handlers.rs:{} contains request context bridge marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -3591,7 +3611,7 @@ fn production_protocol_handlers_delegate_request_context_bridge_to_response_adap
 #[test]
 fn production_gemini_handler_delegates_protocol_orchestration_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -3605,7 +3625,7 @@ fn production_gemini_handler_delegates_protocol_orchestration_to_response_adapte
         for marker in FORBIDDEN_GEMINI_HANDLER_ORCHESTRATION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs handle_gemini:{} contains Gemini orchestration marker `{}`",
+                    "src/proxy/transport/http/handlers.rs handle_gemini:{} contains Gemini orchestration marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3623,7 +3643,7 @@ fn production_gemini_handler_delegates_protocol_orchestration_to_response_adapte
 #[test]
 fn production_codex_handlers_delegate_dispatch_outcome_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let codex_handlers = [
         function_slice(
@@ -3650,7 +3670,7 @@ fn production_codex_handlers_delegate_dispatch_outcome_to_response_adapter() {
             for marker in FORBIDDEN_CODEX_HANDLER_DISPATCH_OUTCOME_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs:{} contains Codex dispatch outcome marker `{}`",
+                        "src/proxy/transport/http/handlers.rs:{} contains Codex dispatch outcome marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -3669,7 +3689,7 @@ fn production_codex_handlers_delegate_dispatch_outcome_to_response_adapter() {
 #[test]
 fn production_codex_handlers_delegate_protocol_orchestration_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let codex_handlers = [
         function_slice(
@@ -3696,7 +3716,7 @@ fn production_codex_handlers_delegate_protocol_orchestration_to_response_adapter
             for marker in FORBIDDEN_CODEX_HANDLER_ORCHESTRATION_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs:{} contains Codex orchestration marker `{}`",
+                        "src/proxy/transport/http/handlers.rs:{} contains Codex orchestration marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -3715,7 +3735,7 @@ fn production_codex_handlers_delegate_protocol_orchestration_to_response_adapter
 #[test]
 fn production_claude_messages_handler_delegates_protocol_orchestration_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -3729,7 +3749,7 @@ fn production_claude_messages_handler_delegates_protocol_orchestration_to_respon
         for marker in FORBIDDEN_CLAUDE_MESSAGES_HANDLER_ORCHESTRATION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs Claude Messages handlers:{} contains Claude Messages orchestration marker `{}`",
+                    "src/proxy/transport/http/handlers.rs Claude Messages handlers:{} contains Claude Messages orchestration marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3747,7 +3767,7 @@ fn production_claude_messages_handler_delegates_protocol_orchestration_to_respon
 #[test]
 fn production_handlers_delegate_codex_history_recording_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -3756,7 +3776,7 @@ fn production_handlers_delegate_codex_history_recording_to_adapter() {
         for marker in FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains direct Codex history recording marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains direct Codex history recording marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3774,7 +3794,7 @@ fn production_handlers_delegate_codex_history_recording_to_adapter() {
 #[test]
 fn production_protocol_handlers_delegate_forward_core_error_usage_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let protocol_handlers = [
         function_slice(
@@ -3816,7 +3836,7 @@ fn production_protocol_handlers_delegate_forward_core_error_usage_to_adapter() {
             for marker in FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs:{} contains forward core error marker `{}`",
+                        "src/proxy/transport/http/handlers.rs:{} contains forward core error marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -3835,7 +3855,7 @@ fn production_protocol_handlers_delegate_forward_core_error_usage_to_adapter() {
 #[test]
 fn production_protocol_handlers_delegate_route_metadata_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -3844,7 +3864,7 @@ fn production_protocol_handlers_delegate_route_metadata_to_response_adapter() {
         for marker in FORBIDDEN_PROTOCOL_HANDLER_ROUTE_METADATA_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains protocol route metadata marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains protocol route metadata marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3862,7 +3882,7 @@ fn production_protocol_handlers_delegate_route_metadata_to_response_adapter() {
 #[test]
 fn production_proxy_events_handler_delegates_sse_orchestration_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -3881,7 +3901,7 @@ fn production_proxy_events_handler_delegates_sse_orchestration_to_response_adapt
         for marker in FORBIDDEN_PROXY_EVENTS_HANDLER_SSE_ORCHESTRATION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs stream_proxy_events:{} contains SSE orchestration marker `{}`",
+                    "src/proxy/transport/http/handlers.rs stream_proxy_events:{} contains SSE orchestration marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3899,7 +3919,7 @@ fn production_proxy_events_handler_delegates_sse_orchestration_to_response_adapt
 #[test]
 fn production_management_read_handlers_delegate_json_bridge_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handlers = [
         (
@@ -3944,7 +3964,7 @@ fn production_management_read_handlers_delegate_json_bridge_to_response_adapter(
     for (handler_name, handler, adapter_marker) in handlers {
         if !handler.contains(adapter_marker) {
             violations.push(format!(
-                "src/proxy/handlers.rs {handler_name} should call `{adapter_marker}`"
+                "src/proxy/transport/http/handlers.rs {handler_name} should call `{adapter_marker}`"
             ));
         }
 
@@ -3953,7 +3973,7 @@ fn production_management_read_handlers_delegate_json_bridge_to_response_adapter(
             for marker in FORBIDDEN_MANAGEMENT_READ_HANDLER_ENGINE_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs {handler_name}:{} contains management read engine marker `{}`",
+                        "src/proxy/transport/http/handlers.rs {handler_name}:{} contains management read engine marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -3972,7 +3992,7 @@ fn production_management_read_handlers_delegate_json_bridge_to_response_adapter(
 #[test]
 fn production_route_inspection_handlers_delegate_json_bridge_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handlers = [
         (
@@ -4026,7 +4046,7 @@ fn production_route_inspection_handlers_delegate_json_bridge_to_response_adapter
     for (handler_name, handler, adapter_marker) in handlers {
         if !handler.contains(adapter_marker) {
             violations.push(format!(
-                "src/proxy/handlers.rs {handler_name} should call `{adapter_marker}`"
+                "src/proxy/transport/http/handlers.rs {handler_name} should call `{adapter_marker}`"
             ));
         }
 
@@ -4035,7 +4055,7 @@ fn production_route_inspection_handlers_delegate_json_bridge_to_response_adapter
             for marker in FORBIDDEN_ROUTE_INSPECTION_HANDLER_ENGINE_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs {handler_name}:{} contains route inspection engine marker `{}`",
+                        "src/proxy/transport/http/handlers.rs {handler_name}:{} contains route inspection engine marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -4054,7 +4074,7 @@ fn production_route_inspection_handlers_delegate_json_bridge_to_response_adapter
 #[test]
 fn production_channel_mutation_handlers_delegate_json_bridge_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handlers = [
         (
@@ -4162,7 +4182,7 @@ fn production_channel_mutation_handlers_delegate_json_bridge_to_response_adapter
     for (handler_name, handler, adapter_marker) in handlers {
         if !handler.contains(adapter_marker) {
             violations.push(format!(
-                "src/proxy/handlers.rs {handler_name} should call `{adapter_marker}`"
+                "src/proxy/transport/http/handlers.rs {handler_name} should call `{adapter_marker}`"
             ));
         }
 
@@ -4171,7 +4191,7 @@ fn production_channel_mutation_handlers_delegate_json_bridge_to_response_adapter
             for marker in FORBIDDEN_CHANNEL_MUTATION_HANDLER_ENGINE_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs {handler_name}:{} contains channel mutation engine marker `{}`",
+                        "src/proxy/transport/http/handlers.rs {handler_name}:{} contains channel mutation engine marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -4190,7 +4210,7 @@ fn production_channel_mutation_handlers_delegate_json_bridge_to_response_adapter
 #[test]
 fn production_migration_and_breaker_handlers_delegate_json_bridge_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handlers = [
         (
@@ -4235,7 +4255,7 @@ fn production_migration_and_breaker_handlers_delegate_json_bridge_to_response_ad
     for (handler_name, handler, adapter_marker) in handlers {
         if !handler.contains(adapter_marker) {
             violations.push(format!(
-                "src/proxy/handlers.rs {handler_name} should call `{adapter_marker}`"
+                "src/proxy/transport/http/handlers.rs {handler_name} should call `{adapter_marker}`"
             ));
         }
 
@@ -4244,7 +4264,7 @@ fn production_migration_and_breaker_handlers_delegate_json_bridge_to_response_ad
             for marker in FORBIDDEN_MIGRATION_BREAKER_HANDLER_ENGINE_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs {handler_name}:{} contains migration/breaker engine marker `{}`",
+                        "src/proxy/transport/http/handlers.rs {handler_name}:{} contains migration/breaker engine marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -4263,7 +4283,7 @@ fn production_migration_and_breaker_handlers_delegate_json_bridge_to_response_ad
 #[test]
 fn production_status_and_desktop_model_handlers_delegate_json_bridge_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handlers = [
         (
@@ -4295,7 +4315,7 @@ fn production_status_and_desktop_model_handlers_delegate_json_bridge_to_response
     for (handler_name, handler, adapter_marker) in handlers {
         if !handler.contains(adapter_marker) {
             violations.push(format!(
-                "src/proxy/handlers.rs {handler_name} should call `{adapter_marker}`"
+                "src/proxy/transport/http/handlers.rs {handler_name} should call `{adapter_marker}`"
             ));
         }
 
@@ -4304,7 +4324,7 @@ fn production_status_and_desktop_model_handlers_delegate_json_bridge_to_response
             for marker in FORBIDDEN_STATUS_MODEL_HANDLER_ENGINE_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/handlers.rs {handler_name}:{} contains status/model engine marker `{}`",
+                        "src/proxy/transport/http/handlers.rs {handler_name}:{} contains status/model engine marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -5516,7 +5536,7 @@ fn production_provider_adapter_excludes_response_transform_surface() {
 #[test]
 fn production_handlers_delegate_management_auth_decisions_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let handler = function_slice(
         &source,
@@ -5535,7 +5555,7 @@ fn production_handlers_delegate_management_auth_decisions_to_adapter() {
         for marker in FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs require_proxy_management_auth:{} contains management auth decision marker `{}`",
+                    "src/proxy/transport/http/handlers.rs require_proxy_management_auth:{} contains management auth decision marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5717,7 +5737,7 @@ fn proxy_core_adapter_delegates_sse_passthrough_policy_to_core() {
 fn response_pipeline_delegates_axum_build_context_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let files = [
-        ("src/proxy/handlers.rs", "read handlers.rs"),
+        ("src/proxy/transport/http/handlers.rs", "read handlers.rs"),
         (
             "src/proxy/response_processor.rs",
             "read response_processor.rs",
@@ -7477,7 +7497,7 @@ fn proxy_core_adapter_delegates_mimo_thinking_normalization_policy_to_core() {
 #[test]
 fn handlers_delegate_response_parse_failure_logging_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -7486,7 +7506,7 @@ fn handlers_delegate_response_parse_failure_logging_to_adapter() {
         for marker in FORBIDDEN_HANDLER_RESPONSE_PARSE_FAILURE_LOG_PROJECTION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains response parse failure log marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains response parse failure log marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -7504,7 +7524,7 @@ fn handlers_delegate_response_parse_failure_logging_to_adapter() {
 #[test]
 fn handlers_delegate_response_build_error_mapping_to_error_mapper() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -7513,7 +7533,7 @@ fn handlers_delegate_response_build_error_mapping_to_error_mapper() {
         for marker in FORBIDDEN_HANDLER_RESPONSE_BUILD_ERROR_MAPPING_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains response build error mapping marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains response build error mapping marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -7531,7 +7551,7 @@ fn handlers_delegate_response_build_error_mapping_to_error_mapper() {
 #[test]
 fn handlers_delegate_response_transform_error_mapping_to_error_mapper() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -7540,7 +7560,7 @@ fn handlers_delegate_response_transform_error_mapping_to_error_mapper() {
         for marker in FORBIDDEN_HANDLER_RESPONSE_TRANSFORM_ERROR_MAPPING_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains response transform error mapping marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains response transform error mapping marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -7558,7 +7578,7 @@ fn handlers_delegate_response_transform_error_mapping_to_error_mapper() {
 #[test]
 fn handlers_delegate_transformed_usage_policy_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -7567,7 +7587,7 @@ fn handlers_delegate_transformed_usage_policy_to_adapter() {
         for marker in FORBIDDEN_HANDLER_TRANSFORMED_USAGE_POLICY_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains transformed usage policy marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains transformed usage policy marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -7612,7 +7632,7 @@ fn response_processor_delegates_response_construction_to_adapter() {
 #[test]
 fn handlers_delegate_transformed_response_build_context_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -7621,7 +7641,7 @@ fn handlers_delegate_transformed_response_build_context_to_response_adapter() {
         for marker in FORBIDDEN_HANDLER_TRANSFORMED_RESPONSE_BUILD_CONTEXT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains transformed response build marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains transformed response build marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -7639,7 +7659,7 @@ fn handlers_delegate_transformed_response_build_context_to_response_adapter() {
 #[test]
 fn handlers_delegate_claude_response_transform_dispatch_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -7648,7 +7668,7 @@ fn handlers_delegate_claude_response_transform_dispatch_to_adapter() {
         for marker in FORBIDDEN_HANDLER_CLAUDE_RESPONSE_TRANSFORM_DISPATCH_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains Claude response transform dispatch marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains Claude response transform dispatch marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -7666,7 +7686,7 @@ fn handlers_delegate_claude_response_transform_dispatch_to_adapter() {
 #[test]
 fn handlers_delegate_claude_streaming_decision_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -7675,7 +7695,7 @@ fn handlers_delegate_claude_streaming_decision_to_adapter() {
         for marker in FORBIDDEN_HANDLER_CLAUDE_STREAMING_DECISION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains Claude streaming decision marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains Claude streaming decision marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -7693,7 +7713,7 @@ fn handlers_delegate_claude_streaming_decision_to_adapter() {
 #[test]
 fn handlers_delegate_codex_non_stream_transform_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -7702,7 +7722,7 @@ fn handlers_delegate_codex_non_stream_transform_to_adapter() {
         for marker in FORBIDDEN_HANDLER_CODEX_NON_STREAM_TRANSFORM_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains Codex non-stream transform marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains Codex non-stream transform marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -7720,7 +7740,7 @@ fn handlers_delegate_codex_non_stream_transform_to_adapter() {
 #[test]
 fn handlers_delegate_codex_stream_transform_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -7729,7 +7749,7 @@ fn handlers_delegate_codex_stream_transform_to_adapter() {
         for marker in FORBIDDEN_HANDLER_CODEX_STREAM_TRANSFORM_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains Codex stream transform marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains Codex stream transform marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -7747,7 +7767,7 @@ fn handlers_delegate_codex_stream_transform_to_adapter() {
 #[test]
 fn handlers_delegate_codex_chat_streaming_decision_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -7756,7 +7776,7 @@ fn handlers_delegate_codex_chat_streaming_decision_to_adapter() {
         for marker in FORBIDDEN_HANDLER_CODEX_STREAMING_DECISION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains Codex streaming decision marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains Codex streaming decision marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -7774,7 +7794,7 @@ fn handlers_delegate_codex_chat_streaming_decision_to_adapter() {
 #[test]
 fn handlers_delegate_transform_streaming_decision_calls_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -7783,7 +7803,7 @@ fn handlers_delegate_transform_streaming_decision_calls_to_response_adapter() {
         for marker in FORBIDDEN_HANDLER_TRANSFORM_STREAMING_DECISION_CALL_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains transform streaming decision call marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains transform streaming decision call marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -7801,7 +7821,7 @@ fn handlers_delegate_transform_streaming_decision_calls_to_response_adapter() {
 #[test]
 fn handlers_delegate_transform_response_orchestration_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -7810,7 +7830,7 @@ fn handlers_delegate_transform_response_orchestration_to_response_adapter() {
         for marker in FORBIDDEN_HANDLER_TRANSFORM_RESPONSE_ORCHESTRATION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains transform response orchestration marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains transform response orchestration marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -7828,7 +7848,7 @@ fn handlers_delegate_transform_response_orchestration_to_response_adapter() {
 #[test]
 fn handlers_delegate_passthrough_response_processing_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
 
     let mut violations = Vec::new();
@@ -7837,7 +7857,7 @@ fn handlers_delegate_passthrough_response_processing_to_response_adapter() {
         for marker in FORBIDDEN_HANDLER_PASSTHROUGH_RESPONSE_PROCESSING_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/handlers.rs:{} contains passthrough response processing marker `{}`",
+                    "src/proxy/transport/http/handlers.rs:{} contains passthrough response processing marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -8751,7 +8771,7 @@ fn production_provider_module_excludes_codex_chat_history_state() {
     let provider_mod = fs::read_to_string(&provider_mod_path).expect("read providers/mod.rs");
     let proxy_paths = [
         "src/proxy/forwarder.rs",
-        "src/proxy/handlers.rs",
+        "src/proxy/transport/http/handlers.rs",
         "src/proxy/transport/http/server.rs",
     ];
 
@@ -14548,7 +14568,7 @@ fn production_proxy_state_imports_use_adapter_path() {
     let files = [
         "src/proxy/auth_adapter.rs",
         "src/proxy/handler_context.rs",
-        "src/proxy/handlers.rs",
+        "src/proxy/transport/http/handlers.rs",
         "src/proxy/response_processor.rs",
         "src/proxy/transport/http/server.rs",
     ];
