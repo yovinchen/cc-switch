@@ -19318,17 +19318,17 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         .collect();
 
     assert!(
-        source.contains("use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;")
-            && source.contains("use crate::proxy_core::api::domain::AppKind;")
-            && source.contains("use crate::proxy_core::api::transport::{")
+        source.contains("crate::proxy_core::api::auth::ClaudeDesktopModelListResponse")
+            && source.contains("crate::proxy_core::api::domain::AppKind")
+            && source.contains("crate::proxy_core::api::transport::{")
             && source.contains("extract_gemini_model_from_path")
-            && source.contains("use crate::proxy_core::api::events::ProxyEventEnvelope;")
-            && source.contains("use crate::proxy_core::api::management::{")
-            && source.contains("use crate::proxy_core::api::model_catalog::{")
-            && source.contains("use crate::proxy_core::api::ports::{")
-            && source.contains("use crate::proxy_core::api::routing::InterfaceKind;")
-            && source.contains("use crate::proxy_core::api::transforms::{")
-            && source.contains("use crate::proxy_core::api::usage::{"),
+            && source.contains("crate::proxy_core::api::events::ProxyEventEnvelope")
+            && source.contains("crate::proxy_core::api::management::{")
+            && source.contains("crate::proxy_core::api::model_catalog::{")
+            && source.contains("crate::proxy_core::api::ports::{")
+            && source.contains("crate::proxy_core::api::routing::InterfaceKind")
+            && source.contains("crate::proxy_core::api::transforms::{")
+            && source.contains("crate::proxy_core::api::usage::{"),
         "response_adapter should import core auth/domain/transport/event/management/model_catalog/ports/routing/transforms/usage contracts directly"
     );
 
@@ -19426,6 +19426,92 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         violations.is_empty(),
         "response_adapter should not route pure core auth/domain/transport/event/management/model_catalog/ports/routing/transforms/usage contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn http_handlers_route_signature_dtos_through_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/transport/http/handlers.rs");
+    let response_adapter_import = function_slice(
+        &source,
+        "response_adapter::{",
+        "};\nuse crate::proxy_core_adapter::ProxyState;",
+    );
+    let response_adapter_import_identifiers: Vec<&str> = response_adapter_import
+        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        .filter(|identifier| !identifier.is_empty())
+        .collect();
+    let proxy_core_adapter_imports: Vec<String> = production_lines(&source)
+        .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
+        .filter(|line| line.contains("proxy_core_adapter"))
+        .map(str::to_string)
+        .collect();
+
+    let mut missing = Vec::new();
+    for marker in [
+        "AppChannelListQuery",
+        "AppChannelResponse",
+        "AppListResponse",
+        "AppModelListQuery",
+        "ChannelBreakerStatsResponse",
+        "ChannelDeleteResponse",
+        "ChannelHealthResetResponse",
+        "ChannelKeyDeleteResponse",
+        "ChannelKeyRecord",
+        "ChannelKeyRecordResponse",
+        "ChannelKeysResponse",
+        "ChannelListQuery",
+        "ChannelListResponse",
+        "ChannelMigrationMaterializeResponse",
+        "ChannelMigrationPreviewResponse",
+        "ChannelModelRecord",
+        "ChannelModelsResponse",
+        "ChannelRecord",
+        "ChannelRecordResponse",
+        "ChannelRouteCandidate",
+        "ChannelRouteRejected",
+        "ChannelTestResponse",
+        "ClaudeDesktopModelListResponse",
+        "ClientModelCatalogResponse",
+        "CurrentRouteResponse",
+        "CurrentRouteTarget",
+        "GroupListQuery",
+        "HealthCheckResponse",
+        "ProviderListResponse",
+        "ProxyChannelKeyPatchRequest",
+        "ProxyChannelKeyWriteRequest",
+        "ProxyChannelModelsReplaceRequest",
+        "ProxyChannelPatchRequest",
+        "ProxyChannelTestRequest",
+        "ProxyChannelWriteRequest",
+        "ProxyRuntimeStatus",
+        "ProxyStatusResponse",
+        "RoutableModelList",
+        "RouteGroupListResponse",
+        "RouteResolveRequest",
+        "RouteResolveResponse",
+    ] {
+        if !response_adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == &marker)
+        {
+            missing.push(format!(
+                "handlers.rs response_adapter import is missing signature DTO `{marker}`"
+            ));
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "HTTP handler signature DTOs should come through response_adapter:\n{}",
+        missing.join("\n")
+    );
+    assert_eq!(
+        proxy_core_adapter_imports,
+        vec!["use crate::proxy_core_adapter::ProxyState;"],
+        "HTTP handlers should keep only runtime state on proxy_core_adapter"
     );
 }
 

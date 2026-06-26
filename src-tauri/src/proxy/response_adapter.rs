@@ -15,10 +15,10 @@ use super::{
 };
 use crate::app_config::AppType;
 use crate::provider::Provider;
-use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
+pub(crate) use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::events::ProxyEventEnvelope;
-use crate::proxy_core::api::management::{
+pub(crate) use crate::proxy_core::api::management::{
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
     ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
@@ -34,8 +34,10 @@ use crate::proxy_core::api::management::{
     RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
     RouteResolveResponse,
 };
-use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};
-use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
+pub(crate) use crate::proxy_core::api::model_catalog::{
+    ClientModelCatalogResponse, RoutableModelList,
+};
+pub(crate) use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
 use crate::proxy_core::api::routing::InterfaceKind;
 use crate::proxy_core::api::transforms::{
     ClaudeTransformStreamingDecision, CodexChatTransformStreamingDecision, CodexToolContext,

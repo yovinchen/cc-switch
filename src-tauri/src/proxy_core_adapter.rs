@@ -573,8 +573,6 @@ pub(crate) use crate::proxy_core::api::ports::proxy_takeover_status_from_enabled
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::ports::proxy_takeover_status_from_parts;
 
-pub(crate) type ClaudeDesktopModelListResponse =
-    crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
 pub(crate) type ClaudeDesktopModelRouteInput =
     crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
 pub(crate) use crate::proxy_core::api::auth::{
@@ -2218,11 +2216,9 @@ pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecor
 pub(crate) use crate::proxy_core::api::management::ChannelReachabilityStatus;
 #[cfg(test)]
 use crate::proxy_core::api::management::StreamCheckResult;
-pub(crate) type ChannelKeyRecord = crate::proxy_core::api::management::ChannelKeyRecord;
 #[cfg(test)]
 pub(crate) type ChannelKeyRuntimeCandidate =
     crate::proxy_core::api::management::ChannelKeyRuntimeCandidate;
-pub(crate) type ChannelModelRecord = crate::proxy_core::api::management::ChannelModelRecord;
 
 pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
 pub(crate) type LegacyChannelModelProjection =
@@ -2416,15 +2412,8 @@ pub(crate) use crate::proxy_core::api::management::{
     channel_test_app_type_error, channel_test_provider_not_found_error, merge_stream_check_config,
     provider_health_update_from_input, should_retry_channel_reachability_failure,
     stream_check_failed_result, stream_check_failed_result_with_retry_count,
-    stream_check_result_from_probe_result, AppChannelListQuery, AppChannelResponse,
-    AppListResponse, AppModelListQuery, ChannelBreakerStatsResponse, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelHealthUpdateInput, ChannelKeyDeleteResponse,
-    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListResponse,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelsResponse,
-    ChannelRecordResponse, ChannelRouteRejected, ChannelTestResponse, CurrentRouteResponse,
-    GroupListQuery, HealthCheckResponse, ProviderListResponse, ProxyChannelModelsReplaceRequest,
-    ProxyChannelTestRequest, ProxyStatusResponse, RouteGroupListResponse,
-    StreamCheckConfigOverride, CHANNEL_HEALTH_UNKNOWN_STATUS,
+    stream_check_result_from_probe_result, ChannelHealthUpdateInput,
+    ProxyChannelModelsReplaceRequest, StreamCheckConfigOverride, CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;
@@ -2433,8 +2422,7 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
     strip_one_m_suffix_for_upstream_from_body,
 };
 pub(crate) use crate::proxy_core::api::model_catalog::{
-    client_model_catalog_source_for_app, ClientModelCatalogResponse, ClientModelCatalogSource,
-    RoutableModelList,
+    client_model_catalog_source_for_app, ClientModelCatalogSource,
 };
 pub(crate) use crate::proxy_core::api::ports::{
     channel_breaker_stats_from_parts, channel_health_reset_from_parts, AuthProvider,
@@ -15592,7 +15580,9 @@ command = "latest-command"
                 label_override: None,
                 supports_1m: true,
             }]);
-        let response = ClaudeDesktopModelListResponse::from_routes(inputs.clone());
+        let response = crate::proxy_core::api::auth::ClaudeDesktopModelListResponse::from_routes(
+            inputs.clone(),
+        );
 
         assert_eq!(inputs.len(), 1);
         assert_eq!(inputs[0].route_id, "claude-sonnet-4-6");

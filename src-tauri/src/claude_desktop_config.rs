@@ -991,7 +991,7 @@ mod tests {
         assert_eq!(mapped["model"], json!("kimi-k2"));
 
         let models = serde_json::to_value(
-            crate::proxy_core_adapter::ClaudeDesktopModelListResponse::from_routes(
+            crate::proxy::response_adapter::ClaudeDesktopModelListResponse::from_routes(
                 crate::proxy_core_adapter::claude_desktop_model_routes_to_core_inputs(
                     crate::proxy_core_adapter::provider_claude_desktop_proxy_model_routes(
                         &provider,
