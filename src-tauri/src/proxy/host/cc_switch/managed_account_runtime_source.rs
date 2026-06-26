@@ -7,18 +7,21 @@ use tauri::Manager;
 use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
-use crate::proxy_core_adapter::{
+use crate::proxy_core::api::auth::{
     managed_account_app_handle_unavailable_error_message,
     managed_account_app_handle_unavailable_log_message,
     managed_account_token_failure_error_message, managed_account_token_failure_log_message,
     managed_account_token_request_log_message, managed_account_token_success_log_message,
-    provider_managed_account_binding_context,
-    resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source,
-    resolve_core_copilot_live_model_for_binding_with_runtime_source,
-    resolve_core_copilot_model_vendor_for_binding_with_runtime_source,
-    resolve_core_managed_account_auth_for_binding_with_runtime_source,
-    resolve_forwarder_claude_api_format, CopilotModel, CoreManagedAccountRuntimeSource,
-    ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ProviderAuthInfo,
+    resolve_copilot_dynamic_base_url_for_binding_with_runtime_source as resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source,
+    resolve_copilot_live_model_for_binding_with_runtime_source as resolve_core_copilot_live_model_for_binding_with_runtime_source,
+    resolve_copilot_model_vendor_for_binding_with_runtime_source as resolve_core_copilot_model_vendor_for_binding_with_runtime_source,
+    resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
+    ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
+    ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ProviderAuthInfo,
+};
+use crate::proxy_core::api::model_catalog::CopilotModel;
+use crate::proxy_core_adapter::{
+    provider_managed_account_binding_context, resolve_forwarder_claude_api_format,
 };
 
 pub(crate) type ManagedAccountRuntimeSourceRef = Arc<dyn ManagedAccountRuntimeSource + Send + Sync>;

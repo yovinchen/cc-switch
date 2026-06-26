@@ -14,6 +14,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/forwarder_auth_source.rs",
     "src/proxy/host/cc_switch/forwarder_response_source.rs",
     "src/proxy/host/cc_switch/forwarder_request_source.rs",
+    "src/proxy/host/cc_switch/managed_account_runtime_source.rs",
     "src/proxy/host/cc_switch/provider_adapter_context.rs",
     "src/proxy/response_adapter.rs",
     "src/proxy/transport/upstream/mod.rs",
@@ -12168,6 +12169,10 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let host_path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
     let host_source =
         fs::read_to_string(&host_path).expect("read managed_account_runtime_source.rs");
@@ -12193,6 +12198,36 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         assert!(
             host_runtime_source.contains(marker),
             "host managed_account_runtime_source should own marker `{marker}`"
+        );
+    }
+    assert!(
+        host_source.contains("use crate::proxy_core::api::auth::{")
+            && host_source.contains("managed_account_app_handle_unavailable_error_message")
+            && host_source.contains("managed_account_token_failure_error_message")
+            && host_source.contains("resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source")
+            && host_source.contains("ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource")
+            && host_source.contains("ProviderAuthInfo")
+            && host_source.contains("use crate::proxy_core::api::model_catalog::CopilotModel;"),
+        "managed_account_runtime_source.rs should import pure runtime source contracts and diagnostics directly from proxy_core::api"
+    );
+    for marker in [
+        "managed_account_app_handle_unavailable_error_message",
+        "managed_account_app_handle_unavailable_log_message",
+        "managed_account_token_failure_error_message",
+        "managed_account_token_failure_log_message",
+        "managed_account_token_request_log_message",
+        "managed_account_token_success_log_message",
+        "resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source",
+        "resolve_core_copilot_live_model_for_binding_with_runtime_source",
+        "resolve_core_copilot_model_vendor_for_binding_with_runtime_source",
+        "resolve_core_managed_account_auth_for_binding_with_runtime_source",
+        "ManagedAccountAuthResolution",
+        "ManagedAccountAuthRuntime",
+        "CoreManagedAccountRuntimeSource",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not re-export managed-account runtime source helper/type `{marker}` once host runtime source owns the call site"
         );
     }
     assert!(

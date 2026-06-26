@@ -2395,24 +2395,15 @@ pub(crate) use crate::proxy_core::api::auth::{
     codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon, codex_oauth_token_url,
     compare_managed_auth_account_order, copilot_auth_status_from_parts,
     copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon, ensure_managed_auth_provider,
-    managed_account_app_handle_unavailable_error_message,
-    managed_account_app_handle_unavailable_log_message,
     managed_account_id_for_auth_provider as core_managed_account_id_for_auth_provider,
-    managed_account_token_failure_error_message, managed_account_token_failure_log_message,
-    managed_account_token_request_log_message, managed_account_token_success_log_message,
     managed_auth_account_from_parts, managed_auth_device_code_response_from_parts,
     managed_auth_fallback_default_account_id, managed_auth_status_from_parts,
     managed_provider_auth_info_for_provider_kind as core_managed_provider_auth_info_for_provider_kind,
-    resolve_copilot_dynamic_base_url_for_binding_with_runtime_source as resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source,
-    resolve_copilot_live_model_for_binding_with_runtime_source as resolve_core_copilot_live_model_for_binding_with_runtime_source,
-    resolve_copilot_model_vendor_for_binding_with_runtime_source as resolve_core_copilot_model_vendor_for_binding_with_runtime_source,
-    resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
     CodexOAuthDevicePollStatusKind, CodexOAuthTokenClaims, CopilotOAuthPollErrorKind,
-    ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ManagedAccountBindingInput,
-    ManagedAccountBindingSource, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
-    ManagedAuthAccount, ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate,
-    ManagedAuthDeviceCodeResponse, ManagedAuthStatus, ProviderManagedAuthClassification,
-    ProviderManagedAuthFacts, CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
+    ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAuthAccount,
+    ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate, ManagedAuthDeviceCodeResponse,
+    ManagedAuthStatus, ProviderManagedAuthClassification, ProviderManagedAuthFacts,
+    CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
 };
 pub(crate) use crate::proxy_core::api::auth::{
     claude_desktop_config_with_deployment_mode,
@@ -7959,6 +7950,9 @@ mod tests {
     };
     use crate::proxy::provider::ProviderAdapter;
     use crate::proxy_core::api::auth::channel_auth_profile_missing_key_error;
+    use crate::proxy_core::api::auth::{
+        ManagedAccountAuthRuntime, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
+    };
     use crate::proxy_core::api::domain::{
         channel_auth_profile_action, channel_auth_profile_missing_provider_warning,
         ChannelAuthProfileAction,
