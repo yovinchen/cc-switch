@@ -16739,6 +16739,12 @@ fn proxy_core_adapter_delegates_management_auth_source_to_host_module() {
             "proxy_core_adapter should not re-export {adapter_type}"
         );
     }
+    assert!(
+        !adapter_source.contains(
+            "pub(crate) type ManagementAuthError = crate::proxy_core::api::auth::ManagementAuthError"
+        ),
+        "proxy_core_adapter should not re-export ManagementAuthError"
+    );
 }
 
 #[test]

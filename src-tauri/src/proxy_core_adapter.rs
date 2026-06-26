@@ -2274,8 +2274,6 @@ pub(crate) fn forwarder_rectifier_retry_failure_log_line(
     )
 }
 
-#[cfg(test)]
-pub(crate) type ManagementAuthError = crate::proxy_core::api::auth::ManagementAuthError;
 pub(crate) type CircuitBreakerFailureDecision =
     crate::proxy_core::api::config::CircuitBreakerFailureDecision;
 #[cfg(test)]
@@ -7642,6 +7640,7 @@ mod tests {
     use crate::proxy_core::api::auth::channel_auth_profile_missing_key_error;
     use crate::proxy_core::api::auth::{
         ManagedAccountAuthRuntime, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
+        ManagementAuthError,
     };
     use crate::proxy_core::api::domain::{
         channel_auth_profile_action, channel_auth_profile_missing_provider_warning,
