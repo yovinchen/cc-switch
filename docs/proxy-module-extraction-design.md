@@ -957,6 +957,7 @@
     `/proxy/v1/apps`、`/proxy/v1/apps/{app}/providers`、`/proxy/v1/apps/{app}/models` 与 Codex `/v1/models` 的 request factory、`ProxyEngine` 调用、固定 Codex app route metadata 和 typed `Json<T>` bridge 已收敛到 `proxy::response_adapter::dispatch_*_to_axum_json_response`；handler 只保留 Axum path/query/state 提取。
     `/proxy/v1/channels`、`/proxy/v1/apps/{app}/channels`、`/proxy/v1/groups`、`/proxy/v1/apps/{app}/routes/current` 与 `/proxy/v1/route/resolve` dry-run 的 request factory、`ProxyEngine` 调用和 typed `Json<T>` bridge 也已收敛到 `proxy::response_adapter`；handler 继续只保留 Axum path/query/body/state 提取。
     channel CRUD、channel key、channel model 与 channel test endpoints 的 path/body request factory、`ProxyEngine` 调用和 typed `Json<T>` bridge 已收敛到 `proxy::response_adapter`；handler 只保留 Axum path/body/state 提取。
+    channel migration preview/materialize 与 channel breaker stats/reset endpoints 的 path request factory、`ProxyEngine` 调用和 typed `Json<T>` bridge 已收敛到 `proxy::response_adapter`；handler 只保留 Axum path/state 提取。
 938. upstream transport request 不再暴露拆开的 `ordered_headers` / `body` / `preserve_exact_header_case` request-parts facts；`ForwarderUpstreamTransportRequest` 直接携带 `ForwarderUpstreamRequestParts`，host forwarder 不再拆 request-source 产物后转手给 transport source。
 939. 边界测试已对齐 source-owned runtime 结构：`RequestForwarder` 不再持有 managed-account runtime source，`ForwarderAuthSource` / `ForwarderRequestSource` 持有 managed-account runtime；`ActiveConnectionGuard` 的 lifecycle 校验也改为验证 adapter-owned guard 与 `ForwarderRuntimeStateSource`。
 940. 托管账号 provider binding 到 account id 的选择规则已迁入 `proxy-core::managed_account_auth::{ManagedAccountBindingInput,managed_account_id_for_auth_provider}`；host `ProviderMeta` 不再持有解析方法，只负责把 `authBinding` / legacy `githubAccountId` 投影为 core-neutral 输入。
@@ -2635,7 +2636,7 @@ node_modules/.bin/tsc --noEmit
 
 把 handler 内业务逻辑移到 engine。
 
-1. HTTP handler 只负责触发 transport adapter 读取 body、鉴权、事件流入口转发和管理 API path/query/body/state 转发；协议入口的 app/tag/prefix/endpoint metadata、endpoint path/query bridge、`RequestContext` 初始化、`ProxyRequest` 构造、`ProxyEngine::handle` dispatch 与 `ProxyResult` 到 HTTP response 的宿主 bridge 由 adapter 承接；Claude/Codex/Gemini protocol handlers 已先降为 `response_adapter` 编排入口调用，`/proxy/v1/events` 的 SSE transport bridge，apps/providers/app-models/client-model-catalog 读查询，channel/group/current-route/route-resolve dry-run，以及 channel CRUD/key/model/test mutation 的 typed JSON bridge 也由 `response_adapter` 承接。
+1. HTTP handler 只负责触发 transport adapter 读取 body、鉴权、事件流入口转发和管理 API path/query/body/state 转发；协议入口的 app/tag/prefix/endpoint metadata、endpoint path/query bridge、`RequestContext` 初始化、`ProxyRequest` 构造、`ProxyEngine::handle` dispatch 与 `ProxyResult` 到 HTTP response 的宿主 bridge 由 adapter 承接；Claude/Codex/Gemini protocol handlers 已先降为 `response_adapter` 编排入口调用，`/proxy/v1/events` 的 SSE transport bridge，apps/providers/app-models/client-model-catalog 读查询，channel/group/current-route/route-resolve dry-run，channel CRUD/key/model/test mutation，以及 channel migration/breaker endpoints 的 typed JSON bridge 也由 `response_adapter` 承接。
 2. `ProxyEngine::handle` 负责 route 解析、forward pipeline、response pipeline。
 3. Claude/Codex/Gemini 特殊处理改成 protocol handler，挂在 engine 内部。
 
