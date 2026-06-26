@@ -19321,8 +19321,9 @@ fn proxy_response_adapter_owns_core_transport_imports() {
             && source.contains("extract_gemini_model_from_path")
             && source.contains("use crate::proxy_core::api::events::ProxyEventEnvelope;")
             && source.contains("use crate::proxy_core::api::management::{")
+            && source.contains("use crate::proxy_core::api::model_catalog::{")
             && source.contains("use crate::proxy_core::api::usage::{"),
-        "response_adapter should import core transport/event/management/usage contracts directly"
+        "response_adapter should import core transport/event/management/model_catalog/usage contracts directly"
     );
 
     let mut violations = Vec::new();
@@ -19339,6 +19340,8 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         "ProxyResult",
         "ProxyTransportResponse",
         "ProxyTransportResponseBody",
+        "ClientModelCatalogResponse",
+        "RoutableModelList",
         "AppChannelListQuery",
         "AppChannelManagementRequest",
         "AppChannelResponse",
@@ -19405,7 +19408,7 @@ fn proxy_response_adapter_owns_core_transport_imports() {
 
     assert!(
         violations.is_empty(),
-        "response_adapter should not route pure core transport/event/management/usage contracts through proxy_core_adapter:\n{}",
+        "response_adapter should not route pure core transport/event/management/model_catalog/usage contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

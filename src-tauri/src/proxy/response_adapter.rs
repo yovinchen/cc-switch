@@ -32,6 +32,7 @@ use crate::proxy_core::api::management::{
     RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
     RouteResolveResponse,
 };
+use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};
 use crate::proxy_core::api::transport::{
     append_query_to_endpoint_path, extract_gemini_model_from_path, rebuilt_json_proxy_response,
     request_body_read_error_message, strip_endpoint_prefix, transformed_sse_proxy_response,
@@ -52,11 +53,10 @@ use crate::proxy_core_adapter::{
     record_forward_core_error_usage, ActiveConnectionGuard, AppKind, AxumResponseBuildErrorContext,
     ClaudeDesktopModelListResponse, ClaudeTransformStreamingDecision,
     ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
-    ClientModelCatalogResponse, CodexAutoTransformedJsonResponseContext,
-    CodexAutoTransformedSseStreamContext, CodexChatTransformStreamingDecision,
-    CodexResponsesProxyRequest, CodexToolContext, CoreResponseBuildFailureContext,
-    CurrentRouteTarget, InterfaceKind, JsonProxyRequestInput, ProxyRuntimeStatus, ProxyState,
-    RoutableModelList,
+    CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
+    CodexChatTransformStreamingDecision, CodexResponsesProxyRequest, CodexToolContext,
+    CoreResponseBuildFailureContext, CurrentRouteTarget, InterfaceKind, JsonProxyRequestInput,
+    ProxyRuntimeStatus, ProxyState,
 };
 use axum::{
     response::sse::{Event, KeepAlive, Sse},
