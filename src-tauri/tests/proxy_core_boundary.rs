@@ -16244,6 +16244,34 @@ fn production_provider_router_uses_split_source_ports() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_provider_router_sources_to_host_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_router_sources.rs");
+    let source = fs::read_to_string(&source_path).expect("read provider_router_sources.rs");
+
+    assert!(
+        source.contains("pub(crate) struct CcSwitchProviderRouterSources")
+            && source.contains("pub(crate) fn from_database(db: Arc<Database>)")
+            && source.contains("CcSwitchProviderRouterConfigSource::new(")
+            && source.contains("CcSwitchProviderRouterProviderSource::new(")
+            && source.contains("CcSwitchProviderRouterChannelSource::new(")
+            && source.contains("CcSwitchProviderRouterHealthStore::new(")
+            && source.contains("pub(crate) fn provider_router_from_database("),
+        "CC Switch ProviderRouter source assembly should live in host/cc_switch/provider_router_sources.rs"
+    );
+    assert!(
+        adapter_source.contains(
+            "pub(crate) use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database"
+        ) && !adapter_source.contains("CcSwitchProviderRouterSources")
+            && !adapter_source.contains("pub(crate) struct CcSwitchProviderRouterSources")
+            && !adapter_source.contains("pub(crate) fn provider_router_from_database("),
+        "proxy_core_adapter should re-export only the ProviderRouter factory and not own the source assembly"
+    );
+}
+
+#[test]
 fn production_provider_router_uses_route_channel_inputs() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/routing.rs");
@@ -16290,13 +16318,10 @@ fn production_provider_router_config_source_uses_core_config_source() {
         "ProviderRouter config source must project router config from ProxyConfigSource"
     );
     assert!(
-        adapter_source.contains(
-            "pub(crate) use crate::proxy::host::cc_switch::provider_router_config_source::CcSwitchProviderRouterConfigSource"
-        ) && adapter_source.contains("CcSwitchProviderRouterConfigSource::new(")
-            && !adapter_source.contains("struct CcSwitchProviderRouterConfigSource")
+        !adapter_source.contains("struct CcSwitchProviderRouterConfigSource")
             && !adapter_source
                 .contains("impl ProviderRouterConfigSource for CcSwitchProviderRouterConfigSource"),
-        "proxy_core_adapter should re-export and instantiate, not own, the ProviderRouter config source"
+        "proxy_core_adapter should not own the ProviderRouter config source"
     );
 
     let mut violations = Vec::new();
@@ -16344,13 +16369,10 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
         "ProviderRouter provider source must project provider ids through ProviderSource helpers"
     );
     assert!(
-        adapter_source.contains(
-            "pub(crate) use crate::proxy::host::cc_switch::provider_router_provider_source::CcSwitchProviderRouterProviderSource"
-        ) && adapter_source.contains("CcSwitchProviderRouterProviderSource::new(")
-            && !adapter_source.contains("struct CcSwitchProviderRouterProviderSource")
+        !adapter_source.contains("struct CcSwitchProviderRouterProviderSource")
             && !adapter_source.contains("impl ProviderSource for CcSwitchProviderRouterProviderSource")
             && !adapter_source.contains("impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource"),
-        "proxy_core_adapter should re-export and instantiate, not own, the ProviderRouter provider source"
+        "proxy_core_adapter should not own the ProviderRouter provider source"
     );
 
     let mut violations = Vec::new();
@@ -16393,13 +16415,10 @@ fn production_provider_router_channel_source_uses_core_channel_source() {
         "ProviderRouter channel source must project route inputs from ChannelSource"
     );
     assert!(
-        adapter_source.contains(
-            "pub(crate) use crate::proxy::host::cc_switch::provider_router_channel_source::CcSwitchProviderRouterChannelSource"
-        ) && adapter_source.contains("CcSwitchProviderRouterChannelSource::new(")
-            && !adapter_source.contains("struct CcSwitchProviderRouterChannelSource")
+        !adapter_source.contains("struct CcSwitchProviderRouterChannelSource")
             && !adapter_source
                 .contains("impl ProviderRouterChannelSource for CcSwitchProviderRouterChannelSource"),
-        "proxy_core_adapter should re-export and instantiate, not own, the ProviderRouter channel source"
+        "proxy_core_adapter should not own the ProviderRouter channel source"
     );
 
     let mut violations = Vec::new();
@@ -16505,13 +16524,10 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
         "ProviderRouter health store must reset channel health through core ChannelHealthReset facts"
     );
     assert!(
-        adapter_source.contains(
-            "pub(crate) use crate::proxy::host::cc_switch::provider_router_health_store::CcSwitchProviderRouterHealthStore"
-        ) && adapter_source.contains("CcSwitchProviderRouterHealthStore::new(")
-            && !adapter_source.contains("struct CcSwitchProviderRouterHealthStore")
+        !adapter_source.contains("struct CcSwitchProviderRouterHealthStore")
             && !adapter_source.contains("impl ProviderHealthStore for CcSwitchProviderRouterHealthStore")
             && !adapter_source.contains("impl ProviderRouterHealthStore for CcSwitchProviderRouterHealthStore"),
-        "proxy_core_adapter should re-export and instantiate, not own, the ProviderRouter health store"
+        "proxy_core_adapter should not own the ProviderRouter health store"
     );
 
     let mut violations = Vec::new();

@@ -11,9 +11,7 @@ use crate::provider::{
 };
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::engine::context::RequestContext;
-use crate::proxy::engine::routing::{
-    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterSources,
-};
+use crate::proxy::engine::routing::{ProviderFailoverRouterSources, ProviderRouter};
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::forward_error_to_core_error;
 pub(crate) use crate::proxy::error_mapper::proxy_core_error_to_proxy_error;
@@ -27,10 +25,7 @@ use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
 pub(crate) use crate::proxy::host::cc_switch::management_auth_source::CcSwitchManagementAuthSource;
 pub(crate) use crate::proxy::host::cc_switch::model_catalog_provider::CcSwitchModelCatalogProvider;
 pub(crate) use crate::proxy::host::cc_switch::runtime_status_source::CcSwitchRuntimeStatusSource;
-pub(crate) use crate::proxy::host::cc_switch::provider_router_channel_source::CcSwitchProviderRouterChannelSource;
-pub(crate) use crate::proxy::host::cc_switch::provider_router_config_source::CcSwitchProviderRouterConfigSource;
-pub(crate) use crate::proxy::host::cc_switch::provider_router_health_store::CcSwitchProviderRouterHealthStore;
-pub(crate) use crate::proxy::host::cc_switch::provider_router_provider_source::CcSwitchProviderRouterProviderSource;
+pub(crate) use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 pub(crate) use crate::proxy::host::cc_switch::provider_source::CcSwitchProviderSource;
 pub(crate) use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource;
 pub(crate) use crate::proxy::host::cc_switch::route_resolver::CcSwitchRouteResolver;
@@ -5060,30 +5055,6 @@ pub(crate) async fn provider_failover_sources_from_router_provider_source(
         provider_ids,
         lookups,
     })
-}
-
-pub(crate) struct CcSwitchProviderRouterSources;
-
-impl CcSwitchProviderRouterSources {
-    pub(crate) fn from_database(db: Arc<Database>) -> ProviderRouterSources {
-        ProviderRouterSources::new(
-            Arc::new(CcSwitchProviderRouterConfigSource::new(
-                CcSwitchConfigSource::new(db.clone()),
-            )),
-            Arc::new(CcSwitchProviderRouterProviderSource::new(
-                db.clone(),
-                CcSwitchRoutePolicySource::new(db.clone()),
-            )),
-            Arc::new(CcSwitchProviderRouterChannelSource::new(
-                CcSwitchChannelSource::new(db.clone()),
-            )),
-            Arc::new(CcSwitchProviderRouterHealthStore::new(db)),
-        )
-    }
-}
-
-pub(crate) fn provider_router_from_database(db: Arc<Database>) -> ProviderRouter {
-    ProviderRouter::with_sources(CcSwitchProviderRouterSources::from_database(db))
 }
 
 pub(crate) fn current_provider_id_from_router_sources(
