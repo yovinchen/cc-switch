@@ -2861,6 +2861,14 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
         !adapter_core_ports_import.contains("ClaudeDesktopGatewayAuthSource"),
         "proxy_core_adapter should not re-export ClaudeDesktopGatewayAuthSource"
     );
+    assert!(
+        !source.contains(
+            "pub(crate) type ClaudeDesktopGatewayAuthError =\n    crate::proxy_core::api::auth::ClaudeDesktopGatewayAuthError"
+        ) && !source.contains(
+            "pub(crate) use crate::proxy_core::api::auth::validate_claude_desktop_gateway_bearer_header"
+        ),
+        "proxy_core_adapter should not re-export Claude Desktop gateway bearer validation helpers"
+    );
 
     let forbidden_markers = [
         "crate::claude_desktop_config",

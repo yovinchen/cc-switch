@@ -70,10 +70,6 @@ fn log_rectified_gemini_tool_args(name: &str) {
     log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
 }
 
-#[cfg(test)]
-pub(crate) type ClaudeDesktopGatewayAuthError =
-    crate::proxy_core::api::auth::ClaudeDesktopGatewayAuthError;
-
 pub(crate) use crate::proxy_core::api::auth::{
     ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
 };
@@ -2278,8 +2274,6 @@ pub(crate) type CircuitBreakerFailureDecision =
     crate::proxy_core::api::config::CircuitBreakerFailureDecision;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::auth::claude_desktop_model_id_is_profile_safe;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::auth::validate_claude_desktop_gateway_bearer_header;
 pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
 pub(crate) use crate::proxy_core::api::auth::{
     classify_provider_managed_auth as core_classify_provider_managed_auth,
@@ -7639,6 +7633,7 @@ mod tests {
     use crate::proxy::provider::ProviderAdapter;
     use crate::proxy_core::api::auth::channel_auth_profile_missing_key_error;
     use crate::proxy_core::api::auth::{
+        validate_claude_desktop_gateway_bearer_header, ClaudeDesktopGatewayAuthError,
         ManagedAccountAuthRuntime, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
         ManagementAuthError,
     };
