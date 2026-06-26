@@ -15,24 +15,22 @@ use crate::proxy_core_adapter::ProxyState;
 use crate::proxy_core_adapter::{
     await_proxy_http_accept_loop_stop, bind_proxy_http_listener,
     provider_circuit_breaker_stats_source, proxy_http_router_from_state,
-    record_proxy_server_bound_runtime_source, record_proxy_server_started_info_runtime_source,
-    reset_provider_circuit_breaker_source, server_log_codes as log_srv,
-    set_active_route_target_runtime_source, spawn_proxy_http_accept_loop,
-    update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
-    CircuitBreakerConfig, CircuitBreakerStats, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+    proxy_http_shutdown_channel, record_proxy_server_bound_runtime_source,
+    record_proxy_server_started_info_runtime_source, reset_provider_circuit_breaker_source,
+    server_log_codes as log_srv, set_active_route_target_runtime_source,
+    spawn_proxy_http_accept_loop, update_all_circuit_breaker_configs_source,
+    update_app_circuit_breaker_config_source, CircuitBreakerConfig, CircuitBreakerStats,
+    ProxyConfig, ProxyHttpServerHandles, ProxyRuntimeStatus, ProxyServerInfo,
 };
 use axum::Router;
+#[cfg(test)]
 use std::sync::Arc;
-use tokio::sync::{oneshot, RwLock};
-use tokio::task::JoinHandle;
 
 /// 代理HTTP服务器
 pub struct ProxyServer {
     config: ProxyConfig,
     state: ProxyState,
-    shutdown_tx: Arc<RwLock<Option<oneshot::Sender<()>>>>,
-    /// 服务器任务句柄，用于等待服务器实际关闭
-    server_handle: Arc<RwLock<Option<JoinHandle<()>>>>,
+    http_server_handles: ProxyHttpServerHandles,
 }
 
 impl ProxyServer {
@@ -40,8 +38,7 @@ impl ProxyServer {
         Self {
             config,
             state,
-            shutdown_tx: Arc::new(RwLock::new(None)),
-            server_handle: Arc::new(RwLock::new(None)),
+            http_server_handles: ProxyHttpServerHandles::new(),
         }
     }
 
@@ -61,12 +58,10 @@ impl ProxyServer {
 
     pub async fn start(&self) -> Result<ProxyServerInfo, ProxyError> {
         // 检查是否已在运行
-        if self.shutdown_tx.read().await.is_some() {
-            return Err(ProxyError::AlreadyRunning);
-        }
+        self.http_server_handles.ensure_not_running().await?;
 
         // 创建关闭通道
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let (shutdown_tx, shutdown_rx) = proxy_http_shutdown_channel();
 
         // 构建路由
         let app = self.build_router();
@@ -80,7 +75,9 @@ impl ProxyServer {
         record_proxy_server_bound_runtime_source(&self.state, &bound_address, actual_port);
 
         // 保存关闭句柄
-        *self.shutdown_tx.write().await = Some(shutdown_tx);
+        self.http_server_handles
+            .store_shutdown_sender(shutdown_tx)
+            .await;
 
         let server_info = record_proxy_server_started_info_runtime_source(
             &self.state,
@@ -94,21 +91,17 @@ impl ProxyServer {
         let handle = spawn_proxy_http_accept_loop(listener, app, shutdown_rx, self.state.clone());
 
         // 保存服务器任务句柄
-        *self.server_handle.write().await = Some(handle);
+        self.http_server_handles.store_server_handle(handle).await;
 
         Ok(server_info)
     }
 
     pub async fn stop(&self) -> Result<(), ProxyError> {
         // 1. 发送关闭信号
-        if let Some(tx) = self.shutdown_tx.write().await.take() {
-            let _ = tx.send(());
-        } else {
-            return Err(ProxyError::NotRunning);
-        }
+        self.http_server_handles.signal_shutdown().await?;
 
         // 2. 等待服务器任务结束（带 5 秒超时保护）
-        if let Some(handle) = self.server_handle.write().await.take() {
+        if let Some(handle) = self.http_server_handles.take_server_handle().await {
             await_proxy_http_accept_loop_stop(handle).await
         } else {
             Ok(())

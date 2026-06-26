@@ -738,6 +738,16 @@ const FORBIDDEN_PROXY_SERVER_LISTENER_BIND_MARKERS: &[&str] = &[
     ".local_addr()",
     ".parse()",
 ];
+const FORBIDDEN_PROXY_SERVER_HANDLE_STORAGE_MARKERS: &[&str] = &[
+    "Arc<RwLock<Option",
+    "oneshot::Sender",
+    "oneshot::Receiver",
+    "JoinHandle<",
+    "ProxyError::AlreadyRunning",
+    "ProxyError::NotRunning",
+    "tokio::sync::",
+    "tokio::task::JoinHandle",
+];
 const FORBIDDEN_PROXY_CORE_CONFIG_SOURCE_APP_CATALOG_MARKERS: &[&str] = &[
     "AppKind::Claude",
     "AppKind::ClaudeDesktop",
@@ -14929,6 +14939,66 @@ fn production_proxy_server_delegates_stop_wait_to_adapter() {
     assert!(
         violations.is_empty(),
         "production ProxyServer must delegate accept-loop stop wait/error mapping to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_server_delegates_handle_storage_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/server.rs");
+    let source = fs::read_to_string(&path).expect("read server.rs");
+    let server_lifecycle = function_slice(
+        &source,
+        "pub struct ProxyServer",
+        "    pub async fn get_status",
+    );
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_handles = function_slice(
+        &adapter_source,
+        "pub(crate) struct ProxyHttpServerHandles",
+        "pub(crate) async fn bind_proxy_http_listener",
+    );
+
+    assert!(
+        server_lifecycle.contains("http_server_handles: ProxyHttpServerHandles")
+            && server_lifecycle.contains("ProxyHttpServerHandles::new()")
+            && server_lifecycle.contains("self.http_server_handles.ensure_not_running().await?")
+            && server_lifecycle.contains("proxy_http_shutdown_channel()")
+            && server_lifecycle.contains(".store_shutdown_sender(shutdown_tx)")
+            && server_lifecycle.contains(".store_server_handle(handle).await")
+            && server_lifecycle.contains("self.http_server_handles.signal_shutdown().await?")
+            && server_lifecycle.contains("self.http_server_handles.take_server_handle().await"),
+        "ProxyServer must delegate shutdown sender/server handle storage and running gates to proxy_core_adapter"
+    );
+
+    assert!(
+        adapter_handles.contains("shutdown_tx: Arc<RwLock<Option<oneshot::Sender<()>>>>")
+            && adapter_handles.contains("server_handle: Arc<RwLock<Option<JoinHandle<()>>>>")
+            && adapter_handles.contains("ProxyError::AlreadyRunning")
+            && adapter_handles.contains("ProxyError::NotRunning")
+            && adapter_handles.contains("pub(crate) fn proxy_http_shutdown_channel()"),
+        "proxy_core_adapter must own HTTP server handle storage and running-state gates"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(server_lifecycle) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVER_HANDLE_STORAGE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/server.rs ProxyServer lifecycle:{} contains handle-storage marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production ProxyServer must not retain shutdown sender/server handle storage or running-state gates:\n{}",
         violations.join("\n")
     );
 }

@@ -689,6 +689,60 @@ pub(crate) fn proxy_server_from_runtime_config(
     ProxyServer::from_runtime_state(config, state)
 }
 
+#[derive(Clone)]
+pub(crate) struct ProxyHttpServerHandles {
+    shutdown_tx: Arc<RwLock<Option<oneshot::Sender<()>>>>,
+    server_handle: Arc<RwLock<Option<JoinHandle<()>>>>,
+}
+
+impl ProxyHttpServerHandles {
+    pub(crate) fn new() -> Self {
+        Self {
+            shutdown_tx: Arc::new(RwLock::new(None)),
+            server_handle: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    pub(crate) async fn ensure_not_running(&self) -> Result<(), ProxyError> {
+        if self.shutdown_tx.read().await.is_some() {
+            return Err(ProxyError::AlreadyRunning);
+        }
+
+        Ok(())
+    }
+
+    pub(crate) async fn store_shutdown_sender(&self, shutdown_tx: oneshot::Sender<()>) {
+        *self.shutdown_tx.write().await = Some(shutdown_tx);
+    }
+
+    pub(crate) async fn store_server_handle(&self, server_handle: JoinHandle<()>) {
+        *self.server_handle.write().await = Some(server_handle);
+    }
+
+    pub(crate) async fn signal_shutdown(&self) -> Result<(), ProxyError> {
+        if let Some(tx) = self.shutdown_tx.write().await.take() {
+            let _ = tx.send(());
+            Ok(())
+        } else {
+            Err(ProxyError::NotRunning)
+        }
+    }
+
+    pub(crate) async fn take_server_handle(&self) -> Option<JoinHandle<()>> {
+        self.server_handle.write().await.take()
+    }
+}
+
+impl Default for ProxyHttpServerHandles {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub(crate) fn proxy_http_shutdown_channel() -> (oneshot::Sender<()>, oneshot::Receiver<()>) {
+    oneshot::channel()
+}
+
 pub(crate) async fn bind_proxy_http_listener(
     config: &ProxyConfig,
 ) -> Result<(tokio::net::TcpListener, SocketAddr), ProxyError> {
