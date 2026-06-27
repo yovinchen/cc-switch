@@ -1792,6 +1792,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1306. `proxy_core_adapter` 不再暴露 `ProviderAuthInfo` 与 `ProviderAuthStrategy` 纯 auth contract alias：adapter 内部直接 import `proxy-core::api::auth` 类型，provider adapters 继续直接依赖 core auth contract；边界测试防止 provider auth DTO 重新通过 adapter alias 回流。
 1307. `proxy_core_adapter` 不再暴露 attempt event DTO alias：`AttemptEventChannel`、`AttemptEventPayloadInput` 与 `AttemptEventPhase` 直接作为 adapter 内部 `proxy-core::api::events` import 使用；边界测试防止事件 payload contract 重新以 adapter type alias 回流。
 1308. `proxy_core_adapter` 不再暴露 attempt result / failure category DTO alias：`ChannelAttemptResult` 由 adapter 与 `proxy_core_host` 测试壳直接从 `proxy-core::api::ports` 获取，`ForwardFailureCategory` 由 forwarder runtime state source 直接从 `proxy-core::api::transport` 获取；边界测试防止这两个结果 contract 重新经 adapter alias 回流。
+1309. `proxy/circuit_breaker` 不再通过 `proxy_core_adapter` 获取 `CircuitBreakerFailureDecision`：熔断器生产代码直接从 `proxy-core::api::config` 读取该决策 contract，adapter 只保留熔断决策 helper 与日志码 helper；边界测试防止 failure decision 重新以 adapter alias 回流。
 
 ## 背景
 
