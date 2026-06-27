@@ -2028,6 +2028,7 @@ fn is_allowed_forwarder_runtime_state_core_import(relative: &str, code: &str) ->
             code.trim(),
             "use crate::proxy_core::api::events::AttemptEventPhase;"
                 | "use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};"
+                | "use crate::proxy_core::api::transport::ForwardFailureCategory;"
         )
 }
 
@@ -5300,6 +5301,23 @@ fn proxy_core_adapter_does_not_export_attempt_event_aliases() {
         assert!(
             !adapter_source.contains(alias),
             "proxy_core_adapter should not expose attempt event contract alias `{alias}`; adapter internals should use proxy_core::api::events directly"
+        );
+    }
+}
+
+#[test]
+fn proxy_core_adapter_does_not_export_attempt_result_aliases() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    for alias in [
+        "pub(crate) type ChannelAttemptResult =",
+        "pub(crate) type ForwardFailureCategory =",
+    ] {
+        assert!(
+            !adapter_source.contains(alias),
+            "proxy_core_adapter should not expose attempt result contract alias `{alias}`; adapter internals should use proxy_core APIs directly"
         );
     }
 }
@@ -15289,13 +15307,16 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     assert!(
         runtime_source.contains("use crate::proxy_core::api::events::AttemptEventPhase;")
             && runtime_source
-                .contains("use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};"),
-        "default ForwarderRuntimeStateSource should import runtime/event contracts directly from proxy_core"
+                .contains("use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};")
+            && runtime_source
+                .contains("use crate::proxy_core::api::transport::ForwardFailureCategory;"),
+        "default ForwarderRuntimeStateSource should import runtime/event/transport contracts directly from proxy_core"
     );
     let runtime_state_adapter_imports = proxy_core_adapter_import_identifiers(&runtime_source);
     for adapter_type in [
         "AttemptEventPhase",
         "CurrentRouteTarget",
+        "ForwardFailureCategory",
         "ProxyRuntimeStatus",
     ] {
         assert!(
@@ -19124,6 +19145,8 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
             && host_source.contains(
             "use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;"
         ) && host_source.contains(
+            "use crate::proxy_core::api::ports::ChannelAttemptResult;"
+        ) && host_source.contains(
             "use crate::proxy_core::api::routing::{\n    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RouteSelection, DEFAULT_ROUTE_GROUP,\n};"
         )
             && host_source.contains("use crate::proxy_core::api::transport::ProxyBody;"),
@@ -19140,6 +19163,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "RouteSelection",
         "ProxyCoreUpstreamEndpoint",
         "ChannelQuery",
+        "ChannelAttemptResult",
         "ChannelSpec",
         "ChannelStatus",
         "ProxyCoreChannelOverrides",

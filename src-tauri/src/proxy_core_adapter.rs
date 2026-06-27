@@ -1292,7 +1292,7 @@ pub(crate) async fn proxy_runtime_config_from_db_source(
     Ok(proxy_runtime_config_from_config(config, false))
 }
 
-use crate::proxy_core::api::ports::ProviderAttemptResult;
+use crate::proxy_core::api::ports::{ChannelAttemptResult, ProviderAttemptResult};
 
 use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
@@ -1375,9 +1375,6 @@ pub(crate) fn route_selected_event_message_from_forward_attempt(
         payload: attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, None),
     })
 }
-
-pub(crate) type ChannelAttemptResult = crate::proxy_core::api::ports::ChannelAttemptResult;
-pub(crate) type ForwardFailureCategory = crate::proxy_core::api::transport::ForwardFailureCategory;
 
 pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
     crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD;
