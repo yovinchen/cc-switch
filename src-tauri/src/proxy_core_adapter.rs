@@ -6069,9 +6069,7 @@ pub(crate) use crate::proxy_core::api::routing::{
     route_plan_providers_unconfigured_error_message,
 };
 
-pub(crate) use crate::proxy_core::api::routing::{
-    route_plan_selections, select_route_for_forward_result as route_selection_for_forward_result,
-};
+pub(crate) use crate::proxy_core::api::routing::select_route_for_forward_result as route_selection_for_forward_result;
 
 pub(crate) fn route_policy_from_failover_queue(
     app: AppKind,

@@ -12676,8 +12676,8 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     );
     let adapter_production_routing_import = function_slice(
         &source,
-        "pub(crate) use crate::proxy_core::api::routing::{\n    route_plan_selections",
-        "};\n\npub(crate) fn route_policy_from_failover_queue",
+        "pub(crate) use crate::proxy_core::api::routing::select_route_for_forward_result as route_selection_for_forward_result;",
+        "\n\npub(crate) fn route_policy_from_failover_queue",
     );
     let attempt_source_function = attempt_source.as_str();
 
@@ -12722,6 +12722,13 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
             && attempt_source_function.contains("use crate::proxy_core::api::routing::{")
             && attempt_source_function.contains("route_plan_provider_match"),
         "host attempt source should consume core route-plan provider matching directly instead of via proxy_core_adapter"
+    );
+    assert!(
+        !source.contains("route_plan_selections,")
+            && fs::read_to_string(manifest_dir.join("src/proxy/route_attempt.rs"))
+                .expect("read route_attempt.rs")
+                .contains("route_plan_selections"),
+        "route_attempt should consume core route-plan selections directly instead of via proxy_core_adapter"
     );
     assert!(
         host_runtime_trait.contains("channel_key_runtime_source")

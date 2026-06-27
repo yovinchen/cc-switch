@@ -7,13 +7,13 @@ use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy_core::api::routing::{
     default_route_candidate_from_selection, resolved_channel_attempt_from_selection,
-    ResolvedChannelAttempt, RoutePlan, RouteSelection,
+    route_plan_selections, ResolvedChannelAttempt, RoutePlan, RouteSelection,
 };
 #[cfg(test)]
 use crate::proxy_core::api::routing::{
     resolved_channel_attempt_from_candidate, ChannelRouteCandidate,
 };
-use crate::proxy_core_adapter::{apply_channel_provider_overrides, route_plan_selections};
+use crate::proxy_core_adapter::apply_channel_provider_overrides;
 #[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
