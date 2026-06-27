@@ -2009,8 +2009,17 @@ fn session_usage_services_direct_core_access_stays_in_usage_api() {
         !adapter_production.contains("type CostCalculator")
             && !adapter_production.contains("type TokenUsage")
             && !adapter_production.contains("type UsageTokens")
-            && !adapter_production.contains("SESSION_REQUEST_ID_PREFIX"),
-        "proxy_core_adapter should not re-export session usage cost/request-id contracts"
+            && !adapter_production.contains("SESSION_REQUEST_ID_PREFIX")
+            && !adapter_production.contains("is_placeholder_pricing_model"),
+        "proxy_core_adapter should not re-export session usage cost/request-id or placeholder-pricing contracts"
+    );
+    let usage_stats_source = fs::read_to_string(manifest_dir.join("src/services/usage_stats.rs"))
+        .expect("read usage_stats.rs");
+    assert!(
+        usage_stats_source
+            .contains("use crate::proxy_core::api::usage::{is_placeholder_pricing_model, ModelPricing};")
+            && !usage_stats_source.contains("crate::proxy_core_adapter::is_placeholder_pricing_model"),
+        "usage_stats should consume placeholder pricing policy directly from proxy_core::api::usage"
     );
 }
 

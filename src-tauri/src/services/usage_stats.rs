@@ -4,7 +4,7 @@
 
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
-use crate::proxy_core::api::usage::ModelPricing;
+use crate::proxy_core::api::usage::{is_placeholder_pricing_model, ModelPricing};
 use crate::services::sql_helpers::fresh_input_sql;
 use chrono::{Local, NaiveDate, TimeZone, Timelike};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -1985,10 +1985,6 @@ fn log_pricing_scope_matches(log: &RequestLogDetail, target_candidates: &[String
             })
         })
     })
-}
-
-pub(crate) fn is_placeholder_pricing_model(model_id: &str) -> bool {
-    crate::proxy_core_adapter::is_placeholder_pricing_model(model_id)
 }
 
 fn query_model_pricing_exact(

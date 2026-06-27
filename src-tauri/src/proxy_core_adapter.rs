@@ -7311,9 +7311,7 @@ pub(crate) fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
     bedrock_env_flag_from_provider_settings(&provider.settings_config)
 }
 
-pub(crate) use crate::proxy_core::api::usage::{
-    is_placeholder_pricing_model, usage_route_context_from_selection,
-};
+pub(crate) use crate::proxy_core::api::usage::usage_route_context_from_selection;
 
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
