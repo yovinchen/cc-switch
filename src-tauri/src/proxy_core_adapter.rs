@@ -142,8 +142,6 @@ pub(crate) fn provider_selection_failure_from_app_error(
     }
 }
 
-pub(crate) use crate::proxy_core::api::management::custom_endpoint_url_key;
-
 pub(crate) fn provider_custom_endpoint_list(provider: Option<&Provider>) -> Vec<CustomEndpoint> {
     let Some(meta) = provider.and_then(|provider| provider.meta.as_ref()) else {
         return Vec::new();
@@ -8457,7 +8455,9 @@ mod tests {
         .is_empty());
 
         assert_eq!(
-            custom_endpoint_url_key(" https://relay.example.com/v1/// "),
+            crate::proxy_core::api::management::custom_endpoint_url_key(
+                " https://relay.example.com/v1/// "
+            ),
             "https://relay.example.com/v1"
         );
         assert_eq!(

@@ -55,6 +55,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/transport/upstream/reqwest_client.rs",
     "src/proxy_core_adapter.rs",
     "src/services/model_fetch_transport.rs",
+    "src/services/provider/endpoints.rs",
     "src/services/provider/gemini_auth.rs",
     "src/services/stream_check.rs",
     "src/services/session_usage.rs",
@@ -5518,8 +5519,17 @@ fn production_provider_endpoint_service_delegates_projection_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "provider endpoint service must delegate custom endpoint normalization, sorting, and last-used mutation to proxy_core_adapter:\n{}",
+        "provider endpoint service must delegate custom endpoint sorting and last-used mutation to proxy_core_adapter without reimplementing URL policy:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        source.contains("use crate::proxy_core::api::management::custom_endpoint_url_key;")
+            && source.contains("use crate::proxy_core_adapter::{")
+            && source.contains("normalize_custom_endpoint_url")
+            && source.contains("provider_custom_endpoint_list")
+            && source.contains("mark_custom_endpoint_last_used")
+            && !source.contains("custom_endpoint_url_key,"),
+        "provider endpoint service should consume the pure URL key helper directly from proxy-core while keeping host projections in the adapter"
     );
 }
 
@@ -5530,9 +5540,9 @@ fn proxy_core_adapter_delegates_custom_endpoint_url_policy_to_core() {
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
 
     assert!(
-        source
+        !source
             .contains("pub(crate) use crate::proxy_core::api::management::custom_endpoint_url_key"),
-        "proxy_core_adapter should expose the core custom endpoint URL key helper"
+        "proxy_core_adapter should not re-export the pure custom endpoint URL key helper"
     );
 
     let slice = function_slice(
