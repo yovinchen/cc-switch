@@ -2424,6 +2424,14 @@ fn proxy_core_adapter_delegates_forward_failure_message_policy_to_core() {
         "adapter must delegate forward failure message selection to proxy-core"
     );
     assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::transport::forward_failure_kind_from_proxy_status"
+        ) && source.contains(
+            "crate::proxy_core::api::transport::forward_failure_kind_from_proxy_status("
+        ),
+        "adapter should call the forward failure kind core helper internally without re-exporting it"
+    );
+    assert!(
         function.contains("proxy_error_status_kind(error)"),
         "adapter should pass ProxyError status kind into the core forward failure message policy"
     );
@@ -9365,6 +9373,12 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
         normalize_slice.contains("normalize_claude_anthropic_messages("),
         "Claude message normalization composition must be delegated to proxy-core"
     );
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::transforms::normalize_claude_anthropic_messages"
+        ),
+        "adapter should not re-export the pure Claude message normalization helper"
+    );
 
     let forbidden_markers = [
         "api_format.trim()",
@@ -9391,6 +9405,30 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
         violations.is_empty(),
         "proxy_core_adapter must keep Claude message normalization composition in proxy-core:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_keeps_provider_model_mapping_facade_host_shaped() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let mapping_slice = function_slice(
+        &source,
+        "pub(crate) type ModelMappingProjection",
+        "pub(crate) fn apply_forward_request_model_mapping_from_provider",
+    );
+
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::model_catalog::apply_provider_model_mapping"
+        ),
+        "adapter should not re-export the pure provider model mapping helper"
+    );
+    assert!(
+        mapping_slice
+            .contains("crate::proxy_core::api::model_catalog::apply_provider_model_mapping("),
+        "adapter provider-shaped mapping wrapper should delegate to proxy-core internally"
     );
 }
 

@@ -6352,14 +6352,12 @@ pub(crate) async fn provider_circuit_breaker_stats_source(
         .await
 }
 
-pub(crate) use crate::proxy_core::api::transport::forward_failure_kind_from_proxy_status;
-
 pub(crate) fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> ForwardFailureKind {
     let upstream_body = match error {
         ProxyError::UpstreamError { body, .. } => body.clone(),
         _ => None,
     };
-    forward_failure_kind_from_proxy_status(
+    crate::proxy_core::api::transport::forward_failure_kind_from_proxy_status(
         proxy_error_status_kind(error),
         forward_failure_message_from_proxy_error(error),
         upstream_body,
@@ -6405,14 +6403,16 @@ pub(crate) fn apply_channel_provider_overrides(
     }
 }
 
-pub(crate) use crate::proxy_core::api::transforms::normalize_claude_anthropic_messages;
-
 pub(crate) fn provider_claude_normalize_anthropic_messages(
     body: &mut Value,
     provider: &Provider,
     api_format: &str,
 ) -> bool {
-    normalize_claude_anthropic_messages(body, &provider.settings_config, api_format)
+    crate::proxy_core::api::transforms::normalize_claude_anthropic_messages(
+        body,
+        &provider.settings_config,
+        api_format,
+    )
 }
 
 #[cfg(test)]
@@ -6437,13 +6437,14 @@ pub(crate) fn anthropic_redacted_thinking_placeholder() -> &'static str {
 pub(crate) type ModelMappingProjection =
     crate::proxy_core::api::model_catalog::ModelMappingProjection;
 
-pub(crate) use crate::proxy_core::api::model_catalog::apply_provider_model_mapping;
-
 pub(crate) fn apply_provider_model_mapping_from_provider(
     body: Value,
     provider: &Provider,
 ) -> ModelMappingProjection {
-    apply_provider_model_mapping(body, &provider.settings_config)
+    crate::proxy_core::api::model_catalog::apply_provider_model_mapping(
+        body,
+        &provider.settings_config,
+    )
 }
 
 pub(crate) fn apply_forward_request_model_mapping_from_provider(
