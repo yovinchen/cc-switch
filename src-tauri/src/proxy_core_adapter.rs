@@ -24,7 +24,7 @@ use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
-use crate::proxy_core::api::domain::{ProviderMetadata, ProviderMetadataInput};
+use crate::proxy_core::api::domain::{ProviderKind, ProviderMetadata, ProviderMetadataInput};
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, RouteResolveChannelRecordInput,
     RouteResolveModelRecordInput,
@@ -1292,7 +1292,6 @@ pub(crate) async fn proxy_runtime_config_from_db_source(
 }
 
 use crate::proxy_core::api::ports::ProviderAttemptResult;
-pub(crate) type ProviderKind = crate::proxy_core::api::domain::ProviderKind;
 pub(crate) type ProviderAuthInfo = crate::proxy_core::api::auth::ProviderAuthInfo;
 pub(crate) type ProviderAuthStrategy = crate::proxy_core::api::auth::ProviderAuthStrategy;
 

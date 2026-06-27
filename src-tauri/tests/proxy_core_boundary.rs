@@ -5127,6 +5127,50 @@ fn production_provider_adapter_registry_imports_adapter_kind_directly() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_provider_kind_alias() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    assert!(
+        !adapter_source.contains("pub(crate) type ProviderKind ="),
+        "proxy_core_adapter should not expose ProviderKind as a type alias; callers and adapter internals should use proxy_core::api::domain::ProviderKind"
+    );
+}
+
+#[test]
+fn proxy_core_host_imports_provider_kind_from_core_domain() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = "src/proxy_core_host.rs";
+    let source = fs::read_to_string(manifest_dir.join(relative)).expect("read proxy_core_host.rs");
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(&source);
+    let mut violations = Vec::new();
+
+    if !source.contains("use crate::proxy_core::api::domain::{")
+        || !source.contains("ProviderKind, ProviderSpec")
+    {
+        violations.push(format!(
+            "{relative} should import ProviderKind directly from proxy_core::api::domain"
+        ));
+    }
+
+    if adapter_import_identifiers
+        .iter()
+        .any(|identifier| identifier == "ProviderKind")
+    {
+        violations.push(format!(
+            "{relative} imports ProviderKind through proxy_core_adapter"
+        ));
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_host should not route pure provider kind contract through proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_provider_adapters_delegate_base_url_errors_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let provider_paths = [
@@ -19040,7 +19084,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
 
     assert!(
         host_source.contains(
-            "use crate::proxy_core::api::domain::{\n    ChannelOverrides, ModelCapabilities, ModelRoute, ProviderSpec, RetryPolicy, UpstreamEndpoint,\n};"
+            "use crate::proxy_core::api::domain::{\n    ChannelOverrides, ModelCapabilities, ModelRoute, ProviderKind, ProviderSpec, RetryPolicy,\n    UpstreamEndpoint,\n};"
         )
             && host_source.contains(
             "use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;"
@@ -19070,6 +19114,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "ProxyCoreModelCapabilities",
         "ProxyCoreModelRoute",
         "ProxyCoreProviderMetadata",
+        "ProviderKind",
         "ProxyCoreProviderSpec",
     ] {
         assert!(
@@ -19092,7 +19137,8 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
             && !host_tests_adapter_import.contains("ProxyCoreChannelOverrides")
             && !host_tests_adapter_import.contains("ProxyCoreInterfaceKind")
             && !host_tests_adapter_import.contains("ProxyCoreModelCapabilities")
-            && !host_tests_adapter_import.contains("ProxyCoreModelRoute"),
+            && !host_tests_adapter_import.contains("ProxyCoreModelRoute")
+            && !host_tests_adapter_import.contains("ProviderKind"),
         "proxy_core_host tests must not import pure core contracts through proxy_core_adapter"
     );
 

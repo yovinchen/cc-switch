@@ -25,7 +25,8 @@ use crate::proxy::host::cc_switch::route_resolver::RouteRequest;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 #[cfg(test)]
 use crate::proxy_core::api::domain::{
-    ChannelOverrides, ModelCapabilities, ModelRoute, ProviderSpec, RetryPolicy, UpstreamEndpoint,
+    ChannelOverrides, ModelCapabilities, ModelRoute, ProviderKind, ProviderSpec, RetryPolicy,
+    UpstreamEndpoint,
 };
 #[cfg(test)]
 use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;
@@ -54,7 +55,7 @@ mod tests {
     use crate::app_config::AppType;
     use crate::provider::Provider;
     use crate::proxy_core_adapter::{
-        proxy_response_to_core_response, ProviderKind, ProxyChannelKeyWriteRequest,
+        proxy_response_to_core_response, ProxyChannelKeyWriteRequest,
         ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, ProxyConfig, ProxyCoreError,
         ProxyCoreResult, ProxyEngine, ProxyResponseBody, ProxyRuntimeStatus,
         ResolvedChannelAttempt, RouteResolveRequest, UsageRecord,
