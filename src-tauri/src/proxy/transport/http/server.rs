@@ -519,9 +519,9 @@ impl ProxyServer {
 mod tests {
     use super::*;
     use crate::provider::{ClaudeDesktopMode, ClaudeDesktopModelRoute, Provider, ProviderMeta};
-    use crate::proxy_core_adapter::{
-        management_route_response_from_router_source, CurrentRouteTarget, RouteResolveRequest,
-    };
+    use crate::proxy_core::api::management::RouteResolveRequest;
+    use crate::proxy_core::api::ports::CurrentRouteTarget;
+    use crate::proxy_core_adapter::management_route_response_from_router_source;
     use axum::{
         body::{to_bytes, Body},
         http::{Method, Request, StatusCode},
