@@ -1731,6 +1731,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1245. model route 的 `pricingModel` 已进入 runtime/external route state：`ResolvedChannelAttempt` 会携带选中 model route 的计价模型，attempt event payload 与 current-route target 都序列化 `pricingModel`，管理 API 和运行时状态可以观察到当前中转地址实际采用的计价模型；request/response override body 仍不进入这些外部状态 payload，继续避免泄露上游迁移策略细节。
 1246. host-owned `channel_auth_profile_attempts` 已直接引用 `proxy-core::api::routing` 的 `RoutePlan`、provider-match 与 route-plan error helper；`proxy_core_adapter` 不再作为 provider match 中转，只保留仍被 adapter-local 测试使用的 no-matching helper。forward runtime 的 attempt 生成、channel auth profile provider/key 注入继续归属 CC Switch host source，core 只提供纯 route/auth 决策。
 1247. 全局代理 URL masking 的 pure security helper 已从 `proxy_core_adapter` facade 移除：host-owned `global_http_client` 直接引用 `proxy-core::api::security::mask_url_for_log` 并向命令层提供本地 logging wrapper，`commands/global_proxy` 不再直接依赖 adapter 或 core security facade；adapter 只继续承接显式代理 URL 校验和 loopback policy 等尚未迁完的兼容入口。
+1248. 全局代理显式 URL 校验和系统代理 loopback 判定的 pure helper 已继续从 `proxy_core_adapter` facade 移除：host-owned `global_http_client` 直接引用 `proxy-core::api::transport::{validate_explicit_proxy_url,invalid_explicit_proxy_url_message,proxy_values_point_to_loopback_port,SYSTEM_PROXY_ENV_KEYS}` 与 `proxy-core::api::ports::DEFAULT_PROXY_LISTEN_PORT`；adapter 不再 re-export 这些全局代理 URL 校验常量/函数，只保留 adapter 自测对 core contract 的直接断言。
 
 ## 背景
 
