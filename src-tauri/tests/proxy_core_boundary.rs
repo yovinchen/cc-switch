@@ -16897,6 +16897,10 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
         );
     }
     assert!(
+        !adapter_source.contains("type ProxyCoreEventType"),
+        "proxy_core_adapter should not re-export event type DTOs as adapter aliases"
+    );
+    assert!(
         !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::event_sink::CcSwitchEventSink"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchEventSink")

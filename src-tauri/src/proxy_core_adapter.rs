@@ -2169,8 +2169,6 @@ pub(crate) type AutoFailoverToggleInput = crate::proxy_core::api::routing::AutoF
 pub(crate) type AutoFailoverTogglePlan = crate::proxy_core::api::routing::AutoFailoverTogglePlan;
 pub(crate) type FailoverQueuePosition = crate::proxy_core::api::routing::FailoverQueuePosition;
 pub(crate) type ProxyCoreError = crate::proxy_core::api::errors::ProxyCoreError;
-#[cfg(test)]
-pub(crate) type ProxyCoreEventType = crate::proxy_core::api::events::ProxyCoreEventType;
 pub(crate) type AppKind = crate::proxy_core::api::domain::AppKind;
 pub(crate) type AppProviderAdapterKind = crate::proxy_core::api::domain::AppProviderAdapterKind;
 #[cfg(test)]
@@ -11472,7 +11470,7 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(request_started.payload["appType"], "claude");
 
         let message = proxy_core_event_to_bus_message(ProxyCoreEvent {
-            event_type: ProxyCoreEventType::RouteSelected,
+            event_type: crate::proxy_core::api::events::ProxyCoreEventType::RouteSelected,
             request_id: Some("req-1".to_string()),
             channel_id: Some("channel-a".to_string()),
             payload: json!({"attemptCount": 2}),
@@ -11532,7 +11530,7 @@ base_url = "https://api.openai.com/v1"
         let mut emitted = None;
         emit_proxy_core_event(
             ProxyCoreEvent {
-                event_type: ProxyCoreEventType::RouteSelected,
+                event_type: crate::proxy_core::api::events::ProxyCoreEventType::RouteSelected,
                 request_id: Some("req-2".to_string()),
                 channel_id: Some("channel-b".to_string()),
                 payload: json!({"attemptCount": 1}),

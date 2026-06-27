@@ -49,11 +49,11 @@ mod tests {
         proxy_response_to_core_response, ChannelStatus, ProviderKind, ProxyBody,
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,
         ProxyConfig, ProxyCoreChannelOverrides as ChannelOverrides, ProxyCoreError,
-        ProxyCoreEventType, ProxyCoreInterfaceKind as InterfaceKind,
-        ProxyCoreModelCapabilities as ModelCapabilities, ProxyCoreModelRoute as ModelRoute,
-        ProxyCoreResult, ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyEngine,
-        ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy,
-        RouteResolveRequest, RouteSelection, UsageRecord,
+        ProxyCoreInterfaceKind as InterfaceKind, ProxyCoreModelCapabilities as ModelCapabilities,
+        ProxyCoreModelRoute as ModelRoute, ProxyCoreResult,
+        ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyEngine, ProxyResponseBody,
+        ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy, RouteResolveRequest,
+        RouteSelection, UsageRecord,
     };
     use bytes::Bytes;
     use futures::StreamExt;
@@ -69,6 +69,10 @@ mod tests {
 
     fn auth_profile_ref<T: serde::de::DeserializeOwned>(value: &str) -> T {
         serde_json::from_value(json!(value)).expect("auth profile ref")
+    }
+
+    fn proxy_core_event_type<T: serde::de::DeserializeOwned>(value: &str) -> T {
+        serde_json::from_value(json!(value)).expect("proxy core event type")
     }
 
     struct IsolatedTestHome {
@@ -983,7 +987,7 @@ mod tests {
         services
             .event_sink()
             .emit_event(ProxyCoreEvent {
-                event_type: ProxyCoreEventType::RouteSelected,
+                event_type: proxy_core_event_type("route_selected"),
                 request_id: Some("req-1".to_string()),
                 channel_id: Some("channel-a".to_string()),
                 payload: json!({
