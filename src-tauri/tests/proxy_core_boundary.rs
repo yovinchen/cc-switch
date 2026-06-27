@@ -5737,8 +5737,8 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
 
     assert!(
-        source.contains("#[cfg(test)]\npub(crate) fn provider_credential_values"),
-        "proxy_core_adapter credential value helper should remain test-only after production facade removal"
+        !source.contains("#[cfg(test)]\npub(crate) fn provider_credential_values"),
+        "proxy_core_adapter should not expose provider credential values as a crate-visible test facade"
     );
     assert!(
         !source.contains("pub(crate) type ProviderCredentialValues"),
@@ -5747,8 +5747,8 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
 
     let slice = function_slice(
         &source,
-        "pub(crate) fn provider_credential_values",
-        "pub(crate) struct OpenCodeLiveProviderFragment",
+        "fn provider_credential_values_with_issue",
+        "    #[tokio::test]\n    async fn non_managed_auth_passes_through_without_app_handle",
     );
     assert!(
         slice
@@ -5786,6 +5786,10 @@ fn production_provider_service_excludes_credential_extract_facade() {
         !provider_service_impl.contains("fn extract_credentials(")
             && !provider_service_impl.contains("#[allow(dead_code)]"),
         "ProviderService production impl should not retain test-only credential extraction facades"
+    );
+    assert!(
+        !source.contains("provider_credential_values"),
+        "ProviderService tests should not depend on proxy_core_adapter provider credential test facades"
     );
 }
 
@@ -5865,7 +5869,6 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
         .join("\n");
 
     for marker in [
-        "codex_auth_object_value_from_settings(",
         "core_codex_provider_live_write_parts_from_settings(",
         "codex_restored_live_settings_parts",
         "core_codex_live_settings_parts_from_settings(",

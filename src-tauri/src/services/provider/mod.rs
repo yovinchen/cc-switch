@@ -124,9 +124,7 @@ mod tests {
     use crate::provider::ProviderMeta;
     #[cfg(any(target_os = "macos", windows))]
     use crate::provider::{ClaudeDesktopMode, ClaudeDesktopModelRoute};
-    use crate::proxy_core_adapter::{
-        claude_desktop_direct_gateway_credentials, provider_credential_values, ProxyConfig,
-    };
+    use crate::proxy_core_adapter::ProxyConfig;
     use crate::store::AppState;
     use serde_json::json;
     use serial_test::serial;
@@ -196,24 +194,6 @@ mod tests {
                 None => env::remove_var("CC_SWITCH_TEST_HOME"),
             }
         }
-    }
-
-    fn extract_credentials(
-        provider: &Provider,
-        app_type: &AppType,
-    ) -> Result<(String, String), AppError> {
-        if matches!(app_type, AppType::ClaudeDesktop) {
-            let credentials = claude_desktop_direct_gateway_credentials(&provider.settings_config)
-                .map_err(|issue| {
-                    AppError::Message(format!(
-                        "Claude Desktop credential extraction failed: {issue:?}"
-                    ))
-                })?;
-            return Ok((credentials.api_key, credentials.base_url));
-        }
-
-        let credentials = provider_credential_values(provider, app_type)?;
-        Ok((credentials.api_key, credentials.base_url))
     }
 
     #[cfg(windows)]
@@ -423,94 +403,6 @@ mod tests {
                 ..
             }
         ));
-    }
-
-    #[test]
-    fn extract_credentials_returns_expected_values() {
-        let provider = Provider::with_id(
-            "claude".into(),
-            "Claude".into(),
-            json!({
-                "env": {
-                    "ANTHROPIC_AUTH_TOKEN": "token",
-                    "ANTHROPIC_BASE_URL": "https://claude.example"
-                }
-            }),
-            None,
-        );
-        let (api_key, base_url) = extract_credentials(&provider, &AppType::Claude).unwrap();
-        assert_eq!(api_key, "token");
-        assert_eq!(base_url, "https://claude.example");
-    }
-
-    #[test]
-    fn extract_codex_credentials_uses_auth_and_config_text() {
-        let provider = Provider::with_id(
-            "codex".into(),
-            "Codex".into(),
-            json!({
-                "auth": {
-                    "OPENAI_API_KEY": "sk-test"
-                },
-                "config": "base_url = \"https://codex.example/v1\"\n"
-            }),
-            None,
-        );
-        let (api_key, base_url) = extract_credentials(&provider, &AppType::Codex).unwrap();
-        assert_eq!(api_key, "sk-test");
-        assert_eq!(base_url, "https://codex.example/v1");
-    }
-
-    #[test]
-    fn extract_gemini_credentials_uses_provider_env_map() {
-        let provider = Provider::with_id(
-            "gemini".into(),
-            "Gemini".into(),
-            json!({
-                "env": {
-                    "GEMINI_API_KEY": "AIza-test",
-                    "GOOGLE_GEMINI_BASE_URL": "https://gemini.example"
-                }
-            }),
-            None,
-        );
-        let (api_key, base_url) = extract_credentials(&provider, &AppType::Gemini).unwrap();
-        assert_eq!(api_key, "AIza-test");
-        assert_eq!(base_url, "https://gemini.example");
-    }
-
-    #[test]
-    fn extract_opencode_credentials_uses_options_parts() {
-        let provider = Provider::with_id(
-            "opencode".into(),
-            "OpenCode".into(),
-            json!({
-                "options": {
-                    "apiKey": "sk-opencode",
-                    "baseURL": "https://opencode.example"
-                }
-            }),
-            None,
-        );
-        let (api_key, base_url) = extract_credentials(&provider, &AppType::OpenCode).unwrap();
-        assert_eq!(api_key, "sk-opencode");
-        assert_eq!(base_url, "https://opencode.example");
-    }
-
-    #[test]
-    fn extract_openclaw_credentials_uses_top_level_parts() {
-        let provider = Provider::with_id(
-            "openclaw".into(),
-            "OpenClaw".into(),
-            json!({
-                "apiKey": "sk-openclaw",
-                "baseUrl": "https://openclaw.example"
-            }),
-            None,
-        );
-        let (api_key, base_url) = extract_credentials(&provider, &AppType::OpenClaw).unwrap();
-        assert_eq!(api_key, "sk-openclaw");
-        assert_eq!(base_url, "https://openclaw.example");
     }
 
     #[test]

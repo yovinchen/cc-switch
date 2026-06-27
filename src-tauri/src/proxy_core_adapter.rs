@@ -1847,61 +1847,6 @@ pub(crate) fn provider_switch_should_mark_live_config_managed(
     )
 }
 
-#[cfg(test)]
-fn provider_credential_issue_to_app_error(
-    issue: crate::proxy_core::api::ports::ProviderCredentialIssue,
-) -> AppError {
-    let spec = crate::proxy_core::api::ports::provider_credential_issue_spec(issue);
-    AppError::localized(spec.key, spec.zh, spec.en)
-}
-
-#[cfg(test)]
-pub(crate) fn provider_credential_values(
-    provider: &Provider,
-    app_type: &AppType,
-) -> Result<crate::proxy_core::api::ports::ProviderCredentialValues, AppError> {
-    provider_credential_values_with_issue(provider, app_type)
-        .map_err(provider_credential_issue_to_app_error)
-}
-
-#[cfg(test)]
-fn provider_credential_values_with_issue(
-    provider: &Provider,
-    app_type: &AppType,
-) -> Result<
-    crate::proxy_core::api::ports::ProviderCredentialValues,
-    crate::proxy_core::api::ports::ProviderCredentialIssue,
-> {
-    match app_type {
-        AppType::Codex => {
-            let auth = crate::proxy_core::api::ports::codex_auth_object_value_from_settings(
-                &provider.settings_config,
-            )
-            .ok_or(crate::proxy_core::api::ports::ProviderCredentialIssue::CodexAuthMissing)?;
-            let config_toml =
-                codex_config_text_from_settings(&provider.settings_config).unwrap_or("");
-            crate::proxy_core::api::ports::provider_codex_credential_values_from_parts(
-                crate::proxy_core::api::ports::CodexCredentialParts {
-                    api_key: codex_api_key_from_auth_and_config(Some(auth), Some(config_toml)),
-                    config_toml: Some(config_toml.to_string()),
-                },
-            )
-        }
-        AppType::Claude
-        | AppType::ClaudeDesktop
-        | AppType::Gemini
-        | AppType::OpenCode
-        | AppType::OpenClaw
-        | AppType::Hermes => {
-            crate::proxy_core::api::ports::provider_non_codex_credential_values_from_settings(
-                &AppKind::from(app_type),
-                &provider.settings_config,
-            )
-            .map(|values| values.expect("known non-Codex app should project credential values"))
-        }
-    }
-}
-
 pub(crate) struct OpenCodeLiveProviderFragment {
     pub(crate) config: Value,
     pub(crate) from_full_config: bool,
@@ -7478,6 +7423,43 @@ mod tests {
         UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
     };
     use indexmap::IndexMap;
+
+    fn provider_credential_values_with_issue(
+        provider: &Provider,
+        app_type: &AppType,
+    ) -> Result<
+        crate::proxy_core::api::ports::ProviderCredentialValues,
+        crate::proxy_core::api::ports::ProviderCredentialIssue,
+    > {
+        match app_type {
+            AppType::Codex => {
+                let auth = crate::proxy_core::api::ports::codex_auth_object_value_from_settings(
+                    &provider.settings_config,
+                )
+                .ok_or(crate::proxy_core::api::ports::ProviderCredentialIssue::CodexAuthMissing)?;
+                let config_toml =
+                    codex_config_text_from_settings(&provider.settings_config).unwrap_or("");
+                crate::proxy_core::api::ports::provider_codex_credential_values_from_parts(
+                    crate::proxy_core::api::ports::CodexCredentialParts {
+                        api_key: codex_api_key_from_auth_and_config(Some(auth), Some(config_toml)),
+                        config_toml: Some(config_toml.to_string()),
+                    },
+                )
+            }
+            AppType::Claude
+            | AppType::ClaudeDesktop
+            | AppType::Gemini
+            | AppType::OpenCode
+            | AppType::OpenClaw
+            | AppType::Hermes => {
+                crate::proxy_core::api::ports::provider_non_codex_credential_values_from_settings(
+                    &AppKind::from(app_type),
+                    &provider.settings_config,
+                )
+                .map(|values| values.expect("known non-Codex app should project credential values"))
+            }
+        }
+    }
 
     #[tokio::test]
     async fn non_managed_auth_passes_through_without_app_handle() {
@@ -17358,6 +17340,55 @@ command = "latest-command"
             gemini_credentials.base_url,
             "https://generativelanguage.googleapis.com"
         );
+
+        let gemini_custom = Provider::with_id(
+            "gemini-custom".to_string(),
+            "Gemini Custom".to_string(),
+            json!({
+                "env": {
+                    "GEMINI_API_KEY": "AIza-test",
+                    "GOOGLE_GEMINI_BASE_URL": "https://gemini.example"
+                }
+            }),
+            None,
+        );
+        let gemini_custom_credentials =
+            provider_credential_values_with_issue(&gemini_custom, &AppType::Gemini)
+                .expect("custom gemini credentials");
+        assert_eq!(gemini_custom_credentials.api_key, "AIza-test");
+        assert_eq!(gemini_custom_credentials.base_url, "https://gemini.example");
+
+        let opencode = Provider::with_id(
+            "opencode".to_string(),
+            "OpenCode".to_string(),
+            json!({
+                "options": {
+                    "apiKey": "sk-opencode",
+                    "baseURL": "https://opencode.example"
+                }
+            }),
+            None,
+        );
+        let opencode_credentials =
+            provider_credential_values_with_issue(&opencode, &AppType::OpenCode)
+                .expect("opencode credentials");
+        assert_eq!(opencode_credentials.api_key, "sk-opencode");
+        assert_eq!(opencode_credentials.base_url, "https://opencode.example");
+
+        let openclaw = Provider::with_id(
+            "openclaw".to_string(),
+            "OpenClaw".to_string(),
+            json!({
+                "apiKey": "sk-openclaw",
+                "baseUrl": "https://openclaw.example"
+            }),
+            None,
+        );
+        let openclaw_credentials =
+            provider_credential_values_with_issue(&openclaw, &AppType::OpenClaw)
+                .expect("openclaw credentials");
+        assert_eq!(openclaw_credentials.api_key, "sk-openclaw");
+        assert_eq!(openclaw_credentials.base_url, "https://openclaw.example");
 
         let missing_codex_base_url = Provider::with_id(
             "codex-missing-base-url".to_string(),
