@@ -1750,6 +1750,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1264. Gemini live env JSON extraction 的 test-only adapter re-export 已删除：adapter 自测直接调用 `proxy-core::api::ports::gemini_env_value_from_env_json`，`proxy_core_adapter` 只继续暴露 live write/backup 流程仍需要的 `gemini_live_settings_from_env_json_and_config` 与 `gemini_live_backup_from_effective_settings`；边界测试防止 pure env JSON helper 回流。
 1265. Claude takeover model/display helper 的 test-only adapter re-export 已删除：adapter 自测直接调用 `proxy-core::api::model_catalog` 与 `proxy-core::api::ports::apply_claude_takeover_fields_with_policy_and_models` owning helper，`proxy_core_adapter` 仅保留 live takeover 集成仍需要的 host-facing `apply_claude_takeover_fields_with_policy` 出口；边界测试防止 pure model helper 重新暴露。
 1266. legacy channel projection 的 test-only routing helper facade 已删除：adapter 自测直接调用 `proxy-core::api::routing::{build_legacy_channel_projection,infer_legacy_channel_interface,legacy_channel_priority}`，生产迁移路径继续保留 host-shaped projection/response wrapper；边界测试防止 legacy channel projection policy 重新通过 adapter re-export。
+1267. forward route/no-runtime error 的 test-only routing helper facade 已删除：adapter 自测直接调用 `proxy-core::api::routing` owning error/message helper，host forward pipeline 继续直接消费 core `forwarding_requires_runtime_error`，`proxy_core_adapter` 只保留 host-shaped forward runtime wiring；边界测试防止这些 pure routing error helper 重新 re-export。
 
 ## 背景
 
