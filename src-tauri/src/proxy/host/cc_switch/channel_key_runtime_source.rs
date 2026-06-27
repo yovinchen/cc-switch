@@ -156,6 +156,14 @@ mod tests {
         assert_eq!(backup.key_value, "sk-backup-candidate");
         assert_eq!(backup.priority, 100);
 
+        let wildcard = source
+            .load_channel_key_candidate("channel-key-candidate", "*")
+            .expect("load wildcard channel key")
+            .expect("selected wildcard candidate");
+        assert_eq!(wildcard.key_ref, "backup");
+        assert_eq!(wildcard.key_value, "sk-backup-candidate");
+        assert_eq!(wildcard.priority, 100);
+
         db.upsert_proxy_channel_key(
             "channel-key-candidate",
             "primary",

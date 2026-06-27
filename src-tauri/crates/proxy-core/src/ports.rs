@@ -6009,6 +6009,10 @@ where
         return None;
     }
 
+    if key_ref == "*" {
+        return select_enabled_channel_key_runtime_candidate(candidates);
+    }
+
     select_enabled_channel_key_runtime_candidate(
         candidates
             .into_iter()
@@ -11349,6 +11353,18 @@ GEMINI_API_KEY=sk-test123
             .is_none(),
             "keys with a different key_ref should not satisfy the requested runtime ref"
         );
+
+        let wildcard = select_channel_key_runtime_candidate(
+            vec![
+                candidate("disabled-best", "sk-disabled", "disabled", 200, 100),
+                candidate("backup", "sk-backup", "enabled", 100, 100),
+                candidate("primary", "sk-primary", "enabled", 10, 20),
+            ],
+            "*",
+        )
+        .expect("selected wildcard key candidate");
+        assert_eq!(wildcard.key_ref, "backup");
+        assert_eq!(wildcard.key_value, "sk-backup");
     }
 
     #[test]

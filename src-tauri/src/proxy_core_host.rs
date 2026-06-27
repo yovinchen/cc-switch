@@ -523,6 +523,63 @@ mod tests {
         assert_eq!(auth_keys, vec!["sk-channel-a", "sk-channel-b"]);
     }
 
+    #[test]
+    fn channel_key_wildcard_auth_profile_selects_best_enabled_key_for_channel() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        save_claude_provider(&db);
+        db.create_proxy_channel(ProxyChannelWriteRequest {
+            id: Some("channel-auth-wildcard".to_string()),
+            provider_id: "anthropic-main".to_string(),
+            app_type: "claude".to_string(),
+            name: "Wildcard Channel Key Relay".to_string(),
+            base_url: "https://channel-key.example.com/v1".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            auth_profile_ref: Some("channel-key:*".to_string()),
+            ..ProxyChannelWriteRequest::default()
+        })
+        .expect("create wildcard channel");
+        for (key_ref, key_value, status, priority, weight) in [
+            ("disabled-best", "sk-disabled", "disabled", 200, 100),
+            ("primary", "sk-primary", "enabled", 10, 100),
+            ("backup", "sk-backup", "enabled", 100, 50),
+        ] {
+            db.upsert_proxy_channel_key(
+                "channel-auth-wildcard",
+                key_ref,
+                ProxyChannelKeyWriteRequest {
+                    key_value: key_value.to_string(),
+                    status: status.to_string(),
+                    priority,
+                    weight,
+                },
+            )
+            .expect("upsert wildcard channel key");
+        }
+
+        let providers = db.get_all_providers("claude").expect("load providers");
+        let mut plan = route_plan("anthropic-main", "channel-auth-wildcard");
+        plan.selection.channel.auth_profile = Some(auth_profile_ref("channel-key:*"));
+        let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
+        let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
+
+        apply_channel_auth_profile_providers_with_runtime_source(
+            &db,
+            &AppType::Claude,
+            &providers,
+            &mut attempts,
+        )
+        .expect("apply wildcard channel key auth profile");
+
+        assert_eq!(
+            attempts[0]
+                .auth_provider()
+                .settings_config
+                .pointer("/env/ANTHROPIC_API_KEY")
+                .and_then(Value::as_str),
+            Some("sk-backup")
+        );
+    }
+
     fn proxy_request() -> ProxyRequest {
         let mut request = ProxyRequest::new(
             AppKind::Claude,
