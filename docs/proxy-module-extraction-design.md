@@ -1746,6 +1746,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1260. `extract_gemini_model_from_path` 的 test-only adapter re-export 已删除：生产 `response_adapter` 已直接消费 `proxy-core::api::transport`，adapter 自测改为 fully-qualified 调用 owning helper，边界测试防止 Gemini path model extraction 重新作为 `proxy_core_adapter` facade 暴露。
 1261. `claude_api_format_from_metadata` 的 test-only adapter re-export 已删除：`engine/context.rs` 已直接消费 `proxy-core::api::transforms` owning helper，adapter 自测改为 fully-qualified 调用 core，边界测试防止该 Claude metadata format helper 重新暴露为 adapter facade；host-shaped `provider_claude_api_format` wrapper 仍保留在 adapter。
 1262. Codex Responses->Chat gate 的 test-only transport helper facade 已删除：adapter 自测直接调用 `proxy-core::api::transport::{resolve_codex_provider_uses_chat_completions,should_convert_codex_responses_endpoint_to_chat}`，生产 adapter 继续只保留 host provider facts 投影并通过 `core_codex_*` helper 委托，边界测试防止这两个 pure gate helper 重新 re-export。
+1263. Claude 请求/响应 transform 的 test-only adapter re-export 块已删除：adapter 自测和 cfg-test `provider_claude_transform_response` helper 改为 fully-qualified 调用 `proxy-core::api::transforms` owning helper，生产侧继续只暴露 host-shaped `provider_claude_transform_*` wrapper；边界测试防止 OpenAI/Gemini/Responses 纯 transform helper 回流到 adapter facade。
 
 ## 背景
 
