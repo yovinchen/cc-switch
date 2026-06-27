@@ -954,6 +954,7 @@ mod tests {
                 interface_kind: Some("openai_responses".to_string()),
                 public_model: Some("public-sonnet".to_string()),
                 upstream_model: Some("upstream-sonnet".to_string()),
+                pricing_model: Some("sonnet-price".to_string()),
             },
         );
 
@@ -973,7 +974,9 @@ mod tests {
         assert_eq!(active["target"]["providerId"], "a");
         assert_eq!(active["target"]["channelId"], "channel-a");
         assert_eq!(active["target"]["interfaceKind"], "openai_responses");
+        assert_eq!(active["target"]["publicModel"], "public-sonnet");
         assert_eq!(active["target"]["upstreamModel"], "upstream-sonnet");
+        assert_eq!(active["target"]["pricingModel"], "sonnet-price");
         assert!(active.to_string().find("secret-key").is_none());
     }
 
@@ -1398,6 +1401,7 @@ mod tests {
                     interface_kind: Some("openai_responses".to_string()),
                     public_model: Some("runtime-public".to_string()),
                     upstream_model: Some("runtime-upstream".to_string()),
+                    pricing_model: Some("runtime-price".to_string()),
                 },
             );
 
@@ -1422,6 +1426,7 @@ mod tests {
                 || active_route["target"]["interfaceKind"] != "openai_responses"
                 || active_route["target"]["publicModel"] != "runtime-public"
                 || active_route["target"]["upstreamModel"] != "runtime-upstream"
+                || active_route["target"]["pricingModel"] != "runtime-price"
                 || active_route.to_string().contains("provider-secret")
             {
                 return Err(format!("unexpected active current route body: {active_route}"));

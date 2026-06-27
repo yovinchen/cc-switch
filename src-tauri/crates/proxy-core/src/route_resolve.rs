@@ -174,6 +174,7 @@ pub fn resolved_channel_attempt_from_candidate(
         auth_profile_ref: None,
         public_model: candidate.public_model,
         upstream_model: candidate.upstream_model,
+        pricing_model: None,
         header_overrides: Value::Object(Default::default()),
         param_overrides: Value::Object(Default::default()),
         status_code_mapping: Value::Array(Vec::new()),
@@ -204,6 +205,10 @@ pub fn resolved_channel_attempt_from_selection(
             .model_route
             .as_ref()
             .map(|route| route.upstream_model.clone()),
+        pricing_model: selection
+            .model_route
+            .as_ref()
+            .and_then(|route| route.pricing_model.clone()),
         header_overrides: selection.channel.overrides.headers.clone(),
         param_overrides: selection.channel.overrides.params.clone(),
         status_code_mapping: selection.channel.overrides.status_code_mapping.clone(),
@@ -599,7 +604,7 @@ mod tests {
             public_model: "sonnet-public".to_string(),
             upstream_model: "upstream-sonnet".to_string(),
             capabilities: ModelCapabilities::default(),
-            pricing_model: None,
+            pricing_model: Some("sonnet-price".to_string()),
             request_overrides: json!({"temperature": 0.2}),
             response_overrides: json!({"headers": {"x-relay-model": "sonnet"}}),
         };
@@ -715,6 +720,7 @@ mod tests {
             Some("channel-key:relay-a")
         );
         assert_eq!(attempt.status_code_mapping, json!([{"from": 429, "to": 503}]));
+        assert_eq!(attempt.pricing_model.as_deref(), Some("sonnet-price"));
         assert_eq!(attempt.request_overrides, json!({"temperature": 0.2}));
         assert_eq!(
             attempt.response_overrides,

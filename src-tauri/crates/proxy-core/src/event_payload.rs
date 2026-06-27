@@ -69,6 +69,7 @@ pub struct AttemptEventChannel<'a> {
     pub interface_kind: &'a str,
     pub public_model: Option<&'a str>,
     pub upstream_model: Option<&'a str>,
+    pub pricing_model: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,6 +125,12 @@ pub fn build_attempt_event_payload(input: AttemptEventPayloadInput<'_>) -> Value
                 object.insert(
                     "upstreamModel".to_string(),
                     Value::String(upstream_model.to_string()),
+                );
+            }
+            if let Some(pricing_model) = channel.pricing_model {
+                object.insert(
+                    "pricingModel".to_string(),
+                    Value::String(pricing_model.to_string()),
                 );
             }
         }
@@ -239,6 +246,7 @@ mod tests {
                 interface_kind: "openai_responses",
                 public_model: Some("public-sonnet"),
                 upstream_model: Some("upstream-sonnet"),
+                pricing_model: Some("sonnet-price"),
             }),
             error: Some("upstream failed"),
         });
@@ -249,6 +257,7 @@ mod tests {
         assert_eq!(payload["interfaceKind"], "openai_responses");
         assert_eq!(payload["publicModel"], "public-sonnet");
         assert_eq!(payload["upstreamModel"], "upstream-sonnet");
+        assert_eq!(payload["pricingModel"], "sonnet-price");
         assert_eq!(payload["error"], "upstream failed");
     }
 

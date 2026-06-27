@@ -1907,6 +1907,7 @@ mod tests {
             interface_kind: Some("anthropic_messages".to_string()),
             public_model: Some("sonnet".to_string()),
             upstream_model: Some("upstream-sonnet".to_string()),
+            pricing_model: Some("sonnet-price".to_string()),
         });
         let engine = ProxyEngine::new(services);
         let request = ManagementAppPathRequest::from_path("claude").expect("current route request");

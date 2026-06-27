@@ -615,6 +615,7 @@ pub(crate) fn current_route_target_from_forward_attempt(
                     interface_kind: channel.interface_kind.as_str(),
                     public_model: channel.public_model.as_deref(),
                     upstream_model: channel.upstream_model.as_deref(),
+                    pricing_model: channel.pricing_model.as_deref(),
                 }
             }),
         },
@@ -1386,6 +1387,7 @@ pub(crate) fn attempt_event_payload_from_forward_attempt(
         interface_kind: channel.interface_kind.as_str(),
         public_model: channel.public_model.as_deref(),
         upstream_model: channel.upstream_model.as_deref(),
+        pricing_model: channel.pricing_model.as_deref(),
     });
 
     build_attempt_event_payload(AttemptEventPayloadInput {
@@ -10071,26 +10073,64 @@ base_url = "https://api.openai.com/v1"
         );
     }
 
+    fn runtime_route_selection(provider_id: &str, channel_id: &str) -> RouteSelection {
+        let provider = ProviderSpec {
+            id: provider_id.to_string(),
+            name: "Relay".to_string(),
+            kind: ProviderKind::Claude,
+            account_ref: None,
+            metadata: ProviderMetadata::default(),
+        };
+        let channel = ChannelSpec {
+            id: channel_id.to_string(),
+            provider_id: provider_id.to_string(),
+            app: AppKind::Claude,
+            name: "Relay A".to_string(),
+            status: ChannelStatus::Enabled,
+            endpoint: UpstreamEndpoint {
+                base_url: "https://relay.example.com/v1".to_string(),
+                path_template: None,
+                api_version: None,
+                timeout_profile: None,
+            },
+            interface: InterfaceKind::OpenAiResponses,
+            auth_profile: None,
+            models: Vec::new(),
+            groups: vec!["default".to_string()],
+            priority: 100,
+            weight: 50,
+            retry_policy: RetryPolicy::default(),
+            health_policy: ChannelHealthPolicy::default(),
+            overrides: ChannelOverrides::default(),
+            tags: Vec::new(),
+            metadata: json!({}),
+            source_ref: None,
+            needs_review: false,
+            review_reasons: Vec::new(),
+        };
+        let model_route = ProxyCoreModelRoute {
+            public_model: "public-sonnet".to_string(),
+            upstream_model: "upstream-sonnet".to_string(),
+            capabilities: ProxyCoreModelCapabilities::default(),
+            pricing_model: Some("sonnet-price".to_string()),
+            request_overrides: json!({}),
+            response_overrides: json!({}),
+        };
+
+        RouteSelection {
+            provider,
+            channel,
+            model_route: Some(model_route),
+            inbound_interface: InterfaceKind::AnthropicMessages,
+            outbound_interface: InterfaceKind::OpenAiResponses,
+        }
+    }
+
     #[tokio::test]
     async fn forwarder_runtime_state_source_emits_attempt_phase_events() {
         let provider = Provider::with_id("relay".to_string(), "Relay".to_string(), json!({}), None);
-        let attempt = ForwardAttempt::from_channel(
-            &AppType::Claude,
-            &provider,
-            ChannelRouteCandidate {
-                channel_id: "channel-a".to_string(),
-                provider_id: provider.id.clone(),
-                channel_name: "Relay A".to_string(),
-                base_url: "https://relay.example.com/v1".to_string(),
-                interface_kind: "openai_responses".to_string(),
-                public_model: Some("public-sonnet".to_string()),
-                upstream_model: Some("upstream-sonnet".to_string()),
-                route_group: "default".to_string(),
-                priority: 100,
-                weight: 50,
-                source_kind: "manual".to_string(),
-            },
-        );
+        let selection = runtime_route_selection(&provider.id, "channel-a");
+        let attempt = ForwardAttempt::from_core_selection(&AppType::Claude, &provider, &selection);
         let events = Arc::new(ProxyEventBus::default());
         let mut subscriber = events.subscribe();
         let source = CcSwitchForwarderRuntimeStateSource::new(
@@ -10104,12 +10144,14 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(started.event, "channel_attempt");
         assert_eq!(started.payload["requestId"], "req-1");
         assert_eq!(started.payload["channelId"], "channel-a");
+        assert_eq!(started.payload["pricingModel"], "sonnet-price");
         assert!(started.payload.get("error").is_none());
 
         source.emit_attempt_succeeded("req-1", "claude", &attempt);
         let succeeded = subscriber.recv().await.expect("succeeded event");
         assert_eq!(succeeded.event, "channel_succeeded");
         assert_eq!(succeeded.payload["channelId"], "channel-a");
+        assert_eq!(succeeded.payload["pricingModel"], "sonnet-price");
         assert!(succeeded.payload.get("error").is_none());
 
         source.emit_attempt_failed_for_error(
@@ -10121,29 +10163,15 @@ base_url = "https://api.openai.com/v1"
         let failed = subscriber.recv().await.expect("failed event");
         assert_eq!(failed.event, "channel_failed");
         assert_eq!(failed.payload["channelId"], "channel-a");
+        assert_eq!(failed.payload["pricingModel"], "sonnet-price");
         assert_eq!(failed.payload["error"], "请求转发失败: upstream failed");
     }
 
     #[tokio::test]
     async fn forwarder_runtime_state_source_records_active_route_target_event() {
         let provider = Provider::with_id("relay".to_string(), "Relay".to_string(), json!({}), None);
-        let attempt = ForwardAttempt::from_channel(
-            &AppType::Claude,
-            &provider,
-            ChannelRouteCandidate {
-                channel_id: "channel-a".to_string(),
-                provider_id: provider.id.clone(),
-                channel_name: "Relay A".to_string(),
-                base_url: "https://relay.example.com/v1".to_string(),
-                interface_kind: "openai_responses".to_string(),
-                public_model: Some("public-sonnet".to_string()),
-                upstream_model: Some("upstream-sonnet".to_string()),
-                route_group: "default".to_string(),
-                priority: 100,
-                weight: 50,
-                source_kind: "manual".to_string(),
-            },
-        );
+        let selection = runtime_route_selection(&provider.id, "channel-a");
+        let attempt = ForwardAttempt::from_core_selection(&AppType::Claude, &provider, &selection);
         let current_providers = Arc::new(RwLock::new(HashMap::new()));
         let events = Arc::new(ProxyEventBus::default());
         let mut subscriber = events.subscribe();
@@ -10165,6 +10193,7 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(target.channel_id.as_deref(), Some("channel-a"));
         assert_eq!(target.interface_kind.as_deref(), Some("openai_responses"));
         assert_eq!(target.upstream_model.as_deref(), Some("upstream-sonnet"));
+        assert_eq!(target.pricing_model.as_deref(), Some("sonnet-price"));
 
         let route_event = subscriber.recv().await.expect("route selected event");
         assert_eq!(route_event.event, "route_selected");
@@ -10172,6 +10201,7 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(route_event.payload["providerId"], "relay");
         assert_eq!(route_event.payload["channelId"], "channel-a");
         assert_eq!(route_event.payload["interfaceKind"], "openai_responses");
+        assert_eq!(route_event.payload["pricingModel"], "sonnet-price");
     }
 
     #[tokio::test]
@@ -13261,6 +13291,7 @@ base_url = "https://api.openai.com/v1"
             interface_kind: Some("anthropic_messages".to_string()),
             public_model: Some("sonnet-public".to_string()),
             upstream_model: Some("upstream-sonnet".to_string()),
+            pricing_model: Some("sonnet-price".to_string()),
         };
         assert_eq!(
             serde_json::to_value(target).expect("serialize target"),
@@ -13272,7 +13303,8 @@ base_url = "https://api.openai.com/v1"
                 "channelName": "Channel A",
                 "interfaceKind": "anthropic_messages",
                 "publicModel": "sonnet-public",
-                "upstreamModel": "upstream-sonnet"
+                "upstreamModel": "upstream-sonnet",
+                "pricingModel": "sonnet-price"
             })
         );
 
@@ -13282,6 +13314,7 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(provider_only.provider_name, "Provider B");
         assert!(provider_only.channel_id.is_none());
         assert!(provider_only.interface_kind.is_none());
+        assert!(provider_only.pricing_model.is_none());
     }
 
     #[test]

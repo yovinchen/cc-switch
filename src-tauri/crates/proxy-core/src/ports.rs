@@ -5332,6 +5332,8 @@ pub struct CurrentRouteTarget {
     pub public_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upstream_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pricing_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5341,6 +5343,7 @@ pub struct CurrentRouteChannelTargetInput<'a> {
     pub interface_kind: &'a str,
     pub public_model: Option<&'a str>,
     pub upstream_model: Option<&'a str>,
+    pub pricing_model: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5369,6 +5372,9 @@ pub fn current_route_target_from_input(input: CurrentRouteTargetInput<'_>) -> Cu
         upstream_model: input
             .channel
             .and_then(|channel| channel.upstream_model.map(str::to_string)),
+        pricing_model: input
+            .channel
+            .and_then(|channel| channel.pricing_model.map(str::to_string)),
     }
 }
 
@@ -7401,6 +7407,7 @@ mod tests {
                 interface_kind: None,
                 public_model: None,
                 upstream_model: None,
+                pricing_model: None,
             }],
         });
 
@@ -7566,6 +7573,7 @@ mod tests {
                     interface_kind: None,
                     public_model: None,
                     upstream_model: None,
+                    pricing_model: None,
                 },
                 CurrentRouteTarget {
                     app_type: "claude".to_string(),
@@ -7576,6 +7584,7 @@ mod tests {
                     interface_kind: None,
                     public_model: None,
                     upstream_model: None,
+                    pricing_model: None,
                 },
             ],
         );
@@ -11274,6 +11283,7 @@ GEMINI_API_KEY=sk-test123
                 interface_kind: Some("openai_responses".to_string()),
                 public_model: Some("public-sonnet".to_string()),
                 upstream_model: Some("upstream-sonnet".to_string()),
+                pricing_model: Some("sonnet-price".to_string()),
             }),
             Some(CurrentRouteProviderSummaryInput::new(
                 "provider-a",
@@ -11294,6 +11304,7 @@ GEMINI_API_KEY=sk-test123
         assert_eq!(value["target"]["interfaceKind"], "openai_responses");
         assert_eq!(value["target"]["publicModel"], "public-sonnet");
         assert_eq!(value["target"]["upstreamModel"], "upstream-sonnet");
+        assert_eq!(value["target"]["pricingModel"], "sonnet-price");
     }
 
     #[test]
@@ -11308,6 +11319,7 @@ GEMINI_API_KEY=sk-test123
                 interface_kind: "openai_responses",
                 public_model: Some("public-sonnet"),
                 upstream_model: Some("upstream-sonnet"),
+                pricing_model: Some("sonnet-price"),
             }),
         });
 
@@ -11319,6 +11331,7 @@ GEMINI_API_KEY=sk-test123
         assert_eq!(target.interface_kind.as_deref(), Some("openai_responses"));
         assert_eq!(target.public_model.as_deref(), Some("public-sonnet"));
         assert_eq!(target.upstream_model.as_deref(), Some("upstream-sonnet"));
+        assert_eq!(target.pricing_model.as_deref(), Some("sonnet-price"));
 
         let provider_only = current_route_target_from_input(CurrentRouteTargetInput {
             app_type: "codex",
@@ -11331,6 +11344,7 @@ GEMINI_API_KEY=sk-test123
         assert_eq!(provider_only.provider_id, "provider-b");
         assert!(provider_only.channel_id.is_none());
         assert!(provider_only.interface_kind.is_none());
+        assert!(provider_only.pricing_model.is_none());
     }
 
     #[test]

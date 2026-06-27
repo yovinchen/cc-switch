@@ -162,6 +162,7 @@ impl ProviderSource for ExternalRelayServices {
                 interface_kind: Some("anthropic".to_string()),
                 public_model: Some("sonnet".to_string()),
                 upstream_model: Some("relay-sonnet".to_string()),
+                pricing_model: Some("relay-sonnet-price".to_string()),
             }))
         })
     }
@@ -646,6 +647,7 @@ impl RuntimeStatusSource for ExternalRelayServices {
                     interface_kind: Some("anthropic".to_string()),
                     public_model: Some("sonnet".to_string()),
                     upstream_model: Some("relay-sonnet".to_string()),
+                    pricing_model: Some("relay-sonnet-price".to_string()),
                 }],
                 ..ProxyRuntimeStatus::default()
             })

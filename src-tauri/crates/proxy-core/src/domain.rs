@@ -1273,6 +1273,8 @@ pub struct ResolvedChannelAttempt {
     pub public_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upstream_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pricing_model: Option<String>,
     #[serde(default)]
     pub header_overrides: Value,
     #[serde(default)]
@@ -2582,6 +2584,7 @@ mod tests {
                 auth_profile_ref: None,
                 public_model: None,
                 upstream_model: None,
+                pricing_model: None,
                 header_overrides: json!({}),
                 param_overrides: json!({}),
                 status_code_mapping: json!([]),
@@ -2766,6 +2769,7 @@ mod tests {
                 auth_profile_ref: None,
                 public_model: Some("sonnet-public".to_string()),
                 upstream_model: Some("sonnet-upstream".to_string()),
+                pricing_model: Some("sonnet-price".to_string()),
                 header_overrides: Value::Object(Default::default()),
                 param_overrides: Value::Object(Default::default()),
                 status_code_mapping: Value::Array(Vec::new()),
@@ -3150,6 +3154,7 @@ mod tests {
             auth_profile_ref: Some("provider:codex:relay".to_string()),
             public_model: Some("gpt-public".to_string()),
             upstream_model: Some("gpt-upstream".to_string()),
+            pricing_model: Some("gpt-price".to_string()),
             header_overrides: json!({ "x-route": "a" }),
             param_overrides: json!({ "temperature": 0.2 }),
             status_code_mapping: json!([{ "from": 429, "to": 503 }]),

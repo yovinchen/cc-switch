@@ -1164,6 +1164,7 @@ mod tests {
                 auth_profile_ref: None,
                 public_model: Some("sonnet".to_string()),
                 upstream_model: Some("upstream-sonnet".to_string()),
+                pricing_model: None,
                 header_overrides: json!({}),
                 param_overrides: json!({}),
                 status_code_mapping: json!([]),
