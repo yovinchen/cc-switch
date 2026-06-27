@@ -1782,6 +1782,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1296. `transport/http/server` 生产入口不再通过 `proxy_core_adapter` 获取运行态 DTO：`CircuitBreakerConfig`、`CircuitBreakerStats` 直接来自 `proxy-core::api::config`，`ProxyConfig`、`ProxyRuntimeStatus`、`ProxyServerInfo` 直接来自 `proxy-core::api::ports`；adapter 仍只保留 server lifecycle、runtime status/event 与 circuit-breaker side-effect helper，边界测试防止纯 runtime contracts 经 adapter alias 回流。
 1297. `host/cc_switch/forwarder_runtime_state_source` 不再通过 `proxy_core_adapter` 获取事件/运行态 DTO：`AttemptEventPhase` 直接来自 `proxy-core::api::events`，`CurrentRouteTarget` 与 `ProxyRuntimeStatus` 直接来自 `proxy-core::api::ports`；adapter 仍保留 forwarder runtime side-effect helper 与 failure projection，边界测试防止 runtime state source contracts 经 adapter alias 回流。
 1298. `host/cc_switch/live_takeover` 不再通过 `proxy_core_adapter` 获取基础运行态 DTO：`ProxyConfig` 与 `ProxyRuntimeStatus` 直接来自 `proxy-core::api::ports`；takeover DB/projection/server helper 仍保留在 adapter 边界，专项边界测试防止 live takeover 重新通过 adapter alias 获取这两个 runtime contracts。
+1299. `host/cc_switch/live_takeover` 继续收窄 config/ports DTO import：`CircuitBreakerConfig` 与 `CircuitBreakerStats` 直接来自 `proxy-core::api::config`，`ProxyServerInfo` 与 `ProxyTakeoverStatus` 直接来自 `proxy-core::api::ports`；live takeover 边界测试扩展覆盖这些 DTO，防止它们经 adapter alias 回流。
 
 ## 背景
 
