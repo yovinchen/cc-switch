@@ -3,10 +3,11 @@ use serde_json::Value;
 use std::sync::Arc;
 
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
+use crate::proxy_core::api::transforms::GeminiShadowStore;
 use crate::proxy_core_adapter::{
     provider_claude_transform_request_for_api_format, ForwarderClaudeProtocolTransformInput,
     ForwarderCodexChatProtocolEnrichmentInput, ForwarderProtocolStateSource,
-    ForwarderProtocolStateSourceRef, GeminiShadowStore,
+    ForwarderProtocolStateSourceRef,
 };
 
 pub(crate) struct CcSwitchForwarderProtocolStateSource {

@@ -2052,6 +2052,14 @@ fn is_allowed_codex_chat_history_transform_core_import(relative: &str, code: &st
             == "use crate::proxy_core::api::transforms::{CodexChatHistorySseRecord, CodexChatHistoryState};"
 }
 
+fn is_allowed_gemini_shadow_transform_core_import(relative: &str, code: &str) -> bool {
+    matches!(
+        relative,
+        "src/proxy/provider/claude.rs"
+            | "src/proxy/host/cc_switch/forwarder_protocol_state_source.rs"
+    ) && code.trim() == "use crate::proxy_core::api::transforms::GeminiShadowStore;"
+}
+
 #[test]
 fn host_code_uses_proxy_core_through_adapter_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -2108,6 +2116,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
                     && !is_allowed_circuit_breaker_config_core_import(&relative, code)
                     && !is_allowed_codex_chat_history_transform_core_import(&relative, code)
+                    && !is_allowed_gemini_shadow_transform_core_import(&relative, code)
                 {
                     violations.push(format!(
                         "{}:{} contains direct proxy-core marker `{}`",
@@ -5434,6 +5443,45 @@ fn proxy_core_adapter_does_not_export_copilot_classification_alias() {
         ),
         "proxy_core_adapter should not expose CopilotClassification as a transport DTO alias; adapter internals should import it from proxy_core::api::transport"
     );
+}
+
+#[test]
+fn proxy_core_adapter_does_not_export_gemini_shadow_store_alias() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let provider_source = fs::read_to_string(manifest_dir.join("src/proxy/provider/claude.rs"))
+        .expect("read provider/claude.rs");
+    let protocol_source = fs::read_to_string(
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_protocol_state_source.rs"),
+    )
+    .expect("read forwarder_protocol_state_source.rs");
+    let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
+
+    assert!(
+        !adapter_source
+            .contains("pub(crate) type GeminiShadowStore = crate::proxy_core::api::transforms::GeminiShadowStore;"),
+        "proxy_core_adapter should not expose GeminiShadowStore as a transform state alias"
+    );
+
+    for (label, source) in [
+        ("provider/claude", provider_source.as_str()),
+        ("forwarder_protocol_state_source", protocol_source.as_str()),
+        ("proxy_core_host", host_source.as_str()),
+    ] {
+        assert!(
+            source.contains("use crate::proxy_core::api::transforms::GeminiShadowStore;"),
+            "{label} should import GeminiShadowStore directly from proxy_core transforms"
+        );
+        let adapter_imports = proxy_core_adapter_import_identifiers(source);
+        assert!(
+            !adapter_imports
+                .iter()
+                .any(|identifier| identifier == "GeminiShadowStore"),
+            "{label} must not import GeminiShadowStore through proxy_core_adapter"
+        );
+    }
 }
 
 #[test]

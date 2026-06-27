@@ -20,10 +20,11 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::api::auth::ProviderAuthInfo;
 #[cfg(test)]
 use crate::proxy_core::api::auth::ProviderAuthStrategy;
+use crate::proxy_core::api::transforms::GeminiShadowStore;
 use crate::proxy_core_adapter::{
     build_claude_upstream_url, provider_claude_api_format, provider_claude_auth_headers,
     provider_claude_auth_info, provider_claude_transform_request_for_api_format,
-    provider_needs_claude_transform, required_claude_provider_base_url, GeminiShadowStore,
+    provider_needs_claude_transform, required_claude_provider_base_url,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{

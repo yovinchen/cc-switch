@@ -32,7 +32,7 @@ use crate::proxy_core::api::routing::{
 use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::{
     AnthropicToolSchemaHints, CodexChatReasoningOptions, CodexChatReasoningProfile,
-    CodexToolContext,
+    CodexToolContext, GeminiShadowStore,
 };
 use crate::settings::CustomEndpoint;
 use bytes::Bytes;
@@ -845,7 +845,6 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
         .await;
 }
 
-pub(crate) type GeminiShadowStore = crate::proxy_core::api::transforms::GeminiShadowStore;
 pub(crate) type ForwarderMaybeCopilotAuthOptimizationInput<'a> =
     crate::proxy_core::api::transport::OptionalCopilotAuthOptimizationPreparationInput<'a>;
 pub(crate) type ForwarderAuthHeaders = crate::proxy_core::api::transport::ForwarderAuthHeaders;

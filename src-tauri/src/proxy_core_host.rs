@@ -37,11 +37,13 @@ use crate::proxy_core::api::routing::{
     ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RouteSelection, DEFAULT_ROUTE_GROUP,
 };
 #[cfg(test)]
+use crate::proxy_core::api::transforms::GeminiShadowStore;
+#[cfg(test)]
 use crate::proxy_core::api::transport::ProxyBody;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     forward_result_to_proxy_result, management_route_response_from_router_source, AppKind,
-    AuthProvider, GeminiShadowStore, ProxyCoreEvent, ProxyRequest, ProxyServices, RoutePlan,
+    AuthProvider, ProxyCoreEvent, ProxyRequest, ProxyServices, RoutePlan,
 };
 #[cfg(test)]
 use serde_json::Value;
