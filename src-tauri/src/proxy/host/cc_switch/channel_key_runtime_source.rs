@@ -1,7 +1,5 @@
 use crate::database::{Database, ProxyChannelKeyRecord};
 use crate::proxy_core::api::errors::ProxyCoreResult;
-#[cfg(test)]
-use crate::proxy_core::api::management::select_enabled_channel_key_runtime_candidate;
 use crate::proxy_core::api::management::{
     channel_key_runtime_candidate_from_input, select_channel_key_runtime_candidate,
     ChannelKeyRuntimeCandidate, ChannelKeyRuntimeCandidateInput,
@@ -22,19 +20,6 @@ pub(crate) fn proxy_channel_key_record_to_runtime_candidate(
         weight: key.weight,
         last_failure_at: key.last_failure_at,
     })
-}
-
-#[cfg(test)]
-pub(crate) fn select_enabled_proxy_channel_key_runtime_candidate<I>(
-    keys: I,
-) -> Option<ChannelKeyRuntimeCandidate>
-where
-    I: IntoIterator<Item = ProxyChannelKeyRecord>,
-{
-    select_enabled_channel_key_runtime_candidate(
-        keys.into_iter()
-            .map(proxy_channel_key_record_to_runtime_candidate),
-    )
 }
 
 fn select_proxy_channel_key_runtime_candidate<I>(

@@ -7,10 +7,6 @@
 use crate::app_config::AppType;
 use crate::database::{lock_conn, to_json_string, Database};
 use crate::error::AppError;
-#[cfg(test)]
-use crate::proxy::host::cc_switch::channel_key_runtime_source::select_enabled_proxy_channel_key_runtime_candidate;
-#[cfg(test)]
-use crate::proxy_core_adapter::ChannelKeyRuntimeCandidate;
 use crate::proxy_core_adapter::{
     channel_health_update_from_input, legacy_channel_migration_preview_from_providers,
     normalize_channel_base_url as normalize_base_url,
@@ -657,17 +653,6 @@ impl Database {
             )
             .map_err(|e| AppError::Database(format!("删除 proxy channel key 失败: {e}")))?;
         Ok(deleted > 0)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn get_enabled_proxy_channel_key(
-        &self,
-        channel_id: &str,
-        key_ref: &str,
-    ) -> Result<Option<ChannelKeyRuntimeCandidate>, AppError> {
-        Ok(select_enabled_proxy_channel_key_runtime_candidate(
-            self.get_proxy_channel_key(channel_id, key_ref)?,
-        ))
     }
 
     pub(crate) fn get_proxy_channel_app_type(
@@ -1417,13 +1402,12 @@ mod tests {
 
         assert_eq!(key.key_value, "sk-channel-secret");
         assert_eq!(key.weight, 80);
-        assert_eq!(
-            db.get_enabled_proxy_channel_key(&created.id, "primary")
-                .expect("read enabled key")
-                .as_ref()
-                .map(|key| key.key_value.as_str()),
-            Some("sk-channel-secret")
-        );
+        let stored_key = db
+            .get_proxy_channel_key(&created.id, "primary")
+            .expect("read stored key")
+            .expect("stored key");
+        assert_eq!(stored_key.status, "enabled");
+        assert_eq!(stored_key.key_value, "sk-channel-secret");
         let serialized = serde_json::to_value(&key).expect("serialize key");
         assert!(serialized.get("keyValue").is_none());
 
@@ -1471,10 +1455,11 @@ mod tests {
         assert_eq!(patched.status, "disabled");
         assert_eq!(patched.priority, 5);
         assert_eq!(patched.weight, 20);
-        assert!(db
-            .get_enabled_proxy_channel_key(&created.id, "primary")
-            .expect("read patched disabled key")
-            .is_none());
+        let patched_stored_key = db
+            .get_proxy_channel_key(&created.id, "primary")
+            .expect("read patched key")
+            .expect("patched key");
+        assert_eq!(patched_stored_key.status, "disabled");
 
         assert!(db
             .list_proxy_channel_keys("missing-channel")
@@ -1515,10 +1500,11 @@ mod tests {
             },
         )
         .expect("disable channel key");
-        assert!(db
-            .get_enabled_proxy_channel_key(&created.id, "primary")
+        let disabled_key = db
+            .get_proxy_channel_key(&created.id, "primary")
             .expect("read disabled key")
-            .is_none());
+            .expect("disabled key");
+        assert_eq!(disabled_key.status, "disabled");
     }
 
     #[test]

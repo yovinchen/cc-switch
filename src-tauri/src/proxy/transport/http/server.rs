@@ -2468,10 +2468,11 @@ mod tests {
         assert_eq!(patched_key["status"], "disabled");
         assert_eq!(patched_key["weight"], 20);
         assert!(patched_key.get("keyValue").is_none());
-        assert!(db
-            .get_enabled_proxy_channel_key(&channel_id, "primary")
+        let stored_key = db
+            .get_proxy_channel_key(&channel_id, "primary")
             .unwrap()
-            .is_none());
+            .expect("stored channel key");
+        assert_eq!(stored_key.status, "disabled");
 
         let delete_key_response = Service::call(
             &mut router,

@@ -2128,10 +2128,6 @@ pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecor
 #[cfg(test)]
 use crate::proxy_core::api::management::StreamCheckResult;
 #[cfg(test)]
-pub(crate) type ChannelKeyRuntimeCandidate =
-    crate::proxy_core::api::management::ChannelKeyRuntimeCandidate;
-
-#[cfg(test)]
 pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
 pub(crate) type LegacyChannelModelProjection =
     crate::proxy_core::api::routing::LegacyChannelModelProjection;

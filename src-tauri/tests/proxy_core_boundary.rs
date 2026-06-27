@@ -3291,7 +3291,6 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
         runtime_source.contains("use crate::proxy_core::api::management::{")
             && runtime_source.contains("channel_key_runtime_candidate_from_input")
             && runtime_source.contains("select_channel_key_runtime_candidate")
-            && runtime_source.contains("select_enabled_channel_key_runtime_candidate")
             && runtime_source.contains("ChannelKeyRuntimeCandidateInput"),
         "channel key runtime source should import pure candidate projection/selection directly from proxy_core::api::management"
     );
@@ -3319,8 +3318,8 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
         "DAO should expose a runtime-only channel key candidate list separate from management key listing"
     );
     assert!(
-        dao_source.contains("#[cfg(test)]\n    pub(crate) fn get_enabled_proxy_channel_key"),
-        "DAO enabled-key selector should remain test-only while production runtime selection lives in the host runtime source"
+        !dao_source.contains("fn get_enabled_proxy_channel_key"),
+        "DAO should not expose enabled-key selectors; runtime selection belongs in the host source and proxy-core"
     );
 
     let forbidden_markers = ["key.status == \"enabled\"", "key.status != \"enabled\""];
@@ -12431,6 +12430,10 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&source);
     let runtime_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/channel_key_runtime_source.rs");
     let runtime_source =
@@ -12495,6 +12498,10 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     assert!(
         !adapter_core_ports_import.contains("ChannelKeyRuntimeSource"),
         "proxy_core_adapter should consume ChannelKeyRuntimeSource internally, not re-export the port trait"
+    );
+    assert!(
+        !adapter_runtime_source.contains("type ChannelKeyRuntimeCandidate"),
+        "proxy_core_adapter should not re-export channel-key runtime candidate DTOs as adapter aliases"
     );
     assert!(
         runtime_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
