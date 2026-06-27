@@ -6603,6 +6603,7 @@ mod tests {
         required_provider_base_url, sanitize_claude_settings_for_live,
         select_channel_key_runtime_candidate,
         select_channel_key_runtime_candidate_with_failure_cooldown,
+        select_channel_key_runtime_candidate_with_weighted_roll,
         select_enabled_channel_key_runtime_candidate,
         select_enabled_channel_key_runtime_candidate_with_failure_cooldown,
         serialize_gemini_env_file, DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,

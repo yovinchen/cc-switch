@@ -1397,6 +1397,20 @@ pub struct RouteRequest<'a> {
 }
 
 pub fn build_route_plan(request: RouteRequest<'_>) -> ProxyCoreResult<RoutePlan> {
+    build_route_plan_inner(request, None)
+}
+
+pub fn build_route_plan_with_weighted_roll(
+    request: RouteRequest<'_>,
+    weighted_roll: u64,
+) -> ProxyCoreResult<RoutePlan> {
+    build_route_plan_inner(request, Some(weighted_roll))
+}
+
+fn build_route_plan_inner(
+    request: RouteRequest<'_>,
+    weighted_roll: Option<u64>,
+) -> ProxyCoreResult<RoutePlan> {
     let mut selections = Vec::new();
     let requested_group = request
         .request
@@ -1455,6 +1469,15 @@ pub fn build_route_plan(request: RouteRequest<'_>) -> ProxyCoreResult<RoutePlan>
             .then_with(|| left.channel.id.cmp(&right.channel.id))
     });
 
+    if let Some(weighted_roll) = weighted_roll {
+        if let Some(selected_index) =
+            select_route_selection_index_with_weighted_roll(&selections, weighted_roll)
+        {
+            let selected = selections.remove(selected_index);
+            selections.insert(0, selected);
+        }
+    }
+
     let selection = selections
         .first()
         .cloned()
@@ -1474,6 +1497,55 @@ pub fn build_route_plan(request: RouteRequest<'_>) -> ProxyCoreResult<RoutePlan>
         selections,
         attempts,
     })
+}
+
+fn select_route_selection_index_with_weighted_roll(
+    selections: &[RouteSelection],
+    weighted_roll: u64,
+) -> Option<usize> {
+    let best_priority = selections.first()?.channel.priority;
+    let mut candidate_indexes = selections
+        .iter()
+        .enumerate()
+        .filter_map(|(index, selection)| {
+            (selection.channel.priority == best_priority).then_some(index)
+        })
+        .collect::<Vec<_>>();
+    candidate_indexes.sort_by(|left, right| {
+        route_selection_weighted_roll_order(&selections[*left], &selections[*right])
+    });
+
+    let total_weight = candidate_indexes
+        .iter()
+        .map(|index| u128::from(selections[*index].channel.weight))
+        .sum::<u128>();
+    if total_weight == 0 {
+        return candidate_indexes.first().copied();
+    }
+
+    let mut roll = u128::from(weighted_roll) % total_weight;
+    for index in candidate_indexes {
+        let weight = u128::from(selections[index].channel.weight);
+        if weight == 0 {
+            continue;
+        }
+        if roll < weight {
+            return Some(index);
+        }
+        roll -= weight;
+    }
+
+    None
+}
+
+fn route_selection_weighted_roll_order(
+    left: &RouteSelection,
+    right: &RouteSelection,
+) -> std::cmp::Ordering {
+    left.channel
+        .name
+        .cmp(&right.channel.name)
+        .then_with(|| left.channel.id.cmp(&right.channel.id))
 }
 
 #[derive(Debug)]
@@ -2295,6 +2367,85 @@ mod tests {
                 .map(|attempt| attempt.channel_id.as_str())
                 .collect::<Vec<_>>(),
             vec!["channel-heavier", "channel-high", "channel-low"]
+        );
+    }
+
+    #[test]
+    fn build_route_plan_with_weighted_roll_promotes_selected_top_priority_channel() {
+        fn channel(id: &str, provider_id: &str, priority: i64, weight: u32) -> ChannelSpec {
+            let mut channel = test_channel(ChannelStatus::Enabled);
+            channel.id = id.to_string();
+            channel.name = id.to_string();
+            channel.provider_id = provider_id.to_string();
+            channel.priority = priority;
+            channel.weight = weight;
+            channel
+        }
+
+        let providers = vec![
+            test_provider("provider-alpha"),
+            test_provider("provider-beta"),
+            test_provider("provider-low"),
+        ];
+        let channels = vec![
+            channel("alpha", "provider-alpha", 100, 1),
+            channel("beta", "provider-beta", 100, 3),
+            channel("lower-priority", "provider-low", 10, 100),
+        ];
+        let proxy_request = ProxyRequest::new(
+            AppKind::Claude,
+            Method::POST,
+            "/v1/messages",
+            InterfaceKind::AnthropicMessages,
+            ProxyBody::Empty,
+        );
+
+        let alpha_plan = build_route_plan_with_weighted_roll(
+            RouteRequest {
+                request: &proxy_request,
+                providers: &providers,
+                channels: &channels,
+                policy: None,
+            },
+            0,
+        )
+        .expect("alpha route plan");
+        assert_eq!(alpha_plan.selection.channel.id, "alpha");
+        assert_eq!(
+            alpha_plan
+                .selections
+                .iter()
+                .map(|selection| selection.channel.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["alpha", "beta", "lower-priority"]
+        );
+        assert_eq!(
+            alpha_plan
+                .attempts
+                .iter()
+                .map(|attempt| attempt.channel_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["alpha", "beta", "lower-priority"]
+        );
+
+        let beta_plan = build_route_plan_with_weighted_roll(
+            RouteRequest {
+                request: &proxy_request,
+                providers: &providers,
+                channels: &channels,
+                policy: None,
+            },
+            1,
+        )
+        .expect("beta route plan");
+        assert_eq!(beta_plan.selection.channel.id, "beta");
+        assert_eq!(
+            beta_plan
+                .attempts
+                .iter()
+                .map(|attempt| attempt.channel_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["beta", "alpha", "lower-priority"]
         );
     }
 

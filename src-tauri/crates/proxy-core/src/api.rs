@@ -278,8 +278,8 @@ pub mod routing {
         ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, ResolvedChannelAttempt, RoutePlan,
         RoutePlanProviderMatch, RoutePolicy, RouteRequest, RouteSelection, DEFAULT_ROUTE_GROUP,
         auth_channel_spec_from_attempt, default_auth_interface_for_app_kind,
-        forwarding_requires_runtime_error, forwarding_requires_runtime_error_message,
-        interfaces_compatible, build_route_plan, route_group_matches,
+        forwarding_requires_runtime_error, forwarding_requires_runtime_error_message, build_route_plan,
+        build_route_plan_with_weighted_roll, interfaces_compatible, route_group_matches,
         route_plan_no_matching_host_providers_error,
         route_plan_no_matching_host_providers_error_message, route_plan_provider_ids,
         route_plan_provider_match,
@@ -364,11 +364,11 @@ pub mod prelude {
         ResponseRuntimePolicy,
     };
     pub use super::domain::{
-        build_route_plan, channel_spec_from_input, provider_adapter_kind_for_app, AppKind,
-        AppProviderAdapterKind, AuthProfileRef, ChannelAttemptPlan, ChannelAttemptResult,
-        ChannelSpecInput, InterfaceKind, ModelRoute, ModelRouteInput, ProviderKind, ProviderSpec,
-        ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest, RouteSelection,
-        UsageTokens,
+        build_route_plan, build_route_plan_with_weighted_roll, channel_spec_from_input,
+        provider_adapter_kind_for_app, AppKind, AppProviderAdapterKind, AuthProfileRef,
+        ChannelAttemptPlan, ChannelAttemptResult, ChannelSpecInput, InterfaceKind, ModelRoute,
+        ModelRouteInput, ProviderKind, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan,
+        RoutePolicy, RouteRequest, RouteSelection, UsageTokens,
     };
     pub use super::engine::ProxyEngine;
     pub use super::errors::{ProxyCoreError, ProxyCoreResult};

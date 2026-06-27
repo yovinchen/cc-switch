@@ -16412,7 +16412,8 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
     assert!(
         source.contains("pub(crate) struct CcSwitchRouteResolver")
             && source.contains("impl RouteResolver for CcSwitchRouteResolver")
-            && source.contains("build_route_plan(request)")
+            && source.contains("build_route_plan_with_weighted_roll")
+            && source.contains("route_plan_weighted_roll()")
             && source
                 .contains("management_route_response_from_router_source(&self.router, request)"),
         "CC Switch route resolver should live in host/cc_switch/route_resolver.rs"
@@ -16423,7 +16424,9 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
                 "use crate::proxy_core::api::management::{RouteResolveRequest, RouteResolveResponse};"
             )
             && source.contains("use crate::proxy_core::api::ports::RouteResolver;")
-            && source.contains("use crate::proxy_core::api::routing::{build_route_plan, RoutePlan};")
+            && source.contains(
+                "use crate::proxy_core::api::routing::{build_route_plan_with_weighted_roll, RoutePlan};"
+            )
             && source.contains("pub(crate) use crate::proxy_core::api::routing::RouteRequest;"),
         "CC Switch route resolver should import route contracts directly from proxy_core"
     );
@@ -16436,6 +16439,7 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
         "RouteResolveRequest",
         "RouteResolveResponse",
         "RouteResolver",
+        "build_route_plan_with_weighted_roll",
         "route_plan_from_request",
     ] {
         assert!(
