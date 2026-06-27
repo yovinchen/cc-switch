@@ -279,10 +279,6 @@ use crate::proxy_core::api::ports::{
     provider_non_codex_credential_values_from_settings as core_provider_non_codex_credential_values_from_settings,
     CodexCredentialParts,
 };
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::ports::{
-    provider_credential_issue_spec, ProviderCredentialIssue,
-};
 use crate::proxy_core::api::ports::{GeminiAuthType, GeminiAuthTypeInput};
 
 pub(crate) fn record_forward_success_status(
@@ -1875,14 +1871,34 @@ pub(crate) fn provider_switch_should_mark_live_config_managed(
 }
 
 #[cfg(test)]
+fn provider_credential_issue_to_app_error(
+    issue: crate::proxy_core::api::ports::ProviderCredentialIssue,
+) -> AppError {
+    let spec = crate::proxy_core::api::ports::provider_credential_issue_spec(issue);
+    AppError::localized(spec.key, spec.zh, spec.en)
+}
+
+#[cfg(test)]
 pub(crate) fn provider_credential_values(
     provider: &Provider,
     app_type: &AppType,
-) -> Result<crate::proxy_core::api::ports::ProviderCredentialValues, ProviderCredentialIssue> {
+) -> Result<crate::proxy_core::api::ports::ProviderCredentialValues, AppError> {
+    provider_credential_values_with_issue(provider, app_type)
+        .map_err(provider_credential_issue_to_app_error)
+}
+
+#[cfg(test)]
+fn provider_credential_values_with_issue(
+    provider: &Provider,
+    app_type: &AppType,
+) -> Result<
+    crate::proxy_core::api::ports::ProviderCredentialValues,
+    crate::proxy_core::api::ports::ProviderCredentialIssue,
+> {
     match app_type {
         AppType::Codex => {
             let auth = codex_auth_object_value_from_settings(&provider.settings_config)
-                .ok_or(ProviderCredentialIssue::CodexAuthMissing)?;
+                .ok_or(crate::proxy_core::api::ports::ProviderCredentialIssue::CodexAuthMissing)?;
             let config_toml =
                 codex_config_text_from_settings(&provider.settings_config).unwrap_or("");
             core_provider_codex_credential_values_from_parts(CodexCredentialParts {
@@ -7403,9 +7419,9 @@ mod tests {
         json_deep_remove, json_remove_array_items, json_value_is_subset,
         normalize_claude_models_in_value, openclaw_common_config_value_from_settings,
         openclaw_credential_parts_from_settings, opencode_common_config_value_from_settings,
-        opencode_credential_parts_from_settings,
+        opencode_credential_parts_from_settings, provider_credential_issue_spec,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
-        AuthInfo, CodexProviderValidationIssue, OpenCodeCredentialIssue,
+        AuthInfo, CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderCredentialIssue,
     };
 
     use super::*;
@@ -17324,8 +17340,8 @@ command = "latest-command"
             }),
             None,
         );
-        let claude_credentials =
-            provider_credential_values(&claude, &AppType::Claude).expect("claude credentials");
+        let claude_credentials = provider_credential_values_with_issue(&claude, &AppType::Claude)
+            .expect("claude credentials");
         assert_eq!(claude_credentials.api_key, "token");
         assert_eq!(claude_credentials.base_url, "https://claude.example");
 
@@ -17338,8 +17354,8 @@ command = "latest-command"
             }),
             None,
         );
-        let codex_credentials =
-            provider_credential_values(&codex, &AppType::Codex).expect("codex credentials");
+        let codex_credentials = provider_credential_values_with_issue(&codex, &AppType::Codex)
+            .expect("codex credentials");
         assert_eq!(codex_credentials.api_key, "sk-test");
         assert_eq!(codex_credentials.base_url, "https://codex.example/v1");
 
@@ -17349,8 +17365,8 @@ command = "latest-command"
             json!({"env": {"GEMINI_API_KEY": "AIza-test"}}),
             None,
         );
-        let gemini_credentials =
-            provider_credential_values(&gemini, &AppType::Gemini).expect("gemini credentials");
+        let gemini_credentials = provider_credential_values_with_issue(&gemini, &AppType::Gemini)
+            .expect("gemini credentials");
         assert_eq!(gemini_credentials.api_key, "AIza-test");
         assert_eq!(
             gemini_credentials.base_url,
@@ -17364,7 +17380,7 @@ command = "latest-command"
             None,
         );
         assert_eq!(
-            provider_credential_values(&missing_codex_base_url, &AppType::Codex),
+            provider_credential_values_with_issue(&missing_codex_base_url, &AppType::Codex),
             Err(ProviderCredentialIssue::CodexBaseUrlMissing)
         );
         let missing_base_url_spec =

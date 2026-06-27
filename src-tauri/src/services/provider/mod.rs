@@ -125,8 +125,7 @@ mod tests {
     #[cfg(any(target_os = "macos", windows))]
     use crate::provider::{ClaudeDesktopMode, ClaudeDesktopModelRoute};
     use crate::proxy_core_adapter::{
-        claude_desktop_direct_gateway_credentials, provider_credential_issue_spec,
-        provider_credential_values, ProviderCredentialIssue, ProxyConfig,
+        claude_desktop_direct_gateway_credentials, provider_credential_values, ProxyConfig,
     };
     use crate::store::AppState;
     use serde_json::json;
@@ -213,14 +212,8 @@ mod tests {
             return Ok((credentials.api_key, credentials.base_url));
         }
 
-        let credentials = provider_credential_values(provider, app_type)
-            .map_err(credential_issue_to_app_error)?;
+        let credentials = provider_credential_values(provider, app_type)?;
         Ok((credentials.api_key, credentials.base_url))
-    }
-
-    fn credential_issue_to_app_error(issue: ProviderCredentialIssue) -> AppError {
-        let spec = provider_credential_issue_spec(issue);
-        AppError::localized(spec.key, spec.zh, spec.en)
     }
 
     #[cfg(windows)]

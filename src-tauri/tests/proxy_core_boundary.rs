@@ -1286,6 +1286,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) use crate::proxy_core::api::transport::is_official_codex_client_user_agent",
     "fn is_official_codex_client_user_agent(",
     "fn build_gemini_native_url(",
+    "pub(crate) use crate::proxy_core::api::ports::provider_credential_issue_spec",
+    "pub(crate) use crate::proxy_core::api::ports::ProviderCredentialIssue",
     "fn proxy_error_http_status_code(",
     "fn proxy_error_response_body(",
     "fn upstream_proxy_error_response_body(",
