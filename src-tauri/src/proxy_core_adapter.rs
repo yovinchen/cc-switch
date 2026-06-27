@@ -273,12 +273,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     ProviderSettingsValidationParts, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
 };
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::ports::{
-    claude_env_credentials_from_settings, gemini_env_map_from_settings,
-    openclaw_credential_parts_from_settings, opencode_credential_parts_from_settings,
-    CodexProviderValidationIssue, OpenCodeCredentialIssue,
-};
-#[cfg(test)]
 use crate::proxy_core::api::ports::{
     codex_auth_object_value_from_settings,
     provider_codex_credential_values_from_parts as core_provider_codex_credential_values_from_parts,
@@ -1487,10 +1481,6 @@ use crate::proxy_core::api::ports::{
     OpenClawLiveWriteConfigDecision as CoreOpenClawLiveWriteConfigDecision,
     OpenCodeLiveWriteActionDecision as CoreOpenCodeLiveWriteActionDecision,
     OpenCodeLiveWriteConfigDecision as CoreOpenCodeLiveWriteConfigDecision,
-};
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::ports::{
-    openclaw_common_config_value_from_settings, opencode_common_config_value_from_settings,
 };
 pub(crate) use crate::proxy_core::api::ports::{
     proxy_takeover_marked_state_is_reusable,
@@ -7420,10 +7410,13 @@ fn account_ref(provider: &Provider) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use crate::proxy_core::api::ports::{
-        json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
-        normalize_claude_models_in_value,
+        claude_env_credentials_from_settings, gemini_env_map_from_settings, json_deep_merge,
+        json_deep_remove, json_remove_array_items, json_value_is_subset,
+        normalize_claude_models_in_value, openclaw_common_config_value_from_settings,
+        openclaw_credential_parts_from_settings, opencode_common_config_value_from_settings,
+        opencode_credential_parts_from_settings,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
-        AuthInfo,
+        AuthInfo, CodexProviderValidationIssue, OpenCodeCredentialIssue,
     };
 
     use super::*;
