@@ -11184,8 +11184,13 @@ fn proxy_management_dto_callers_use_core_entrypoints() {
         (
             "src/commands/proxy.rs",
             &[
+                "use crate::proxy_core::api::config::{AppProxyConfig, CircuitBreakerConfig, CircuitBreakerStats};",
+                "use crate::proxy_core::api::ports::ProxyConfig;",
                 "use crate::proxy_core::api::ports::GlobalProxyConfig;",
                 "use crate::proxy_core::api::ports::ProviderHealth;",
+                "use crate::proxy_core::api::ports::ProxyRuntimeStatus;",
+                "use crate::proxy_core::api::ports::ProxyServerInfo;",
+                "use crate::proxy_core::api::ports::ProxyTakeoverStatus;",
             ][..],
         ),
         (
@@ -11250,6 +11255,57 @@ fn proxy_management_dto_callers_use_core_entrypoints() {
     assert!(
         violations.is_empty(),
         "proxy management DTO callers must use proxy_core::api::ports as the DTO entrypoint:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_commands_import_runtime_contracts_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = "src/commands/proxy.rs";
+    let source = fs::read_to_string(manifest_dir.join(relative)).expect("read commands/proxy.rs");
+    let import_slice = function_slice(&source, "use crate::error::AppError;", "/// 启动代理服务器");
+
+    let required_imports = [
+        "use crate::proxy_core::api::config::{",
+        "use crate::proxy_core::api::ports::ProxyConfig;",
+        "use crate::proxy_core::api::ports::ProxyRuntimeStatus;",
+        "use crate::proxy_core::api::ports::ProxyServerInfo;",
+        "use crate::proxy_core::api::ports::ProxyTakeoverStatus;",
+    ];
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
+    let mut violations = Vec::new();
+
+    for required_import in required_imports {
+        if !import_slice.contains(required_import) {
+            violations.push(format!(
+                "{relative} should import `{required_import}` directly from proxy_core"
+            ));
+        }
+    }
+
+    for forbidden in [
+        "AppProxyConfig",
+        "CircuitBreakerConfig",
+        "CircuitBreakerStats",
+        "ProxyConfig",
+        "ProxyRuntimeStatus",
+        "ProxyServerInfo",
+        "ProxyTakeoverStatus",
+    ] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == forbidden)
+        {
+            violations.push(format!(
+                "{relative} imports runtime contract `{forbidden}` through proxy_core_adapter"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy commands should not route pure runtime contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

@@ -3,12 +3,14 @@
 //! 提供前端调用的 API 接口
 
 use crate::error::AppError;
+use crate::proxy_core::api::config::{AppProxyConfig, CircuitBreakerConfig, CircuitBreakerStats};
 use crate::proxy_core::api::ports::GlobalProxyConfig;
 use crate::proxy_core::api::ports::ProviderHealth;
-use crate::proxy_core_adapter::{
-    reset_circuit_breaker_switchback_target_from_db, AppProxyConfig, CircuitBreakerConfig,
-    CircuitBreakerStats, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
-};
+use crate::proxy_core::api::ports::ProxyConfig;
+use crate::proxy_core::api::ports::ProxyRuntimeStatus;
+use crate::proxy_core::api::ports::ProxyServerInfo;
+use crate::proxy_core::api::ports::ProxyTakeoverStatus;
+use crate::proxy_core_adapter::reset_circuit_breaker_switchback_target_from_db;
 use crate::store::AppState;
 
 /// 启动代理服务器（仅启动服务，不接管 Live 配置）
