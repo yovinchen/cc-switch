@@ -45,6 +45,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/provider_source.rs",
     "src/proxy/host/cc_switch/proxy_runtime.rs",
     "src/proxy/host/cc_switch/proxy_services.rs",
+    "src/proxy/host/cc_switch/proxy_state.rs",
     "src/proxy/host/cc_switch/provider_router_health_store.rs",
     "src/proxy/host/cc_switch/route_policy_source.rs",
     "src/proxy/host/cc_switch/route_resolver.rs",
@@ -13596,6 +13597,28 @@ fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
             && !state_source.contains("impl ProxyState"),
         "CC Switch proxy state data shape should live in host/cc_switch/proxy_state.rs"
     );
+    assert!(
+        state_source.contains("use crate::proxy_core::api::ports::{")
+            && state_source.contains("CurrentRouteTarget")
+            && state_source.contains("ProxyConfig")
+            && state_source.contains("ProxyRuntimeStatus")
+            && state_source.contains("use crate::proxy_core::api::transforms::GeminiShadowStore;"),
+        "CC Switch proxy state should import runtime state contracts directly from proxy_core"
+    );
+    let state_adapter_imports = proxy_core_adapter_import_identifiers(&state_source);
+    for adapter_type in [
+        "CurrentRouteTarget",
+        "GeminiShadowStore",
+        "ProxyConfig",
+        "ProxyRuntimeStatus",
+    ] {
+        assert!(
+            !state_adapter_imports
+                .iter()
+                .any(|identifier| identifier == adapter_type),
+            "CC Switch proxy state must not import {adapter_type} through proxy_core_adapter"
+        );
+    }
     assert!(
         adapter_source
             .contains("use crate::proxy::host::cc_switch::proxy_state::ProxyState;")

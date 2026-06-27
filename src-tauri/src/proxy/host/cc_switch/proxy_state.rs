@@ -6,9 +6,8 @@ use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices;
-use crate::proxy_core_adapter::{
-    CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyRuntimeStatus,
-};
+use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus};
+use crate::proxy_core::api::transforms::GeminiShadowStore;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
