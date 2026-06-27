@@ -6020,6 +6020,83 @@ where
         })
 }
 
+fn select_enabled_channel_key_runtime_candidate_with_weighted_roll<I>(
+    candidates: I,
+    now_ms: i64,
+    failure_cooldown_ms: i64,
+    weighted_roll: u64,
+) -> Option<ChannelKeyRuntimeCandidate>
+where
+    I: IntoIterator<Item = ChannelKeyRuntimeCandidate>,
+{
+    let enabled = candidates
+        .into_iter()
+        .filter(|candidate| candidate.status == "enabled")
+        .collect::<Vec<_>>();
+    let has_healthy = enabled.iter().any(|candidate| {
+        !channel_key_runtime_candidate_in_failure_cooldown(candidate, now_ms, failure_cooldown_ms)
+    });
+    let best_priority = enabled
+        .iter()
+        .filter(|candidate| {
+            !has_healthy
+                || !channel_key_runtime_candidate_in_failure_cooldown(
+                    candidate,
+                    now_ms,
+                    failure_cooldown_ms,
+                )
+        })
+        .map(|candidate| candidate.priority)
+        .max()?;
+    let candidates = enabled
+        .into_iter()
+        .filter(|candidate| {
+            candidate.priority == best_priority
+                && (!has_healthy
+                    || !channel_key_runtime_candidate_in_failure_cooldown(
+                        candidate,
+                        now_ms,
+                        failure_cooldown_ms,
+                    ))
+        })
+        .collect::<Vec<_>>();
+
+    select_channel_key_runtime_candidate_by_weighted_roll(candidates, weighted_roll)
+}
+
+fn select_channel_key_runtime_candidate_by_weighted_roll(
+    mut candidates: Vec<ChannelKeyRuntimeCandidate>,
+    weighted_roll: u64,
+) -> Option<ChannelKeyRuntimeCandidate> {
+    candidates.sort_by(|left, right| {
+        left.key_ref
+            .cmp(&right.key_ref)
+            .then_with(|| left.key_value.cmp(&right.key_value))
+    });
+
+    let total_weight = candidates
+        .iter()
+        .map(|candidate| u128::from(candidate.weight))
+        .sum::<u128>();
+    if total_weight == 0 {
+        return candidates.into_iter().next();
+    }
+
+    let mut roll = u128::from(weighted_roll) % total_weight;
+    for candidate in candidates {
+        let weight = u128::from(candidate.weight);
+        if weight == 0 {
+            continue;
+        }
+        if roll < weight {
+            return Some(candidate);
+        }
+        roll -= weight;
+    }
+
+    None
+}
+
 fn channel_key_runtime_candidate_in_failure_cooldown(
     candidate: &ChannelKeyRuntimeCandidate,
     now_ms: i64,
@@ -6087,6 +6164,39 @@ where
             candidates,
             now_ms,
             failure_cooldown_ms,
+        );
+    }
+
+    select_enabled_channel_key_runtime_candidate_with_failure_cooldown(
+        candidates
+            .into_iter()
+            .filter(|candidate| candidate.key_ref == key_ref),
+        now_ms,
+        failure_cooldown_ms,
+    )
+}
+
+pub fn select_channel_key_runtime_candidate_with_weighted_roll<I>(
+    candidates: I,
+    key_ref: &str,
+    now_ms: i64,
+    failure_cooldown_ms: i64,
+    weighted_roll: u64,
+) -> Option<ChannelKeyRuntimeCandidate>
+where
+    I: IntoIterator<Item = ChannelKeyRuntimeCandidate>,
+{
+    let key_ref = key_ref.trim();
+    if key_ref.is_empty() {
+        return None;
+    }
+
+    if key_ref == "*" {
+        return select_enabled_channel_key_runtime_candidate_with_weighted_roll(
+            candidates,
+            now_ms,
+            failure_cooldown_ms,
+            weighted_roll,
         );
     }
 
@@ -11550,6 +11660,94 @@ GEMINI_API_KEY=sk-test123
             "primary",
             now_ms,
             DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+        )
+        .expect("selected explicitly requested key");
+        assert_eq!(explicit_key.key_ref, "primary");
+    }
+
+    #[test]
+    fn channel_key_runtime_candidate_weighted_roll_stays_inside_best_runtime_tier() {
+        fn candidate(
+            key_ref: &str,
+            priority: i64,
+            weight: u32,
+            last_failure_at: Option<i64>,
+        ) -> super::ChannelKeyRuntimeCandidate {
+            channel_key_runtime_candidate_from_input(ChannelKeyRuntimeCandidateInput {
+                channel_id: "ch-1".to_string(),
+                key_ref: key_ref.to_string(),
+                key_value: format!("sk-{key_ref}"),
+                status: "enabled".to_string(),
+                priority,
+                weight,
+                last_failure_at,
+            })
+        }
+
+        let now_ms = 1_771_000_120_000;
+        let weighted_first = select_channel_key_runtime_candidate_with_weighted_roll(
+            vec![
+                candidate("alpha", 20, 1, None),
+                candidate("beta", 20, 3, None),
+                candidate("lower-priority", 10, 100, None),
+            ],
+            "*",
+            now_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+            0,
+        )
+        .expect("selected weighted first candidate");
+        assert_eq!(weighted_first.key_ref, "alpha");
+
+        let weighted_second = select_channel_key_runtime_candidate_with_weighted_roll(
+            vec![
+                candidate("alpha", 20, 1, None),
+                candidate("beta", 20, 3, None),
+                candidate("lower-priority", 10, 100, None),
+            ],
+            "*",
+            now_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+            1,
+        )
+        .expect("selected weighted second candidate");
+        assert_eq!(weighted_second.key_ref, "beta");
+
+        let healthy_fallback = select_channel_key_runtime_candidate_with_weighted_roll(
+            vec![
+                candidate("cooling-high", 200, 100, Some(now_ms - 1_000)),
+                candidate("healthy-low", 10, 1, None),
+            ],
+            "*",
+            now_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+            0,
+        )
+        .expect("selected healthy fallback");
+        assert_eq!(healthy_fallback.key_ref, "healthy-low");
+
+        let cooling_fallback = select_channel_key_runtime_candidate_with_weighted_roll(
+            vec![
+                candidate("cooling-low", 10, 100, Some(now_ms - 1_000)),
+                candidate("cooling-high", 200, 1, Some(now_ms - 2_000)),
+            ],
+            "*",
+            now_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+            0,
+        )
+        .expect("selected best cooling fallback");
+        assert_eq!(cooling_fallback.key_ref, "cooling-high");
+
+        let explicit_key = select_channel_key_runtime_candidate_with_weighted_roll(
+            vec![
+                candidate("primary", 10, 1, Some(now_ms - 1_000)),
+                candidate("backup", 200, 100, None),
+            ],
+            "primary",
+            now_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+            1,
         )
         .expect("selected explicitly requested key");
         assert_eq!(explicit_key.key_ref, "primary");

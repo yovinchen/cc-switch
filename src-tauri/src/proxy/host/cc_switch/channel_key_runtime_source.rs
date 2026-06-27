@@ -2,7 +2,7 @@ use crate::database::{Database, ProxyChannelKeyRecord};
 use crate::proxy_core::api::errors::ProxyCoreResult;
 use crate::proxy_core::api::management::{
     channel_key_runtime_candidate_from_input,
-    select_channel_key_runtime_candidate_with_failure_cooldown, ChannelKeyRuntimeCandidate,
+    select_channel_key_runtime_candidate_with_weighted_roll, ChannelKeyRuntimeCandidate,
     ChannelKeyRuntimeCandidateInput, DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
 };
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
@@ -27,16 +27,18 @@ fn select_proxy_channel_key_runtime_candidate<I>(
     keys: I,
     key_ref: &str,
     now_ms: i64,
+    weighted_roll: u64,
 ) -> Option<ChannelKeyRuntimeCandidate>
 where
     I: IntoIterator<Item = ProxyChannelKeyRecord>,
 {
-    select_channel_key_runtime_candidate_with_failure_cooldown(
+    select_channel_key_runtime_candidate_with_weighted_roll(
         keys.into_iter()
             .map(proxy_channel_key_record_to_runtime_candidate),
         key_ref,
         now_ms,
         DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+        weighted_roll,
     )
 }
 
@@ -59,13 +61,21 @@ fn load_channel_key_candidate_from_database(
     let keys = db
         .list_proxy_channel_key_runtime_candidates(channel_id)
         .map_err(|error| app_error("load channel auth key", error))?;
+    let (now_ms, weighted_roll) = channel_key_runtime_selection_clock();
     Ok(keys.and_then(|keys| {
-        select_proxy_channel_key_runtime_candidate(
-            keys,
-            key_ref,
-            chrono::Utc::now().timestamp_millis(),
-        )
+        select_proxy_channel_key_runtime_candidate(keys, key_ref, now_ms, weighted_roll)
     }))
+}
+
+fn channel_key_runtime_selection_clock() -> (i64, u64) {
+    let now = chrono::Utc::now();
+    let now_ms = now.timestamp_millis();
+    let weighted_roll = now
+        .timestamp_nanos_opt()
+        .and_then(|value| u64::try_from(value).ok())
+        .unwrap_or_else(|| u64::try_from(now_ms).unwrap_or_default());
+
+    (now_ms, weighted_roll)
 }
 
 impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource {
@@ -84,6 +94,53 @@ mod tests {
     use crate::provider::Provider;
     use crate::proxy_core_adapter::{ProxyChannelKeyWriteRequest, ProxyChannelWriteRequest};
     use serde_json::json;
+
+    fn proxy_channel_key_record(
+        key_ref: &str,
+        priority: i64,
+        weight: u32,
+        last_failure_at: Option<i64>,
+    ) -> ProxyChannelKeyRecord {
+        ProxyChannelKeyRecord {
+            channel_id: "channel-key-candidate".to_string(),
+            key_ref: key_ref.to_string(),
+            key_value: format!("sk-{key_ref}"),
+            status: "enabled".to_string(),
+            priority,
+            weight,
+            last_failure_at,
+        }
+    }
+
+    #[test]
+    fn channel_key_runtime_source_passes_weighted_roll_to_core_selector() {
+        let now_ms = 1_771_000_120_000;
+        let first = select_proxy_channel_key_runtime_candidate(
+            vec![
+                proxy_channel_key_record("alpha", 20, 1, None),
+                proxy_channel_key_record("beta", 20, 3, None),
+                proxy_channel_key_record("lower-priority", 10, 100, None),
+            ],
+            "*",
+            now_ms,
+            0,
+        )
+        .expect("selected first weighted candidate");
+        assert_eq!(first.key_ref, "alpha");
+
+        let second = select_proxy_channel_key_runtime_candidate(
+            vec![
+                proxy_channel_key_record("alpha", 20, 1, None),
+                proxy_channel_key_record("beta", 20, 3, None),
+                proxy_channel_key_record("lower-priority", 10, 100, None),
+            ],
+            "*",
+            now_ms,
+            1,
+        )
+        .expect("selected second weighted candidate");
+        assert_eq!(second.key_ref, "beta");
+    }
 
     #[test]
     fn db_backed_channel_key_runtime_source_returns_selected_candidate_metadata() {
