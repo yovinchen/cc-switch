@@ -1,8 +1,9 @@
 use crate::database::{Database, ProxyChannelKeyRecord};
 use crate::proxy_core::api::errors::ProxyCoreResult;
 use crate::proxy_core::api::management::{
-    channel_key_runtime_candidate_from_input, select_channel_key_runtime_candidate,
-    ChannelKeyRuntimeCandidate, ChannelKeyRuntimeCandidateInput,
+    channel_key_runtime_candidate_from_input,
+    select_channel_key_runtime_candidate_with_failure_cooldown, ChannelKeyRuntimeCandidate,
+    ChannelKeyRuntimeCandidateInput, DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
 };
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
 use crate::proxy_core_adapter::app_error;
@@ -25,14 +26,17 @@ pub(crate) fn proxy_channel_key_record_to_runtime_candidate(
 fn select_proxy_channel_key_runtime_candidate<I>(
     keys: I,
     key_ref: &str,
+    now_ms: i64,
 ) -> Option<ChannelKeyRuntimeCandidate>
 where
     I: IntoIterator<Item = ProxyChannelKeyRecord>,
 {
-    select_channel_key_runtime_candidate(
+    select_channel_key_runtime_candidate_with_failure_cooldown(
         keys.into_iter()
             .map(proxy_channel_key_record_to_runtime_candidate),
         key_ref,
+        now_ms,
+        DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
     )
 }
 
@@ -55,7 +59,13 @@ fn load_channel_key_candidate_from_database(
     let keys = db
         .list_proxy_channel_key_runtime_candidates(channel_id)
         .map_err(|error| app_error("load channel auth key", error))?;
-    Ok(keys.and_then(|keys| select_proxy_channel_key_runtime_candidate(keys, key_ref)))
+    Ok(keys.and_then(|keys| {
+        select_proxy_channel_key_runtime_candidate(
+            keys,
+            key_ref,
+            chrono::Utc::now().timestamp_millis(),
+        )
+    }))
 }
 
 impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource {
@@ -151,12 +161,14 @@ mod tests {
 
         {
             let conn = db.conn.lock().expect("lock db");
+            let recent_failure_at = chrono::Utc::now().timestamp_millis()
+                - (DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS / 2);
             conn.execute(
                 "UPDATE proxy_channel_keys SET last_failure_at = ?1
                  WHERE channel_id = ?2 AND key_ref = ?3",
-                (1_771_000_003_i64, "channel-key-candidate", "backup"),
+                (recent_failure_at, "channel-key-candidate", "backup"),
             )
-            .expect("mark backup channel key failed");
+            .expect("mark backup channel key recently failed");
         }
 
         let fallback = source
@@ -165,6 +177,25 @@ mod tests {
             .expect("selected healthy fallback candidate");
         assert_eq!(fallback.key_ref, "primary");
         assert_eq!(fallback.key_value, "sk-channel-candidate");
+
+        {
+            let conn = db.conn.lock().expect("lock db");
+            let expired_failure_at = chrono::Utc::now().timestamp_millis()
+                - (DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS + 1);
+            conn.execute(
+                "UPDATE proxy_channel_keys SET last_failure_at = ?1
+                 WHERE channel_id = ?2 AND key_ref = ?3",
+                (expired_failure_at, "channel-key-candidate", "backup"),
+            )
+            .expect("mark backup channel key failure expired");
+        }
+
+        let recovered = source
+            .load_channel_key_candidate("channel-key-candidate", "*")
+            .expect("load wildcard channel key after cooldown")
+            .expect("selected recovered candidate");
+        assert_eq!(recovered.key_ref, "backup");
+        assert_eq!(recovered.key_value, "sk-backup-candidate");
 
         db.upsert_proxy_channel_key(
             "channel-key-candidate",

@@ -5979,6 +5979,8 @@ pub fn channel_key_runtime_candidate_from_input(
     }
 }
 
+pub const DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS: i64 = 60_000;
+
 pub fn select_enabled_channel_key_runtime_candidate<I>(
     candidates: I,
 ) -> Option<ChannelKeyRuntimeCandidate>
@@ -5994,6 +5996,42 @@ where
                 .cmp(&right.last_failure_at.is_some())
                 .then_with(|| channel_key_runtime_candidate_priority_order(left, right))
         })
+}
+
+pub fn select_enabled_channel_key_runtime_candidate_with_failure_cooldown<I>(
+    candidates: I,
+    now_ms: i64,
+    failure_cooldown_ms: i64,
+) -> Option<ChannelKeyRuntimeCandidate>
+where
+    I: IntoIterator<Item = ChannelKeyRuntimeCandidate>,
+{
+    candidates
+        .into_iter()
+        .filter(|candidate| candidate.status == "enabled")
+        .min_by(|left, right| {
+            channel_key_runtime_candidate_in_failure_cooldown(left, now_ms, failure_cooldown_ms)
+                .cmp(&channel_key_runtime_candidate_in_failure_cooldown(
+                    right,
+                    now_ms,
+                    failure_cooldown_ms,
+                ))
+                .then_with(|| channel_key_runtime_candidate_priority_order(left, right))
+        })
+}
+
+fn channel_key_runtime_candidate_in_failure_cooldown(
+    candidate: &ChannelKeyRuntimeCandidate,
+    now_ms: i64,
+    failure_cooldown_ms: i64,
+) -> bool {
+    if failure_cooldown_ms <= 0 {
+        return false;
+    }
+
+    candidate
+        .last_failure_at
+        .is_some_and(|last_failure_at| now_ms.saturating_sub(last_failure_at) < failure_cooldown_ms)
 }
 
 fn channel_key_runtime_candidate_priority_order(
@@ -6027,6 +6065,37 @@ where
         candidates
             .into_iter()
             .filter(|candidate| candidate.key_ref == key_ref),
+    )
+}
+
+pub fn select_channel_key_runtime_candidate_with_failure_cooldown<I>(
+    candidates: I,
+    key_ref: &str,
+    now_ms: i64,
+    failure_cooldown_ms: i64,
+) -> Option<ChannelKeyRuntimeCandidate>
+where
+    I: IntoIterator<Item = ChannelKeyRuntimeCandidate>,
+{
+    let key_ref = key_ref.trim();
+    if key_ref.is_empty() {
+        return None;
+    }
+
+    if key_ref == "*" {
+        return select_enabled_channel_key_runtime_candidate_with_failure_cooldown(
+            candidates,
+            now_ms,
+            failure_cooldown_ms,
+        );
+    }
+
+    select_enabled_channel_key_runtime_candidate_with_failure_cooldown(
+        candidates
+            .into_iter()
+            .filter(|candidate| candidate.key_ref == key_ref),
+        now_ms,
+        failure_cooldown_ms,
     )
 }
 
@@ -6422,8 +6491,11 @@ mod tests {
         remove_codex_takeover_auth_placeholder_if_present,
         remove_gemini_common_config_from_settings, remove_gemini_takeover_env_fields_if_present,
         required_provider_base_url, sanitize_claude_settings_for_live,
-        select_channel_key_runtime_candidate, select_enabled_channel_key_runtime_candidate,
-        serialize_gemini_env_file,
+        select_channel_key_runtime_candidate,
+        select_channel_key_runtime_candidate_with_failure_cooldown,
+        select_enabled_channel_key_runtime_candidate,
+        select_enabled_channel_key_runtime_candidate_with_failure_cooldown,
+        serialize_gemini_env_file, DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
         should_emit_proxy_official_warning_for_provider_category,
         should_reapply_codex_official_live_for_provider_category,
         should_restore_codex_provider_token_for_backfill_from_parts,
@@ -11411,6 +11483,76 @@ GEMINI_API_KEY=sk-test123
         .expect("selected failed fallback candidate");
         assert_eq!(fallback.key_ref, "failed-high");
         assert_eq!(fallback.key_value, "sk-failed-high");
+    }
+
+    #[test]
+    fn channel_key_runtime_candidate_cooldown_recovers_failed_keys_after_window() {
+        fn candidate(
+            key_ref: &str,
+            priority: i64,
+            last_failure_at: Option<i64>,
+        ) -> super::ChannelKeyRuntimeCandidate {
+            channel_key_runtime_candidate_from_input(ChannelKeyRuntimeCandidateInput {
+                channel_id: "ch-1".to_string(),
+                key_ref: key_ref.to_string(),
+                key_value: format!("sk-{key_ref}"),
+                status: "enabled".to_string(),
+                priority,
+                weight: 100,
+                last_failure_at,
+            })
+        }
+
+        let now_ms = 1_771_000_120_000;
+        let selected = select_enabled_channel_key_runtime_candidate_with_failure_cooldown(
+            vec![
+                candidate("recently-failed-best", 200, Some(now_ms - 1_000)),
+                candidate("healthy-lower", 10, None),
+            ],
+            now_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+        )
+        .expect("selected healthy key while best is cooling down");
+        assert_eq!(selected.key_ref, "healthy-lower");
+
+        let recovered = select_enabled_channel_key_runtime_candidate_with_failure_cooldown(
+            vec![
+                candidate(
+                    "recovered-best",
+                    200,
+                    Some(now_ms - DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS),
+                ),
+                candidate("healthy-lower", 10, None),
+            ],
+            now_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+        )
+        .expect("selected recovered key after cooldown");
+        assert_eq!(recovered.key_ref, "recovered-best");
+
+        let disabled_cooldown = select_channel_key_runtime_candidate_with_failure_cooldown(
+            vec![
+                candidate("failed-best", 200, Some(now_ms)),
+                candidate("healthy-lower", 10, None),
+            ],
+            "*",
+            now_ms,
+            0,
+        )
+        .expect("selected by priority when cooldown is disabled");
+        assert_eq!(disabled_cooldown.key_ref, "failed-best");
+
+        let explicit_key = select_channel_key_runtime_candidate_with_failure_cooldown(
+            vec![
+                candidate("primary", 10, Some(now_ms - 1_000)),
+                candidate("backup", 200, None),
+            ],
+            "primary",
+            now_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+        )
+        .expect("selected explicitly requested key");
+        assert_eq!(explicit_key.key_ref, "primary");
     }
 
     #[test]

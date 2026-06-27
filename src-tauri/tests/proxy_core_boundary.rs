@@ -3297,14 +3297,18 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
     assert!(
         runtime_source.contains("use crate::proxy_core::api::management::{")
             && runtime_source.contains("channel_key_runtime_candidate_from_input")
-            && runtime_source.contains("select_channel_key_runtime_candidate")
-            && runtime_source.contains("ChannelKeyRuntimeCandidateInput"),
-        "channel key runtime source should import pure candidate projection/selection directly from proxy_core::api::management"
+            && runtime_source.contains("select_channel_key_runtime_candidate_with_failure_cooldown")
+            && runtime_source.contains("ChannelKeyRuntimeCandidateInput")
+            && runtime_source.contains("DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS"),
+        "channel key runtime source should import pure candidate projection/cooldown selection directly from proxy_core::api::management"
     );
     for marker in [
         "core_select_channel_key_runtime_candidate",
         "core_select_enabled_channel_key_runtime_candidate",
         "channel_key_runtime_candidate_from_input",
+        "select_channel_key_runtime_candidate_with_failure_cooldown",
+        "select_enabled_channel_key_runtime_candidate_with_failure_cooldown",
+        "DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS",
         "ChannelKeyRuntimeCandidateInput",
     ] {
         assert!(
@@ -12507,8 +12511,11 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     assert!(
         core_ports_source.contains("fn load_channel_key_candidate(")
             && core_ports_source.contains("ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>>")
-            && core_ports_source.contains("pub fn select_channel_key_runtime_candidate"),
-        "ChannelKeyRuntimeSource should return the selected runtime candidate and core should own key-ref candidate selection"
+            && core_ports_source.contains("pub fn select_channel_key_runtime_candidate")
+            && core_ports_source
+                .contains("pub fn select_channel_key_runtime_candidate_with_failure_cooldown")
+            && core_ports_source.contains("pub const DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS"),
+        "ChannelKeyRuntimeSource should return the selected runtime candidate and core should own key-ref candidate selection plus failure cooldown policy"
     );
     assert!(
         services_trait.contains("channel_key_runtime_source("),
