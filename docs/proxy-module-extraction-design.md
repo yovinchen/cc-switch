@@ -1760,6 +1760,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1274. provider credential/common-config 的 test-only ports helper facade 已删除：adapter 自测直接从 `proxy-core::api::ports` 引用 Claude/Gemini env extraction、OpenClaw/OpenCode credential extraction、common-config projection 以及 Codex/OpenCode issue 类型，`proxy_core_adapter` 不再为这些 pure helper 提供 `#[cfg(test)]` re-export；服务层测试仍使用的 adapter-shaped `ProviderCredentialIssue` / `provider_credential_issue_spec` 暂保留。
 1275. Codex 官方客户端 User-Agent 检测的 test-only transport helper facade 已删除：adapter 自测直接从 `proxy-core::api::transport` 引用 `is_official_codex_client_user_agent`，provider 测试不再绕过 host/core 边界；边界测试防止该 pure transport helper 重新通过 `proxy_core_adapter` re-export。
 1276. Claude Desktop profile model id 安全判定的 test-only auth helper facade 已删除：adapter 自测直接从 `proxy-core::api::auth` 引用 `claude_desktop_model_id_is_profile_safe`，`claude_desktop_config` 不再通过 adapter 测试出口测试 pure core policy；边界测试防止该 helper 重新 re-export。
+1277. Claude message normalization 的 test-only transform helper facade 已删除：Claude provider 测试改为通过生产 `provider_claude_normalize_anthropic_messages` wrapper 验证 host-shaped 行为，adapter 自测直接从 `proxy-core::api::transforms` 引用 pure helper；边界测试防止这组三个 normalization helper 重新 re-export。
 
 ## 背景
 
