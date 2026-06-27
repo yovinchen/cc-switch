@@ -9,10 +9,11 @@ use std::env;
 use std::sync::RwLock;
 use std::time::Duration;
 
+use crate::proxy_core::api::ports::DEFAULT_PROXY_LISTEN_PORT;
 use crate::proxy_core::api::security::mask_url_for_log;
-use crate::proxy_core_adapter::{
+use crate::proxy_core::api::transport::{
     invalid_explicit_proxy_url_message, proxy_values_point_to_loopback_port,
-    validate_explicit_proxy_url, DEFAULT_PROXY_LISTEN_PORT, SYSTEM_PROXY_ENV_KEYS,
+    validate_explicit_proxy_url, SYSTEM_PROXY_ENV_KEYS,
 };
 
 /// 全局 HTTP 客户端实例

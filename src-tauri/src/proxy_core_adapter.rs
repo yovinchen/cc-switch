@@ -142,14 +142,6 @@ pub(crate) fn provider_selection_failure_from_app_error(
     }
 }
 
-pub(crate) const SYSTEM_PROXY_ENV_KEYS: [&str; 6] =
-    crate::proxy_core::api::transport::SYSTEM_PROXY_ENV_KEYS;
-
-pub(crate) use crate::proxy_core::api::transport::{
-    invalid_explicit_proxy_url_message, proxy_values_point_to_loopback_port,
-    validate_explicit_proxy_url,
-};
-
 pub(crate) use crate::proxy_core::api::management::custom_endpoint_url_key;
 
 pub(crate) fn provider_custom_endpoint_list(provider: Option<&Provider>) -> Vec<CustomEndpoint> {
@@ -1427,8 +1419,6 @@ pub(crate) fn route_selected_event_message_from_forward_attempt(
 pub(crate) type ChannelAttemptResult = crate::proxy_core::api::ports::ChannelAttemptResult;
 pub(crate) type ForwardFailureCategory = crate::proxy_core::api::transport::ForwardFailureCategory;
 
-pub(crate) const DEFAULT_PROXY_LISTEN_PORT: u16 =
-    crate::proxy_core::api::ports::DEFAULT_PROXY_LISTEN_PORT;
 pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
     crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD;
 pub(crate) type ForwarderMediaPreventionFacts<'a> =
@@ -8371,6 +8361,11 @@ mod tests {
 
     #[test]
     fn global_proxy_adapter_projects_masking_and_loopback_policy() {
+        use crate::proxy_core::api::transport::{
+            invalid_explicit_proxy_url_message, proxy_values_point_to_loopback_port,
+            validate_explicit_proxy_url, SYSTEM_PROXY_ENV_KEYS,
+        };
+
         assert_eq!(
             SYSTEM_PROXY_ENV_KEYS,
             [
@@ -10918,7 +10913,7 @@ base_url = "https://api.openai.com/v1"
             serde_json::to_value(GlobalProxyConfig {
                 proxy_enabled: true,
                 listen_address: "127.0.0.1".to_string(),
-                listen_port: DEFAULT_PROXY_LISTEN_PORT,
+                listen_port: crate::proxy_core::api::ports::DEFAULT_PROXY_LISTEN_PORT,
                 enable_logging: true,
             })
             .expect("global proxy config")

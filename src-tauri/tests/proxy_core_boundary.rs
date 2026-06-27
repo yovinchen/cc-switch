@@ -5320,7 +5320,7 @@ fn proxy_core_adapter_delegates_generic_error_construction_to_core() {
 }
 
 #[test]
-fn production_http_client_delegates_explicit_proxy_url_validation_to_adapter() {
+fn production_http_client_delegates_explicit_proxy_url_validation_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/global_http_client.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/global_http_client.rs");
@@ -5341,8 +5341,14 @@ fn production_http_client_delegates_explicit_proxy_url_validation_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "production HTTP client must delegate explicit proxy URL parsing, scheme allowlist, and error projection to proxy_core_adapter:\n{}",
+        "production HTTP client must delegate explicit proxy URL parsing, scheme allowlist, and error projection to proxy-core helpers:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        source.contains("use crate::proxy_core::api::transport::{")
+            && source.contains("validate_explicit_proxy_url")
+            && source.contains("proxy_values_point_to_loopback_port"),
+        "host global HTTP client should import pure proxy URL validation helpers directly from proxy-core"
     );
 }
 
@@ -5412,6 +5418,14 @@ fn proxy_core_adapter_delegates_explicit_proxy_url_validation_to_core() {
     assert!(
         !source.contains("pub(crate) use crate::proxy_core::api::security::mask_url_for_log"),
         "proxy_core_adapter should not re-export pure security URL masking; host callers should import proxy-core directly"
+    );
+    assert!(
+        !source.contains("pub(crate) const SYSTEM_PROXY_ENV_KEYS")
+            && !source.contains("pub(crate) const DEFAULT_PROXY_LISTEN_PORT")
+            && !source.contains(
+                "pub(crate) use crate::proxy_core::api::transport::{\n    invalid_explicit_proxy_url_message"
+            ),
+        "proxy_core_adapter should not re-export pure global proxy URL validation constants or helpers"
     );
 }
 
