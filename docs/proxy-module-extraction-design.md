@@ -1785,6 +1785,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1299. `host/cc_switch/live_takeover` 继续收窄 config/ports DTO import：`CircuitBreakerConfig` 与 `CircuitBreakerStats` 直接来自 `proxy-core::api::config`，`ProxyServerInfo` 与 `ProxyTakeoverStatus` 直接来自 `proxy-core::api::ports`；live takeover 边界测试扩展覆盖这些 DTO，防止它们经 adapter alias 回流。
 1300. `commands/proxy` 不再通过 `proxy_core_adapter` 获取命令层运行态/配置 DTO：`AppProxyConfig`、`CircuitBreakerConfig` 与 `CircuitBreakerStats` 直接来自 `proxy-core::api::config`，`ProxyConfig`、`ProxyRuntimeStatus`、`ProxyServerInfo` 与 `ProxyTakeoverStatus` 直接来自 `proxy-core::api::ports`；adapter 仅保留 reset circuit breaker switchback helper，边界测试防止这些纯 DTO alias 回流。
 1301. `database/dao/proxy` 不再通过 `proxy_core_adapter` 获取 proxy 配置 DAO contract：`AppProxyConfig` 与 `CircuitBreakerConfig` 直接来自 `proxy-core::api::config`，`ProxyConfig` 直接来自 `proxy-core::api::ports`；adapter 仍保留默认值、校验和 provider health projection helper，边界测试防止 DAO 重新通过 adapter alias 获取这些纯 DTO。
+1302. `proxy/circuit_breaker` 不再通过 `proxy_core_adapter` 获取熔断器 config contract：`AllowResult`、`CircuitBreakerConfig`、`CircuitBreakerStats` 与 `CircuitState` 直接来自 `proxy-core::api::config`；adapter 仍保留熔断决策、HalfOpen 放行和日志码 helper，并删除不再使用的 `CircuitState` alias，边界测试防止熔断器 config DTO 经 adapter 回流。
 
 ## 背景
 
