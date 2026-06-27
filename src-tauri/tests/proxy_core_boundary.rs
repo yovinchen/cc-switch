@@ -19715,6 +19715,8 @@ fn proxy_response_adapter_owns_core_transport_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/response_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy/response_adapter.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
     let adapter_import = function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
@@ -19850,6 +19852,12 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         violations.is_empty(),
         "response_adapter should not route pure core auth/domain/transport/event/management/model_catalog/ports/routing/transforms/usage contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        !adapter_source.contains(
+            "pub(crate) use crate::proxy_core::api::transport::extract_gemini_model_from_path"
+        ),
+        "proxy_core_adapter should not re-export pure Gemini path model extraction"
     );
 }
 

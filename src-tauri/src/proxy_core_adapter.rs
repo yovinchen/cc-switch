@@ -2350,8 +2350,6 @@ pub(crate) use crate::proxy_core::api::transforms::{
     ClaudeTransformStreamingDecision,
 };
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::extract_gemini_model_from_path;
-#[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::ProxyBody;
 pub(crate) use crate::proxy_core::api::transport::ProxyRequest;
 pub(crate) use crate::proxy_core::api::transport::{
@@ -12314,7 +12312,10 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(enabled_policy.timeout.streaming.idle_timeout, 120);
 
         assert_eq!(
-            extract_gemini_model_from_path("/v1beta/models/gemini-pro:generateContent").as_deref(),
+            crate::proxy_core::api::transport::extract_gemini_model_from_path(
+                "/v1beta/models/gemini-pro:generateContent"
+            )
+            .as_deref(),
             Some("gemini-pro")
         );
         assert_eq!(
