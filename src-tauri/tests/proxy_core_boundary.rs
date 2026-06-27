@@ -1509,6 +1509,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn channel_auth_profile_provider_application(",
     "enum ChannelAuthProfileProviderApplication",
     "fn model_route_from_input(",
+    "pub(crate) use crate::proxy_core::api::domain::{channel_spec_from_input, ChannelSpecInput}",
     "fn channel_spec_from_input(",
     "fn channel_model_record_from_input(",
     "fn channel_key_record_from_input(",

@@ -2105,9 +2105,6 @@ pub(crate) fn provider_from_opencode_live_config(
 }
 
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::domain::{channel_spec_from_input, ChannelSpecInput};
-
-#[cfg(test)]
 pub(crate) type ProxyCoreUpstreamEndpoint = crate::proxy_core::api::domain::UpstreamEndpoint;
 pub(crate) type ChannelRequestValidationError =
     crate::proxy_core::api::routing::ChannelRequestValidationError;
@@ -7504,7 +7501,7 @@ mod tests {
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
         channel_auth_profile_action, channel_auth_profile_missing_provider_warning,
-        ChannelAuthProfileAction,
+        channel_spec_from_input, ChannelAuthProfileAction, ChannelSpecInput,
     };
     use crate::proxy_core::api::errors::{
         proxy_error_http_status_code, proxy_error_response_body,
