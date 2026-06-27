@@ -730,6 +730,7 @@ pub struct UsageRouteContext {
     pub channel_id: String,
     pub channel_name: String,
     pub route_group: String,
+    pub pricing_model: Option<String>,
 }
 
 pub fn usage_route_context_from_selection(selection: &RouteSelection) -> UsageRouteContext {
@@ -743,6 +744,10 @@ pub fn usage_route_context_from_selection(selection: &RouteSelection) -> UsageRo
             .filter(|group| !group.trim().is_empty())
             .cloned()
             .unwrap_or_else(|| DEFAULT_ROUTE_GROUP.to_string()),
+        pricing_model: selection
+            .model_route
+            .as_ref()
+            .and_then(|route| non_empty_model_option(route.pricing_model.as_deref())),
     }
 }
 
@@ -754,6 +759,9 @@ pub fn usage_record_with_route_context(
         record.channel_id = Some(route.channel_id.clone());
         record.channel_name = Some(route.channel_name.clone());
         record.route_group = Some(route.route_group.clone());
+        if non_empty_model_option(record.pricing_model.as_deref()).is_none() {
+            record.pricing_model = route.pricing_model.clone();
+        }
     }
     record
 }
@@ -3307,6 +3315,63 @@ mod tests {
     }
 
     #[test]
+    fn usage_route_context_from_selection_carries_model_pricing() {
+        let model_route = crate::domain::ModelRoute {
+            public_model: "sonnet-public".to_string(),
+            upstream_model: "upstream-sonnet".to_string(),
+            capabilities: crate::domain::ModelCapabilities::default(),
+            pricing_model: Some(" route-price-model ".to_string()),
+            request_overrides: json!({}),
+            response_overrides: json!({}),
+        };
+        let selection = RouteSelection {
+            provider: crate::domain::ProviderSpec {
+                id: "provider-a".to_string(),
+                name: "Provider A".to_string(),
+                kind: ProviderKind::Claude,
+                account_ref: None,
+                metadata: crate::domain::ProviderMetadata::default(),
+            },
+            channel: crate::domain::ChannelSpec {
+                id: "channel-a".to_string(),
+                provider_id: "provider-a".to_string(),
+                app: AppKind::Claude,
+                name: "Relay A".to_string(),
+                status: crate::domain::ChannelStatus::Enabled,
+                endpoint: crate::domain::UpstreamEndpoint {
+                    base_url: "https://relay.example.com/v1".to_string(),
+                    path_template: None,
+                    api_version: None,
+                    timeout_profile: None,
+                },
+                interface: crate::domain::InterfaceKind::OpenAiResponses,
+                auth_profile: None,
+                models: vec![model_route.clone()],
+                groups: vec!["paid".to_string()],
+                priority: 100,
+                weight: 1,
+                retry_policy: Default::default(),
+                health_policy: Default::default(),
+                overrides: crate::domain::ChannelOverrides::default(),
+                tags: Vec::new(),
+                metadata: json!({}),
+                source_ref: None,
+                needs_review: false,
+                review_reasons: Vec::new(),
+            },
+            model_route: Some(model_route),
+            inbound_interface: crate::domain::InterfaceKind::AnthropicMessages,
+            outbound_interface: crate::domain::InterfaceKind::OpenAiResponses,
+        };
+
+        let context = usage_route_context_from_selection(&selection);
+
+        assert_eq!(context.channel_id, "channel-a");
+        assert_eq!(context.route_group, "paid");
+        assert_eq!(context.pricing_model.as_deref(), Some("route-price-model"));
+    }
+
+    #[test]
     fn usage_record_with_route_context_projects_channel_fields() {
         let record = UsageRecord {
             request_id: Some("req-1".to_string()),
@@ -3339,17 +3404,62 @@ mod tests {
             channel_id: "channel-a".to_string(),
             channel_name: "Relay A".to_string(),
             route_group: "default".to_string(),
+            pricing_model: Some("route-price-model".to_string()),
         };
 
         let projected = usage_record_with_route_context(record.clone(), Some(&context));
         assert_eq!(projected.channel_id.as_deref(), Some("channel-a"));
         assert_eq!(projected.channel_name.as_deref(), Some("Relay A"));
         assert_eq!(projected.route_group.as_deref(), Some("default"));
+        assert_eq!(
+            projected.pricing_model.as_deref(),
+            Some("route-price-model")
+        );
 
         let unchanged = usage_record_with_route_context(record, None);
         assert!(unchanged.channel_id.is_none());
         assert!(unchanged.channel_name.is_none());
         assert!(unchanged.route_group.is_none());
+        assert!(unchanged.pricing_model.is_none());
+    }
+
+    #[test]
+    fn usage_record_with_route_context_preserves_existing_pricing_model() {
+        let mut record = success_usage_record_with_request_id_fallback(
+            "provider-a",
+            Some(ProviderKind::Claude),
+            AppKind::Claude,
+            "response-model",
+            "request-model",
+            "outbound-model",
+            TokenUsage {
+                input_tokens: 1,
+                output_tokens: 2,
+                cache_read_tokens: 0,
+                cache_creation_tokens: 0,
+                ..TokenUsage::default()
+            },
+            1,
+            None,
+            false,
+            200,
+            None,
+            || "req-1".to_string(),
+        );
+        record.pricing_model = Some("explicit-price-model".to_string());
+        let context = UsageRouteContext {
+            channel_id: "channel-a".to_string(),
+            channel_name: "Relay A".to_string(),
+            route_group: "default".to_string(),
+            pricing_model: Some("route-price-model".to_string()),
+        };
+
+        let projected = usage_record_with_route_context(record, Some(&context));
+
+        assert_eq!(
+            projected.pricing_model.as_deref(),
+            Some("explicit-price-model")
+        );
     }
 
     #[test]

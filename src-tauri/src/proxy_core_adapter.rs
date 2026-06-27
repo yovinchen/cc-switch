@@ -7862,6 +7862,7 @@ mod tests {
             channel_id: "channel-1".to_string(),
             channel_name: "Channel One".to_string(),
             route_group: "beta".to_string(),
+            pricing_model: Some("route-price-model".to_string()),
         };
         let error_record = forward_error_usage_record_from_response_context(
             ForwardErrorUsageContext {
