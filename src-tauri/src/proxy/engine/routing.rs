@@ -198,7 +198,12 @@ impl ProviderRouter {
     /// 请求执行前获取 Channel 熔断器“放行许可”
     pub async fn allow_channel_request(&self, channel_id: &str, app_type: &str) -> AllowResult {
         let circuit_key = channel_circuit_key(app_type, channel_id);
-        self.circuit_runtime.allow_request(&circuit_key).await
+        let config = self
+            .channel_circuit_breaker_config_for_app(channel_id, app_type)
+            .await;
+        self.circuit_runtime
+            .allow_request_with_config(&circuit_key, config)
+            .await
     }
 
     /// 记录供应商请求结果
@@ -238,16 +243,13 @@ impl ProviderRouter {
         error_msg: Option<String>,
         response_time_ms: Option<i64>,
     ) -> Result<(), AppError> {
-        let failure_threshold = self
-            .channel_failure_threshold_for_app(
-                channel_id,
-                app_type,
-                CircuitBreakerConfig::default().failure_threshold,
-            )
+        let circuit_config = self
+            .channel_circuit_breaker_config_for_app(channel_id, app_type)
             .await;
+        let failure_threshold = circuit_config.failure_threshold;
         let circuit_key = channel_circuit_key(app_type, channel_id);
         self.circuit_runtime
-            .record_result(&circuit_key, used_half_open_permit, success)
+            .record_result_with_config(&circuit_key, circuit_config, used_half_open_permit, success)
             .await;
 
         self.sources
@@ -363,28 +365,28 @@ impl ProviderRouter {
             .await
     }
 
-    async fn channel_failure_threshold_for_app(
+    async fn channel_circuit_breaker_config_for_app(
         &self,
         channel_id: &str,
         app_type: &str,
-        fallback: u32,
-    ) -> u32 {
-        let default_threshold = self.failure_threshold_for_app(app_type, fallback).await;
+    ) -> CircuitBreakerConfig {
+        let mut config = self.sources.config.circuit_breaker_config(app_type).await;
         let Ok((channels, _source)) = self.sources.channels.channel_route_inputs(app_type).await
         else {
-            return default_threshold;
+            return config;
         };
 
-        channels
+        if let Some(channel) = channels
             .iter()
             .find(|channel| channel.channel_id == channel_id)
-            .map(|channel| {
-                effective_channel_health_failure_threshold(
-                    default_threshold,
-                    &channel.health_policy,
-                )
-            })
-            .unwrap_or(default_threshold)
+        {
+            config.failure_threshold = effective_channel_health_failure_threshold(
+                config.failure_threshold,
+                &channel.health_policy,
+            );
+        }
+
+        config
     }
 }
 
@@ -418,8 +420,37 @@ impl ProviderRoutingCircuitRuntime {
         breaker.allow_request().await
     }
 
+    async fn allow_request_with_config(
+        &self,
+        key: &str,
+        config: CircuitBreakerConfig,
+    ) -> AllowResult {
+        let breaker = self
+            .get_or_create_circuit_breaker_with_config(key, config)
+            .await;
+        breaker.allow_request().await
+    }
+
     async fn record_result(&self, key: &str, used_half_open_permit: bool, success: bool) {
         let breaker = self.get_or_create_circuit_breaker(key).await;
+
+        if success {
+            breaker.record_success(used_half_open_permit).await;
+        } else {
+            breaker.record_failure(used_half_open_permit).await;
+        }
+    }
+
+    async fn record_result_with_config(
+        &self,
+        key: &str,
+        config: CircuitBreakerConfig,
+        used_half_open_permit: bool,
+        success: bool,
+    ) {
+        let breaker = self
+            .get_or_create_circuit_breaker_with_config(key, config)
+            .await;
 
         if success {
             breaker.record_success(used_half_open_permit).await;
@@ -483,6 +514,30 @@ impl ProviderRoutingCircuitRuntime {
         // 双重检查，防止竞争条件
         if let Some(breaker) = breakers.get(key) {
             return breaker.clone();
+        }
+
+        let breaker = Arc::new(CircuitBreaker::new(config));
+        breakers.insert(key.to_string(), breaker.clone());
+
+        breaker
+    }
+
+    async fn get_or_create_circuit_breaker_with_config(
+        &self,
+        key: &str,
+        config: CircuitBreakerConfig,
+    ) -> Arc<CircuitBreaker> {
+        if let Some(breaker) = self.get_existing_circuit_breaker(key).await {
+            breaker.update_config(config).await;
+            return breaker;
+        }
+
+        let mut breakers = self.breakers.write().await;
+
+        if let Some(breaker) = breakers.get(key).cloned() {
+            drop(breakers);
+            breaker.update_config(config).await;
+            return breaker;
         }
 
         let breaker = Arc::new(CircuitBreaker::new(config));
@@ -836,6 +891,17 @@ mod tests {
         let degraded = db.get_proxy_channel_health(&channel_id).unwrap();
         assert_eq!(degraded.status, "degraded");
         assert_eq!(degraded.consecutive_failures, 1);
+        let closed_stats = router
+            .get_channel_circuit_breaker_stats(&channel_id, "claude")
+            .await
+            .expect("channel stats after first failure");
+        assert_eq!(closed_stats.state, CircuitState::Closed);
+        assert!(
+            router
+                .allow_channel_request(&channel_id, "claude")
+                .await
+                .allowed
+        );
 
         router
             .record_channel_result(
@@ -852,6 +918,11 @@ mod tests {
         let unhealthy = db.get_proxy_channel_health(&channel_id).unwrap();
         assert_eq!(unhealthy.status, "unhealthy");
         assert_eq!(unhealthy.consecutive_failures, 2);
+        let open_stats = router
+            .get_channel_circuit_breaker_stats(&channel_id, "claude")
+            .await
+            .expect("channel stats after second failure");
+        assert_eq!(open_stats.state, CircuitState::Open);
     }
 
     #[tokio::test]

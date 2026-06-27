@@ -19163,11 +19163,13 @@ fn production_provider_router_records_channel_health_with_core_attempt_fact() {
     );
     assert!(
         source.contains("effective_channel_health_failure_threshold")
-            && router_slice.contains("channel_failure_threshold_for_app(")
+            && router_slice.contains("channel_circuit_breaker_config_for_app(")
             && source.contains("self.sources.channels.channel_route_inputs(app_type)")
             && source.contains("effective_channel_health_failure_threshold(")
-            && source.contains("&channel.health_policy"),
-        "ProviderRouter channel health writes should resolve per-channel health policy through the core helper"
+            && source.contains("&channel.health_policy")
+            && router_slice.contains("allow_request_with_config(")
+            && router_slice.contains("record_result_with_config("),
+        "ProviderRouter channel health/circuit writes should resolve per-channel health policy through the core helper"
     );
     assert!(
         !router_slice.contains("record_channel_health(\n            channel_id,"),
