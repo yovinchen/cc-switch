@@ -1752,6 +1752,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1266. legacy channel projection 的 test-only routing helper facade 已删除：adapter 自测直接调用 `proxy-core::api::routing::{build_legacy_channel_projection,infer_legacy_channel_interface,legacy_channel_priority}`，生产迁移路径继续保留 host-shaped projection/response wrapper；边界测试防止 legacy channel projection policy 重新通过 adapter re-export。
 1267. forward route/no-runtime error 的 test-only routing helper facade 已删除：adapter 自测直接调用 `proxy-core::api::routing` owning error/message helper，host forward pipeline 继续直接消费 core `forwarding_requires_runtime_error`，`proxy_core_adapter` 只保留 host-shaped forward runtime wiring；边界测试防止这些 pure routing error helper 重新 re-export。
 1268. `proxy_core_host` 测试兼容壳的 pure core contract facade 已删除：test-only host harness 直接从 `proxy-core::api::{model_catalog,routing,transport}` 引用 `client_model_catalog_from_optional_raw`、`DEFAULT_ROUTE_GROUP` 与 `ProxyBody`，adapter 只保留生产/宿主形状的集成出口；全局 direct-core 边界仅放行该文件的 `#[cfg(test)]` 顶层导入，并继续通过专门测试保证 `proxy_core_host` 不进入生产编译。
+1269. channel spec 构造的 test-only domain facade 已删除：adapter 自测直接从 `proxy-core::api::domain` 引用 `channel_spec_from_input` 与 `ChannelSpecInput`，host-owned database channel source 继续直接消费 core channel contract；边界测试防止该 pure DTO constructor 重新作为 `proxy_core_adapter` re-export。
 
 ## 背景
 
