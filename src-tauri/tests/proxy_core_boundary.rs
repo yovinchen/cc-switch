@@ -2046,6 +2046,12 @@ fn is_allowed_circuit_breaker_config_core_import(relative: &str, code: &str) -> 
         && code.trim() == "use crate::proxy_core::api::config::{"
 }
 
+fn is_allowed_codex_chat_history_transform_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/codex_chat_history.rs"
+        && code.trim()
+            == "use crate::proxy_core::api::transforms::{CodexChatHistorySseRecord, CodexChatHistoryState};"
+}
+
 #[test]
 fn host_code_uses_proxy_core_through_adapter_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -2101,6 +2107,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
                     && !is_allowed_circuit_breaker_config_core_import(&relative, code)
+                    && !is_allowed_codex_chat_history_transform_core_import(&relative, code)
                 {
                     violations.push(format!(
                         "{}:{} contains direct proxy-core marker `{}`",
@@ -5373,6 +5380,44 @@ fn proxy_core_adapter_does_not_export_claude_auth_helper_aliases() {
         assert!(
             !adapter_source.contains(alias),
             "proxy_core_adapter should not expose Claude auth/helper contract alias `{alias}`; adapter internals should use proxy_core APIs directly"
+        );
+    }
+}
+
+#[test]
+fn proxy_core_adapter_does_not_export_codex_transform_aliases() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let history_source = fs::read_to_string(manifest_dir.join("src/proxy/codex_chat_history.rs"))
+        .expect("read codex_chat_history.rs");
+
+    for alias in [
+        "pub(crate) type CodexChatHistorySseRecord =",
+        "pub(crate) type CodexChatHistoryState =",
+        "pub(crate) type CodexChatReasoningOptions =",
+        "pub(crate) type CodexChatReasoningProfile =",
+        "pub(crate) type CodexToolContext =",
+    ] {
+        assert!(
+            !adapter_source.contains(alias),
+            "proxy_core_adapter should not expose Codex transform contract alias `{alias}`; callers and adapter internals should use proxy_core::api::transforms directly"
+        );
+    }
+
+    assert!(
+        history_source.contains(
+            "use crate::proxy_core::api::transforms::{CodexChatHistorySseRecord, CodexChatHistoryState};"
+        ),
+        "CodexChatHistoryStore should import history transform contracts directly from proxy_core"
+    );
+    let adapter_imports = proxy_core_adapter_import_identifiers(&history_source);
+    for adapter_type in ["CodexChatHistorySseRecord", "CodexChatHistoryState"] {
+        assert!(
+            !adapter_imports
+                .iter()
+                .any(|identifier| identifier == adapter_type),
+            "CodexChatHistoryStore must not import {adapter_type} through proxy_core_adapter"
         );
     }
 }

@@ -1,6 +1,6 @@
+use crate::proxy_core::api::transforms::{CodexChatHistorySseRecord, CodexChatHistoryState};
 use crate::proxy_core_adapter::{
     append_utf8_safe, inspect_codex_chat_history_sse_block, take_sse_block,
-    CodexChatHistorySseRecord, CodexChatHistoryState,
 };
 use bytes::Bytes;
 use futures::{Stream, StreamExt};

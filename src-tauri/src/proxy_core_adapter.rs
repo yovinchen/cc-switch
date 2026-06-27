@@ -30,7 +30,10 @@ use crate::proxy_core::api::routing::{
     RouteResolveModelRecordInput,
 };
 use crate::proxy_core::api::session::SessionIdResult;
-use crate::proxy_core::api::transforms::AnthropicToolSchemaHints;
+use crate::proxy_core::api::transforms::{
+    AnthropicToolSchemaHints, CodexChatReasoningOptions, CodexChatReasoningProfile,
+    CodexToolContext,
+};
 use crate::settings::CustomEndpoint;
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
@@ -511,14 +514,6 @@ pub(crate) type ProxyCoreResult<T> = crate::proxy_core::api::errors::ProxyCoreRe
 pub(crate) type ProxyEngine<S> = crate::proxy_core::api::engine::ProxyEngine<S>;
 pub(crate) type ProxyResult = crate::proxy_core::api::transport::ProxyResult;
 pub(crate) type ProxyCoreEvent = crate::proxy_core::api::events::ProxyCoreEvent;
-pub(crate) type CodexChatHistorySseRecord =
-    crate::proxy_core::api::transforms::CodexChatHistorySseRecord;
-pub(crate) type CodexChatHistoryState = crate::proxy_core::api::transforms::CodexChatHistoryState;
-pub(crate) type CodexChatReasoningOptions =
-    crate::proxy_core::api::transforms::CodexChatReasoningOptions;
-pub(crate) type CodexChatReasoningProfile =
-    crate::proxy_core::api::transforms::CodexChatReasoningProfile;
-pub(crate) type CodexToolContext = crate::proxy_core::api::transforms::CodexToolContext;
 pub(crate) type ProxyResponseBody = crate::proxy_core::api::transport::ProxyResponseBody;
 pub(crate) type ModelPricing = crate::proxy_core::api::usage::ModelPricing;
 pub(crate) type UsageRecord = crate::proxy_core::api::usage::UsageRecord;
@@ -7250,6 +7245,7 @@ mod tests {
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         AuthInfo, CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderCredentialIssue,
     };
+    use crate::proxy_core::api::transforms::{CodexChatHistorySseRecord, CodexChatHistoryState};
 
     use super::*;
     use crate::database::ProxyChannelSourceKind;
