@@ -8,7 +8,7 @@ use crate::proxy_core::api::domain::{
 };
 use crate::proxy_core::api::errors::ProxyCoreResult;
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
-use crate::proxy_core_adapter::{
+use crate::proxy_core::api::routing::{
     route_plan_no_matching_host_providers_error, route_plan_provider_match,
     route_plan_providers_unconfigured_error, RoutePlan,
 };

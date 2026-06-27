@@ -5333,7 +5333,6 @@ pub(crate) fn codex_client_model_catalog_raw_from_active_config() -> Value {
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::route_plan_provider_ids;
-pub(crate) use crate::proxy_core::api::routing::route_plan_provider_match;
 
 use crate::proxy::host::cc_switch::channel_auth_profile_attempts::required_forward_attempts_from_sources;
 #[cfg(test)]
@@ -6074,14 +6073,11 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
     .await
 }
 
-pub(crate) use crate::proxy_core::api::routing::{
-    route_plan_no_matching_host_providers_error, route_plan_providers_unconfigured_error,
-};
-
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::{
     forwarding_requires_runtime_error as forwarding_runtime_unavailable_error,
-    forwarding_requires_runtime_error_message, route_plan_no_matching_host_providers_error_message,
+    forwarding_requires_runtime_error_message, route_plan_no_matching_host_providers_error,
+    route_plan_no_matching_host_providers_error_message,
     route_plan_providers_unconfigured_error_message,
 };
 

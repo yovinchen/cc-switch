@@ -12648,7 +12648,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let host_forward_function = function_slice(
         &source,
         "pub(crate) async fn forward_proxy_request_with_host_runtime",
-        "pub(crate) use crate::proxy_core::api::routing::{\n    route_plan_no_matching_host_providers_error",
+        "#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::{",
     );
     let adapter_core_ports_import = function_slice(
         &source,
@@ -12657,8 +12657,8 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     );
     let adapter_production_routing_import = function_slice(
         &source,
-        "pub(crate) use crate::proxy_core::api::routing::{\n    route_plan_no_matching_host_providers_error",
-        "};\n\n#[cfg(test)]",
+        "pub(crate) use crate::proxy_core::api::routing::{\n    route_plan_selections",
+        "};\n\npub(crate) fn route_policy_from_failover_queue",
     );
     let attempt_source_function = attempt_source.as_str();
 
@@ -12697,6 +12697,12 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
         !adapter_production_routing_import
             .contains("forwarding_requires_runtime_error as forwarding_runtime_unavailable_error"),
         "proxy_core_adapter should keep runtime-unavailable alias test-only"
+    );
+    assert!(
+        !source.contains("route_plan_provider_match;")
+            && attempt_source_function.contains("use crate::proxy_core::api::routing::{")
+            && attempt_source_function.contains("route_plan_provider_match"),
+        "host attempt source should consume core route-plan provider matching directly instead of via proxy_core_adapter"
     );
     assert!(
         host_runtime_trait.contains("channel_key_runtime_source")
