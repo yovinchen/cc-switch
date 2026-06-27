@@ -1714,6 +1714,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1228. `proxy_core_adapter` 的 test-only `ProviderCredentialValues` DTO alias 已删除；`provider_credential_values` 测试 helper 保留为 test-only contract，但直接返回 `proxy_core::api::ports` owning DTO，凭据策略边界测试防止 provider credential DTO 再作为 adapter facade 暴露。
 1229. `proxy_core_adapter` 的 test-only `ProxyCoreEventType` DTO alias 已删除；adapter 自测直接调用 `proxy_core::api::events` owning enum，`proxy_core_host` 兼容壳测试通过 serde 字段类型推断构造事件类型，event-sink 边界测试防止 event DTO 再作为 adapter facade 暴露。
 1230. channel-key runtime selection 已支持 `channel-key:*` wildcard：core `select_channel_key_runtime_candidate` 可在指定 channel 的 enabled 候选中按 priority/weight/key_ref 选择最佳 key，CC Switch DB-backed `ChannelKeyRuntimeSource` 和 host auth flow 已覆盖 wildcard 行为，为后续轮询、随机和失败回退策略保留同一个 core 选择入口。
+1231. channel-key runtime selection 已开始消费 `last_failure_at` 健康事实：core enabled-key selector 会优先选择未记录失败的 key，再按 priority/weight/key_ref 排序；DB-backed source 测试覆盖 wildcard key pool 在高优先级 key 标记失败后回退到健康 key。后续仍需补 forward failure 到 key failure timestamp 的持久化写回。
 
 ## 背景
 
