@@ -7401,12 +7401,6 @@ pub(crate) fn log_usage_request_projection_warnings(projection: &UsageRequestLog
 }
 
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::model_catalog::{
-    claude_takeover_client_model_for_upstream, claude_takeover_default_display_name,
-};
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::ports::apply_claude_takeover_fields_with_policy_and_models;
-#[cfg(test)]
 use crate::proxy_core::api::ports::claude_takeover_model_fields_from_settings as core_claude_takeover_model_fields_from_settings;
 use crate::proxy_core::api::ports::{
     apply_claude_takeover_fields_for_provider_facts as core_apply_claude_takeover_fields_for_provider_facts,
@@ -16634,7 +16628,7 @@ command = "latest-command"
     #[test]
     fn claude_takeover_adapter_projects_one_m_marker_and_display_name() {
         assert_eq!(
-            claude_takeover_client_model_for_upstream(
+            crate::proxy_core::api::model_catalog::claude_takeover_client_model_for_upstream(
                 "claude-sonnet-4-6",
                 true,
                 "deepseek-v4-pro[1M]"
@@ -16642,7 +16636,7 @@ command = "latest-command"
             "claude-sonnet-4-6[1M]"
         );
         assert_eq!(
-            claude_takeover_client_model_for_upstream(
+            crate::proxy_core::api::model_catalog::claude_takeover_client_model_for_upstream(
                 "claude-haiku-4-5",
                 false,
                 "deepseek-v4-flash[1M]"
@@ -16650,7 +16644,9 @@ command = "latest-command"
             "claude-haiku-4-5"
         );
         assert_eq!(
-            claude_takeover_default_display_name("deepseek-v4-ultra [1m]  "),
+            crate::proxy_core::api::model_catalog::claude_takeover_default_display_name(
+                "deepseek-v4-ultra [1m]  "
+            ),
             "deepseek-v4-ultra"
         );
 
@@ -16703,7 +16699,7 @@ command = "latest-command"
                 "OTHER": "kept"
             }
         });
-        apply_claude_takeover_fields_with_policy_and_models(
+        crate::proxy_core::api::ports::apply_claude_takeover_fields_with_policy_and_models(
             &mut live_config,
             "http://127.0.0.1:15721",
             "PROXY_MANAGED",

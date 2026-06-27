@@ -12583,6 +12583,41 @@ fn proxy_core_adapter_delegates_hot_switch_takeover_policies_to_core() {
 }
 
 #[test]
+fn proxy_core_adapter_keeps_claude_takeover_model_helpers_in_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        source.contains(
+            "pub(crate) use crate::proxy_core::api::ports::{\n    apply_claude_takeover_fields_with_policy"
+        ),
+        "proxy_core_adapter should retain host-facing Claude takeover write helper"
+    );
+    for marker in [
+        "claude_takeover_client_model_for_upstream",
+        "claude_takeover_default_display_name",
+        "apply_claude_takeover_fields_with_policy_and_models",
+    ] {
+        let reexport_marker = source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api") && line.contains(marker)
+        });
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export pure Claude takeover helper `{marker}`"
+        );
+    }
+    assert!(
+        !source.contains(
+            "claude_takeover_client_model_for_upstream, claude_takeover_default_display_name"
+        ) && !source.contains(
+            "pub(crate) use crate::proxy_core::api::ports::apply_claude_takeover_fields_with_policy_and_models"
+        ),
+        "proxy_core_adapter should not keep grouped test-only Claude takeover helper re-exports"
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_channel_key_settings_policy_to_typed_core_helper() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
