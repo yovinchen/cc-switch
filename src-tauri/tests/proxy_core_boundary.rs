@@ -9856,6 +9856,15 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
             && source.contains("ForwarderProviderUrlFactsInput"),
         "ForwarderAdapterContext should import pure provider URL facts helper/input directly from proxy_core::api::transport"
     );
+    assert!(
+        source.contains("use crate::proxy_core::api::auth::ProviderAuthInfo;"),
+        "ForwarderAdapterContext should import ProviderAuthInfo directly from proxy_core::api::auth"
+    );
+    assert!(
+        !source.contains("use crate::proxy_core_adapter::{")
+            && !source.contains("provider_is_full_url"),
+        "ForwarderAdapterContext should not depend on proxy_core_adapter for provider auth/url facts"
+    );
     for marker in [
         "forwarder_provider_url_facts",
         "ForwarderProviderUrlFactsInput",

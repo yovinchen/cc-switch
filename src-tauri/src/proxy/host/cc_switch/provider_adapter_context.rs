@@ -2,10 +2,10 @@ use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy::provider::{get_adapter, ProviderAdapter};
+use crate::proxy_core::api::auth::ProviderAuthInfo;
 use crate::proxy_core::api::transport::{
     forwarder_provider_url_facts, ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
 };
-use crate::proxy_core_adapter::{provider_is_full_url, ProviderAuthInfo};
 
 type ForwarderAdapterHandle = dyn ProviderAdapter;
 
@@ -50,7 +50,7 @@ impl ForwarderAdapterContext {
                     .meta
                     .as_ref()
                     .and_then(|meta| meta.provider_type.as_deref()),
-                is_full_url: provider_is_full_url(provider),
+                is_full_url: provider_full_url_flag(provider),
                 base_url,
             },
         ))
@@ -77,6 +77,14 @@ pub(crate) fn forwarder_provider_adapter_context_for_app(
     app_type: &AppType,
 ) -> ForwarderAdapterContext {
     ForwarderAdapterContext::new(get_adapter(app_type))
+}
+
+fn provider_full_url_flag(provider: &Provider) -> bool {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.is_full_url)
+        .unwrap_or(false)
 }
 
 #[derive(Clone, Copy)]
