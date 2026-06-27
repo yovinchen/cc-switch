@@ -1733,6 +1733,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1247. 全局代理 URL masking 的 pure security helper 已从 `proxy_core_adapter` facade 移除：host-owned `global_http_client` 直接引用 `proxy-core::api::security::mask_url_for_log` 并向命令层提供本地 logging wrapper，`commands/global_proxy` 不再直接依赖 adapter 或 core security facade；adapter 只继续承接显式代理 URL 校验和 loopback policy 等尚未迁完的兼容入口。
 1248. 全局代理显式 URL 校验和系统代理 loopback 判定的 pure helper 已继续从 `proxy_core_adapter` facade 移除：host-owned `global_http_client` 直接引用 `proxy-core::api::transport::{validate_explicit_proxy_url,invalid_explicit_proxy_url_message,proxy_values_point_to_loopback_port,SYSTEM_PROXY_ENV_KEYS}` 与 `proxy-core::api::ports::DEFAULT_PROXY_LISTEN_PORT`；adapter 不再 re-export 这些全局代理 URL 校验常量/函数，只保留 adapter 自测对 core contract 的直接断言。
 1249. `route_attempt.rs` 已直接引用 `proxy-core::api::routing::route_plan_selections` 构造 forward attempts；`proxy_core_adapter` 不再 re-export 该 route-plan selection helper，只保留当前仍需的 `route_selection_for_forward_result` 兼容别名。route attempt 继续作为 host/core routing 的批准适配文件，而不是通过 adapter 间接消费 pure routing iterator。
+1250. channel model override 的 pure transport helper 已继续从 `proxy_core_adapter` facade 移除：host-owned `forwarder_request_source` 与 test-only `route_attempt` helper 直接引用 `proxy-core::api::transport::apply_resolved_channel_model_override`；adapter 不再 re-export 该 helper，边界测试同时防止 adapter 出口回流并要求 request source/route attempt 直连 core。
 
 ## 背景
 
