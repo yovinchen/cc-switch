@@ -1744,6 +1744,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1258. `forward_pipeline` 测试的 pure transform cache-trace helper facade 已继续移除：canonical JSON 排序和短 hash 断言直接引用 `proxy-core::api::transforms::{canonical_json_string,short_value_hash}`，`proxy_core_adapter` 不再为测试便利 re-export 这两个 transform helper；边界测试同步防止它们回流到 adapter facade。
 1259. `proxy_core_adapter` 的 test-only usage helper facade 已继续移除：adapter 自测和 cfg-test `success_usage_record_from_app_type_with_request_id_fallback` wrapper 改为 fully-qualified 调用 `proxy-core::api::usage` owning helper，response pipeline 继续直接消费 usage logging helper；边界测试防止 usage 记录 fallback/debug/warn helper 重新通过 adapter re-export。
 1260. `extract_gemini_model_from_path` 的 test-only adapter re-export 已删除：生产 `response_adapter` 已直接消费 `proxy-core::api::transport`，adapter 自测改为 fully-qualified 调用 owning helper，边界测试防止 Gemini path model extraction 重新作为 `proxy_core_adapter` facade 暴露。
+1261. `claude_api_format_from_metadata` 的 test-only adapter re-export 已删除：`engine/context.rs` 已直接消费 `proxy-core::api::transforms` owning helper，adapter 自测改为 fully-qualified 调用 core，边界测试防止该 Claude metadata format helper 重新暴露为 adapter facade；host-shaped `provider_claude_api_format` wrapper 仍保留在 adapter。
 
 ## 背景
 
