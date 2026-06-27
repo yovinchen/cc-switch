@@ -1342,6 +1342,7 @@ mod tests {
                 header_overrides: json!({}),
                 param_overrides: json!({}),
                 status_code_mapping: json!([{"from": 429, "to": 200}]),
+                retry_policy: json!({}),
             },
         );
         let response = ProxyResponse::buffered(
@@ -1377,6 +1378,7 @@ mod tests {
                 header_overrides: json!({}),
                 param_overrides: json!({}),
                 status_code_mapping: json!([{"from": 429, "to": "rate_limited"}]),
+                retry_policy: json!({}),
             },
         );
         let response = ProxyResponse::buffered(

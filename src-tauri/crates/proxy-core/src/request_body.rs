@@ -1070,6 +1070,7 @@ mod tests {
             header_overrides: json!({}),
             param_overrides: json!({}),
             status_code_mapping: json!([]),
+            retry_policy: json!({}),
         };
         let mut body = json!({"model": "sonnet-public"});
 

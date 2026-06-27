@@ -746,7 +746,7 @@ pub fn auth_channel_spec_from_attempt(
             groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
             priority: 0,
             weight: 100,
-            retry_policy: Value::Object(Default::default()),
+            retry_policy: channel.retry_policy.clone(),
             health_policy: Value::Object(Default::default()),
             header_overrides: channel.header_overrides.clone(),
             param_overrides: channel.param_overrides.clone(),
@@ -1279,6 +1279,50 @@ pub struct ResolvedChannelAttempt {
     pub param_overrides: Value,
     #[serde(default)]
     pub status_code_mapping: Value,
+    #[serde(default = "empty_object_value", skip_serializing_if = "is_empty_object_value")]
+    pub retry_policy: Value,
+}
+
+fn empty_object_value() -> Value {
+    Value::Object(Default::default())
+}
+
+fn is_empty_object_value(value: &Value) -> bool {
+    value.as_object().is_some_and(|object| object.is_empty())
+}
+
+pub fn retry_policy_max_attempts(policy: &Value) -> Option<usize> {
+    let policy = policy.as_object()?;
+    policy
+        .get("maxAttempts")
+        .or_else(|| policy.get("max_attempts"))
+        .and_then(positive_usize_from_json_value)
+}
+
+pub fn resolved_channel_attempt_retry_max_attempts(
+    channel: &ResolvedChannelAttempt,
+) -> Option<usize> {
+    retry_policy_max_attempts(&channel.retry_policy)
+}
+
+pub fn effective_forward_max_attempts_for_channel(
+    default_max_attempts: usize,
+    selected_channel: Option<&ResolvedChannelAttempt>,
+) -> usize {
+    if default_max_attempts == 0 {
+        return 0;
+    }
+
+    selected_channel
+        .and_then(resolved_channel_attempt_retry_max_attempts)
+        .map(|max_attempts| max_attempts.clamp(1, default_max_attempts))
+        .unwrap_or(default_max_attempts)
+}
+
+fn positive_usize_from_json_value(value: &Value) -> Option<usize> {
+    usize::try_from(value.as_u64()?)
+        .ok()
+        .filter(|value| *value > 0)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2450,6 +2494,51 @@ mod tests {
     }
 
     #[test]
+    fn channel_retry_policy_projects_effective_forward_attempt_limit() {
+        fn channel_attempt(retry_policy: Value) -> ResolvedChannelAttempt {
+            ResolvedChannelAttempt {
+                channel_id: "channel-a".to_string(),
+                channel_name: "Channel A".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "openai_chat_completions".to_string(),
+                auth_profile_ref: None,
+                public_model: None,
+                upstream_model: None,
+                header_overrides: json!({}),
+                param_overrides: json!({}),
+                status_code_mapping: json!([]),
+                retry_policy,
+            }
+        }
+
+        let camel_case = channel_attempt(json!({"maxAttempts": 2}));
+        assert_eq!(retry_policy_max_attempts(&camel_case.retry_policy), Some(2));
+        assert_eq!(
+            effective_forward_max_attempts_for_channel(4, Some(&camel_case)),
+            2
+        );
+
+        let snake_case = channel_attempt(json!({"max_attempts": 3}));
+        assert_eq!(
+            resolved_channel_attempt_retry_max_attempts(&snake_case),
+            Some(3)
+        );
+        assert_eq!(
+            effective_forward_max_attempts_for_channel(2, Some(&snake_case)),
+            2,
+            "channel retry policy should not raise the global forward attempt cap"
+        );
+
+        let invalid = channel_attempt(json!({"maxAttempts": 0}));
+        assert_eq!(retry_policy_max_attempts(&invalid.retry_policy), None);
+        assert_eq!(
+            effective_forward_max_attempts_for_channel(4, Some(&invalid)),
+            4
+        );
+        assert_eq!(effective_forward_max_attempts_for_channel(4, None), 4);
+    }
+
+    #[test]
     fn proxy_request_observed_context_sets_model_headers_and_extensions() {
         let mut headers = HeaderMap::new();
         headers.insert("x-request-id", http::HeaderValue::from_static("req-1"));
@@ -2490,6 +2579,7 @@ mod tests {
                 header_overrides: Value::Object(Default::default()),
                 param_overrides: Value::Object(Default::default()),
                 status_code_mapping: Value::Array(Vec::new()),
+                retry_policy: json!({"maxAttempts": 2}),
             }),
         );
         let mut headers = HeaderMap::new();
@@ -2514,6 +2604,7 @@ mod tests {
             request.headers.get("x-request-id"),
             Some(&http::HeaderValue::from_static("req-1"))
         );
+        assert_eq!(channel.retry_policy.raw, json!({"maxAttempts": 2}));
         assert!(request.extensions.get::<usize>().is_none());
         assert_eq!(request.body, ProxyBody::Json(body));
     }
@@ -2870,6 +2961,7 @@ mod tests {
             header_overrides: json!({ "x-route": "a" }),
             param_overrides: json!({ "temperature": 0.2 }),
             status_code_mapping: json!([{ "from": 429, "to": 503 }]),
+            retry_policy: json!({"maxAttempts": 2}),
         };
 
         let spec = auth_channel_spec_from_attempt(
@@ -2897,6 +2989,7 @@ mod tests {
             spec.overrides.status_code_mapping,
             json!([{ "from": 429, "to": 503 }])
         );
+        assert_eq!(spec.retry_policy.raw, json!({"maxAttempts": 2}));
     }
 
     #[test]

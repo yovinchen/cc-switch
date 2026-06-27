@@ -173,6 +173,7 @@ pub fn resolved_channel_attempt_from_candidate(
         header_overrides: Value::Object(Default::default()),
         param_overrides: Value::Object(Default::default()),
         status_code_mapping: Value::Array(Vec::new()),
+        retry_policy: Value::Object(Default::default()),
     }
 }
 
@@ -200,6 +201,7 @@ pub fn resolved_channel_attempt_from_selection(
         header_overrides: selection.channel.overrides.headers.clone(),
         param_overrides: selection.channel.overrides.params.clone(),
         status_code_mapping: selection.channel.overrides.status_code_mapping.clone(),
+        retry_policy: selection.channel.retry_policy.raw.clone(),
     }
 }
 
@@ -687,6 +689,7 @@ mod tests {
         let mut selection = selection();
         selection.channel.auth_profile = Some(AuthProfileRef::new("channel-key:relay-a"));
         selection.channel.overrides.status_code_mapping = json!([{"from": 429, "to": 503}]);
+        selection.channel.retry_policy.raw = json!({"maxAttempts": 2});
 
         let attempt = resolved_channel_attempt_from_selection(&selection);
 
@@ -695,6 +698,7 @@ mod tests {
             Some("channel-key:relay-a")
         );
         assert_eq!(attempt.status_code_mapping, json!([{"from": 429, "to": 503}]));
+        assert_eq!(attempt.retry_policy, json!({"maxAttempts": 2}));
     }
 
     #[test]

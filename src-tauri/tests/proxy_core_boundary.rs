@@ -14604,10 +14604,14 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     );
     assert!(
         attempt_runtime_impl_slice
-            .contains("forwarder_attempt_runtime_decision(ForwarderAttemptRuntimeDecisionInput")
+            .contains("effective_forward_max_attempts_for_channel(")
+            && attempt_runtime_impl_slice
+                .contains("forwarder_attempt_runtime_decision(ForwarderAttemptRuntimeDecisionInput")
+            && attempt_runtime_impl_slice
+                .contains("input.attempts.first().and_then(ForwardAttempt::channel)")
             && attempt_runtime_impl_slice.contains("runtime_decision.bypass_circuit_breaker")
             && attempt_runtime_impl_slice.contains("runtime_decision.limit_log_line"),
-        "default ForwarderAttemptRuntimeSource implementation should delegate attempt limit and circuit-bypass policy to core"
+        "default ForwarderAttemptRuntimeSource implementation should delegate retry limit and circuit-bypass policy to core"
     );
     assert!(
         attempt_source.contains("use crate::database::Database")
@@ -14617,14 +14621,17 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         "default ForwarderAttemptRuntimeSource should own DB-backed selected channel-key failure writeback"
     );
     assert!(
-        attempt_source.contains("use crate::proxy_core::api::transport::{")
+        attempt_source
+            .contains("use crate::proxy_core::api::routing::effective_forward_max_attempts_for_channel;")
+            && attempt_source.contains("use crate::proxy_core::api::transport::{")
             && attempt_source.contains("forwarder_attempt_runtime_decision")
             && attempt_source.contains("ForwarderAttemptRuntimeDecisionInput"),
-        "default ForwarderAttemptRuntimeSource should import pure attempt decision helper/input directly from proxy_core::api::transport"
+        "default ForwarderAttemptRuntimeSource should import pure retry/attempt decision helpers directly from proxy_core::api"
     );
     for marker in [
         "forwarder_attempt_runtime_decision",
         "ForwarderAttemptRuntimeDecisionInput",
+        "effective_forward_max_attempts_for_channel",
     ] {
         assert!(
             !adapter_runtime_source.contains(marker),

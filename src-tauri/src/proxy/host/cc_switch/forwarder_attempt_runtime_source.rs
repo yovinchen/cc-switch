@@ -5,6 +5,7 @@ use crate::database::Database;
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
 use crate::proxy::route_attempt::ForwardAttempt;
+use crate::proxy_core::api::routing::effective_forward_max_attempts_for_channel;
 use crate::proxy_core::api::transport::{
     forwarder_attempt_runtime_decision, ForwarderAttemptRuntimeDecisionInput,
 };
@@ -57,11 +58,15 @@ impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
         input: ForwarderAttemptAllowInput<'a>,
     ) -> BoxFuture<'a, ForwarderAttemptAllowDecision> {
         Box::pin(async move {
+            let max_attempts = effective_forward_max_attempts_for_channel(
+                input.max_attempts,
+                input.attempts.first().and_then(ForwardAttempt::channel),
+            );
             let runtime_decision =
                 forwarder_attempt_runtime_decision(ForwarderAttemptRuntimeDecisionInput {
                     app_type: input.app_type,
                     attempted_providers: input.attempted_providers,
-                    max_attempts: input.max_attempts,
+                    max_attempts,
                     attempts_len: input.attempts.len(),
                     single_attempt_is_channel: input
                         .attempts
