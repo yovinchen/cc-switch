@@ -7,7 +7,10 @@ use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
 use crate::database::Database;
 use crate::provider::Provider;
 use crate::proxy::switch_lock::SwitchLockManager;
-use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};
+use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};
+use crate::proxy_core::api::ports::{
+    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+};
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_claude_takeover_fields_with_policy,
     apply_codex_takeover_fields_for_provider, apply_codex_unified_session_bucket_for_provider,
@@ -48,9 +51,9 @@ use crate::proxy_core_adapter::{
     set_proxy_app_enabled_in_db, ssot_live_restore_provider_from_db,
     sync_provider_settings_with_live_token, update_live_token_sync_provider_settings_in_db,
     update_proxy_config_preserving_live_takeover_active_in_db,
-    write_ssot_live_restore_provider_with_common_config, CcSwitchProxyServer, CircuitBreakerConfig,
-    CircuitBreakerStats, ClaudeTakeoverAuthPolicy, CodexLiveWriteProjection,
-    CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyServerInfo, ProxyTakeoverStatus,
+    write_ssot_live_restore_provider_with_common_config, CcSwitchProxyServer,
+    ClaudeTakeoverAuthPolicy, CodexLiveWriteProjection, CodexTakeoverAuthPolicy,
+    LiveTokenProviderSettingsIssue,
 };
 #[cfg(test)]
 use serde_json::Map;

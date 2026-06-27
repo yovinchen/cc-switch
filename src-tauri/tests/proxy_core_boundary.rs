@@ -2028,7 +2028,11 @@ fn is_allowed_forwarder_runtime_state_core_import(relative: &str, code: &str) ->
 
 fn is_allowed_live_takeover_runtime_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/host/cc_switch/live_takeover.rs"
-        && code.trim() == "use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};"
+                | "use crate::proxy_core::api::ports::{"
+        )
 }
 
 #[test]
@@ -11768,17 +11772,30 @@ fn production_live_takeover_imports_runtime_contracts_directly() {
         .expect("read host/cc_switch/live_takeover.rs");
     let import_slice = function_slice(&source, "use crate::app_config::AppType;", "#[cfg(test)]");
 
-    let required_import = "use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};";
+    let required_imports = [
+        "use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};",
+        "use crate::proxy_core::api::ports::{",
+        "ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,",
+    ];
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
     let mut violations = Vec::new();
 
-    if !import_slice.contains(required_import) {
-        violations.push(format!(
-            "{relative} should import `{required_import}` directly from proxy_core"
-        ));
+    for required_import in required_imports {
+        if !import_slice.contains(required_import) {
+            violations.push(format!(
+                "{relative} should import `{required_import}` directly from proxy_core"
+            ));
+        }
     }
 
-    for forbidden in ["ProxyConfig", "ProxyRuntimeStatus"] {
+    for forbidden in [
+        "CircuitBreakerConfig",
+        "CircuitBreakerStats",
+        "ProxyConfig",
+        "ProxyRuntimeStatus",
+        "ProxyServerInfo",
+        "ProxyTakeoverStatus",
+    ] {
         if adapter_import_identifiers
             .iter()
             .any(|identifier| identifier == forbidden)
