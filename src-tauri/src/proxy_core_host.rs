@@ -53,7 +53,7 @@ mod tests {
         ProxyCoreModelCapabilities as ModelCapabilities, ProxyCoreModelRoute as ModelRoute,
         ProxyCoreResult, ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyEngine,
         ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy,
-        RouteResolveRequest, RouteSelection, UsageRecord, UsageTokens,
+        RouteResolveRequest, RouteSelection, UsageRecord,
     };
     use bytes::Bytes;
     use futures::StreamExt;
@@ -1195,12 +1195,13 @@ mod tests {
                 outbound_model: "upstream-sonnet".to_string(),
                 response_model: Some("upstream-sonnet".to_string()),
                 pricing_model: None,
-                tokens: UsageTokens {
-                    input_tokens: 1_000,
-                    output_tokens: 500,
-                    cache_read_tokens: 0,
-                    cache_creation_tokens: 0,
-                },
+                tokens: serde_json::from_value(json!({
+                    "inputTokens": 1_000,
+                    "outputTokens": 500,
+                    "cacheReadTokens": 0,
+                    "cacheCreationTokens": 0,
+                }))
+                .expect("usage tokens"),
                 latency_ms: 42,
                 first_token_ms: Some(7),
                 status_code: 200,

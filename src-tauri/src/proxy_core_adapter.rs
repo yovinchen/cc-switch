@@ -561,8 +561,6 @@ pub(crate) type ProxyResponseBody = crate::proxy_core::api::transport::ProxyResp
 pub(crate) type ModelPricing = crate::proxy_core::api::usage::ModelPricing;
 pub(crate) type UsageRecord = crate::proxy_core::api::usage::UsageRecord;
 pub(crate) type UsageRouteContext = crate::proxy_core::api::usage::UsageRouteContext;
-#[cfg(test)]
-pub(crate) type UsageTokens = crate::proxy_core::api::usage::UsageTokens;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::api::ports::CurrentRouteTarget;
 
 pub(crate) async fn record_codex_chat_response_history(
