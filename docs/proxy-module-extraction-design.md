@@ -1766,6 +1766,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1280. `provider_credential_values` 的 crate-visible test-only adapter facade 已删除：service/provider 的 test-local credential extraction helper 与重复测试移除，Claude/Codex/Gemini/OpenCode/OpenClaw 凭据来源覆盖集中到 adapter 自测内部私有 helper；边界测试防止 ProviderService 测试重新依赖 adapter credential test facade，并同步要求 Codex live/settings 生产边界只检查仍属于生产路径的 core helper。
 1281. Codex Responses->Chat endpoint rewrite 的 test-only adapter facade 已删除：forward pipeline 回归测试和 adapter 自测直接调用 `proxy-core::api::transport::rewrite_codex_responses_endpoint_to_chat` 并解包 endpoint/query facts，`proxy_core_adapter` 不再提供该 pure helper 的二次出口；边界测试新增 marker 防止该 wrapper 回流。
 1282. provider official category 判定的 test-only adapter facade 已删除：adapter 事件自测直接调用 `proxy-core::api::ports::provider_category_is_official` 验证官方分类事实，生产仍通过 host-shaped `should_emit_proxy_official_warning_for_provider` / `should_reapply_codex_official_live_for_provider` wrapper 承接 provider 结构；边界测试防止 `provider_is_official_category` 回流。
+1283. `codex_api_key_from_auth_and_config` 的 crate-visible test-only adapter facade 已删除：Codex credential adapter 自测把 API key 来源解析 helper 降为 `mod tests` 内私有函数，外部测试不再通过 adapter 暴露该策略入口；边界测试防止该 helper 重新以 `pub(crate)` test facade 出现。
 
 ## 背景
 
