@@ -3342,8 +3342,6 @@ pub(crate) use crate::proxy_core::api::auth::extract_gemini_api_key_from_setting
 
 pub(crate) use crate::proxy_core::api::auth::extract_gemini_base_url_from_settings;
 
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::ports::gemini_env_value_from_env_json;
 pub(crate) use crate::proxy_core::api::ports::{
     gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
 };
@@ -12375,10 +12373,15 @@ base_url = "https://api.openai.com/v1"
         );
         assert!(gemini_env_map_from_settings(&json!({"env": "invalid"})).is_none());
         assert_eq!(
-            gemini_env_value_from_env_json(&json!({"env": {"A": "B"}})),
+            crate::proxy_core::api::ports::gemini_env_value_from_env_json(
+                &json!({"env": {"A": "B"}})
+            ),
             json!({"A": "B"})
         );
-        assert_eq!(gemini_env_value_from_env_json(&json!({})), json!({}));
+        assert_eq!(
+            crate::proxy_core::api::ports::gemini_env_value_from_env_json(&json!({})),
+            json!({})
+        );
         assert_eq!(
             gemini_live_settings_from_env_json_and_config(
                 &json!({"env": {"GEMINI_API_KEY": "sk-test"}}),

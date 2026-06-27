@@ -5905,6 +5905,12 @@ fn proxy_core_adapter_delegates_gemini_live_json_policy_to_core() {
             && production_source.contains("gemini_live_backup_from_effective_settings"),
         "proxy_core_adapter should expose Gemini live JSON helpers from core for live write/backup flows"
     );
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::ports::gemini_env_value_from_env_json"
+        ),
+        "proxy_core_adapter should not re-export pure Gemini env JSON extraction for tests"
+    );
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
