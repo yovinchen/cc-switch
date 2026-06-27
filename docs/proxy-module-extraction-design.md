@@ -1717,6 +1717,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1231. channel-key runtime selection 已开始消费 `last_failure_at` 健康事实：core enabled-key selector 会优先选择未记录失败的 key，再按 priority/weight/key_ref 排序；DB-backed source 测试覆盖 wildcard key pool 在高优先级 key 标记失败后回退到健康 key。后续仍需补 forward failure 到 key failure timestamp 的持久化写回。
 1232. proxy channel DAO 的 test-only `get_enabled_proxy_channel_key` convenience selector 已删除，`proxy_core_adapter` 的 test-only `ChannelKeyRuntimeCandidate` alias 同步删除；DAO 测试改为检查 raw persistence record，enabled/runtime key selection 只保留在 `CcSwitchChannelKeyRuntimeSource` 和 proxy-core selector，边界测试防止 DAO 重新承载 key-pool 选择逻辑。
 1233. forward failure 到 channel-key failure timestamp 的写回闭环已接入 host runtime：channel-key auth profile 会把实际选中的 `key_ref` 保存在 `ForwardAttempt`，`CcSwitchForwarderAttemptRuntimeSource::record_failure` 在记录 channel/provider runtime failure 后把对应 `(channel_id,key_ref)` 的 `proxy_channel_keys.last_failure_at` 写回 DB；普通 provider/channel attempt 不写 key failure，wildcard key 失败后下一次 runtime selection 会回退到未失败 key。剩余 channel auth 迁移重点转为 token cache/refresh、轮询/随机权重策略和更细的 failure cooldown 语义。
+1234. channel-key failure cooldown 语义已收敛到 proxy-core selector：新增默认 60 秒冷却窗口和 `select_channel_key_runtime_candidate_with_failure_cooldown`，CC Switch DB-backed source 只注入当前时间并继续加载候选集合；近期失败的 wildcard 高优先级 key 会临时降级，超过窗口后重新进入 priority/weight/key_ref 竞争，显式 key ref 仍按指定 channel/key 隔离选择。后续可在同一 core 入口继续扩展轮询、随机权重和可配置 cooldown。
 
 ## 背景
 
