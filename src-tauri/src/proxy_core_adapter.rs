@@ -888,8 +888,6 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
 }
 
 pub(crate) type GeminiShadowStore = crate::proxy_core::api::transforms::GeminiShadowStore;
-#[cfg(test)]
-pub(crate) type AuthProfileRef = crate::proxy_core::api::domain::AuthProfileRef;
 pub(crate) type ClaudeAuthKey = crate::proxy_core::api::auth::ClaudeAuthKey;
 pub(crate) type ClaudeAuthKeySource = crate::proxy_core::api::auth::ClaudeAuthKeySource;
 pub(crate) type ClaudePromptCacheKeyResolution =
@@ -8215,7 +8213,9 @@ mod tests {
                     timeout_profile: None,
                 },
                 interface: InterfaceKind::AnthropicMessages,
-                auth_profile: Some(AuthProfileRef::new(auth_profile_ref)),
+                auth_profile: Some(crate::proxy_core::api::domain::AuthProfileRef::new(
+                    auth_profile_ref,
+                )),
                 models: Vec::new(),
                 groups: vec!["default".to_string()],
                 priority: 0,
@@ -10914,7 +10914,8 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn auth_adapter_projects_cc_switch_provider_config_source() {
-        let auth_profile = AuthProfileRef::new("provider:claude:anthropic-main");
+        let auth_profile =
+            crate::proxy_core::api::domain::AuthProfileRef::new("provider:claude:anthropic-main");
         let auth =
             crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_provider_config(
                 Some(&auth_profile),

@@ -26,9 +26,9 @@ use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     client_model_catalog_from_optional_raw, forward_result_to_proxy_result,
-    management_route_response_from_router_source, AppKind, AuthProfileRef, AuthProvider,
-    ChannelAttemptResult, ChannelQuery, ChannelSpec, GeminiShadowStore, ProviderSpec,
-    ProxyCoreEvent, ProxyRequest, ProxyServices, RoutePlan,
+    management_route_response_from_router_source, AppKind, AuthProvider, ChannelAttemptResult,
+    ChannelQuery, ChannelSpec, GeminiShadowStore, ProviderSpec, ProxyCoreEvent, ProxyRequest,
+    ProxyServices, RoutePlan,
 };
 #[cfg(test)]
 use serde_json::Value;
@@ -66,6 +66,10 @@ mod tests {
         crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices<
             crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime,
         >;
+
+    fn auth_profile_ref<T: serde::de::DeserializeOwned>(value: &str) -> T {
+        serde_json::from_value(json!(value)).expect("auth profile ref")
+    }
 
     struct IsolatedTestHome {
         _dir: tempfile::TempDir,
@@ -236,7 +240,7 @@ mod tests {
         providers.insert(auth_provider.id.clone(), auth_provider);
         let mut plan = route_plan("route-provider", "channel-auth");
         plan.selection.channel.auth_profile =
-            Some(AuthProfileRef::new("provider:claude:auth-provider"));
+            Some(auth_profile_ref("provider:claude:auth-provider"));
 
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
@@ -274,7 +278,7 @@ mod tests {
         providers.insert(route_provider.id.clone(), route_provider);
         let mut plan = route_plan("route-provider", "channel-auth");
         plan.selection.channel.auth_profile =
-            Some(AuthProfileRef::new("provider:codex:auth-provider"));
+            Some(auth_profile_ref("provider:codex:auth-provider"));
 
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
@@ -310,7 +314,7 @@ mod tests {
         providers.insert(auth_provider.id.clone(), auth_provider);
         let mut plan = route_plan("route-provider", "channel-auth");
         plan.selection.channel.auth_profile =
-            Some(AuthProfileRef::new("provider:claude: auth-provider"));
+            Some(auth_profile_ref("provider:claude: auth-provider"));
 
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
@@ -338,7 +342,7 @@ mod tests {
         let mut providers = IndexMap::new();
         providers.insert(route_provider.id.clone(), route_provider);
         let mut plan = route_plan("route-provider", "channel-auth");
-        plan.selection.channel.auth_profile = Some(AuthProfileRef::new("channel-key:manual"));
+        plan.selection.channel.auth_profile = Some(auth_profile_ref("channel-key:manual"));
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
         let db = Arc::new(Database::memory().expect("memory db"));
@@ -386,7 +390,7 @@ mod tests {
         .expect("upsert channel key");
         let providers = db.get_all_providers("claude").expect("load providers");
         let mut plan = route_plan("anthropic-main", "channel-auth-key");
-        plan.selection.channel.auth_profile = Some(AuthProfileRef::new("channel-key:primary"));
+        plan.selection.channel.auth_profile = Some(auth_profile_ref("channel-key:primary"));
 
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
@@ -482,7 +486,7 @@ mod tests {
         let mut attempts = Vec::new();
         for channel_id in ["channel-auth-a", "channel-auth-b"] {
             let mut plan = route_plan("anthropic-main", channel_id);
-            plan.selection.channel.auth_profile = Some(AuthProfileRef::new("channel-key:primary"));
+            plan.selection.channel.auth_profile = Some(auth_profile_ref("channel-key:primary"));
             let route_providers =
                 host_providers_for_plan(&providers, &plan).expect("route providers");
             attempts.extend(forward_attempts_from_plan(
@@ -684,7 +688,7 @@ mod tests {
         let request = proxy_request();
         let mut plan = route_plan("anthropic-main", "channel-auth");
         plan.selection.channel.auth_profile =
-            Some(AuthProfileRef::new("provider:claude:anthropic-main"));
+            Some(auth_profile_ref("provider:claude:anthropic-main"));
 
         let auth = provider
             .resolve_auth(

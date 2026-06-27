@@ -12402,6 +12402,7 @@ fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
         "channel_auth_profile_provider_application",
         "ChannelAuthProfileProviderApplication",
         "channel_auth_profile_missing_key_error",
+        "type AuthProfileRef",
     ] {
         assert!(
             !adapter_runtime_source.contains(marker),
