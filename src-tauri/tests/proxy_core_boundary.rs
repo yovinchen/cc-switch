@@ -5121,6 +5121,74 @@ fn provider_adapter_auth_contracts_import_core_types_directly() {
 }
 
 #[test]
+fn engine_and_host_test_fixtures_import_core_contracts_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let cases: &[(&str, &[&str], &[&str])] = &[
+        (
+            "src/proxy/engine/response_pipeline.rs",
+            &[
+                "use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};",
+                "use crate::proxy_core::api::transforms::GeminiShadowStore;",
+            ],
+            &["GeminiShadowStore", "ProxyConfig", "ProxyRuntimeStatus"],
+        ),
+        (
+            "src/proxy/engine/forward_pipeline.rs",
+            &[
+                "use crate::proxy_core::api::domain::AppKind;",
+                "use crate::proxy_core::api::ports::ProxyRuntimeStatus;",
+                "use crate::proxy_core::api::routing::ResolvedChannelAttempt;",
+                "use crate::proxy_core::api::transforms::GeminiShadowStore;",
+            ],
+            &[
+                "AppKind",
+                "GeminiShadowStore",
+                "ProxyRuntimeStatus",
+                "ResolvedChannelAttempt",
+            ],
+        ),
+        (
+            "src/proxy/host/cc_switch/channel_key_runtime_source.rs",
+            &[
+                "use crate::proxy_core::api::management::{",
+                "ProxyChannelKeyWriteRequest, ProxyChannelWriteRequest,",
+            ],
+            &["ProxyChannelKeyWriteRequest", "ProxyChannelWriteRequest"],
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    for (relative, required_imports, forbidden_adapter_contracts) in cases {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read source");
+        for required_import in *required_imports {
+            if !source.contains(required_import) {
+                violations.push(format!(
+                    "{relative} should import `{required_import}` directly from proxy_core"
+                ));
+            }
+        }
+
+        let adapter_import_identifiers = proxy_core_adapter_import_identifiers(&source);
+        for forbidden in *forbidden_adapter_contracts {
+            if adapter_import_identifiers
+                .iter()
+                .any(|identifier| identifier == forbidden)
+            {
+                violations.push(format!(
+                    "{relative} imports core test fixture contract `{forbidden}` through proxy_core_adapter"
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "engine and host test fixtures should not route pure core contracts through proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_gemini_provider_adapter_delegates_auth_info_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider/gemini.rs");
@@ -10764,6 +10832,14 @@ fn settings_runtime_config_callers_use_core_dto_entrypoint() {
 
     for relative in caller_paths {
         let source = fs::read_to_string(manifest_dir.join(relative)).expect("read caller source");
+        let allowed_direct_core_imports = if relative == "src/proxy/engine/forward_pipeline.rs" {
+            vec![
+                required_import,
+                "use crate::proxy_core::api::routing::ResolvedChannelAttempt;",
+            ]
+        } else {
+            vec![required_import]
+        };
         for (line_index, line) in production_lines(&source) {
             let code = line.split("//").next().unwrap_or_default();
             if code.contains("proxy_core_adapter")
@@ -10779,7 +10855,7 @@ fn settings_runtime_config_callers_use_core_dto_entrypoint() {
             }
             let direct_core =
                 code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
-            if direct_core && code.trim() != required_import {
+            if direct_core && !allowed_direct_core_imports.contains(&code.trim()) {
                 violations.push(format!(
                     "{}:{} contains non-settings-config direct proxy-core import `{}`",
                     relative,
@@ -20555,6 +20631,34 @@ fn assert_proxy_core_adapter_no_response_pipeline_reexport(adapter_source: &str)
         !adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{"),
         "proxy_core_adapter should not re-export response_pipeline helpers; tests and callers must import the owning module directly"
     );
+}
+
+fn proxy_core_adapter_import_identifiers(source: &str) -> Vec<String> {
+    let mut identifiers = Vec::new();
+    let mut in_grouped_import = false;
+
+    for line in source.lines() {
+        let code = line.split("//").next().unwrap_or_default();
+        if code.contains("use crate::proxy_core_adapter::{") {
+            in_grouped_import = true;
+        }
+
+        if in_grouped_import || code.contains("use crate::proxy_core_adapter::") {
+            identifiers.extend(
+                code.split(|character: char| {
+                    !(character.is_ascii_alphanumeric() || character == '_')
+                })
+                .filter(|identifier| !identifier.is_empty())
+                .map(str::to_string),
+            );
+        }
+
+        if in_grouped_import && code.contains("};") {
+            in_grouped_import = false;
+        }
+    }
+
+    identifiers
 }
 
 fn collect_rust_files(dir: &Path, files: &mut Vec<PathBuf>) {

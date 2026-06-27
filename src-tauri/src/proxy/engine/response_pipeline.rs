@@ -1611,9 +1611,10 @@ mod tests {
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
     use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices as GenericCcSwitchProxyServices;
+    use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};
     use crate::proxy_core::api::transforms::strip_sse_field;
+    use crate::proxy_core::api::transforms::GeminiShadowStore;
     use crate::proxy_core::api::transport::decompress_body;
-    use crate::proxy_core_adapter::{GeminiShadowStore, ProxyConfig, ProxyRuntimeStatus};
     use rust_decimal::Decimal;
     use std::collections::HashMap;
     use std::str::FromStr;

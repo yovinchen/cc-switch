@@ -10,6 +10,7 @@ use crate::proxy::{
     transport::upstream::hyper_client::ProxyResponse,
 };
 use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
+use crate::proxy_core::api::routing::ResolvedChannelAttempt;
 #[cfg(test)]
 use crate::proxy_core_adapter::provider_is_codex_oauth;
 use crate::proxy_core_adapter::{
@@ -30,7 +31,7 @@ use crate::proxy_core_adapter::{
     ForwarderRuntimeStateSourceRef, ForwarderThinkingBudgetRectifierInput,
     ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
     ForwarderTransportSourceRef, ForwarderUpstreamRequestLogInput,
-    ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput, ResolvedChannelAttempt,
+    ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,
 };
 use crate::{app_config::AppType, provider::Provider};
 use http::Extensions;
@@ -1025,6 +1026,9 @@ mod tests {
     use crate::proxy_core::api::auth::{
         validate_managed_account_upstream_auth, ManagedAccountAuthError,
     };
+    use crate::proxy_core::api::domain::AppKind;
+    use crate::proxy_core::api::ports::ProxyRuntimeStatus;
+    use crate::proxy_core::api::transforms::GeminiShadowStore;
     use crate::proxy_core::api::transforms::{
         build_gemini_native_url, canonical_json_string, resolve_gemini_native_url, short_value_hash,
     };
@@ -1038,8 +1042,6 @@ mod tests {
         rewrite_claude_transform_endpoint as rewrite_transform_endpoint,
         should_preserve_exact_request_header_case,
     };
-    use crate::proxy_core_adapter::ProxyRuntimeStatus;
-    use crate::proxy_core_adapter::{AppKind, GeminiShadowStore, ResolvedChannelAttempt};
     use axum::http::header::{HeaderValue, ACCEPT};
     use axum::http::HeaderMap;
     use bytes::Bytes;

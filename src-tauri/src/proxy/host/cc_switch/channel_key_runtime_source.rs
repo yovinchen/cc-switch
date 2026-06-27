@@ -119,7 +119,9 @@ impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource {
 mod tests {
     use super::*;
     use crate::provider::Provider;
-    use crate::proxy_core_adapter::{ProxyChannelKeyWriteRequest, ProxyChannelWriteRequest};
+    use crate::proxy_core::api::management::{
+        ProxyChannelKeyWriteRequest, ProxyChannelWriteRequest,
+    };
     use serde_json::json;
 
     fn proxy_channel_key_record(
