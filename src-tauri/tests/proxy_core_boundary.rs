@@ -5380,6 +5380,53 @@ fn proxy_core_adapter_excludes_dto_trait_facades() {
 }
 
 #[test]
+fn proxy_core_adapter_keeps_test_core_imports_inside_tests_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let lines: Vec<&str> = source.lines().collect();
+    let test_module_start = lines
+        .windows(2)
+        .position(|window| {
+            window[0].trim() == "#[cfg(test)]" && window[1].trim_start().starts_with("mod tests")
+        })
+        .expect("proxy_core_adapter.rs should contain a cfg(test) tests module");
+
+    let mut pending_test_cfg = false;
+    let mut violations = Vec::new();
+    for (line_index, line) in lines.iter().take(test_module_start).enumerate() {
+        let code = line.split("//").next().unwrap_or_default().trim();
+        if code.is_empty() {
+            continue;
+        }
+
+        if code == "#[cfg(test)]" {
+            pending_test_cfg = true;
+            continue;
+        }
+
+        if pending_test_cfg {
+            pending_test_cfg = false;
+            let is_test_core_import = code.starts_with("use crate::proxy_core")
+                || code.starts_with("pub(crate) use crate::proxy_core");
+            if is_test_core_import {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains top-level test core import `{}`",
+                    line_index + 1,
+                    code
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter test-only core imports belong inside mod tests, not the adapter top level:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_excludes_small_helper_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
@@ -5704,8 +5751,9 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
         "pub(crate) struct OpenCodeLiveProviderFragment",
     );
     assert!(
-        slice.contains("core_provider_codex_credential_values_from_parts")
-            && slice.contains("CodexCredentialParts"),
+        slice
+            .contains("crate::proxy_core::api::ports::provider_codex_credential_values_from_parts")
+            && slice.contains("crate::proxy_core::api::ports::CodexCredentialParts"),
         "proxy_core_adapter should delegate Codex credential value policy to core"
     );
 

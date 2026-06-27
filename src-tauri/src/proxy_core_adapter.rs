@@ -24,11 +24,7 @@ use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
-#[cfg(test)]
-use crate::proxy_core::api::domain::{ChannelHealthPolicy, ChannelOverrides, UpstreamEndpoint};
 use crate::proxy_core::api::domain::{ProviderMetadata, ProviderMetadataInput};
-#[cfg(test)]
-use crate::proxy_core::api::routing::RouteResolveModelInput;
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, RouteResolveChannelRecordInput,
     RouteResolveModelRecordInput,
@@ -39,8 +35,6 @@ use crate::settings::CustomEndpoint;
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
 use http::{HeaderMap, Method};
-#[cfg(test)]
-use indexmap::IndexMap;
 use rust_decimal::Decimal;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -80,12 +74,6 @@ pub(crate) use crate::proxy_core::api::errors::{
     invalid_request_error as core_invalid_request_error,
     selected_provider_missing_from_source_message,
 };
-#[cfg(test)]
-use crate::proxy_core::api::errors::{
-    selected_provider_display_name_for_error, selected_provider_not_applied_message,
-    unselected_provider_fallback_id,
-};
-
 pub(crate) fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     core_config_error_with_context(context, error)
 }
@@ -271,13 +259,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
     ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
     ProviderSettingsValidationParts, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
-};
-#[cfg(test)]
-use crate::proxy_core::api::ports::{
-    codex_auth_object_value_from_settings,
-    provider_codex_credential_values_from_parts as core_provider_codex_credential_values_from_parts,
-    provider_non_codex_credential_values_from_settings as core_provider_non_codex_credential_values_from_settings,
-    CodexCredentialParts,
 };
 use crate::proxy_core::api::ports::{GeminiAuthType, GeminiAuthTypeInput};
 
@@ -885,8 +866,6 @@ pub(crate) type ForwarderProtocolPreparationInput<'a> =
     crate::proxy_core::api::transport::ForwarderProtocolPreparationInput<'a>;
 pub(crate) type ForwarderTransformPlan = crate::proxy_core::api::transport::ForwarderTransformPlan;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
-#[cfg(test)]
-use crate::proxy_core::api::ports::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::api::config::AppProxyConfig;
 
 pub(crate) use crate::proxy_core::api::config::{
@@ -1453,8 +1432,6 @@ use crate::proxy_core::api::domain::{
 };
 pub(crate) use crate::proxy_core::api::ports::common_config_settings_mutation_issue_message;
 pub(crate) use crate::proxy_core::api::ports::common_config_snippet_issue_message;
-#[cfg(test)]
-use crate::proxy_core::api::ports::provider_category_is_official as core_provider_category_is_official;
 pub(crate) use crate::proxy_core::api::ports::CommonConfigSettingsMutationIssue;
 pub(crate) use crate::proxy_core::api::ports::CommonConfigSnippetIssue;
 use crate::proxy_core::api::ports::{
@@ -1897,25 +1874,31 @@ fn provider_credential_values_with_issue(
 > {
     match app_type {
         AppType::Codex => {
-            let auth = codex_auth_object_value_from_settings(&provider.settings_config)
-                .ok_or(crate::proxy_core::api::ports::ProviderCredentialIssue::CodexAuthMissing)?;
+            let auth = crate::proxy_core::api::ports::codex_auth_object_value_from_settings(
+                &provider.settings_config,
+            )
+            .ok_or(crate::proxy_core::api::ports::ProviderCredentialIssue::CodexAuthMissing)?;
             let config_toml =
                 codex_config_text_from_settings(&provider.settings_config).unwrap_or("");
-            core_provider_codex_credential_values_from_parts(CodexCredentialParts {
-                api_key: codex_api_key_from_auth_and_config(Some(auth), Some(config_toml)),
-                config_toml: Some(config_toml.to_string()),
-            })
+            crate::proxy_core::api::ports::provider_codex_credential_values_from_parts(
+                crate::proxy_core::api::ports::CodexCredentialParts {
+                    api_key: codex_api_key_from_auth_and_config(Some(auth), Some(config_toml)),
+                    config_toml: Some(config_toml.to_string()),
+                },
+            )
         }
         AppType::Claude
         | AppType::ClaudeDesktop
         | AppType::Gemini
         | AppType::OpenCode
         | AppType::OpenClaw
-        | AppType::Hermes => core_provider_non_codex_credential_values_from_settings(
-            &AppKind::from(app_type),
-            &provider.settings_config,
-        )
-        .map(|values| values.expect("known non-Codex app should project credential values")),
+        | AppType::Hermes => {
+            crate::proxy_core::api::ports::provider_non_codex_credential_values_from_settings(
+                &AppKind::from(app_type),
+                &provider.settings_config,
+            )
+            .map(|values| values.expect("known non-Codex app should project credential values"))
+        }
     }
 }
 
@@ -2092,8 +2075,6 @@ pub(crate) type ChannelRequestValidationError =
     crate::proxy_core::api::routing::ChannelRequestValidationError;
 pub(crate) type ChannelRouteSource = crate::proxy_core::api::management::ChannelRouteSource;
 pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecord;
-#[cfg(test)]
-use crate::proxy_core::api::management::StreamCheckResult;
 pub(crate) type LegacyChannelModelProjection =
     crate::proxy_core::api::routing::LegacyChannelModelProjection;
 pub(crate) type LegacyChannelProjection = crate::proxy_core::api::routing::LegacyChannelProjection;
@@ -4708,7 +4689,7 @@ pub(crate) fn normalize_provider_common_config_for_storage(
 
 #[cfg(test)]
 pub(crate) fn provider_is_official_category(provider: &Provider) -> bool {
-    core_provider_category_is_official(provider.category.as_deref())
+    crate::proxy_core::api::ports::provider_category_is_official(provider.category.as_deref())
 }
 
 pub(crate) fn should_emit_proxy_official_warning_for_provider(provider: &Provider) -> bool {
@@ -5063,7 +5044,11 @@ pub(crate) async fn route_candidate_provider_ids_from_router_source(
 pub(crate) fn proxy_channel_record_to_route_resolve_channel_input(
     channel: ProxyChannelRecord,
 ) -> RouteResolveChannelInput {
-    channel_record_to_route_resolve_channel_input(proxy_channel_record_to_core(channel))
+    channel_record_to_route_resolve_channel_input(
+        crate::proxy::host::cc_switch::database_channel_source::proxy_channel_record_to_core(
+            channel,
+        ),
+    )
 }
 
 pub(crate) fn channel_record_to_route_resolve_channel_input(
@@ -5122,8 +5107,6 @@ pub(crate) fn claude_desktop_model_routes_to_core_inputs(
         .collect()
 }
 
-#[cfg(test)]
-use crate::proxy_core::api::model_catalog::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW;
 pub(crate) use crate::proxy_core::api::model_catalog::{
     build_codex_model_catalog_from_settings as codex_model_catalog_from_settings,
     client_model_catalog_raw_from_text, empty_client_model_catalog_raw,
@@ -7332,8 +7315,6 @@ pub(crate) fn log_usage_request_projection_warnings(projection: &UsageRequestLog
     }
 }
 
-#[cfg(test)]
-use crate::proxy_core::api::ports::claude_takeover_model_fields_from_settings as core_claude_takeover_model_fields_from_settings;
 use crate::proxy_core::api::ports::{
     apply_claude_takeover_fields_for_provider_facts as core_apply_claude_takeover_fields_for_provider_facts,
     ClaudeTakeoverProviderFacts,
@@ -7346,7 +7327,9 @@ pub(crate) use crate::proxy_core::api::ports::{
 pub(crate) fn provider_claude_takeover_model_fields(
     provider: &Provider,
 ) -> Vec<(&'static str, String)> {
-    core_claude_takeover_model_fields_from_settings(&provider.settings_config)
+    crate::proxy_core::api::ports::claude_takeover_model_fields_from_settings(
+        &provider.settings_config,
+    )
 }
 
 pub(crate) fn apply_claude_takeover_fields_for_provider(
@@ -7366,9 +7349,6 @@ pub(crate) fn apply_claude_takeover_fields_for_provider(
         },
     );
 }
-
-#[cfg(test)]
-use crate::proxy::host::cc_switch::database_channel_source::proxy_channel_record_to_core;
 
 pub(crate) fn extract_proxy_session_id(
     headers: &HeaderMap,
@@ -7415,11 +7395,12 @@ fn account_ref(provider: &Provider) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use crate::proxy_core::api::ports::{
-        claude_env_credentials_from_settings, gemini_env_map_from_settings, json_deep_merge,
-        json_deep_remove, json_remove_array_items, json_value_is_subset,
-        normalize_claude_models_in_value, openclaw_common_config_value_from_settings,
-        openclaw_credential_parts_from_settings, opencode_common_config_value_from_settings,
-        opencode_credential_parts_from_settings, provider_credential_issue_spec,
+        claude_env_credentials_from_settings, codex_auth_object_value_from_settings,
+        gemini_env_map_from_settings, json_deep_merge, json_deep_remove, json_remove_array_items,
+        json_value_is_subset, normalize_claude_models_in_value,
+        openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
+        opencode_common_config_value_from_settings, opencode_credential_parts_from_settings,
+        provider_credential_issue_spec,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         AuthInfo, CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderCredentialIssue,
     };
@@ -7458,19 +7439,23 @@ mod tests {
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
         channel_auth_profile_action, channel_auth_profile_missing_provider_warning,
-        channel_spec_from_input, ChannelAuthProfileAction, ChannelSpecInput, ModelCapabilities,
-        ModelRoute, RetryPolicy,
+        channel_spec_from_input, ChannelAuthProfileAction, ChannelHealthPolicy, ChannelOverrides,
+        ChannelSpecInput, ModelCapabilities, ModelRoute, RetryPolicy, UpstreamEndpoint,
     };
     use crate::proxy_core::api::errors::{
         proxy_error_http_status_code, proxy_error_response_body,
-        upstream_proxy_error_response_body, ProxyCoreError, ProxyErrorStatusKind,
+        selected_provider_display_name_for_error, selected_provider_not_applied_message,
+        unselected_provider_fallback_id, upstream_proxy_error_response_body, ProxyCoreError,
+        ProxyErrorStatusKind,
     };
     use crate::proxy_core::api::events::ProxyEventEnvelope;
-    use crate::proxy_core::api::management::{ChannelKeyRuntimeCandidate, ChannelTestProbeRequest};
-    use crate::proxy_core::api::model_catalog::CopilotModel;
+    use crate::proxy_core::api::management::{
+        ChannelKeyRuntimeCandidate, ChannelTestProbeRequest, StreamCheckResult,
+    };
+    use crate::proxy_core::api::model_catalog::{CopilotModel, DEFAULT_CODEX_MODEL_CONTEXT_WINDOW};
     use crate::proxy_core::api::routing::{
         ChannelSpec, ChannelStatus, InterfaceKind, LegacyChannelProjectionInput,
-        ProviderSelectionCandidate, RouteSelection,
+        ProviderSelectionCandidate, RouteResolveModelInput, RouteSelection,
     };
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{
@@ -7492,6 +7477,7 @@ mod tests {
         usage_selected_provider_missing_log_message, TokenUsage, TransformedResponseUsageFormat,
         UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
     };
+    use indexmap::IndexMap;
 
     #[tokio::test]
     async fn non_managed_auth_passes_through_without_app_handle() {
@@ -10819,7 +10805,7 @@ base_url = "https://api.openai.com/v1"
             }
         );
         assert_eq!(
-            serde_json::to_value(GlobalProxyConfig {
+            serde_json::to_value(crate::proxy_core::api::ports::GlobalProxyConfig {
                 proxy_enabled: true,
                 listen_address: "127.0.0.1".to_string(),
                 listen_port: crate::proxy_core::api::ports::DEFAULT_PROXY_LISTEN_PORT,
