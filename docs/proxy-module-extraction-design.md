@@ -1772,6 +1772,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1286. host-owned `forwarder_request_source` 已解除 `proxy_core_adapter::*` wildcard：request source 直接引用 `proxy-core::api::{auth,config,domain,model_catalog,transport}` 的请求预处理、media fallback、rectifier、header/auth guard 和模型归一化 helper，adapter 仅显式提供 host-shaped request-source trait/input 与 provider projection；同时删除不再需要的 adapter re-export/test facade，边界测试防止 wildcard 和纯 request helper 经 adapter 回流。
 1287. host-owned `provider_adapter_context` 已解除对 `proxy_core_adapter` 的 provider auth/full-url 依赖：`ProviderAuthInfo` 直接来自 `proxy-core::api::auth`，full-url flag 在 host context 内从 `ProviderMeta` 投影后交给 `proxy-core::api::transport::forwarder_provider_url_facts`；边界测试防止该 context 重新通过 adapter 读取 `ProviderAuthInfo` 或 `provider_is_full_url`。
 1288. provider adapter trait 与 Claude/Codex/Gemini provider adapters 已停止通过 `proxy_core_adapter` 获取 provider auth DTO/strategy：`ProviderAuthInfo`/`ProviderAuthStrategy` 直接来自 `proxy-core::api::auth`，provider adapters 仍委托 adapter 的 host-shaped auth extraction/header helper 处理 provider settings 兼容；边界测试防止 provider adapter auth contract alias 回流。
+1289. engine/host 测试夹具继续收窄 adapter DTO alias：`forward_pipeline` 的 `ResolvedChannelAttempt` 生产字段直接引用 `proxy-core::api::routing`，`forward_pipeline`/`response_pipeline`/`channel_key_runtime_source` 测试夹具直接引用 core domain/ports/transforms/management DTO；边界测试防止这些测试夹具重新通过 `proxy_core_adapter` 获取纯 core contract。
 
 ## 背景
 
