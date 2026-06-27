@@ -1763,6 +1763,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1277. Claude message normalization 的 test-only transform helper facade 已删除：Claude provider 测试改为通过生产 `provider_claude_normalize_anthropic_messages` wrapper 验证 host-shaped 行为，adapter 自测直接从 `proxy-core::api::transforms` 引用 pure helper；边界测试防止这组三个 normalization helper 重新 re-export。
 1278. provider credential issue/spec 的 test-only ports facade 已删除：service provider 测试改为消费 adapter helper 返回的 host-shaped `AppError`，adapter 自测在测试模块内部直接引用 `proxy-core::api::ports::{ProviderCredentialIssue,provider_credential_issue_spec}` 保留精确 issue 覆盖；边界测试防止 issue/spec 重新 re-export。
 1279. `proxy_core_adapter` 顶层残留的 test-only core import 已收敛到 `mod tests` 内：adapter 自测需要的 `GlobalProxyConfig`、`StreamCheckResult`、Codex catalog 常量、routing/domain DTO 与 helper 直接在测试模块引用 owning core API，少数 test helper wrapper 改为 fully-qualified core 调用；新增边界测试防止 `#[cfg(test)] use crate::proxy_core...` 重新出现在 adapter 顶层。
+1280. `provider_credential_values` 的 crate-visible test-only adapter facade 已删除：service/provider 的 test-local credential extraction helper 与重复测试移除，Claude/Codex/Gemini/OpenCode/OpenClaw 凭据来源覆盖集中到 adapter 自测内部私有 helper；边界测试防止 ProviderService 测试重新依赖 adapter credential test facade，并同步要求 Codex live/settings 生产边界只检查仍属于生产路径的 core helper。
 
 ## 背景
 
