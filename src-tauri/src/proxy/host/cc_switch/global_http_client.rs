@@ -9,8 +9,9 @@ use std::env;
 use std::sync::RwLock;
 use std::time::Duration;
 
+use crate::proxy_core::api::security::mask_url_for_log;
 use crate::proxy_core_adapter::{
-    invalid_explicit_proxy_url_message, mask_url_for_log, proxy_values_point_to_loopback_port,
+    invalid_explicit_proxy_url_message, proxy_values_point_to_loopback_port,
     validate_explicit_proxy_url, DEFAULT_PROXY_LISTEN_PORT, SYSTEM_PROXY_ENV_KEYS,
 };
 
@@ -22,6 +23,10 @@ static CURRENT_PROXY_URL: OnceCell<RwLock<Option<String>>> = OnceCell::new();
 
 /// CC Switch 代理服务器当前监听的端口
 static CC_SWITCH_PROXY_PORT: OnceCell<RwLock<u16>> = OnceCell::new();
+
+pub(crate) fn mask_proxy_url_for_log(url: &str) -> String {
+    mask_url_for_log(url)
+}
 
 /// 设置 CC Switch 代理服务器的监听端口
 ///

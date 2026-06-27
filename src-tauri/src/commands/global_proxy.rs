@@ -3,7 +3,6 @@
 //! 提供获取、设置和测试全局代理的 Tauri 命令。
 
 use crate::proxy::host::cc_switch::global_http_client as http_client;
-use crate::proxy_core_adapter::mask_url_for_log;
 use crate::store::AppState;
 use serde::Serialize;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
@@ -19,7 +18,7 @@ pub fn get_global_proxy_url(state: tauri::State<'_, AppState>) -> Result<Option<
         "[GlobalProxy] [GP-010] Read from database: {}",
         result
             .as_ref()
-            .map(|u| mask_url_for_log(u))
+            .map(|u| http_client::mask_proxy_url_for_log(u))
             .unwrap_or_else(|| "None".to_string())
     );
     Ok(result)
@@ -63,7 +62,7 @@ pub fn set_global_proxy_url(state: tauri::State<'_, AppState>, url: String) -> R
     log::info!(
         "[GlobalProxy] [GP-009] Configuration updated: {}",
         url_opt
-            .map(mask_url_for_log)
+            .map(http_client::mask_proxy_url_for_log)
             .unwrap_or_else(|| "direct connection".to_string())
     );
 
@@ -120,7 +119,7 @@ pub async fn test_proxy_url(url: String) -> Result<ProxyTestResult, String> {
                 let latency = start.elapsed().as_millis() as u64;
                 log::debug!(
                     "[GlobalProxy] Test successful: {} -> {} via {} ({}ms)",
-                    mask_url_for_log(&url),
+                    http_client::mask_proxy_url_for_log(&url),
                     test_url,
                     resp.status(),
                     latency
@@ -146,7 +145,7 @@ pub async fn test_proxy_url(url: String) -> Result<ProxyTestResult, String> {
 
     log::debug!(
         "[GlobalProxy] Test failed: {} -> {} ({}ms)",
-        mask_url_for_log(&url),
+        http_client::mask_proxy_url_for_log(&url),
         error_msg,
         latency
     );

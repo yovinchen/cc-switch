@@ -34,6 +34,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/forward_pipeline.rs",
     "src/proxy/host/cc_switch/forwarder_response_source.rs",
     "src/proxy/host/cc_switch/forwarder_request_source.rs",
+    "src/proxy/host/cc_switch/global_http_client.rs",
     "src/proxy/host/cc_switch/management_auth_source.rs",
     "src/proxy/host/cc_switch/managed_account_runtime_source.rs",
     "src/proxy/host/cc_switch/model_catalog_provider.rs",
@@ -5407,6 +5408,10 @@ fn proxy_core_adapter_delegates_explicit_proxy_url_validation_to_core() {
         violations.is_empty(),
         "proxy_core_adapter must delegate explicit proxy URL parsing, scheme allowlist, and error text to proxy-core:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        !source.contains("pub(crate) use crate::proxy_core::api::security::mask_url_for_log"),
+        "proxy_core_adapter should not re-export pure security URL masking; host callers should import proxy-core directly"
     );
 }
 

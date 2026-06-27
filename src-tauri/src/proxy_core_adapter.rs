@@ -145,8 +145,6 @@ pub(crate) fn provider_selection_failure_from_app_error(
 pub(crate) const SYSTEM_PROXY_ENV_KEYS: [&str; 6] =
     crate::proxy_core::api::transport::SYSTEM_PROXY_ENV_KEYS;
 
-pub(crate) use crate::proxy_core::api::security::mask_url_for_log;
-
 pub(crate) use crate::proxy_core::api::transport::{
     invalid_explicit_proxy_url_message, proxy_values_point_to_loopback_port,
     validate_explicit_proxy_url,
@@ -8385,7 +8383,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            mask_url_for_log("http://user:pass@127.0.0.1:7890"),
+            crate::proxy_core::api::security::mask_url_for_log("http://user:pass@127.0.0.1:7890"),
             "http://127.0.0.1:7890"
         );
         assert!(
