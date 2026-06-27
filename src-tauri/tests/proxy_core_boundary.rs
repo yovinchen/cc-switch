@@ -1942,8 +1942,32 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
         }
 
         let source = fs::read_to_string(&path).expect("read host source file");
+        let allow_proxy_core_host_test_imports = relative == "src/proxy_core_host.rs";
+        let mut pending_test_cfg = false;
+        let mut in_test_gated_import = false;
         for (line_index, line) in source.lines().enumerate() {
             let code = line.split("//").next().unwrap_or_default();
+            if allow_proxy_core_host_test_imports {
+                let trimmed = code.trim();
+                if in_test_gated_import {
+                    if trimmed.ends_with(';') {
+                        in_test_gated_import = false;
+                    }
+                    continue;
+                }
+                if trimmed == "#[cfg(test)]" {
+                    pending_test_cfg = true;
+                    continue;
+                }
+                let is_import =
+                    trimmed.starts_with("use ") || trimmed.starts_with("pub(crate) use ");
+                if pending_test_cfg && is_import {
+                    pending_test_cfg = false;
+                    in_test_gated_import = !trimmed.ends_with(';');
+                    continue;
+                }
+                pending_test_cfg = false;
+            }
             for marker in FORBIDDEN_MARKERS {
                 if code.contains(marker) {
                     violations.push(format!(
@@ -18217,6 +18241,57 @@ fn proxy_core_host_compat_surface_stays_test_only() {
         "proxy_core_host.rs must remain a test-only compatibility shell; production services belong in proxy_core_adapter:\n{}",
         violations.join("\n")
     );
+}
+
+#[test]
+fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    assert!(
+        host_source.contains(
+            "use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;"
+        ) && host_source.contains("use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;")
+            && host_source.contains("use crate::proxy_core::api::transport::ProxyBody;"),
+        "proxy_core_host test harness should import pure core contracts directly"
+    );
+
+    let host_adapter_import =
+        function_slice(&host_source, "use crate::proxy_core_adapter::{", "};");
+    for adapter_symbol in [
+        "client_model_catalog_from_optional_raw",
+        "DEFAULT_ROUTE_GROUP",
+        "ProxyBody",
+    ] {
+        assert!(
+            !host_adapter_import.contains(adapter_symbol),
+            "proxy_core_host top-level test harness must not import {adapter_symbol} through proxy_core_adapter"
+        );
+    }
+
+    let host_tests_adapter_import = function_slice(
+        &host_source,
+        "use crate::proxy_core_adapter::{\n        proxy_response_to_core_response",
+        "    };\n    use bytes::Bytes;",
+    );
+    assert!(
+        !host_tests_adapter_import.contains("ProxyBody"),
+        "proxy_core_host tests must not import ProxyBody through proxy_core_adapter"
+    );
+
+    for adapter_facade in [
+        "pub(crate) use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw",
+        "pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP",
+        "pub(crate) use crate::proxy_core::api::transport::ProxyBody",
+    ] {
+        assert!(
+            !adapter_source.contains(adapter_facade),
+            "proxy_core_adapter should not expose test-only facade `{adapter_facade}`"
+        );
+    }
 }
 
 #[test]

@@ -2304,8 +2304,6 @@ pub(crate) use crate::proxy_core::api::management::{
     stream_check_result_from_probe_result, ChannelHealthUpdateInput,
     ProxyChannelModelsReplaceRequest, StreamCheckConfigOverride, CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;
 pub(crate) use crate::proxy_core::api::model_catalog::{
     apply_copilot_model_normalization, strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body,
@@ -2320,8 +2318,6 @@ pub(crate) use crate::proxy_core::api::ports::{
 use crate::proxy_core::api::ports::{
     AppSummaryConfig, ChannelKeyRuntimeSource, ProviderSource, ProxyConfigSource, RoutePolicySource,
 };
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
 pub(crate) use crate::proxy_core::api::routing::{
     channel_status_after_health_attempt, channel_status_after_health_reset,
     effective_channel_health_failure_threshold, failover_config_read_error_log_line,
@@ -2341,8 +2337,6 @@ pub(crate) use crate::proxy_core::api::transforms::{
     ClaudeApiFormatRequestTransformContext, ClaudeApiFormatSseTransformContext,
     ClaudeTransformStreamingDecision,
 };
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::ProxyBody;
 pub(crate) use crate::proxy_core::api::transport::ProxyRequest;
 pub(crate) use crate::proxy_core::api::transport::{
     apply_bedrock_pre_send_optimizers, apply_forwarder_media_prevention_from_facts,
@@ -7526,9 +7520,9 @@ mod tests {
         build_copilot_auth_headers, build_gemini_auth_headers, build_upstream_request_headers,
         forward_upstream_url_plan, is_socks_proxy_url, resolve_upstream_send_policy,
         serialize_upstream_request_body, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
-        ForwardUpstreamUrlPlanInput, ProxyTransportResponseBody, UpstreamRequestHeadersInput,
-        UpstreamSendPolicyInput, UpstreamSseAggregationKind, UpstreamTransportKind,
-        UNSUPPORTED_IMAGE_MARKER,
+        ForwardUpstreamUrlPlanInput, ProxyBody, ProxyTransportResponseBody,
+        UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamSseAggregationKind,
+        UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
     };
     use crate::proxy_core::api::usage::{
         usage_selected_provider_missing_log_message, TokenUsage, TransformedResponseUsageFormat,
