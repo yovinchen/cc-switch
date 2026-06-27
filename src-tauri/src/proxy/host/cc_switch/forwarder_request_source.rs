@@ -13,8 +13,9 @@ use crate::proxy::host::cc_switch::provider_adapter_context::{
 use crate::proxy_core::api::transforms::responses_to_chat_completions_with_options;
 use crate::proxy_core::api::transport::{
     anthropic_beta_header_value, apply_copilot_warmup_model_override,
-    build_upstream_request_headers, classify_copilot_request, forward_upstream_url_plan,
-    forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
+    apply_resolved_channel_request_overrides, build_upstream_request_headers,
+    classify_copilot_request, forward_upstream_url_plan, forwarder_media_retry_plan_from_facts,
+    forwarder_protocol_preparation_from_transform_plan,
     forwarder_rectifier_error_message as core_forwarder_rectifier_error_message,
     forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
     forwarder_transform_plan_from_facts, is_openai_o_series, is_unsupported_image_error,
@@ -193,6 +194,14 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
                     override_result.channel_id,
                     override_result.previous_model,
                     override_result.upstream_model
+                );
+            }
+            if let Some(application) = apply_resolved_channel_request_overrides(&mut body, channel)
+            {
+                log::debug!(
+                    "[ChannelRoute] request overrides via channel {}: {:?}",
+                    application.channel_id,
+                    application.applied_keys
                 );
             }
         }
@@ -666,4 +675,58 @@ pub(crate) fn default_forwarder_request_source() -> ForwarderRequestSourceRef {
     forwarder_request_source_from_managed_account_runtime_source(
         default_managed_account_runtime_source(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::Provider;
+    use crate::proxy_core::api::routing::ResolvedChannelAttempt;
+    use serde_json::json;
+
+    #[test]
+    fn provider_request_body_applies_channel_request_overrides_after_model_override() {
+        let source = CcSwitchForwarderRequestSource::new(default_managed_account_runtime_source());
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+        let channel = ResolvedChannelAttempt {
+            channel_id: "channel-a".to_string(),
+            channel_name: "Relay A".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "openai_responses".to_string(),
+            auth_profile_ref: None,
+            public_model: Some("sonnet-public".to_string()),
+            upstream_model: Some("upstream-sonnet".to_string()),
+            header_overrides: json!({}),
+            param_overrides: json!({}),
+            status_code_mapping: json!([]),
+            request_overrides: json!({
+                "stream": false,
+                "temperature": 0.2
+            }),
+            retry_policy: json!({}),
+        };
+
+        let body = source
+            .prepare_provider_request_body(ForwarderProviderRequestBodyInput {
+                app_type: &AppType::Claude,
+                body: json!({
+                    "model": "sonnet-public",
+                    "stream": true,
+                    "temperature": 0.9
+                }),
+                provider: &provider,
+                channel: Some(&channel),
+                is_copilot: false,
+            })
+            .expect("provider request body");
+
+        assert_eq!(body["model"], "upstream-sonnet");
+        assert_eq!(body["stream"], json!(false));
+        assert_eq!(body["temperature"], json!(0.2));
+    }
 }

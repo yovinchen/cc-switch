@@ -177,6 +177,7 @@ pub fn resolved_channel_attempt_from_candidate(
         header_overrides: Value::Object(Default::default()),
         param_overrides: Value::Object(Default::default()),
         status_code_mapping: Value::Array(Vec::new()),
+        request_overrides: Value::Object(Default::default()),
         retry_policy: Value::Object(Default::default()),
     }
 }
@@ -205,6 +206,11 @@ pub fn resolved_channel_attempt_from_selection(
         header_overrides: selection.channel.overrides.headers.clone(),
         param_overrides: selection.channel.overrides.params.clone(),
         status_code_mapping: selection.channel.overrides.status_code_mapping.clone(),
+        request_overrides: selection
+            .model_route
+            .as_ref()
+            .map(|route| route.request_overrides.clone())
+            .unwrap_or_else(|| Value::Object(Default::default())),
         retry_policy: selection.channel.retry_policy.raw.clone(),
     }
 }
@@ -588,7 +594,7 @@ mod tests {
             upstream_model: "upstream-sonnet".to_string(),
             capabilities: ModelCapabilities::default(),
             pricing_model: None,
-            request_overrides: json!({}),
+            request_overrides: json!({"temperature": 0.2}),
             response_overrides: json!({}),
         };
 
@@ -703,6 +709,7 @@ mod tests {
             Some("channel-key:relay-a")
         );
         assert_eq!(attempt.status_code_mapping, json!([{"from": 429, "to": 503}]));
+        assert_eq!(attempt.request_overrides, json!({"temperature": 0.2}));
         assert_eq!(attempt.retry_policy, json!({"maxAttempts": 2}));
     }
 

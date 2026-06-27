@@ -311,6 +311,13 @@ pub struct ChannelRouteModelOverride {
     pub upstream_model: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelRouteRequestOverrideApplication {
+    pub channel_id: String,
+    pub applied_keys: Vec<String>,
+}
+
 pub fn apply_resolved_channel_model_override(
     body: &mut Value,
     channel: &ResolvedChannelAttempt,
@@ -326,6 +333,29 @@ pub fn apply_resolved_channel_model_override(
         channel_id: channel.channel_id.clone(),
         previous_model,
         upstream_model,
+    })
+}
+
+pub fn apply_resolved_channel_request_overrides(
+    body: &mut Value,
+    channel: &ResolvedChannelAttempt,
+) -> Option<ChannelRouteRequestOverrideApplication> {
+    let request_overrides = channel.request_overrides.as_object()?;
+    if request_overrides.is_empty() {
+        return None;
+    }
+
+    let body_object = body.as_object_mut()?;
+    let mut applied_keys = Vec::with_capacity(request_overrides.len());
+    for (key, value) in request_overrides {
+        body_object.insert(key.clone(), value.clone());
+        applied_keys.push(key.clone());
+    }
+    applied_keys.sort();
+
+    Some(ChannelRouteRequestOverrideApplication {
+        channel_id: channel.channel_id.clone(),
+        applied_keys,
     })
 }
 
@@ -598,8 +628,8 @@ fn matches_schema_name_map(key: &str) -> bool {
 mod tests {
     use super::{
         apply_channel_route_model_override, apply_codex_chat_upstream_model_policy,
-        apply_resolved_channel_model_override, canonicalize_request_body_value,
-        clean_openai_tool_schema, codex_chat_reasoning_requested,
+        apply_resolved_channel_model_override, apply_resolved_channel_request_overrides,
+        canonicalize_request_body_value, clean_openai_tool_schema, codex_chat_reasoning_requested,
         codex_provider_catalog_model_ids_from_settings, filter_private_params,
         filter_private_params_with_whitelist, filter_private_params_with_whitelist_report,
         forwarder_request_body_model, inject_openai_stream_include_usage, is_openai_o_series,
@@ -1070,6 +1100,7 @@ mod tests {
             header_overrides: json!({}),
             param_overrides: json!({}),
             status_code_mapping: json!([]),
+            request_overrides: json!({}),
             retry_policy: json!({}),
         };
         let mut body = json!({"model": "sonnet-public"});
@@ -1085,6 +1116,75 @@ mod tests {
         let mut unrelated = json!({"model": "other-model"});
         assert!(apply_resolved_channel_model_override(&mut unrelated, &channel).is_none());
         assert_eq!(unrelated["model"], "other-model");
+    }
+
+    #[test]
+    fn resolved_channel_request_overrides_shallow_merge_body_object() {
+        let channel = ResolvedChannelAttempt {
+            channel_id: "ch_1".to_string(),
+            channel_name: "Relay".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "openai_responses".to_string(),
+            auth_profile_ref: None,
+            public_model: Some("sonnet-public".to_string()),
+            upstream_model: Some("upstream-sonnet".to_string()),
+            header_overrides: json!({}),
+            param_overrides: json!({}),
+            status_code_mapping: json!([]),
+            request_overrides: json!({
+                "temperature": 0.2,
+                "metadata": { "route": "relay" }
+            }),
+            retry_policy: json!({}),
+        };
+        let mut body = json!({
+            "model": "upstream-sonnet",
+            "temperature": 0.9,
+            "metadata": { "client": "desktop" },
+            "stream": true
+        });
+
+        let application = apply_resolved_channel_request_overrides(&mut body, &channel)
+            .expect("request override application");
+
+        assert_eq!(body["temperature"], json!(0.2));
+        assert_eq!(body["metadata"], json!({ "route": "relay" }));
+        assert_eq!(body["stream"], json!(true));
+        assert_eq!(application.channel_id, "ch_1");
+        assert_eq!(application.applied_keys, vec!["metadata", "temperature"]);
+    }
+
+    #[test]
+    fn resolved_channel_request_overrides_skip_empty_or_non_object_inputs() {
+        let mut channel = ResolvedChannelAttempt {
+            channel_id: "ch_1".to_string(),
+            channel_name: "Relay".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "openai_responses".to_string(),
+            auth_profile_ref: None,
+            public_model: None,
+            upstream_model: None,
+            header_overrides: json!({}),
+            param_overrides: json!({}),
+            status_code_mapping: json!([]),
+            request_overrides: json!({}),
+            retry_policy: json!({}),
+        };
+
+        let mut body = json!({"model": "upstream-sonnet"});
+        assert!(apply_resolved_channel_request_overrides(&mut body, &channel).is_none());
+        assert_eq!(body, json!({"model": "upstream-sonnet"}));
+
+        channel.request_overrides = json!(["temperature"]);
+        assert!(apply_resolved_channel_request_overrides(&mut body, &channel).is_none());
+        assert_eq!(body, json!({"model": "upstream-sonnet"}));
+
+        channel.request_overrides = json!({"temperature": 0.2});
+        let mut scalar_body = json!("not-json-object");
+        assert!(
+            apply_resolved_channel_request_overrides(&mut scalar_body, &channel).is_none()
+        );
+        assert_eq!(scalar_body, json!("not-json-object"));
     }
 
     #[test]

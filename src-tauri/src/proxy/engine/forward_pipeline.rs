@@ -1342,6 +1342,7 @@ mod tests {
                 header_overrides: json!({}),
                 param_overrides: json!({}),
                 status_code_mapping: json!([{"from": 429, "to": 200}]),
+                request_overrides: json!({}),
                 retry_policy: json!({}),
             },
         );
@@ -1378,6 +1379,7 @@ mod tests {
                 header_overrides: json!({}),
                 param_overrides: json!({}),
                 status_code_mapping: json!([{"from": 429, "to": "rate_limited"}]),
+                request_overrides: json!({}),
                 retry_policy: json!({}),
             },
         );

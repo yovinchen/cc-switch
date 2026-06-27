@@ -15407,6 +15407,7 @@ fn production_forwarder_uses_request_source_resource() {
     );
     for marker in [
         "anthropic_beta_header_value",
+        "apply_resolved_channel_request_overrides",
         "build_upstream_request_headers",
         "forward_upstream_url_plan",
         "forwarder_media_retry_plan_from_facts",
@@ -15476,6 +15477,7 @@ fn production_forwarder_uses_request_source_resource() {
         "ForwarderRequestBodyTransformAction",
         "UNSUPPORTED_IMAGE_MARKER",
         "anthropic_beta_header_value",
+        "apply_resolved_channel_request_overrides",
         "build_upstream_request_headers",
         "serialize_upstream_request_body",
         "upstream_host_header_from_url",

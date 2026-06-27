@@ -222,7 +222,7 @@ mod tests {
                 upstream_model: "upstream-sonnet".to_string(),
                 capabilities: ModelCapabilities::default(),
                 pricing_model: None,
-                request_overrides: json!({}),
+                request_overrides: json!({"temperature": 0.2}),
                 response_overrides: json!({}),
             }],
             groups: vec!["default".to_string()],
@@ -246,7 +246,7 @@ mod tests {
                 upstream_model: "upstream-sonnet".to_string(),
                 capabilities: ModelCapabilities::default(),
                 pricing_model: None,
-                request_overrides: json!({}),
+                request_overrides: json!({"temperature": 0.2}),
                 response_overrides: json!({}),
             }),
             inbound_interface: InterfaceKind::AnthropicMessages,
@@ -441,6 +441,7 @@ mod tests {
         assert_eq!(channel.header_overrides["x-relay-profile"], "manual");
         assert_eq!(channel.param_overrides["api-version"], "2026-06-20");
         assert_eq!(channel.status_code_mapping[0]["to"], 503);
+        assert_eq!(channel.request_overrides["temperature"], json!(0.2));
     }
 
     #[test]
