@@ -11196,7 +11196,9 @@ fn proxy_management_dto_callers_use_core_entrypoints() {
         (
             "src/database/dao/proxy.rs",
             &[
+                "use crate::proxy_core::api::config::{AppProxyConfig, CircuitBreakerConfig};",
                 "use crate::proxy_core::api::ports::GlobalProxyConfig;",
+                "use crate::proxy_core::api::ports::ProxyConfig;",
                 "use crate::proxy_core::api::ports::{ProviderHealth, ProviderHealthUpdateInput};",
             ][..],
         ),
@@ -11306,6 +11308,51 @@ fn proxy_commands_import_runtime_contracts_directly() {
     assert!(
         violations.is_empty(),
         "proxy commands should not route pure runtime contracts through proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_dao_imports_config_contracts_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = "src/database/dao/proxy.rs";
+    let source =
+        fs::read_to_string(manifest_dir.join(relative)).expect("read database/dao/proxy.rs");
+    let import_slice = function_slice(
+        &source,
+        "use crate::error::AppError;",
+        "pub(crate) use crate::proxy_core_adapter",
+    );
+
+    let required_imports = [
+        "use crate::proxy_core::api::config::{AppProxyConfig, CircuitBreakerConfig};",
+        "use crate::proxy_core::api::ports::ProxyConfig;",
+    ];
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
+    let mut violations = Vec::new();
+
+    for required_import in required_imports {
+        if !import_slice.contains(required_import) {
+            violations.push(format!(
+                "{relative} should import `{required_import}` directly from proxy_core"
+            ));
+        }
+    }
+
+    for forbidden in ["AppProxyConfig", "CircuitBreakerConfig", "ProxyConfig"] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == forbidden)
+        {
+            violations.push(format!(
+                "{relative} imports config contract `{forbidden}` through proxy_core_adapter"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy DAO should not route pure config contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
