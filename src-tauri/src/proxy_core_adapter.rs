@@ -2330,12 +2330,6 @@ pub(crate) use crate::proxy_core::api::routing::{
 };
 pub(crate) use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 pub(crate) use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::{
-    anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
-    anthropic_to_openai_responses_request, gemini_response_to_anthropic_message,
-    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
-};
 pub(crate) use crate::proxy_core::api::transforms::{
     append_utf8_safe, build_gemini_upstream_url, chat_completion_to_response_with_context,
     claude_provider_transform_required as core_claude_provider_transform_required,
@@ -3774,7 +3768,7 @@ pub(crate) fn provider_claude_transform_response(body: Value) -> Result<Value, S
     // This test helper does not receive provider config, so detect structurally
     // disjoint upstream response formats by their top-level fields.
     if body.get("candidates").is_some() || body.get("promptFeedback").is_some() {
-        let output = gemini_response_to_anthropic_message(
+        let output = crate::proxy_core::api::transforms::gemini_response_to_anthropic_message(
             &body,
             None,
             synthesize_gemini_tool_call_id_with_uuid,
@@ -3784,9 +3778,9 @@ pub(crate) fn provider_claude_transform_response(body: Value) -> Result<Value, S
         }
         Ok(output.response)
     } else if body.get("output").is_some() {
-        openai_responses_to_anthropic_message(&body)
+        crate::proxy_core::api::transforms::openai_responses_to_anthropic_message(&body)
     } else {
-        openai_chat_to_anthropic_message(&body)
+        crate::proxy_core::api::transforms::openai_chat_to_anthropic_message(&body)
     }
 }
 
@@ -12832,7 +12826,10 @@ base_url = "https://api.openai.com/v1"
             "max_tokens": 128,
             "messages": [{"role": "user", "content": "Hello"}]
         });
-        let chat_request = anthropic_to_openai_chat_request(&anthropic_body, false);
+        let chat_request = crate::proxy_core::api::transforms::anthropic_to_openai_chat_request(
+            &anthropic_body,
+            false,
+        );
         assert_eq!(chat_request["model"], "claude-sonnet");
         assert_eq!(chat_request["messages"][0]["role"], "user");
         let mut request_provider = Provider::with_id(
@@ -12863,7 +12860,12 @@ base_url = "https://api.openai.com/v1"
         );
 
         let responses_request =
-            anthropic_to_openai_responses_request(&anthropic_body, Some("cache-1"), false, false);
+            crate::proxy_core::api::transforms::anthropic_to_openai_responses_request(
+                &anthropic_body,
+                Some("cache-1"),
+                false,
+                false,
+            );
         assert_eq!(responses_request["model"], "claude-sonnet");
         assert_eq!(responses_request["prompt_cache_key"], "cache-1");
         let delegated_responses_request = provider_claude_transform_request_for_api_format(
@@ -12880,13 +12882,14 @@ base_url = "https://api.openai.com/v1"
             "cache-request"
         );
 
-        let gemini_request = anthropic_request_to_gemini_request_with_shadow(
-            &anthropic_body,
-            None,
-            Some("provider-a"),
-            Some("session-a"),
-        )
-        .expect("gemini request");
+        let gemini_request =
+            crate::proxy_core::api::transforms::anthropic_request_to_gemini_request_with_shadow(
+                &anthropic_body,
+                None,
+                Some("provider-a"),
+                Some("session-a"),
+            )
+            .expect("gemini request");
         assert_eq!(gemini_request["contents"][0]["role"], "user");
         let delegated_gemini_request = provider_claude_transform_request_for_api_format(
             anthropic_body.clone(),
@@ -12907,7 +12910,8 @@ base_url = "https://api.openai.com/v1"
         .expect("delegated passthrough request");
         assert_eq!(delegated_passthrough_request, anthropic_body);
 
-        let chat_response = openai_chat_to_anthropic_message(&json!({
+        let chat_response =
+            crate::proxy_core::api::transforms::openai_chat_to_anthropic_message(&json!({
             "id": "chatcmpl_1",
             "model": "chat-model",
             "choices": [{
@@ -12915,8 +12919,8 @@ base_url = "https://api.openai.com/v1"
                 "finish_reason": "stop"
             }],
             "usage": {"prompt_tokens": 1, "completion_tokens": 2}
-        }))
-        .expect("chat response");
+            }))
+            .expect("chat response");
         assert_eq!(chat_response["content"][0]["text"], "Hi");
         let delegated_chat_response = provider_claude_transform_response(json!({
             "id": "chatcmpl_1",
@@ -12930,7 +12934,8 @@ base_url = "https://api.openai.com/v1"
         .expect("delegated chat response");
         assert_eq!(delegated_chat_response["content"][0]["text"], "Hi");
 
-        let responses_response = openai_responses_to_anthropic_message(&json!({
+        let responses_response =
+            crate::proxy_core::api::transforms::openai_responses_to_anthropic_message(&json!({
             "id": "resp_1",
             "model": "responses-model",
             "status": "completed",
@@ -12939,8 +12944,8 @@ base_url = "https://api.openai.com/v1"
                 "content": [{"type": "output_text", "text": "Done"}]
             }],
             "usage": {"input_tokens": 1, "output_tokens": 2}
-        }))
-        .expect("responses response");
+            }))
+            .expect("responses response");
         assert_eq!(responses_response["content"][0]["text"], "Done");
         let delegated_responses_response = provider_claude_transform_response(json!({
             "id": "resp_1",
@@ -13000,22 +13005,23 @@ base_url = "https://api.openai.com/v1"
             "Explicit responses"
         );
 
-        let gemini_output = gemini_response_to_anthropic_message(
-            &json!({
-                "responseId": "gemini_1",
-                "candidates": [{
-                    "content": {
-                        "role": "model",
-                        "parts": [{"text": "Gemini hi"}]
-                    },
-                    "finishReason": "STOP"
-                }],
-                "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 2}
-            }),
-            None,
-            || "toolu_test".to_string(),
-        )
-        .expect("gemini response");
+        let gemini_output =
+            crate::proxy_core::api::transforms::gemini_response_to_anthropic_message(
+                &json!({
+                    "responseId": "gemini_1",
+                    "candidates": [{
+                        "content": {
+                            "role": "model",
+                            "parts": [{"text": "Gemini hi"}]
+                        },
+                        "finishReason": "STOP"
+                    }],
+                    "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 2}
+                }),
+                None,
+                || "toolu_test".to_string(),
+            )
+            .expect("gemini response");
         assert_eq!(gemini_output.response["content"][0]["text"], "Gemini hi");
         let delegated_gemini_response = provider_claude_transform_response(json!({
             "responseId": "gemini_1",

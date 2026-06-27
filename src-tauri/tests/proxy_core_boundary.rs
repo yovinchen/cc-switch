@@ -9272,6 +9272,21 @@ fn proxy_core_adapter_delegates_claude_request_format_dispatch_to_core() {
         request_slice.contains("claude_request_transform_for_api_format("),
         "Claude request api_format dispatch must be delegated to proxy-core"
     );
+    let adapter_transform_import_window = function_slice(
+        &source,
+        "pub(crate) use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
+        "pub(crate) use crate::proxy_core::api::transforms::{\n    append_utf8_safe,",
+    );
+    for marker in [
+        "anthropic_to_openai_responses_request",
+        "anthropic_to_openai_chat_request",
+        "anthropic_request_to_gemini_request_with_shadow",
+    ] {
+        assert!(
+            !adapter_transform_import_window.contains(marker),
+            "proxy_core_adapter should not re-export pure Claude request transform helper `{marker}`"
+        );
+    }
 
     let forbidden_markers = [
         "\"openai_responses\"",
@@ -9512,6 +9527,21 @@ fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
         stream_slice.contains("create_claude_to_anthropic_sse_stream_for_api_format("),
         "Claude SSE response api_format dispatch must be delegated to proxy-core"
     );
+    let adapter_transform_import_window = function_slice(
+        &source,
+        "pub(crate) use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
+        "pub(crate) use crate::proxy_core::api::transforms::{\n    append_utf8_safe,",
+    );
+    for marker in [
+        "openai_responses_to_anthropic_message",
+        "openai_chat_to_anthropic_message",
+        "gemini_response_to_anthropic_message",
+    ] {
+        assert!(
+            !adapter_transform_import_window.contains(marker),
+            "proxy_core_adapter should not re-export pure Claude response transform helper `{marker}`"
+        );
+    }
 
     let forbidden_markers = [
         "\"openai_responses\"",
