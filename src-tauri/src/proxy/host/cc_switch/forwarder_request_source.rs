@@ -13,9 +13,9 @@ use crate::proxy::host::cc_switch::provider_adapter_context::{
 use crate::proxy_core::api::transforms::responses_to_chat_completions_with_options;
 use crate::proxy_core::api::transport::{
     anthropic_beta_header_value, apply_copilot_warmup_model_override,
-    apply_resolved_channel_request_overrides, build_upstream_request_headers,
-    classify_copilot_request, forward_upstream_url_plan, forwarder_media_retry_plan_from_facts,
-    forwarder_protocol_preparation_from_transform_plan,
+    apply_resolved_channel_model_override, apply_resolved_channel_request_overrides,
+    build_upstream_request_headers, classify_copilot_request, forward_upstream_url_plan,
+    forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
     forwarder_rectifier_error_message as core_forwarder_rectifier_error_message,
     forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
     forwarder_transform_plan_from_facts, is_openai_o_series, is_unsupported_image_error,

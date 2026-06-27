@@ -6385,8 +6385,6 @@ fn forward_failure_message_from_proxy_error(error: &ProxyError) -> String {
     )
 }
 
-pub(crate) use crate::proxy_core::api::transport::apply_resolved_channel_model_override;
-
 pub(crate) fn apply_channel_provider_overrides(
     app_type: &AppType,
     provider: &mut Provider,

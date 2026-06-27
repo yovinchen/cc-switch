@@ -2406,7 +2406,7 @@ fn proxy_core_adapter_delegates_forward_failure_message_policy_to_core() {
     let function = function_slice(
         &source,
         "fn forward_failure_message_from_proxy_error",
-        "pub(crate) use crate::proxy_core::api::transport::apply_resolved_channel_model_override",
+        "pub(crate) fn apply_channel_provider_overrides",
     );
 
     assert!(
@@ -12730,6 +12730,17 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
                 .contains("route_plan_selections"),
         "route_attempt should consume core route-plan selections directly instead of via proxy_core_adapter"
     );
+    let route_attempt_source = fs::read_to_string(manifest_dir.join("src/proxy/route_attempt.rs"))
+        .expect("read route_attempt.rs");
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::transport::apply_resolved_channel_model_override"
+        ) && route_attempt_source
+            .contains("use crate::proxy_core::api::transport::apply_resolved_channel_model_override")
+            && !route_attempt_source
+                .contains("crate::proxy_core_adapter::apply_resolved_channel_model_override"),
+        "route_attempt should consume resolved channel model override directly from proxy_core"
+    );
     assert!(
         host_runtime_trait.contains("channel_key_runtime_source")
             && host_runtime_impl.contains("channel_key_runtime_source"),
@@ -15439,6 +15450,7 @@ fn production_forwarder_uses_request_source_resource() {
     );
     for marker in [
         "anthropic_beta_header_value",
+        "apply_resolved_channel_model_override",
         "apply_resolved_channel_request_overrides",
         "build_upstream_request_headers",
         "forward_upstream_url_plan",
@@ -15509,6 +15521,7 @@ fn production_forwarder_uses_request_source_resource() {
         "ForwarderRequestBodyTransformAction",
         "UNSUPPORTED_IMAGE_MARKER",
         "anthropic_beta_header_value",
+        "apply_resolved_channel_model_override",
         "apply_resolved_channel_request_overrides",
         "build_upstream_request_headers",
         "serialize_upstream_request_body",
