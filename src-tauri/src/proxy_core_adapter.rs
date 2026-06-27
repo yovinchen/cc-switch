@@ -2328,8 +2328,6 @@ pub(crate) use crate::proxy_core::api::routing::{
     provider_router_auto_failover_enabled_decision, route_policy_failover_provider_ids,
     RoutePolicy,
 };
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::claude_api_format_from_metadata;
 pub(crate) use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 pub(crate) use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY;
 #[cfg(test)]
@@ -12345,14 +12343,17 @@ base_url = "https://api.openai.com/v1"
             Some("gemini-pro")
         );
         assert_eq!(
-            claude_api_format_from_metadata(
+            crate::proxy_core::api::transforms::claude_api_format_from_metadata(
                 &json!({"claudeApiFormat": "openai_chat"}),
                 "anthropic"
             ),
             "openai_chat"
         );
         assert_eq!(
-            claude_api_format_from_metadata(&json!({"apiFormat": " "}), "anthropic"),
+            crate::proxy_core::api::transforms::claude_api_format_from_metadata(
+                &json!({"apiFormat": " "}),
+                "anthropic"
+            ),
             "anthropic"
         );
     }

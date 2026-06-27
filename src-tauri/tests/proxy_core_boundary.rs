@@ -2308,6 +2308,12 @@ fn request_context_owns_core_context_imports() {
     );
     assert!(
         !adapter_source.contains(
+            "pub(crate) use crate::proxy_core::api::transforms::claude_api_format_from_metadata"
+        ),
+        "proxy_core_adapter should not re-export Claude API format metadata helper"
+    );
+    assert!(
+        !adapter_source.contains(
             "pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig"
         ),
         "proxy_core_adapter should not re-export ResponseTimeoutConfig"
@@ -16699,7 +16705,7 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
     let adapter_routing_import = function_slice(
         &adapter_source,
         "pub(crate) use crate::proxy_core::api::routing::{",
-        "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::transforms::claude_api_format_from_metadata;",
+        "};\npub(crate) use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
     );
     assert!(
         !adapter_routing_import.contains("RouteRequest"),
