@@ -12832,6 +12832,11 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
                 .contains("route_plan_selections"),
         "route_attempt should consume core route-plan selections directly instead of via proxy_core_adapter"
     );
+    assert!(
+        !source.contains("pub(crate) use crate::proxy_core::api::routing::route_plan_provider_ids")
+            && source.contains("crate::proxy_core::api::routing::route_plan_provider_ids("),
+        "proxy_core_adapter tests should call route_plan_provider_ids directly without a cfg(test) re-export"
+    );
     let route_attempt_source = fs::read_to_string(manifest_dir.join("src/proxy/route_attempt.rs"))
         .expect("read route_attempt.rs");
     assert!(

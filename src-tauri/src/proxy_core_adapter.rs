@@ -5317,9 +5317,6 @@ pub(crate) fn codex_client_model_catalog_raw_from_active_config() -> Value {
     }
 }
 
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::routing::route_plan_provider_ids;
-
 use crate::proxy::host::cc_switch::channel_auth_profile_attempts::required_forward_attempts_from_sources;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
@@ -15566,7 +15563,7 @@ command = "latest-command"
         };
 
         assert_eq!(
-            route_plan_provider_ids(&plan),
+            crate::proxy_core::api::routing::route_plan_provider_ids(&plan),
             vec!["provider-a".to_string(), "provider-b".to_string()]
         );
         assert_eq!(
