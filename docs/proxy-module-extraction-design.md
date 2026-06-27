@@ -1774,6 +1774,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1288. provider adapter trait 与 Claude/Codex/Gemini provider adapters 已停止通过 `proxy_core_adapter` 获取 provider auth DTO/strategy：`ProviderAuthInfo`/`ProviderAuthStrategy` 直接来自 `proxy-core::api::auth`，provider adapters 仍委托 adapter 的 host-shaped auth extraction/header helper 处理 provider settings 兼容；边界测试防止 provider adapter auth contract alias 回流。
 1289. engine/host 测试夹具继续收窄 adapter DTO alias：`forward_pipeline` 的 `ResolvedChannelAttempt` 生产字段直接引用 `proxy-core::api::routing`，`forward_pipeline`/`response_pipeline`/`channel_key_runtime_source` 测试夹具直接引用 core domain/ports/transforms/management DTO；边界测试防止这些测试夹具重新通过 `proxy_core_adapter` 获取纯 core contract。
 1290. provider service 与 Claude Desktop 配置测试不再通过 `proxy_core_adapter` 获取 `ProxyConfig`：测试夹具直接引用 `proxy-core::api::ports::ProxyConfig` 写入 DB proxy config，host/core 边界仅对白名单中的 test-only import 放行；边界测试防止这两个测试模块重新使用 adapter `ProxyConfig` alias。
+1291. `channel_key_runtime_source` 测试夹具完成 management DTO import 收窄：`ProxyChannelPatchRequest` 与 key/channel write request 一并直接来自 `proxy-core::api::management`，测试不再通过 fully-qualified `proxy_core_adapter` alias patch channel health policy；边界测试同步覆盖该 patch request 回流。
 
 ## 背景
 
