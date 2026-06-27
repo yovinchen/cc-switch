@@ -2997,7 +2997,7 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
     let token_source_slice = function_slice(
         &source,
         "pub(crate) fn get_or_create_claude_desktop_gateway_token_from_db_source(",
-        "pub(crate) type AttemptEventChannel",
+        "pub(crate) fn attempt_event_payload_from_forward_attempt(",
     );
 
     assert!(
@@ -5282,6 +5282,24 @@ fn proxy_core_adapter_does_not_export_provider_auth_aliases() {
         assert!(
             !adapter_source.contains(alias),
             "proxy_core_adapter should not expose provider auth contract alias `{alias}`; callers and adapter internals should use proxy_core::api::auth directly"
+        );
+    }
+}
+
+#[test]
+fn proxy_core_adapter_does_not_export_attempt_event_aliases() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    for alias in [
+        "pub(crate) type AttemptEventChannel",
+        "pub(crate) type AttemptEventPayloadInput",
+        "pub(crate) type AttemptEventPhase",
+    ] {
+        assert!(
+            !adapter_source.contains(alias),
+            "proxy_core_adapter should not expose attempt event contract alias `{alias}`; adapter internals should use proxy_core::api::events directly"
         );
     }
 }

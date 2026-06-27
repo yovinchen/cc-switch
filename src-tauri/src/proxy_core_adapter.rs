@@ -1324,11 +1324,6 @@ pub(crate) fn get_or_create_claude_desktop_gateway_token_from_db_source(
     Ok(token)
 }
 
-pub(crate) type AttemptEventChannel<'a> = crate::proxy_core::api::events::AttemptEventChannel<'a>;
-pub(crate) type AttemptEventPayloadInput<'a> =
-    crate::proxy_core::api::events::AttemptEventPayloadInput<'a>;
-pub(crate) type AttemptEventPhase = crate::proxy_core::api::events::AttemptEventPhase;
-
 pub(crate) fn attempt_event_payload_from_forward_attempt(
     request_id: &str,
     app_type: &str,
@@ -2166,7 +2161,8 @@ pub(crate) use crate::proxy_core::api::config::{
 use crate::proxy_core::api::events::{
     attempt_event_name, build_attempt_event_payload, build_provider_switched_event_payload,
     build_proxy_official_warning_event_payload, build_request_started_event_payload,
-    build_server_started_event_payload, build_server_stopped_event_payload,
+    build_server_started_event_payload, build_server_stopped_event_payload, AttemptEventChannel,
+    AttemptEventPayloadInput, AttemptEventPhase,
 };
 pub(crate) use crate::proxy_core::api::management::channel_not_found_error;
 pub(crate) use crate::proxy_core::api::management::{
