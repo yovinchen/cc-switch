@@ -425,6 +425,7 @@ mod tests {
                 .and_then(Value::as_str),
             Some("sk-channel-key")
         );
+        assert_eq!(attempts[0].channel_auth_key_ref(), Some("primary"));
 
         db.upsert_proxy_channel_key(
             "channel-auth-key",
@@ -521,6 +522,13 @@ mod tests {
             })
             .collect();
         assert_eq!(auth_keys, vec!["sk-channel-a", "sk-channel-b"]);
+        assert_eq!(
+            attempts
+                .iter()
+                .map(|attempt| attempt.channel_auth_key_ref())
+                .collect::<Vec<_>>(),
+            vec![Some("primary"), Some("primary")]
+        );
     }
 
     #[test]
@@ -578,6 +586,7 @@ mod tests {
                 .and_then(Value::as_str),
             Some("sk-backup")
         );
+        assert_eq!(attempts[0].channel_auth_key_ref(), Some("backup"));
     }
 
     fn proxy_request() -> ProxyRequest {
@@ -608,8 +617,9 @@ mod tests {
             events: events.clone(),
             current_providers: current_providers.clone(),
             attempt_runtime_source:
-                crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_router(
+                crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_runtime_sources(
                     provider_router,
+                    db.clone(),
                 ),
             protocol_state_source:
                 crate::proxy::host::cc_switch::forwarder_protocol_state_source::forwarder_protocol_state_source_from_runtime_parts(

@@ -3265,6 +3265,13 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
         manifest_dir.join("src/proxy/host/cc_switch/channel_key_runtime_source.rs");
     let runtime_source =
         fs::read_to_string(&runtime_source_path).expect("read channel_key_runtime_source.rs");
+    let route_attempt_path = manifest_dir.join("src/proxy/route_attempt.rs");
+    let route_attempt_source =
+        fs::read_to_string(&route_attempt_path).expect("read route_attempt.rs");
+    let attempt_runtime_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_attempt_runtime_source.rs");
+    let attempt_runtime_source = fs::read_to_string(&attempt_runtime_source_path)
+        .expect("read forwarder_attempt_runtime_source.rs");
     let dao_path = manifest_dir.join("src/database/dao/proxy_channels.rs");
     let dao_source = fs::read_to_string(&dao_path).expect("read proxy_channels.rs");
     let function = function_slice(
@@ -3321,6 +3328,26 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
         !dao_source.contains("fn get_enabled_proxy_channel_key"),
         "DAO should not expose enabled-key selectors; runtime selection belongs in the host source and proxy-core"
     );
+    assert!(
+        !adapter_source.contains(".record_proxy_channel_key_failure("),
+        "proxy_core_adapter should not own selected channel-key failure writeback; keep that DB side effect in host runtime source"
+    );
+    assert!(
+        attempt_runtime_source.contains(".record_proxy_channel_key_failure("),
+        "host forwarder attempt runtime source should own selected channel-key failure writeback"
+    );
+    for (path, source) in [
+        ("src/proxy/route_attempt.rs", route_attempt_source.as_str()),
+        (
+            "src/proxy/host/cc_switch/channel_key_runtime_source.rs",
+            runtime_source.as_str(),
+        ),
+    ] {
+        assert!(
+            !source.contains(".record_proxy_channel_key_failure("),
+            "{path} must not own selected channel-key failure writeback"
+        );
+    }
 
     let forbidden_markers = ["key.status == \"enabled\"", "key.status != \"enabled\""];
     let mut violations = Vec::new();
@@ -14554,7 +14581,7 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     let attempt_runtime_impl_slice = function_slice(
         &attempt_source,
         "impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource",
-        "pub(crate) fn forwarder_attempt_runtime_source_from_router",
+        "pub(crate) fn forwarder_attempt_runtime_source_from_runtime_sources",
     );
     assert!(
         !adapter_source.contains("fn should_bypass_circuit_breaker"),
@@ -14572,6 +14599,13 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         "default ForwarderAttemptRuntimeSource implementation should delegate attempt limit and circuit-bypass policy to core"
     );
     assert!(
+        attempt_source.contains("use crate::database::Database")
+            && attempt_source.contains("db: Arc<Database>")
+            && attempt_runtime_impl_slice.contains("record_selected_channel_key_failure(")
+            && attempt_source.contains("attempt.channel_auth_key_ref()"),
+        "default ForwarderAttemptRuntimeSource should own DB-backed selected channel-key failure writeback"
+    );
+    assert!(
         attempt_source.contains("use crate::proxy_core::api::transport::{")
             && attempt_source.contains("forwarder_attempt_runtime_decision")
             && attempt_source.contains("ForwarderAttemptRuntimeDecisionInput"),
@@ -14587,8 +14621,8 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         );
     }
     assert!(
-        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_router")
-            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_router")
+        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_runtime_sources")
+            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_runtime_sources")
             && !adapter_source.contains("struct CcSwitchForwarderAttemptRuntimeSource"),
         "proxy_core_adapter should use, not re-export or own, the default forwarder attempt runtime source"
     );

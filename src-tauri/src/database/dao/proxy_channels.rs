@@ -640,6 +640,25 @@ impl Database {
         get_proxy_channel_key_on_conn(&conn, channel_id, key_ref)
     }
 
+    pub(crate) fn record_proxy_channel_key_failure(
+        &self,
+        channel_id: &str,
+        key_ref: &str,
+        failed_at_ms: i64,
+    ) -> Result<bool, AppError> {
+        let conn = lock_conn!(self.conn);
+        let updated = conn
+            .execute(
+                "UPDATE proxy_channel_keys SET
+                    last_failure_at = ?1,
+                    updated_at = ?1
+                 WHERE channel_id = ?2 AND key_ref = ?3",
+                params![failed_at_ms, channel_id, key_ref],
+            )
+            .map_err(|e| AppError::Database(format!("记录 proxy channel key 失败时间失败: {e}")))?;
+        Ok(updated > 0)
+    }
+
     pub(crate) fn delete_proxy_channel_key(
         &self,
         channel_id: &str,
@@ -1437,6 +1456,23 @@ mod tests {
             runtime_candidate_serialized.get("keyValue").is_none(),
             "runtime DB records should keep secret material in memory but not expose it through serde"
         );
+
+        let failed_at_ms = 1_771_000_123_i64;
+        assert!(db
+            .record_proxy_channel_key_failure(&created.id, "primary", failed_at_ms)
+            .expect("record channel key failure"));
+        let failed_key = db
+            .get_proxy_channel_key(&created.id, "primary")
+            .expect("read failed key")
+            .expect("failed key");
+        assert_eq!(failed_key.last_failure_at, Some(failed_at_ms));
+        assert_eq!(failed_key.key_value, "sk-channel-secret");
+        assert_eq!(failed_key.status, "enabled");
+        assert_eq!(failed_key.priority, 10);
+        assert_eq!(failed_key.weight, 80);
+        assert!(!db
+            .record_proxy_channel_key_failure(&created.id, "missing", failed_at_ms)
+            .expect("record missing channel key failure"));
 
         let patched = db
             .update_proxy_channel_key(

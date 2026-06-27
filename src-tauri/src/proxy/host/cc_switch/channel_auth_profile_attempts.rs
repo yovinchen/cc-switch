@@ -92,11 +92,14 @@ pub(crate) fn apply_channel_auth_profile_providers_from_source(
                         &key_ref,
                     ));
                 };
-                attempt.set_auth_provider(provider_with_channel_auth_key(
-                    app_type,
-                    attempt.provider(),
-                    &key_candidate.key_value,
-                ));
+                attempt.set_channel_auth_provider(
+                    provider_with_channel_auth_key(
+                        app_type,
+                        attempt.provider(),
+                        &key_candidate.key_value,
+                    ),
+                    key_candidate.key_ref,
+                );
             }
             ChannelAuthProfileProviderApplication::Ignore => {
                 continue;

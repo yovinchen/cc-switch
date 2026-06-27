@@ -463,7 +463,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
     let gemini_shadow = Arc::new(GeminiShadowStore::default());
     let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
     let attempt_runtime_source =
-        forwarder_attempt_runtime_source_from_router(provider_router.clone());
+        forwarder_attempt_runtime_source_from_runtime_sources(provider_router.clone(), db.clone());
     let protocol_state_source = forwarder_protocol_state_source_from_runtime_parts(
         gemini_shadow.clone(),
         codex_chat_history.clone(),
@@ -5558,7 +5558,7 @@ pub(crate) trait ForwarderAttemptRuntimeSource {
     ) -> BoxFuture<'a, ()>;
 }
 
-use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_router;
+use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_runtime_sources;
 
 pub(crate) type ForwarderAuthSourceRef = Arc<dyn ForwarderAuthSource + Send + Sync>;
 pub(crate) type AuthProviderRef = Arc<dyn AuthProvider + Send + Sync>;

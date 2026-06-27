@@ -23,6 +23,7 @@ pub(crate) struct ForwardAttempt {
     provider: Provider,
     auth_provider: Option<Provider>,
     channel: Option<ResolvedChannelAttempt>,
+    channel_auth_key_ref: Option<String>,
 }
 
 impl ForwardAttempt {
@@ -32,6 +33,7 @@ impl ForwardAttempt {
             provider,
             auth_provider: None,
             channel: None,
+            channel_auth_key_ref: None,
         }
     }
 
@@ -48,6 +50,7 @@ impl ForwardAttempt {
             provider,
             auth_provider: None,
             channel: Some(resolved_channel_attempt_from_candidate(candidate)),
+            channel_auth_key_ref: None,
         }
     }
 
@@ -64,6 +67,7 @@ impl ForwardAttempt {
             provider,
             auth_provider: None,
             channel: Some(resolved_channel_attempt_from_selection(selection)),
+            channel_auth_key_ref: None,
         }
     }
 
@@ -76,6 +80,7 @@ impl ForwardAttempt {
             provider,
             auth_provider: None,
             channel: Some(channel),
+            channel_auth_key_ref: None,
         }
     }
 
@@ -89,6 +94,25 @@ impl ForwardAttempt {
 
     pub(crate) fn set_auth_provider(&mut self, provider: Provider) {
         self.auth_provider = Some(provider);
+        self.channel_auth_key_ref = None;
+    }
+
+    pub(crate) fn set_channel_auth_provider(
+        &mut self,
+        provider: Provider,
+        key_ref: impl Into<String>,
+    ) {
+        self.auth_provider = Some(provider);
+        self.channel_auth_key_ref = Some(key_ref.into());
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_channel_auth_key_ref(&mut self, key_ref: impl Into<String>) {
+        self.channel_auth_key_ref = Some(key_ref.into());
+    }
+
+    pub(crate) fn channel_auth_key_ref(&self) -> Option<&str> {
+        self.channel_auth_key_ref.as_deref()
     }
 
     pub(crate) fn channel(&self) -> Option<&ResolvedChannelAttempt> {
@@ -446,6 +470,34 @@ mod tests {
                 .and_then(Value::as_str),
             Some("auth-key")
         );
+    }
+
+    #[test]
+    fn channel_auth_key_ref_tracks_selected_key_and_clears_for_provider_auth() {
+        let provider = Provider::with_id("p1".to_string(), "Provider".to_string(), json!({}), None);
+        let channel_auth_provider = Provider::with_id(
+            "p1".to_string(),
+            "Provider".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "channel-key" } }),
+            None,
+        );
+        let provider_auth = Provider::with_id(
+            "auth-provider".to_string(),
+            "Auth Provider".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "provider-key" } }),
+            None,
+        );
+        let mut attempt = ForwardAttempt::from_core_selection(
+            &AppType::Claude,
+            &provider,
+            &route_selection("p1", "ch_auth_key"),
+        );
+
+        attempt.set_channel_auth_provider(channel_auth_provider, "primary");
+        assert_eq!(attempt.channel_auth_key_ref(), Some("primary"));
+
+        attempt.set_auth_provider(provider_auth);
+        assert_eq!(attempt.channel_auth_key_ref(), None);
     }
 
     #[test]
