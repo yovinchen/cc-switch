@@ -5989,12 +5989,22 @@ where
         .into_iter()
         .filter(|candidate| candidate.status == "enabled")
         .min_by(|left, right| {
-            right
-                .priority
-                .cmp(&left.priority)
-                .then_with(|| right.weight.cmp(&left.weight))
-                .then_with(|| left.key_ref.cmp(&right.key_ref))
+            left.last_failure_at
+                .is_some()
+                .cmp(&right.last_failure_at.is_some())
+                .then_with(|| channel_key_runtime_candidate_priority_order(left, right))
         })
+}
+
+fn channel_key_runtime_candidate_priority_order(
+    left: &ChannelKeyRuntimeCandidate,
+    right: &ChannelKeyRuntimeCandidate,
+) -> std::cmp::Ordering {
+    right
+        .priority
+        .cmp(&left.priority)
+        .then_with(|| right.weight.cmp(&left.weight))
+        .then_with(|| left.key_ref.cmp(&right.key_ref))
 }
 
 pub fn select_channel_key_runtime_candidate<I>(
@@ -11365,6 +11375,42 @@ GEMINI_API_KEY=sk-test123
         .expect("selected wildcard key candidate");
         assert_eq!(wildcard.key_ref, "backup");
         assert_eq!(wildcard.key_value, "sk-backup");
+    }
+
+    #[test]
+    fn channel_key_runtime_candidate_selection_prefers_healthy_keys_before_priority() {
+        fn candidate(
+            key_ref: &str,
+            key_value: &str,
+            priority: i64,
+            last_failure_at: Option<i64>,
+        ) -> super::ChannelKeyRuntimeCandidate {
+            channel_key_runtime_candidate_from_input(ChannelKeyRuntimeCandidateInput {
+                channel_id: "ch-1".to_string(),
+                key_ref: key_ref.to_string(),
+                key_value: key_value.to_string(),
+                status: "enabled".to_string(),
+                priority,
+                weight: 100,
+                last_failure_at,
+            })
+        }
+
+        let selected = select_enabled_channel_key_runtime_candidate(vec![
+            candidate("failed-best", "sk-failed", 200, Some(1_771_000_003)),
+            candidate("healthy-lower", "sk-healthy", 10, None),
+        ])
+        .expect("selected healthy key candidate");
+        assert_eq!(selected.key_ref, "healthy-lower");
+        assert_eq!(selected.key_value, "sk-healthy");
+
+        let fallback = select_enabled_channel_key_runtime_candidate(vec![
+            candidate("failed-low", "sk-failed-low", 10, Some(1_771_000_003)),
+            candidate("failed-high", "sk-failed-high", 200, Some(1_771_000_004)),
+        ])
+        .expect("selected failed fallback candidate");
+        assert_eq!(fallback.key_ref, "failed-high");
+        assert_eq!(fallback.key_value, "sk-failed-high");
     }
 
     #[test]

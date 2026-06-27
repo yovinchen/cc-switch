@@ -164,6 +164,23 @@ mod tests {
         assert_eq!(wildcard.key_value, "sk-backup-candidate");
         assert_eq!(wildcard.priority, 100);
 
+        {
+            let conn = db.conn.lock().expect("lock db");
+            conn.execute(
+                "UPDATE proxy_channel_keys SET last_failure_at = ?1
+                 WHERE channel_id = ?2 AND key_ref = ?3",
+                (1_771_000_003_i64, "channel-key-candidate", "backup"),
+            )
+            .expect("mark backup channel key failed");
+        }
+
+        let fallback = source
+            .load_channel_key_candidate("channel-key-candidate", "*")
+            .expect("load wildcard channel key after failure")
+            .expect("selected healthy fallback candidate");
+        assert_eq!(fallback.key_ref, "primary");
+        assert_eq!(fallback.key_value, "sk-channel-candidate");
+
         db.upsert_proxy_channel_key(
             "channel-key-candidate",
             "primary",
