@@ -1795,6 +1795,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1309. `proxy/circuit_breaker` 不再通过 `proxy_core_adapter` 获取 `CircuitBreakerFailureDecision`：熔断器生产代码直接从 `proxy-core::api::config` 读取该决策 contract，adapter 只保留熔断决策 helper 与日志码 helper；边界测试防止 failure decision 重新以 adapter alias 回流。
 1310. `proxy/engine/forward_pipeline` 与 forwarder runtime state source 不再通过 `proxy_core_adapter` 获取 `ForwarderRectifierRetryKind`：两者直接从 `proxy-core::api::transport` 读取 rectifier retry kind，adapter 内部也改为普通 core import；边界测试防止 rectifier retry kind 重新以 adapter alias 回流。
 1311. `proxy_core_adapter` 不再暴露 `ForwardFailureKind` 纯 transport alias：该类型仅供 adapter 内部错误分类投影使用，现改为普通 `proxy-core::api::transport` import；边界测试防止 forward failure kind 重新以 adapter type alias 回流。
+1312. `proxy_core_adapter` 不再暴露 Claude auth/helper contract alias：`ClaudeAuthKey`、`ClaudeAuthKeySource`、`ClaudePromptCacheKeyResolution` 与 `ClaudeProviderAuthHeadersInput` 均改为 adapter 内部普通 core import；边界测试防止 Claude auth helper DTO 重新通过 adapter type alias 回流。
 
 ## 背景
 
