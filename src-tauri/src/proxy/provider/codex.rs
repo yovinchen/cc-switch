@@ -8,9 +8,10 @@
 use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
+use crate::proxy_core::api::auth::ProviderAuthInfo;
 use crate::proxy_core_adapter::{
     build_codex_upstream_url, provider_codex_auth_headers, provider_codex_auth_info,
-    required_codex_provider_base_url, ProviderAuthInfo,
+    required_codex_provider_base_url,
 };
 
 /// Codex 适配器
@@ -57,10 +58,10 @@ impl ProviderAdapter for CodexAdapter {
 mod tests {
     use super::*;
     use crate::provider::CodexChatReasoningConfig;
+    use crate::proxy_core::api::auth::ProviderAuthStrategy;
     use crate::proxy_core_adapter::{
         provider_apply_codex_chat_upstream_model, provider_codex_chat_reasoning_profile,
         provider_codex_uses_chat_completions, provider_should_convert_codex_responses_to_chat,
-        ProviderAuthStrategy,
     };
     use serde_json::json;
 

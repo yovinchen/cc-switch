@@ -17,16 +17,18 @@
 use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
+use crate::proxy_core::api::auth::ProviderAuthInfo;
+#[cfg(test)]
+use crate::proxy_core::api::auth::ProviderAuthStrategy;
 use crate::proxy_core_adapter::{
     build_claude_upstream_url, provider_claude_api_format, provider_claude_auth_headers,
     provider_claude_auth_info, provider_claude_transform_request_for_api_format,
     provider_needs_claude_transform, required_claude_provider_base_url, GeminiShadowStore,
-    ProviderAuthInfo,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    provider_claude_transform_response, ProviderAuthStrategy, COPILOT_API_VERSION,
-    COPILOT_EDITOR_VERSION, COPILOT_INTEGRATION_ID, COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
+    provider_claude_transform_response, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION,
+    COPILOT_INTEGRATION_ID, COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
 };
 
 fn transform_claude_request_for_api_format(

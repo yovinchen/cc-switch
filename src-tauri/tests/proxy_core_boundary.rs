@@ -65,6 +65,12 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/services/usage_stats.rs",
 ];
 const ALLOWED_PROXY_ENGINE_CONSTRUCTOR_FILES: &[&str] = &["src/proxy_core_adapter.rs"];
+const PROVIDER_AUTH_DIRECT_CORE_IMPORT_FILES: &[&str] = &[
+    "src/proxy/provider/adapter.rs",
+    "src/proxy/provider/claude.rs",
+    "src/proxy/provider/codex.rs",
+    "src/proxy/provider/gemini.rs",
+];
 
 const FORBIDDEN_MARKERS: &[&str] = &["crate::proxy_core::", "cc_switch_proxy_core::"];
 const FORBIDDEN_FORWARDER_SELF_PLANNING_MARKERS: &[&str] = &[
@@ -1969,6 +1975,18 @@ const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
 
+fn is_allowed_provider_auth_core_import(relative: &str, code: &str) -> bool {
+    if !PROVIDER_AUTH_DIRECT_CORE_IMPORT_FILES.contains(&relative) {
+        return false;
+    }
+
+    matches!(
+        code.trim(),
+        "use crate::proxy_core::api::auth::ProviderAuthInfo;"
+            | "use crate::proxy_core::api::auth::ProviderAuthStrategy;"
+    )
+}
+
 #[test]
 fn host_code_uses_proxy_core_through_adapter_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -2014,7 +2032,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                 pending_test_cfg = false;
             }
             for marker in FORBIDDEN_MARKERS {
-                if code.contains(marker) {
+                if code.contains(marker) && !is_allowed_provider_auth_core_import(&relative, code) {
                     violations.push(format!(
                         "{}:{} contains direct proxy-core marker `{}`",
                         relative,
@@ -5034,6 +5052,70 @@ fn production_provider_adapters_delegate_base_url_errors_to_adapter() {
     assert!(
         violations.is_empty(),
         "provider adapters must delegate required base_url extraction errors to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn provider_adapter_auth_contracts_import_core_types_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let auth_info_files = [
+        "src/proxy/provider/adapter.rs",
+        "src/proxy/provider/claude.rs",
+        "src/proxy/provider/codex.rs",
+        "src/proxy/provider/gemini.rs",
+    ];
+    let auth_strategy_files = [
+        "src/proxy/provider/claude.rs",
+        "src/proxy/provider/codex.rs",
+        "src/proxy/provider/gemini.rs",
+    ];
+
+    for relative in auth_info_files {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read provider source");
+        assert!(
+            source.contains("use crate::proxy_core::api::auth::ProviderAuthInfo;"),
+            "{relative} should import ProviderAuthInfo directly from proxy_core::api::auth"
+        );
+    }
+
+    for relative in auth_strategy_files {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read provider source");
+        assert!(
+            source.contains("use crate::proxy_core::api::auth::ProviderAuthStrategy;"),
+            "{relative} should import ProviderAuthStrategy directly from proxy_core::api::auth"
+        );
+    }
+
+    let mut violations = Vec::new();
+    for relative in auth_info_files {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read provider source");
+        let mut in_adapter_import = false;
+        for (line_index, line) in source.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or_default();
+            if code.contains("use crate::proxy_core_adapter::{") {
+                in_adapter_import = true;
+            }
+            let adapter_single_import = code.contains("use crate::proxy_core_adapter::");
+            if (in_adapter_import || adapter_single_import)
+                && (code.contains("ProviderAuthInfo") || code.contains("ProviderAuthStrategy"))
+            {
+                violations.push(format!(
+                    "{}:{} imports provider auth contract through proxy_core_adapter: `{}`",
+                    relative,
+                    line_index + 1,
+                    code.trim()
+                ));
+            }
+            if in_adapter_import && code.contains("};") {
+                in_adapter_import = false;
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider adapters must not import provider auth contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

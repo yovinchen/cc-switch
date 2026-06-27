@@ -4,7 +4,7 @@
 
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
-use crate::proxy_core_adapter::ProviderAuthInfo;
+use crate::proxy_core::api::auth::ProviderAuthInfo;
 use serde_json::Value;
 
 /// 供应商适配器 Trait
