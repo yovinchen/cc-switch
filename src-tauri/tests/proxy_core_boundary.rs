@@ -5347,6 +5347,18 @@ fn proxy_core_adapter_does_not_export_forwarder_rectifier_retry_kind_alias() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_forward_failure_kind_alias() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    assert!(
+        !adapter_source.contains("pub(crate) type ForwardFailureKind ="),
+        "proxy_core_adapter should not expose ForwardFailureKind as a type alias; adapter internals should use proxy_core::api::transport directly"
+    );
+}
+
+#[test]
 fn engine_and_host_test_fixtures_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases: &[(&str, &[&str], &[&str])] = &[

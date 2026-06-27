@@ -2045,7 +2045,6 @@ pub(crate) type RouteResolveChannelInput =
 pub(crate) type ChannelRouteCandidate = crate::proxy_core::api::routing::ChannelRouteCandidate;
 pub(crate) type ResolvedChannelAttempt = crate::proxy_core::api::routing::ResolvedChannelAttempt;
 pub(crate) type RoutePlan = crate::proxy_core::api::routing::RoutePlan;
-pub(crate) type ForwardFailureKind = crate::proxy_core::api::transport::ForwardFailureKind;
 pub(crate) enum ForwarderFailureDecision {
     Retryable,
     NonRetryable,
@@ -2195,7 +2194,6 @@ pub(crate) use crate::proxy_core::api::transforms::{
     ClaudeApiFormatRequestTransformContext, ClaudeApiFormatSseTransformContext,
     ClaudeTransformStreamingDecision,
 };
-use crate::proxy_core::api::transport::ForwarderRectifierRetryKind;
 pub(crate) use crate::proxy_core::api::transport::ProxyRequest;
 pub(crate) use crate::proxy_core::api::transport::{
     build_claude_provider_auth_headers, build_claude_upstream_url,
@@ -2220,6 +2218,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     parse_custom_user_agent,
     provider_custom_user_agent_header as core_provider_custom_user_agent_header,
 };
+use crate::proxy_core::api::transport::{ForwardFailureKind, ForwarderRectifierRetryKind};
 pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
     PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
