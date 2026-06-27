@@ -1728,6 +1728,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1242. model route 的 `requestOverrides` 已开始进入 forward runtime：`ResolvedChannelAttempt` 会携带选中 `ModelRoute.request_overrides`，`proxy-core::request_body::apply_resolved_channel_request_overrides` 负责把非空对象浅合并到请求 body，CC Switch `ForwarderRequestSource` 在 channel 模型覆盖后直接调用该 core helper；这样每个中转地址/模型路由可以独立下发温度、stream、reasoning 等上游请求参数，`responseOverrides` 仍保留给后续响应侧策略迁移。
 1243. model route 的 `responseOverrides.headers` 已开始进入 forward response runtime：`ResolvedChannelAttempt` 会携带选中 `ModelRoute.response_overrides`，`proxy-core::response_headers::apply_channel_response_header_overrides` 负责校验并应用响应头覆盖，CC Switch `ForwarderResponseSource` 在 channel status mapping 同一钩子中调用该 helper 并保留流式/非流式 body 不被消费。当前切片只覆盖响应头，响应 body/stream 内容改写仍留给后续协议响应策略迁移。
 1244. model route 的 `pricingModel` 已接入 usage 归因：`usage_route_context_from_selection` 会从选中 `RouteSelection.model_route.pricing_model` 提取非空计价模型，`usage_record_with_route_context` 在 usage record 尚未显式携带 pricing model 时写入该 route-level pricing model；这样同一中转地址下不同 public/upstream model 可以独立指定计价模型，落库成本计算不再只能依赖响应模型或 outbound model fallback。
+1245. model route 的 `pricingModel` 已进入 runtime/external route state：`ResolvedChannelAttempt` 会携带选中 model route 的计价模型，attempt event payload 与 current-route target 都序列化 `pricingModel`，管理 API 和运行时状态可以观察到当前中转地址实际采用的计价模型；request/response override body 仍不进入这些外部状态 payload，继续避免泄露上游迁移策略细节。
 
 ## 背景
 
