@@ -6309,12 +6309,6 @@ fn claude_desktop_proxy_request_body_issue_message(
     }
 }
 
-#[cfg(test)]
-pub(crate) fn rewrite_codex_responses_endpoint_to_chat(endpoint: &str) -> (String, Option<String>) {
-    crate::proxy_core::api::transport::rewrite_codex_responses_endpoint_to_chat(endpoint)
-        .into_parts()
-}
-
 pub(crate) struct UsageRequestLogProjection {
     pub(crate) log: RequestLog,
     pub(crate) missing_pricing_warning_message: Option<String>,
@@ -16087,7 +16081,10 @@ command = "latest-command"
         );
 
         let (endpoint, passthrough_query) =
-            rewrite_codex_responses_endpoint_to_chat("/v1/responses?foo=bar");
+            crate::proxy_core::api::transport::rewrite_codex_responses_endpoint_to_chat(
+                "/v1/responses?foo=bar",
+            )
+            .into_parts();
         assert_eq!(endpoint, "/chat/completions?foo=bar");
         assert_eq!(passthrough_query.as_deref(), Some("foo=bar"));
 

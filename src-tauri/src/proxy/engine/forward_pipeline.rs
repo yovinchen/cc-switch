@@ -1625,9 +1625,10 @@ mod tests {
     #[test]
     fn rewrite_codex_responses_endpoint_to_chat_preserves_query() {
         let (endpoint, passthrough_query) =
-            crate::proxy_core_adapter::rewrite_codex_responses_endpoint_to_chat(
+            crate::proxy_core::api::transport::rewrite_codex_responses_endpoint_to_chat(
                 "/v1/responses?foo=bar",
-            );
+            )
+            .into_parts();
 
         assert_eq!(endpoint, "/chat/completions?foo=bar");
         assert_eq!(passthrough_query.as_deref(), Some("foo=bar"));
@@ -1636,9 +1637,10 @@ mod tests {
     #[test]
     fn rewrite_codex_responses_compact_endpoint_to_chat_preserves_query() {
         let (endpoint, passthrough_query) =
-            crate::proxy_core_adapter::rewrite_codex_responses_endpoint_to_chat(
+            crate::proxy_core::api::transport::rewrite_codex_responses_endpoint_to_chat(
                 "/v1/responses/compact?foo=bar",
-            );
+            )
+            .into_parts();
 
         assert_eq!(endpoint, "/chat/completions?foo=bar");
         assert_eq!(passthrough_query.as_deref(), Some("foo=bar"));

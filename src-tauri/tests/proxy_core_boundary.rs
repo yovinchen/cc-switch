@@ -1239,6 +1239,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn forward_failure_message_from_proxy_status(",
     "build_codex_tool_context_from_request as codex_tool_context_from_request",
     "fn apply_channel_param_overrides_to_url(",
+    "fn rewrite_codex_responses_endpoint_to_chat(",
     "fn resolve_channel_response_status_mapping(",
     "fn should_transition_open_to_half_open(",
     "fn should_close_half_open_after_success(",
