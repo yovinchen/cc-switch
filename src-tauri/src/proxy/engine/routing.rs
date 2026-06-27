@@ -558,10 +558,11 @@ mod tests {
     use crate::database::Database;
     use crate::provider::Provider;
     use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
-    use crate::proxy_core_adapter::{
-        management_route_response_from_router_source, ChannelRouteSource, CircuitState,
-        ProxyChannelWriteRequest, RouteResolveRequest,
+    use crate::proxy_core::api::{
+        config::CircuitState,
+        management::{ChannelRouteSource, ProxyChannelWriteRequest, RouteResolveRequest},
     };
+    use crate::proxy_core_adapter::management_route_response_from_router_source;
     use crate::settings::CustomEndpoint;
     use serde_json::json;
     use serial_test::serial;

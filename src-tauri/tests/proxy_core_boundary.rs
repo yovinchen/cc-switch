@@ -1994,6 +1994,10 @@ fn is_allowed_test_proxy_config_core_import(relative: &str, code: &str) -> bool 
     ) && code.trim() == "use crate::proxy_core::api::ports::ProxyConfig;"
 }
 
+fn is_allowed_engine_routing_test_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/engine/routing.rs" && code.trim() == "use crate::proxy_core::api::{"
+}
+
 #[test]
 fn host_code_uses_proxy_core_through_adapter_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -2042,6 +2046,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                 if code.contains(marker)
                     && !is_allowed_provider_auth_core_import(&relative, code)
                     && !is_allowed_test_proxy_config_core_import(&relative, code)
+                    && !is_allowed_engine_routing_test_core_import(&relative, code)
                 {
                     violations.push(format!(
                         "{}:{} contains direct proxy-core marker `{}`",
@@ -6044,6 +6049,56 @@ fn route_attempt_tests_import_route_contracts_directly() {
     assert!(
         violations.is_empty(),
         "route_attempt tests should not route pure domain/routing contracts through proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn engine_routing_tests_import_route_contracts_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = "src/proxy/engine/routing.rs";
+    let source = fs::read_to_string(manifest_dir.join(relative)).expect("read engine/routing.rs");
+    let test_imports = function_slice(
+        &source,
+        "#[cfg(test)]\nmod tests {",
+        "    struct TempHome {",
+    );
+
+    let required_imports = [
+        "config::CircuitState,",
+        "management::{ChannelRouteSource, ProxyChannelWriteRequest, RouteResolveRequest},",
+        "use crate::proxy_core_adapter::management_route_response_from_router_source;",
+    ];
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(test_imports);
+    let mut violations = Vec::new();
+
+    for required_import in required_imports {
+        if !test_imports.contains(required_import) {
+            violations.push(format!(
+                "{relative} tests should import `{required_import}` directly from the owning module"
+            ));
+        }
+    }
+
+    for forbidden in [
+        "ChannelRouteSource",
+        "CircuitState",
+        "ProxyChannelWriteRequest",
+        "RouteResolveRequest",
+    ] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == forbidden)
+        {
+            violations.push(format!(
+                "{relative} tests import routing contract `{forbidden}` through proxy_core_adapter"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "engine/routing tests should not route pure management/config contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
