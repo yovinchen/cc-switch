@@ -1450,30 +1450,8 @@ pub(crate) mod server_log_codes {
 }
 
 pub(crate) type ProxyCoreAppKind = crate::proxy_core::api::domain::AppKind;
-#[cfg(test)]
-pub(crate) type ProxyCoreChannelOverrides = crate::proxy_core::api::domain::ChannelOverrides;
-#[cfg(test)]
-pub(crate) type ChannelSpec = crate::proxy_core::api::routing::ChannelSpec;
-#[cfg(test)]
-pub(crate) type ChannelQuery<'a> = crate::proxy_core::api::routing::ChannelQuery<'a>;
-#[cfg(test)]
-pub(crate) type ProxyCoreChannelSpec = crate::proxy_core::api::routing::ChannelSpec;
-#[cfg(test)]
-pub(crate) type ChannelStatus = crate::proxy_core::api::routing::ChannelStatus;
-#[cfg(test)]
-pub(crate) type ProxyCoreChannelStatus = crate::proxy_core::api::routing::ChannelStatus;
-#[cfg(test)]
-pub(crate) type ProxyCoreInterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
-#[cfg(test)]
-pub(crate) type ProxyCoreModelCapabilities = crate::proxy_core::api::domain::ModelCapabilities;
-#[cfg(test)]
-pub(crate) type ProxyCoreModelRoute = crate::proxy_core::api::domain::ModelRoute;
 pub(crate) type ModelCatalog = crate::proxy_core::api::model_catalog::ModelCatalog;
-#[cfg(test)]
-pub(crate) type ProxyCoreProviderMetadata = crate::proxy_core::api::domain::ProviderMetadata;
 pub(crate) type ProviderSpec = crate::proxy_core::api::domain::ProviderSpec;
-#[cfg(test)]
-pub(crate) type ProxyCoreProviderSpec = crate::proxy_core::api::domain::ProviderSpec;
 
 pub(crate) use crate::proxy_core::api::domain::{
     provider_account_ref, provider_metadata_from_input, unsupported_app_kind_config_error,
@@ -7482,7 +7460,8 @@ mod tests {
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
         channel_auth_profile_action, channel_auth_profile_missing_provider_warning,
-        channel_spec_from_input, ChannelAuthProfileAction, ChannelSpecInput, RetryPolicy,
+        channel_spec_from_input, ChannelAuthProfileAction, ChannelSpecInput, ModelCapabilities,
+        ModelRoute, RetryPolicy,
     };
     use crate::proxy_core::api::errors::{
         proxy_error_http_status_code, proxy_error_response_body,
@@ -7492,7 +7471,8 @@ mod tests {
     use crate::proxy_core::api::management::{ChannelKeyRuntimeCandidate, ChannelTestProbeRequest};
     use crate::proxy_core::api::model_catalog::CopilotModel;
     use crate::proxy_core::api::routing::{
-        InterfaceKind, LegacyChannelProjectionInput, ProviderSelectionCandidate, RouteSelection,
+        ChannelSpec, ChannelStatus, InterfaceKind, LegacyChannelProjectionInput,
+        ProviderSelectionCandidate, RouteSelection,
     };
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{
@@ -9990,10 +9970,10 @@ base_url = "https://api.openai.com/v1"
             needs_review: false,
             review_reasons: Vec::new(),
         };
-        let model_route = ProxyCoreModelRoute {
+        let model_route = ModelRoute {
             public_model: "public-sonnet".to_string(),
             upstream_model: "upstream-sonnet".to_string(),
-            capabilities: ProxyCoreModelCapabilities::default(),
+            capabilities: ModelCapabilities::default(),
             pricing_model: Some("sonnet-price".to_string()),
             request_overrides: json!({}),
             response_overrides: json!({}),
@@ -15056,7 +15036,7 @@ command = "latest-command"
             Some(&ProxyCoreAppKind::Claude),
             &provider_projection,
         );
-        assert_eq!(interface, ProxyCoreInterfaceKind::AnthropicMessages);
+        assert_eq!(interface, InterfaceKind::AnthropicMessages);
 
         let projection = crate::proxy_core::api::routing::build_legacy_channel_projection(
             LegacyChannelProjectionInput {

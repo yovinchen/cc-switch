@@ -24,18 +24,22 @@ use crate::proxy::host::cc_switch::route_resolver::RouteRequest;
 #[cfg(test)]
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 #[cfg(test)]
-use crate::proxy_core::api::domain::{RetryPolicy, UpstreamEndpoint};
+use crate::proxy_core::api::domain::{
+    ChannelOverrides, ModelCapabilities, ModelRoute, ProviderSpec, RetryPolicy, UpstreamEndpoint,
+};
 #[cfg(test)]
 use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;
 #[cfg(test)]
-use crate::proxy_core::api::routing::{RouteSelection, DEFAULT_ROUTE_GROUP};
+use crate::proxy_core::api::routing::{
+    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RouteSelection, DEFAULT_ROUTE_GROUP,
+};
 #[cfg(test)]
 use crate::proxy_core::api::transport::ProxyBody;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     forward_result_to_proxy_result, management_route_response_from_router_source, AppKind,
-    AuthProvider, ChannelAttemptResult, ChannelQuery, ChannelSpec, GeminiShadowStore, ProviderSpec,
-    ProxyCoreEvent, ProxyRequest, ProxyServices, RoutePlan,
+    AuthProvider, ChannelAttemptResult, GeminiShadowStore, ProxyCoreEvent, ProxyRequest,
+    ProxyServices, RoutePlan,
 };
 #[cfg(test)]
 use serde_json::Value;
@@ -50,12 +54,10 @@ mod tests {
     use crate::app_config::AppType;
     use crate::provider::Provider;
     use crate::proxy_core_adapter::{
-        proxy_response_to_core_response, ChannelStatus, ProviderKind, ProxyChannelKeyWriteRequest,
-        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, ProxyConfig,
-        ProxyCoreChannelOverrides as ChannelOverrides, ProxyCoreError,
-        ProxyCoreInterfaceKind as InterfaceKind, ProxyCoreModelCapabilities as ModelCapabilities,
-        ProxyCoreModelRoute as ModelRoute, ProxyCoreResult, ProxyEngine, ProxyResponseBody,
-        ProxyRuntimeStatus, ResolvedChannelAttempt, RouteResolveRequest, UsageRecord,
+        proxy_response_to_core_response, ProviderKind, ProxyChannelKeyWriteRequest,
+        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, ProxyConfig, ProxyCoreError,
+        ProxyCoreResult, ProxyEngine, ProxyResponseBody, ProxyRuntimeStatus,
+        ResolvedChannelAttempt, RouteResolveRequest, UsageRecord,
     };
     use bytes::Bytes;
     use futures::StreamExt;

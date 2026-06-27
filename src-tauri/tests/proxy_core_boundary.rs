@@ -1511,7 +1511,18 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn model_route_from_input(",
     "pub(crate) use crate::proxy_core::api::domain::{channel_spec_from_input, ChannelSpecInput}",
     "fn channel_spec_from_input(",
+    "pub(crate) type ProxyCoreChannelOverrides =",
+    "pub(crate) type ChannelSpec =",
+    "pub(crate) type ChannelQuery<'a> =",
+    "pub(crate) type ProxyCoreChannelSpec =",
+    "pub(crate) type ChannelStatus =",
+    "pub(crate) type ProxyCoreChannelStatus =",
     "pub(crate) type InterfaceKind =",
+    "pub(crate) type ProxyCoreInterfaceKind =",
+    "pub(crate) type ProxyCoreModelCapabilities =",
+    "pub(crate) type ProxyCoreModelRoute =",
+    "pub(crate) type ProxyCoreProviderMetadata =",
+    "pub(crate) type ProxyCoreProviderSpec =",
     "pub(crate) type ProxyCoreUpstreamEndpoint =",
     "pub(crate) type RetryPolicy =",
     "pub(crate) type RouteSelection =",
@@ -18261,11 +18272,14 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         .expect("read proxy_core_adapter.rs");
 
     assert!(
-        host_source.contains("use crate::proxy_core::api::domain::{RetryPolicy, UpstreamEndpoint};")
+        host_source.contains(
+            "use crate::proxy_core::api::domain::{\n    ChannelOverrides, ModelCapabilities, ModelRoute, ProviderSpec, RetryPolicy, UpstreamEndpoint,\n};"
+        )
             && host_source.contains(
             "use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;"
-        ) && host_source
-            .contains("use crate::proxy_core::api::routing::{RouteSelection, DEFAULT_ROUTE_GROUP};")
+        ) && host_source.contains(
+            "use crate::proxy_core::api::routing::{\n    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RouteSelection, DEFAULT_ROUTE_GROUP,\n};"
+        )
             && host_source.contains("use crate::proxy_core::api::transport::ProxyBody;"),
         "proxy_core_host test harness should import pure core contracts directly"
     );
@@ -18279,6 +18293,17 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "RetryPolicy",
         "RouteSelection",
         "ProxyCoreUpstreamEndpoint",
+        "ChannelQuery",
+        "ChannelSpec",
+        "ChannelStatus",
+        "ProxyCoreChannelOverrides",
+        "ProxyCoreChannelSpec",
+        "ProxyCoreChannelStatus",
+        "ProxyCoreInterfaceKind",
+        "ProxyCoreModelCapabilities",
+        "ProxyCoreModelRoute",
+        "ProxyCoreProviderMetadata",
+        "ProxyCoreProviderSpec",
     ] {
         assert!(
             !host_adapter_import.contains(adapter_symbol),
@@ -18295,7 +18320,12 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         !host_tests_adapter_import.contains("ProxyBody")
             && !host_tests_adapter_import.contains("RetryPolicy")
             && !host_tests_adapter_import.contains("RouteSelection")
-            && !host_tests_adapter_import.contains("ProxyCoreUpstreamEndpoint"),
+            && !host_tests_adapter_import.contains("ProxyCoreUpstreamEndpoint")
+            && !host_tests_adapter_import.contains("ChannelStatus")
+            && !host_tests_adapter_import.contains("ProxyCoreChannelOverrides")
+            && !host_tests_adapter_import.contains("ProxyCoreInterfaceKind")
+            && !host_tests_adapter_import.contains("ProxyCoreModelCapabilities")
+            && !host_tests_adapter_import.contains("ProxyCoreModelRoute"),
         "proxy_core_host tests must not import pure core contracts through proxy_core_adapter"
     );
 
@@ -18306,6 +18336,17 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "pub(crate) type ProxyCoreUpstreamEndpoint =",
         "pub(crate) type RetryPolicy =",
         "pub(crate) type RouteSelection =",
+        "pub(crate) type ProxyCoreChannelOverrides =",
+        "pub(crate) type ChannelSpec =",
+        "pub(crate) type ChannelQuery<'a> =",
+        "pub(crate) type ProxyCoreChannelSpec =",
+        "pub(crate) type ChannelStatus =",
+        "pub(crate) type ProxyCoreChannelStatus =",
+        "pub(crate) type ProxyCoreInterfaceKind =",
+        "pub(crate) type ProxyCoreModelCapabilities =",
+        "pub(crate) type ProxyCoreModelRoute =",
+        "pub(crate) type ProxyCoreProviderMetadata =",
+        "pub(crate) type ProxyCoreProviderSpec =",
     ] {
         assert!(
             !adapter_source.contains(adapter_facade),
