@@ -1025,7 +1025,9 @@ mod tests {
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy::events::ProxyEventBus;
     use crate::proxy_core::api::auth::ManagedAccountAuthError;
-    use crate::proxy_core::api::transforms::{build_gemini_native_url, resolve_gemini_native_url};
+    use crate::proxy_core::api::transforms::{
+        build_gemini_native_url, canonical_json_string, resolve_gemini_native_url, short_value_hash,
+    };
     use crate::proxy_core::api::transport::{
         append_query_to_full_url, build_codex_oauth_session_headers,
         claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input,
@@ -1036,7 +1038,6 @@ mod tests {
         should_preserve_exact_request_header_case,
     };
     use crate::proxy_core_adapter::ProxyRuntimeStatus;
-    use crate::proxy_core_adapter::{canonical_json_string, short_value_hash};
     use crate::proxy_core_adapter::{AppKind, GeminiShadowStore, ResolvedChannelAttempt};
     use axum::http::header::{HeaderValue, ACCEPT};
     use axum::http::HeaderMap;

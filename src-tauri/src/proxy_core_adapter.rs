@@ -2335,9 +2335,8 @@ pub(crate) use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KE
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
-    anthropic_to_openai_responses_request, canonical_json_string,
-    gemini_response_to_anthropic_message, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message, short_value_hash,
+    anthropic_to_openai_responses_request, gemini_response_to_anthropic_message,
+    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
 };
 pub(crate) use crate::proxy_core::api::transforms::{
     append_utf8_safe, build_gemini_upstream_url, chat_completion_to_response_with_context,

@@ -9565,7 +9565,11 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
             .expect("read forward_pipeline.rs");
     assert!(
         forward_pipeline_source
-            .contains("use crate::proxy_core::api::transforms::{build_gemini_native_url, resolve_gemini_native_url};")
+            .contains("use crate::proxy_core::api::transforms::{")
+            && forward_pipeline_source.contains(
+                "build_gemini_native_url, canonical_json_string, resolve_gemini_native_url,"
+            )
+            && forward_pipeline_source.contains("short_value_hash,")
             && forward_pipeline_source.contains(
                 "append_query_to_full_url, build_codex_oauth_session_headers,"
             )
@@ -9593,6 +9597,9 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
             && !forward_pipeline_source.contains(
                 "crate::proxy_core_adapter::resolve_gemini_native_url"
             )
+            && !forward_pipeline_source
+                .contains("crate::proxy_core_adapter::canonical_json_string")
+            && !forward_pipeline_source.contains("crate::proxy_core_adapter::short_value_hash")
             && !forward_pipeline_source.contains(
                 "crate::proxy_core_adapter::is_streaming_upstream_request"
             )
@@ -9612,6 +9619,12 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
             ),
         "forward pipeline tests should import pure upstream URL/request helpers from proxy-core directly"
     );
+    for marker in ["canonical_json_string", "short_value_hash"] {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter must not keep pure transform test facade `{marker}`"
+        );
+    }
 
     for marker in [
         "rewrite_claude_transform_endpoint(",
