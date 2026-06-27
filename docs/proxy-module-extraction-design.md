@@ -1757,6 +1757,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1271. adapter 自测专用的 `InterfaceKind` 短别名已删除：测试模块直接从 `proxy-core::api::routing` 导入 owning enum，生产兼容别名 `ProxyCoreInterfaceKind` 暂不在本切片变更；边界测试防止 `proxy_core_adapter` 重新添加该 short `#[cfg(test)]` alias。
 1272. route selection 相关的 test-only contract facade 已删除：`proxy_core_host`、`route_attempt` 测试和 adapter 自测直接从 `proxy-core::api::{domain,routing}` 引用 `UpstreamEndpoint`、`RetryPolicy` 与 `RouteSelection`，`proxy_core_adapter` 不再保留这些 `#[cfg(test)]` alias；边界测试同时检查 host 测试壳的 direct-core import 和 adapter alias 禁止项。
 1273. channel/model/provider DTO 的 test-only alias facade 已删除：`proxy_core_host`、`route_attempt` 测试和 adapter 自测直接从 `proxy-core::api::{domain,routing}` 引用 `ChannelOverrides`、`ChannelSpec`、`ChannelQuery`、`ChannelStatus`、`InterfaceKind`、`ModelCapabilities`、`ModelRoute`、`ProviderMetadata` 与 `ProviderSpec`，`proxy_core_adapter` 不再保留对应 `ProxyCore*` / short `#[cfg(test)]` aliases；生产仍使用的 `ProviderSpec` 兼容别名暂保留。
+1274. provider credential/common-config 的 test-only ports helper facade 已删除：adapter 自测直接从 `proxy-core::api::ports` 引用 Claude/Gemini env extraction、OpenClaw/OpenCode credential extraction、common-config projection 以及 Codex/OpenCode issue 类型，`proxy_core_adapter` 不再为这些 pure helper 提供 `#[cfg(test)]` re-export；服务层测试仍使用的 adapter-shaped `ProviderCredentialIssue` / `provider_credential_issue_spec` 暂保留。
 
 ## 背景
 
