@@ -1355,6 +1355,38 @@ pub fn effective_channel_key_failure_cooldown_ms(
     health_policy_key_failure_cooldown_ms(health_policy).unwrap_or(default_failure_cooldown_ms)
 }
 
+pub fn health_policy_auto_disable_enabled(policy: &Value) -> Option<bool> {
+    let policy = policy.as_object()?;
+    policy
+        .get("autoDisable")
+        .or_else(|| policy.get("auto_disable"))
+        .or_else(|| policy.get("autoBan"))
+        .or_else(|| policy.get("auto_ban"))
+        .and_then(Value::as_bool)
+}
+
+pub fn channel_status_after_health_attempt(
+    current_status: &str,
+    health_status: &str,
+    health_policy: &Value,
+) -> Option<&'static str> {
+    if health_status != "unhealthy" || health_policy_auto_disable_enabled(health_policy) != Some(true)
+    {
+        return None;
+    }
+
+    matches!(ChannelStatus::from_storage(current_status), ChannelStatus::Enabled)
+        .then_some("auto_disabled")
+}
+
+pub fn channel_status_after_health_reset(current_status: &str) -> Option<&'static str> {
+    matches!(
+        ChannelStatus::from_storage(current_status),
+        ChannelStatus::AutoDisabled
+    )
+    .then_some("enabled")
+}
+
 fn positive_u32_from_json_value(value: &Value) -> Option<u32> {
     u32::try_from(value.as_u64()?)
         .ok()
@@ -2631,6 +2663,63 @@ mod tests {
             effective_channel_key_failure_cooldown_ms(60_000, &json!({})),
             60_000
         );
+        assert_eq!(
+            health_policy_auto_disable_enabled(&json!({"autoDisable": true})),
+            Some(true)
+        );
+        assert_eq!(
+            health_policy_auto_disable_enabled(&json!({"auto_disable": false})),
+            Some(false)
+        );
+        assert_eq!(
+            health_policy_auto_disable_enabled(&json!({"autoBan": true})),
+            Some(true)
+        );
+        assert_eq!(
+            health_policy_auto_disable_enabled(&json!({"auto_ban": true})),
+            Some(true)
+        );
+        assert_eq!(
+            health_policy_auto_disable_enabled(&json!({"autoBan": "true"})),
+            None
+        );
+        assert_eq!(
+            channel_status_after_health_attempt(
+                "enabled",
+                "unhealthy",
+                &json!({"autoDisable": true})
+            ),
+            Some("auto_disabled")
+        );
+        assert_eq!(
+            channel_status_after_health_attempt(
+                "enabled",
+                "degraded",
+                &json!({"autoDisable": true})
+            ),
+            None
+        );
+        assert_eq!(
+            channel_status_after_health_attempt(
+                "manually_disabled",
+                "unhealthy",
+                &json!({"autoDisable": true})
+            ),
+            None
+        );
+        assert_eq!(
+            channel_status_after_health_attempt(
+                "enabled",
+                "unhealthy",
+                &json!({"autoDisable": false})
+            ),
+            None
+        );
+        assert_eq!(
+            channel_status_after_health_reset("auto_disabled"),
+            Some("enabled")
+        );
+        assert_eq!(channel_status_after_health_reset("manually_disabled"), None);
     }
 
     #[test]

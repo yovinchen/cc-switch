@@ -927,6 +927,101 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn channel_health_policy_auto_disables_route_until_reset() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "provider-key" } }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+
+        let mut config = db.get_proxy_config_for_app("claude").await.unwrap();
+        config.circuit_failure_threshold = 2;
+        db.update_proxy_config_for_app(config).await.unwrap();
+
+        let channel_id = db
+            .create_proxy_channel(ProxyChannelWriteRequest {
+                id: Some("auto-disabled-route".to_string()),
+                provider_id: "provider-a".to_string(),
+                app_type: "claude".to_string(),
+                name: "Auto Disabled Route".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "anthropic_messages".to_string(),
+                health_policy: json!({"failureThreshold": 2, "autoDisable": true}),
+                ..Default::default()
+            })
+            .unwrap()
+            .id;
+
+        let router = provider_router_from_database(db.clone());
+        for error in ["first failure", "second failure"] {
+            router
+                .record_channel_result(
+                    &channel_id,
+                    "claude",
+                    false,
+                    false,
+                    Some(error.to_string()),
+                    None,
+                )
+                .await
+                .unwrap();
+        }
+
+        let disabled_channel = db
+            .get_proxy_channel(&channel_id)
+            .unwrap()
+            .expect("auto-disabled channel");
+        assert_eq!(disabled_channel.status, "auto_disabled");
+        let blocked = management_route_response_from_router_source(
+            &router,
+            RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: None,
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(blocked.candidates.is_empty());
+        assert!(blocked.rejected.iter().any(|rejected| {
+            rejected.channel_id == channel_id
+                && rejected
+                    .reasons
+                    .iter()
+                    .any(|reason| reason == "status:auto_disabled")
+        }));
+
+        router
+            .reset_channel_breaker(&channel_id, "claude")
+            .await
+            .unwrap();
+        let recovered_channel = db
+            .get_proxy_channel(&channel_id)
+            .unwrap()
+            .expect("recovered channel");
+        assert_eq!(recovered_channel.status, "enabled");
+        let recovered = management_route_response_from_router_source(
+            &router,
+            RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: None,
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(recovered.candidates.len(), 1);
+        assert!(recovered.rejected.is_empty());
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn test_failover_enabled_uses_queue_order_ignoring_current() {
         let _home = TempHome::new();
         let db = Arc::new(Database::memory().unwrap());

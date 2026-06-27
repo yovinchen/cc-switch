@@ -8,7 +8,8 @@ use crate::app_config::AppType;
 use crate::database::{lock_conn, to_json_string, Database};
 use crate::error::AppError;
 use crate::proxy_core_adapter::{
-    channel_health_update_from_input, legacy_channel_migration_preview_from_providers,
+    channel_health_update_from_input, channel_status_after_health_attempt,
+    channel_status_after_health_reset, legacy_channel_migration_preview_from_providers,
     normalize_channel_base_url as normalize_base_url,
     normalize_proxy_channel_key_patch_request_fields,
     normalize_proxy_channel_key_write_request_fields,
@@ -744,6 +745,18 @@ impl Database {
     ) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
         let now = chrono::Utc::now().timestamp_millis();
+        let channel_status_policy = conn
+            .query_row(
+                "SELECT status, health_policy_json FROM proxy_channels WHERE id = ?1",
+                [channel_id],
+                |row| {
+                    let status: String = row.get(0)?;
+                    let health_policy_json: String = row.get(1)?;
+                    Ok((status, parse_json_or_default(&health_policy_json)))
+                },
+            )
+            .optional()
+            .map_err(|e| AppError::Database(e.to_string()))?;
         let current_failures = conn
             .query_row(
                 "SELECT consecutive_failures FROM proxy_channel_health WHERE channel_id = ?1",
@@ -786,16 +799,50 @@ impl Database {
         )
         .map_err(|e| AppError::Database(format!("更新 proxy channel health 失败: {e}")))?;
 
+        if let Some((current_status, health_policy)) = channel_status_policy {
+            if let Some(next_status) =
+                channel_status_after_health_attempt(&current_status, update.status, &health_policy)
+            {
+                conn.execute(
+                    "UPDATE proxy_channels SET status = ?1, updated_at = ?2
+                     WHERE id = ?3 AND status = ?4",
+                    params![next_status, now, channel_id, current_status],
+                )
+                .map_err(|e| AppError::Database(format!("自动禁用 proxy channel 失败: {e}")))?;
+            }
+        }
+
         Ok(())
     }
 
     pub(crate) fn reset_proxy_channel_health(&self, channel_id: &str) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
+        let current_status = conn
+            .query_row(
+                "SELECT status FROM proxy_channels WHERE id = ?1",
+                [channel_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|e| AppError::Database(e.to_string()))?;
         conn.execute(
             "DELETE FROM proxy_channel_health WHERE channel_id = ?1",
             [channel_id],
         )
         .map_err(|e| AppError::Database(format!("重置 proxy channel health 失败: {e}")))?;
+        if let Some(current_status) = current_status {
+            if let Some(next_status) = channel_status_after_health_reset(&current_status) {
+                let now = chrono::Utc::now().timestamp_millis();
+                conn.execute(
+                    "UPDATE proxy_channels SET status = ?1, updated_at = ?2
+                     WHERE id = ?3 AND status = ?4",
+                    params![next_status, now, channel_id, current_status],
+                )
+                .map_err(|e| {
+                    AppError::Database(format!("恢复 auto-disabled proxy channel 失败: {e}"))
+                })?;
+            }
+        }
         Ok(())
     }
 }
@@ -1260,6 +1307,11 @@ mod tests {
         assert_eq!(unhealthy.status, "unhealthy");
         assert_eq!(unhealthy.consecutive_failures, 2);
         assert_eq!(unhealthy.response_time_ms, Some(120));
+        let still_enabled = db
+            .get_proxy_channel(channel_id)
+            .expect("load channel after unhealthy")
+            .expect("channel exists");
+        assert_eq!(still_enabled.status, "enabled");
 
         db.update_proxy_channel_health_with_threshold(channel_id, true, None, 2, Some(45))
             .expect("record success");
@@ -1278,6 +1330,61 @@ mod tests {
             .expect("reset health");
         assert_eq!(reset.status, "unknown");
         assert_eq!(reset.consecutive_failures, 0);
+    }
+
+    #[test]
+    fn channel_health_auto_disable_policy_updates_channel_status_until_reset() {
+        let db = Database::memory().expect("memory db");
+        save_claude_provider(&db);
+        let channel_id = db
+            .create_proxy_channel(ProxyChannelWriteRequest {
+                id: Some("auto-ban-channel".to_string()),
+                provider_id: "anthropic-main".to_string(),
+                app_type: "claude".to_string(),
+                name: "Auto Ban Channel".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "anthropic_messages".to_string(),
+                health_policy: json!({"autoDisable": true}),
+                ..Default::default()
+            })
+            .expect("create channel")
+            .id;
+
+        db.update_proxy_channel_health_with_threshold(
+            &channel_id,
+            false,
+            Some("first failure".to_string()),
+            2,
+            None,
+        )
+        .expect("record first failure");
+        let degraded_channel = db
+            .get_proxy_channel(&channel_id)
+            .expect("load degraded channel")
+            .expect("channel exists");
+        assert_eq!(degraded_channel.status, "enabled");
+
+        db.update_proxy_channel_health_with_threshold(
+            &channel_id,
+            false,
+            Some("second failure".to_string()),
+            2,
+            None,
+        )
+        .expect("record second failure");
+        let auto_disabled = db
+            .get_proxy_channel(&channel_id)
+            .expect("load auto-disabled channel")
+            .expect("channel exists");
+        assert_eq!(auto_disabled.status, "auto_disabled");
+
+        db.reset_proxy_channel_health(&channel_id)
+            .expect("reset auto-disabled channel");
+        let recovered = db
+            .get_proxy_channel(&channel_id)
+            .expect("load recovered channel")
+            .expect("channel exists");
+        assert_eq!(recovered.status, "enabled");
     }
 
     #[test]

@@ -19185,6 +19185,44 @@ fn production_provider_router_records_channel_health_with_core_attempt_fact() {
 }
 
 #[test]
+fn proxy_channel_health_auto_disable_policy_stays_core_owned() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let dao_path = manifest_dir.join("src/database/dao/proxy_channels.rs");
+    let dao_source = fs::read_to_string(&dao_path).expect("read proxy_channels.rs");
+    let dao_production = dao_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&dao_source);
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        dao_production.contains("channel_status_after_health_attempt(")
+            && dao_production.contains("channel_status_after_health_reset(")
+            && dao_production.contains("SELECT status, health_policy_json FROM proxy_channels")
+            && dao_production.contains("UPDATE proxy_channels SET")
+            && dao_production.contains("status = ?1"),
+        "proxy channel DAO should apply auto-disable/reset status decisions through core helpers"
+    );
+    for marker in [
+        "\"autoDisable\"",
+        "\"auto_disable\"",
+        "\"autoBan\"",
+        "\"auto_ban\"",
+    ] {
+        assert!(
+            !dao_production.contains(marker),
+            "proxy channel DAO must not parse health policy field `{marker}` directly"
+        );
+    }
+    assert!(
+        adapter_source.contains("channel_status_after_health_attempt")
+            && adapter_source.contains("channel_status_after_health_reset"),
+        "proxy_core_adapter should expose core channel status decisions to DB adapters"
+    );
+}
+
+#[test]
 fn production_provider_router_delegates_live_circuit_map_to_runtime() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/routing.rs");

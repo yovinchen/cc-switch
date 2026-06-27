@@ -2335,6 +2335,7 @@ use crate::proxy_core::api::ports::{
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
 pub(crate) use crate::proxy_core::api::routing::{
+    channel_status_after_health_attempt, channel_status_after_health_reset,
     effective_channel_health_failure_threshold, failover_config_read_error_log_line,
     provider_router_auto_failover_enabled_decision, route_policy_failover_provider_ids,
     RoutePolicy,
