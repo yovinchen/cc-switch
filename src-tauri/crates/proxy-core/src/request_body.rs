@@ -1101,6 +1101,7 @@ mod tests {
             param_overrides: json!({}),
             status_code_mapping: json!([]),
             request_overrides: json!({}),
+            response_overrides: json!({}),
             retry_policy: json!({}),
         };
         let mut body = json!({"model": "sonnet-public"});
@@ -1135,6 +1136,7 @@ mod tests {
                 "temperature": 0.2,
                 "metadata": { "route": "relay" }
             }),
+            response_overrides: json!({}),
             retry_policy: json!({}),
         };
         let mut body = json!({
@@ -1168,6 +1170,7 @@ mod tests {
             param_overrides: json!({}),
             status_code_mapping: json!([]),
             request_overrides: json!({}),
+            response_overrides: json!({}),
             retry_policy: json!({}),
         };
 

@@ -708,6 +708,7 @@ mod tests {
                 "stream": false,
                 "temperature": 0.2
             }),
+            response_overrides: json!({}),
             retry_policy: json!({}),
         };
 

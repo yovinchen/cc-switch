@@ -1,4 +1,5 @@
 use http::{header, HeaderMap, HeaderName, HeaderValue};
+use serde_json::Value;
 
 /// RFC 2616 / RFC 7230 hop-by-hop response headers that must not be forwarded.
 const HOP_BY_HOP_RESPONSE_HEADERS: &[&str] = &[
@@ -71,6 +72,38 @@ pub fn response_headers_indicate_sse(headers: &HeaderMap) -> bool {
         .and_then(|value| value.to_str().ok())
         .map(|content_type| content_type.contains("text/event-stream"))
         .unwrap_or(false)
+}
+
+pub fn apply_channel_response_header_overrides(
+    headers: &mut HeaderMap,
+    response_overrides: &Value,
+) -> Option<Vec<String>> {
+    let overrides = response_overrides
+        .get("headers")
+        .or_else(|| response_overrides.get("headerOverrides"))
+        .or_else(|| response_overrides.get("header_overrides"))
+        .and_then(Value::as_object)?;
+    if overrides.is_empty() {
+        return None;
+    }
+
+    let mut applied_headers = Vec::new();
+    for (name, value) in overrides {
+        let Some(value) = value.as_str() else {
+            continue;
+        };
+        let Ok(name) = HeaderName::from_bytes(name.as_bytes()) else {
+            continue;
+        };
+        let Ok(value) = HeaderValue::from_str(value) else {
+            continue;
+        };
+        headers.insert(name.clone(), value);
+        applied_headers.push(name.to_string());
+    }
+    applied_headers.sort();
+
+    (!applied_headers.is_empty()).then_some(applied_headers)
 }
 
 #[cfg(test)]
@@ -179,5 +212,60 @@ mod tests {
             HeaderValue::from_static("text/event-stream; charset=utf-8"),
         );
         assert!(response_headers_indicate_sse(&headers));
+    }
+
+    #[test]
+    fn applies_channel_response_header_overrides_from_model_route_policy() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-relay-tier", HeaderValue::from_static("old"));
+
+        let applied = apply_channel_response_header_overrides(
+            &mut headers,
+            &serde_json::json!({
+                "headers": {
+                    "x-relay-tier": "paid",
+                    "x-relay-model": "sonnet",
+                    "x-bad": ["not", "string"]
+                }
+            }),
+        )
+        .expect("response header overrides");
+
+        assert_eq!(
+            headers.get("x-relay-tier"),
+            Some(&HeaderValue::from_static("paid"))
+        );
+        assert_eq!(
+            headers.get("x-relay-model"),
+            Some(&HeaderValue::from_static("sonnet"))
+        );
+        assert!(!headers.contains_key("x-bad"));
+        assert_eq!(applied, vec!["x-relay-model", "x-relay-tier"]);
+    }
+
+    #[test]
+    fn skips_invalid_or_missing_channel_response_header_overrides() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-relay-tier", HeaderValue::from_static("old"));
+
+        assert!(apply_channel_response_header_overrides(
+            &mut headers,
+            &serde_json::json!({"headers": {"bad name": "paid", "x-bad": "bad\r\nvalue"}})
+        )
+        .is_none());
+        assert_eq!(
+            headers.get("x-relay-tier"),
+            Some(&HeaderValue::from_static("old"))
+        );
+        assert!(apply_channel_response_header_overrides(
+            &mut headers,
+            &serde_json::json!({"headers": {}})
+        )
+        .is_none());
+        assert!(apply_channel_response_header_overrides(
+            &mut headers,
+            &serde_json::json!({"body": {"strip": ["metadata"]}})
+        )
+        .is_none());
     }
 }

@@ -1168,6 +1168,7 @@ mod tests {
                 param_overrides: json!({}),
                 status_code_mapping: json!([]),
                 request_overrides: json!({}),
+                response_overrides: json!({}),
                 retry_policy: json!({}),
             }),
             connection_guard: None,

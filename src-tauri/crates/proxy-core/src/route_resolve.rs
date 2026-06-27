@@ -178,6 +178,7 @@ pub fn resolved_channel_attempt_from_candidate(
         param_overrides: Value::Object(Default::default()),
         status_code_mapping: Value::Array(Vec::new()),
         request_overrides: Value::Object(Default::default()),
+        response_overrides: Value::Object(Default::default()),
         retry_policy: Value::Object(Default::default()),
     }
 }
@@ -210,6 +211,11 @@ pub fn resolved_channel_attempt_from_selection(
             .model_route
             .as_ref()
             .map(|route| route.request_overrides.clone())
+            .unwrap_or_else(|| Value::Object(Default::default())),
+        response_overrides: selection
+            .model_route
+            .as_ref()
+            .map(|route| route.response_overrides.clone())
             .unwrap_or_else(|| Value::Object(Default::default())),
         retry_policy: selection.channel.retry_policy.raw.clone(),
     }
@@ -595,7 +601,7 @@ mod tests {
             capabilities: ModelCapabilities::default(),
             pricing_model: None,
             request_overrides: json!({"temperature": 0.2}),
-            response_overrides: json!({}),
+            response_overrides: json!({"headers": {"x-relay-model": "sonnet"}}),
         };
 
         RouteSelection {
@@ -710,6 +716,10 @@ mod tests {
         );
         assert_eq!(attempt.status_code_mapping, json!([{"from": 429, "to": 503}]));
         assert_eq!(attempt.request_overrides, json!({"temperature": 0.2}));
+        assert_eq!(
+            attempt.response_overrides,
+            json!({"headers": {"x-relay-model": "sonnet"}})
+        );
         assert_eq!(attempt.retry_policy, json!({"maxAttempts": 2}));
     }
 

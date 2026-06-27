@@ -1282,6 +1282,8 @@ pub struct ResolvedChannelAttempt {
     #[serde(default = "empty_object_value", skip_serializing_if = "is_empty_object_value")]
     pub request_overrides: Value,
     #[serde(default = "empty_object_value", skip_serializing_if = "is_empty_object_value")]
+    pub response_overrides: Value,
+    #[serde(default = "empty_object_value", skip_serializing_if = "is_empty_object_value")]
     pub retry_policy: Value,
 }
 
@@ -2584,6 +2586,7 @@ mod tests {
                 param_overrides: json!({}),
                 status_code_mapping: json!([]),
                 request_overrides: json!({}),
+                response_overrides: json!({}),
                 retry_policy,
             }
         }
@@ -2767,6 +2770,7 @@ mod tests {
                 param_overrides: Value::Object(Default::default()),
                 status_code_mapping: Value::Array(Vec::new()),
                 request_overrides: json!({}),
+                response_overrides: json!({}),
                 retry_policy: json!({"maxAttempts": 2}),
             }),
         );
@@ -3150,6 +3154,7 @@ mod tests {
             param_overrides: json!({ "temperature": 0.2 }),
             status_code_mapping: json!([{ "from": 429, "to": 503 }]),
             request_overrides: json!({ "store": false }),
+            response_overrides: json!({ "headers": { "x-route": "a" } }),
             retry_policy: json!({"maxAttempts": 2}),
         };
 

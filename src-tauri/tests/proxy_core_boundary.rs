@@ -15790,6 +15790,7 @@ fn production_forwarder_uses_response_source_resource() {
         "};\nuse crate::proxy_core_adapter::{",
     );
     for marker in [
+        "apply_channel_response_header_overrides",
         "non_streaming_body_timeout_message",
         "resolve_channel_response_status_mapping",
         "streaming_body_ended_before_first_chunk_message",
