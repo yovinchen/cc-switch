@@ -4782,11 +4782,6 @@ pub(crate) use crate::proxy_core::api::routing::{
     should_block_proxy_switch_to_provider_category, stable_channel_id,
 };
 
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::routing::{
-    build_legacy_channel_projection, infer_legacy_channel_interface, legacy_channel_priority,
-};
-
 pub(crate) fn legacy_provider_projection_input(
     provider: &Provider,
 ) -> LegacyProviderProjectionInput {
@@ -15088,24 +15083,32 @@ command = "latest-command"
             )]),
             ..LegacyProviderProjectionInput::default()
         };
-        let interface =
-            infer_legacy_channel_interface(Some(&ProxyCoreAppKind::Claude), &provider_projection);
+        let interface = crate::proxy_core::api::routing::infer_legacy_channel_interface(
+            Some(&ProxyCoreAppKind::Claude),
+            &provider_projection,
+        );
         assert_eq!(interface, ProxyCoreInterfaceKind::AnthropicMessages);
 
-        let projection = build_legacy_channel_projection(LegacyChannelProjectionInput {
-            app_type: "claude".to_string(),
-            app: Some(ProxyCoreAppKind::Claude),
-            provider_id: "provider-a".to_string(),
-            provider_name: "Provider A".to_string(),
-            provider_sort_index: Some(1),
-            provider_in_failover_queue: false,
-            base_url: "https://api.example.com/v1".to_string(),
-            interface_kind: interface,
-            priority: legacy_channel_priority("provider-a", false, Some("provider-a")),
-            source_kind: "legacy_primary".to_string(),
-            source_endpoint_url: None,
-            provider_projection,
-        });
+        let projection = crate::proxy_core::api::routing::build_legacy_channel_projection(
+            LegacyChannelProjectionInput {
+                app_type: "claude".to_string(),
+                app: Some(ProxyCoreAppKind::Claude),
+                provider_id: "provider-a".to_string(),
+                provider_name: "Provider A".to_string(),
+                provider_sort_index: Some(1),
+                provider_in_failover_queue: false,
+                base_url: "https://api.example.com/v1".to_string(),
+                interface_kind: interface,
+                priority: crate::proxy_core::api::routing::legacy_channel_priority(
+                    "provider-a",
+                    false,
+                    Some("provider-a"),
+                ),
+                source_kind: "legacy_primary".to_string(),
+                source_endpoint_url: None,
+                provider_projection,
+            },
+        );
 
         assert_eq!(projection.priority, 100);
         assert_eq!(projection.interface_kind, "anthropic_messages");

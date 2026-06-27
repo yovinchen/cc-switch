@@ -3713,6 +3713,33 @@ fn channel_migration_handlers_delegate_sources_to_proxy_engine() {
 }
 
 #[test]
+fn proxy_core_adapter_keeps_legacy_channel_projection_helpers_in_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    for marker in [
+        "build_legacy_channel_projection",
+        "infer_legacy_channel_interface",
+        "legacy_channel_priority",
+    ] {
+        let reexport_marker = source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::routing") && line.contains(marker)
+        });
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export pure legacy channel projection helper `{marker}`"
+        );
+    }
+    assert!(
+        !source.contains(
+            "build_legacy_channel_projection, infer_legacy_channel_interface, legacy_channel_priority"
+        ),
+        "proxy_core_adapter should not keep grouped legacy channel projection helper re-exports"
+    );
+}
+
+#[test]
 fn channel_breaker_stats_handler_delegates_response_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
