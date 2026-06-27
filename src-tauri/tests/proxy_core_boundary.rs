@@ -2017,6 +2017,15 @@ fn is_allowed_http_server_runtime_core_import(relative: &str, code: &str) -> boo
         )
 }
 
+fn is_allowed_forwarder_runtime_state_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/host/cc_switch/forwarder_runtime_state_source.rs"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::events::AttemptEventPhase;"
+                | "use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};"
+        )
+}
+
 #[test]
 fn host_code_uses_proxy_core_through_adapter_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -2068,6 +2077,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_engine_routing_test_core_import(&relative, code)
                     && !is_allowed_http_server_test_core_import(&relative, code)
                     && !is_allowed_http_server_runtime_core_import(&relative, code)
+                    && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
                 {
                     violations.push(format!(
                         "{}:{} contains direct proxy-core marker `{}`",
@@ -14932,6 +14942,25 @@ fn production_forwarder_uses_runtime_state_source_resource() {
             && runtime_source_slice.contains("events: Arc<ProxyEventBus>"),
         "default ForwarderRuntimeStateSource implementation must own status/current-provider/events runtime resources"
     );
+    assert!(
+        runtime_source.contains("use crate::proxy_core::api::events::AttemptEventPhase;")
+            && runtime_source
+                .contains("use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};"),
+        "default ForwarderRuntimeStateSource should import runtime/event contracts directly from proxy_core"
+    );
+    let runtime_state_adapter_imports = proxy_core_adapter_import_identifiers(&runtime_source);
+    for adapter_type in [
+        "AttemptEventPhase",
+        "CurrentRouteTarget",
+        "ProxyRuntimeStatus",
+    ] {
+        assert!(
+            !runtime_state_adapter_imports
+                .iter()
+                .any(|identifier| identifier == adapter_type),
+            "default ForwarderRuntimeStateSource must not import {adapter_type} through proxy_core_adapter"
+        );
+    }
     assert!(
         adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_runtime_state_source::forwarder_runtime_state_source_from_runtime_parts;")
             && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_runtime_state_source::forwarder_runtime_state_source_from_runtime_parts")
