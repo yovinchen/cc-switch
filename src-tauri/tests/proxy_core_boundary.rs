@@ -6828,6 +6828,18 @@ fn response_pipeline_owns_core_usage_transport_imports() {
             && !adapter_source.contains("extract_anthropic_tool_schema_hints,"),
         "proxy_core_adapter should not keep response-pipeline-only SSE usage state/filter or tool-schema extractor shims"
     );
+    assert!(
+        source.contains("use crate::proxy_core::api::transport::decompress_body;")
+            && source.contains("use crate::proxy_core::api::transforms::strip_sse_field;"),
+        "response pipeline tests should import body decode/SSE helpers directly from proxy-core"
+    );
+    assert!(
+        !adapter_source
+            .contains("pub(crate) use crate::proxy_core::api::transport::decompress_body")
+            && !adapter_source
+                .contains("pub(crate) use crate::proxy_core::api::transforms::strip_sse_field"),
+        "proxy_core_adapter should not keep test-only response decode helper re-exports"
+    );
 }
 
 #[test]
@@ -9366,7 +9378,7 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
     let normalize_slice = function_slice(
         &source,
         "pub(crate) fn provider_claude_normalize_anthropic_messages",
-        "#[cfg(test)]\npub(crate) use crate::proxy_core::api::transport::inject_openai_stream_include_usage;",
+        "#[cfg(test)]\npub(crate) fn anthropic_tool_thinking_placeholder",
     );
 
     assert!(
@@ -9378,6 +9390,12 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
             "pub(crate) use crate::proxy_core::api::transforms::normalize_claude_anthropic_messages"
         ),
         "adapter should not re-export the pure Claude message normalization helper"
+    );
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::transport::inject_openai_stream_include_usage"
+        ),
+        "adapter should not keep a test-only OpenAI stream include_usage helper re-export"
     );
 
     let forbidden_markers = [
@@ -9519,12 +9537,35 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
         "pub(crate) struct ForwardUpstreamUrlPlanInput",
         "pub(crate) struct ForwardUpstreamUrlPlan",
         "pub(crate) fn forward_upstream_url_plan(",
+        "pub(crate) use crate::proxy_core::api::transforms::build_gemini_native_url",
+        "pub(crate) use crate::proxy_core::api::transforms::resolve_gemini_native_url",
+        "pub(crate) use crate::proxy_core::api::transport::is_streaming_upstream_request",
     ] {
         assert!(
             !adapter_source.contains(marker),
             "proxy_core_adapter must not keep upstream URL plan policy marker `{marker}`"
         );
     }
+    let forward_pipeline_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/forward_pipeline.rs"))
+            .expect("read forward_pipeline.rs");
+    assert!(
+        forward_pipeline_source
+            .contains("use crate::proxy_core::api::transforms::{build_gemini_native_url, resolve_gemini_native_url};")
+            && forward_pipeline_source.contains(
+                "build_codex_oauth_session_headers, is_streaming_upstream_request,"
+            )
+            && !forward_pipeline_source.contains(
+                "crate::proxy_core_adapter::build_gemini_native_url"
+            )
+            && !forward_pipeline_source.contains(
+                "crate::proxy_core_adapter::resolve_gemini_native_url"
+            )
+            && !forward_pipeline_source.contains(
+                "crate::proxy_core_adapter::is_streaming_upstream_request"
+            ),
+        "forward pipeline tests should import pure Gemini URL and streaming helpers from proxy-core directly"
+    );
 
     for marker in [
         "rewrite_claude_transform_endpoint(",

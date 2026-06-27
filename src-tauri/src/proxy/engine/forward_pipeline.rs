@@ -1026,7 +1026,10 @@ mod tests {
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy::events::ProxyEventBus;
     use crate::proxy_core::api::auth::ManagedAccountAuthError;
-    use crate::proxy_core::api::transport::build_codex_oauth_session_headers;
+    use crate::proxy_core::api::transforms::{build_gemini_native_url, resolve_gemini_native_url};
+    use crate::proxy_core::api::transport::{
+        build_codex_oauth_session_headers, is_streaming_upstream_request,
+    };
     use crate::proxy_core_adapter::ProxyRuntimeStatus;
     use crate::proxy_core_adapter::{canonical_json_string, short_value_hash};
     use crate::proxy_core_adapter::{
@@ -1768,7 +1771,7 @@ mod tests {
 
     #[test]
     fn build_gemini_native_url_uses_origin_when_base_ends_with_v1beta() {
-        let url = crate::proxy_core_adapter::build_gemini_native_url(
+        let url = build_gemini_native_url(
             "https://generativelanguage.googleapis.com/v1beta",
             "/v1beta/models/gemini-2.5-pro:generateContent",
         );
@@ -1781,7 +1784,7 @@ mod tests {
 
     #[test]
     fn build_gemini_native_url_uses_origin_when_base_already_contains_models_prefix() {
-        let url = crate::proxy_core_adapter::build_gemini_native_url(
+        let url = build_gemini_native_url(
             "https://generativelanguage.googleapis.com/v1beta/models",
             "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
         );
@@ -1794,7 +1797,7 @@ mod tests {
 
     #[test]
     fn resolve_gemini_native_url_keeps_opaque_full_url_as_is() {
-        let url = crate::proxy_core_adapter::resolve_gemini_native_url(
+        let url = resolve_gemini_native_url(
             "https://relay.example/custom/generate-content",
             "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
             true,
@@ -1837,7 +1840,7 @@ mod tests {
     fn streaming_request_detects_gemini_sse_without_body_stream_flag() {
         let headers = HeaderMap::new();
 
-        assert!(crate::proxy_core_adapter::is_streaming_upstream_request(
+        assert!(is_streaming_upstream_request(
             "/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse",
             &json!({ "model": "gemini-2.5-pro" }),
             &headers

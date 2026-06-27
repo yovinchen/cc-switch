@@ -6422,9 +6422,6 @@ pub(crate) use crate::proxy_core::api::transforms::{
 };
 
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::inject_openai_stream_include_usage;
-
-#[cfg(test)]
 pub(crate) fn anthropic_tool_thinking_placeholder() -> &'static str {
     crate::proxy_core::api::transforms::ANTHROPIC_TOOL_THINKING_PLACEHOLDER
 }
@@ -6497,23 +6494,9 @@ pub(crate) fn rewrite_codex_responses_endpoint_to_chat(endpoint: &str) -> (Strin
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::claude_api_format_needs_transform;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::resolve_gemini_native_url;
-
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::is_streaming_upstream_request;
-
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::decompress_body;
-
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::strip_sse_field;
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::is_official_codex_client_user_agent;
-
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::build_gemini_native_url;
 
 pub(crate) struct UsageRequestLogProjection {
     pub(crate) log: RequestLog,
@@ -15982,7 +15965,7 @@ command = "latest-command"
     #[test]
     fn claude_body_normalization_adapter_projects_stream_and_thinking_rules() {
         let mut stream_body = json!({"stream": true});
-        inject_openai_stream_include_usage(&mut stream_body);
+        crate::proxy_core::api::transport::inject_openai_stream_include_usage(&mut stream_body);
         assert_eq!(stream_body["stream_options"]["include_usage"], true);
 
         let settings = json!({
@@ -16181,14 +16164,14 @@ command = "latest-command"
         );
 
         assert_eq!(
-            build_gemini_native_url(
+            crate::proxy_core::api::transforms::build_gemini_native_url(
                 "https://generativelanguage.googleapis.com/v1beta",
                 "/v1beta/models/gemini-2.5-pro:generateContent",
             ),
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
         );
         assert_eq!(
-            resolve_gemini_native_url(
+            crate::proxy_core::api::transforms::resolve_gemini_native_url(
                 "https://relay.example/custom/generate-content",
                 "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
                 true,
@@ -16482,11 +16465,13 @@ command = "latest-command"
         );
         assert!(request_policy.is_streaming_request);
         assert!(request_policy.force_identity_encoding);
-        assert!(is_streaming_upstream_request(
-            "/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse",
-            &json!({"model": "gemini-2.5-pro"}),
-            &HeaderMap::new()
-        ));
+        assert!(
+            crate::proxy_core::api::transport::is_streaming_upstream_request(
+                "/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse",
+                &json!({"model": "gemini-2.5-pro"}),
+                &HeaderMap::new()
+            )
+        );
         assert!(is_socks_proxy_url(Some("socks5://127.0.0.1:1080")));
 
         let send_policy = resolve_upstream_send_policy(UpstreamSendPolicyInput {
