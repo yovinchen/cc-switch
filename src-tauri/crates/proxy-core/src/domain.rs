@@ -1340,8 +1340,29 @@ pub fn effective_channel_health_failure_threshold(
     health_policy_failure_threshold(health_policy).unwrap_or(default_failure_threshold)
 }
 
+pub fn health_policy_key_failure_cooldown_ms(policy: &Value) -> Option<i64> {
+    let policy = policy.as_object()?;
+    policy
+        .get("keyFailureCooldownMs")
+        .or_else(|| policy.get("key_failure_cooldown_ms"))
+        .and_then(positive_i64_from_json_value)
+}
+
+pub fn effective_channel_key_failure_cooldown_ms(
+    default_failure_cooldown_ms: i64,
+    health_policy: &Value,
+) -> i64 {
+    health_policy_key_failure_cooldown_ms(health_policy).unwrap_or(default_failure_cooldown_ms)
+}
+
 fn positive_u32_from_json_value(value: &Value) -> Option<u32> {
     u32::try_from(value.as_u64()?)
+        .ok()
+        .filter(|value| *value > 0)
+}
+
+fn positive_i64_from_json_value(value: &Value) -> Option<i64> {
+    i64::try_from(value.as_u64()?)
         .ok()
         .filter(|value| *value > 0)
 }
@@ -2583,6 +2604,33 @@ mod tests {
             2
         );
         assert_eq!(effective_channel_health_failure_threshold(4, &json!({})), 4);
+        assert_eq!(
+            health_policy_key_failure_cooldown_ms(&json!({"keyFailureCooldownMs": 5000})),
+            Some(5000)
+        );
+        assert_eq!(
+            health_policy_key_failure_cooldown_ms(&json!({"key_failure_cooldown_ms": 6000})),
+            Some(6000)
+        );
+        assert_eq!(
+            health_policy_key_failure_cooldown_ms(&json!({"keyFailureCooldownMs": 0})),
+            None
+        );
+        assert_eq!(
+            health_policy_key_failure_cooldown_ms(&json!({"keyFailureCooldownMs": "5000"})),
+            None
+        );
+        assert_eq!(
+            effective_channel_key_failure_cooldown_ms(
+                60_000,
+                &json!({"keyFailureCooldownMs": 5000})
+            ),
+            5000
+        );
+        assert_eq!(
+            effective_channel_key_failure_cooldown_ms(60_000, &json!({})),
+            60_000
+        );
     }
 
     #[test]

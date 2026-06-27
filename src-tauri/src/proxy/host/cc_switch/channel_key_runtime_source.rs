@@ -6,6 +6,7 @@ use crate::proxy_core::api::management::{
     ChannelKeyRuntimeCandidateInput, DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
 };
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
+use crate::proxy_core::api::routing::effective_channel_key_failure_cooldown_ms;
 use crate::proxy_core_adapter::app_error;
 use std::sync::Arc;
 
@@ -27,6 +28,7 @@ fn select_proxy_channel_key_runtime_candidate<I>(
     keys: I,
     key_ref: &str,
     now_ms: i64,
+    failure_cooldown_ms: i64,
     weighted_roll: u64,
 ) -> Option<ChannelKeyRuntimeCandidate>
 where
@@ -37,7 +39,7 @@ where
             .map(proxy_channel_key_record_to_runtime_candidate),
         key_ref,
         now_ms,
-        DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+        failure_cooldown_ms,
         weighted_roll,
     )
 }
@@ -61,10 +63,35 @@ fn load_channel_key_candidate_from_database(
     let keys = db
         .list_proxy_channel_key_runtime_candidates(channel_id)
         .map_err(|error| app_error("load channel auth key", error))?;
+    let failure_cooldown_ms = channel_key_failure_cooldown_ms_from_database(db, channel_id)?;
     let (now_ms, weighted_roll) = channel_key_runtime_selection_clock();
     Ok(keys.and_then(|keys| {
-        select_proxy_channel_key_runtime_candidate(keys, key_ref, now_ms, weighted_roll)
+        select_proxy_channel_key_runtime_candidate(
+            keys,
+            key_ref,
+            now_ms,
+            failure_cooldown_ms,
+            weighted_roll,
+        )
     }))
+}
+
+fn channel_key_failure_cooldown_ms_from_database(
+    db: &Database,
+    channel_id: &str,
+) -> ProxyCoreResult<i64> {
+    let channel = db
+        .get_proxy_channel(channel_id)
+        .map_err(|error| app_error("load channel key health policy", error))?;
+
+    Ok(channel
+        .map(|channel| {
+            effective_channel_key_failure_cooldown_ms(
+                DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+                &channel.health_policy,
+            )
+        })
+        .unwrap_or(DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS))
 }
 
 fn channel_key_runtime_selection_clock() -> (i64, u64) {
@@ -123,6 +150,7 @@ mod tests {
             ],
             "*",
             now_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
             0,
         )
         .expect("selected first weighted candidate");
@@ -136,6 +164,7 @@ mod tests {
             ],
             "*",
             now_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
             1,
         )
         .expect("selected second weighted candidate");
@@ -253,6 +282,33 @@ mod tests {
             .expect("selected recovered candidate");
         assert_eq!(recovered.key_ref, "backup");
         assert_eq!(recovered.key_value, "sk-backup-candidate");
+
+        let _ = db
+            .update_proxy_channel(
+                "channel-key-candidate",
+                crate::proxy_core_adapter::ProxyChannelPatchRequest {
+                    health_policy: Some(json!({"keyFailureCooldownMs": 1})),
+                    ..Default::default()
+                },
+            )
+            .expect("patch channel key cooldown policy");
+        {
+            let conn = db.conn.lock().expect("lock db");
+            let recent_failure_at = chrono::Utc::now().timestamp_millis() - 10;
+            conn.execute(
+                "UPDATE proxy_channel_keys SET last_failure_at = ?1
+                 WHERE channel_id = ?2 AND key_ref = ?3",
+                (recent_failure_at, "channel-key-candidate", "backup"),
+            )
+            .expect("mark backup channel key failure outside custom cooldown");
+        }
+
+        let custom_cooldown_recovered = source
+            .load_channel_key_candidate("channel-key-candidate", "*")
+            .expect("load wildcard channel key after custom cooldown")
+            .expect("selected custom cooldown candidate");
+        assert_eq!(custom_cooldown_recovered.key_ref, "backup");
+        assert_eq!(custom_cooldown_recovered.key_value, "sk-backup-candidate");
 
         db.upsert_proxy_channel_key(
             "channel-key-candidate",
