@@ -1769,6 +1769,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1283. `codex_api_key_from_auth_and_config` 的 crate-visible test-only adapter facade 已删除：Codex credential adapter 自测把 API key 来源解析 helper 降为 `mod tests` 内私有函数，外部测试不再通过 adapter 暴露该策略入口；边界测试防止该 helper 重新以 `pub(crate)` test facade 出现。
 1284. router current-provider 与 DB channel record 投影的 crate-visible test-only adapter facade 已删除：`select_current_provider_ids_from_router_source` 降为 adapter 自测私有 helper，channel conversion 自测直接调用 host-owned `database_channel_source::proxy_channel_record_to_core` 后交给生产 `channel_record_to_route_resolve_channel_input`；边界测试防止这两个 test helper 重新出现在 adapter 顶层。
 1285. MiMo thinking normalization 与 Claude takeover model-field 的 crate-visible test-only adapter facade 已删除：adapter 自测直接调用 `proxy-core::api::transforms::should_normalize_mimo_anthropic_thinking_history` 和 `proxy-core::api::ports::claude_takeover_model_fields_from_settings`，`proxy_core_adapter` 不再为这两类纯 core 策略提供测试用二次出口；边界测试防止对应 helper 重新回到 adapter 顶层。
+1286. host-owned `forwarder_request_source` 已解除 `proxy_core_adapter::*` wildcard：request source 直接引用 `proxy-core::api::{auth,config,domain,model_catalog,transport}` 的请求预处理、media fallback、rectifier、header/auth guard 和模型归一化 helper，adapter 仅显式提供 host-shaped request-source trait/input 与 provider projection；同时删除不再需要的 adapter re-export/test facade，边界测试防止 wildcard 和纯 request helper 经 adapter 回流。
 
 ## 背景
 
