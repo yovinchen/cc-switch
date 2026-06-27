@@ -1194,6 +1194,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn resolve_channel_route(",
     "fn select_current_provider_ids_from_router_source(",
     "fn proxy_channel_record_to_route_resolve_channel_input(",
+    "fn provider_should_normalize_mimo_anthropic_thinking_history(",
+    "fn provider_claude_takeover_model_fields(",
     "fn channel_test_app_type_error(",
     "fn channel_test_provider_not_found_error(",
     "fn channel_test_app_type_from_probe_request(",
@@ -8827,49 +8829,20 @@ fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_mimo_thinking_normalization_policy_to_core() {
+fn proxy_core_adapter_excludes_mimo_thinking_normalization_test_facade() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
 
-    let slice = function_slice(
-        &source,
-        "pub(crate) fn provider_should_normalize_mimo_anthropic_thinking_history",
-        "pub(crate) fn provider_stream_check_test_config",
+    assert!(
+        !source.contains("#[cfg(test)]\npub(crate) fn provider_should_normalize_mimo_anthropic_thinking_history"),
+        "proxy_core_adapter should not expose MiMo thinking normalization as a crate-visible test facade"
     );
 
-    let delegates_to_core = slice.contains("MimoAnthropicThinkingNormalizationInput")
-        && slice.contains(
-            "crate::proxy_core::api::transforms::should_normalize_mimo_anthropic_thinking_history(",
-        );
     assert!(
-        delegates_to_core,
-        "proxy_core_adapter should project Provider facts into the core MiMo thinking normalization gate"
-    );
-
-    let forbidden_markers = [
-        "provider_uses_anthropic_messages_format(",
-        "provider_has_mimo_endpoint(",
-        "is_mimo_identifier(",
-        "\"api_format\"",
-        "\"ANTHROPIC_BASE_URL\"",
-        "\"base_url\"",
-        "\"baseURL\"",
-        "\"apiEndpoint\"",
-        "xiaomimimo",
-        ".contains(\"mimo\")",
-    ];
-    let mut violations = Vec::new();
-    for marker in forbidden_markers {
-        if slice.contains(marker) {
-            violations.push(marker);
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "proxy_core_adapter must keep MiMo endpoint/model/api_format policy in proxy-core:\n{}",
-        violations.join("\n")
+        source.contains("should_normalize_mimo_anthropic_thinking_history(")
+            && source.contains("MimoAnthropicThinkingNormalizationInput"),
+        "proxy_core_adapter self-tests should call the core MiMo thinking normalization gate directly"
     );
 }
 

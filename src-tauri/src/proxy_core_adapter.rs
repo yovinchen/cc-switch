@@ -7004,23 +7004,6 @@ fn claude_desktop_provider_validation_input(
     }
 }
 
-#[cfg(test)]
-pub(crate) fn provider_should_normalize_mimo_anthropic_thinking_history(
-    provider: &Provider,
-    upstream_model: &str,
-) -> bool {
-    crate::proxy_core::api::transforms::should_normalize_mimo_anthropic_thinking_history(
-        crate::proxy_core::api::transforms::MimoAnthropicThinkingNormalizationInput {
-            settings_config: &provider.settings_config,
-            api_format: provider
-                .meta
-                .as_ref()
-                .and_then(|meta| meta.api_format.as_deref()),
-            upstream_model,
-        },
-    )
-}
-
 pub(crate) fn provider_stream_check_test_config(
     provider: &Provider,
 ) -> Option<&ProviderTestConfig> {
@@ -7227,15 +7210,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     apply_claude_takeover_fields_with_policy, ClaudeTakeoverAuthPolicy,
 };
 
-#[cfg(test)]
-pub(crate) fn provider_claude_takeover_model_fields(
-    provider: &Provider,
-) -> Vec<(&'static str, String)> {
-    crate::proxy_core::api::ports::claude_takeover_model_fields_from_settings(
-        &provider.settings_config,
-    )
-}
-
 pub(crate) fn apply_claude_takeover_fields_for_provider(
     config: &mut Value,
     proxy_url: &str,
@@ -7299,12 +7273,12 @@ fn account_ref(provider: &Provider) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use crate::proxy_core::api::ports::{
-        claude_env_credentials_from_settings, codex_auth_object_value_from_settings,
-        gemini_env_map_from_settings, json_deep_merge, json_deep_remove, json_remove_array_items,
-        json_value_is_subset, normalize_claude_models_in_value,
-        openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
-        opencode_common_config_value_from_settings, opencode_credential_parts_from_settings,
-        provider_credential_issue_spec,
+        claude_env_credentials_from_settings, claude_takeover_model_fields_from_settings,
+        codex_auth_object_value_from_settings, gemini_env_map_from_settings, json_deep_merge,
+        json_deep_remove, json_remove_array_items, json_value_is_subset,
+        normalize_claude_models_in_value, openclaw_common_config_value_from_settings,
+        openclaw_credential_parts_from_settings, opencode_common_config_value_from_settings,
+        opencode_credential_parts_from_settings, provider_credential_issue_spec,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         AuthInfo, CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderCredentialIssue,
     };
@@ -7365,8 +7339,10 @@ mod tests {
     use crate::proxy_core::api::transforms::{
         normalize_anthropic_tool_thinking_history,
         normalize_deepseek_thinking_disabled_strip_effort,
-        should_normalize_anthropic_tool_thinking_history, CodexProxyErrorContext,
-        CodexProxyErrorKind, GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
+        should_normalize_anthropic_tool_thinking_history,
+        should_normalize_mimo_anthropic_thinking_history, CodexProxyErrorContext,
+        CodexProxyErrorKind, MimoAnthropicThinkingNormalizationInput,
+        GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
     };
     use crate::proxy_core::api::transport::{
         anthropic_beta_header_value, build_claude_auth_headers, build_codex_bearer_auth_headers,
@@ -14751,6 +14727,19 @@ command = "latest-command"
 
     #[test]
     fn claude_desktop_mimo_gate_adapter_requires_anthropic_format() {
+        let should_normalize = |provider: &Provider, upstream_model: &str| {
+            should_normalize_mimo_anthropic_thinking_history(
+                MimoAnthropicThinkingNormalizationInput {
+                    settings_config: &provider.settings_config,
+                    api_format: provider
+                        .meta
+                        .as_ref()
+                        .and_then(|meta| meta.api_format.as_deref()),
+                    upstream_model,
+                },
+            )
+        };
+
         let anthropic_provider = Provider::with_id(
             "anthropic-mimo".to_string(),
             "Anthropic MiMo".to_string(),
@@ -14761,10 +14750,7 @@ command = "latest-command"
             }),
             None,
         );
-        assert!(provider_should_normalize_mimo_anthropic_thinking_history(
-            &anthropic_provider,
-            "mimo-v2.5-pro"
-        ));
+        assert!(should_normalize(&anthropic_provider, "mimo-v2.5-pro"));
 
         let endpoint_provider = Provider::with_id(
             "mimo-endpoint".to_string(),
@@ -14774,20 +14760,14 @@ command = "latest-command"
             }),
             None,
         );
-        assert!(provider_should_normalize_mimo_anthropic_thinking_history(
-            &endpoint_provider,
-            "claude-sonnet-4-6"
-        ));
+        assert!(should_normalize(&endpoint_provider, "claude-sonnet-4-6"));
 
         let mut openai_provider = endpoint_provider.clone();
         openai_provider.meta = Some(ProviderMeta {
             api_format: Some("openai_chat".to_string()),
             ..Default::default()
         });
-        assert!(!provider_should_normalize_mimo_anthropic_thinking_history(
-            &openai_provider,
-            "mimo-v2.5-pro"
-        ));
+        assert!(!should_normalize(&openai_provider, "mimo-v2.5-pro"));
     }
 
     #[test]
@@ -16622,7 +16602,7 @@ command = "latest-command"
             }),
             None,
         );
-        let fields = provider_claude_takeover_model_fields(&provider);
+        let fields = claude_takeover_model_fields_from_settings(&provider.settings_config);
 
         assert!(fields.contains(&(
             "ANTHROPIC_DEFAULT_HAIKU_MODEL",
