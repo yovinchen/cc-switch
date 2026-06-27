@@ -1743,6 +1743,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1257. `forward_pipeline` 测试的 pure upstream request/URL helper facade 已继续移除：请求模型/接口识别、Claude transform endpoint rewrite、query append、request transport policy、body preparation 与 exact-header-case policy 现在都直接从 `proxy-core::api::transport` 导入，`proxy_core_adapter` 不再保留对应 `#[cfg(test)]` re-export；provider auth 与 managed-account guard 这类 host-shaped wrapper 暂不纳入该测试 helper 清理。
 1258. `forward_pipeline` 测试的 pure transform cache-trace helper facade 已继续移除：canonical JSON 排序和短 hash 断言直接引用 `proxy-core::api::transforms::{canonical_json_string,short_value_hash}`，`proxy_core_adapter` 不再为测试便利 re-export 这两个 transform helper；边界测试同步防止它们回流到 adapter facade。
 1259. `proxy_core_adapter` 的 test-only usage helper facade 已继续移除：adapter 自测和 cfg-test `success_usage_record_from_app_type_with_request_id_fallback` wrapper 改为 fully-qualified 调用 `proxy-core::api::usage` owning helper，response pipeline 继续直接消费 usage logging helper；边界测试防止 usage 记录 fallback/debug/warn helper 重新通过 adapter re-export。
+1260. `extract_gemini_model_from_path` 的 test-only adapter re-export 已删除：生产 `response_adapter` 已直接消费 `proxy-core::api::transport`，adapter 自测改为 fully-qualified 调用 owning helper，边界测试防止 Gemini path model extraction 重新作为 `proxy_core_adapter` facade 暴露。
 
 ## 背景
 
