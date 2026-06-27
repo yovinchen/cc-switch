@@ -6067,8 +6067,6 @@ pub(crate) use crate::proxy_core::api::routing::{
     route_plan_providers_unconfigured_error_message,
 };
 
-pub(crate) use crate::proxy_core::api::routing::select_route_for_forward_result as route_selection_for_forward_result;
-
 pub(crate) fn route_policy_from_failover_queue(
     app: AppKind,
     queue: impl IntoIterator<Item = FailoverQueueItem>,
@@ -6278,8 +6276,11 @@ pub(crate) fn proxy_result_from_forward_parts(
     outbound_model: Option<String>,
     selected_channel_id: Option<&str>,
 ) -> ProxyResult {
-    let selected_route =
-        route_selection_for_forward_result(&plan, selected_channel_id, &provider.id);
+    let selected_route = crate::proxy_core::api::routing::select_route_for_forward_result(
+        &plan,
+        selected_channel_id,
+        &provider.id,
+    );
     let mut metadata = Map::new();
     metadata.insert("hostProviderId".to_string(), json!(provider.id.clone()));
     metadata.insert("hostProviderName".to_string(), json!(provider.name.clone()));
@@ -6491,9 +6492,6 @@ pub(crate) fn rewrite_codex_responses_endpoint_to_chat(endpoint: &str) -> (Strin
     crate::proxy_core::api::transport::rewrite_codex_responses_endpoint_to_chat(endpoint)
         .into_parts()
 }
-
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::claude_api_format_needs_transform;
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::is_official_codex_client_user_agent;
@@ -15601,17 +15599,29 @@ command = "latest-command"
                 if message == "select route candidate providers: router failed"
         ));
         assert_eq!(
-            route_selection_for_forward_result(&plan, Some("ch-b"), "provider-a")
-                .channel
-                .id,
+            crate::proxy_core::api::routing::select_route_for_forward_result(
+                &plan,
+                Some("ch-b"),
+                "provider-a"
+            )
+            .channel
+            .id,
             "ch-b"
         );
         assert_eq!(
-            route_selection_for_forward_result(&plan, Some("ch-b"), "provider-a")
-                .outbound_interface,
+            crate::proxy_core::api::routing::select_route_for_forward_result(
+                &plan,
+                Some("ch-b"),
+                "provider-a"
+            )
+            .outbound_interface,
             InterfaceKind::OpenAiChatCompletions
         );
-        let selected = route_selection_for_forward_result(&plan, Some("ch-b"), "provider-a");
+        let selected = crate::proxy_core::api::routing::select_route_for_forward_result(
+            &plan,
+            Some("ch-b"),
+            "provider-a",
+        );
         let candidate =
             crate::proxy_core::api::routing::default_route_candidate_from_selection(&selected);
         assert_eq!(candidate.channel_id, "ch-b");
@@ -16266,11 +16276,21 @@ command = "latest-command"
             .expect("anthropic passthrough"),
             passthrough_body
         );
-        assert!(!claude_api_format_needs_transform("anthropic"));
-        assert!(claude_api_format_needs_transform("openai_chat"));
-        assert!(claude_api_format_needs_transform("openai_responses"));
-        assert!(claude_api_format_needs_transform("gemini_native"));
-        assert!(!claude_api_format_needs_transform("unknown"));
+        assert!(
+            !crate::proxy_core::api::transforms::claude_api_format_needs_transform("anthropic")
+        );
+        assert!(
+            crate::proxy_core::api::transforms::claude_api_format_needs_transform("openai_chat")
+        );
+        assert!(
+            crate::proxy_core::api::transforms::claude_api_format_needs_transform(
+                "openai_responses"
+            )
+        );
+        assert!(
+            crate::proxy_core::api::transforms::claude_api_format_needs_transform("gemini_native")
+        );
+        assert!(!crate::proxy_core::api::transforms::claude_api_format_needs_transform("unknown"));
     }
 
     #[test]

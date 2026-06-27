@@ -9301,6 +9301,12 @@ fn proxy_core_adapter_delegates_claude_transform_gate_to_core() {
         gate_slice.contains("core_claude_provider_transform_required("),
         "Claude transform gate must delegate provider-kind/api-format policy to proxy-core"
     );
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::transforms::claude_api_format_needs_transform"
+        ),
+        "proxy_core_adapter should not re-export the pure Claude api_format transform gate helper"
+    );
 
     let forbidden_markers = [
         "return true",
@@ -12772,11 +12778,6 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
         "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
         "};\nuse crate::proxy_core::api::ports::{",
     );
-    let adapter_production_routing_import = function_slice(
-        &source,
-        "pub(crate) use crate::proxy_core::api::routing::select_route_for_forward_result as route_selection_for_forward_result;",
-        "\n\npub(crate) fn route_policy_from_failover_queue",
-    );
     let attempt_source_function = attempt_source.as_str();
 
     assert!(
@@ -12811,9 +12812,12 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
         "proxy_core_adapter should not re-export the ForwardPipeline port for the host forward pipeline"
     );
     assert!(
-        !adapter_production_routing_import
-            .contains("forwarding_requires_runtime_error as forwarding_runtime_unavailable_error"),
-        "proxy_core_adapter should keep runtime-unavailable alias test-only"
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::routing::select_route_for_forward_result as route_selection_for_forward_result;"
+        ) && source.contains(
+            "crate::proxy_core::api::routing::select_route_for_forward_result("
+        ),
+        "proxy_core_adapter should call the core forward-result route selection helper internally without re-exporting it"
     );
     assert!(
         !source.contains("route_plan_provider_match;")
