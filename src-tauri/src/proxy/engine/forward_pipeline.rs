@@ -12,8 +12,7 @@ use crate::proxy::{
 use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    prepare_upstream_request_body_with_report, provider_bedrock_env_flag, provider_is_codex_oauth,
-    should_preserve_exact_request_header_case, validate_managed_account_upstream_auth,
+    provider_bedrock_env_flag, provider_is_codex_oauth, validate_managed_account_upstream_auth,
 };
 use crate::proxy_core_adapter::{
     ActiveConnectionGuard, FailoverSwitchSchedulerRef, ForwarderAnthropicRectifierGateInput,
@@ -1028,16 +1027,17 @@ mod tests {
     use crate::proxy_core::api::auth::ManagedAccountAuthError;
     use crate::proxy_core::api::transforms::{build_gemini_native_url, resolve_gemini_native_url};
     use crate::proxy_core::api::transport::{
-        build_codex_oauth_session_headers, is_streaming_upstream_request,
+        append_query_to_full_url, build_codex_oauth_session_headers,
+        claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input,
+        interface_kind_for_forward, is_streaming_upstream_request,
+        prepare_upstream_request_body_with_report, request_model_for_forward,
+        resolve_upstream_request_transport_policy,
+        rewrite_claude_transform_endpoint as rewrite_transform_endpoint,
+        should_preserve_exact_request_header_case,
     };
     use crate::proxy_core_adapter::ProxyRuntimeStatus;
     use crate::proxy_core_adapter::{canonical_json_string, short_value_hash};
-    use crate::proxy_core_adapter::{
-        claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input,
-        interface_kind_for_forward, request_model_for_forward,
-        rewrite_claude_transform_endpoint as rewrite_transform_endpoint, AppKind,
-        GeminiShadowStore, ResolvedChannelAttempt,
-    };
+    use crate::proxy_core_adapter::{AppKind, GeminiShadowStore, ResolvedChannelAttempt};
     use axum::http::header::{HeaderValue, ACCEPT};
     use axum::http::HeaderMap;
     use bytes::Bytes;
@@ -1727,10 +1727,7 @@ mod tests {
 
     #[test]
     fn append_query_to_full_url_preserves_existing_query_string() {
-        let url = crate::proxy_core_adapter::append_query_to_full_url(
-            "https://relay.example/api?foo=bar",
-            Some("x-id=1"),
-        );
+        let url = append_query_to_full_url("https://relay.example/api?foo=bar", Some("x-id=1"));
 
         assert_eq!(url, "https://relay.example/api?foo=bar&x-id=1");
     }
@@ -1810,7 +1807,7 @@ mod tests {
     fn force_identity_for_stream_flag_requests() {
         let headers = HeaderMap::new();
 
-        let policy = crate::proxy_core_adapter::resolve_upstream_request_transport_policy(
+        let policy = resolve_upstream_request_transport_policy(
             false,
             false,
             "/v1/responses",
@@ -1825,7 +1822,7 @@ mod tests {
     fn force_identity_for_gemini_stream_endpoints() {
         let headers = HeaderMap::new();
 
-        let policy = crate::proxy_core_adapter::resolve_upstream_request_transport_policy(
+        let policy = resolve_upstream_request_transport_policy(
             false,
             false,
             "/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse",
@@ -1852,7 +1849,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
 
-        let policy = crate::proxy_core_adapter::resolve_upstream_request_transport_policy(
+        let policy = resolve_upstream_request_transport_policy(
             false,
             false,
             "/v1/responses",
@@ -1867,7 +1864,7 @@ mod tests {
     fn non_streaming_requests_allow_automatic_compression() {
         let headers = HeaderMap::new();
 
-        let policy = crate::proxy_core_adapter::resolve_upstream_request_transport_policy(
+        let policy = resolve_upstream_request_transport_policy(
             false,
             false,
             "/v1/responses",

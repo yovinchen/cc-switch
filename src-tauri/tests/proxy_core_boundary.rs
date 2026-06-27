@@ -9546,6 +9546,14 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
         "pub(crate) use crate::proxy_core::api::transforms::build_gemini_native_url",
         "pub(crate) use crate::proxy_core::api::transforms::resolve_gemini_native_url",
         "pub(crate) use crate::proxy_core::api::transport::is_streaming_upstream_request",
+        "pub(crate) use crate::proxy_core::api::transport::interface_kind_for_forward",
+        "pub(crate) use crate::proxy_core::api::transport::prepare_upstream_request_body_with_report",
+        "pub(crate) use crate::proxy_core::api::transport::request_model_for_forward",
+        "pub(crate) use crate::proxy_core::api::transport::resolve_upstream_request_transport_policy",
+        "pub(crate) use crate::proxy_core::api::transport::should_preserve_exact_request_header_case",
+        "pub(crate) use crate::proxy_core::api::transport::{\n    append_query_to_full_url",
+        "claude_transform_endpoint_rewrite_input_from_body",
+        "rewrite_claude_transform_endpoint",
     ] {
         assert!(
             !adapter_source.contains(marker),
@@ -9559,7 +9567,25 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
         forward_pipeline_source
             .contains("use crate::proxy_core::api::transforms::{build_gemini_native_url, resolve_gemini_native_url};")
             && forward_pipeline_source.contains(
-                "build_codex_oauth_session_headers, is_streaming_upstream_request,"
+                "append_query_to_full_url, build_codex_oauth_session_headers,"
+            )
+            && forward_pipeline_source.contains(
+                "claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input"
+            )
+            && forward_pipeline_source.contains(
+                "interface_kind_for_forward, is_streaming_upstream_request,"
+            )
+            && forward_pipeline_source.contains(
+                "prepare_upstream_request_body_with_report, request_model_for_forward,"
+            )
+            && forward_pipeline_source.contains(
+                "resolve_upstream_request_transport_policy,"
+            )
+            && forward_pipeline_source.contains(
+                "rewrite_claude_transform_endpoint as rewrite_transform_endpoint,"
+            )
+            && forward_pipeline_source.contains(
+                "should_preserve_exact_request_header_case,"
             )
             && !forward_pipeline_source.contains(
                 "crate::proxy_core_adapter::build_gemini_native_url"
@@ -9569,8 +9595,22 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
             )
             && !forward_pipeline_source.contains(
                 "crate::proxy_core_adapter::is_streaming_upstream_request"
+            )
+            && !forward_pipeline_source.contains("crate::proxy_core_adapter::append_query_to_full_url")
+            && !forward_pipeline_source
+                .contains("crate::proxy_core_adapter::resolve_upstream_request_transport_policy")
+            && !forward_pipeline_source
+                .contains("crate::proxy_core_adapter::rewrite_claude_transform_endpoint")
+            && !forward_pipeline_source.contains("crate::proxy_core_adapter::request_model_for_forward")
+            && !forward_pipeline_source.contains("crate::proxy_core_adapter::interface_kind_for_forward")
+            && !forward_pipeline_source
+                .contains("crate::proxy_core_adapter::should_preserve_exact_request_header_case")
+            && !forward_pipeline_source
+                .contains("crate::proxy_core_adapter::prepare_upstream_request_body_with_report")
+            && !forward_pipeline_source.contains(
+                "crate::proxy_core_adapter::claude_transform_endpoint_rewrite_input_from_body"
             ),
-        "forward pipeline tests should import pure Gemini URL and streaming helpers from proxy-core directly"
+        "forward pipeline tests should import pure upstream URL/request helpers from proxy-core directly"
     );
 
     for marker in [

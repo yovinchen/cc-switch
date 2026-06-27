@@ -2353,23 +2353,8 @@ pub(crate) use crate::proxy_core::api::transforms::{
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::extract_gemini_model_from_path;
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::interface_kind_for_forward;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::prepare_upstream_request_body_with_report;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::request_model_for_forward;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::resolve_upstream_request_transport_policy;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::should_preserve_exact_request_header_case;
-#[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::ProxyBody;
 pub(crate) use crate::proxy_core::api::transport::ProxyRequest;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::{
-    append_query_to_full_url, claude_transform_endpoint_rewrite_input_from_body,
-    rewrite_claude_transform_endpoint,
-};
 pub(crate) use crate::proxy_core::api::transport::{
     apply_bedrock_pre_send_optimizers, apply_forwarder_media_prevention_from_facts,
     bedrock_env_flag_from_provider_settings, build_claude_provider_auth_headers,
@@ -7581,11 +7566,11 @@ mod tests {
     use crate::proxy_core::api::transport::{
         anthropic_beta_header_value, build_claude_auth_headers, build_codex_bearer_auth_headers,
         build_copilot_auth_headers, build_gemini_auth_headers, build_upstream_request_headers,
-        forward_upstream_url_plan, is_socks_proxy_url, resolve_upstream_request_transport_policy,
-        resolve_upstream_send_policy, serialize_upstream_request_body, ClaudeAuthHeaderKind,
-        CopilotAuthHeadersInput, ForwardUpstreamUrlPlanInput, ProxyTransportResponseBody,
-        UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamSseAggregationKind,
-        UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
+        forward_upstream_url_plan, is_socks_proxy_url, resolve_upstream_send_policy,
+        serialize_upstream_request_body, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
+        ForwardUpstreamUrlPlanInput, ProxyTransportResponseBody, UpstreamRequestHeadersInput,
+        UpstreamSendPolicyInput, UpstreamSseAggregationKind, UpstreamTransportKind,
+        UNSUPPORTED_IMAGE_MARKER,
     };
     use crate::proxy_core::api::usage::{
         usage_selected_provider_missing_log_message, TokenUsage, TransformedResponseUsageFormat,
@@ -12340,15 +12325,24 @@ base_url = "https://api.openai.com/v1"
             Some("gemini-pro")
         );
         assert_eq!(
-            request_model_for_forward(&AppKind::Codex, "", &json!({"model": " gpt-5 "})).as_deref(),
+            crate::proxy_core::api::transport::request_model_for_forward(
+                &AppKind::Codex,
+                "",
+                &json!({"model": " gpt-5 "})
+            )
+            .as_deref(),
             Some("gpt-5")
         );
         assert_eq!(
-            request_model_for_forward(&AppKind::Claude, "", &json!({"model": "  "})),
+            crate::proxy_core::api::transport::request_model_for_forward(
+                &AppKind::Claude,
+                "",
+                &json!({"model": "  "})
+            ),
             None
         );
         assert_eq!(
-            request_model_for_forward(
+            crate::proxy_core::api::transport::request_model_for_forward(
                 &AppKind::Gemini,
                 "/v1beta/models/gemini-pro:generateContent",
                 &Value::Null,
@@ -16473,13 +16467,14 @@ command = "latest-command"
             http::HeaderValue::from_static("text/event-stream"),
         );
 
-        let request_policy = resolve_upstream_request_transport_policy(
-            false,
-            false,
-            "/v1/responses",
-            &json!({"model": "gpt-5"}),
-            &headers,
-        );
+        let request_policy =
+            crate::proxy_core::api::transport::resolve_upstream_request_transport_policy(
+                false,
+                false,
+                "/v1/responses",
+                &json!({"model": "gpt-5"}),
+                &headers,
+            );
         assert!(request_policy.is_streaming_request);
         assert!(request_policy.force_identity_encoding);
         assert!(
