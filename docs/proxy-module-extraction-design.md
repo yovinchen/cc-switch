@@ -1721,6 +1721,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1235. channel-key wildcard 选择已开始按 NewAPI 类中转的“同优先级内按权重分配”模型迁移：proxy-core 新增 `select_channel_key_runtime_candidate_with_weighted_roll`，先按 enabled/冷却健康层/priority 缩小候选，再在同层候选内用传入 roll 做 weighted selection；CC Switch DB-backed source 只负责生成当前时间和 roll，显式 key ref 仍先过滤到指定 key，边界测试继续防止随机/权重策略回流到 adapter 或 DAO。
 1236. 主 channel forward route 也已开始迁移到“priority 分层 + 同层 weighted selection”：proxy-core 新增 `build_route_plan_with_weighted_roll`，旧 `build_route_plan` 保留确定性排序供测试/兼容路径使用；CC Switch `RouteResolver` 只注入 runtime roll，实际选择由 core 负责，并把选中 channel 提到 `selection/selections/attempts` 首位，management route resolve 仍返回排序候选列表用于 dry-run 解释。
 1237. per-channel retry policy 已开始进入 forward runtime 决策：`ResolvedChannelAttempt` 现在携带非空 `retryPolicy`，core 提供 `effective_forward_max_attempts_for_channel` 从 `maxAttempts`/`max_attempts` 计算不超过全局上限的尝试次数；CC Switch `ForwarderAttemptRuntimeSource` 只把首个选中 channel 的 policy 交给 core helper，不在 host/adapter 解析 JSON。后续可继续把 circuit/health policy 从 raw JSON 拆成 typed core 策略。
+1238. per-channel health policy 已开始影响 channel 健康落库：`RouteResolveChannelInput` 现在携带 `healthPolicy`，core 提供 `effective_channel_health_failure_threshold` 从 `failureThreshold`/`failure_threshold` 计算有效阈值；ProviderRouter 记录 channel 结果时通过 channel source 查当前 channel policy，再把阈值写入 `ChannelAttemptResult`，host/adapter 不解析策略 JSON。当前切片只覆盖健康持久化阈值，per-channel circuit runtime config 仍留给后续更大的 runtime 策略迁移。
 
 ## 背景
 
