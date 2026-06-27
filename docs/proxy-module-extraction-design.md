@@ -1738,6 +1738,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1252. usage placeholder pricing model 判定已从 `proxy_core_adapter` facade 移除：`services/usage_stats.rs` 在既有 `proxy-core::api::usage` direct-core 边界内直接引用 `is_placeholder_pricing_model`，adapter 只保留 response projection 仍需要的 `usage_route_context_from_selection`；边界测试防止 pure usage predicate 再经 adapter re-export。
 1253. adapter 内部 wrapper 的 pure core delegate 出口继续收窄：`forward_failure_kind_from_proxy_status`、`normalize_claude_anthropic_messages`、`apply_provider_model_mapping` 不再通过 `proxy_core_adapter` re-export，adapter 仅保留带 host `ProxyError`/`Provider` 形状的 wrapper 并在内部 fully-qualified 调用 core helper；边界测试防止为了实现便利重新暴露这些纯 delegate。
 1254. test-only pure helper facade 继续移除：已批准 direct-core 的 `forward_pipeline` / `response_pipeline` 测试直接引用 `proxy-core` 的 Gemini native URL 构造/解析、streaming request 判定、response decompression、SSE field parsing helper，adapter 自测用 fully-qualified core 调用 `inject_openai_stream_include_usage`；`proxy_core_adapter` 不再保留这些 `#[cfg(test)]` re-export，尚未批准 direct-core 的 `provider/codex.rs` user-agent 测试 helper 暂不扩边界。
+1255. `route_selection_for_forward_result` 兼容别名已从 `proxy_core_adapter` 移除：adapter 仍负责 host-shaped `ProxyResult` metadata 组装，但内部直接调用 `proxy-core::api::routing::select_route_for_forward_result` 选择 selected route；同时 `claude_api_format_needs_transform` test-only re-export 也删除，adapter 自测使用 fully-qualified core 调用，边界测试防止这两个 pure delegate 回流。
 
 ## 背景
 
