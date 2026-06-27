@@ -1442,28 +1442,6 @@ mod tests {
     }
 
     #[test]
-    fn claude_desktop_rejects_1m_suffix_as_model_id() {
-        let is_safe = crate::proxy_core_adapter::claude_desktop_model_id_is_profile_safe;
-
-        assert!(!is_safe("claude-sonnet-4-6 [1m]"));
-        assert!(!is_safe("  claude-sonnet-4-6  [1M]  "));
-        assert!(!is_safe("claude-old"));
-        assert!(!is_safe("claude-3-5-sonnet-20241022"));
-        assert!(!is_safe("claude-deepseek-v4-pro"));
-        assert!(!is_safe("claude-gpt-5-4"));
-        assert!(!is_safe("claude-"));
-        assert!(!is_safe("anthropic/claude-"));
-        assert!(!is_safe("sonnet"));
-        assert!(!is_safe("sonnet-"));
-        // 角色前缀后无实际标识的退化值必须拒绝
-        assert!(!is_safe("claude-sonnet-"));
-        assert!(!is_safe("claude-opus-"));
-        assert!(!is_safe("anthropic/claude-haiku-"));
-        assert!(is_safe("  claude-sonnet-4-6  "));
-        assert!(is_safe("anthropic/claude-opus-4-8"));
-    }
-
-    #[test]
     fn claude_desktop_apply_rolls_back_when_profile_write_fails() {
         let temp = TempDir::new().expect("tempdir");
         let paths = test_paths(temp.path());

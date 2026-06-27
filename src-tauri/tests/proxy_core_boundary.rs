@@ -1290,6 +1290,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn unselected_provider_fallback_id(",
     "fn mask_url_for_log(",
     "fn proxy_url_points_to_loopback_port(",
+    "pub(crate) use crate::proxy_core::api::auth::claude_desktop_model_id_is_profile_safe",
+    "fn claude_desktop_model_id_is_profile_safe(",
     "fn default_copilot_github_domain(",
     "fn normalize_github_domain(",
     "fn is_copilot_ghes_domain(",

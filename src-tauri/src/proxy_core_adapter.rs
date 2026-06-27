@@ -2182,8 +2182,6 @@ pub(crate) fn forwarder_rectifier_retry_failure_log_line(
 
 pub(crate) type CircuitBreakerFailureDecision =
     crate::proxy_core::api::config::CircuitBreakerFailureDecision;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::auth::claude_desktop_model_id_is_profile_safe;
 pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
 pub(crate) use crate::proxy_core::api::auth::{
     classify_provider_managed_auth as core_classify_provider_managed_auth,
@@ -7443,9 +7441,9 @@ mod tests {
     use crate::proxy::provider::ProviderAdapter;
     use crate::proxy_core::api::auth::channel_auth_profile_missing_key_error;
     use crate::proxy_core::api::auth::{
-        validate_claude_desktop_gateway_bearer_header, ClaudeDesktopGatewayAuthError,
-        ManagedAccountAuthRuntime, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
-        ManagementAuthError,
+        claude_desktop_model_id_is_profile_safe, validate_claude_desktop_gateway_bearer_header,
+        ClaudeDesktopGatewayAuthError, ManagedAccountAuthRuntime,
+        ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagementAuthError,
     };
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
@@ -8187,6 +8185,41 @@ mod tests {
             validate_claude_desktop_gateway_bearer_header(&headers, "wrong-token").unwrap_err(),
             ClaudeDesktopGatewayAuthError::InvalidToken
         );
+    }
+
+    #[test]
+    fn claude_desktop_profile_model_id_policy_rejects_unsafe_aliases() {
+        assert!(!claude_desktop_model_id_is_profile_safe(
+            "claude-sonnet-4-6 [1m]"
+        ));
+        assert!(!claude_desktop_model_id_is_profile_safe(
+            "  claude-sonnet-4-6  [1M]  "
+        ));
+        assert!(!claude_desktop_model_id_is_profile_safe("claude-old"));
+        assert!(!claude_desktop_model_id_is_profile_safe(
+            "claude-3-5-sonnet-20241022"
+        ));
+        assert!(!claude_desktop_model_id_is_profile_safe(
+            "claude-deepseek-v4-pro"
+        ));
+        assert!(!claude_desktop_model_id_is_profile_safe("claude-gpt-5-4"));
+        assert!(!claude_desktop_model_id_is_profile_safe("claude-"));
+        assert!(!claude_desktop_model_id_is_profile_safe(
+            "anthropic/claude-"
+        ));
+        assert!(!claude_desktop_model_id_is_profile_safe("sonnet"));
+        assert!(!claude_desktop_model_id_is_profile_safe("sonnet-"));
+        assert!(!claude_desktop_model_id_is_profile_safe("claude-sonnet-"));
+        assert!(!claude_desktop_model_id_is_profile_safe("claude-opus-"));
+        assert!(!claude_desktop_model_id_is_profile_safe(
+            "anthropic/claude-haiku-"
+        ));
+        assert!(claude_desktop_model_id_is_profile_safe(
+            "  claude-sonnet-4-6  "
+        ));
+        assert!(claude_desktop_model_id_is_profile_safe(
+            "anthropic/claude-opus-4-8"
+        ));
     }
 
     #[test]
