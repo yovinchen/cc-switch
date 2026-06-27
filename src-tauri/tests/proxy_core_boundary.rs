@@ -12954,7 +12954,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let host_forward_function = function_slice(
         &source,
         "pub(crate) async fn forward_proxy_request_with_host_runtime",
-        "#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::{",
+        "pub(crate) fn route_policy_from_failover_queue",
     );
     let adapter_core_ports_import = function_slice(
         &source,
@@ -13043,6 +13043,34 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
         optional_runtime_function
             .contains(".forward_host(channel_key_runtime_source, request, plan)"),
         "host forward pipeline optional runtime dispatcher should forward the injected channel key runtime source"
+    );
+    for marker in [
+        "forwarding_requires_runtime_error as forwarding_runtime_unavailable_error",
+        "forwarding_requires_runtime_error_message",
+        "route_plan_no_matching_host_providers_error",
+        "route_plan_no_matching_host_providers_error_message",
+        "route_plan_providers_unconfigured_error_message",
+    ] {
+        let reexport_marker = source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::routing") && line.contains(marker)
+        });
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export pure forward route error helper `{marker}`"
+        );
+    }
+    assert!(
+        !source
+            .contains("forwarding_requires_runtime_error as forwarding_runtime_unavailable_error")
+            && source
+                .contains("crate::proxy_core::api::routing::forwarding_requires_runtime_error()"),
+        "proxy_core_adapter tests should call forwarding runtime errors directly from proxy-core"
+    );
+    assert!(
+        !source.contains(
+            "#[cfg(test)]\npub(crate) use crate::proxy_core::api::routing::{\n    forwarding_requires_runtime_error"
+        ),
+        "proxy_core_adapter should not keep grouped forward route error helper re-exports"
     );
     assert!(
         host_forward_function.contains("required_forward_attempts_from_sources(")

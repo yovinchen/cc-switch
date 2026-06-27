@@ -6013,14 +6013,6 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
     .await
 }
 
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::routing::{
-    forwarding_requires_runtime_error as forwarding_runtime_unavailable_error,
-    forwarding_requires_runtime_error_message, route_plan_no_matching_host_providers_error,
-    route_plan_no_matching_host_providers_error_message,
-    route_plan_providers_unconfigured_error_message,
-};
-
 pub(crate) fn route_policy_from_failover_queue(
     app: AppKind,
     queue: impl IntoIterator<Item = FailoverQueueItem>,
@@ -15704,25 +15696,25 @@ command = "latest-command"
                 if message == "route plan has no matching host providers"
         ));
         assert_eq!(
-            forwarding_requires_runtime_error_message(),
+            crate::proxy_core::api::routing::forwarding_requires_runtime_error_message(),
             "cc-switch forwarding requires a proxy server runtime"
         );
         assert!(matches!(
-            forwarding_runtime_unavailable_error(),
+            crate::proxy_core::api::routing::forwarding_requires_runtime_error(),
             ProxyCoreError::Unsupported(message)
                 if message == "cc-switch forwarding requires a proxy server runtime"
         ));
         assert_eq!(
-            route_plan_no_matching_host_providers_error_message(),
+            crate::proxy_core::api::routing::route_plan_no_matching_host_providers_error_message(),
             "route plan has no matching host providers"
         );
         assert!(matches!(
-            route_plan_no_matching_host_providers_error(),
+            crate::proxy_core::api::routing::route_plan_no_matching_host_providers_error(),
             ProxyCoreError::Unavailable(message)
                 if message == "route plan has no matching host providers"
         ));
         assert_eq!(
-            route_plan_providers_unconfigured_error_message(),
+            crate::proxy_core::api::routing::route_plan_providers_unconfigured_error_message(),
             "route plan providers are not configured in host database"
         );
         let policy = route_policy_from_source(
