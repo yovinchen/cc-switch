@@ -25,8 +25,7 @@ use crate::proxy_core_adapter::{
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    normalize_anthropic_tool_thinking_history, provider_claude_transform_response,
-    should_normalize_anthropic_tool_thinking_history, ProviderAuthStrategy, COPILOT_API_VERSION,
+    provider_claude_transform_response, ProviderAuthStrategy, COPILOT_API_VERSION,
     COPILOT_EDITOR_VERSION, COPILOT_INTEGRATION_ID, COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
 };
 
@@ -1288,15 +1287,7 @@ mod tests {
         provider: &Provider,
         api_format: &str,
     ) -> bool {
-        if !should_normalize_anthropic_tool_thinking_history(
-            &provider.settings_config,
-            body,
-            api_format,
-        ) {
-            return false;
-        }
-
-        normalize_anthropic_tool_thinking_history(body)
+        provider_claude_normalize_anthropic_messages(body, provider, api_format)
     }
 
     #[test]
@@ -1540,10 +1531,7 @@ mod tests {
         body: &mut Value,
         provider: &Provider,
     ) -> bool {
-        crate::proxy_core_adapter::normalize_deepseek_thinking_disabled_strip_effort(
-            body,
-            &provider.settings_config,
-        )
+        provider_claude_normalize_anthropic_messages(body, provider, "anthropic")
     }
 
     #[test]

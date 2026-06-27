@@ -6301,12 +6301,6 @@ pub(crate) fn provider_claude_normalize_anthropic_messages(
 }
 
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::{
-    normalize_anthropic_tool_thinking_history, normalize_deepseek_thinking_disabled_strip_effort,
-    should_normalize_anthropic_tool_thinking_history,
-};
-
-#[cfg(test)]
 pub(crate) fn anthropic_tool_thinking_placeholder() -> &'static str {
     crate::proxy_core::api::transforms::ANTHROPIC_TOOL_THINKING_PLACEHOLDER
 }
@@ -7464,7 +7458,10 @@ mod tests {
     };
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{
-        CodexProxyErrorContext, CodexProxyErrorKind, GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
+        normalize_anthropic_tool_thinking_history,
+        normalize_deepseek_thinking_disabled_strip_effort,
+        should_normalize_anthropic_tool_thinking_history, CodexProxyErrorContext,
+        CodexProxyErrorKind, GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
     };
     use crate::proxy_core::api::transport::{
         anthropic_beta_header_value, build_claude_auth_headers, build_codex_bearer_auth_headers,
