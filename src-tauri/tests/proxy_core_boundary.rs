@@ -1192,6 +1192,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn route_plan_selections(",
     "fn route_selection_for_forward_result(",
     "fn resolve_channel_route(",
+    "fn select_current_provider_ids_from_router_source(",
+    "fn proxy_channel_record_to_route_resolve_channel_input(",
     "fn channel_test_app_type_error(",
     "fn channel_test_provider_not_found_error(",
     "fn channel_test_app_type_from_probe_request(",

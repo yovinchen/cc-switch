@@ -4001,17 +4001,6 @@ pub(crate) async fn reset_circuit_breaker_switchback_target_from_db(
     ))
 }
 
-#[cfg(test)]
-pub(crate) fn select_current_provider_ids_from_router_source(
-    app_type: &str,
-    current: Option<Provider>,
-) -> Result<Vec<String>, AppError> {
-    select_current_provider_ids_from_router_provider_id_source(
-        app_type,
-        current.map(|provider| provider.id),
-    )
-}
-
 pub(crate) fn select_current_provider_ids_from_router_provider_id_source(
     app_type: &str,
     current_provider_id: Option<String>,
@@ -4969,17 +4958,6 @@ pub(crate) async fn route_candidate_provider_ids_from_router_source(
 ) -> ProxyCoreResult<Vec<String>> {
     route_candidate_provider_ids_from_selection_result(
         router.select_provider_ids(app.as_str()).await,
-    )
-}
-
-#[cfg(test)]
-pub(crate) fn proxy_channel_record_to_route_resolve_channel_input(
-    channel: ProxyChannelRecord,
-) -> RouteResolveChannelInput {
-    channel_record_to_route_resolve_channel_input(
-        crate::proxy::host::cc_switch::database_channel_source::proxy_channel_record_to_core(
-            channel,
-        ),
     )
 }
 
@@ -7347,7 +7325,7 @@ mod tests {
         TransformedResponseUsageContext, TransformedStreamingResponseUsageContext,
     };
     use crate::proxy::host::cc_switch::database_channel_source::{
-        channel_route_records_from_sources, channel_spec_from_source,
+        channel_route_records_from_sources, channel_spec_from_source, proxy_channel_record_to_core,
         proxy_channel_record_to_core_spec,
     };
     use crate::proxy::host::cc_switch::managed_account_runtime_source::{
@@ -7410,6 +7388,16 @@ mod tests {
         config_text: Option<&str>,
     ) -> Option<String> {
         crate::codex_config::extract_codex_api_key(auth, config_text)
+    }
+
+    fn select_current_provider_ids_from_router_source(
+        app_type: &str,
+        current: Option<Provider>,
+    ) -> Result<Vec<String>, AppError> {
+        select_current_provider_ids_from_router_provider_id_source(
+            app_type,
+            current.map(|provider| provider.id),
+        )
     }
 
     fn provider_credential_values_with_issue(
@@ -18314,7 +18302,9 @@ command = "latest-command"
 
         let spec = proxy_channel_record_to_core_spec(&channel);
         let source_spec = channel_spec_from_source(Some(channel.clone())).expect("channel spec");
-        let route_input = proxy_channel_record_to_route_resolve_channel_input(channel.clone());
+        let route_input = channel_record_to_route_resolve_channel_input(
+            proxy_channel_record_to_core(channel.clone()),
+        );
         let (materialized_channels, materialized_source) =
             channel_route_records_from_sources(vec![channel.clone()], || {
                 panic!("materialized channels must not load legacy projection")
