@@ -2619,14 +2619,6 @@ pub(crate) fn provider_codex_auth_info(provider: &Provider) -> Option<ProviderAu
     provider_codex_api_key(provider).map(core_codex_auth_info_from_api_key)
 }
 
-#[cfg(test)]
-pub(crate) fn codex_api_key_from_auth_and_config(
-    auth: Option<&Value>,
-    config_text: Option<&str>,
-) -> Option<String> {
-    crate::codex_config::extract_codex_api_key(auth, config_text)
-}
-
 pub(crate) fn provider_codex_base_url(provider: &Provider) -> Option<String> {
     core_codex_base_url_from_settings(&provider.settings_config)
 }
@@ -7412,6 +7404,13 @@ mod tests {
         UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
     };
     use indexmap::IndexMap;
+
+    fn codex_api_key_from_auth_and_config(
+        auth: Option<&Value>,
+        config_text: Option<&str>,
+    ) -> Option<String> {
+        crate::codex_config::extract_codex_api_key(auth, config_text)
+    }
 
     fn provider_credential_values_with_issue(
         provider: &Provider,
