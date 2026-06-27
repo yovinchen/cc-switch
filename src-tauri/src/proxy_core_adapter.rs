@@ -2104,8 +2104,6 @@ pub(crate) fn provider_from_opencode_live_config(
     Ok(provider)
 }
 
-#[cfg(test)]
-pub(crate) type ProxyCoreUpstreamEndpoint = crate::proxy_core::api::domain::UpstreamEndpoint;
 pub(crate) type ChannelRequestValidationError =
     crate::proxy_core::api::routing::ChannelRequestValidationError;
 pub(crate) type ChannelRouteSource = crate::proxy_core::api::management::ChannelRouteSource;
@@ -2144,8 +2142,6 @@ pub(crate) type FailoverQueuePosition = crate::proxy_core::api::routing::Failove
 pub(crate) type ProxyCoreError = crate::proxy_core::api::errors::ProxyCoreError;
 pub(crate) type AppKind = crate::proxy_core::api::domain::AppKind;
 pub(crate) type AppProviderAdapterKind = crate::proxy_core::api::domain::AppProviderAdapterKind;
-#[cfg(test)]
-pub(crate) type RetryPolicy = crate::proxy_core::api::domain::RetryPolicy;
 pub(crate) type RouteResolveRequest = crate::proxy_core::api::management::RouteResolveRequest;
 pub(crate) type RouteResolveResponse = crate::proxy_core::api::management::RouteResolveResponse;
 pub(crate) type RouteResolveChannelInput =
@@ -2155,8 +2151,6 @@ pub(crate) type RouteCandidateCircuitKey =
 pub(crate) type ChannelRouteCandidate = crate::proxy_core::api::routing::ChannelRouteCandidate;
 pub(crate) type ResolvedChannelAttempt = crate::proxy_core::api::routing::ResolvedChannelAttempt;
 pub(crate) type RoutePlan = crate::proxy_core::api::routing::RoutePlan;
-#[cfg(test)]
-pub(crate) type RouteSelection = crate::proxy_core::api::routing::RouteSelection;
 pub(crate) type ForwardFailureKind = crate::proxy_core::api::transport::ForwardFailureKind;
 pub(crate) enum ForwarderFailureDecision {
     Retryable,
@@ -7488,7 +7482,7 @@ mod tests {
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
         channel_auth_profile_action, channel_auth_profile_missing_provider_warning,
-        channel_spec_from_input, ChannelAuthProfileAction, ChannelSpecInput,
+        channel_spec_from_input, ChannelAuthProfileAction, ChannelSpecInput, RetryPolicy,
     };
     use crate::proxy_core::api::errors::{
         proxy_error_http_status_code, proxy_error_response_body,
@@ -7498,7 +7492,7 @@ mod tests {
     use crate::proxy_core::api::management::{ChannelKeyRuntimeCandidate, ChannelTestProbeRequest};
     use crate::proxy_core::api::model_catalog::CopilotModel;
     use crate::proxy_core::api::routing::{
-        InterfaceKind, LegacyChannelProjectionInput, ProviderSelectionCandidate,
+        InterfaceKind, LegacyChannelProjectionInput, ProviderSelectionCandidate, RouteSelection,
     };
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{

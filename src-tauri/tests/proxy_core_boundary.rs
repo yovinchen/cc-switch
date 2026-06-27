@@ -1512,6 +1512,9 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) use crate::proxy_core::api::domain::{channel_spec_from_input, ChannelSpecInput}",
     "fn channel_spec_from_input(",
     "pub(crate) type InterfaceKind =",
+    "pub(crate) type ProxyCoreUpstreamEndpoint =",
+    "pub(crate) type RetryPolicy =",
+    "pub(crate) type RouteSelection =",
     "pub(crate) type LegacyChannelProjectionInput =",
     "pub(crate) type ProviderSelectionCandidate =",
     "pub(crate) type CodexProxyErrorContext<'a> =",
@@ -18258,9 +18261,11 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         .expect("read proxy_core_adapter.rs");
 
     assert!(
-        host_source.contains(
+        host_source.contains("use crate::proxy_core::api::domain::{RetryPolicy, UpstreamEndpoint};")
+            && host_source.contains(
             "use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;"
-        ) && host_source.contains("use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;")
+        ) && host_source
+            .contains("use crate::proxy_core::api::routing::{RouteSelection, DEFAULT_ROUTE_GROUP};")
             && host_source.contains("use crate::proxy_core::api::transport::ProxyBody;"),
         "proxy_core_host test harness should import pure core contracts directly"
     );
@@ -18271,6 +18276,9 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "client_model_catalog_from_optional_raw",
         "DEFAULT_ROUTE_GROUP",
         "ProxyBody",
+        "RetryPolicy",
+        "RouteSelection",
+        "ProxyCoreUpstreamEndpoint",
     ] {
         assert!(
             !host_adapter_import.contains(adapter_symbol),
@@ -18284,14 +18292,20 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "    };\n    use bytes::Bytes;",
     );
     assert!(
-        !host_tests_adapter_import.contains("ProxyBody"),
-        "proxy_core_host tests must not import ProxyBody through proxy_core_adapter"
+        !host_tests_adapter_import.contains("ProxyBody")
+            && !host_tests_adapter_import.contains("RetryPolicy")
+            && !host_tests_adapter_import.contains("RouteSelection")
+            && !host_tests_adapter_import.contains("ProxyCoreUpstreamEndpoint"),
+        "proxy_core_host tests must not import pure core contracts through proxy_core_adapter"
     );
 
     for adapter_facade in [
         "pub(crate) use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw",
         "pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP",
         "pub(crate) use crate::proxy_core::api::transport::ProxyBody",
+        "pub(crate) type ProxyCoreUpstreamEndpoint =",
+        "pub(crate) type RetryPolicy =",
+        "pub(crate) type RouteSelection =",
     ] {
         assert!(
             !adapter_source.contains(adapter_facade),

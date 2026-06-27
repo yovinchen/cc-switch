@@ -24,9 +24,11 @@ use crate::proxy::host::cc_switch::route_resolver::RouteRequest;
 #[cfg(test)]
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 #[cfg(test)]
+use crate::proxy_core::api::domain::{RetryPolicy, UpstreamEndpoint};
+#[cfg(test)]
 use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;
 #[cfg(test)]
-use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
+use crate::proxy_core::api::routing::{RouteSelection, DEFAULT_ROUTE_GROUP};
 #[cfg(test)]
 use crate::proxy_core::api::transport::ProxyBody;
 #[cfg(test)]
@@ -52,10 +54,8 @@ mod tests {
         ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, ProxyConfig,
         ProxyCoreChannelOverrides as ChannelOverrides, ProxyCoreError,
         ProxyCoreInterfaceKind as InterfaceKind, ProxyCoreModelCapabilities as ModelCapabilities,
-        ProxyCoreModelRoute as ModelRoute, ProxyCoreResult,
-        ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyEngine, ProxyResponseBody,
-        ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy, RouteResolveRequest,
-        RouteSelection, UsageRecord,
+        ProxyCoreModelRoute as ModelRoute, ProxyCoreResult, ProxyEngine, ProxyResponseBody,
+        ProxyRuntimeStatus, ResolvedChannelAttempt, RouteResolveRequest, UsageRecord,
     };
     use bytes::Bytes;
     use futures::StreamExt;
