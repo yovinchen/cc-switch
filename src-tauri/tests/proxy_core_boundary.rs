@@ -5423,6 +5423,20 @@ fn proxy_core_adapter_does_not_export_codex_transform_aliases() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_copilot_classification_alias() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    assert!(
+        !adapter_source.contains(
+            "pub(crate) type CopilotClassification = crate::proxy_core::api::transport::CopilotClassification;"
+        ),
+        "proxy_core_adapter should not expose CopilotClassification as a transport DTO alias; adapter internals should import it from proxy_core::api::transport"
+    );
+}
+
+#[test]
 fn engine_and_host_test_fixtures_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases: &[(&str, &[&str], &[&str])] = &[

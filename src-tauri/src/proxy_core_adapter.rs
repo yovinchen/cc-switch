@@ -846,7 +846,6 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
 }
 
 pub(crate) type GeminiShadowStore = crate::proxy_core::api::transforms::GeminiShadowStore;
-pub(crate) type CopilotClassification = crate::proxy_core::api::transport::CopilotClassification;
 pub(crate) type ForwarderMaybeCopilotAuthOptimizationInput<'a> =
     crate::proxy_core::api::transport::OptionalCopilotAuthOptimizationPreparationInput<'a>;
 pub(crate) type ForwarderAuthHeaders = crate::proxy_core::api::transport::ForwarderAuthHeaders;
@@ -2211,7 +2210,8 @@ pub(crate) use crate::proxy_core::api::transport::{
     provider_custom_user_agent_header as core_provider_custom_user_agent_header,
 };
 use crate::proxy_core::api::transport::{
-    ClaudeProviderAuthHeadersInput, ForwardFailureKind, ForwarderRectifierRetryKind,
+    ClaudeProviderAuthHeadersInput, CopilotClassification, ForwardFailureKind,
+    ForwarderRectifierRetryKind,
 };
 pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
