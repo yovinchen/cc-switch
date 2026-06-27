@@ -61,6 +61,7 @@ pub struct RouteResolveChannelInput {
     pub models: Vec<RouteResolveModelInput>,
     pub priority: i64,
     pub weight: u32,
+    pub health_policy: Value,
     pub source_kind: String,
 }
 
@@ -76,6 +77,7 @@ pub struct RouteResolveChannelRecordInput {
     pub models: Vec<RouteResolveModelRecordInput>,
     pub priority: i64,
     pub weight: u32,
+    pub health_policy: Value,
     pub source_kind: String,
 }
 
@@ -97,6 +99,7 @@ pub fn route_resolve_channel_input_from_record(
             .collect(),
         priority: input.priority,
         weight: input.weight,
+        health_policy: input.health_policy,
         source_kind: input.source_kind,
     }
 }
@@ -118,6 +121,7 @@ impl RouteResolveChannelInput {
                 .collect(),
             priority: channel.priority,
             weight: channel.weight,
+            health_policy: channel.health_policy.raw,
             source_kind: source_kind.into(),
         }
     }
@@ -573,6 +577,7 @@ mod tests {
             }],
             priority,
             weight: 100,
+            health_policy: json!({}),
             source_kind: "manual".to_string(),
         }
     }
@@ -899,12 +904,14 @@ mod tests {
             }],
             priority: 20,
             weight: 80,
+            health_policy: json!({"failureThreshold": 2}),
             source_kind: "manual".to_string(),
         });
 
         assert_eq!(input.channel_id, "channel-a");
         assert_eq!(input.provider_id, "provider-a");
         assert_eq!(input.status, "enabled");
+        assert_eq!(input.health_policy, json!({"failureThreshold": 2}));
         assert_eq!(input.groups, vec![DEFAULT_ROUTE_GROUP.to_string()]);
         assert_eq!(input.models.len(), 1);
         assert_eq!(input.models[0].public_model, "sonnet");

@@ -2335,8 +2335,9 @@ use crate::proxy_core::api::ports::{
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
 pub(crate) use crate::proxy_core::api::routing::{
-    failover_config_read_error_log_line, provider_router_auto_failover_enabled_decision,
-    route_policy_failover_provider_ids, RoutePolicy,
+    effective_channel_health_failure_threshold, failover_config_read_error_log_line,
+    provider_router_auto_failover_enabled_decision, route_policy_failover_provider_ids,
+    RoutePolicy,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::claude_api_format_from_metadata;
@@ -5186,6 +5187,7 @@ pub(crate) fn channel_record_to_route_resolve_channel_input(
             .collect(),
         priority: channel.priority,
         weight: channel.weight,
+        health_policy: channel.health_policy,
         source_kind: channel.source_kind,
     })
 }
@@ -11229,6 +11231,7 @@ base_url = "https://api.openai.com/v1"
                 }],
                 priority: 100,
                 weight: 1,
+                health_policy: json!({}),
                 source_kind: "legacy_provider".to_string(),
             }],
             ChannelRouteSource::MaterializedChannels,

@@ -6,7 +6,8 @@ use crate::error::AppError;
 use crate::proxy::circuit_breaker::CircuitBreaker;
 use crate::proxy_core_adapter::{
     app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
-    channel_health_reset_from_parts, provider_circuit_key, provider_circuit_key_prefix,
+    channel_health_reset_from_parts, effective_channel_health_failure_threshold,
+    provider_circuit_key, provider_circuit_key_prefix,
     select_failover_provider_ids_from_router_lookup_availability, AllowResult,
     ChannelAttemptResult, ChannelHealthReset, ChannelRouteSource, CircuitBreakerConfig,
     CircuitBreakerStats, ProviderFailoverCircuitLookup, RouteCandidateCircuitKey,
@@ -238,7 +239,11 @@ impl ProviderRouter {
         response_time_ms: Option<i64>,
     ) -> Result<(), AppError> {
         let failure_threshold = self
-            .failure_threshold_for_app(app_type, CircuitBreakerConfig::default().failure_threshold)
+            .channel_failure_threshold_for_app(
+                channel_id,
+                app_type,
+                CircuitBreakerConfig::default().failure_threshold,
+            )
             .await;
         let circuit_key = channel_circuit_key(app_type, channel_id);
         self.circuit_runtime
@@ -356,6 +361,30 @@ impl ProviderRouter {
             .config
             .failure_threshold(app_type, fallback)
             .await
+    }
+
+    async fn channel_failure_threshold_for_app(
+        &self,
+        channel_id: &str,
+        app_type: &str,
+        fallback: u32,
+    ) -> u32 {
+        let default_threshold = self.failure_threshold_for_app(app_type, fallback).await;
+        let Ok((channels, _source)) = self.sources.channels.channel_route_inputs(app_type).await
+        else {
+            return default_threshold;
+        };
+
+        channels
+            .iter()
+            .find(|channel| channel.channel_id == channel_id)
+            .map(|channel| {
+                effective_channel_health_failure_threshold(
+                    default_threshold,
+                    &channel.health_policy,
+                )
+            })
+            .unwrap_or(default_threshold)
     }
 }
 
@@ -476,7 +505,7 @@ mod tests {
     use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
     use crate::proxy_core_adapter::{
         management_route_response_from_router_source, ChannelRouteSource, CircuitState,
-        RouteResolveRequest,
+        ProxyChannelWriteRequest, RouteResolveRequest,
     };
     use crate::settings::CustomEndpoint;
     use serde_json::json;
@@ -758,6 +787,71 @@ mod tests {
         .unwrap();
         assert_eq!(recovered.candidates.len(), 1);
         assert!(recovered.rejected.is_empty());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn channel_health_policy_overrides_persisted_failure_threshold() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "provider-key" } }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+
+        let mut config = db.get_proxy_config_for_app("claude").await.unwrap();
+        config.circuit_failure_threshold = 1;
+        db.update_proxy_config_for_app(config).await.unwrap();
+
+        let channel_id = db
+            .create_proxy_channel(ProxyChannelWriteRequest {
+                id: Some("channel-health-policy".to_string()),
+                provider_id: "provider-a".to_string(),
+                app_type: "claude".to_string(),
+                name: "Channel Health Policy".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "anthropic_messages".to_string(),
+                health_policy: json!({"failureThreshold": 2}),
+                ..Default::default()
+            })
+            .unwrap()
+            .id;
+
+        let router = provider_router_from_database(db.clone());
+        router
+            .record_channel_result(
+                &channel_id,
+                "claude",
+                false,
+                false,
+                Some("first failure".to_string()),
+                None,
+            )
+            .await
+            .unwrap();
+
+        let degraded = db.get_proxy_channel_health(&channel_id).unwrap();
+        assert_eq!(degraded.status, "degraded");
+        assert_eq!(degraded.consecutive_failures, 1);
+
+        router
+            .record_channel_result(
+                &channel_id,
+                "claude",
+                false,
+                false,
+                Some("second failure".to_string()),
+                None,
+            )
+            .await
+            .unwrap();
+
+        let unhealthy = db.get_proxy_channel_health(&channel_id).unwrap();
+        assert_eq!(unhealthy.status, "unhealthy");
+        assert_eq!(unhealthy.consecutive_failures, 2);
     }
 
     #[tokio::test]

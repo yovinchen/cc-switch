@@ -1325,6 +1325,27 @@ fn positive_usize_from_json_value(value: &Value) -> Option<usize> {
         .filter(|value| *value > 0)
 }
 
+pub fn health_policy_failure_threshold(policy: &Value) -> Option<u32> {
+    let policy = policy.as_object()?;
+    policy
+        .get("failureThreshold")
+        .or_else(|| policy.get("failure_threshold"))
+        .and_then(positive_u32_from_json_value)
+}
+
+pub fn effective_channel_health_failure_threshold(
+    default_failure_threshold: u32,
+    health_policy: &Value,
+) -> u32 {
+    health_policy_failure_threshold(health_policy).unwrap_or(default_failure_threshold)
+}
+
+fn positive_u32_from_json_value(value: &Value) -> Option<u32> {
+    u32::try_from(value.as_u64()?)
+        .ok()
+        .filter(|value| *value > 0)
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RouteGroup {
@@ -2536,6 +2557,32 @@ mod tests {
             4
         );
         assert_eq!(effective_forward_max_attempts_for_channel(4, None), 4);
+    }
+
+    #[test]
+    fn channel_health_policy_projects_effective_failure_threshold() {
+        assert_eq!(
+            health_policy_failure_threshold(&json!({"failureThreshold": 2})),
+            Some(2)
+        );
+        assert_eq!(
+            health_policy_failure_threshold(&json!({"failure_threshold": 3})),
+            Some(3)
+        );
+        assert_eq!(
+            health_policy_failure_threshold(&json!({"failureThreshold": 0})),
+            None
+        );
+        assert_eq!(
+            health_policy_failure_threshold(&json!({"failureThreshold": "2"})),
+            None
+        );
+        assert_eq!(health_policy_failure_threshold(&json!(["invalid"])), None);
+        assert_eq!(
+            effective_channel_health_failure_threshold(4, &json!({"failureThreshold": 2})),
+            2
+        );
+        assert_eq!(effective_channel_health_failure_threshold(4, &json!({})), 4);
     }
 
     #[test]

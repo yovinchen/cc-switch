@@ -16472,7 +16472,7 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
     );
     let adapter_routing_import = function_slice(
         &adapter_source,
-        "pub(crate) use crate::proxy_core::api::routing::{\n    failover_config_read_error_log_line",
+        "pub(crate) use crate::proxy_core::api::routing::{",
         "};\n#[cfg(test)]\npub(crate) use crate::proxy_core::api::transforms::claude_api_format_from_metadata;",
     );
     assert!(
@@ -19160,6 +19160,14 @@ fn production_provider_router_records_channel_health_with_core_attempt_fact() {
             && router_slice.contains("BoxFuture<'a, Result<(), AppError>>")
             && router_slice.contains(".record_channel_health(ChannelAttemptResult {"),
         "ProviderRouter channel write must pass the core ChannelAttemptResult fact to its health store"
+    );
+    assert!(
+        source.contains("effective_channel_health_failure_threshold")
+            && router_slice.contains("channel_failure_threshold_for_app(")
+            && source.contains("self.sources.channels.channel_route_inputs(app_type)")
+            && source.contains("effective_channel_health_failure_threshold(")
+            && source.contains("&channel.health_policy"),
+        "ProviderRouter channel health writes should resolve per-channel health policy through the core helper"
     );
     assert!(
         !router_slice.contains("record_channel_health(\n            channel_id,"),

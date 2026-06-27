@@ -278,7 +278,8 @@ pub mod routing {
         ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, ResolvedChannelAttempt, RoutePlan,
         RoutePlanProviderMatch, RoutePolicy, RouteRequest, RouteSelection, DEFAULT_ROUTE_GROUP,
         auth_channel_spec_from_attempt, default_auth_interface_for_app_kind,
-        effective_forward_max_attempts_for_channel,
+        effective_channel_health_failure_threshold, effective_forward_max_attempts_for_channel,
+        health_policy_failure_threshold,
         forwarding_requires_runtime_error, forwarding_requires_runtime_error_message, build_route_plan,
         build_route_plan_with_weighted_roll, interfaces_compatible,
         resolved_channel_attempt_retry_max_attempts, retry_policy_max_attempts, route_group_matches,
@@ -367,7 +368,7 @@ pub mod prelude {
     };
     pub use super::domain::{
         build_route_plan, build_route_plan_with_weighted_roll, channel_spec_from_input,
-        effective_forward_max_attempts_for_channel,
+        effective_channel_health_failure_threshold, effective_forward_max_attempts_for_channel,
         provider_adapter_kind_for_app, AppKind, AppProviderAdapterKind, AuthProfileRef,
         ChannelAttemptPlan, ChannelAttemptResult, ChannelSpecInput, InterfaceKind, ModelRoute,
         ModelRouteInput, ProviderKind, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan,
