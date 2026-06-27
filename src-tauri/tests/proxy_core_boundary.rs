@@ -6311,6 +6311,17 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
         "response pipeline should own bottom passthrough usage-record construction"
     );
     assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
+    for marker in [
+        "pub(crate) use crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback",
+        "pub(crate) use crate::proxy_core::api::usage::usage_record_debug_log_message",
+        "pub(crate) use crate::proxy_core::api::usage::usage_record_failure_warning_message",
+        "usage_record_debug_log_message, usage_record_failure_warning_message",
+    ] {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not re-export pure usage logging helper `{marker}`"
+        );
+    }
     assert!(
         !adapter_source.contains("pub(crate) fn usage_logging_enabled_from_proxy_config")
             && !adapter_source.contains("pub(crate) struct StreamingUsageCollectorContext")

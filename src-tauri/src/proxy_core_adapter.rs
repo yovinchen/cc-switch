@@ -2383,15 +2383,9 @@ pub(crate) use crate::proxy_core::api::transport::{
 pub(crate) use crate::proxy_core::api::transport::{
     resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
 };
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback;
 pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
     PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
-};
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::usage::{
-    usage_record_debug_log_message, usage_record_failure_warning_message,
 };
 
 use crate::proxy::host::cc_switch::managed_account_runtime_source::managed_account_runtime_source_from_app_handle;
@@ -7293,7 +7287,7 @@ pub(crate) fn success_usage_record_from_app_type_with_request_id_fallback(
     session_id: Option<String>,
     request_id_fallback: impl FnOnce() -> String,
 ) -> UsageRecord {
-    success_usage_record_with_request_id_fallback(
+    crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback(
         provider_id,
         provider_kind,
         AppKind::from(app_type),
@@ -16602,21 +16596,21 @@ command = "latest-command"
             "[Codex] 跳过转换流式 usage 收集：ProxyEngine 尚未回填 selected provider"
         );
         assert_eq!(
-            usage_record_failure_warning_message(
+            crate::proxy_core::api::usage::usage_record_failure_warning_message(
                 UsageRecordFailureLogContext::ForwardError,
                 "db failed"
             ),
             "记录失败请求日志失败: db failed"
         );
         assert_eq!(
-            usage_record_failure_warning_message(
+            crate::proxy_core::api::usage::usage_record_failure_warning_message(
                 UsageRecordFailureLogContext::UsageRecord,
                 "db failed"
             ),
             "[USG-001] 记录使用量失败: db failed"
         );
         assert_eq!(
-            usage_record_debug_log_message(&record),
+            crate::proxy_core::api::usage::usage_record_debug_log_message(&record),
             "[claude] 记录请求日志: provider=provider-a, model=upstream-sonnet, streaming=true, status=200, latency_ms=42, first_token_ms=Some(7), session=session-a, input=1000, output=500, cache_read=0, cache_creation=0"
         );
         assert!(crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag(Some(true)));
