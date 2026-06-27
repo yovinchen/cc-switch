@@ -6003,6 +6003,52 @@ fn provider_and_claude_desktop_tests_import_proxy_config_directly() {
 }
 
 #[test]
+fn route_attempt_tests_import_route_contracts_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = "src/proxy/route_attempt.rs";
+    let source = fs::read_to_string(manifest_dir.join(relative)).expect("read route_attempt.rs");
+
+    let required_imports = [
+        "use crate::proxy_core::api::domain::{",
+        "AppKind, ChannelOverrides, ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata,",
+        "use crate::proxy_core::api::routing::{ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan};",
+    ];
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(&source);
+    let mut violations = Vec::new();
+
+    for required_import in required_imports {
+        if !source.contains(required_import) {
+            violations.push(format!(
+                "{relative} should import `{required_import}` directly from proxy_core"
+            ));
+        }
+    }
+
+    for forbidden in [
+        "AppKind",
+        "ChannelRouteCandidate",
+        "ProviderKind",
+        "ProxyCoreAppKind",
+        "RoutePlan",
+    ] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == forbidden)
+        {
+            violations.push(format!(
+                "{relative} imports route attempt test contract `{forbidden}` through proxy_core_adapter"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "route_attempt tests should not route pure domain/routing contracts through proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_delegates_codex_base_url_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

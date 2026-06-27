@@ -166,13 +166,10 @@ pub(crate) fn apply_channel_model_override(body: &mut serde_json::Value, attempt
 mod tests {
     use super::*;
     use crate::proxy_core::api::domain::{
-        ChannelOverrides, ModelCapabilities, ModelRoute, ProviderMetadata, ProviderSpec,
-        UpstreamEndpoint,
+        AppKind, ChannelOverrides, ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata,
+        ProviderSpec, UpstreamEndpoint,
     };
-    use crate::proxy_core::api::routing::{ChannelSpec, ChannelStatus, InterfaceKind};
-    use crate::proxy_core_adapter::{
-        ChannelRouteCandidate, ProviderKind, ProxyCoreAppKind as AppKind, RoutePlan,
-    };
+    use crate::proxy_core::api::routing::{ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan};
     use serde_json::json;
 
     fn auth_profile_ref<T: serde::de::DeserializeOwned>(value: &str) -> T {
