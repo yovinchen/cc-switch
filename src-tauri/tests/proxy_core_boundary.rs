@@ -5323,6 +5323,18 @@ fn proxy_core_adapter_does_not_export_attempt_result_aliases() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_circuit_breaker_failure_alias() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    assert!(
+        !adapter_source.contains("pub(crate) type CircuitBreakerFailureDecision ="),
+        "proxy_core_adapter should not expose CircuitBreakerFailureDecision as a type alias; callers and adapter internals should use proxy_core::api::config directly"
+    );
+}
+
+#[test]
 fn engine_and_host_test_fixtures_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases: &[(&str, &[&str], &[&str])] = &[
@@ -19879,7 +19891,8 @@ fn production_circuit_breaker_imports_config_contracts_directly() {
 
     let required_imports = [
         "use crate::proxy_core::api::config::{",
-        "AllowResult, CircuitBreakerConfig, CircuitBreakerStats, CircuitState,",
+        "AllowResult, CircuitBreakerConfig, CircuitBreakerFailureDecision, CircuitBreakerStats,",
+        "CircuitState,",
     ];
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
     let mut violations = Vec::new();
@@ -19895,6 +19908,7 @@ fn production_circuit_breaker_imports_config_contracts_directly() {
     for forbidden in [
         "AllowResult",
         "CircuitBreakerConfig",
+        "CircuitBreakerFailureDecision",
         "CircuitBreakerStats",
         "CircuitState",
     ] {

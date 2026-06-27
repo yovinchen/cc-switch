@@ -2106,8 +2106,6 @@ pub(crate) fn forwarder_rectifier_retry_failure_log_line(
     )
 }
 
-pub(crate) type CircuitBreakerFailureDecision =
-    crate::proxy_core::api::config::CircuitBreakerFailureDecision;
 pub(crate) use crate::proxy_core::api::auth::{
     classify_provider_managed_auth as core_classify_provider_managed_auth,
     codex_oauth_access_token_expires_at_ms, codex_oauth_authorization_code_form,
