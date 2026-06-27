@@ -6151,6 +6151,60 @@ fn engine_routing_tests_import_route_contracts_directly() {
 }
 
 #[test]
+fn production_engine_routing_imports_route_contracts_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = "src/proxy/engine/routing.rs";
+    let source = fs::read_to_string(manifest_dir.join(relative)).expect("read engine/routing.rs");
+    let import_slice = function_slice(&source, "use crate::error::AppError;", "use futures::");
+
+    let required_imports = [
+        "use crate::proxy_core::api::{",
+        "config::{AllowResult, CircuitBreakerConfig, CircuitBreakerStats},",
+        "management::ChannelRouteSource,",
+        "ports::{ChannelAttemptResult, ChannelHealthReset},",
+        "routing::{",
+        "ProviderFailoverCircuitLookup, RouteCandidateCircuitKey, RouteResolveChannelInput",
+    ];
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
+    let mut violations = Vec::new();
+
+    for required_import in required_imports {
+        if !import_slice.contains(required_import) {
+            violations.push(format!(
+                "{relative} should import `{required_import}` directly from proxy_core"
+            ));
+        }
+    }
+
+    for forbidden in [
+        "AllowResult",
+        "ChannelAttemptResult",
+        "ChannelHealthReset",
+        "ChannelRouteSource",
+        "CircuitBreakerConfig",
+        "CircuitBreakerStats",
+        "ProviderFailoverCircuitLookup",
+        "RouteCandidateCircuitKey",
+        "RouteResolveChannelInput",
+    ] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == forbidden)
+        {
+            violations.push(format!(
+                "{relative} imports routing contract `{forbidden}` through proxy_core_adapter"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production engine/routing should not route pure routing contracts through proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn http_server_tests_import_route_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let relative = "src/proxy/transport/http/server.rs";

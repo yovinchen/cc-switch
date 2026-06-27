@@ -2053,8 +2053,6 @@ pub(crate) type RouteResolveRequest = crate::proxy_core::api::management::RouteR
 pub(crate) type RouteResolveResponse = crate::proxy_core::api::management::RouteResolveResponse;
 pub(crate) type RouteResolveChannelInput =
     crate::proxy_core::api::routing::RouteResolveChannelInput;
-pub(crate) type RouteCandidateCircuitKey =
-    crate::proxy_core::api::routing::RouteCandidateCircuitKey;
 pub(crate) type ChannelRouteCandidate = crate::proxy_core::api::routing::ChannelRouteCandidate;
 pub(crate) type ResolvedChannelAttempt = crate::proxy_core::api::routing::ResolvedChannelAttempt;
 pub(crate) type RoutePlan = crate::proxy_core::api::routing::RoutePlan;

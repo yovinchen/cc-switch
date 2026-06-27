@@ -4,14 +4,17 @@
 
 use crate::error::AppError;
 use crate::proxy::circuit_breaker::CircuitBreaker;
+use crate::proxy_core::api::{
+    config::{AllowResult, CircuitBreakerConfig, CircuitBreakerStats},
+    management::ChannelRouteSource,
+    ports::{ChannelAttemptResult, ChannelHealthReset},
+    routing::{ProviderFailoverCircuitLookup, RouteCandidateCircuitKey, RouteResolveChannelInput},
+};
 use crate::proxy_core_adapter::{
     app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
     channel_health_reset_from_parts, effective_channel_health_failure_threshold,
     provider_circuit_key, provider_circuit_key_prefix,
-    select_failover_provider_ids_from_router_lookup_availability, AllowResult,
-    ChannelAttemptResult, ChannelHealthReset, ChannelRouteSource, CircuitBreakerConfig,
-    CircuitBreakerStats, ProviderFailoverCircuitLookup, RouteCandidateCircuitKey,
-    RouteResolveChannelInput,
+    select_failover_provider_ids_from_router_lookup_availability,
 };
 use futures::future::BoxFuture;
 use std::collections::HashMap;
