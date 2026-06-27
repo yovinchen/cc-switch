@@ -5161,9 +5161,13 @@ fn engine_and_host_test_fixtures_import_core_contracts_directly() {
             "src/proxy/host/cc_switch/channel_key_runtime_source.rs",
             &[
                 "use crate::proxy_core::api::management::{",
-                "ProxyChannelKeyWriteRequest, ProxyChannelWriteRequest,",
+                "ProxyChannelKeyWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,",
             ],
-            &["ProxyChannelKeyWriteRequest", "ProxyChannelWriteRequest"],
+            &[
+                "ProxyChannelKeyWriteRequest",
+                "ProxyChannelPatchRequest",
+                "ProxyChannelWriteRequest",
+            ],
         ),
     ];
 

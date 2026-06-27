@@ -120,7 +120,7 @@ mod tests {
     use super::*;
     use crate::provider::Provider;
     use crate::proxy_core::api::management::{
-        ProxyChannelKeyWriteRequest, ProxyChannelWriteRequest,
+        ProxyChannelKeyWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
     };
     use serde_json::json;
 
@@ -288,7 +288,7 @@ mod tests {
         let _ = db
             .update_proxy_channel(
                 "channel-key-candidate",
-                crate::proxy_core_adapter::ProxyChannelPatchRequest {
+                ProxyChannelPatchRequest {
                     health_policy: Some(json!({"keyFailureCooldownMs": 1})),
                     ..Default::default()
                 },
