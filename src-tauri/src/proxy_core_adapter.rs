@@ -2054,9 +2054,6 @@ pub(crate) enum ForwarderRectifierRetryFailureDecision {
     ProviderFailure,
     ClientFailure,
 }
-pub(crate) type ForwarderRectifierRetryKind =
-    crate::proxy_core::api::transport::ForwarderRectifierRetryKind;
-
 pub(crate) fn terminal_forward_failure_log_line_for_error(
     app_type: &str,
     attempted_providers: usize,
@@ -2198,6 +2195,7 @@ pub(crate) use crate::proxy_core::api::transforms::{
     ClaudeApiFormatRequestTransformContext, ClaudeApiFormatSseTransformContext,
     ClaudeTransformStreamingDecision,
 };
+use crate::proxy_core::api::transport::ForwarderRectifierRetryKind;
 pub(crate) use crate::proxy_core::api::transport::ProxyRequest;
 pub(crate) use crate::proxy_core::api::transport::{
     build_claude_provider_auth_headers, build_claude_upstream_url,

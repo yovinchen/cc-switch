@@ -11,6 +11,7 @@ use crate::proxy::{
 };
 use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 use crate::proxy_core::api::routing::ResolvedChannelAttempt;
+use crate::proxy_core::api::transport::ForwarderRectifierRetryKind;
 #[cfg(test)]
 use crate::proxy_core_adapter::provider_is_codex_oauth;
 use crate::proxy_core_adapter::{
@@ -24,11 +25,10 @@ use crate::proxy_core_adapter::{
     ForwarderFailureDecision, ForwarderMaybeCopilotAuthOptimizationInput,
     ForwarderMediaRetryPlanInput, ForwarderProtocolPreparationInput,
     ForwarderProtocolStateSourceRef, ForwarderProviderRequestBodyInput, ForwarderProviderUrlFacts,
-    ForwarderRectifierRetryFailureDecision, ForwarderRectifierRetryKind,
-    ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
-    ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan, ForwarderRequestSourceRef,
-    ForwarderResponseFinalizationInput, ForwarderResponseSourceRef, ForwarderRuntimeConfig,
-    ForwarderRuntimeStateSourceRef, ForwarderThinkingBudgetRectifierInput,
+    ForwarderRectifierRetryFailureDecision, ForwarderRequestBodyTransformInput,
+    ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan,
+    ForwarderRequestSourceRef, ForwarderResponseFinalizationInput, ForwarderResponseSourceRef,
+    ForwarderRuntimeConfig, ForwarderRuntimeStateSourceRef, ForwarderThinkingBudgetRectifierInput,
     ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
     ForwarderTransportSourceRef, ForwarderUpstreamRequestLogInput,
     ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,

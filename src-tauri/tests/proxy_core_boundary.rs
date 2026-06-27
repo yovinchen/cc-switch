@@ -2028,7 +2028,7 @@ fn is_allowed_forwarder_runtime_state_core_import(relative: &str, code: &str) ->
             code.trim(),
             "use crate::proxy_core::api::events::AttemptEventPhase;"
                 | "use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};"
-                | "use crate::proxy_core::api::transport::ForwardFailureCategory;"
+                | "use crate::proxy_core::api::transport::{ForwardFailureCategory, ForwarderRectifierRetryKind};"
         )
 }
 
@@ -5331,6 +5331,18 @@ fn proxy_core_adapter_does_not_export_circuit_breaker_failure_alias() {
     assert!(
         !adapter_source.contains("pub(crate) type CircuitBreakerFailureDecision ="),
         "proxy_core_adapter should not expose CircuitBreakerFailureDecision as a type alias; callers and adapter internals should use proxy_core::api::config directly"
+    );
+}
+
+#[test]
+fn proxy_core_adapter_does_not_export_forwarder_rectifier_retry_kind_alias() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    assert!(
+        !adapter_source.contains("pub(crate) type ForwarderRectifierRetryKind ="),
+        "proxy_core_adapter should not expose ForwarderRectifierRetryKind as a type alias; callers and adapter internals should use proxy_core::api::transport directly"
     );
 }
 
@@ -11284,6 +11296,7 @@ fn settings_runtime_config_callers_use_core_dto_entrypoint() {
             vec![
                 required_import,
                 "use crate::proxy_core::api::routing::ResolvedChannelAttempt;",
+                "use crate::proxy_core::api::transport::ForwarderRectifierRetryKind;",
             ]
         } else {
             vec![required_import]
@@ -15293,7 +15306,7 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     let rectifier_retry_failure_decision_slice = function_slice(
         &adapter_source,
         "pub(crate) enum ForwarderRectifierRetryFailureDecision",
-        "pub(crate) type ForwarderRectifierRetryKind",
+        "pub(crate) fn terminal_forward_failure_log_line_for_error",
     );
     let provider_failure_runtime_source_slice = function_slice(
         &adapter_source,
@@ -15320,15 +15333,28 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         runtime_source.contains("use crate::proxy_core::api::events::AttemptEventPhase;")
             && runtime_source
                 .contains("use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};")
-            && runtime_source
-                .contains("use crate::proxy_core::api::transport::ForwardFailureCategory;"),
+            && runtime_source.contains(
+                "use crate::proxy_core::api::transport::{ForwardFailureCategory, ForwarderRectifierRetryKind};"
+            ),
         "default ForwarderRuntimeStateSource should import runtime/event/transport contracts directly from proxy_core"
     );
+    assert!(
+        source.contains("use crate::proxy_core::api::transport::ForwarderRectifierRetryKind;"),
+        "RequestForwarder should import rectifier retry kind directly from proxy_core transport"
+    );
+    let forwarder_adapter_imports = proxy_core_adapter_import_identifiers(&source);
     let runtime_state_adapter_imports = proxy_core_adapter_import_identifiers(&runtime_source);
+    assert!(
+        !forwarder_adapter_imports
+            .iter()
+            .any(|identifier| identifier == "ForwarderRectifierRetryKind"),
+        "RequestForwarder must not import ForwarderRectifierRetryKind through proxy_core_adapter"
+    );
     for adapter_type in [
         "AttemptEventPhase",
         "CurrentRouteTarget",
         "ForwardFailureCategory",
+        "ForwarderRectifierRetryKind",
         "ProxyRuntimeStatus",
     ] {
         assert!(
