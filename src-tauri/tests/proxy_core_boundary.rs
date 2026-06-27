@@ -2008,6 +2008,15 @@ fn is_allowed_http_server_test_core_import(relative: &str, code: &str) -> bool {
         )
 }
 
+fn is_allowed_http_server_runtime_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/transport/http/server.rs"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};"
+                | "use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo};"
+        )
+}
+
 #[test]
 fn host_code_uses_proxy_core_through_adapter_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -2058,6 +2067,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_test_proxy_config_core_import(&relative, code)
                     && !is_allowed_engine_routing_test_core_import(&relative, code)
                     && !is_allowed_http_server_test_core_import(&relative, code)
+                    && !is_allowed_http_server_runtime_core_import(&relative, code)
                 {
                     violations.push(format!(
                         "{}:{} contains direct proxy-core marker `{}`",
@@ -18898,6 +18908,56 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
     assert!(
         violations.is_empty(),
         "production ProxyServer must delegate runtime state projection/mutation to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_http_server_imports_runtime_contracts_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = "src/proxy/transport/http/server.rs";
+    let source = fs::read_to_string(manifest_dir.join(relative)).expect("read server.rs");
+    let import_slice = function_slice(
+        &source,
+        "#[cfg(test)]\nuse crate::database::Database;",
+        "use axum::{",
+    );
+
+    let required_imports = [
+        "use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};",
+        "use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo};",
+    ];
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
+    let mut violations = Vec::new();
+
+    for required_import in required_imports {
+        if !import_slice.contains(required_import) {
+            violations.push(format!(
+                "{relative} should import `{required_import}` directly from proxy_core"
+            ));
+        }
+    }
+
+    for forbidden in [
+        "CircuitBreakerConfig",
+        "CircuitBreakerStats",
+        "ProxyConfig",
+        "ProxyRuntimeStatus",
+        "ProxyServerInfo",
+    ] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == forbidden)
+        {
+            violations.push(format!(
+                "{relative} imports runtime contract `{forbidden}` through proxy_core_adapter"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production HTTP server should not route pure runtime contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
