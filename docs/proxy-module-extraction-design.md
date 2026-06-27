@@ -1712,6 +1712,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1226. `proxy_core_adapter` 的 test-only `UsageTokens` type alias 已删除；`proxy_core_host` 兼容壳测试通过 serde 字段类型推断构造 usage token DTO，避免直接 import core，同时 session-usage 边界测试防止该 DTO 再作为 adapter facade 暴露。
 1227. `proxy_core_adapter` 的 test-only `AuthProfileRef` type alias 已删除；`route_attempt` 与 `proxy_core_host` 测试通过 serde 字段类型推断构造 auth profile ref，adapter 自测直接调用 owning core domain type，channel-auth-profile 边界测试防止该 DTO 再作为 adapter facade 暴露。
 1228. `proxy_core_adapter` 的 test-only `ProviderCredentialValues` DTO alias 已删除；`provider_credential_values` 测试 helper 保留为 test-only contract，但直接返回 `proxy_core::api::ports` owning DTO，凭据策略边界测试防止 provider credential DTO 再作为 adapter facade 暴露。
+1229. `proxy_core_adapter` 的 test-only `ProxyCoreEventType` DTO alias 已删除；adapter 自测直接调用 `proxy_core::api::events` owning enum，`proxy_core_host` 兼容壳测试通过 serde 字段类型推断构造事件类型，event-sink 边界测试防止 event DTO 再作为 adapter facade 暴露。
 
 ## 背景
 
