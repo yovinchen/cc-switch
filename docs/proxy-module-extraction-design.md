@@ -1730,6 +1730,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1244. model route 的 `pricingModel` 已接入 usage 归因：`usage_route_context_from_selection` 会从选中 `RouteSelection.model_route.pricing_model` 提取非空计价模型，`usage_record_with_route_context` 在 usage record 尚未显式携带 pricing model 时写入该 route-level pricing model；这样同一中转地址下不同 public/upstream model 可以独立指定计价模型，落库成本计算不再只能依赖响应模型或 outbound model fallback。
 1245. model route 的 `pricingModel` 已进入 runtime/external route state：`ResolvedChannelAttempt` 会携带选中 model route 的计价模型，attempt event payload 与 current-route target 都序列化 `pricingModel`，管理 API 和运行时状态可以观察到当前中转地址实际采用的计价模型；request/response override body 仍不进入这些外部状态 payload，继续避免泄露上游迁移策略细节。
 1246. host-owned `channel_auth_profile_attempts` 已直接引用 `proxy-core::api::routing` 的 `RoutePlan`、provider-match 与 route-plan error helper；`proxy_core_adapter` 不再作为 provider match 中转，只保留仍被 adapter-local 测试使用的 no-matching helper。forward runtime 的 attempt 生成、channel auth profile provider/key 注入继续归属 CC Switch host source，core 只提供纯 route/auth 决策。
+1247. 全局代理 URL masking 的 pure security helper 已从 `proxy_core_adapter` facade 移除：host-owned `global_http_client` 直接引用 `proxy-core::api::security::mask_url_for_log` 并向命令层提供本地 logging wrapper，`commands/global_proxy` 不再直接依赖 adapter 或 core security facade；adapter 只继续承接显式代理 URL 校验和 loopback policy 等尚未迁完的兼容入口。
 
 ## 背景
 
