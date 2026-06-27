@@ -7,6 +7,7 @@ use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
 use crate::database::Database;
 use crate::provider::Provider;
 use crate::proxy::switch_lock::SwitchLockManager;
+use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_claude_takeover_fields_with_policy,
     apply_codex_takeover_fields_for_provider, apply_codex_unified_session_bucket_for_provider,
@@ -49,8 +50,7 @@ use crate::proxy_core_adapter::{
     update_proxy_config_preserving_live_takeover_active_in_db,
     write_ssot_live_restore_provider_with_common_config, CcSwitchProxyServer, CircuitBreakerConfig,
     CircuitBreakerStats, ClaudeTakeoverAuthPolicy, CodexLiveWriteProjection,
-    CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus,
-    ProxyServerInfo, ProxyTakeoverStatus,
+    CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyServerInfo, ProxyTakeoverStatus,
 };
 #[cfg(test)]
 use serde_json::Map;

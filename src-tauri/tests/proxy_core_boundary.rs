@@ -2026,6 +2026,11 @@ fn is_allowed_forwarder_runtime_state_core_import(relative: &str, code: &str) ->
         )
 }
 
+fn is_allowed_live_takeover_runtime_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/host/cc_switch/live_takeover.rs"
+        && code.trim() == "use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};"
+}
+
 #[test]
 fn host_code_uses_proxy_core_through_adapter_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -2078,6 +2083,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_http_server_test_core_import(&relative, code)
                     && !is_allowed_http_server_runtime_core_import(&relative, code)
                     && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
+                    && !is_allowed_live_takeover_runtime_core_import(&relative, code)
                 {
                     violations.push(format!(
                         "{}:{} contains direct proxy-core marker `{}`",
@@ -11751,6 +11757,42 @@ fn production_services_proxy_legacy_module_removed_after_live_takeover_split() {
         production_code
             .contains(&"pub use crate::proxy::host::cc_switch::live_takeover::ProxyService;"),
         "services/mod.rs should keep services::ProxyService by directly re-exporting the owning host type"
+    );
+}
+
+#[test]
+fn production_live_takeover_imports_runtime_contracts_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = "src/proxy/host/cc_switch/live_takeover.rs";
+    let source = fs::read_to_string(manifest_dir.join(relative))
+        .expect("read host/cc_switch/live_takeover.rs");
+    let import_slice = function_slice(&source, "use crate::app_config::AppType;", "#[cfg(test)]");
+
+    let required_import = "use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};";
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
+    let mut violations = Vec::new();
+
+    if !import_slice.contains(required_import) {
+        violations.push(format!(
+            "{relative} should import `{required_import}` directly from proxy_core"
+        ));
+    }
+
+    for forbidden in ["ProxyConfig", "ProxyRuntimeStatus"] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == forbidden)
+        {
+            violations.push(format!(
+                "{relative} imports runtime contract `{forbidden}` through proxy_core_adapter"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "live takeover should not route pure runtime contracts through proxy_core_adapter:\n{}",
+        violations.join("\n")
     );
 }
 
