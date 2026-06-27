@@ -1755,6 +1755,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1269. channel spec 构造的 test-only domain facade 已删除：adapter 自测直接从 `proxy-core::api::domain` 引用 `channel_spec_from_input` 与 `ChannelSpecInput`，host-owned database channel source 继续直接消费 core channel contract；边界测试防止该 pure DTO constructor 重新作为 `proxy_core_adapter` re-export。
 1270. adapter 自测专用的 routing/transform 类型别名继续收窄：`LegacyChannelProjectionInput`、`ProviderSelectionCandidate`、`CodexProxyErrorContext` 与 `CodexProxyErrorKind` 改为在 adapter 测试模块中直接从 `proxy-core::api` 导入，`proxy_core_adapter` 不再为这些 pure test contracts 保留 `#[cfg(test)]` type alias；边界测试防止这些 alias 回流。
 1271. adapter 自测专用的 `InterfaceKind` 短别名已删除：测试模块直接从 `proxy-core::api::routing` 导入 owning enum，生产兼容别名 `ProxyCoreInterfaceKind` 暂不在本切片变更；边界测试防止 `proxy_core_adapter` 重新添加该 short `#[cfg(test)]` alias。
+1272. route selection 相关的 test-only contract facade 已删除：`proxy_core_host`、`route_attempt` 测试和 adapter 自测直接从 `proxy-core::api::{domain,routing}` 引用 `UpstreamEndpoint`、`RetryPolicy` 与 `RouteSelection`，`proxy_core_adapter` 不再保留这些 `#[cfg(test)]` alias；边界测试同时检查 host 测试壳的 direct-core import 和 adapter alias 禁止项。
 
 ## 背景
 
