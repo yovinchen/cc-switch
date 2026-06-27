@@ -2112,8 +2112,6 @@ pub(crate) type ChannelRouteSource = crate::proxy_core::api::management::Channel
 pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecord;
 #[cfg(test)]
 use crate::proxy_core::api::management::StreamCheckResult;
-#[cfg(test)]
-pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
 pub(crate) type LegacyChannelModelProjection =
     crate::proxy_core::api::routing::LegacyChannelModelProjection;
 pub(crate) type LegacyChannelProjection = crate::proxy_core::api::routing::LegacyChannelProjection;
@@ -7500,7 +7498,7 @@ mod tests {
     use crate::proxy_core::api::management::{ChannelKeyRuntimeCandidate, ChannelTestProbeRequest};
     use crate::proxy_core::api::model_catalog::CopilotModel;
     use crate::proxy_core::api::routing::{
-        LegacyChannelProjectionInput, ProviderSelectionCandidate,
+        InterfaceKind, LegacyChannelProjectionInput, ProviderSelectionCandidate,
     };
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{
