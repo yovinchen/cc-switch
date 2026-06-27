@@ -1391,7 +1391,6 @@ pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
 pub(crate) type AllowResult = crate::proxy_core::api::config::AllowResult;
 pub(crate) type CircuitBreakerConfig = crate::proxy_core::api::config::CircuitBreakerConfig;
 pub(crate) type CircuitBreakerStats = crate::proxy_core::api::config::CircuitBreakerStats;
-pub(crate) type CircuitState = crate::proxy_core::api::config::CircuitState;
 
 pub(crate) mod circuit_breaker_log_codes {
     pub(crate) const OPEN_TO_HALF_OPEN: &str =
@@ -7256,6 +7255,7 @@ fn account_ref(provider: &Provider) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use crate::proxy_core::api::config::CircuitState;
     use crate::proxy_core::api::ports::{
         claude_env_credentials_from_settings, claude_takeover_model_fields_from_settings,
         codex_auth_object_value_from_settings, gemini_env_map_from_settings, json_deep_merge,

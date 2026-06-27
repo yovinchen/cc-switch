@@ -2035,6 +2035,11 @@ fn is_allowed_live_takeover_runtime_core_import(relative: &str, code: &str) -> b
         )
 }
 
+fn is_allowed_circuit_breaker_config_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/circuit_breaker.rs"
+        && code.trim() == "use crate::proxy_core::api::config::{"
+}
+
 #[test]
 fn host_code_uses_proxy_core_through_adapter_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -2088,6 +2093,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_http_server_runtime_core_import(&relative, code)
                     && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
+                    && !is_allowed_circuit_breaker_config_core_import(&relative, code)
                 {
                     violations.push(format!(
                         "{}:{} contains direct proxy-core marker `{}`",
@@ -19659,6 +19665,51 @@ fn production_circuit_breaker_keeps_state_accessor_test_only() {
         state_accessor_slice.contains("#[cfg(test)]")
             && !state_accessor_slice.contains("#[allow(dead_code)]"),
         "CircuitBreaker::get_state should remain a test-only accessor, not production dead code"
+    );
+}
+
+#[test]
+fn production_circuit_breaker_imports_config_contracts_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = "src/proxy/circuit_breaker.rs";
+    let source = fs::read_to_string(manifest_dir.join(relative)).expect("read circuit_breaker.rs");
+    let import_slice = function_slice(&source, "use crate::", "use std::sync::atomic");
+
+    let required_imports = [
+        "use crate::proxy_core::api::config::{",
+        "AllowResult, CircuitBreakerConfig, CircuitBreakerStats, CircuitState,",
+    ];
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
+    let mut violations = Vec::new();
+
+    for required_import in required_imports {
+        if !import_slice.contains(required_import) {
+            violations.push(format!(
+                "{relative} should import `{required_import}` directly from proxy_core"
+            ));
+        }
+    }
+
+    for forbidden in [
+        "AllowResult",
+        "CircuitBreakerConfig",
+        "CircuitBreakerStats",
+        "CircuitState",
+    ] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == forbidden)
+        {
+            violations.push(format!(
+                "{relative} imports circuit-breaker contract `{forbidden}` through proxy_core_adapter"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production circuit breaker should not route pure config contracts through proxy_core_adapter:\n{}",
+        violations.join("\n")
     );
 }
 
