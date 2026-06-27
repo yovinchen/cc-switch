@@ -1790,6 +1790,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1304. `proxy/provider/mod` 不再通过 `proxy_core_adapter` 获取 provider adapter kind contract：`AppProviderAdapterKind` 直接来自 `proxy-core::api::domain`，adapter 仍保留 `provider_adapter_kind_for_app_type` 宿主 AppType 转换 helper，并删除不再需要的 `AppProviderAdapterKind` alias；边界测试防止 provider adapter registry 重新经 adapter alias 读取纯 domain contract。
 1305. `proxy_core_adapter` 不再暴露 `ProviderKind` 纯 domain alias：adapter 与 `proxy_core_host` 测试壳均直接 import `proxy-core::api::domain::ProviderKind`，外部仍通过具体 provider-kind projection/helper 获取宿主兼容结果；边界测试防止 `ProviderKind` 重新以 adapter type alias 或 host test import 回流。
 1306. `proxy_core_adapter` 不再暴露 `ProviderAuthInfo` 与 `ProviderAuthStrategy` 纯 auth contract alias：adapter 内部直接 import `proxy-core::api::auth` 类型，provider adapters 继续直接依赖 core auth contract；边界测试防止 provider auth DTO 重新通过 adapter alias 回流。
+1307. `proxy_core_adapter` 不再暴露 attempt event DTO alias：`AttemptEventChannel`、`AttemptEventPayloadInput` 与 `AttemptEventPhase` 直接作为 adapter 内部 `proxy-core::api::events` import 使用；边界测试防止事件 payload contract 重新以 adapter type alias 回流。
 
 ## 背景
 
