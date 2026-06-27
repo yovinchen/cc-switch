@@ -1741,6 +1741,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1255. `route_selection_for_forward_result` 兼容别名已从 `proxy_core_adapter` 移除：adapter 仍负责 host-shaped `ProxyResult` metadata 组装，但内部直接调用 `proxy-core::api::routing::select_route_for_forward_result` 选择 selected route；同时 `claude_api_format_needs_transform` test-only re-export 也删除，adapter 自测使用 fully-qualified core 调用，边界测试防止这两个 pure delegate 回流。
 1256. `route_plan_provider_ids` 的 test-only adapter re-export 已删除：adapter 自测直接调用 `proxy-core::api::routing::route_plan_provider_ids`，边界测试防止为测试便利重新把纯 routing helper 暴露在 adapter；生产侧 `route_candidate_provider_ids_from_router_source` 仍保留 host `ProviderRouter`/`AppError` 投影 wrapper。
 1257. `forward_pipeline` 测试的 pure upstream request/URL helper facade 已继续移除：请求模型/接口识别、Claude transform endpoint rewrite、query append、request transport policy、body preparation 与 exact-header-case policy 现在都直接从 `proxy-core::api::transport` 导入，`proxy_core_adapter` 不再保留对应 `#[cfg(test)]` re-export；provider auth 与 managed-account guard 这类 host-shaped wrapper 暂不纳入该测试 helper 清理。
+1258. `forward_pipeline` 测试的 pure transform cache-trace helper facade 已继续移除：canonical JSON 排序和短 hash 断言直接引用 `proxy-core::api::transforms::{canonical_json_string,short_value_hash}`，`proxy_core_adapter` 不再为测试便利 re-export 这两个 transform helper；边界测试同步防止它们回流到 adapter facade。
 
 ## 背景
 
