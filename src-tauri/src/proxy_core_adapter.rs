@@ -2117,9 +2117,6 @@ pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
 pub(crate) type LegacyChannelModelProjection =
     crate::proxy_core::api::routing::LegacyChannelModelProjection;
 pub(crate) type LegacyChannelProjection = crate::proxy_core::api::routing::LegacyChannelProjection;
-#[cfg(test)]
-pub(crate) type LegacyChannelProjectionInput =
-    crate::proxy_core::api::routing::LegacyChannelProjectionInput;
 pub(crate) type LegacyChannelMigrationPlanInput =
     crate::proxy_core::api::routing::LegacyChannelMigrationPlanInput;
 pub(crate) type LegacyEndpointInput = crate::proxy_core::api::routing::LegacyEndpointInput;
@@ -2138,9 +2135,6 @@ pub(crate) type ProxyChannelPatchRequest =
     crate::proxy_core::api::management::ProxyChannelPatchRequest;
 pub(crate) type ProxyChannelWriteRequest =
     crate::proxy_core::api::management::ProxyChannelWriteRequest;
-#[cfg(test)]
-pub(crate) type ProviderSelectionCandidate =
-    crate::proxy_core::api::routing::ProviderSelectionCandidate;
 pub(crate) type ProviderFailoverCircuitLookup =
     crate::proxy_core::api::routing::ProviderFailoverCircuitLookup;
 pub(crate) type ProviderSelectionFailure =
@@ -2165,11 +2159,6 @@ pub(crate) type ResolvedChannelAttempt = crate::proxy_core::api::routing::Resolv
 pub(crate) type RoutePlan = crate::proxy_core::api::routing::RoutePlan;
 #[cfg(test)]
 pub(crate) type RouteSelection = crate::proxy_core::api::routing::RouteSelection;
-#[cfg(test)]
-pub(crate) type CodexProxyErrorContext<'a> =
-    crate::proxy_core::api::transforms::CodexProxyErrorContext<'a>;
-#[cfg(test)]
-pub(crate) type CodexProxyErrorKind = crate::proxy_core::api::transforms::CodexProxyErrorKind;
 pub(crate) type ForwardFailureKind = crate::proxy_core::api::transport::ForwardFailureKind;
 pub(crate) enum ForwarderFailureDecision {
     Retryable,
@@ -7510,8 +7499,13 @@ mod tests {
     use crate::proxy_core::api::events::ProxyEventEnvelope;
     use crate::proxy_core::api::management::{ChannelKeyRuntimeCandidate, ChannelTestProbeRequest};
     use crate::proxy_core::api::model_catalog::CopilotModel;
+    use crate::proxy_core::api::routing::{
+        LegacyChannelProjectionInput, ProviderSelectionCandidate,
+    };
     use crate::proxy_core::api::session::SessionIdSource;
-    use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
+    use crate::proxy_core::api::transforms::{
+        CodexProxyErrorContext, CodexProxyErrorKind, GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
+    };
     use crate::proxy_core::api::transport::{
         anthropic_beta_header_value, build_claude_auth_headers, build_codex_bearer_auth_headers,
         build_copilot_auth_headers, build_gemini_auth_headers, build_upstream_request_headers,
