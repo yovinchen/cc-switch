@@ -295,7 +295,7 @@ use crate::proxy_core::api::ports::{
     codex_auth_object_value_from_settings,
     provider_codex_credential_values_from_parts as core_provider_codex_credential_values_from_parts,
     provider_non_codex_credential_values_from_settings as core_provider_non_codex_credential_values_from_settings,
-    CodexCredentialParts, ProviderCredentialValues as CoreProviderCredentialValues,
+    CodexCredentialParts,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::ports::{
@@ -1919,13 +1919,10 @@ pub(crate) fn provider_switch_should_mark_live_config_managed(
 }
 
 #[cfg(test)]
-pub(crate) type ProviderCredentialValues = CoreProviderCredentialValues;
-
-#[cfg(test)]
 pub(crate) fn provider_credential_values(
     provider: &Provider,
     app_type: &AppType,
-) -> Result<ProviderCredentialValues, ProviderCredentialIssue> {
+) -> Result<crate::proxy_core::api::ports::ProviderCredentialValues, ProviderCredentialIssue> {
     match app_type {
         AppType::Codex => {
             let auth = codex_auth_object_value_from_settings(&provider.settings_config)

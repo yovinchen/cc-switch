@@ -5512,9 +5512,12 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
 
     assert!(
-        source.contains("#[cfg(test)]\npub(crate) type ProviderCredentialValues")
-            && source.contains("#[cfg(test)]\npub(crate) fn provider_credential_values"),
+        source.contains("#[cfg(test)]\npub(crate) fn provider_credential_values"),
         "proxy_core_adapter credential value helper should remain test-only after production facade removal"
+    );
+    assert!(
+        !source.contains("pub(crate) type ProviderCredentialValues"),
+        "proxy_core_adapter should not re-export provider credential DTOs as adapter aliases"
     );
 
     let slice = function_slice(
