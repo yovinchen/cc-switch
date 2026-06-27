@@ -2375,10 +2375,6 @@ pub(crate) use crate::proxy_core::api::transport::{
     parse_custom_user_agent,
     provider_custom_user_agent_header as core_provider_custom_user_agent_header,
 };
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::{
-    resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
-};
 pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
     PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
@@ -11708,16 +11704,20 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn codex_provider_adapter_projects_chat_policy_headers_and_reasoning() {
-        assert!(resolve_codex_provider_uses_chat_completions(
-            Some("openai_chat"),
-            None,
-            None,
-            None
-        ));
-        assert!(should_convert_codex_responses_endpoint_to_chat(
-            true,
-            "/v1/responses"
-        ));
+        assert!(
+            crate::proxy_core::api::transport::resolve_codex_provider_uses_chat_completions(
+                Some("openai_chat"),
+                None,
+                None,
+                None
+            )
+        );
+        assert!(
+            crate::proxy_core::api::transport::should_convert_codex_responses_endpoint_to_chat(
+                true,
+                "/v1/responses"
+            )
+        );
         assert_eq!(
             build_codex_upstream_url("https://api.openai.com", "/chat/completions"),
             "https://api.openai.com/v1/chat/completions"

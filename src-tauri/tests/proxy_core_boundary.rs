@@ -9366,6 +9366,21 @@ fn proxy_core_adapter_delegates_codex_responses_to_chat_gate_to_core() {
             && gate_slice.contains("core_codex_responses_to_chat_conversion_required("),
         "Codex Responses to Chat gate must delegate provider and endpoint policy to proxy-core"
     );
+    for marker in [
+        "resolve_codex_provider_uses_chat_completions",
+        "should_convert_codex_responses_endpoint_to_chat",
+    ] {
+        assert!(
+            !source.contains(&format!("pub(crate) use crate::proxy_core::api::transport::{marker}")),
+            "proxy_core_adapter should not re-export pure Codex Responses to Chat helper `{marker}`"
+        );
+    }
+    assert!(
+        !source.contains(
+            "resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat"
+        ),
+        "proxy_core_adapter should not re-export pure Codex Responses to Chat helpers as a grouped transport import"
+    );
 
     let forbidden_markers = [
         "resolve_codex_provider_uses_chat_completions(",
