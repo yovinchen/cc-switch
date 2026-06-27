@@ -1223,6 +1223,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn provider_settings_validation_issue_spec(",
     "fn provider_live_config_presence_error_policy(",
     "fn provider_delete_is_current_provider(",
+    "fn provider_is_official_category(",
     "fn is_local_proxy_url(",
     "fn apply_codex_takeover_auth_placeholder_if_present(",
     "fn ensure_codex_takeover_auth_placeholder(",

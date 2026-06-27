@@ -4632,11 +4632,6 @@ pub(crate) fn normalize_provider_common_config_for_storage(
     remove_common_config_from_settings(app_type, &provider.settings_config, snippet).map(Some)
 }
 
-#[cfg(test)]
-pub(crate) fn provider_is_official_category(provider: &Provider) -> bool {
-    crate::proxy_core::api::ports::provider_category_is_official(provider.category.as_deref())
-}
-
 pub(crate) fn should_emit_proxy_official_warning_for_provider(provider: &Provider) -> bool {
     core_should_emit_proxy_official_warning_for_provider_category(provider.category.as_deref())
 }
@@ -11286,7 +11281,11 @@ base_url = "https://api.openai.com/v1"
             None,
         );
         provider.category = Some("official".to_string());
-        assert!(provider_is_official_category(&provider));
+        assert!(
+            crate::proxy_core::api::ports::provider_category_is_official(
+                provider.category.as_deref()
+            )
+        );
         assert!(should_emit_proxy_official_warning_for_provider(&provider));
         assert!(should_reapply_codex_official_live_for_provider(&provider));
         let official_warning_from_provider =
@@ -11302,12 +11301,20 @@ base_url = "https://api.openai.com/v1"
             "Official Codex"
         );
         provider.category = Some("custom".to_string());
-        assert!(!provider_is_official_category(&provider));
+        assert!(
+            !crate::proxy_core::api::ports::provider_category_is_official(
+                provider.category.as_deref()
+            )
+        );
         assert!(!should_emit_proxy_official_warning_for_provider(&provider));
         assert!(!should_reapply_codex_official_live_for_provider(&provider));
         assert!(proxy_official_warning_event_from_provider("codex", Some(&provider)).is_none());
         provider.category = None;
-        assert!(!provider_is_official_category(&provider));
+        assert!(
+            !crate::proxy_core::api::ports::provider_category_is_official(
+                provider.category.as_deref()
+            )
+        );
         assert!(!should_emit_proxy_official_warning_for_provider(&provider));
         assert!(!should_reapply_codex_official_live_for_provider(&provider));
         assert!(proxy_official_warning_event_from_provider("codex", Some(&provider)).is_none());
