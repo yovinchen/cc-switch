@@ -58,9 +58,9 @@ mod tests {
     use super::*;
     use crate::provider::CodexChatReasoningConfig;
     use crate::proxy_core_adapter::{
-        is_official_codex_client_user_agent, provider_apply_codex_chat_upstream_model,
-        provider_codex_chat_reasoning_profile, provider_codex_uses_chat_completions,
-        provider_should_convert_codex_responses_to_chat, ProviderAuthStrategy,
+        provider_apply_codex_chat_upstream_model, provider_codex_chat_reasoning_profile,
+        provider_codex_uses_chat_completions, provider_should_convert_codex_responses_to_chat,
+        ProviderAuthStrategy,
     };
     use serde_json::json;
 
@@ -191,42 +191,6 @@ experimental_bearer_token = "sk-config-key"
         let result = adapter.get_auth_headers(&auth);
 
         assert!(matches!(result, Err(ProxyError::AuthError(_))));
-    }
-
-    // 官方客户端检测测试
-    #[test]
-    fn test_is_official_client_vscode() {
-        assert!(is_official_codex_client_user_agent("codex_vscode/1.0.0"));
-        assert!(is_official_codex_client_user_agent("codex_vscode/2.3.4"));
-        assert!(is_official_codex_client_user_agent("codex_vscode/0.1"));
-    }
-
-    #[test]
-    fn test_is_official_client_cli() {
-        assert!(is_official_codex_client_user_agent("codex_cli_rs/1.0.0"));
-        assert!(is_official_codex_client_user_agent("codex_cli_rs/0.5.2"));
-    }
-
-    #[test]
-    fn test_is_not_official_client() {
-        assert!(!is_official_codex_client_user_agent("Mozilla/5.0"));
-        assert!(!is_official_codex_client_user_agent("curl/7.68.0"));
-        assert!(!is_official_codex_client_user_agent(
-            "python-requests/2.25.1"
-        ));
-        assert!(!is_official_codex_client_user_agent("codex_other/1.0.0"));
-        assert!(!is_official_codex_client_user_agent(""));
-    }
-
-    #[test]
-    fn test_is_official_client_partial_match() {
-        // 必须从开头匹配
-        assert!(!is_official_codex_client_user_agent(
-            "some codex_vscode/1.0.0"
-        ));
-        assert!(!is_official_codex_client_user_agent(
-            "prefix_codex_cli_rs/1.0.0"
-        ));
     }
 
     #[test]

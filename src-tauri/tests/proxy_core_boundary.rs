@@ -1277,6 +1277,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn build_server_started_event_payload(",
     "fn build_server_stopped_event_payload(",
     "fn streaming_body_first_chunk_read_error_message(",
+    "pub(crate) use crate::proxy_core::api::transport::is_official_codex_client_user_agent",
     "fn is_official_codex_client_user_agent(",
     "fn build_gemini_native_url(",
     "fn proxy_error_http_status_code(",
