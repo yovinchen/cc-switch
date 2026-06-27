@@ -2005,6 +2005,7 @@ fn session_usage_services_direct_core_access_stays_in_usage_api() {
 
     assert!(
         !adapter_production.contains("type CostCalculator")
+            && !adapter_production.contains("type TokenUsage")
             && !adapter_production.contains("SESSION_REQUEST_ID_PREFIX"),
         "proxy_core_adapter should not re-export session usage cost/request-id contracts"
     );

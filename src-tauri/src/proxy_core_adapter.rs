@@ -559,8 +559,6 @@ pub(crate) type CodexChatReasoningProfile =
 pub(crate) type CodexToolContext = crate::proxy_core::api::transforms::CodexToolContext;
 pub(crate) type ProxyResponseBody = crate::proxy_core::api::transport::ProxyResponseBody;
 pub(crate) type ModelPricing = crate::proxy_core::api::usage::ModelPricing;
-#[cfg(test)]
-pub(crate) type TokenUsage = crate::proxy_core::api::usage::TokenUsage;
 pub(crate) type UsageRecord = crate::proxy_core::api::usage::UsageRecord;
 pub(crate) type UsageRouteContext = crate::proxy_core::api::usage::UsageRouteContext;
 #[cfg(test)]
@@ -7356,7 +7354,7 @@ pub(crate) fn success_usage_record_from_app_type_with_request_id_fallback(
     model: &str,
     request_model: &str,
     outbound_model: &str,
-    usage: TokenUsage,
+    usage: crate::proxy_core::api::usage::TokenUsage,
     latency_ms: u64,
     first_token_ms: Option<u64>,
     is_streaming: bool,
@@ -7643,7 +7641,7 @@ mod tests {
         UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
     };
     use crate::proxy_core::api::usage::{
-        usage_selected_provider_missing_log_message, TransformedResponseUsageFormat,
+        usage_selected_provider_missing_log_message, TokenUsage, TransformedResponseUsageFormat,
         UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
     };
 
