@@ -64,10 +64,12 @@ fn log_rectified_gemini_tool_args(name: &str) {
     log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
 }
 
+use crate::proxy_core::api::auth::{
+    ClaudeAuthKey, ClaudeAuthKeySource, ProviderAuthInfo, ProviderAuthStrategy,
+};
 pub(crate) use crate::proxy_core::api::auth::{
     ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
 };
-use crate::proxy_core::api::auth::{ProviderAuthInfo, ProviderAuthStrategy};
 
 pub(crate) use crate::proxy_core::api::errors::{
     config_error_with_context as core_config_error_with_context,
@@ -849,12 +851,6 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
 }
 
 pub(crate) type GeminiShadowStore = crate::proxy_core::api::transforms::GeminiShadowStore;
-pub(crate) type ClaudeAuthKey = crate::proxy_core::api::auth::ClaudeAuthKey;
-pub(crate) type ClaudeAuthKeySource = crate::proxy_core::api::auth::ClaudeAuthKeySource;
-pub(crate) type ClaudePromptCacheKeyResolution =
-    crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
-pub(crate) type ClaudeProviderAuthHeadersInput<'a> =
-    crate::proxy_core::api::transport::ClaudeProviderAuthHeadersInput<'a>;
 pub(crate) type CopilotClassification = crate::proxy_core::api::transport::CopilotClassification;
 pub(crate) type ForwarderMaybeCopilotAuthOptimizationInput<'a> =
     crate::proxy_core::api::transport::OptionalCopilotAuthOptimizationPreparationInput<'a>;
@@ -2182,6 +2178,7 @@ pub(crate) use crate::proxy_core::api::routing::{
     RoutePolicy,
 };
 pub(crate) use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
+use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 pub(crate) use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY;
 pub(crate) use crate::proxy_core::api::transforms::{
     append_utf8_safe, build_gemini_upstream_url, chat_completion_to_response_with_context,
@@ -2218,7 +2215,9 @@ pub(crate) use crate::proxy_core::api::transport::{
     parse_custom_user_agent,
     provider_custom_user_agent_header as core_provider_custom_user_agent_header,
 };
-use crate::proxy_core::api::transport::{ForwardFailureKind, ForwarderRectifierRetryKind};
+use crate::proxy_core::api::transport::{
+    ClaudeProviderAuthHeadersInput, ForwardFailureKind, ForwarderRectifierRetryKind,
+};
 pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
     PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,

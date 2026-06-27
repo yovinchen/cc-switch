@@ -5359,6 +5359,25 @@ fn proxy_core_adapter_does_not_export_forward_failure_kind_alias() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_claude_auth_helper_aliases() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    for alias in [
+        "pub(crate) type ClaudeAuthKey =",
+        "pub(crate) type ClaudeAuthKeySource =",
+        "pub(crate) type ClaudePromptCacheKeyResolution =",
+        "pub(crate) type ClaudeProviderAuthHeadersInput",
+    ] {
+        assert!(
+            !adapter_source.contains(alias),
+            "proxy_core_adapter should not expose Claude auth/helper contract alias `{alias}`; adapter internals should use proxy_core APIs directly"
+        );
+    }
+}
+
+#[test]
 fn engine_and_host_test_fixtures_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases: &[(&str, &[&str], &[&str])] = &[
