@@ -1388,8 +1388,6 @@ pub(crate) type ForwardFailureCategory = crate::proxy_core::api::transport::Forw
 
 pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
     crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD;
-pub(crate) type ForwarderMediaPreventionFacts<'a> =
-    crate::proxy_core::api::transport::ForwarderMediaPreventionFacts<'a>;
 pub(crate) type AllowResult = crate::proxy_core::api::config::AllowResult;
 pub(crate) type CircuitBreakerConfig = crate::proxy_core::api::config::CircuitBreakerConfig;
 pub(crate) type CircuitBreakerStats = crate::proxy_core::api::config::CircuitBreakerStats;
@@ -2124,7 +2122,6 @@ pub(crate) fn forwarder_rectifier_retry_failure_log_line(
 
 pub(crate) type CircuitBreakerFailureDecision =
     crate::proxy_core::api::config::CircuitBreakerFailureDecision;
-pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
 pub(crate) use crate::proxy_core::api::auth::{
     classify_provider_managed_auth as core_classify_provider_managed_auth,
     codex_oauth_access_token_expires_at_ms, codex_oauth_authorization_code_form,
@@ -2168,12 +2165,9 @@ pub(crate) use crate::proxy_core::api::auth::{
     parse_gemini_oauth_credentials,
 };
 pub(crate) use crate::proxy_core::api::config::{
-    app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
-    channel_circuit_key, channel_circuit_key_prefix, circuit_breaker_config_from_app_config,
-    circuit_failure_threshold_from_app_config, normalize_thinking_type, provider_circuit_key,
-    provider_circuit_key_prefix, rectify_anthropic_request, rectify_thinking_budget,
-    should_rectify_thinking_budget, should_rectify_thinking_signature,
-    thinking_optimization_log_message,
+    app_proxy_config_defaults_for_app, app_type_from_circuit_key, channel_circuit_key,
+    channel_circuit_key_prefix, circuit_breaker_config_from_app_config,
+    circuit_failure_threshold_from_app_config, provider_circuit_key, provider_circuit_key_prefix,
 };
 use crate::proxy_core::api::events::{
     attempt_event_name, build_attempt_event_payload, build_provider_switched_event_payload,
@@ -2189,10 +2183,6 @@ pub(crate) use crate::proxy_core::api::management::{
     stream_check_failed_result, stream_check_failed_result_with_retry_count,
     stream_check_result_from_probe_result, ChannelHealthUpdateInput,
     ProxyChannelModelsReplaceRequest, StreamCheckConfigOverride, CHANNEL_HEALTH_UNKNOWN_STATUS,
-};
-pub(crate) use crate::proxy_core::api::model_catalog::{
-    apply_copilot_model_normalization, strip_one_m_suffix_for_upstream,
-    strip_one_m_suffix_for_upstream_from_body,
 };
 pub(crate) use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogSource,
@@ -2225,9 +2215,8 @@ pub(crate) use crate::proxy_core::api::transforms::{
 };
 pub(crate) use crate::proxy_core::api::transport::ProxyRequest;
 pub(crate) use crate::proxy_core::api::transport::{
-    apply_bedrock_pre_send_optimizers, apply_forwarder_media_prevention_from_facts,
-    bedrock_env_flag_from_provider_settings, build_claude_provider_auth_headers,
-    build_claude_upstream_url, build_codex_provider_auth_headers, build_codex_upstream_url,
+    build_claude_provider_auth_headers, build_claude_upstream_url,
+    build_codex_provider_auth_headers, build_codex_upstream_url,
     build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, categorize_forward_failure,
     forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
@@ -2236,8 +2225,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     forwarder_rectifier_retry_failure_label,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
-    forwarder_terminal_failure_status_message, should_apply_bedrock_pre_send_optimizer,
-    should_apply_forwarder_media_prevention_for_app, should_failover_after_rectifier_retry_failure,
+    forwarder_terminal_failure_status_message, should_failover_after_rectifier_retry_failure,
     CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan,
     ForwarderProviderUrlFacts,
 };
@@ -7050,10 +7038,6 @@ pub(crate) fn model_fetch_custom_user_agent_header(raw: Option<&str>) -> Option<
     parse_custom_user_agent(raw).ok().flatten()
 }
 
-pub(crate) fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
-    bedrock_env_flag_from_provider_settings(&provider.settings_config)
-}
-
 pub(crate) use crate::proxy_core::api::usage::usage_route_context_from_selection;
 
 #[cfg(test)]
@@ -7345,11 +7329,13 @@ mod tests {
         GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
     };
     use crate::proxy_core::api::transport::{
-        anthropic_beta_header_value, build_claude_auth_headers, build_codex_bearer_auth_headers,
-        build_copilot_auth_headers, build_gemini_auth_headers, build_upstream_request_headers,
-        forward_upstream_url_plan, is_official_codex_client_user_agent, is_socks_proxy_url,
-        resolve_upstream_send_policy, serialize_upstream_request_body, ClaudeAuthHeaderKind,
-        CopilotAuthHeadersInput, ForwardUpstreamUrlPlanInput, ProxyBody,
+        anthropic_beta_header_value, apply_forwarder_media_prevention_from_facts,
+        bedrock_env_flag_from_provider_settings, build_claude_auth_headers,
+        build_codex_bearer_auth_headers, build_copilot_auth_headers, build_gemini_auth_headers,
+        build_upstream_request_headers, forward_upstream_url_plan,
+        is_official_codex_client_user_agent, is_socks_proxy_url, resolve_upstream_send_policy,
+        serialize_upstream_request_body, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
+        ForwardUpstreamUrlPlanInput, ForwarderMediaPreventionFacts, ProxyBody,
         ProxyTransportResponseBody, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
         UpstreamSseAggregationKind, UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
     };
@@ -18101,7 +18087,10 @@ command = "latest-command"
                 .expect("model fetch custom user agent");
         assert!(model_fetch_custom_user_agent_header(Some("   ")).is_none());
         assert!(model_fetch_custom_user_agent_header(Some("bad\nua")).is_none());
-        assert_eq!(provider_bedrock_env_flag(&provider), Some("1"));
+        assert_eq!(
+            bedrock_env_flag_from_provider_settings(&provider.settings_config),
+            Some("1")
+        );
         let mut codex_provider = Provider::with_id(
             "codex-oauth".to_string(),
             "Codex OAuth".to_string(),

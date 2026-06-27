@@ -11,9 +11,7 @@ use crate::proxy::{
 };
 use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 #[cfg(test)]
-use crate::proxy_core_adapter::{
-    provider_bedrock_env_flag, provider_is_codex_oauth, validate_managed_account_upstream_auth,
-};
+use crate::proxy_core_adapter::provider_is_codex_oauth;
 use crate::proxy_core_adapter::{
     ActiveConnectionGuard, FailoverSwitchSchedulerRef, ForwarderAnthropicRectifierGateInput,
     ForwarderAppMediaPreventionInput, ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput,
@@ -1024,12 +1022,15 @@ mod tests {
     use crate::database::Database;
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy::events::ProxyEventBus;
-    use crate::proxy_core::api::auth::ManagedAccountAuthError;
+    use crate::proxy_core::api::auth::{
+        validate_managed_account_upstream_auth, ManagedAccountAuthError,
+    };
     use crate::proxy_core::api::transforms::{
         build_gemini_native_url, canonical_json_string, resolve_gemini_native_url, short_value_hash,
     };
     use crate::proxy_core::api::transport::{
-        append_query_to_full_url, build_codex_oauth_session_headers,
+        append_query_to_full_url, bedrock_env_flag_from_provider_settings,
+        build_codex_oauth_session_headers,
         claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input,
         interface_kind_for_forward, is_streaming_upstream_request,
         prepare_upstream_request_body_with_report, request_model_for_forward,
@@ -1078,7 +1079,10 @@ mod tests {
             }
         });
 
-        assert_eq!(provider_bedrock_env_flag(&provider), Some("1"));
+        assert_eq!(
+            bedrock_env_flag_from_provider_settings(&provider.settings_config),
+            Some("1")
+        );
     }
 
     struct TestForwarder {

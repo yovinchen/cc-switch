@@ -9760,9 +9760,8 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
                 "build_gemini_native_url, canonical_json_string, resolve_gemini_native_url,"
             )
             && forward_pipeline_source.contains("short_value_hash,")
-            && forward_pipeline_source.contains(
-                "append_query_to_full_url, build_codex_oauth_session_headers,"
-            )
+            && forward_pipeline_source.contains("append_query_to_full_url")
+            && forward_pipeline_source.contains("build_codex_oauth_session_headers")
             && forward_pipeline_source.contains(
                 "claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input"
             )
@@ -13849,14 +13848,18 @@ fn production_forwarder_delegates_codex_media_prevention_gate_to_request_source(
         fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let request_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
+    let request_source =
+        fs::read_to_string(&request_source_path).expect("read forwarder_request_source.rs");
 
     assert!(
         adapter_source.contains("apply_app_media_prevention"),
         "ForwarderRequestSource must expose app-gated media prevention"
     );
     assert!(
-        adapter_source.contains("should_apply_forwarder_media_prevention_for_app"),
-        "ForwarderRequestSource must delegate app media-prevention policy to proxy-core"
+        request_source.contains("should_apply_forwarder_media_prevention_for_app"),
+        "ForwarderRequestSource must delegate app media-prevention policy directly to proxy-core"
     );
 
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
@@ -15844,6 +15847,10 @@ fn production_forwarder_uses_request_source_resource() {
             && request_source.contains("apply_copilot_warmup_model_override"),
         "default ForwarderRequestSource should import pure Copilot optimizer helpers directly from proxy_core::api::transport"
     );
+    assert!(
+        !request_source.contains("use crate::proxy_core_adapter::*;"),
+        "default ForwarderRequestSource must import proxy_core_adapter items explicitly, not through wildcard facades"
+    );
     for marker in [
         "classify_copilot_request",
         "sanitize_copilot_orphan_tool_results",
@@ -15859,12 +15866,15 @@ fn production_forwarder_uses_request_source_resource() {
     let request_transport_import_slice = function_slice(
         &request_source,
         "use crate::proxy_core::api::transport::{",
-        "};\nuse crate::proxy_core_adapter::*;",
+        "};\nuse crate::proxy_core_adapter::{",
     );
     for marker in [
         "anthropic_beta_header_value",
+        "apply_bedrock_pre_send_optimizers",
+        "apply_forwarder_media_prevention_from_facts",
         "apply_resolved_channel_model_override",
         "apply_resolved_channel_request_overrides",
+        "bedrock_env_flag_from_provider_settings",
         "build_upstream_request_headers",
         "forward_upstream_url_plan",
         "forwarder_media_retry_plan_from_facts",
@@ -15881,14 +15891,21 @@ fn production_forwarder_uses_request_source_resource() {
         "request_body_serialize_error_message",
         "resolve_upstream_request_transport_policy",
         "serialize_upstream_request_body",
+        "should_apply_bedrock_pre_send_optimizer",
+        "should_apply_forwarder_media_prevention_for_app",
         "should_preserve_exact_request_header_case",
         "should_send_anthropic_request_headers",
         "supports_reasoning_effort",
         "upstream_host_header_from_url",
+        "ForwardUpstreamUrlPlan",
         "ForwardUpstreamUrlPlanInput",
+        "ForwarderMediaPreventionFacts",
         "ForwarderMediaRetryPlanFacts",
+        "ForwarderProtocolPreparation",
+        "ForwarderProtocolPreparationInput",
         "ForwarderRectifierErrorInput",
         "ForwarderRequestBodyTransformAction",
+        "ForwarderTransformPlan",
         "ForwarderTransformPlanFacts",
         "PromptCacheTraceLogInput",
         "UpstreamRequestHeadersInput",

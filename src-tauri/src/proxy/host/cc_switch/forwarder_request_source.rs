@@ -10,12 +10,25 @@ use crate::proxy::host::cc_switch::managed_account_runtime_source::ManagedAccoun
 use crate::proxy::host::cc_switch::provider_adapter_context::{
     forwarder_provider_adapter_context_for_app, ForwarderAdapterContext,
 };
+use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
+use crate::proxy_core::api::config::{
+    cache_injection_log_message, normalize_thinking_type, rectify_anthropic_request,
+    rectify_thinking_budget, should_rectify_thinking_budget, should_rectify_thinking_signature,
+    thinking_optimization_log_message,
+};
+use crate::proxy_core::api::domain::AppKind;
+use crate::proxy_core::api::model_catalog::{
+    apply_copilot_model_normalization, strip_one_m_suffix_for_upstream,
+    strip_one_m_suffix_for_upstream_from_body,
+};
 use crate::proxy_core::api::transforms::responses_to_chat_completions_with_options;
 use crate::proxy_core::api::transport::{
-    anthropic_beta_header_value, apply_copilot_warmup_model_override,
+    anthropic_beta_header_value, apply_bedrock_pre_send_optimizers,
+    apply_copilot_warmup_model_override, apply_forwarder_media_prevention_from_facts,
     apply_resolved_channel_model_override, apply_resolved_channel_request_overrides,
-    build_upstream_request_headers, classify_copilot_request, forward_upstream_url_plan,
-    forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
+    bedrock_env_flag_from_provider_settings, build_upstream_request_headers,
+    classify_copilot_request, forward_upstream_url_plan, forwarder_media_retry_plan_from_facts,
+    forwarder_protocol_preparation_from_transform_plan,
     forwarder_rectifier_error_message as core_forwarder_rectifier_error_message,
     forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
     forwarder_transform_plan_from_facts, is_openai_o_series, is_unsupported_image_error,
@@ -23,13 +36,34 @@ use crate::proxy_core::api::transport::{
     prompt_cache_trace_log_message, request_body_filter_log_message,
     request_body_serialize_error_message, resolve_upstream_request_transport_policy,
     sanitize_copilot_orphan_tool_results, serialize_upstream_request_body,
+    should_apply_bedrock_pre_send_optimizer, should_apply_forwarder_media_prevention_for_app,
     should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
     strip_copilot_thinking_blocks, supports_reasoning_effort, upstream_host_header_from_url,
-    ForwardUpstreamUrlPlanInput, ForwarderMediaRetryPlanFacts, ForwarderRectifierErrorInput,
-    ForwarderRequestBodyTransformAction, ForwarderTransformPlanFacts, PromptCacheTraceLogInput,
-    UpstreamRequestHeadersInput, UNSUPPORTED_IMAGE_MARKER,
+    ForwardUpstreamUrlPlan, ForwardUpstreamUrlPlanInput, ForwarderMediaPreventionFacts,
+    ForwarderMediaRetryPlanFacts, ForwarderProtocolPreparation, ForwarderProtocolPreparationInput,
+    ForwarderRectifierErrorInput, ForwarderRequestBodyTransformAction, ForwarderTransformPlan,
+    ForwarderTransformPlanFacts, PromptCacheTraceLogInput, UpstreamRequestHeadersInput,
+    UNSUPPORTED_IMAGE_MARKER,
 };
-use crate::proxy_core_adapter::*;
+use crate::proxy_core_adapter::{
+    apply_forward_request_model_mapping_from_provider, provider_apply_codex_chat_upstream_model,
+    provider_claude_api_format, provider_claude_normalize_anthropic_messages,
+    provider_codex_chat_reasoning_options, provider_custom_user_agent_header,
+    provider_is_codex_oauth, provider_should_convert_codex_responses_to_chat,
+    provider_uses_anthropic_rectifiers, ForwarderAnthropicRectifierGateInput,
+    ForwarderAppMediaPreventionInput, ForwarderAttemptBodyInput, ForwarderClaudeApiFormatInput,
+    ForwarderClaudeBodyPolicyInput, ForwarderCodexResponsesToChatInput,
+    ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
+    ForwarderCopilotRequestOptimization, ForwarderCopilotRequestOptimizationGateInput,
+    ForwarderCopilotRequestOptimizationInput, ForwarderMaybeCopilotRequestOptimization,
+    ForwarderMediaPreventionInput, ForwarderMediaRetryPlan, ForwarderMediaRetryPlanInput,
+    ForwarderPreparedRequest, ForwarderProviderRequestBodyInput, ForwarderProviderTransformInput,
+    ForwarderRequestBodyTransform, ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
+    ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan, ForwarderRequestSource,
+    ForwarderRequestSourceRef, ForwarderThinkingBudgetRectifierInput,
+    ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
+    ForwarderUpstreamRequestLogInput, ForwarderUpstreamRequestParts, ForwarderUpstreamUrlInput,
+};
 
 pub(crate) struct CcSwitchForwarderRequestSource {
     managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
@@ -151,7 +185,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     fn prepare_attempt_body(&self, input: ForwarderAttemptBodyInput<'_>) -> Value {
         if !should_apply_bedrock_pre_send_optimizer(
             input.config.enabled,
-            provider_bedrock_env_flag(input.provider),
+            bedrock_env_flag_from_provider_settings(&input.provider.settings_config),
         ) {
             return input.body.clone();
         }
