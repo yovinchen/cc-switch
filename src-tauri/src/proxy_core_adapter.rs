@@ -67,6 +67,7 @@ fn log_rectified_gemini_tool_args(name: &str) {
 pub(crate) use crate::proxy_core::api::auth::{
     ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
 };
+use crate::proxy_core::api::auth::{ProviderAuthInfo, ProviderAuthStrategy};
 
 pub(crate) use crate::proxy_core::api::errors::{
     config_error_with_context as core_config_error_with_context,
@@ -1292,8 +1293,6 @@ pub(crate) async fn proxy_runtime_config_from_db_source(
 }
 
 use crate::proxy_core::api::ports::ProviderAttemptResult;
-pub(crate) type ProviderAuthInfo = crate::proxy_core::api::auth::ProviderAuthInfo;
-pub(crate) type ProviderAuthStrategy = crate::proxy_core::api::auth::ProviderAuthStrategy;
 
 use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;

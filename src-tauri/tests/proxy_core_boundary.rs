@@ -5270,6 +5270,23 @@ fn provider_adapter_auth_contracts_import_core_types_directly() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_provider_auth_aliases() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    for alias in [
+        "pub(crate) type ProviderAuthInfo =",
+        "pub(crate) type ProviderAuthStrategy =",
+    ] {
+        assert!(
+            !adapter_source.contains(alias),
+            "proxy_core_adapter should not expose provider auth contract alias `{alias}`; callers and adapter internals should use proxy_core::api::auth directly"
+        );
+    }
+}
+
+#[test]
 fn engine_and_host_test_fixtures_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases: &[(&str, &[&str], &[&str])] = &[
