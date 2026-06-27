@@ -1987,6 +1987,13 @@ fn is_allowed_provider_auth_core_import(relative: &str, code: &str) -> bool {
     )
 }
 
+fn is_allowed_test_proxy_config_core_import(relative: &str, code: &str) -> bool {
+    matches!(
+        relative,
+        "src/services/provider/mod.rs" | "src/claude_desktop_config.rs"
+    ) && code.trim() == "use crate::proxy_core::api::ports::ProxyConfig;"
+}
+
 #[test]
 fn host_code_uses_proxy_core_through_adapter_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -2032,7 +2039,10 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                 pending_test_cfg = false;
             }
             for marker in FORBIDDEN_MARKERS {
-                if code.contains(marker) && !is_allowed_provider_auth_core_import(&relative, code) {
+                if code.contains(marker)
+                    && !is_allowed_provider_auth_core_import(&relative, code)
+                    && !is_allowed_test_proxy_config_core_import(&relative, code)
+                {
                     violations.push(format!(
                         "{}:{} contains direct proxy-core marker `{}`",
                         relative,
@@ -5950,6 +5960,41 @@ fn production_provider_service_excludes_credential_extract_facade() {
     assert!(
         !source.contains("provider_credential_values"),
         "ProviderService tests should not depend on proxy_core_adapter provider credential test facades"
+    );
+}
+
+#[test]
+fn provider_and_claude_desktop_tests_import_proxy_config_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let files = [
+        "src/services/provider/mod.rs",
+        "src/claude_desktop_config.rs",
+    ];
+
+    let mut violations = Vec::new();
+    for relative in files {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read source");
+        if !source.contains("use crate::proxy_core::api::ports::ProxyConfig;") {
+            violations.push(format!(
+                "{relative} should import ProxyConfig directly from proxy_core::api::ports"
+            ));
+        }
+
+        let adapter_import_identifiers = proxy_core_adapter_import_identifiers(&source);
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == "ProxyConfig")
+        {
+            violations.push(format!(
+                "{relative} imports ProxyConfig through proxy_core_adapter"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider service and Claude Desktop tests should not use adapter ProxyConfig aliases:\n{}",
+        violations.join("\n")
     );
 }
 

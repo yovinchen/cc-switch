@@ -694,7 +694,7 @@ mod tests {
     use super::*;
     use crate::database::Database;
     use crate::provider::{ClaudeDesktopModelRoute, ProviderMeta};
-    use crate::proxy_core_adapter::ProxyConfig;
+    use crate::proxy_core::api::ports::ProxyConfig;
     use serde_json::json;
     use tempfile::TempDir;
 
