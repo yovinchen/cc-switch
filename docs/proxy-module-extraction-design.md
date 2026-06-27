@@ -1778,6 +1778,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1292. `route_attempt` 测试夹具不再通过 `proxy_core_adapter` 获取 routing/domain DTO：`AppKind`、`ProviderKind` 与 `RoutePlan` 直接来自 `proxy-core::api::{domain,routing}`，测试继续复用 owning module 的 `ChannelRouteCandidate`；边界测试防止 route attempt 测试 contracts 经 adapter alias 回流。
 1293. `engine/routing` 测试夹具不再通过 `proxy_core_adapter` 获取 management/config DTO：`ChannelRouteSource`、`ProxyChannelWriteRequest`、`RouteResolveRequest` 与 `CircuitState` 直接来自 `proxy-core::api::{management,config}`，仅保留 adapter 的 management response projection helper；边界测试防止这些测试 contracts 经 adapter alias 回流。
 1294. `transport/http/server` 测试夹具不再通过 `proxy_core_adapter` 获取 management/ports DTO：`RouteResolveRequest` 与 `CurrentRouteTarget` 直接来自 `proxy-core::api::{management,ports}`，仅保留 adapter 的 management response projection helper；边界测试防止 HTTP server 测试 contracts 经 adapter alias 回流。
+1295. `host/cc_switch/proxy_state` 不再通过 `proxy_core_adapter` 获取运行态 DTO：`ProxyConfig`、`ProxyRuntimeStatus`、`CurrentRouteTarget` 直接来自 `proxy-core::api::ports`，`GeminiShadowStore` 直接来自 `proxy-core::api::transforms`；全局 host/core 边界把 `ProxyState` 纳入宿主 core 合约允许面，专项边界测试防止运行态 DTO 经 adapter alias 回流。
 
 ## 背景
 
