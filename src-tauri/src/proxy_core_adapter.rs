@@ -2048,7 +2048,6 @@ pub(crate) type AutoFailoverTogglePlan = crate::proxy_core::api::routing::AutoFa
 pub(crate) type FailoverQueuePosition = crate::proxy_core::api::routing::FailoverQueuePosition;
 pub(crate) type ProxyCoreError = crate::proxy_core::api::errors::ProxyCoreError;
 pub(crate) type AppKind = crate::proxy_core::api::domain::AppKind;
-pub(crate) type AppProviderAdapterKind = crate::proxy_core::api::domain::AppProviderAdapterKind;
 pub(crate) type RouteResolveRequest = crate::proxy_core::api::management::RouteResolveRequest;
 pub(crate) type RouteResolveResponse = crate::proxy_core::api::management::RouteResolveResponse;
 pub(crate) type RouteResolveChannelInput =
@@ -4790,7 +4789,9 @@ pub(crate) fn proxy_core_app_kind_from_app_type(app_type: &AppType) -> ProxyCore
     AppKind::from(app_type)
 }
 
-pub(crate) fn provider_adapter_kind_for_app_type(app_type: &AppType) -> AppProviderAdapterKind {
+pub(crate) fn provider_adapter_kind_for_app_type(
+    app_type: &AppType,
+) -> crate::proxy_core::api::domain::AppProviderAdapterKind {
     crate::proxy_core::api::domain::provider_adapter_kind_for_app(&AppKind::from(app_type))
 }
 

@@ -1988,6 +1988,11 @@ fn is_allowed_provider_auth_core_import(relative: &str, code: &str) -> bool {
     )
 }
 
+fn is_allowed_provider_adapter_kind_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/provider/mod.rs"
+        && code.trim() == "use crate::proxy_core::api::domain::AppProviderAdapterKind;"
+}
+
 fn is_allowed_test_proxy_config_core_import(relative: &str, code: &str) -> bool {
     matches!(
         relative,
@@ -2087,6 +2092,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
             for marker in FORBIDDEN_MARKERS {
                 if code.contains(marker)
                     && !is_allowed_provider_auth_core_import(&relative, code)
+                    && !is_allowed_provider_adapter_kind_core_import(&relative, code)
                     && !is_allowed_test_proxy_config_core_import(&relative, code)
                     && !is_allowed_engine_routing_test_core_import(&relative, code)
                     && !is_allowed_http_server_test_core_import(&relative, code)
@@ -5080,6 +5086,43 @@ fn proxy_core_adapter_delegates_provider_adapter_selection_to_core() {
             "crate::proxy_core::api::domain::provider_adapter_kind_for_app(&AppKind::from(app_type))"
         ),
         "proxy_core_adapter must delegate app-to-adapter selection to proxy-core"
+    );
+}
+
+#[test]
+fn production_provider_adapter_registry_imports_adapter_kind_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = "src/proxy/provider/mod.rs";
+    let source = fs::read_to_string(manifest_dir.join(relative)).expect("read provider/mod.rs");
+    let import_slice = function_slice(
+        &source,
+        "use crate::app_config::AppType;",
+        "pub use adapter",
+    );
+
+    let required_import = "use crate::proxy_core::api::domain::AppProviderAdapterKind;";
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
+    let mut violations = Vec::new();
+
+    if !import_slice.contains(required_import) {
+        violations.push(format!(
+            "{relative} should import `{required_import}` directly from proxy_core"
+        ));
+    }
+
+    if adapter_import_identifiers
+        .iter()
+        .any(|identifier| identifier == "AppProviderAdapterKind")
+    {
+        violations.push(format!(
+            "{relative} imports AppProviderAdapterKind through proxy_core_adapter"
+        ));
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider adapter registry should not route pure adapter-kind contract through proxy_core_adapter:\n{}",
+        violations.join("\n")
     );
 }
 

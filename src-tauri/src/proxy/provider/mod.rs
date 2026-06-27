@@ -14,7 +14,8 @@ mod codex;
 mod gemini;
 
 use crate::app_config::AppType;
-use crate::proxy_core_adapter::{provider_adapter_kind_for_app_type, AppProviderAdapterKind};
+use crate::proxy_core::api::domain::AppProviderAdapterKind;
+use crate::proxy_core_adapter::provider_adapter_kind_for_app_type;
 
 pub use adapter::ProviderAdapter;
 pub use claude::ClaudeAdapter;
