@@ -7041,6 +7041,64 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_legacy_channel_projection_aliases() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
+    let adapter_management_import = function_slice(
+        adapter_runtime_source,
+        "use crate::proxy_core::api::management::{",
+        "};\nuse crate::proxy_core::api::ports::{",
+    );
+    let adapter_routing_import = function_slice(
+        adapter_runtime_source,
+        "use crate::proxy_core::api::routing::{",
+        "};\nuse crate::proxy_core::api::session::SessionIdResult;",
+    );
+
+    for marker in [
+        "pub(crate) type ChannelRouteSource",
+        "pub(crate) type ChannelRecord",
+        "pub(crate) type LegacyChannelModelProjection",
+        "pub(crate) type LegacyChannelProjection",
+        "pub(crate) type LegacyChannelMigrationPlanInput",
+        "pub(crate) type LegacyEndpointInput",
+        "pub(crate) type LegacyModelRouteInput",
+        "pub(crate) type LegacyProviderChannelMigrationInput",
+        "pub(crate) type LegacyProviderProjectionInput",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not expose legacy channel/projection contract `{marker}` as a type alias"
+        );
+    }
+    for marker in ["ChannelRecord", "ChannelRouteSource"] {
+        assert!(
+            adapter_management_import.contains(marker),
+            "proxy_core_adapter internals should import management DTO `{marker}` directly from proxy_core::api::management"
+        );
+    }
+    for marker in [
+        "LegacyChannelModelProjection",
+        "LegacyChannelProjection",
+        "LegacyChannelMigrationPlanInput",
+        "LegacyEndpointInput",
+        "LegacyModelRouteInput",
+        "LegacyProviderChannelMigrationInput",
+        "LegacyProviderProjectionInput",
+    ] {
+        assert!(
+            adapter_routing_import.contains(marker),
+            "proxy_core_adapter internals should import legacy routing DTO `{marker}` directly from proxy_core::api::routing"
+        );
+    }
+}
+
+#[test]
 fn http_server_tests_import_route_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let relative = "src/proxy/transport/http/server.rs";

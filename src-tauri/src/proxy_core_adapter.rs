@@ -32,15 +32,20 @@ use crate::proxy_core::api::domain::{
     AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,
 };
 use crate::proxy_core::api::engine::ProxyEngine;
-use crate::proxy_core::api::management::{RouteResolveRequest, RouteResolveResponse};
+use crate::proxy_core::api::management::{
+    ChannelRecord, ChannelRouteSource, RouteResolveRequest, RouteResolveResponse,
+};
 use crate::proxy_core::api::ports::{
     CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, AutoFailoverToggleInput, AutoFailoverTogglePlan,
-    ChannelRouteCandidate, FailoverQueuePosition, ProviderFailoverCircuitLookup,
-    ProviderSelectionFailure, ProviderSelectionInput, ResolvedChannelAttempt, RoutePlan,
-    RouteResolveChannelInput, RouteResolveChannelRecordInput, RouteResolveModelRecordInput,
+    ChannelRouteCandidate, FailoverQueuePosition, LegacyChannelMigrationPlanInput,
+    LegacyChannelModelProjection, LegacyChannelProjection, LegacyEndpointInput,
+    LegacyModelRouteInput, LegacyProviderChannelMigrationInput, LegacyProviderProjectionInput,
+    ProviderFailoverCircuitLookup, ProviderSelectionFailure, ProviderSelectionInput,
+    ResolvedChannelAttempt, RoutePlan, RouteResolveChannelInput, RouteResolveChannelRecordInput,
+    RouteResolveModelRecordInput,
 };
 use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::{
@@ -1966,19 +1971,6 @@ pub(crate) fn provider_from_opencode_live_config(
     Ok(provider)
 }
 
-pub(crate) type ChannelRouteSource = crate::proxy_core::api::management::ChannelRouteSource;
-pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecord;
-pub(crate) type LegacyChannelModelProjection =
-    crate::proxy_core::api::routing::LegacyChannelModelProjection;
-pub(crate) type LegacyChannelProjection = crate::proxy_core::api::routing::LegacyChannelProjection;
-pub(crate) type LegacyChannelMigrationPlanInput =
-    crate::proxy_core::api::routing::LegacyChannelMigrationPlanInput;
-pub(crate) type LegacyEndpointInput = crate::proxy_core::api::routing::LegacyEndpointInput;
-pub(crate) type LegacyModelRouteInput = crate::proxy_core::api::routing::LegacyModelRouteInput;
-pub(crate) type LegacyProviderChannelMigrationInput =
-    crate::proxy_core::api::routing::LegacyProviderChannelMigrationInput;
-pub(crate) type LegacyProviderProjectionInput =
-    crate::proxy_core::api::routing::LegacyProviderProjectionInput;
 pub(crate) enum ForwarderFailureDecision {
     Retryable,
     NonRetryable,
