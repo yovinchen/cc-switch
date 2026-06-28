@@ -5688,6 +5688,38 @@ fn proxy_core_adapter_does_not_export_proxy_runtime_status_alias() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_proxy_config_alias() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
+
+    assert!(
+        !adapter_source
+            .contains("pub(crate) type ProxyConfig = crate::proxy_core::api::ports::ProxyConfig;"),
+        "proxy_core_adapter should not expose ProxyConfig as a runtime port alias"
+    );
+    assert!(
+        adapter_source.contains("use crate::proxy_core::api::ports::{")
+            && adapter_source.contains("ProxyConfig"),
+        "proxy_core_adapter internals should import ProxyConfig directly from proxy_core ports"
+    );
+    assert!(
+        host_source.contains("ProxyConfig")
+            && host_source.contains("use crate::proxy_core::api::ports::{"),
+        "proxy_core_host test harness should import ProxyConfig directly from proxy_core ports"
+    );
+    let host_adapter_import = proxy_core_adapter_import_identifiers(&host_source);
+    assert!(
+        !host_adapter_import
+            .iter()
+            .any(|identifier| identifier == "ProxyConfig"),
+        "proxy_core_host must not import ProxyConfig through proxy_core_adapter"
+    );
+}
+
+#[test]
 fn engine_and_host_test_fixtures_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases: &[(&str, &[&str], &[&str])] = &[
@@ -19524,7 +19556,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
             && host_source.contains(
             "use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;"
         ) && host_source.contains(
-            "use crate::proxy_core::api::ports::{ChannelAttemptResult, ProxyRuntimeStatus};"
+            "use crate::proxy_core::api::ports::{ChannelAttemptResult, ProxyConfig, ProxyRuntimeStatus};"
         ) && host_source.contains(
             "use crate::proxy_core::api::routing::{\n    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RouteSelection, DEFAULT_ROUTE_GROUP,\n};"
         )
@@ -19556,6 +19588,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "ProxyCoreModelRoute",
         "ProxyCoreProviderMetadata",
         "ProviderKind",
+        "ProxyConfig",
         "ProxyRuntimeStatus",
         "ProxyCoreProviderSpec",
     ] {
@@ -19582,6 +19615,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
             && !host_tests_adapter_import.contains("ProxyCoreModelCapabilities")
             && !host_tests_adapter_import.contains("ProxyCoreModelRoute")
             && !host_tests_adapter_import.contains("ProviderKind")
+            && !host_tests_adapter_import.contains("ProxyConfig")
             && !host_tests_adapter_import.contains("ProxyRuntimeStatus"),
         "proxy_core_host tests must not import pure core contracts through proxy_core_adapter"
     );
