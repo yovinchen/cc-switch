@@ -6868,6 +6868,49 @@ fn production_engine_routing_imports_route_contracts_directly() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
+    let adapter_routing_import = function_slice(
+        adapter_runtime_source,
+        "use crate::proxy_core::api::routing::{",
+        "};\nuse crate::proxy_core::api::session::SessionIdResult;",
+    );
+
+    for marker in [
+        "pub(crate) type ProviderFailoverCircuitLookup",
+        "pub(crate) type ProviderSelectionFailure",
+        "pub(crate) type ProviderSelectionInput",
+        "pub(crate) type AutoFailoverToggleInput",
+        "pub(crate) type AutoFailoverTogglePlan",
+        "pub(crate) type FailoverQueuePosition",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not expose provider-selection routing DTO `{marker}` as a type alias"
+        );
+    }
+    for marker in [
+        "ProviderFailoverCircuitLookup",
+        "ProviderSelectionFailure",
+        "ProviderSelectionInput",
+        "AutoFailoverToggleInput",
+        "AutoFailoverTogglePlan",
+        "FailoverQueuePosition",
+    ] {
+        assert!(
+            adapter_routing_import.contains(marker),
+            "proxy_core_adapter internals should import provider-selection routing DTO `{marker}` directly from proxy_core::api::routing"
+        );
+    }
+}
+
+#[test]
 fn http_server_tests_import_route_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let relative = "src/proxy/transport/http/server.rs";

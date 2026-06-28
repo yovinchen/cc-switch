@@ -36,8 +36,9 @@ use crate::proxy_core::api::ports::{
     CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::proxy_core::api::routing::{
-    route_resolve_channel_input_from_record, RouteResolveChannelRecordInput,
-    RouteResolveModelRecordInput,
+    route_resolve_channel_input_from_record, AutoFailoverToggleInput, AutoFailoverTogglePlan,
+    FailoverQueuePosition, ProviderFailoverCircuitLookup, ProviderSelectionFailure,
+    ProviderSelectionInput, RouteResolveChannelRecordInput, RouteResolveModelRecordInput,
 };
 use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::{
@@ -1988,14 +1989,6 @@ pub(crate) type ProxyChannelPatchRequest =
     crate::proxy_core::api::management::ProxyChannelPatchRequest;
 pub(crate) type ProxyChannelWriteRequest =
     crate::proxy_core::api::management::ProxyChannelWriteRequest;
-pub(crate) type ProviderFailoverCircuitLookup =
-    crate::proxy_core::api::routing::ProviderFailoverCircuitLookup;
-pub(crate) type ProviderSelectionFailure =
-    crate::proxy_core::api::routing::ProviderSelectionFailure;
-pub(crate) type ProviderSelectionInput = crate::proxy_core::api::routing::ProviderSelectionInput;
-pub(crate) type AutoFailoverToggleInput = crate::proxy_core::api::routing::AutoFailoverToggleInput;
-pub(crate) type AutoFailoverTogglePlan = crate::proxy_core::api::routing::AutoFailoverTogglePlan;
-pub(crate) type FailoverQueuePosition = crate::proxy_core::api::routing::FailoverQueuePosition;
 pub(crate) type RouteResolveRequest = crate::proxy_core::api::management::RouteResolveRequest;
 pub(crate) type RouteResolveResponse = crate::proxy_core::api::management::RouteResolveResponse;
 pub(crate) type RouteResolveChannelInput =
