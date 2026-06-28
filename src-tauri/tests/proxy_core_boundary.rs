@@ -5574,6 +5574,17 @@ fn proxy_core_adapter_does_not_export_usage_contract_aliases() {
             "proxy_core_adapter should not expose usage contract alias `{alias}`; callers and adapter internals should use proxy_core::api::usage directly"
         );
     }
+    assert!(
+        !adapter_source.contains(
+            "pub(crate) use crate::proxy_core::api::usage::usage_route_context_from_selection"
+        ),
+        "proxy_core_adapter should not re-export usage_route_context_from_selection; adapter internals should import it from proxy_core::api::usage"
+    );
+    assert!(
+        adapter_source.contains("use crate::proxy_core::api::usage::{")
+            && adapter_source.contains("usage_route_context_from_selection"),
+        "proxy_core_adapter internals should import usage_route_context_from_selection directly from proxy_core usage"
+    );
 
     assert!(
         host_source.contains("use crate::proxy_core::api::usage::UsageRecord;"),

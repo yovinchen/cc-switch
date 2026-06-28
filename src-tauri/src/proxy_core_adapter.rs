@@ -2156,7 +2156,9 @@ pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
     PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
 };
-use crate::proxy_core::api::usage::{ModelPricing, UsageRecord, UsageRouteContext};
+use crate::proxy_core::api::usage::{
+    usage_route_context_from_selection, ModelPricing, UsageRecord, UsageRouteContext,
+};
 
 use crate::proxy::host::cc_switch::managed_account_runtime_source::managed_account_runtime_source_from_app_handle;
 
@@ -6947,8 +6949,6 @@ pub(crate) fn provider_custom_user_agent_header(
 pub(crate) fn model_fetch_custom_user_agent_header(raw: Option<&str>) -> Option<http::HeaderValue> {
     parse_custom_user_agent(raw).ok().flatten()
 }
-
-pub(crate) use crate::proxy_core::api::usage::usage_route_context_from_selection;
 
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
