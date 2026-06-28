@@ -3083,9 +3083,9 @@ pub(crate) async fn forwarder_runtime_config_from_db_sources(
     ))
 }
 
-pub(crate) use crate::proxy_core::api::auth::extract_gemini_api_key_from_settings;
+use crate::proxy_core::api::auth::extract_gemini_api_key_from_settings;
 
-pub(crate) use crate::proxy_core::api::auth::extract_gemini_base_url_from_settings;
+use crate::proxy_core::api::auth::extract_gemini_base_url_from_settings;
 
 pub(crate) use crate::proxy_core::api::ports::{
     gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,

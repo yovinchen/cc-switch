@@ -5425,6 +5425,40 @@ fn proxy_core_adapter_does_not_export_provider_auth_aliases() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_reexport_gemini_settings_extraction_helpers() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let auth_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::auth::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+
+    for helper in [
+        "extract_gemini_api_key_from_settings",
+        "extract_gemini_base_url_from_settings",
+    ] {
+        let single_line_reexport = adapter_source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::auth") && line.contains(helper)
+        });
+        let grouped_reexport = auth_reexport_blocks
+            .iter()
+            .any(|block| block.contains(helper));
+        assert!(
+            !single_line_reexport && !grouped_reexport,
+            "proxy_core_adapter should not re-export Gemini settings extraction helper `{helper}`"
+        );
+        assert!(
+            adapter_source.contains(&format!(
+                "use crate::proxy_core::api::auth::{helper};"
+            )),
+            "proxy_core_adapter internals should import Gemini settings extraction helper `{helper}` privately from proxy_core auth"
+        );
+    }
+}
+
+#[test]
 fn proxy_core_adapter_does_not_export_attempt_event_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
