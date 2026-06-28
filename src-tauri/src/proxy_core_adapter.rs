@@ -3306,7 +3306,7 @@ pub(crate) fn provider_claude_transform_streaming_decision(
     )
 }
 
-pub(crate) use crate::proxy_core::api::domain::infer_claude_provider_kind;
+use crate::proxy_core::api::domain::infer_claude_provider_kind;
 
 pub(crate) fn provider_claude_kind(provider: &Provider) -> ProviderKind {
     let api_format = provider_claude_api_format(provider);

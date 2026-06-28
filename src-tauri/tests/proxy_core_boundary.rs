@@ -11041,7 +11041,7 @@ fn proxy_core_adapter_delegates_claude_transform_streaming_decision_to_core() {
     let claude_decision = function_slice(
         &source,
         "pub(crate) fn provider_claude_transform_streaming_decision",
-        "pub(crate) use crate::proxy_core::api::domain::infer_claude_provider_kind",
+        "pub(crate) fn provider_claude_kind",
     );
 
     assert!(
@@ -11052,6 +11052,11 @@ fn proxy_core_adapter_delegates_claude_transform_streaming_decision_to_core() {
         !source.contains("pub(crate) fn codex_chat_transform_streaming_decision")
             && !source.contains("core_codex_chat_transform_streaming_decision"),
         "Codex Chat transform streaming decision should not keep a one-hop proxy_core_adapter facade"
+    );
+    assert!(
+        !source
+            .contains("pub(crate) use crate::proxy_core::api::domain::infer_claude_provider_kind"),
+        "proxy_core_adapter should not re-export Claude provider kind inference helper"
     );
 
     for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CLAUDE_STREAMING_DECISION_MARKERS {
