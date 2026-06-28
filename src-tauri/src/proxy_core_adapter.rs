@@ -2104,7 +2104,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan,
     ForwarderProviderUrlFacts,
 };
-pub(crate) use crate::proxy_core::api::transport::{
+use crate::proxy_core::api::transport::{
     codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
     codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required,
 };
