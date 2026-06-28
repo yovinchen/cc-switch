@@ -5791,6 +5791,36 @@ fn proxy_core_adapter_does_not_reexport_channel_not_found_error_helper() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_reexport_codex_upstream_model_helper() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let transport_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::transport::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+
+    assert!(
+        !adapter_source.contains(
+            "pub(crate) use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model"
+        ),
+        "proxy_core_adapter should not re-export resolve_codex_provider_upstream_model"
+    );
+    assert!(
+        !transport_reexport_blocks
+            .iter()
+            .any(|block| block.contains("resolve_codex_provider_upstream_model")),
+        "proxy_core_adapter should not re-export resolve_codex_provider_upstream_model through grouped transport imports"
+    );
+    assert!(
+        adapter_source
+            .contains("use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model;"),
+        "proxy_core_adapter internals should import resolve_codex_provider_upstream_model privately from proxy_core transport"
+    );
+}
+
+#[test]
 fn proxy_core_adapter_does_not_export_proxy_engine_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))

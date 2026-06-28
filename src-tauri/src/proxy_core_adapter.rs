@@ -2434,7 +2434,7 @@ pub(crate) fn provider_codex_auth_headers(
     build_codex_provider_auth_headers(auth).map_err(|error| error.to_string())
 }
 
-pub(crate) use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model;
+use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model;
 
 pub(crate) fn provider_codex_api_key(provider: &Provider) -> Option<String> {
     if let Some(env) = provider.settings_config.get("env") {
