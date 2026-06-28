@@ -2075,20 +2075,20 @@ pub(crate) use crate::proxy_core::api::transforms::{
     should_preserve_reasoning_content_for_openai_chat, ClaudeApiFormatRequestTransformContext,
     ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
 };
-pub(crate) use crate::proxy_core::api::transport::{
+use crate::proxy_core::api::transport::{
     build_claude_provider_auth_headers, build_codex_provider_auth_headers,
-    build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
-    build_terminal_forward_failure_log,
+    build_gemini_provider_auth_headers,
+    codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
+    codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required,
+    CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts,
+};
+pub(crate) use crate::proxy_core::api::transport::{
+    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
     forwarder_all_providers_circuit_open_log_line, forwarder_failure_log_line,
     forwarder_no_providers_configured_log_line, forwarder_rectifier_retry_failure_label,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
-};
-use crate::proxy_core::api::transport::{
-    codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
-    codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required,
-    CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts,
 };
 use crate::proxy_core::api::transport::{
     parse_custom_user_agent as core_parse_custom_user_agent,

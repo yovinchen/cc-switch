@@ -6600,6 +6600,13 @@ fn production_simple_provider_adapters_delegate_auth_headers_to_adapter() {
         "src/proxy/provider/codex.rs",
         "src/proxy/provider/gemini.rs",
     ];
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let adapter_transport_reexport_slice = optional_function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::transport::{",
+        "};",
+    );
 
     let mut violations = Vec::new();
     for relative in provider_paths {
@@ -6621,6 +6628,16 @@ fn production_simple_provider_adapters_delegate_auth_headers_to_adapter() {
             }
         }
     }
+    for marker in [
+        "build_codex_provider_auth_headers",
+        "build_gemini_provider_auth_headers",
+    ] {
+        if adapter_transport_reexport_slice.contains(marker) {
+            violations.push(format!(
+                "proxy_core_adapter must not re-export pure provider auth header builder `{marker}`"
+            ));
+        }
+    }
 
     assert!(
         violations.is_empty(),
@@ -6634,6 +6651,13 @@ fn production_claude_provider_adapter_delegates_auth_headers_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let adapter_transport_reexport_slice = optional_function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::transport::{",
+        "};",
+    );
     let get_auth_headers = function_slice(
         &source,
         "    fn get_auth_headers(",
@@ -6652,6 +6676,12 @@ fn production_claude_provider_adapter_delegates_auth_headers_to_adapter() {
                 ));
             }
         }
+    }
+    if adapter_transport_reexport_slice.contains("build_claude_provider_auth_headers") {
+        violations.push(
+            "proxy_core_adapter must not re-export pure Claude provider auth header builder"
+                .to_string(),
+        );
     }
 
     assert!(
