@@ -1138,7 +1138,6 @@ const FORBIDDEN_PROVIDER_ADAPTER_URL_BUILD_MARKERS: &[&str] = &[
     "provider_claude_upstream_url(",
     "provider_codex_upstream_url(",
     "provider_gemini_upstream_url(",
-    "crate::proxy_core::",
     "cc_switch_proxy_core::",
 ];
 const FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_URL_FACADE_MARKERS: &[&str] = &[
@@ -1988,6 +1987,22 @@ fn is_allowed_provider_auth_core_import(relative: &str, code: &str) -> bool {
     )
 }
 
+fn is_allowed_provider_upstream_url_core_import(relative: &str, code: &str) -> bool {
+    matches!(
+        (relative, code.trim()),
+        (
+            "src/proxy/provider/claude.rs",
+            "use crate::proxy_core::api::transport::build_claude_upstream_url;"
+        ) | (
+            "src/proxy/provider/codex.rs",
+            "use crate::proxy_core::api::transport::build_codex_upstream_url;"
+        ) | (
+            "src/proxy/provider/gemini.rs",
+            "use crate::proxy_core::api::transforms::build_gemini_upstream_url;"
+        )
+    )
+}
+
 fn is_allowed_provider_adapter_kind_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/provider/mod.rs"
         && code.trim() == "use crate::proxy_core::api::domain::AppProviderAdapterKind;"
@@ -2163,6 +2178,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
             for marker in FORBIDDEN_MARKERS {
                 if code.contains(marker)
                     && !is_allowed_provider_auth_core_import(&relative, code)
+                    && !is_allowed_provider_upstream_url_core_import(&relative, code)
                     && !is_allowed_provider_adapter_kind_core_import(&relative, code)
                     && !is_allowed_test_proxy_config_core_import(&relative, code)
                     && !is_allowed_engine_routing_test_core_import(&relative, code)
@@ -6646,16 +6662,43 @@ fn production_claude_provider_adapter_delegates_auth_headers_to_adapter() {
 }
 
 #[test]
-fn production_provider_adapters_delegate_url_building_to_adapter() {
+fn production_provider_adapters_import_url_builders_from_core_api() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let provider_paths = [
-        "src/proxy/provider/claude.rs",
-        "src/proxy/provider/codex.rs",
-        "src/proxy/provider/gemini.rs",
+        (
+            "src/proxy/provider/claude.rs",
+            "use crate::proxy_core::api::transport::build_claude_upstream_url;",
+            "build_claude_upstream_url(base_url, endpoint)",
+            "build_claude_upstream_url",
+        ),
+        (
+            "src/proxy/provider/codex.rs",
+            "use crate::proxy_core::api::transport::build_codex_upstream_url;",
+            "build_codex_upstream_url(base_url, endpoint)",
+            "build_codex_upstream_url",
+        ),
+        (
+            "src/proxy/provider/gemini.rs",
+            "use crate::proxy_core::api::transforms::build_gemini_upstream_url;",
+            "build_gemini_upstream_url(base_url, endpoint)",
+            "build_gemini_upstream_url",
+        ),
     ];
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let adapter_transport_reexport_slice = optional_function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::transport::{",
+        "};",
+    );
+    let adapter_transform_reexport_slice = optional_function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::transforms::{",
+        "};",
+    );
 
     let mut violations = Vec::new();
-    for relative in provider_paths {
+    for (relative, expected_import, expected_call, helper) in provider_paths {
         let path = manifest_dir.join(relative);
         let source = fs::read_to_string(&path).expect("read provider adapter source");
         let build_url = function_slice(
@@ -6663,6 +6706,16 @@ fn production_provider_adapters_delegate_url_building_to_adapter() {
             "    fn build_url(&self, base_url: &str, endpoint: &str) -> String",
             "    fn get_auth_headers(",
         );
+        if !source.contains(expected_import) {
+            violations.push(format!(
+                "{relative} must import `{helper}` directly from proxy_core::api"
+            ));
+        }
+        if !build_url.contains(expected_call) {
+            violations.push(format!(
+                "{relative} build_url must call direct core helper `{expected_call}`"
+            ));
+        }
         for (line_index, line) in production_lines(build_url) {
             let code = line.split("//").next().unwrap_or_default();
             for marker in FORBIDDEN_PROVIDER_ADAPTER_URL_BUILD_MARKERS {
@@ -6676,11 +6729,18 @@ fn production_provider_adapters_delegate_url_building_to_adapter() {
                 }
             }
         }
+        if adapter_transport_reexport_slice.contains(helper)
+            || adapter_transform_reexport_slice.contains(helper)
+        {
+            violations.push(format!(
+                "proxy_core_adapter must not re-export pure upstream URL builder `{helper}`"
+            ));
+        }
     }
 
     assert!(
         violations.is_empty(),
-        "provider adapters must delegate upstream URL building to proxy_core_adapter build helpers without direct core access or provider URL facades:\n{}",
+        "provider adapters must import upstream URL builders directly from proxy_core::api without provider URL facades:\n{}",
         violations.join("\n")
     );
 }
@@ -11439,8 +11499,8 @@ fn proxy_core_adapter_delegates_claude_request_format_dispatch_to_core() {
     );
     let adapter_transform_import_window = function_slice(
         &source,
-        "use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
-        "pub(crate) use crate::proxy_core::api::transforms::{\n    build_gemini_upstream_url,",
+        "use crate::proxy_core::api::transforms::{",
+        "pub(crate) use crate::proxy_core::api::transforms::{\n    chat_completion_to_response_with_context,",
     );
     assert!(
         !source.contains(
@@ -11755,8 +11815,8 @@ fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
     );
     let adapter_transform_import_window = function_slice(
         &source,
-        "use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
-        "pub(crate) use crate::proxy_core::api::transforms::{\n    build_gemini_upstream_url,",
+        "use crate::proxy_core::api::transforms::{",
+        "pub(crate) use crate::proxy_core::api::transforms::{\n    chat_completion_to_response_with_context,",
     );
     assert!(
         !source.contains(

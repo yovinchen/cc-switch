@@ -2066,7 +2066,7 @@ use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY;
 pub(crate) use crate::proxy_core::api::transforms::{
-    build_gemini_upstream_url, chat_completion_to_response_with_context,
+    chat_completion_to_response_with_context,
     claude_provider_transform_required as core_claude_provider_transform_required,
     claude_request_transform_for_api_format, claude_response_to_anthropic_message_for_api_format,
     claude_transform_streaming_decision as core_claude_transform_streaming_decision,
@@ -2076,8 +2076,7 @@ pub(crate) use crate::proxy_core::api::transforms::{
     ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
 };
 pub(crate) use crate::proxy_core::api::transport::{
-    build_claude_provider_auth_headers, build_claude_upstream_url,
-    build_codex_provider_auth_headers, build_codex_upstream_url,
+    build_claude_provider_auth_headers, build_codex_provider_auth_headers,
     build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log,
     forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
@@ -11475,7 +11474,10 @@ base_url = "https://api.openai.com/v1"
             )
         );
         assert_eq!(
-            build_codex_upstream_url("https://api.openai.com", "/chat/completions"),
+            crate::proxy_core::api::transport::build_codex_upstream_url(
+                "https://api.openai.com",
+                "/chat/completions",
+            ),
             "https://api.openai.com/v1/chat/completions"
         );
 
@@ -12342,7 +12344,7 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(creds.access_token, "ya29.access-token");
         assert!(!creds.needs_refresh());
         assert_eq!(
-            build_gemini_upstream_url(
+            crate::proxy_core::api::transforms::build_gemini_upstream_url(
                 "https://generativelanguage.googleapis.com/v1beta",
                 "/v1beta/models/gemini-pro:generateContent",
             ),
@@ -12493,7 +12495,10 @@ base_url = "https://api.openai.com/v1"
         );
         assert!(provider_claude_auth_info(&missing_claude_auth).is_none());
         assert_eq!(
-            build_claude_upstream_url("https://api.anthropic.com/v1", "/v1/messages"),
+            crate::proxy_core::api::transport::build_claude_upstream_url(
+                "https://api.anthropic.com/v1",
+                "/v1/messages",
+            ),
             "https://api.anthropic.com/v1/messages"
         );
 

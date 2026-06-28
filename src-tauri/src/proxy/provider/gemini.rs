@@ -12,9 +12,9 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::api::auth::ProviderAuthInfo;
 #[cfg(test)]
 use crate::proxy_core::api::auth::ProviderAuthStrategy;
+use crate::proxy_core::api::transforms::build_gemini_upstream_url;
 use crate::proxy_core_adapter::{
-    build_gemini_upstream_url, provider_gemini_auth_headers, provider_gemini_auth_info,
-    required_gemini_provider_base_url,
+    provider_gemini_auth_headers, provider_gemini_auth_info, required_gemini_provider_base_url,
 };
 
 /// Gemini 适配器

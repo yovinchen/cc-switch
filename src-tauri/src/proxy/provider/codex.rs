@@ -9,9 +9,9 @@ use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::api::auth::ProviderAuthInfo;
+use crate::proxy_core::api::transport::build_codex_upstream_url;
 use crate::proxy_core_adapter::{
-    build_codex_upstream_url, provider_codex_auth_headers, provider_codex_auth_info,
-    required_codex_provider_base_url,
+    provider_codex_auth_headers, provider_codex_auth_info, required_codex_provider_base_url,
 };
 
 /// Codex 适配器
