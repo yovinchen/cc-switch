@@ -2079,14 +2079,12 @@ pub(crate) use crate::proxy_core::api::transport::{
     build_claude_provider_auth_headers, build_claude_upstream_url,
     build_codex_provider_auth_headers, build_codex_upstream_url,
     build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
-    build_terminal_forward_failure_log, categorize_forward_failure,
+    build_terminal_forward_failure_log,
     forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
     forwarder_all_providers_circuit_open_log_line, forwarder_failure_log_line,
-    forwarder_no_available_provider_status_message, forwarder_no_providers_configured_log_line,
-    forwarder_rectifier_retry_failure_label,
+    forwarder_no_providers_configured_log_line, forwarder_rectifier_retry_failure_label,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
-    forwarder_terminal_failure_status_message, should_failover_after_rectifier_retry_failure,
 };
 use crate::proxy_core::api::transport::{
     codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,

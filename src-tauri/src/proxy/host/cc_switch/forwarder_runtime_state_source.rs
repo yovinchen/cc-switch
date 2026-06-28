@@ -10,12 +10,15 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy_core::api::events::AttemptEventPhase;
 use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
-use crate::proxy_core::api::transport::{ForwardFailureCategory, ForwarderRectifierRetryKind};
+use crate::proxy_core::api::transport::{
+    categorize_forward_failure, forwarder_no_available_provider_status_message,
+    forwarder_terminal_failure_status_message, should_failover_after_rectifier_retry_failure,
+    ForwardFailureCategory, ForwarderRectifierRetryKind,
+};
 use crate::proxy_core_adapter::{
-    categorize_forward_failure, emit_attempt_event_source, emit_request_started_event_source,
-    forward_failure_kind_from_proxy_error, forwarder_no_available_provider_status_message,
-    forwarder_rectifier_retry_failure_log_line, forwarder_rectifier_retry_success_log_line,
-    forwarder_terminal_failure_status_message,
+    emit_attempt_event_source, emit_request_started_event_source,
+    forward_failure_kind_from_proxy_error, forwarder_rectifier_retry_failure_log_line,
+    forwarder_rectifier_retry_success_log_line,
     record_forward_active_connection_acquired_runtime_source,
     record_forward_active_connection_released_runtime_source,
     record_forward_active_route_target_runtime_source,
@@ -23,9 +26,9 @@ use crate::proxy_core_adapter::{
     record_forward_provider_failure_runtime_source,
     record_forward_provider_rectifier_retry_failure_runtime_source,
     record_forward_request_started_runtime_source, record_forward_success_runtime_source,
-    retryable_forward_failure_log_line, should_failover_after_rectifier_retry_failure,
-    terminal_forward_failure_log_line_for_error, ForwarderFailoverSwitchTarget,
-    ForwarderFailureDecision, ForwarderRectifierRetryFailureDecision, ForwarderRuntimeStateSource,
+    retryable_forward_failure_log_line, terminal_forward_failure_log_line_for_error,
+    ForwarderFailoverSwitchTarget, ForwarderFailureDecision,
+    ForwarderRectifierRetryFailureDecision, ForwarderRuntimeStateSource,
     ForwarderRuntimeStateSourceRef,
 };
 

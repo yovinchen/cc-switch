@@ -2078,7 +2078,7 @@ fn is_allowed_forwarder_runtime_state_core_import(relative: &str, code: &str) ->
             code.trim(),
             "use crate::proxy_core::api::events::AttemptEventPhase;"
                 | "use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};"
-                | "use crate::proxy_core::api::transport::{ForwardFailureCategory, ForwarderRectifierRetryKind};"
+                | "use crate::proxy_core::api::transport::{"
         )
 }
 
@@ -17197,11 +17197,31 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         runtime_source.contains("use crate::proxy_core::api::events::AttemptEventPhase;")
             && runtime_source
                 .contains("use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};")
-            && runtime_source.contains(
-                "use crate::proxy_core::api::transport::{ForwardFailureCategory, ForwarderRectifierRetryKind};"
-            ),
+            && runtime_source.contains("use crate::proxy_core::api::transport::{")
+            && runtime_source.contains("categorize_forward_failure")
+            && runtime_source.contains("forwarder_no_available_provider_status_message")
+            && runtime_source.contains("forwarder_terminal_failure_status_message")
+            && runtime_source.contains("should_failover_after_rectifier_retry_failure")
+            && runtime_source.contains("ForwardFailureCategory")
+            && runtime_source.contains("ForwarderRectifierRetryKind"),
         "default ForwarderRuntimeStateSource should import runtime/event/transport contracts directly from proxy_core"
     );
+    let adapter_transport_reexport_slice = optional_function_slice(
+        &adapter_source,
+        "pub(crate) use crate::proxy_core::api::transport::{",
+        "};",
+    );
+    for marker in [
+        "categorize_forward_failure",
+        "forwarder_no_available_provider_status_message",
+        "forwarder_terminal_failure_status_message",
+        "should_failover_after_rectifier_retry_failure",
+    ] {
+        assert!(
+            !adapter_transport_reexport_slice.contains(marker),
+            "proxy_core_adapter should not re-export pure runtime failure helper `{marker}` once runtime state source imports it directly"
+        );
+    }
     let forwarder_transport_import_slice = function_slice(
         &source,
         "use crate::proxy_core::api::transport::{",
