@@ -1805,6 +1805,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1319. `proxy_core_adapter` 不再暴露 error contract alias：`ProxyCoreError` 与 `ProxyCoreResult` 均改为 adapter 内部普通 `proxy-core::api::errors` import，test-only `proxy_core_host` 兼容壳也直接从 core errors API 获取这两个错误合同；边界测试防止 core error contract 重新经 adapter alias 回流。
 1320. `proxy_core_adapter` 不再暴露 `ProxyEngine` core engine alias：adapter 内部和 test-only `proxy_core_host` 兼容壳均直接从 `proxy_core::api::engine` 获取引擎类型；边界测试防止 core engine contract 重新经 adapter alias 回流。
 1321. `proxy_core_adapter` 不再暴露 `CurrentRouteTarget` runtime port alias：adapter 内部直接从 `proxy_core::api::ports` 获取当前路由目标 DTO，host runtime/status/HTTP/provider source 路径继续直接引用 core ports；边界测试防止该运行态 DTO 重新经 adapter alias 回流。
+1322. `proxy_core_adapter` 不再暴露 `ProxyRuntimeStatus` runtime port alias：adapter 内部和 test-only `proxy_core_host` 兼容壳均直接从 `proxy_core::api::ports` 获取运行态状态 DTO；边界测试防止运行态 status contract 重新经 adapter alias 回流。
 
 ## 背景
 
