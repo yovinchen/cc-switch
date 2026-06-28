@@ -2082,7 +2082,7 @@ use crate::proxy_core::api::transport::{
     codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required,
     CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts,
 };
-pub(crate) use crate::proxy_core::api::transport::{
+use crate::proxy_core::api::transport::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
     forwarder_all_providers_circuit_open_log_line, forwarder_failure_log_line,

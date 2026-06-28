@@ -6803,6 +6803,18 @@ fn proxy_core_adapter_excludes_provider_url_facades() {
 }
 
 #[test]
+fn proxy_core_adapter_excludes_transport_reexport_group() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        !source.contains("pub(crate) use crate::proxy_core::api::transport::{"),
+        "proxy_core_adapter should keep transport contracts as private imports or core direct imports, not as a facade re-export group"
+    );
+}
+
+#[test]
 fn proxy_core_adapter_excludes_router_channel_dto_bridge() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
