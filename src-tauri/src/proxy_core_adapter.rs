@@ -2077,7 +2077,7 @@ pub(crate) use crate::proxy_core::api::management::{
     stream_check_result_from_probe_result, ChannelHealthUpdateInput, StreamCheckConfigOverride,
     CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
-pub(crate) use crate::proxy_core::api::model_catalog::{
+use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogSource,
 };
 pub(crate) use crate::proxy_core::api::ports::{

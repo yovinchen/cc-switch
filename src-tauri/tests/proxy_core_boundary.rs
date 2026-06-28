@@ -5957,7 +5957,7 @@ fn proxy_core_adapter_does_not_export_channel_write_request_aliases() {
     let adapter_management_pub_use = function_slice(
         adapter_runtime_source,
         "pub(crate) use crate::proxy_core::api::management::{\n    channel_health_update_from_input",
-        "};\npub(crate) use crate::proxy_core::api::model_catalog::{",
+        "};\nuse crate::proxy_core::api::model_catalog::{",
     );
 
     for marker in [
@@ -14175,6 +14175,13 @@ fn proxy_core_adapter_delegates_client_model_catalog_source_selection_to_core() 
     assert!(
         function.contains("client_model_catalog_source_for_app"),
         "client model catalog app selection should be delegated to proxy-core"
+    );
+    assert!(
+        source.contains("use crate::proxy_core::api::model_catalog::{")
+            && source.contains("client_model_catalog_source_for_app")
+            && source.contains("ClientModelCatalogSource")
+            && !source.contains("pub(crate) use crate::proxy_core::api::model_catalog::{\n    client_model_catalog_source_for_app, ClientModelCatalogSource,\n};"),
+        "proxy_core_adapter should import client model catalog source selection privately instead of re-exporting it"
     );
 
     let forbidden_markers = ["match app", "AppKind::Codex"];
