@@ -1799,6 +1799,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1313. `proxy/codex_chat_history` 不再通过 `proxy_core_adapter` 获取 Codex history transform DTO：`CodexChatHistorySseRecord` 与 `CodexChatHistoryState` 直接来自 `proxy-core::api::transforms`，adapter 内部的 `CodexChatReasoningOptions`、`CodexChatReasoningProfile` 与 `CodexToolContext` 也改为普通 core import；边界测试防止 Codex transform DTO 重新以 adapter alias 回流。
 1314. `proxy_core_adapter` 不再暴露 `CopilotClassification` transport alias：该 DTO 只供 adapter 内部 Copilot auth optimization preparation 使用，现改为普通 `proxy-core::api::transport` import；边界测试防止 Copilot classification DTO 重新以 adapter alias 回流。
 1315. `proxy_core_adapter` 不再暴露 `GeminiShadowStore` transform state alias：Claude provider、forwarder protocol state source 与 test-only `proxy_core_host` 兼容壳均直接从 `proxy-core::api::transforms` 获取该状态类型，adapter 内部也改为普通 core import；边界测试防止 Gemini shadow state 重新经 adapter alias 回流。
+1316. `proxy_core_adapter` 不再暴露 usage contract alias：`ModelPricing`、`UsageRecord` 与 `UsageRouteContext` 均改为 adapter 内部普通 `proxy-core::api::usage` import，test-only `proxy_core_host` 兼容壳也直接从 core usage API 获取 `UsageRecord`；边界测试防止 usage DTO 重新经 adapter alias 回流。
 
 ## 背景
 
