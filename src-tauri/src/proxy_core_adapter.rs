@@ -3087,9 +3087,7 @@ use crate::proxy_core::api::auth::extract_gemini_api_key_from_settings;
 
 use crate::proxy_core::api::auth::extract_gemini_base_url_from_settings;
 
-pub(crate) use crate::proxy_core::api::ports::{
-    gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
-};
+use crate::proxy_core::api::ports::gemini_live_backup_from_effective_settings;
 
 pub(crate) fn provider_gemini_env_map(
     provider: &Provider,
@@ -7134,8 +7132,9 @@ mod tests {
     use crate::proxy_core::api::ports::{
         claude_env_credentials_from_settings, claude_takeover_model_fields_from_settings,
         codex_auth_object_value_from_settings, common_config_snippet_issue_message,
-        gemini_env_map_from_settings, gemini_live_settings_to_write, json_deep_merge,
-        json_deep_remove, json_remove_array_items, json_value_is_subset,
+        gemini_env_map_from_settings, gemini_live_backup_from_effective_settings,
+        gemini_live_settings_from_env_json_and_config, gemini_live_settings_to_write,
+        json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
         normalize_claude_models_in_value, openclaw_common_config_value_from_settings,
         openclaw_credential_parts_from_settings, opencode_common_config_value_from_settings,
         opencode_credential_parts_from_settings, provider_credential_issue_spec,

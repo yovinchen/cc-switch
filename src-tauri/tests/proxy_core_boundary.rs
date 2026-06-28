@@ -7806,12 +7806,38 @@ fn proxy_core_adapter_delegates_gemini_live_json_policy_to_core() {
         .map(|(_, line)| line)
         .collect::<Vec<_>>()
         .join("\n");
+    let ports_reexport_blocks: Vec<&str> = production_source
+        .split("pub(crate) use crate::proxy_core::api::ports::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
 
     assert!(
-        production_source.contains("pub(crate) use crate::proxy_core::api::ports::{")
-            && production_source.contains("gemini_live_settings_from_env_json_and_config")
-            && production_source.contains("gemini_live_backup_from_effective_settings"),
-        "proxy_core_adapter should expose Gemini live JSON helpers from core for live write/backup flows"
+        production_source.contains(
+            "use crate::proxy_core::api::ports::gemini_live_backup_from_effective_settings"
+        ),
+        "proxy_core_adapter should privately import Gemini live backup helper from core"
+    );
+    for helper in [
+        "gemini_live_backup_from_effective_settings",
+        "gemini_live_settings_from_env_json_and_config",
+    ] {
+        assert!(
+            !ports_reexport_blocks
+                .iter()
+                .any(|block| block.contains(helper)),
+            "proxy_core_adapter should not re-export {helper} through grouped ports imports"
+        );
+    }
+    let live_service_source =
+        fs::read_to_string(manifest_dir.join("src/services/provider/live.rs"))
+            .expect("read services/provider/live.rs");
+    assert!(
+        live_service_source.contains("use crate::proxy_core::api::ports::{")
+            && live_service_source.contains("gemini_live_settings_from_env_json_and_config")
+            && !live_service_source
+                .contains("use crate::proxy_core_adapter::{\n    gemini_live_settings_from_env_json_and_config"),
+        "Gemini live service should import live JSON merge helper directly from proxy-core ports"
     );
     assert!(
         !source.contains(
