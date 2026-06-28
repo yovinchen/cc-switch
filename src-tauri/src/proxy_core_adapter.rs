@@ -2053,13 +2053,13 @@ use crate::proxy_core::api::management::StreamCheckConfigOverride;
 use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogSource,
 };
-pub(crate) use crate::proxy_core::api::ports::{
-    channel_breaker_stats_from_parts, AuthProvider, ChannelBreakerStats, ChannelHealthReset,
-    ChannelSource, ProxyServices,
-};
 use crate::proxy_core::api::ports::{
-    channel_health_reset_from_parts, AppSummaryConfig, ChannelKeyRuntimeSource, ProviderSource,
-    ProxyConfigSource, RoutePolicySource,
+    channel_breaker_stats_from_parts, channel_health_reset_from_parts, AppSummaryConfig,
+    ChannelBreakerStats, ChannelKeyRuntimeSource, ProviderSource, ProxyConfigSource,
+    RoutePolicySource,
+};
+pub(crate) use crate::proxy_core::api::ports::{
+    AuthProvider, ChannelHealthReset, ChannelSource, ProxyServices,
 };
 use crate::proxy_core::api::routing::{
     failover_config_read_error_log_line, provider_router_auto_failover_enabled_decision,

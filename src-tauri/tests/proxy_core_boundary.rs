@@ -3134,8 +3134,8 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
     );
     let adapter_core_ports_import = function_slice(
         &source,
-        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "pub(crate) use crate::proxy_core::api::ports::{\n    AuthProvider",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
     assert!(
         !adapter_core_ports_import.contains("ClaudeDesktopGatewayAuthSource"),
@@ -7551,7 +7551,7 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
     let adapter_management_import = function_slice(
         adapter_runtime_source,
         "use crate::proxy_core::api::management::{",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
 
     for marker in [
@@ -7610,7 +7610,7 @@ fn proxy_core_adapter_does_not_export_legacy_channel_projection_aliases() {
     let adapter_management_import = function_slice(
         adapter_runtime_source,
         "use crate::proxy_core::api::management::{",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
     let adapter_routing_import = function_slice(
         adapter_runtime_source,
@@ -15431,8 +15431,8 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     );
     let adapter_core_ports_import = function_slice(
         &source,
-        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "pub(crate) use crate::proxy_core::api::ports::{\n    AuthProvider",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
 
     assert!(
@@ -15577,8 +15577,8 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     );
     let adapter_core_ports_import = function_slice(
         &source,
-        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "pub(crate) use crate::proxy_core::api::ports::{\n    AuthProvider",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
     let attempt_source_function = attempt_source.as_str();
 
@@ -19202,8 +19202,8 @@ fn proxy_core_adapter_delegates_config_source_to_host_module() {
     let source = fs::read_to_string(&source_path).expect("read config_source.rs");
     let adapter_core_ports_import = function_slice(
         &adapter_source,
-        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "pub(crate) use crate::proxy_core::api::ports::{\n    AuthProvider",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
     let source_adapter_import = function_slice(
         &source,
@@ -19294,8 +19294,8 @@ fn proxy_core_adapter_delegates_provider_source_to_host_module() {
     let source = fs::read_to_string(&source_path).expect("read provider_source.rs");
     let adapter_core_ports_import = function_slice(
         &adapter_source,
-        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "pub(crate) use crate::proxy_core::api::ports::{\n    AuthProvider",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
     let source_adapter_import = function_slice(
         &source,
@@ -19520,8 +19520,8 @@ fn proxy_core_adapter_delegates_route_policy_source_to_host_module() {
     let source = fs::read_to_string(&source_path).expect("read route_policy_source.rs");
     let adapter_core_ports_import = function_slice(
         &adapter_source,
-        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "pub(crate) use crate::proxy_core::api::ports::{\n    AuthProvider",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
     let source_adapter_import = function_slice(
         &source,
@@ -19668,8 +19668,8 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
     );
     let adapter_core_ports_import = function_slice(
         &adapter_source,
-        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "pub(crate) use crate::proxy_core::api::ports::{\n    AuthProvider",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
     assert!(
         !adapter_core_ports_import.contains("RouteResolver"),
@@ -19869,8 +19869,8 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
     );
     let adapter_core_ports_import = function_slice(
         &adapter_source,
-        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "pub(crate) use crate::proxy_core::api::ports::{\n    AuthProvider",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
     assert!(
         !adapter_core_ports_import.contains("ModelCatalogProvider"),
@@ -19957,8 +19957,8 @@ fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
         fs::read_to_string(&usage_sink_path).expect("read database_usage_sink.rs");
     let adapter_core_ports_import = function_slice(
         &adapter_source,
-        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "pub(crate) use crate::proxy_core::api::ports::{\n    AuthProvider",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
 
     assert!(
@@ -20037,8 +20037,8 @@ fn proxy_core_adapter_delegates_management_auth_source_to_host_module() {
     );
     let adapter_core_ports_import = function_slice(
         &adapter_source,
-        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "pub(crate) use crate::proxy_core::api::ports::{\n    AuthProvider",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
     for adapter_type in ["ManagementAuthRuntimeConfig", "ManagementAuthSource"] {
         assert!(
@@ -20098,8 +20098,8 @@ fn proxy_core_adapter_delegates_runtime_status_source_to_host_module() {
     );
     let adapter_core_ports_import = function_slice(
         &adapter_source,
-        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "pub(crate) use crate::proxy_core::api::ports::{\n    AuthProvider",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
     assert!(
         !adapter_core_ports_import.contains("RuntimeStatusSource"),
@@ -20187,8 +20187,8 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
     );
     let adapter_core_ports_import = function_slice(
         &adapter_source,
-        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "pub(crate) use crate::proxy_core::api::ports::{\n    AuthProvider",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
     assert!(
         !adapter_core_ports_import.contains("ProxyEventSink"),
@@ -22149,8 +22149,8 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
     let source = fs::read_to_string(&source_path).expect("read provider_router_provider_source.rs");
     let adapter_core_ports_import = function_slice(
         &adapter_source,
-        "pub(crate) use crate::proxy_core::api::ports::{\n    channel_breaker_stats_from_parts",
-        "};\nuse crate::proxy_core::api::ports::{",
+        "pub(crate) use crate::proxy_core::api::ports::{\n    AuthProvider",
+        "};\nuse crate::proxy_core::api::routing::{",
     );
     let source_adapter_import = function_slice(
         &source,
@@ -22597,6 +22597,23 @@ fn production_channel_health_store_reads_channel_breaker_stats_through_core_port
         assert!(
             !store_adapter_import.contains(adapter_type),
             "ChannelHealthStore host source must not import {adapter_type} through proxy_core_adapter"
+        );
+    }
+
+    let adapter_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+    for marker in ["channel_breaker_stats_from_parts", "ChannelBreakerStats"] {
+        let reexport_marker = adapter_source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::") && line.contains(marker)
+        }) || adapter_reexport_blocks
+            .iter()
+            .any(|block| block.contains(marker));
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export channel breaker stats helper/type `{marker}`"
         );
     }
 
