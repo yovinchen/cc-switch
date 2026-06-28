@@ -189,9 +189,6 @@ pub(crate) fn mark_custom_endpoint_last_used(
     }
 }
 
-pub(crate) const COPILOT_PUBLIC_GITHUB_DOMAIN: &str =
-    crate::proxy_core::api::model_catalog::COPILOT_PUBLIC_GITHUB_DOMAIN;
-
 use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};
 
 use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
@@ -15015,7 +15012,7 @@ command = "latest-command"
     fn copilot_account_adapter_projects_domain_and_composite_id_rules() {
         use crate::proxy_core::api::model_catalog::{
             copilot_composite_account_id, default_copilot_github_domain, is_copilot_ghes_domain,
-            normalize_github_domain,
+            normalize_github_domain, COPILOT_PUBLIC_GITHUB_DOMAIN,
         };
 
         assert_eq!(COPILOT_PUBLIC_GITHUB_DOMAIN, "github.com");

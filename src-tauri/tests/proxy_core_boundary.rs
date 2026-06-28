@@ -3943,6 +3943,7 @@ fn proxy_core_adapter_does_not_reexport_copilot_model_catalog_helpers() {
         .collect();
 
     for marker in [
+        "COPILOT_PUBLIC_GITHUB_DOMAIN",
         "copilot_api_base",
         "copilot_api_endpoint_from_usage_or_default",
         "copilot_composite_account_id",
@@ -3963,12 +3964,15 @@ fn proxy_core_adapter_does_not_reexport_copilot_model_catalog_helpers() {
             line.contains("pub(crate) use crate::proxy_core::api::model_catalog")
                 && line.contains(marker)
         });
+        let const_facade = source
+            .lines()
+            .any(|line| line.contains("pub(crate) const") && line.contains(marker));
         let grouped_reexport = model_catalog_reexport_blocks
             .iter()
             .any(|block| block.contains(marker));
 
         assert!(
-            !single_line_reexport && !grouped_reexport,
+            !single_line_reexport && !const_facade && !grouped_reexport,
             "proxy_core_adapter should not re-export pure Copilot model catalog helper `{marker}`"
         );
     }
@@ -15648,6 +15652,7 @@ fn production_copilot_auth_imports_model_catalog_helpers_directly() {
     );
 
     for marker in [
+        "COPILOT_PUBLIC_GITHUB_DOMAIN",
         "copilot_api_base",
         "copilot_api_endpoint_from_usage_or_default",
         "copilot_composite_account_id",
