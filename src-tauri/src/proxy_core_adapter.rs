@@ -416,8 +416,6 @@ pub(crate) fn record_proxy_server_started_status(
 
 pub(crate) use crate::proxy_core::api::ports::record_proxy_server_stopped_status;
 
-pub(crate) type CcSwitchProxyServer = ProxyServer;
-
 pub(crate) use crate::proxy_core::api::ports::proxy_server_info_from_parts;
 
 pub(crate) fn proxy_state_from_runtime_sources(
@@ -495,7 +493,7 @@ pub(crate) fn proxy_server_from_runtime_config(
     config: ProxyConfig,
     db: Arc<Database>,
     app_handle: Option<tauri::AppHandle>,
-) -> CcSwitchProxyServer {
+) -> ProxyServer {
     let state = proxy_state_from_runtime_sources(config.clone(), db, app_handle);
     ProxyServer::from_runtime_state(config, state)
 }

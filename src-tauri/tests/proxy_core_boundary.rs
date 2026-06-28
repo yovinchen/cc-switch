@@ -13639,10 +13639,13 @@ fn production_proxy_service_delegates_server_factory_to_adapter() {
 }
 
 #[test]
-fn production_proxy_service_imports_server_type_from_adapter() {
+fn production_proxy_service_imports_server_type_from_http_transport() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let source_adapter_imports = proxy_core_adapter_import_identifiers(&source);
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -13657,10 +13660,28 @@ fn production_proxy_service_imports_server_type_from_adapter() {
             }
         }
     }
+    if !source.contains("use crate::proxy::transport::http::server::ProxyServer;") {
+        violations.push(
+            "src/proxy/host/cc_switch/live_takeover.rs should import ProxyServer from the HTTP transport owning module".to_string(),
+        );
+    }
+    if source_adapter_imports
+        .iter()
+        .any(|identifier| identifier == "CcSwitchProxyServer")
+    {
+        violations.push(
+            "src/proxy/host/cc_switch/live_takeover.rs imports CcSwitchProxyServer through proxy_core_adapter".to_string(),
+        );
+    }
+    if adapter_source.contains("pub(crate) type CcSwitchProxyServer") {
+        violations.push(
+            "proxy_core_adapter should not expose CcSwitchProxyServer as a type alias".to_string(),
+        );
+    }
 
     assert!(
         violations.is_empty(),
-        "ProxyService must import the running proxy server type through proxy_core_adapter:\n{}",
+        "ProxyService must keep construction delegated to proxy_core_adapter but import the server type from HTTP transport:\n{}",
         violations.join("\n")
     );
 }
