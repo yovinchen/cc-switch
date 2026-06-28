@@ -5853,6 +5853,17 @@ fn proxy_core_adapter_does_not_reexport_codex_upstream_model_helper() {
             .any(|block| block.contains("resolve_codex_provider_upstream_model")),
         "proxy_core_adapter should not re-export resolve_codex_provider_upstream_model through grouped transport imports"
     );
+    for helper in [
+        "codex_provider_catalog_model_ids_from_settings",
+        "apply_codex_chat_upstream_model_policy",
+    ] {
+        assert!(
+            !transport_reexport_blocks
+                .iter()
+                .any(|block| block.contains(helper)),
+            "proxy_core_adapter should not re-export {helper} through grouped transport imports"
+        );
+    }
     assert!(
         adapter_source
             .contains("use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model;"),

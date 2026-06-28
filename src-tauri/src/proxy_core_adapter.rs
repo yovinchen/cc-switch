@@ -2973,7 +2973,7 @@ pub(crate) fn provider_codex_chat_reasoning_profile(
     infer_codex_chat_reasoning_profile(&provider.name, &base_url, &model)
 }
 
-pub(crate) use crate::proxy_core::api::transport::{
+use crate::proxy_core::api::transport::{
     apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
 };
 
@@ -7148,6 +7148,9 @@ mod tests {
         is_copilot_prompt_cache_provider, resolve_claude_api_format_from_settings,
         resolve_claude_responses_prompt_cache_key, CodexChatHistorySseRecord,
         CodexChatHistoryState,
+    };
+    use crate::proxy_core::api::transport::{
+        apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
     };
 
     use super::*;
