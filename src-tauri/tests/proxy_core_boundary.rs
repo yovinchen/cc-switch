@@ -6815,6 +6815,18 @@ fn proxy_core_adapter_excludes_transport_reexport_group() {
 }
 
 #[test]
+fn proxy_core_adapter_excludes_transforms_reexport_group() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        !source.contains("pub(crate) use crate::proxy_core::api::transforms::{"),
+        "proxy_core_adapter should keep transform contracts as private imports or core direct imports, not as a facade re-export group"
+    );
+}
+
+#[test]
 fn proxy_core_adapter_excludes_router_channel_dto_bridge() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
@@ -11542,7 +11554,7 @@ fn proxy_core_adapter_delegates_claude_request_format_dispatch_to_core() {
     let adapter_transform_import_window = function_slice(
         &source,
         "use crate::proxy_core::api::transforms::{",
-        "pub(crate) use crate::proxy_core::api::transforms::{\n    chat_completion_to_response_with_context,",
+        "use crate::proxy_core::api::transport::{",
     );
     assert!(
         !source.contains(
@@ -11858,7 +11870,7 @@ fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
     let adapter_transform_import_window = function_slice(
         &source,
         "use crate::proxy_core::api::transforms::{",
-        "pub(crate) use crate::proxy_core::api::transforms::{\n    chat_completion_to_response_with_context,",
+        "use crate::proxy_core::api::transport::{",
     );
     assert!(
         !source.contains(
