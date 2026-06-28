@@ -1802,6 +1802,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1316. `proxy_core_adapter` 不再暴露 usage contract alias：`ModelPricing`、`UsageRecord` 与 `UsageRouteContext` 均改为 adapter 内部普通 `proxy-core::api::usage` import，test-only `proxy_core_host` 兼容壳也直接从 core usage API 获取 `UsageRecord`；边界测试防止 usage DTO 重新经 adapter alias 回流。
 1317. `proxy_core_adapter` 不再暴露 `ProxyCoreEvent` event contract alias：adapter 内部事件桥接 helper 与 test-only `proxy_core_host` 兼容壳均直接从 `proxy-core::api::events` 获取事件 DTO；边界测试防止 core event contract 重新经 adapter alias 回流。
 1318. `proxy_core_adapter` 不再暴露 response transport contract alias：`ProxyCoreResponse`、`ProxyResult` 与 `ProxyResponseBody` 均改为 adapter 内部普通 `proxy-core::api::transport` import，test-only `proxy_core_host` 兼容壳也直接从 core transport API 获取 `ProxyResponseBody`；边界测试防止 response transport DTO 重新经 adapter alias 回流。
+1319. `proxy_core_adapter` 不再暴露 error contract alias：`ProxyCoreError` 与 `ProxyCoreResult` 均改为 adapter 内部普通 `proxy-core::api::errors` import，test-only `proxy_core_host` 兼容壳也直接从 core errors API 获取这两个错误合同；边界测试防止 core error contract 重新经 adapter alias 回流。
 
 ## 背景
 
