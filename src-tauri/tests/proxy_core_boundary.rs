@@ -6751,6 +6751,19 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
 
+    for marker in [
+        "proxy_app_config_from_parts",
+        "proxy_global_config_from_global_config",
+    ] {
+        let reexport_marker = source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::config") && line.contains(marker)
+        });
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export adapter-only config helper `{marker}`"
+        );
+    }
+
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();

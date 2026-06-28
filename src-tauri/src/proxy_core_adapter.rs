@@ -818,7 +818,7 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
         .await;
 }
 
-pub(crate) use crate::proxy_core::api::config::{
+use crate::proxy_core::api::config::{
     proxy_app_config_from_parts as proxy_app_config_from_config_parts,
     proxy_global_config_from_global_config as proxy_global_config_from_config,
 };
