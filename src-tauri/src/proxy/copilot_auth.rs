@@ -25,15 +25,17 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::proxy_core::api::model_catalog::CopilotModel;
+use crate::proxy_core::api::model_catalog::{
+    copilot_composite_account_id, is_copilot_ghes_domain, normalize_github_domain,
+    parse_copilot_models_response_bytes, parse_copilot_usage_response_bytes,
+};
 use crate::proxy_core_adapter::{
     compare_managed_auth_account_order, copilot_api_base,
     copilot_api_endpoint_from_usage_or_default, copilot_auth_status_from_parts,
-    copilot_composite_account_id, copilot_github_client_id, copilot_github_device_code_url,
-    copilot_github_oauth_token_url, copilot_github_user_url, copilot_oauth_poll_error_kind,
-    copilot_token_is_expiring_soon, copilot_token_url, copilot_usage_response_endpoint,
-    copilot_usage_url, is_copilot_ghes_domain, managed_auth_fallback_default_account_id,
-    normalize_github_domain, parse_copilot_models_response_bytes,
-    parse_copilot_usage_response_bytes, CopilotOAuthPollErrorKind, ManagedAuthAccountSortKey,
+    copilot_github_client_id, copilot_github_device_code_url, copilot_github_oauth_token_url,
+    copilot_github_user_url, copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
+    copilot_token_url, copilot_usage_response_endpoint, copilot_usage_url,
+    managed_auth_fallback_default_account_id, CopilotOAuthPollErrorKind, ManagedAuthAccountSortKey,
     ManagedAuthDefaultAccountCandidate, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION,
     COPILOT_PLUGIN_VERSION, COPILOT_PUBLIC_GITHUB_DOMAIN, COPILOT_USER_AGENT,
 };
@@ -164,7 +166,7 @@ struct GitHubAccountData {
     /// 认证时间戳
     pub authenticated_at: i64,
     /// GitHub 域名（github.com 或 GHES 域名）
-    #[serde(default = "crate::proxy_core_adapter::default_copilot_github_domain")]
+    #[serde(default = "crate::proxy_core::api::model_catalog::default_copilot_github_domain")]
     pub github_domain: String,
 }
 
@@ -1271,7 +1273,7 @@ impl CopilotAuthManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core_adapter::normalize_github_domain as adapter_normalize_github_domain;
+    use crate::proxy_core::api::model_catalog::normalize_github_domain as core_normalize_github_domain;
     use tempfile::tempdir;
 
     #[test]
@@ -1769,66 +1771,66 @@ mod tests {
     fn test_normalize_github_domain() {
         // 基本用法
         assert_eq!(
-            adapter_normalize_github_domain("github.com").unwrap(),
+            core_normalize_github_domain("github.com").unwrap(),
             "github.com"
         );
         assert_eq!(
-            adapter_normalize_github_domain("company.ghe.com").unwrap(),
+            core_normalize_github_domain("company.ghe.com").unwrap(),
             "company.ghe.com"
         );
 
         // 剥离协议
         assert_eq!(
-            adapter_normalize_github_domain("https://company.ghe.com").unwrap(),
+            core_normalize_github_domain("https://company.ghe.com").unwrap(),
             "company.ghe.com"
         );
         assert_eq!(
-            adapter_normalize_github_domain("http://company.ghe.com").unwrap(),
+            core_normalize_github_domain("http://company.ghe.com").unwrap(),
             "company.ghe.com"
         );
 
         // 小写化
         assert_eq!(
-            adapter_normalize_github_domain("GitHub.COM").unwrap(),
+            core_normalize_github_domain("GitHub.COM").unwrap(),
             "github.com"
         );
         assert_eq!(
-            adapter_normalize_github_domain("Company.GHE.Com").unwrap(),
+            core_normalize_github_domain("Company.GHE.Com").unwrap(),
             "company.ghe.com"
         );
 
         // 剥离尾斜杠和 path
         assert_eq!(
-            adapter_normalize_github_domain("company.ghe.com/").unwrap(),
+            core_normalize_github_domain("company.ghe.com/").unwrap(),
             "company.ghe.com"
         );
         assert_eq!(
-            adapter_normalize_github_domain("company.ghe.com/api/v3").unwrap(),
+            core_normalize_github_domain("company.ghe.com/api/v3").unwrap(),
             "company.ghe.com"
         );
 
         // 剥离 query 和 fragment
         assert_eq!(
-            adapter_normalize_github_domain("company.ghe.com?foo=bar").unwrap(),
+            core_normalize_github_domain("company.ghe.com?foo=bar").unwrap(),
             "company.ghe.com"
         );
         assert_eq!(
-            adapter_normalize_github_domain("company.ghe.com#section").unwrap(),
+            core_normalize_github_domain("company.ghe.com#section").unwrap(),
             "company.ghe.com"
         );
 
         // 保留端口
         assert_eq!(
-            adapter_normalize_github_domain("company.ghe.com:8443").unwrap(),
+            core_normalize_github_domain("company.ghe.com:8443").unwrap(),
             "company.ghe.com:8443"
         );
 
         // 拒绝 userinfo
-        assert!(adapter_normalize_github_domain("user@company.ghe.com").is_err());
+        assert!(core_normalize_github_domain("user@company.ghe.com").is_err());
 
         // 拒绝空输入
-        assert!(adapter_normalize_github_domain("").is_err());
-        assert!(adapter_normalize_github_domain("   ").is_err());
+        assert!(core_normalize_github_domain("").is_err());
+        assert!(core_normalize_github_domain("   ").is_err());
     }
 
     #[test]

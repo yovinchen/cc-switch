@@ -3932,6 +3932,40 @@ fn proxy_core_adapter_keeps_legacy_channel_projection_helpers_in_core() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_reexport_copilot_model_catalog_helpers() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let model_catalog_reexport_blocks: Vec<&str> = source
+        .split("pub(crate) use crate::proxy_core::api::model_catalog::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+
+    for marker in [
+        "copilot_composite_account_id",
+        "default_copilot_github_domain",
+        "is_copilot_ghes_domain",
+        "normalize_github_domain",
+        "parse_copilot_models_response_bytes",
+        "parse_copilot_usage_response_bytes",
+    ] {
+        let single_line_reexport = source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::model_catalog")
+                && line.contains(marker)
+        });
+        let grouped_reexport = model_catalog_reexport_blocks
+            .iter()
+            .any(|block| block.contains(marker));
+
+        assert!(
+            !single_line_reexport && !grouped_reexport,
+            "proxy_core_adapter should not re-export pure Copilot model catalog helper `{marker}`"
+        );
+    }
+}
+
+#[test]
 fn channel_breaker_stats_handler_delegates_response_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
@@ -11996,7 +12030,9 @@ fn copilot_model_callers_use_core_dto_entrypoint() {
                 &["use crate::proxy_core::api::model_catalog::CopilotModel;"][..]
             }
             "src/proxy/copilot_auth.rs" => &[
+                "#[serde(default = \"crate::proxy_core::api::model_catalog::default_copilot_github_domain\")]",
                 "pub use crate::proxy_core::api::auth::{",
+                "use crate::proxy_core::api::model_catalog::{",
                 "use crate::proxy_core::api::model_catalog::CopilotModel;",
                 "pub use crate::proxy_core::api::model_catalog::CopilotUsageResponse;",
             ][..],
@@ -15583,6 +15619,47 @@ fn production_copilot_auth_delegates_usage_contract_to_core() {
             && !fetch_endpoint_slice.contains("match usage.endpoints")
             && !fetch_endpoint_slice.contains("copilot_api_base(&domain)"),
         "fetch_and_cache_endpoint should delegate usage endpoint fallback policy to core"
+    );
+}
+
+#[test]
+fn production_copilot_auth_imports_model_catalog_helpers_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/copilot_auth.rs");
+    let source = fs::read_to_string(&path).expect("read copilot_auth.rs");
+    let core_import = function_slice(
+        &source,
+        "use crate::proxy_core::api::model_catalog::{",
+        "};\nuse crate::proxy_core_adapter::{",
+    );
+    let adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::{",
+        "};\n\nconst DEFAULT_GITHUB_DOMAIN",
+    );
+
+    for marker in [
+        "copilot_composite_account_id",
+        "is_copilot_ghes_domain",
+        "normalize_github_domain",
+        "parse_copilot_models_response_bytes",
+        "parse_copilot_usage_response_bytes",
+    ] {
+        assert!(
+            core_import.contains(marker),
+            "copilot_auth.rs should import `{marker}` directly from proxy_core model_catalog"
+        );
+        assert!(
+            !adapter_import.contains(marker),
+            "copilot_auth.rs should not import `{marker}` through proxy_core_adapter"
+        );
+    }
+
+    assert!(
+        source.contains(
+            "#[serde(default = \"crate::proxy_core::api::model_catalog::default_copilot_github_domain\")]"
+        ) && !source.contains("crate::proxy_core_adapter::default_copilot_github_domain"),
+        "Copilot stored account defaults should use the core model_catalog default domain helper directly"
     );
 }
 
