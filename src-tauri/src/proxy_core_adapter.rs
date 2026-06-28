@@ -1351,7 +1351,7 @@ pub(crate) mod server_log_codes {
     pub(crate) const CONN_ERR: &str = crate::proxy_core::api::logging::srv::CONN_ERR;
 }
 
-pub(crate) use crate::proxy_core::api::domain::{
+use crate::proxy_core::api::domain::{
     provider_account_ref, provider_metadata_from_input, unsupported_app_kind_config_error,
 };
 

@@ -6763,6 +6763,19 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
             "proxy_core_adapter should not re-export adapter-only config helper `{marker}`"
         );
     }
+    for marker in [
+        "provider_account_ref",
+        "provider_metadata_from_input",
+        "unsupported_app_kind_config_error",
+    ] {
+        let reexport_marker = source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::domain") && line.contains(marker)
+        });
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export adapter-only domain helper `{marker}`"
+        );
+    }
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
