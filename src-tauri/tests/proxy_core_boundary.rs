@@ -12953,6 +12953,7 @@ fn proxy_management_dto_callers_use_core_entrypoints() {
         (
             "src/database/dao/proxy.rs",
             &[
+                "use crate::proxy_core::api::config::app_proxy_config_defaults_for_app;",
                 "use crate::proxy_core::api::config::{AppProxyConfig, CircuitBreakerConfig};",
                 "use crate::proxy_core::api::management::provider_health_update_from_input;",
                 "use crate::proxy_core::api::ports::GlobalProxyConfig;",
@@ -13085,6 +13086,7 @@ fn proxy_dao_imports_config_contracts_directly() {
     );
 
     let required_imports = [
+        "use crate::proxy_core::api::config::app_proxy_config_defaults_for_app;",
         "use crate::proxy_core::api::config::{AppProxyConfig, CircuitBreakerConfig};",
         "use crate::proxy_core::api::ports::ProxyConfig;",
     ];
@@ -13099,7 +13101,12 @@ fn proxy_dao_imports_config_contracts_directly() {
         }
     }
 
-    for forbidden in ["AppProxyConfig", "CircuitBreakerConfig", "ProxyConfig"] {
+    for forbidden in [
+        "app_proxy_config_defaults_for_app",
+        "AppProxyConfig",
+        "CircuitBreakerConfig",
+        "ProxyConfig",
+    ] {
         if adapter_import_identifiers
             .iter()
             .any(|identifier| identifier == forbidden)
@@ -13114,6 +13121,15 @@ fn proxy_dao_imports_config_contracts_directly() {
         violations.is_empty(),
         "proxy DAO should not route pure config contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    assert!(
+        !adapter_source.contains(
+            "pub(crate) use crate::proxy_core::api::config::app_proxy_config_defaults_for_app;"
+        ),
+        "proxy_core_adapter should not re-export app proxy config default helper"
     );
 }
 

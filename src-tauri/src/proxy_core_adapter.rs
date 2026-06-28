@@ -2039,7 +2039,6 @@ use crate::proxy_core::api::auth::{
     extract_claude_auth_key_from_settings, is_gemini_oauth_key_shape,
     parse_gemini_oauth_credentials,
 };
-pub(crate) use crate::proxy_core::api::config::app_proxy_config_defaults_for_app;
 use crate::proxy_core::api::config::{
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
 };
