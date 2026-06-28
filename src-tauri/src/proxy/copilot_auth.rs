@@ -26,15 +26,15 @@ use tokio::sync::{Mutex, RwLock};
 
 use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core::api::model_catalog::{
-    copilot_composite_account_id, is_copilot_ghes_domain, normalize_github_domain,
-    parse_copilot_models_response_bytes, parse_copilot_usage_response_bytes,
+    copilot_api_base, copilot_api_endpoint_from_usage_or_default, copilot_composite_account_id,
+    copilot_github_client_id, copilot_github_device_code_url, copilot_github_oauth_token_url,
+    copilot_github_user_url, copilot_token_url, copilot_usage_response_endpoint, copilot_usage_url,
+    is_copilot_ghes_domain, normalize_github_domain, parse_copilot_models_response_bytes,
+    parse_copilot_usage_response_bytes,
 };
 use crate::proxy_core_adapter::{
-    compare_managed_auth_account_order, copilot_api_base,
-    copilot_api_endpoint_from_usage_or_default, copilot_auth_status_from_parts,
-    copilot_github_client_id, copilot_github_device_code_url, copilot_github_oauth_token_url,
-    copilot_github_user_url, copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
-    copilot_token_url, copilot_usage_response_endpoint, copilot_usage_url,
+    compare_managed_auth_account_order, copilot_auth_status_from_parts,
+    copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
     managed_auth_fallback_default_account_id, CopilotOAuthPollErrorKind, ManagedAuthAccountSortKey,
     ManagedAuthDefaultAccountCandidate, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION,
     COPILOT_PLUGIN_VERSION, COPILOT_PUBLIC_GITHUB_DOMAIN, COPILOT_USER_AGENT,

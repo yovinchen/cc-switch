@@ -3943,12 +3943,21 @@ fn proxy_core_adapter_does_not_reexport_copilot_model_catalog_helpers() {
         .collect();
 
     for marker in [
+        "copilot_api_base",
+        "copilot_api_endpoint_from_usage_or_default",
         "copilot_composite_account_id",
         "default_copilot_github_domain",
+        "copilot_github_client_id",
+        "copilot_github_device_code_url",
+        "copilot_github_oauth_token_url",
+        "copilot_github_user_url",
         "is_copilot_ghes_domain",
         "normalize_github_domain",
         "parse_copilot_models_response_bytes",
         "parse_copilot_usage_response_bytes",
+        "copilot_token_url",
+        "copilot_usage_response_endpoint",
+        "copilot_usage_url",
     ] {
         let single_line_reexport = source.lines().any(|line| {
             line.contains("pub(crate) use crate::proxy_core::api::model_catalog")
@@ -15639,11 +15648,20 @@ fn production_copilot_auth_imports_model_catalog_helpers_directly() {
     );
 
     for marker in [
+        "copilot_api_base",
+        "copilot_api_endpoint_from_usage_or_default",
         "copilot_composite_account_id",
+        "copilot_github_client_id",
+        "copilot_github_device_code_url",
+        "copilot_github_oauth_token_url",
+        "copilot_github_user_url",
         "is_copilot_ghes_domain",
         "normalize_github_domain",
         "parse_copilot_models_response_bytes",
         "parse_copilot_usage_response_bytes",
+        "copilot_token_url",
+        "copilot_usage_response_endpoint",
+        "copilot_usage_url",
     ] {
         assert!(
             core_import.contains(marker),

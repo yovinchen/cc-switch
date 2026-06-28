@@ -194,12 +194,6 @@ pub(crate) const COPILOT_PUBLIC_GITHUB_DOMAIN: &str =
 
 use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};
 
-pub(crate) use crate::proxy_core::api::model_catalog::{
-    copilot_api_base, copilot_api_endpoint_from_usage_or_default, copilot_github_client_id,
-    copilot_github_device_code_url, copilot_github_oauth_token_url, copilot_github_user_url,
-    copilot_token_url, copilot_usage_response_endpoint, copilot_usage_url,
-};
-
 use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 
 pub(crate) use crate::proxy_core::api::ports::{
@@ -15041,7 +15035,11 @@ command = "latest-command"
 
     #[test]
     fn copilot_transport_adapter_projects_urls_and_model_parsing() {
-        use crate::proxy_core::api::model_catalog::parse_copilot_models_response_bytes;
+        use crate::proxy_core::api::model_catalog::{
+            copilot_api_base, copilot_github_client_id, copilot_github_device_code_url,
+            copilot_github_oauth_token_url, copilot_github_user_url, copilot_token_url,
+            copilot_usage_url, parse_copilot_models_response_bytes,
+        };
 
         assert_eq!(
             copilot_github_client_id("github.com"),
