@@ -1809,6 +1809,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1323. `proxy_core_adapter` 不再暴露 `ProxyConfig` runtime port alias：adapter 内部和 test-only `proxy_core_host` 兼容壳均直接从 `proxy_core::api::ports` 获取代理配置 DTO；边界测试防止 legacy runtime config contract 重新经 adapter alias 回流。
 1324. `proxy_core_adapter` 不再暴露 `ProxyServerInfo` runtime port alias：adapter 内部直接从 `proxy_core::api::ports` 获取 server 启动信息 DTO，commands、HTTP server 与 live takeover 路径继续直接引用 core ports；边界测试防止 server info contract 重新经 adapter alias 回流。
 1325. `proxy_core_adapter` 不再暴露 `ProxyTakeoverStatus` runtime port alias：adapter 内部直接从 `proxy_core::api::ports` 获取接管状态 DTO，commands 与 live takeover 路径继续直接引用 core ports；边界测试防止 takeover status contract 重新经 adapter alias 回流。
+1326. `proxy_core_adapter` 不再暴露 `ProxyRuntimeConfig` / `ProxyGlobalConfig` / `ProxyAppConfig` config contract alias：adapter 内部直接从 `proxy_core::api::config` 获取三类配置 DTO，host-owned `CcSwitchConfigSource` 继续直接引用 core config contract；边界测试防止配置 contract 重新经 adapter alias 回流。
 
 ## 背景
 
