@@ -1,11 +1,10 @@
 //! CC Switch Claude Desktop gateway auth source.
 
 use crate::database::Database;
+use crate::proxy_core::api::auth::claude_desktop_gateway_token_error;
 use crate::proxy_core::api::errors::ProxyCoreResult;
 use crate::proxy_core::api::ports::ClaudeDesktopGatewayAuthSource;
-use crate::proxy_core_adapter::{
-    claude_desktop_gateway_token_error, get_or_create_claude_desktop_gateway_token_from_db_source,
-};
+use crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source;
 use futures::future::BoxFuture;
 use std::sync::Arc;
 

@@ -489,9 +489,8 @@ pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
     crate::proxy::host::cc_switch::global_http_client::set_proxy_port(port);
 }
 
-pub(crate) use crate::proxy_core::api::auth::{
-    claude_desktop_gateway_token_error, claude_desktop_provider_selection_error,
-    claude_desktop_provider_unavailable_error,
+use crate::proxy_core::api::auth::{
+    claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
 };
 
 pub(crate) async fn record_codex_chat_response_history(

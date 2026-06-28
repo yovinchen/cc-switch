@@ -3076,17 +3076,21 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
     assert!(
         auth_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
             && auth_source
+                .contains("use crate::proxy_core::api::auth::claude_desktop_gateway_token_error;")
+            && auth_source
                 .contains("use crate::proxy_core::api::ports::ClaudeDesktopGatewayAuthSource;"),
         "CC Switch Claude Desktop gateway auth source should import auth contracts directly from proxy_core"
     );
-    let adapter_import = function_slice(
-        &auth_source,
-        "use crate::proxy_core_adapter::{",
-        "};\nuse futures::future::BoxFuture;",
-    );
-    for adapter_type in ["ClaudeDesktopGatewayAuthSource", "ProxyCoreResult"] {
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(&auth_source);
+    for adapter_type in [
+        "claude_desktop_gateway_token_error",
+        "ClaudeDesktopGatewayAuthSource",
+        "ProxyCoreResult",
+    ] {
         assert!(
-            !adapter_import.contains(adapter_type),
+            !adapter_import_identifiers
+                .iter()
+                .any(|identifier| identifier == adapter_type),
             "CC Switch Claude Desktop gateway auth source must not import {adapter_type} through proxy_core_adapter"
         );
     }
@@ -8923,10 +8927,17 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
             && source.contains("claude_desktop_direct_provider_validation_issue(")
             && source.contains("claude_desktop_proxy_provider_config_validation_issue(")
             && source.contains("claude_desktop_suggested_proxy_routes(")
-            && source.contains("claude_desktop_gateway_token_error")
             && source.contains("claude_desktop_provider_selection_error")
             && source.contains("claude_desktop_provider_unavailable_error"),
         "proxy_core_adapter should delegate Claude Desktop provider validation policy to core"
+    );
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::auth::{\n    claude_desktop_gateway_token_error"
+        ) && !source.contains(
+            "pub(crate) use crate::proxy_core::api::auth::claude_desktop_gateway_token_error"
+        ),
+        "proxy_core_adapter should not re-export Claude Desktop gateway token error helper"
     );
     assert!(
         !source.contains("enum ClaudeDesktopDirectProviderValidationIssue")
