@@ -1817,6 +1817,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1331. `proxy_core_adapter` 不再暴露 `CcSwitchProxyServer` host transport type alias：`ProxyService` 继续通过 adapter 工厂构造 server runtime state，但运行中 server 类型直接来自 `proxy::transport::http::server::ProxyServer`；边界测试防止 host transport type 重新经 adapter alias 回流。
 1332. `proxy_core_adapter` 不再暴露 provider selection/failover routing DTO alias：`ProviderFailoverCircuitLookup`、`ProviderSelectionFailure`、`ProviderSelectionInput`、`AutoFailoverToggleInput`、`AutoFailoverTogglePlan` 与 `FailoverQueuePosition` 均由 adapter 内部和 routing source 直接从 `proxy_core::api::routing` 获取；边界测试防止 provider-selection routing contract 重新经 adapter alias 回流。
 1333. `proxy_core_adapter` 不再暴露 channel write/key/model 请求 DTO alias 或 re-export：`ChannelRequestValidationError`、`ProxyChannelWriteRequest`、`ProxyChannelPatchRequest`、`ProxyChannelModelWriteRequest`、`ProxyChannelKeyWriteRequest`、`ProxyChannelKeyPatchRequest` 与 `ProxyChannelModelsReplaceRequest` 均由 DAO、test harness 和 channel source 直接从 `proxy_core::api::{management,routing}` 获取；边界测试防止 channel write contract 重新经 adapter 回流。
+1334. `proxy_core_adapter` 不再暴露 route resolve / route plan DTO alias：`RouteResolveRequest`、`RouteResolveResponse`、`RouteResolveChannelInput`、`ChannelRouteCandidate`、`ResolvedChannelAttempt` 与 `RoutePlan` 均由 adapter 内部、route resolver、forward pipeline 和 test harness 直接从 `proxy_core::api::{management,routing}` 获取；边界测试防止 route contract 重新经 adapter alias 回流。
 
 ## 背景
 
