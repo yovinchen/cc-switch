@@ -18638,6 +18638,15 @@ fn production_forwarder_uses_request_source_resource() {
             "default ForwarderRequestSource should import pure request helper/type `{marker}` directly from proxy_core::api::transport"
         );
     }
+    let adapter_transport_reexport_slice = optional_function_slice(
+        adapter_runtime_source,
+        "pub(crate) use crate::proxy_core::api::transport::{",
+        "};",
+    );
+    assert!(
+        !adapter_transport_reexport_slice.contains("ForwardUpstreamUrlPlan"),
+        "proxy_core_adapter should not re-export ForwardUpstreamUrlPlan once request source imports it directly from proxy_core::api::transport"
+    );
     assert!(
         request_source.contains(
             "use crate::proxy_core::api::transforms::responses_to_chat_completions_with_options;"
