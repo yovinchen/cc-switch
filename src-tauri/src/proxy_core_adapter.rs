@@ -3192,7 +3192,7 @@ pub(crate) fn provider_gemini_auth_headers(
 use crate::proxy::host::cc_switch::provider_adapter_context::{
     forwarder_provider_adapter_context_for_app, ForwarderAdapterContext,
 };
-pub(crate) use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;
+use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;
 
 pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
     let meta = provider.meta.as_ref();
@@ -7143,7 +7143,9 @@ mod tests {
         proxy_takeover_should_restore_existing_backup_before_retakeover, AuthInfo,
         CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderCredentialIssue,
     };
-    use crate::proxy_core::api::transforms::{CodexChatHistorySseRecord, CodexChatHistoryState};
+    use crate::proxy_core::api::transforms::{
+        resolve_claude_api_format_from_settings, CodexChatHistorySseRecord, CodexChatHistoryState,
+    };
 
     use super::*;
     use crate::database::ProxyChannelSourceKind;

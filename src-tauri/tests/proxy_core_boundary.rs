@@ -11275,6 +11275,12 @@ fn proxy_core_adapter_delegates_claude_transform_gate_to_core() {
         ),
         "proxy_core_adapter should not re-export the pure Claude api_format transform gate helper"
     );
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings"
+        ),
+        "proxy_core_adapter should not re-export the pure Claude api_format resolver helper"
+    );
 
     let forbidden_markers = [
         "return true",
