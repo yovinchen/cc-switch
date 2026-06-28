@@ -5156,6 +5156,36 @@ fn proxy_core_adapter_does_not_export_provider_kind_alias() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_domain_or_model_catalog_aliases() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
+
+    for marker in [
+        "pub(crate) type ProxyCoreAppKind",
+        "pub(crate) type AppKind",
+        "pub(crate) type ProviderSpec",
+        "pub(crate) type ModelCatalog",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not expose domain/model catalog DTO `{marker}` as a type alias"
+        );
+    }
+    assert!(
+        adapter_runtime_source.contains(
+            "use crate::proxy_core::api::domain::{\n    AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,\n};"
+        ) && adapter_runtime_source
+            .contains("use crate::proxy_core::api::model_catalog::ModelCatalog;"),
+        "proxy_core_adapter internals should import domain/model catalog DTOs directly from proxy_core"
+    );
+}
+
+#[test]
 fn proxy_core_host_imports_provider_kind_from_core_domain() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let relative = "src/proxy_core_host.rs";
@@ -19713,7 +19743,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
 
     assert!(
         host_source.contains(
-            "use crate::proxy_core::api::domain::{\n    ChannelOverrides, ModelCapabilities, ModelRoute, ProviderKind, ProviderSpec, RetryPolicy,\n    UpstreamEndpoint,\n};"
+            "use crate::proxy_core::api::domain::{\n    AppKind, ChannelOverrides, ModelCapabilities, ModelRoute, ProviderKind, ProviderSpec,\n    RetryPolicy, UpstreamEndpoint,\n};"
         )
             && host_source.contains(
             "use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;"
@@ -19740,6 +19770,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "ProxyCoreUpstreamEndpoint",
         "ChannelQuery",
         "ChannelAttemptResult",
+        "AppKind",
         "ChannelSpec",
         "ChannelStatus",
         "ProxyCoreChannelOverrides",

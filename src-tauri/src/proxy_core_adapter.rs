@@ -28,7 +28,9 @@ use crate::proxy_core::api::config::{
     AllowResult, AppProxyConfig, CircuitBreakerConfig, CircuitBreakerStats, ProxyAppConfig,
     ProxyGlobalConfig, ProxyRuntimeConfig, ResponseRuntimePolicy,
 };
-use crate::proxy_core::api::domain::{ProviderKind, ProviderMetadata, ProviderMetadataInput};
+use crate::proxy_core::api::domain::{
+    AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,
+};
 use crate::proxy_core::api::engine::ProxyEngine;
 use crate::proxy_core::api::ports::{
     CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
@@ -181,6 +183,7 @@ pub(crate) fn mark_custom_endpoint_last_used(
 pub(crate) const COPILOT_PUBLIC_GITHUB_DOMAIN: &str =
     crate::proxy_core::api::model_catalog::COPILOT_PUBLIC_GITHUB_DOMAIN;
 
+use crate::proxy_core::api::model_catalog::ModelCatalog;
 pub(crate) use crate::proxy_core::api::model_catalog::{
     copilot_composite_account_id, default_copilot_github_domain, is_copilot_ghes_domain,
     normalize_github_domain, parse_copilot_models_response_bytes,
@@ -1369,10 +1372,6 @@ pub(crate) mod server_log_codes {
     pub(crate) const CONN_ERR: &str = crate::proxy_core::api::logging::srv::CONN_ERR;
 }
 
-pub(crate) type ProxyCoreAppKind = crate::proxy_core::api::domain::AppKind;
-pub(crate) type ModelCatalog = crate::proxy_core::api::model_catalog::ModelCatalog;
-pub(crate) type ProviderSpec = crate::proxy_core::api::domain::ProviderSpec;
-
 pub(crate) use crate::proxy_core::api::domain::{
     provider_account_ref, provider_metadata_from_input, unsupported_app_kind_config_error,
 };
@@ -2000,7 +1999,6 @@ pub(crate) type ProviderSelectionInput = crate::proxy_core::api::routing::Provid
 pub(crate) type AutoFailoverToggleInput = crate::proxy_core::api::routing::AutoFailoverToggleInput;
 pub(crate) type AutoFailoverTogglePlan = crate::proxy_core::api::routing::AutoFailoverTogglePlan;
 pub(crate) type FailoverQueuePosition = crate::proxy_core::api::routing::FailoverQueuePosition;
-pub(crate) type AppKind = crate::proxy_core::api::domain::AppKind;
 pub(crate) type RouteResolveRequest = crate::proxy_core::api::management::RouteResolveRequest;
 pub(crate) type RouteResolveResponse = crate::proxy_core::api::management::RouteResolveResponse;
 pub(crate) type RouteResolveChannelInput =
@@ -4653,7 +4651,7 @@ pub(crate) fn legacy_channel_migration_preview_from_providers<'a>(
     let plan = crate::proxy_core::api::routing::build_legacy_channel_migration_plan(
         LegacyChannelMigrationPlanInput {
             app_type: app_type.to_string(),
-            app: app.map(|app| ProxyCoreAppKind::from(app.as_str())),
+            app: app.map(|app| AppKind::from(app.as_str())),
             current_provider_id: current_provider_id.map(ToString::to_string),
             providers: provider_inputs,
         },
@@ -4742,7 +4740,7 @@ impl From<&AppType> for AppKind {
     }
 }
 
-pub(crate) fn proxy_core_app_kind_from_app_type(app_type: &AppType) -> ProxyCoreAppKind {
+pub(crate) fn proxy_core_app_kind_from_app_type(app_type: &AppType) -> AppKind {
     AppKind::from(app_type)
 }
 
@@ -14948,7 +14946,7 @@ command = "latest-command"
             ..LegacyProviderProjectionInput::default()
         };
         let interface = crate::proxy_core::api::routing::infer_legacy_channel_interface(
-            Some(&ProxyCoreAppKind::Claude),
+            Some(&AppKind::Claude),
             &provider_projection,
         );
         assert_eq!(interface, InterfaceKind::AnthropicMessages);
@@ -14956,7 +14954,7 @@ command = "latest-command"
         let projection = crate::proxy_core::api::routing::build_legacy_channel_projection(
             LegacyChannelProjectionInput {
                 app_type: "claude".to_string(),
-                app: Some(ProxyCoreAppKind::Claude),
+                app: Some(AppKind::Claude),
                 provider_id: "provider-a".to_string(),
                 provider_name: "Provider A".to_string(),
                 provider_sort_index: Some(1),

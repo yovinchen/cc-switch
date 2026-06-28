@@ -25,8 +25,8 @@ use crate::proxy::host::cc_switch::route_resolver::RouteRequest;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 #[cfg(test)]
 use crate::proxy_core::api::domain::{
-    ChannelOverrides, ModelCapabilities, ModelRoute, ProviderKind, ProviderSpec, RetryPolicy,
-    UpstreamEndpoint,
+    AppKind, ChannelOverrides, ModelCapabilities, ModelRoute, ProviderKind, ProviderSpec,
+    RetryPolicy, UpstreamEndpoint,
 };
 #[cfg(test)]
 use crate::proxy_core::api::engine::ProxyEngine;
@@ -50,8 +50,8 @@ use crate::proxy_core::api::transport::{ProxyBody, ProxyResponseBody};
 use crate::proxy_core::api::usage::UsageRecord;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    forward_result_to_proxy_result, management_route_response_from_router_source, AppKind,
-    AuthProvider, ProxyRequest, ProxyServices, RoutePlan,
+    forward_result_to_proxy_result, management_route_response_from_router_source, AuthProvider,
+    ProxyRequest, ProxyServices, RoutePlan,
 };
 #[cfg(test)]
 use serde_json::Value;
