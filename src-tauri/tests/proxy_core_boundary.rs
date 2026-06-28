@@ -5773,12 +5773,46 @@ fn proxy_core_adapter_does_not_export_proxy_config_contract_aliases() {
             "proxy_core_adapter should not expose config contract alias `{alias}`"
         );
     }
-    assert!(
-        adapter_source.contains(
-            "use crate::proxy_core::api::config::{ProxyAppConfig, ProxyGlobalConfig, ProxyRuntimeConfig};"
-        ),
-        "proxy_core_adapter internals should import proxy config contracts directly from proxy_core config"
-    );
+    for core_config_type in ["ProxyAppConfig", "ProxyGlobalConfig", "ProxyRuntimeConfig"] {
+        assert!(
+            adapter_source.contains(core_config_type)
+                && adapter_source.contains("use crate::proxy_core::api::config::{"),
+            "proxy_core_adapter internals should import {core_config_type} directly from proxy_core config"
+        );
+    }
+}
+
+#[test]
+fn proxy_core_adapter_does_not_export_runtime_policy_or_breaker_config_aliases() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    for alias in [
+        "pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;",
+        "pub(crate) type AppProxyConfig = crate::proxy_core::api::config::AppProxyConfig;",
+        "pub(crate) type AllowResult = crate::proxy_core::api::config::AllowResult;",
+        "pub(crate) type CircuitBreakerConfig = crate::proxy_core::api::config::CircuitBreakerConfig;",
+        "pub(crate) type CircuitBreakerStats = crate::proxy_core::api::config::CircuitBreakerStats;",
+    ] {
+        assert!(
+            !adapter_source.contains(alias),
+            "proxy_core_adapter should not expose config contract alias `{alias}`"
+        );
+    }
+    for core_config_type in [
+        "ResponseRuntimePolicy",
+        "AppProxyConfig",
+        "AllowResult",
+        "CircuitBreakerConfig",
+        "CircuitBreakerStats",
+    ] {
+        assert!(
+            adapter_source.contains(core_config_type)
+                && adapter_source.contains("use crate::proxy_core::api::config::{"),
+            "proxy_core_adapter internals should import {core_config_type} directly from proxy_core config"
+        );
+    }
 }
 
 #[test]

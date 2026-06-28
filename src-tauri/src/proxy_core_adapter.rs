@@ -24,7 +24,10 @@ use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
-use crate::proxy_core::api::config::{ProxyAppConfig, ProxyGlobalConfig, ProxyRuntimeConfig};
+use crate::proxy_core::api::config::{
+    AllowResult, AppProxyConfig, CircuitBreakerConfig, CircuitBreakerStats, ProxyAppConfig,
+    ProxyGlobalConfig, ProxyRuntimeConfig, ResponseRuntimePolicy,
+};
 use crate::proxy_core::api::domain::{ProviderKind, ProviderMetadata, ProviderMetadataInput};
 use crate::proxy_core::api::engine::ProxyEngine;
 use crate::proxy_core::api::ports::{
@@ -843,8 +846,6 @@ pub(crate) type ForwarderProtocolPreparation =
 pub(crate) type ForwarderProtocolPreparationInput<'a> =
     crate::proxy_core::api::transport::ForwarderProtocolPreparationInput<'a>;
 pub(crate) type ForwarderTransformPlan = crate::proxy_core::api::transport::ForwarderTransformPlan;
-pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
-pub(crate) type AppProxyConfig = crate::proxy_core::api::config::AppProxyConfig;
 
 pub(crate) use crate::proxy_core::api::config::{
     proxy_app_config_from_parts as proxy_app_config_from_config_parts,
@@ -1355,9 +1356,6 @@ pub(crate) fn route_selected_event_message_from_forward_attempt(
 
 pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
     crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD;
-pub(crate) type AllowResult = crate::proxy_core::api::config::AllowResult;
-pub(crate) type CircuitBreakerConfig = crate::proxy_core::api::config::CircuitBreakerConfig;
-pub(crate) type CircuitBreakerStats = crate::proxy_core::api::config::CircuitBreakerStats;
 
 pub(crate) mod circuit_breaker_log_codes {
     pub(crate) const OPEN_TO_HALF_OPEN: &str =
