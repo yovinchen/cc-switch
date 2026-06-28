@@ -26,7 +26,9 @@ use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::api::domain::{ProviderKind, ProviderMetadata, ProviderMetadataInput};
 use crate::proxy_core::api::engine::ProxyEngine;
-use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus};
+use crate::proxy_core::api::ports::{
+    CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+};
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, RouteResolveChannelRecordInput,
     RouteResolveModelRecordInput,
@@ -410,7 +412,6 @@ pub(crate) type ProxyRuntimeConfig = crate::proxy_core::api::config::ProxyRuntim
 pub(crate) type ProxyGlobalConfig = crate::proxy_core::api::config::ProxyGlobalConfig;
 pub(crate) type ProxyAppConfig = crate::proxy_core::api::config::ProxyAppConfig;
 pub(crate) type CcSwitchProxyServer = ProxyServer;
-pub(crate) type ProxyServerInfo = crate::proxy_core::api::ports::ProxyServerInfo;
 
 pub(crate) use crate::proxy_core::api::ports::proxy_server_info_from_parts;
 
