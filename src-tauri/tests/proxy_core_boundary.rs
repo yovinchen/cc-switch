@@ -11564,6 +11564,11 @@ fn proxy_core_adapter_delegates_codex_responses_to_chat_gate_to_core() {
         "fn with_provider_codex_chat_completions_facts",
         "pub(crate) fn provider_codex_upstream_model",
     );
+    let transport_reexport_slice = optional_function_slice(
+        &source,
+        "pub(crate) use crate::proxy_core::api::transport::{",
+        "};",
+    );
 
     assert!(
         gate_slice.contains("core_codex_provider_uses_chat_completions")
@@ -11590,6 +11595,15 @@ fn proxy_core_adapter_delegates_codex_responses_to_chat_gate_to_core() {
         assert!(
             !source.contains(&format!("pub(crate) use crate::proxy_core::api::transport::{marker}")),
             "proxy_core_adapter should not re-export pure Codex Responses to Chat helper `{marker}`"
+        );
+    }
+    for marker in [
+        "CodexProviderChatCompletionsFacts",
+        "CodexResponsesToChatConversionFacts",
+    ] {
+        assert!(
+            !transport_reexport_slice.contains(marker),
+            "proxy_core_adapter should not re-export pure Codex Responses to Chat fact type `{marker}`"
         );
     }
     assert!(

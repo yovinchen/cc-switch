@@ -625,6 +625,7 @@
 611. `AuthProvider`、`ChannelSource` 与 `ProxyServices` core port trait 已从 `proxy_core_adapter` re-export 移除；adapter 仅私有引用仍需的 `AuthProvider` / `ChannelSource` 来定义 host bridge helper，`proxy_core_host` 测试 harness 也改为直接从 `proxy_core::api::ports` 引用 core port trait。
 612. `ForwarderProviderUrlFacts` 已从 `proxy_core_adapter` re-export 移除；`proxy/engine/forward_pipeline.rs` 与 host provider adapter context 均直接引用 `proxy_core::api::transport` 的 provider URL fact contract，adapter 不再作为纯 URL fact 类型的中转 facade。
 613. `ForwardUpstreamUrlPlan` 已从 `proxy_core_adapter` re-export 降为 adapter 私有 import；默认 `ForwarderRequestSource` 继续直接引用 `proxy_core::api::transport` 的 URL plan contract，adapter 仅在 source trait 签名中使用该 core 类型。
+614. `CodexProviderChatCompletionsFacts` 与 `CodexResponsesToChatConversionFacts` 已从 `proxy_core_adapter` re-export 降为 adapter 私有 import；Codex Responses-to-Chat gate 仍由 adapter 投影 host provider facts，但 fact 类型本身不再作为 adapter facade 对外暴露。
 - raw Hyper 上游 transport、`ProxyResponse` 与 header-case preservation 实现已迁到 `proxy/transport/upstream/hyper_client.rs`，旧 `proxy/hyper_client.rs` 已删除；raw-hyper 发送仍与 reqwest/global HTTP client 迁移分开处理。
 - 上游 transport 分流已收敛到 `proxy/transport/upstream/mod.rs`：该模块负责 upstream send policy、raw-hyper fallback 与 pooled reqwest 分支调度；pooled reqwest 上游发送执行已迁到 `proxy/transport/upstream/reqwest_client.rs`，仍复用现有 global HTTP client。
 - failover switch 的 DB、Tauri `AppHandle`、托盘菜单与前端事件副作用实现已迁到 `proxy/host/cc_switch/failover_switch.rs`，旧 `proxy/failover_switch.rs` 已删除；adapter 和 command wiring 已引用 host 路径。
