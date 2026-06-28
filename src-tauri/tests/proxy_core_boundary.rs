@@ -6285,6 +6285,11 @@ fn proxy_core_adapter_does_not_export_channel_write_request_aliases() {
         .skip(1)
         .map(|tail| tail.split("};").next().unwrap_or_default())
         .collect();
+    let adapter_routing_reexport_blocks: Vec<&str> = adapter_runtime_source
+        .split("pub(crate) use crate::proxy_core::api::routing::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
 
     for marker in [
         "pub(crate) type ChannelRequestValidationError",
@@ -6312,6 +6317,24 @@ fn proxy_core_adapter_does_not_export_channel_write_request_aliases() {
                 .iter()
                 .any(|block| block.contains(marker)),
             "proxy_core_adapter should not re-export channel write contract `{marker}`"
+        );
+    }
+    for marker in [
+        "normalize_channel_base_url",
+        "normalize_proxy_channel_key_patch_request_fields",
+        "normalize_proxy_channel_key_write_request_fields",
+        "normalize_proxy_channel_model_write_request_fields",
+        "normalize_proxy_channel_models_replace_request_fields",
+        "normalize_proxy_channel_patch_request_fields",
+        "normalize_proxy_channel_write_request_fields",
+        "normalize_required_channel_string",
+        "stable_channel_id",
+    ] {
+        assert!(
+            !adapter_routing_reexport_blocks
+                .iter()
+                .any(|block| block.contains(marker)),
+            "proxy_core_adapter should not re-export channel write normalization helper `{marker}`"
         );
     }
 }

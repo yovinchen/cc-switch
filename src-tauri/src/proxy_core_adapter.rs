@@ -4473,16 +4473,10 @@ pub(crate) use crate::proxy_core::api::routing::{
     current_provider_id_from_sources, current_provider_id_option_from_sources,
     failover_switch_pending_key, legacy_provider_codex_catalog_models_from_settings,
     legacy_provider_config_text_from_settings, legacy_provider_env_from_settings,
-    normalize_channel_base_url, normalize_proxy_channel_key_patch_request_fields,
-    normalize_proxy_channel_key_write_request_fields,
-    normalize_proxy_channel_model_write_request_fields,
-    normalize_proxy_channel_models_replace_request_fields,
-    normalize_proxy_channel_patch_request_fields, normalize_proxy_channel_write_request_fields,
-    normalize_required_channel_string, plan_auto_failover_toggle,
-    provider_failover_circuit_lookups, provider_selection_candidate_from_failover_lookup,
-    resolve_channel_route, restored_provider_switchback_decision,
-    route_candidate_channel_circuit_keys, select_provider_ids,
-    should_block_proxy_switch_to_provider_category, stable_channel_id,
+    plan_auto_failover_toggle, provider_failover_circuit_lookups,
+    provider_selection_candidate_from_failover_lookup, resolve_channel_route,
+    restored_provider_switchback_decision, route_candidate_channel_circuit_keys,
+    select_provider_ids, should_block_proxy_switch_to_provider_category,
 };
 
 pub(crate) fn legacy_provider_projection_input(
@@ -7126,6 +7120,9 @@ mod tests {
         proxy_takeover_should_restore_existing_backup_before_retakeover, AuthInfo,
         ClaudeTakeoverAuthPolicy, CodexProviderValidationIssue, OpenCodeCredentialIssue,
         ProviderCredentialIssue,
+    };
+    use crate::proxy_core::api::routing::{
+        normalize_channel_base_url, normalize_proxy_channel_write_request_fields, stable_channel_id,
     };
     use crate::proxy_core::api::transforms::{
         append_utf8_safe, infer_codex_chat_reasoning_profile, inspect_codex_chat_history_sse_block,
