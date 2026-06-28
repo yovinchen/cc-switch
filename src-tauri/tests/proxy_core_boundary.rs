@@ -5803,6 +5803,11 @@ fn proxy_core_adapter_does_not_export_proxy_runtime_status_alias() {
         .expect("read proxy_core_adapter.rs");
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
+    let port_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::ports::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
 
     assert!(
         !adapter_source.contains(
@@ -5810,11 +5815,35 @@ fn proxy_core_adapter_does_not_export_proxy_runtime_status_alias() {
         ),
         "proxy_core_adapter should not expose ProxyRuntimeStatus as a runtime port alias"
     );
+    for helper in [
+        "record_active_connection_acquired_status",
+        "record_active_connection_released_status",
+    ] {
+        let single_line_reexport = adapter_source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::ports") && line.contains(helper)
+        });
+        let grouped_reexport = port_reexport_blocks
+            .iter()
+            .any(|block| block.contains(helper));
+        assert!(
+            !single_line_reexport && !grouped_reexport,
+            "proxy_core_adapter should not re-export active connection status helper `{helper}`"
+        );
+    }
     assert!(
         adapter_source.contains("use crate::proxy_core::api::ports::{")
             && adapter_source.contains("ProxyRuntimeStatus"),
         "proxy_core_adapter internals should import ProxyRuntimeStatus directly from proxy_core ports"
     );
+    for helper in [
+        "record_active_connection_acquired_status",
+        "record_active_connection_released_status",
+    ] {
+        assert!(
+            adapter_source.contains(helper),
+            "proxy_core_adapter internals should call active connection status helper `{helper}` from core ports"
+        );
+    }
     assert!(
         host_source.contains("ProxyRuntimeStatus")
             && host_source.contains("use crate::proxy_core::api::ports::{"),

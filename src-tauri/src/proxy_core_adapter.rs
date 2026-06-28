@@ -37,6 +37,7 @@ use crate::proxy_core::api::management::{
 };
 use crate::proxy_core::api::ports::{
     proxy_server_info_from_parts, proxy_takeover_status_from_enabled_options,
+    record_active_connection_acquired_status, record_active_connection_released_status,
     record_proxy_server_stopped_status, CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus,
     ProxyServerInfo, ProxyTakeoverStatus,
 };
@@ -304,10 +305,6 @@ pub(crate) fn record_forward_request_started_status(
         crate::proxy_core::api::ports::ForwardRequestStartedStatusInput { timestamp },
     );
 }
-
-pub(crate) use crate::proxy_core::api::ports::{
-    record_active_connection_acquired_status, record_active_connection_released_status,
-};
 
 pub(crate) async fn record_forward_active_connection_acquired_runtime_source(
     status: &RwLock<ProxyRuntimeStatus>,
