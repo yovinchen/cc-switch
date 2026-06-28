@@ -5636,6 +5636,24 @@ fn proxy_core_adapter_does_not_export_proxy_engine_alias() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_current_route_target_alias() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    assert!(
+        !adapter_source.contains(
+            "pub(crate) type CurrentRouteTarget = crate::proxy_core::api::ports::CurrentRouteTarget;"
+        ),
+        "proxy_core_adapter should not expose CurrentRouteTarget as a runtime port alias"
+    );
+    assert!(
+        adapter_source.contains("use crate::proxy_core::api::ports::CurrentRouteTarget;"),
+        "proxy_core_adapter internals should import CurrentRouteTarget directly from proxy_core ports"
+    );
+}
+
+#[test]
 fn engine_and_host_test_fixtures_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases: &[(&str, &[&str], &[&str])] = &[
