@@ -41,6 +41,8 @@ use crate::proxy_core::api::transforms::GeminiShadowStore;
 #[cfg(test)]
 use crate::proxy_core::api::transport::ProxyBody;
 #[cfg(test)]
+use crate::proxy_core::api::usage::UsageRecord;
+#[cfg(test)]
 use crate::proxy_core_adapter::{
     forward_result_to_proxy_result, management_route_response_from_router_source, AppKind,
     AuthProvider, ProxyCoreEvent, ProxyRequest, ProxyServices, RoutePlan,
@@ -61,7 +63,7 @@ mod tests {
         proxy_response_to_core_response, ProxyChannelKeyWriteRequest,
         ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, ProxyConfig, ProxyCoreError,
         ProxyCoreResult, ProxyEngine, ProxyResponseBody, ProxyRuntimeStatus,
-        ResolvedChannelAttempt, RouteResolveRequest, UsageRecord,
+        ResolvedChannelAttempt, RouteResolveRequest,
     };
     use bytes::Bytes;
     use futures::StreamExt;

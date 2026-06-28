@@ -5485,6 +5485,38 @@ fn proxy_core_adapter_does_not_export_gemini_shadow_store_alias() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_usage_contract_aliases() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
+
+    for alias in [
+        "pub(crate) type ModelPricing = crate::proxy_core::api::usage::ModelPricing;",
+        "pub(crate) type UsageRecord = crate::proxy_core::api::usage::UsageRecord;",
+        "pub(crate) type UsageRouteContext = crate::proxy_core::api::usage::UsageRouteContext;",
+    ] {
+        assert!(
+            !adapter_source.contains(alias),
+            "proxy_core_adapter should not expose usage contract alias `{alias}`; callers and adapter internals should use proxy_core::api::usage directly"
+        );
+    }
+
+    assert!(
+        host_source.contains("use crate::proxy_core::api::usage::UsageRecord;"),
+        "proxy_core_host test harness should import UsageRecord directly from proxy_core usage"
+    );
+    let host_adapter_import = proxy_core_adapter_import_identifiers(&host_source);
+    assert!(
+        !host_adapter_import
+            .iter()
+            .any(|identifier| identifier == "UsageRecord"),
+        "proxy_core_host must not import UsageRecord through proxy_core_adapter"
+    );
+}
+
+#[test]
 fn engine_and_host_test_fixtures_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases: &[(&str, &[&str], &[&str])] = &[

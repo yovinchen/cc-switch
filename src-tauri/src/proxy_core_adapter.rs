@@ -515,9 +515,6 @@ pub(crate) type ProxyEngine<S> = crate::proxy_core::api::engine::ProxyEngine<S>;
 pub(crate) type ProxyResult = crate::proxy_core::api::transport::ProxyResult;
 pub(crate) type ProxyCoreEvent = crate::proxy_core::api::events::ProxyCoreEvent;
 pub(crate) type ProxyResponseBody = crate::proxy_core::api::transport::ProxyResponseBody;
-pub(crate) type ModelPricing = crate::proxy_core::api::usage::ModelPricing;
-pub(crate) type UsageRecord = crate::proxy_core::api::usage::UsageRecord;
-pub(crate) type UsageRouteContext = crate::proxy_core::api::usage::UsageRouteContext;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::api::ports::CurrentRouteTarget;
 
 pub(crate) async fn record_codex_chat_response_history(
@@ -2216,6 +2213,7 @@ pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
     PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
 };
+use crate::proxy_core::api::usage::{ModelPricing, UsageRecord, UsageRouteContext};
 
 use crate::proxy::host::cc_switch::managed_account_runtime_source::managed_account_runtime_source_from_app_handle;
 
