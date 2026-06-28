@@ -14888,14 +14888,22 @@ fn proxy_core_adapter_keeps_claude_takeover_model_helpers_in_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let live_takeover_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
+            .expect("read live_takeover.rs");
 
     assert!(
-        source.contains(
-            "pub(crate) use crate::proxy_core::api::ports::{\n    apply_claude_takeover_fields_with_policy"
-        ),
-        "proxy_core_adapter should retain host-facing Claude takeover write helper"
+        source.contains("pub(crate) fn apply_claude_takeover_fields_for_provider("),
+        "proxy_core_adapter should retain host Provider facts projection for Claude takeover"
+    );
+    assert!(
+        live_takeover_source
+            .contains("apply_claude_takeover_fields_with_policy, ClaudeTakeoverAuthPolicy"),
+        "live takeover should consume pure Claude takeover policy directly from proxy-core"
     );
     for marker in [
+        "apply_claude_takeover_fields_with_policy",
+        "ClaudeTakeoverAuthPolicy",
         "claude_takeover_client_model_for_upstream",
         "claude_takeover_default_display_name",
         "apply_claude_takeover_fields_with_policy_and_models",

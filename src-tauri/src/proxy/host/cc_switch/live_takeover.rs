@@ -10,16 +10,19 @@ use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};
 use crate::proxy_core::api::ports::{
+    apply_claude_takeover_fields_with_policy, ClaudeTakeoverAuthPolicy,
+};
+use crate::proxy_core::api::ports::{
     proxy_live_urls_from_listen_parts, proxy_server_info_from_parts,
     proxy_takeover_marked_state_is_reusable,
     proxy_takeover_should_restore_existing_backup_before_retakeover, ProxyConfig,
     ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::proxy_core_adapter::{
-    apply_claude_takeover_fields_for_provider, apply_claude_takeover_fields_with_policy,
-    apply_codex_takeover_fields_for_provider, apply_codex_unified_session_bucket_for_provider,
-    apply_gemini_takeover_env_fields, cleanup_all_live_backups_best_effort_in_db,
-    clear_all_provider_health_in_db, clear_legacy_live_takeover_active_flag_in_db,
+    apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
+    apply_codex_unified_session_bucket_for_provider, apply_gemini_takeover_env_fields,
+    cleanup_all_live_backups_best_effort_in_db, clear_all_provider_health_in_db,
+    clear_legacy_live_takeover_active_flag_in_db,
     clear_legacy_live_takeover_active_flag_strict_in_db, clear_live_takeover_enabled_flags_in_db,
     clear_provider_health_for_app_in_db, codex_backup_projection_error_message,
     codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
@@ -53,8 +56,8 @@ use crate::proxy_core_adapter::{
     set_proxy_app_enabled_in_db, ssot_live_restore_provider_from_db,
     sync_provider_settings_with_live_token, update_live_token_sync_provider_settings_in_db,
     update_proxy_config_preserving_live_takeover_active_in_db,
-    write_ssot_live_restore_provider_with_common_config, ClaudeTakeoverAuthPolicy,
-    CodexLiveWriteProjection, CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue,
+    write_ssot_live_restore_provider_with_common_config, CodexLiveWriteProjection,
+    CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue,
 };
 #[cfg(test)]
 use serde_json::Map;

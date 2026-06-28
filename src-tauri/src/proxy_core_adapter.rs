@@ -7061,9 +7061,6 @@ use crate::proxy_core::api::ports::{
     apply_claude_takeover_fields_for_provider_facts as core_apply_claude_takeover_fields_for_provider_facts,
     ClaudeTakeoverProviderFacts,
 };
-pub(crate) use crate::proxy_core::api::ports::{
-    apply_claude_takeover_fields_with_policy, ClaudeTakeoverAuthPolicy,
-};
 
 pub(crate) fn apply_claude_takeover_fields_for_provider(
     config: &mut Value,
@@ -7141,7 +7138,8 @@ mod tests {
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         proxy_takeover_marked_state_is_reusable,
         proxy_takeover_should_restore_existing_backup_before_retakeover, AuthInfo,
-        CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderCredentialIssue,
+        ClaudeTakeoverAuthPolicy, CodexProviderValidationIssue, OpenCodeCredentialIssue,
+        ProviderCredentialIssue,
     };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
