@@ -11930,6 +11930,9 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
         .unwrap_or(&adapter_source);
     let path = manifest_dir.join("src/proxy/host/cc_switch/provider_adapter_context.rs");
     let source = fs::read_to_string(&path).expect("read provider_adapter_context.rs");
+    let forward_pipeline_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let forward_pipeline_source =
+        fs::read_to_string(&forward_pipeline_path).expect("read forward_pipeline.rs");
     let function = function_slice(
         &source,
         "    pub(crate) fn provider_url_facts(",
@@ -11958,12 +11961,31 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
     for marker in [
         "forwarder_provider_url_facts",
         "ForwarderProviderUrlFactsInput",
+        "ForwarderProviderUrlFacts",
     ] {
         assert!(
             !adapter_runtime_source.contains(marker),
             "proxy_core_adapter should not re-export pure provider URL facts helper/input `{marker}` once provider_adapter_context owns the call site"
         );
     }
+    let forward_pipeline_transport_import = function_slice(
+        &forward_pipeline_source,
+        "use crate::proxy_core::api::transport::{",
+        "};\n#[cfg(test)]",
+    );
+    assert!(
+        forward_pipeline_transport_import.contains("ForwarderProviderUrlFacts"),
+        "forward pipeline should import provider URL facts directly from proxy_core::api::transport"
+    );
+    let forward_pipeline_adapter_import = function_slice(
+        &forward_pipeline_source,
+        "use crate::proxy_core_adapter::{",
+        "};\nuse crate::{app_config",
+    );
+    assert!(
+        !forward_pipeline_adapter_import.contains("ForwarderProviderUrlFacts"),
+        "forward pipeline should not import provider URL facts through proxy_core_adapter"
+    );
 
     let forbidden_markers = [
         "ForwarderProviderUrlFacts {",

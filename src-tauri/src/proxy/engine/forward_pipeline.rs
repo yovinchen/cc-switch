@@ -12,7 +12,7 @@ use crate::proxy::{
 use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 use crate::proxy_core::api::routing::ResolvedChannelAttempt;
 use crate::proxy_core::api::transport::{
-    ForwarderProtocolPreparationInput, ForwarderRectifierRetryKind,
+    ForwarderProtocolPreparationInput, ForwarderProviderUrlFacts, ForwarderRectifierRetryKind,
     OptionalCopilotAuthOptimizationPreparationInput,
 };
 #[cfg(test)]
@@ -26,11 +26,11 @@ use crate::proxy_core_adapter::{
     ForwarderCodexChatProtocolEnrichmentInput, ForwarderCopilotDynamicBaseUrlInput,
     ForwarderCopilotLiveModelInput, ForwarderCopilotRequestOptimizationGateInput,
     ForwarderFailureDecision, ForwarderMediaRetryPlanInput, ForwarderProtocolStateSourceRef,
-    ForwarderProviderRequestBodyInput, ForwarderProviderUrlFacts,
-    ForwarderRectifierRetryFailureDecision, ForwarderRequestBodyTransformInput,
-    ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan,
-    ForwarderRequestSourceRef, ForwarderResponseFinalizationInput, ForwarderResponseSourceRef,
-    ForwarderRuntimeConfig, ForwarderRuntimeStateSourceRef, ForwarderThinkingBudgetRectifierInput,
+    ForwarderProviderRequestBodyInput, ForwarderRectifierRetryFailureDecision,
+    ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
+    ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan, ForwarderRequestSourceRef,
+    ForwarderResponseFinalizationInput, ForwarderResponseSourceRef, ForwarderRuntimeConfig,
+    ForwarderRuntimeStateSourceRef, ForwarderThinkingBudgetRectifierInput,
     ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
     ForwarderTransportSourceRef, ForwarderUpstreamRequestLogInput,
     ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,

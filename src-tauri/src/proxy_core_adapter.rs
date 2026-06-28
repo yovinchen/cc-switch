@@ -2088,7 +2088,6 @@ pub(crate) use crate::proxy_core::api::transport::{
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
     forwarder_terminal_failure_status_message, should_failover_after_rectifier_retry_failure,
     CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ForwardUpstreamUrlPlan,
-    ForwarderProviderUrlFacts,
 };
 use crate::proxy_core::api::transport::{
     codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
