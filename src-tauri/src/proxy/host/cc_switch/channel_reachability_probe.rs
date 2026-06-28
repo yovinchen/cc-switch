@@ -1,12 +1,14 @@
 use crate::app_config::AppType;
 use crate::database::Database;
 use crate::proxy_core::api::errors::ProxyCoreResult;
-use crate::proxy_core::api::management::{ChannelReachabilityResult, ChannelTestProbeRequest};
-use crate::proxy_core::api::ports::ChannelReachabilityProbe;
-use crate::proxy_core_adapter::{
-    app_error, channel_reachability_probe_error, channel_test_app_type_error,
-    channel_test_provider_not_found_error, stream_check_result_to_channel_reachability,
+use crate::proxy_core::api::management::{
+    channel_reachability_probe_error,
+    channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
+    channel_test_app_type_error, channel_test_provider_not_found_error, ChannelReachabilityResult,
+    ChannelTestProbeRequest,
 };
+use crate::proxy_core::api::ports::ChannelReachabilityProbe;
+use crate::proxy_core_adapter::app_error;
 use crate::services::stream_check::StreamCheckService;
 use futures::future::BoxFuture;
 use std::sync::Arc;

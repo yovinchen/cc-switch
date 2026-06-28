@@ -2033,6 +2033,27 @@ fn is_allowed_channel_write_dao_core_import(relative: &str, code: &str) -> bool 
         )
 }
 
+fn is_allowed_stream_check_core_import(relative: &str, code: &str) -> bool {
+    matches!(
+        relative,
+        "src/services/stream_check.rs" | "src/commands/stream_check.rs"
+    ) && matches!(
+        code.trim(),
+        "use crate::proxy_core::api::management::{"
+            | "use crate::proxy_core::api::management::stream_check_failed_result;"
+    )
+}
+
+fn is_allowed_channel_reachability_probe_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/host/cc_switch/channel_reachability_probe.rs"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::errors::ProxyCoreResult;"
+                | "use crate::proxy_core::api::management::{"
+                | "use crate::proxy_core::api::ports::ChannelReachabilityProbe;"
+        )
+}
+
 fn is_allowed_proxy_core_host_test_contract_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy_core_host.rs"
         && matches!(
@@ -2147,6 +2168,8 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_engine_routing_test_core_import(&relative, code)
                     && !is_allowed_http_server_test_core_import(&relative, code)
                     && !is_allowed_channel_write_dao_core_import(&relative, code)
+                    && !is_allowed_stream_check_core_import(&relative, code)
+                    && !is_allowed_channel_reachability_probe_core_import(&relative, code)
                     && !is_allowed_proxy_core_host_test_contract_import(&relative, code)
                     && !is_allowed_http_server_runtime_core_import(&relative, code)
                     && !is_allowed_claude_desktop_provider_issue_core_import(&relative, code)
@@ -3689,12 +3712,6 @@ fn proxy_core_adapter_uses_host_reachability_probe_source() {
         "impl<R> CcSwitchProxyServices",
     );
     let services_impl = services_source.as_str();
-    let probe_adapter_import = function_slice(
-        &probe_source,
-        "use crate::proxy_core_adapter::{",
-        "};\nuse crate::services::stream_check::StreamCheckService;",
-    );
-
     assert!(
         !(adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::channel_reachability_probe::{"
@@ -3720,9 +3737,12 @@ fn proxy_core_adapter_uses_host_reachability_probe_source() {
     );
     assert!(
         probe_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && probe_source.contains("use crate::proxy_core::api::management::{")
             && probe_source.contains(
-                "use crate::proxy_core::api::management::{ChannelReachabilityResult, ChannelTestProbeRequest};"
+                "channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability"
             )
+            && probe_source.contains("ChannelReachabilityResult")
+            && probe_source.contains("ChannelTestProbeRequest")
             && probe_source
                 .contains("use crate::proxy_core::api::ports::ChannelReachabilityProbe;"),
         "host reachability module should import core reachability contracts directly"
@@ -3734,7 +3754,9 @@ fn proxy_core_adapter_uses_host_reachability_probe_source() {
         "ProxyCoreResult",
     ] {
         assert!(
-            !probe_adapter_import.contains(adapter_type),
+            !probe_source.lines().any(|line| {
+                line.contains("proxy_core_adapter") && line.contains(adapter_type)
+            }),
             "host reachability module should not import core contract {adapter_type} through proxy_core_adapter"
         );
     }
@@ -6240,11 +6262,11 @@ fn proxy_core_adapter_does_not_export_channel_write_request_aliases() {
         .split("\n#[cfg(test)]\nmod tests")
         .next()
         .unwrap_or(&adapter_source);
-    let adapter_management_pub_use = function_slice(
-        adapter_runtime_source,
-        "pub(crate) use crate::proxy_core::api::management::{\n    channel_reachability_probe_error",
-        "};\nuse crate::proxy_core::api::model_catalog::{",
-    );
+    let adapter_management_reexport_blocks: Vec<&str> = adapter_runtime_source
+        .split("pub(crate) use crate::proxy_core::api::management::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
 
     for marker in [
         "pub(crate) type ChannelRequestValidationError",
@@ -6268,7 +6290,9 @@ fn proxy_core_adapter_does_not_export_channel_write_request_aliases() {
         "ProxyChannelWriteRequest",
     ] {
         assert!(
-            !adapter_management_pub_use.contains(marker),
+            !adapter_management_reexport_blocks
+                .iter()
+                .any(|block| block.contains(marker)),
             "proxy_core_adapter should not re-export channel write contract `{marker}`"
         );
     }
@@ -13515,8 +13539,10 @@ fn stream_check_service_owns_core_dto_reexports() {
     let service_path = manifest_dir.join("src/services/stream_check.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let service_source = fs::read_to_string(&service_path).expect("read stream_check.rs");
-    let required_reexports =
-        ["pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};"];
+    let required_direct_core_imports = [
+        "pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};",
+        "use crate::proxy_core::api::management::{",
+    ];
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&adapter_source) {
@@ -13544,7 +13570,7 @@ fn stream_check_service_owns_core_dto_reexports() {
         }
         let direct_core =
             code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
-        if direct_core && !required_reexports.contains(&code.trim()) {
+        if direct_core && !required_direct_core_imports.contains(&code.trim()) {
             violations.push(format!(
                 "src/services/stream_check.rs:{} contains non-stream-check direct proxy-core import `{}`",
                 line_index + 1,
@@ -13553,10 +13579,38 @@ fn stream_check_service_owns_core_dto_reexports() {
         }
     }
 
-    for required_reexport in required_reexports {
+    for required_import in required_direct_core_imports {
         assert!(
-            service_source.contains(required_reexport),
-            "stream_check service must re-export public stream check DTOs directly from proxy_core"
+            service_source.contains(required_import),
+            "stream_check service must import `{required_import}` directly from proxy_core"
+        );
+    }
+    let adapter_management_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::management::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+    for helper in [
+        "merge_stream_check_config",
+        "should_retry_channel_reachability_failure",
+        "stream_check_failed_result",
+        "stream_check_failed_result_with_retry_count",
+        "stream_check_result_from_probe_result",
+        "channel_reachability_probe_error",
+        "channel_test_app_type_error",
+        "channel_test_provider_not_found_error",
+        "channel_reachability_result_from_stream_check_result",
+        "StreamCheckConfigOverride",
+    ] {
+        let reexport_marker = adapter_source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::management")
+                && line.contains(helper)
+        }) || adapter_management_reexport_blocks
+            .iter()
+            .any(|block| block.contains(helper));
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export stream-check management helper `{helper}`"
         );
     }
     assert!(

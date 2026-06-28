@@ -522,7 +522,7 @@
 509. Claude/Codex 转换后流式 response 缺 usage 的诊断文案已迁入 `proxy-core::TransformedResponseUsageFormat::missing_streaming_usage_log_message`；host handler 只负责输出 core 文案并调度 transformed usage 落库。
 510. 非流式上游 JSON parse 失败后未标记 SSE fallback 的诊断日志投影已迁入 `proxy-core::UpstreamJsonBodySource::unlabeled_sse_fallback_log_event`，host 日志 level/message 分发已收敛到 `proxy::error_mapper`；Claude/Codex handler 只传入协议上下文。
 511. Codex Chat 上游错误体归一化后的非 JSON body 诊断文案已迁入 `proxy-core::CodexChatErrorNormalization::non_json_body_log_message`，host warn 输出、Responses 错误体 neutral response 构造、上游错误 body read 与 Axum bridge 已收敛到 `proxy::response_adapter::codex_chat_upstream_error_response_to_axum_response`。
-512. channel test 的 `StreamCheckResult` 到 `ChannelReachabilityResult` 适配已迁入 `proxy_core_adapter::stream_check_result_to_channel_reachability`；host handler 只负责执行 DB 查询、StreamCheck 探测和输出 core response。
+512. channel test 的 `StreamCheckResult` 到 `ChannelReachabilityResult` 适配已迁入 `proxy-core::api::management::channel_reachability_result_from_stream_check_result`；host reachability probe 直接消费 core helper，只负责执行 DB 查询、StreamCheck 探测和输出 core response。
 513. `/proxy/v1/events` 的 `ProxyEventEnvelope` 到 Axum `Event` transport 适配已迁入 `proxy::response_adapter::proxy_event_envelope_to_axum_sse_event`；host handler 只负责订阅事件流和 keepalive 编排。
 514. `ProxyResult` 回填 host `RequestContext` 的 outbound model、selected provider hydration、Claude api_format fallback 与 `ProxyCoreResponse -> hyper_client::ProxyResponse` transport bridge 已收敛到 `proxy::response_adapter::{dispatch_proxy_request_to_proxy_response,dispatch_claude_proxy_request_to_proxy_response,dispatch_codex_proxy_request_to_proxy_response}`；各协议 handler 只消费 adapter 返回的 host `ProxyResponse`/Claude api_format/Codex error response outcome，不再直接消费 `ProxyResult`。
 515. Claude Desktop gateway 的宿主 token 读取、core bearer 校验和 `ProxyError` 映射已迁入 `proxy::auth_adapter::validate_claude_desktop_gateway_auth`；handler 只负责传入请求 headers。
@@ -1054,6 +1054,7 @@ Codex forwarder media-prevention 的 app gate 已下沉到 `proxy-core::request_
 本轮继续收窄 `ProxyRequest` DTO 入口：`proxy_core_host` 测试兼容层直接从 `proxy-core::api::transport` 引入 `ProxyRequest`，`proxy_core_adapter` 仅在自身实现内私有使用，不再作为 crate-visible DTO 出口。
 本轮继续收窄 provider health 状态推进入口：`database/dao/proxy.rs` 直接消费 `proxy-core::api::management::provider_health_update_from_input`，`proxy_core_adapter` 不再二次 re-export 该纯 management helper。
 本轮继续收窄 channel health 状态推进入口：`database/dao/proxy_channels.rs` 直接消费 `proxy-core::api::management` 的 health update helper/unknown 常量，以及 `proxy-core::api::routing` 的 auto-disable/reset 状态规则，`proxy_core_adapter` 不再二次 re-export 这些纯规则。
+本轮继续收窄 stream-check / channel reachability 入口：`commands/stream_check.rs`、`services/stream_check.rs` 和 `host/cc_switch/channel_reachability_probe.rs` 直接消费 `proxy-core::api::management` 的 failed result、config merge、retry 判定、probe result 投影和 channel test error helper，`proxy_core_adapter` 仅保留 provider 事实投影与 host error 包装，不再二次 re-export 这些纯 helper。
 forwarder 的 Claude/ClaudeAuth rectifier gate 一跳 wrapper `forwarder_uses_anthropic_rectifiers` 已删除；request source 直接复用 provider 级 rectifier 判定，`forwarder.rs` 仍只通过 source 获取 rectifier gate。
 Codex Responses→Chat 上游模型覆写与 reasoning options 解析已由 forwarder request source 直接复用 provider 级 adapter API；此前的 `forwarder_apply_codex_chat_upstream_model` / `forwarder_codex_chat_reasoning_options` 一跳 wrapper 已删除。
 forwarder 的 Codex OAuth header-casing fact 一跳 wrapper `forwarder_is_codex_oauth_provider` 已删除；request source 直接复用 provider 级 Codex OAuth 判定，`forwarder.rs` 仍只通过 source 获取 header policy。
@@ -1534,9 +1535,9 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1011. `proxy-core` 纳入 workspace 后进入主 crate `cargo clippy --all-targets` 门禁，已清理 core 内部等价 clippy warning，保证迁移后的独立模块与宿主共享静态检查口径。
 1012. Forwarder attempt runtime 的最大尝试次数日志和 legacy 单 provider circuit-breaker bypass 决策已迁入 `proxy-core::forward_failure`，host adapter 只投影 `ForwardAttempt` 数量/channel 事实并继续执行 router permit。
 1013. 自定义 User-Agent 的 trim、空值忽略和 `HeaderValue` 校验规则已迁入 `proxy-core::request_headers::parse_custom_user_agent`，provider/model-fetch/stream-check/forwarder 路径继续经 `proxy_core_adapter` 共享同一解析入口。
-1014. Stream check 的 provider override 配置合并与 probe result 到 `StreamCheckResult` 的成功/失败/degraded envelope 构造已迁入 `proxy-core::ports`，host `StreamCheckService` 只保留 reqwest 探测、timestamp 注入和 provider override 投影。
-1015. Stream check 批量命令捕获单 provider 异常后的 failed `StreamCheckResult` envelope 已迁入 `proxy-core::ports::stream_check_failed_result`，host command 只负责并发/循环调度、错误文本和 timestamp 注入。
-1016. Stream check retry loop 的终端兜底 failed envelope 已迁入 `proxy-core::ports::stream_check_failed_result_with_retry_count`，host service 仍负责重试循环和 `retry_count` 事实注入。
+1014. Stream check 的 provider override 配置合并与 probe result 到 `StreamCheckResult` 的成功/失败/degraded envelope 构造已迁入 `proxy-core::api::management`，host `StreamCheckService` 只保留 reqwest 探测、timestamp 注入和 provider override 投影。
+1015. Stream check 批量命令捕获单 provider 异常后的 failed `StreamCheckResult` envelope 已迁入 `proxy-core::api::management::stream_check_failed_result`，host command 直接消费 core helper，只负责并发/循环调度、错误文本和 timestamp 注入。
+1016. Stream check retry loop 的终端兜底 failed envelope 已迁入 `proxy-core::api::management::stream_check_failed_result_with_retry_count`，host service 直接消费 core helper，仍负责重试循环和 `retry_count` 事实注入。
 1017. Host `ProxyError` 到 core `ProxyErrorStatusKind` 的状态事实投影已收敛到 `proxy::error_mapper::proxy_error_status_kind`，`proxy/error.rs` 和需要该映射的 host 模块直接消费 mapper 状态投影，`proxy_core_adapter` 不再作为通用 error mapper projection 的兼容出口。
 1018. Copilot `/copilot_internal/user` usage/quota DTO、usage JSON parse 和 `endpoints.api` 到默认 Copilot API base 的 fallback policy 已迁入 `proxy-core::copilot_model_map`，host `copilot_auth` 只保留 HTTP 调用、token/account 读取和 endpoint cache 写入。
 1019. Copilot OAuth device polling 的错误码分类与 token 提前刷新 buffer policy 已迁入 `proxy-core::managed_account_auth`；host `copilot_auth` 只保留 HTTP 轮询、账号持久化和 core classification 到 `CopilotAuthError` 的映射。

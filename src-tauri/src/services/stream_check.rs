@@ -23,11 +23,13 @@ use std::time::Instant;
 use crate::app_config::AppType;
 use crate::error::AppError;
 use crate::provider::Provider;
+use crate::proxy_core::api::management::{
+    merge_stream_check_config, should_retry_channel_reachability_failure,
+    stream_check_failed_result_with_retry_count, stream_check_result_from_probe_result,
+};
 use crate::proxy_core_adapter::{
-    merge_stream_check_config, provider_custom_user_agent_header,
-    provider_stream_check_config_override, should_retry_channel_reachability_failure,
-    stream_check_failed_result_with_retry_count, stream_check_provider_base_url,
-    stream_check_result_from_probe_result,
+    provider_custom_user_agent_header, provider_stream_check_config_override,
+    stream_check_provider_base_url,
 };
 
 pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};

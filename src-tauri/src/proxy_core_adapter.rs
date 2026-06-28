@@ -2050,14 +2050,7 @@ use crate::proxy_core::api::events::{
     AttemptEventPayloadInput, AttemptEventPhase, ProxyCoreEvent,
 };
 use crate::proxy_core::api::management::channel_not_found_error;
-pub(crate) use crate::proxy_core::api::management::{
-    channel_reachability_probe_error,
-    channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
-    channel_test_app_type_error, channel_test_provider_not_found_error, merge_stream_check_config,
-    should_retry_channel_reachability_failure, stream_check_failed_result,
-    stream_check_failed_result_with_retry_count, stream_check_result_from_probe_result,
-    StreamCheckConfigOverride,
-};
+use crate::proxy_core::api::management::StreamCheckConfigOverride;
 use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogSource,
 };
@@ -16597,7 +16590,12 @@ command = "latest-command"
 
     #[test]
     fn stream_check_adapter_preserves_reachability_fields() {
-        use crate::proxy_core::api::management::ChannelReachabilityStatus;
+        use crate::proxy_core::api::management::{
+            channel_reachability_probe_error,
+            channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
+            channel_test_app_type_error, channel_test_provider_not_found_error,
+            ChannelReachabilityStatus,
+        };
 
         let result = StreamCheckResult {
             status: ChannelReachabilityStatus::Degraded,
