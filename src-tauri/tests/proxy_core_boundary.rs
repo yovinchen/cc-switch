@@ -6778,6 +6778,21 @@ fn proxy_core_adapter_delegates_generic_error_construction_to_core() {
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
 
+    for marker in [
+        "config_error_with_context",
+        "internal_error_with_context",
+        "invalid_request_error",
+        "selected_provider_missing_from_source_message",
+    ] {
+        let reexport_marker = source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::errors") && line.contains(marker)
+        });
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export adapter-only core error helper `{marker}`"
+        );
+    }
+
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();

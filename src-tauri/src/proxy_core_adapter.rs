@@ -94,7 +94,7 @@ use crate::proxy_core::api::auth::{
     ProviderAuthInfo, ProviderAuthStrategy,
 };
 
-pub(crate) use crate::proxy_core::api::errors::{
+use crate::proxy_core::api::errors::{
     config_error_with_context as core_config_error_with_context,
     internal_error_with_context as core_internal_error_with_context,
     invalid_request_error as core_invalid_request_error,
