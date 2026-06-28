@@ -65,11 +65,12 @@ mod tests {
     use super::*;
     use crate::app_config::AppType;
     use crate::provider::Provider;
-    use crate::proxy_core_adapter::{
-        proxy_response_to_core_response, ProxyChannelKeyWriteRequest,
-        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, ResolvedChannelAttempt,
+    use crate::proxy_core::api::management::{
+        ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,
         RouteResolveRequest,
     };
+    use crate::proxy_core::api::routing::ResolvedChannelAttempt;
+    use crate::proxy_core_adapter::proxy_response_to_core_response;
     use bytes::Bytes;
     use futures::StreamExt;
     use http::{Method, StatusCode};

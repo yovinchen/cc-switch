@@ -167,10 +167,11 @@ mod tests {
     use crate::app_config::AppType;
     use crate::provider::Provider;
     use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
-    use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
-    use crate::proxy_core_adapter::{
-        ChannelRouteCandidate, ProxyChannelKeyWriteRequest, ProxyChannelWriteRequest,
+    use crate::proxy_core::api::management::{
+        ProxyChannelKeyWriteRequest, ProxyChannelWriteRequest,
     };
+    use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
+    use crate::proxy_core::api::routing::ChannelRouteCandidate;
     use serde_json::json;
 
     fn candidate(channel_id: &str) -> ChannelRouteCandidate {

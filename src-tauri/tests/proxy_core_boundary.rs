@@ -2013,6 +2013,24 @@ fn is_allowed_http_server_test_core_import(relative: &str, code: &str) -> bool {
         )
 }
 
+fn is_allowed_channel_write_dao_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/database/dao/proxy_channels.rs"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::management::{"
+                | "use crate::proxy_core::api::routing::ChannelRequestValidationError;"
+        )
+}
+
+fn is_allowed_proxy_core_host_test_contract_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy_core_host.rs"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::management::{"
+                | "use crate::proxy_core::api::routing::ResolvedChannelAttempt;"
+        )
+}
+
 fn is_allowed_http_server_runtime_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/transport/http/server.rs"
         && matches!(
@@ -2111,6 +2129,8 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_test_proxy_config_core_import(&relative, code)
                     && !is_allowed_engine_routing_test_core_import(&relative, code)
                     && !is_allowed_http_server_test_core_import(&relative, code)
+                    && !is_allowed_channel_write_dao_core_import(&relative, code)
+                    && !is_allowed_proxy_core_host_test_contract_import(&relative, code)
                     && !is_allowed_http_server_runtime_core_import(&relative, code)
                     && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
@@ -5846,6 +5866,49 @@ fn proxy_core_adapter_does_not_export_runtime_policy_or_breaker_config_aliases()
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_channel_write_request_aliases() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
+    let adapter_management_pub_use = function_slice(
+        adapter_runtime_source,
+        "pub(crate) use crate::proxy_core::api::management::{\n    channel_health_update_from_input",
+        "};\npub(crate) use crate::proxy_core::api::model_catalog::{",
+    );
+
+    for marker in [
+        "pub(crate) type ChannelRequestValidationError",
+        "pub(crate) type ProxyChannelModelWriteRequest",
+        "pub(crate) type ProxyChannelKeyPatchRequest",
+        "pub(crate) type ProxyChannelKeyWriteRequest",
+        "pub(crate) type ProxyChannelPatchRequest",
+        "pub(crate) type ProxyChannelWriteRequest",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not expose channel write contract `{marker}` as a type alias"
+        );
+    }
+    for marker in [
+        "ProxyChannelModelWriteRequest",
+        "ProxyChannelKeyPatchRequest",
+        "ProxyChannelKeyWriteRequest",
+        "ProxyChannelModelsReplaceRequest",
+        "ProxyChannelPatchRequest",
+        "ProxyChannelWriteRequest",
+    ] {
+        assert!(
+            !adapter_management_pub_use.contains(marker),
+            "proxy_core_adapter should not re-export channel write contract `{marker}`"
+        );
+    }
+}
+
+#[test]
 fn engine_and_host_test_fixtures_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases: &[(&str, &[&str], &[&str])] = &[
@@ -5881,6 +5944,52 @@ fn engine_and_host_test_fixtures_import_core_contracts_directly() {
             &[
                 "ProxyChannelKeyWriteRequest",
                 "ProxyChannelPatchRequest",
+                "ProxyChannelWriteRequest",
+            ],
+        ),
+        (
+            "src/database/dao/proxy_channels.rs",
+            &[
+                "use crate::proxy_core::api::management::{",
+                "ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,",
+                "use crate::proxy_core::api::routing::ChannelRequestValidationError;",
+            ],
+            &[
+                "ChannelRequestValidationError",
+                "ProxyChannelKeyPatchRequest",
+                "ProxyChannelKeyWriteRequest",
+                "ProxyChannelModelWriteRequest",
+                "ProxyChannelModelsReplaceRequest",
+                "ProxyChannelPatchRequest",
+                "ProxyChannelWriteRequest",
+            ],
+        ),
+        (
+            "src/proxy_core_host.rs",
+            &[
+                "use crate::proxy_core::api::management::{",
+                "ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,",
+                "RouteResolveRequest",
+                "use crate::proxy_core::api::routing::ResolvedChannelAttempt;",
+            ],
+            &[
+                "ProxyChannelKeyWriteRequest",
+                "ProxyChannelModelWriteRequest",
+                "ProxyChannelWriteRequest",
+                "RouteResolveRequest",
+                "ResolvedChannelAttempt",
+            ],
+        ),
+        (
+            "src/proxy/host/cc_switch/forwarder_attempt_runtime_source.rs",
+            &[
+                "use crate::proxy_core::api::management::{",
+                "ProxyChannelKeyWriteRequest, ProxyChannelWriteRequest",
+                "use crate::proxy_core::api::routing::ChannelRouteCandidate;",
+            ],
+            &[
+                "ChannelRouteCandidate",
+                "ProxyChannelKeyWriteRequest",
                 "ProxyChannelWriteRequest",
             ],
         ),
@@ -19820,13 +19929,17 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
             && host_source.contains(
             "use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;"
         ) && host_source.contains(
+            "use crate::proxy_core::api::management::{\n        ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,\n        RouteResolveRequest,\n    };"
+        ) && host_source.contains(
             "use crate::proxy_core::api::ports::{ChannelAttemptResult, ProxyConfig, ProxyRuntimeStatus};"
         ) && host_source.contains(
             "use crate::proxy_core::api::routing::{\n    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RouteSelection, DEFAULT_ROUTE_GROUP,\n};"
+        ) && host_source
+            .contains("use crate::proxy_core::api::routing::ResolvedChannelAttempt;")
+        && host_source.contains(
+            "use crate::proxy_core::api::transport::{ProxyBody, ProxyResponseBody};"
         )
-            && host_source.contains(
-                "use crate::proxy_core::api::transport::{ProxyBody, ProxyResponseBody};"
-            ),
+        ,
         "proxy_core_host test harness should import pure core contracts directly"
     );
 
@@ -19852,6 +19965,11 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "ProxyCoreModelCapabilities",
         "ProxyCoreModelRoute",
         "ProxyCoreProviderMetadata",
+        "ProxyChannelKeyWriteRequest",
+        "ProxyChannelModelWriteRequest",
+        "ProxyChannelWriteRequest",
+        "RouteResolveRequest",
+        "ResolvedChannelAttempt",
         "ProviderKind",
         "ProxyConfig",
         "ProxyRuntimeStatus",
@@ -19865,8 +19983,8 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
 
     let host_tests_adapter_import = function_slice(
         &host_source,
-        "use crate::proxy_core_adapter::{\n        proxy_response_to_core_response",
-        "    };\n    use bytes::Bytes;",
+        "use crate::proxy_core_adapter::proxy_response_to_core_response;",
+        "    use bytes::Bytes;",
     );
     assert!(
         !host_tests_adapter_import.contains("ProxyBody")
@@ -19880,6 +19998,11 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
             && !host_tests_adapter_import.contains("ProxyCoreModelCapabilities")
             && !host_tests_adapter_import.contains("ProxyCoreModelRoute")
             && !host_tests_adapter_import.contains("ProviderKind")
+            && !host_tests_adapter_import.contains("ProxyChannelKeyWriteRequest")
+            && !host_tests_adapter_import.contains("ProxyChannelModelWriteRequest")
+            && !host_tests_adapter_import.contains("ProxyChannelWriteRequest")
+            && !host_tests_adapter_import.contains("RouteResolveRequest")
+            && !host_tests_adapter_import.contains("ResolvedChannelAttempt")
             && !host_tests_adapter_import.contains("ProxyConfig")
             && !host_tests_adapter_import.contains("ProxyRuntimeStatus"),
         "proxy_core_host tests must not import pure core contracts through proxy_core_adapter"

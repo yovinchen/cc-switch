@@ -1964,8 +1964,6 @@ pub(crate) fn provider_from_opencode_live_config(
     Ok(provider)
 }
 
-pub(crate) type ChannelRequestValidationError =
-    crate::proxy_core::api::routing::ChannelRequestValidationError;
 pub(crate) type ChannelRouteSource = crate::proxy_core::api::management::ChannelRouteSource;
 pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecord;
 pub(crate) type LegacyChannelModelProjection =
@@ -1979,16 +1977,6 @@ pub(crate) type LegacyProviderChannelMigrationInput =
     crate::proxy_core::api::routing::LegacyProviderChannelMigrationInput;
 pub(crate) type LegacyProviderProjectionInput =
     crate::proxy_core::api::routing::LegacyProviderProjectionInput;
-pub(crate) type ProxyChannelModelWriteRequest =
-    crate::proxy_core::api::management::ProxyChannelModelWriteRequest;
-pub(crate) type ProxyChannelKeyPatchRequest =
-    crate::proxy_core::api::management::ProxyChannelKeyPatchRequest;
-pub(crate) type ProxyChannelKeyWriteRequest =
-    crate::proxy_core::api::management::ProxyChannelKeyWriteRequest;
-pub(crate) type ProxyChannelPatchRequest =
-    crate::proxy_core::api::management::ProxyChannelPatchRequest;
-pub(crate) type ProxyChannelWriteRequest =
-    crate::proxy_core::api::management::ProxyChannelWriteRequest;
 pub(crate) type RouteResolveRequest = crate::proxy_core::api::management::RouteResolveRequest;
 pub(crate) type RouteResolveResponse = crate::proxy_core::api::management::RouteResolveResponse;
 pub(crate) type RouteResolveChannelInput =
@@ -2113,8 +2101,8 @@ pub(crate) use crate::proxy_core::api::management::{
     channel_test_app_type_error, channel_test_provider_not_found_error, merge_stream_check_config,
     provider_health_update_from_input, should_retry_channel_reachability_failure,
     stream_check_failed_result, stream_check_failed_result_with_retry_count,
-    stream_check_result_from_probe_result, ChannelHealthUpdateInput,
-    ProxyChannelModelsReplaceRequest, StreamCheckConfigOverride, CHANNEL_HEALTH_UNKNOWN_STATUS,
+    stream_check_result_from_probe_result, ChannelHealthUpdateInput, StreamCheckConfigOverride,
+    CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 pub(crate) use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogSource,
@@ -7257,7 +7245,8 @@ mod tests {
     };
     use crate::proxy_core::api::events::ProxyEventEnvelope;
     use crate::proxy_core::api::management::{
-        ChannelKeyRuntimeCandidate, ChannelTestProbeRequest, StreamCheckResult,
+        ChannelKeyRuntimeCandidate, ChannelTestProbeRequest, ProxyChannelModelWriteRequest,
+        ProxyChannelWriteRequest, StreamCheckResult,
     };
     use crate::proxy_core::api::model_catalog::{CopilotModel, DEFAULT_CODEX_MODEL_CONTEXT_WINDOW};
     use crate::proxy_core::api::routing::{
