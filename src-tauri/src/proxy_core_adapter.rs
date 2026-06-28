@@ -36,8 +36,9 @@ use crate::proxy_core::api::management::{
     ChannelRecord, ChannelRouteSource, RouteResolveRequest, RouteResolveResponse,
 };
 use crate::proxy_core::api::ports::{
-    proxy_takeover_status_from_enabled_options, CurrentRouteTarget, ProxyConfig,
-    ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    proxy_server_info_from_parts, proxy_takeover_status_from_enabled_options,
+    record_proxy_server_stopped_status, CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus,
+    ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, AutoFailoverToggleInput, AutoFailoverTogglePlan,
@@ -406,10 +407,6 @@ pub(crate) fn record_proxy_server_started_status(
         crate::proxy_core::api::ports::ProxyServerStartedStatusInput { address, port },
     );
 }
-
-pub(crate) use crate::proxy_core::api::ports::record_proxy_server_stopped_status;
-
-pub(crate) use crate::proxy_core::api::ports::proxy_server_info_from_parts;
 
 pub(crate) fn proxy_state_from_runtime_sources(
     config: ProxyConfig,
@@ -12957,7 +12954,11 @@ base_url = "https://api.openai.com/v1"
         assert!(!stopped.running);
         assert_eq!(stopped.port, 0);
         assert!(stopped.active_targets.is_empty());
-        let info = proxy_server_info_from_parts("127.0.0.1", 15721, "2026-06-21T00:00:00Z");
+        let info = crate::proxy_core::api::ports::proxy_server_info_from_parts(
+            "127.0.0.1",
+            15721,
+            "2026-06-21T00:00:00Z",
+        );
         assert_eq!(info.address, "127.0.0.1");
         assert_eq!(info.port, 15721);
         assert_eq!(info.started_at, "2026-06-21T00:00:00Z");
