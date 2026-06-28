@@ -3026,7 +3026,7 @@ pub(crate) struct ForwarderRuntimeConfig {
     pub(crate) copilot_optimizer: CopilotOptimizerConfig,
 }
 
-pub(crate) use crate::proxy_core::api::transport::resolve_response_runtime_policy;
+use crate::proxy_core::api::transport::resolve_response_runtime_policy;
 
 pub(crate) fn response_runtime_policy_from_app_proxy_config(
     config: &AppProxyConfig,

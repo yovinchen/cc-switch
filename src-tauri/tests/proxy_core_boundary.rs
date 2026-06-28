@@ -2486,6 +2486,12 @@ fn request_context_owns_core_context_imports() {
             && source.contains("use crate::proxy_core::api::usage::UsageRouteContext;"),
         "engine/context.rs should import pure request context contracts directly"
     );
+    assert!(
+        !adapter_source.contains(
+            "pub(crate) use crate::proxy_core::api::transport::resolve_response_runtime_policy"
+        ),
+        "proxy_core_adapter should not re-export response runtime policy resolver"
+    );
 
     let mut violations = Vec::new();
     for marker in [
