@@ -40,7 +40,8 @@ use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_ra
 use crate::proxy_core::api::ports::{ChannelAttemptResult, ProxyConfig, ProxyRuntimeStatus};
 #[cfg(test)]
 use crate::proxy_core::api::routing::{
-    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RouteSelection, DEFAULT_ROUTE_GROUP,
+    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteSelection,
+    DEFAULT_ROUTE_GROUP,
 };
 #[cfg(test)]
 use crate::proxy_core::api::transforms::GeminiShadowStore;
@@ -51,7 +52,7 @@ use crate::proxy_core::api::usage::UsageRecord;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     forward_result_to_proxy_result, management_route_response_from_router_source, AuthProvider,
-    ProxyRequest, ProxyServices, RoutePlan,
+    ProxyRequest, ProxyServices,
 };
 #[cfg(test)]
 use serde_json::Value;

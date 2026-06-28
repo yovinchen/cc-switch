@@ -6990,6 +6990,11 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
         "use crate::proxy_core::api::routing::{",
         "};\nuse crate::proxy_core::api::session::SessionIdResult;",
     );
+    let adapter_management_import = function_slice(
+        adapter_runtime_source,
+        "use crate::proxy_core::api::management::{",
+        "};\nuse crate::proxy_core::api::ports::{",
+    );
 
     for marker in [
         "pub(crate) type ProviderFailoverCircuitLookup",
@@ -6998,10 +7003,16 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
         "pub(crate) type AutoFailoverToggleInput",
         "pub(crate) type AutoFailoverTogglePlan",
         "pub(crate) type FailoverQueuePosition",
+        "pub(crate) type RouteResolveChannelInput",
+        "pub(crate) type ChannelRouteCandidate",
+        "pub(crate) type ResolvedChannelAttempt",
+        "pub(crate) type RoutePlan",
+        "pub(crate) type RouteResolveRequest",
+        "pub(crate) type RouteResolveResponse",
     ] {
         assert!(
             !adapter_runtime_source.contains(marker),
-            "proxy_core_adapter should not expose provider-selection routing DTO `{marker}` as a type alias"
+            "proxy_core_adapter should not expose routing/route-resolve DTO `{marker}` as a type alias"
         );
     }
     for marker in [
@@ -7011,10 +7022,20 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
         "AutoFailoverToggleInput",
         "AutoFailoverTogglePlan",
         "FailoverQueuePosition",
+        "RouteResolveChannelInput",
+        "ChannelRouteCandidate",
+        "ResolvedChannelAttempt",
+        "RoutePlan",
     ] {
         assert!(
             adapter_routing_import.contains(marker),
-            "proxy_core_adapter internals should import provider-selection routing DTO `{marker}` directly from proxy_core::api::routing"
+            "proxy_core_adapter internals should import routing DTO `{marker}` directly from proxy_core::api::routing"
+        );
+    }
+    for marker in ["RouteResolveRequest", "RouteResolveResponse"] {
+        assert!(
+            adapter_management_import.contains(marker),
+            "proxy_core_adapter internals should import route-resolve DTO `{marker}` directly from proxy_core::api::management"
         );
     }
 }
@@ -19933,7 +19954,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         ) && host_source.contains(
             "use crate::proxy_core::api::ports::{ChannelAttemptResult, ProxyConfig, ProxyRuntimeStatus};"
         ) && host_source.contains(
-            "use crate::proxy_core::api::routing::{\n    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RouteSelection, DEFAULT_ROUTE_GROUP,\n};"
+            "use crate::proxy_core::api::routing::{\n    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteSelection,\n    DEFAULT_ROUTE_GROUP,\n};"
         ) && host_source
             .contains("use crate::proxy_core::api::routing::ResolvedChannelAttempt;")
         && host_source.contains(
@@ -19951,6 +19972,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "ProxyBody",
         "ProxyResponseBody",
         "RetryPolicy",
+        "RoutePlan",
         "RouteSelection",
         "ProxyCoreUpstreamEndpoint",
         "ChannelQuery",
@@ -19990,6 +20012,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         !host_tests_adapter_import.contains("ProxyBody")
             && !host_tests_adapter_import.contains("ProxyResponseBody")
             && !host_tests_adapter_import.contains("RetryPolicy")
+            && !host_tests_adapter_import.contains("RoutePlan")
             && !host_tests_adapter_import.contains("RouteSelection")
             && !host_tests_adapter_import.contains("ProxyCoreUpstreamEndpoint")
             && !host_tests_adapter_import.contains("ChannelStatus")

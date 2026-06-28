@@ -32,13 +32,15 @@ use crate::proxy_core::api::domain::{
     AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,
 };
 use crate::proxy_core::api::engine::ProxyEngine;
+use crate::proxy_core::api::management::{RouteResolveRequest, RouteResolveResponse};
 use crate::proxy_core::api::ports::{
     CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, AutoFailoverToggleInput, AutoFailoverTogglePlan,
-    FailoverQueuePosition, ProviderFailoverCircuitLookup, ProviderSelectionFailure,
-    ProviderSelectionInput, RouteResolveChannelRecordInput, RouteResolveModelRecordInput,
+    ChannelRouteCandidate, FailoverQueuePosition, ProviderFailoverCircuitLookup,
+    ProviderSelectionFailure, ProviderSelectionInput, ResolvedChannelAttempt, RoutePlan,
+    RouteResolveChannelInput, RouteResolveChannelRecordInput, RouteResolveModelRecordInput,
 };
 use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::{
@@ -1977,13 +1979,6 @@ pub(crate) type LegacyProviderChannelMigrationInput =
     crate::proxy_core::api::routing::LegacyProviderChannelMigrationInput;
 pub(crate) type LegacyProviderProjectionInput =
     crate::proxy_core::api::routing::LegacyProviderProjectionInput;
-pub(crate) type RouteResolveRequest = crate::proxy_core::api::management::RouteResolveRequest;
-pub(crate) type RouteResolveResponse = crate::proxy_core::api::management::RouteResolveResponse;
-pub(crate) type RouteResolveChannelInput =
-    crate::proxy_core::api::routing::RouteResolveChannelInput;
-pub(crate) type ChannelRouteCandidate = crate::proxy_core::api::routing::ChannelRouteCandidate;
-pub(crate) type ResolvedChannelAttempt = crate::proxy_core::api::routing::ResolvedChannelAttempt;
-pub(crate) type RoutePlan = crate::proxy_core::api::routing::RoutePlan;
 pub(crate) enum ForwarderFailureDecision {
     Retryable,
     NonRetryable,
