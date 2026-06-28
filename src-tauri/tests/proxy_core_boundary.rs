@@ -12928,6 +12928,7 @@ fn proxy_management_dto_callers_use_core_entrypoints() {
             "src/database/dao/proxy.rs",
             &[
                 "use crate::proxy_core::api::config::{AppProxyConfig, CircuitBreakerConfig};",
+                "use crate::proxy_core::api::management::provider_health_update_from_input;",
                 "use crate::proxy_core::api::ports::GlobalProxyConfig;",
                 "use crate::proxy_core::api::ports::ProxyConfig;",
                 "use crate::proxy_core::api::ports::{ProviderHealth, ProviderHealthUpdateInput};",
@@ -13087,6 +13088,53 @@ fn proxy_dao_imports_config_contracts_directly() {
         violations.is_empty(),
         "proxy DAO should not route pure config contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_dao_imports_provider_health_update_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = "src/database/dao/proxy.rs";
+    let source =
+        fs::read_to_string(manifest_dir.join(relative)).expect("read database/dao/proxy.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let import_slice = function_slice(
+        &source,
+        "use crate::error::AppError;",
+        "use rust_decimal::Decimal;",
+    );
+
+    let required_import =
+        "use crate::proxy_core::api::management::provider_health_update_from_input;";
+    assert!(
+        import_slice.contains(required_import),
+        "{relative} should import provider health update helper directly from proxy_core"
+    );
+
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
+    assert!(
+        !adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == "provider_health_update_from_input"),
+        "{relative} imports provider health update helper through proxy_core_adapter"
+    );
+
+    let management_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::management::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+    let reexport_marker = adapter_source.lines().any(|line| {
+        line.contains("pub(crate) use crate::proxy_core::api::management")
+            && line.contains("provider_health_update_from_input")
+    }) || management_reexport_blocks
+        .iter()
+        .any(|block| block.contains("provider_health_update_from_input"));
+
+    assert!(
+        !reexport_marker,
+        "proxy_core_adapter should not re-export provider health update helper"
     );
 }
 
