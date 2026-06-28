@@ -1995,30 +1995,10 @@ pub(crate) fn forwarder_rectifier_retry_failure_log_line(
     )
 }
 
-pub(crate) use crate::proxy_core::api::auth::{
+use crate::proxy_core::api::auth::{
     classify_provider_managed_auth as core_classify_provider_managed_auth,
-    codex_oauth_access_token_expires_at_ms, codex_oauth_authorization_code_form,
-    codex_oauth_device_auth_token_request_body, codex_oauth_device_auth_token_url,
-    codex_oauth_device_auth_usercode_url, codex_oauth_device_code_expires_at_ms,
-    codex_oauth_device_code_expires_in_secs, codex_oauth_device_code_request_failure,
-    codex_oauth_device_poll_failure, codex_oauth_device_poll_status_kind,
-    codex_oauth_device_usercode_request_body, codex_oauth_device_verification_url,
-    codex_oauth_identity_from_token_claims, codex_oauth_missing_account_id_message,
-    codex_oauth_missing_pending_user_code_message, codex_oauth_missing_refresh_token_message,
-    codex_oauth_pending_device_code_is_expired, codex_oauth_poll_interval_secs,
-    codex_oauth_refresh_failure, codex_oauth_refresh_token_form, codex_oauth_status_from_parts,
-    codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon, codex_oauth_token_url,
-    compare_managed_auth_account_order, copilot_auth_status_from_parts,
-    copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon, ensure_managed_auth_provider,
     managed_account_id_for_auth_provider as core_managed_account_id_for_auth_provider,
-    managed_auth_account_from_parts, managed_auth_device_code_response_from_parts,
-    managed_auth_fallback_default_account_id, managed_auth_status_from_parts,
     managed_provider_auth_info_for_provider_kind as core_managed_provider_auth_info_for_provider_kind,
-    CodexOAuthDevicePollStatusKind, CodexOAuthTokenClaims, CopilotOAuthPollErrorKind,
-    ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAuthAccount,
-    ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate, ManagedAuthDeviceCodeResponse,
-    ManagedAuthStatus, ProviderManagedAuthClassification, ProviderManagedAuthFacts,
-    CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
 };
 pub(crate) use crate::proxy_core::api::auth::{
     claude_desktop_config_with_deployment_mode,
@@ -2032,6 +2012,28 @@ pub(crate) use crate::proxy_core::api::auth::{
     ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectModelRouteIssue,
     ClaudeDesktopGatewayProfileModelSpec, ClaudeDesktopProxyRequestBodyIssue,
     ClaudeDesktopProxyRouteInput, ClaudeDesktopResolvedProxyRoute,
+};
+pub(crate) use crate::proxy_core::api::auth::{
+    codex_oauth_access_token_expires_at_ms, codex_oauth_authorization_code_form,
+    codex_oauth_device_auth_token_request_body, codex_oauth_device_auth_token_url,
+    codex_oauth_device_auth_usercode_url, codex_oauth_device_code_expires_at_ms,
+    codex_oauth_device_code_expires_in_secs, codex_oauth_device_code_request_failure,
+    codex_oauth_device_poll_failure, codex_oauth_device_poll_status_kind,
+    codex_oauth_device_usercode_request_body, codex_oauth_device_verification_url,
+    codex_oauth_identity_from_token_claims, codex_oauth_missing_account_id_message,
+    codex_oauth_missing_pending_user_code_message, codex_oauth_missing_refresh_token_message,
+    codex_oauth_pending_device_code_is_expired, codex_oauth_poll_interval_secs,
+    codex_oauth_refresh_failure, codex_oauth_refresh_token_form, codex_oauth_status_from_parts,
+    codex_oauth_token_exchange_failure, codex_oauth_token_is_expiring_soon, codex_oauth_token_url,
+    compare_managed_auth_account_order, copilot_auth_status_from_parts,
+    copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon, ensure_managed_auth_provider,
+    managed_auth_account_from_parts, managed_auth_device_code_response_from_parts,
+    managed_auth_fallback_default_account_id, managed_auth_status_from_parts,
+    CodexOAuthDevicePollStatusKind, CodexOAuthTokenClaims, CopilotOAuthPollErrorKind,
+    ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAuthAccount,
+    ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate, ManagedAuthDeviceCodeResponse,
+    ManagedAuthStatus, ProviderManagedAuthClassification, ProviderManagedAuthFacts,
+    CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
 };
 pub(crate) use crate::proxy_core::api::auth::{
     extract_claude_auth_key_from_settings, is_gemini_oauth_key_shape,

@@ -10707,6 +10707,19 @@ fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
             && classification_slice.contains("ProviderManagedAuthFacts"),
         "proxy_core_adapter must delegate managed-provider classification to proxy-core"
     );
+    for marker in [
+        "classify_provider_managed_auth",
+        "managed_account_id_for_auth_provider",
+        "managed_provider_auth_info_for_provider_kind",
+    ] {
+        let reexport_marker = source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::auth") && line.contains(marker)
+        });
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export adapter-only managed-auth helper `{marker}`"
+        );
+    }
 
     let forbidden_markers = [
         "core_provider_kind_is_codex_oauth(",
