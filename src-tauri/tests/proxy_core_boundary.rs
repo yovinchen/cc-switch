@@ -12928,6 +12928,8 @@ fn proxy_management_dto_callers_use_core_entrypoints() {
                 "use crate::proxy_core::api::ports::GlobalProxyConfig;",
                 "use crate::proxy_core::api::ports::ProxyConfig;",
                 "use crate::proxy_core::api::ports::{ProviderHealth, ProviderHealthUpdateInput};",
+                "pub(crate) use crate::proxy_core::api::usage::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};",
+                "use crate::proxy_core::api::usage::{",
             ][..],
         ),
     ];
@@ -13049,7 +13051,7 @@ fn proxy_dao_imports_config_contracts_directly() {
     let import_slice = function_slice(
         &source,
         "use crate::error::AppError;",
-        "pub(crate) use crate::proxy_core_adapter",
+        "use rust_decimal::Decimal;",
     );
 
     let required_imports = [
@@ -13083,6 +13085,72 @@ fn proxy_dao_imports_config_contracts_directly() {
         "proxy DAO should not route pure config contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
     );
+}
+
+#[test]
+fn proxy_dao_imports_usage_pricing_contracts_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = "src/database/dao/proxy.rs";
+    let source =
+        fs::read_to_string(manifest_dir.join(relative)).expect("read database/dao/proxy.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let import_slice = function_slice(
+        &source,
+        "use crate::error::AppError;",
+        "use rust_decimal::Decimal;",
+    );
+
+    for required_import in [
+        "pub(crate) use crate::proxy_core::api::usage::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};",
+        "use crate::proxy_core::api::usage::{",
+    ] {
+        assert!(
+            import_slice.contains(required_import),
+            "{relative} should import usage pricing contract `{required_import}` directly from proxy_core"
+        );
+    }
+
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
+    for forbidden in [
+        "normalize_pricing_source",
+        "validate_cost_multiplier_value",
+        "CostMultiplierValidationError",
+        "PricingSourceValidationError",
+        "PRICING_SOURCE_REQUEST",
+        "PRICING_SOURCE_RESPONSE",
+    ] {
+        assert!(
+            !adapter_import_identifiers
+                .iter()
+                .any(|identifier| identifier == forbidden),
+            "{relative} imports usage pricing contract `{forbidden}` through proxy_core_adapter"
+        );
+    }
+
+    let usage_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::usage::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+    for helper in [
+        "normalize_pricing_source",
+        "validate_cost_multiplier_value",
+        "CostMultiplierValidationError",
+        "PricingSourceValidationError",
+        "PRICING_SOURCE_REQUEST",
+        "PRICING_SOURCE_RESPONSE",
+    ] {
+        let reexport_marker = adapter_source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::usage") && line.contains(helper)
+        }) || usage_reexport_blocks
+            .iter()
+            .any(|block| block.contains(helper));
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export usage pricing helper `{helper}`"
+        );
+    }
 }
 
 #[test]

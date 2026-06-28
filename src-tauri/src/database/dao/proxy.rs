@@ -7,11 +7,14 @@ use crate::proxy_core::api::config::{AppProxyConfig, CircuitBreakerConfig};
 use crate::proxy_core::api::ports::GlobalProxyConfig;
 use crate::proxy_core::api::ports::ProxyConfig;
 use crate::proxy_core::api::ports::{ProviderHealth, ProviderHealthUpdateInput};
-use crate::proxy_core_adapter::{
-    app_proxy_config_defaults_for_app, normalize_pricing_source, provider_health_update_from_input,
-    validate_cost_multiplier_value, CostMultiplierValidationError, PricingSourceValidationError,
+use crate::proxy_core::api::usage::{
+    normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
+    PricingSourceValidationError,
 };
-pub(crate) use crate::proxy_core_adapter::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
+pub(crate) use crate::proxy_core::api::usage::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
+use crate::proxy_core_adapter::{
+    app_proxy_config_defaults_for_app, provider_health_update_from_input,
+};
 use rust_decimal::Decimal;
 
 use super::super::{lock_conn, Database, LiveBackup};

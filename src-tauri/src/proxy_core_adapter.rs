@@ -2119,10 +2119,6 @@ use crate::proxy_core::api::transport::{
     OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization,
     ProxyCoreResponse, ProxyResponseBody, ProxyResult,
 };
-pub(crate) use crate::proxy_core::api::usage::{
-    normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
-    PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
-};
 use crate::proxy_core::api::usage::{
     usage_route_context_from_selection, ModelPricing, UsageRecord, UsageRouteContext,
 };

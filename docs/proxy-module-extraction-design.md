@@ -676,7 +676,7 @@
 652. channel create/model replace 写请求归一化已新增 `proxy-core::normalize_proxy_channel_write_request_fields`、`normalize_proxy_channel_model_write_request_fields` 与 `normalize_proxy_channel_models_replace_request_fields`：DAO create/replace 不再手写 name/status/model trim、baseUrl 去尾斜杠、groups 默认或 JSON 容器默认，只保留 AppType/provider 校验与 SQLite 持久化。
 653. channel key write/patch 请求归一化已新增 `proxy-core::normalize_proxy_channel_key_write_request_fields` 与 `normalize_proxy_channel_key_patch_request_fields`：DAO key upsert/update 不再手写 keyValue/status trim，只保留 keyRef path 校验、channel/key 存在性和 SQLite 写入。
 654. provider health success/failure 状态推进规则已新增 `proxy-core::provider_health_update_from_input`：provider DAO 只读取当前失败数并写入 core 计算出的健康布尔值、失败计数、时间字段和 last_error，保持 SQLite 查询与 UPSERT 仍属于 host adapter。
-655. usage 计费配置校验已新增 `proxy-core::validate_cost_multiplier_value` 与 `normalize_pricing_source`：DAO 和 provider service 继续使用原 host wrapper 与本地化错误映射，但倍率解析、负数拒绝、计费来源 trim/白名单规则由 core 统一提供。
+655. usage 计费配置校验已新增 `proxy-core::validate_cost_multiplier_value` 与 `normalize_pricing_source`：DAO 直接消费 `proxy-core::api::usage` 的校验 helper、错误类型和 pricing source 常量并保留本地化错误映射，倍率解析、负数拒绝、计费来源 trim/白名单规则由 core 统一提供。
 656. app 级 proxy_config 默认值策略已新增 `proxy-core::app_proxy_config_defaults_for_app`：DAO 的缺省读取、单行 ensure 和三行 init 不再手写 claude/codex/gemini 的重试、超时和熔断 seed 值，只保留 SQL upsert/insert。
 657. proxy takeover/hot-switch 期间阻断 official provider 的业务规则已新增 `proxy-core::should_block_proxy_switch_to_provider_category`：Tauri command 与 provider service 不再各自手写 `category == "official"` 判定，host 只保留查询 provider、执行切换和错误文案。
 658. global proxy_config 缺省值已收敛到 `proxy-core::GlobalProxyConfig::default()`：DAO 在全局配置行缺失时不再手写 listen address、port、logging 与 enabled 默认值，只负责初始化行和返回 core 默认 DTO。
@@ -1050,6 +1050,7 @@ Codex forwarder media-prevention 的 app gate 已下沉到 `proxy-core::request_
 本轮继续收窄 `proxy_core_adapter` 的 config/circuit helper 暴露面：DB 兼容仍保留 `app_proxy_config_defaults_for_app` 出口，adapter-only 的 circuit key/config helper 改为私有导入，routing/runtime 调用方继续直接消费 owning core API 或宿主模块。
 本轮继续收窄 `proxy_core_adapter` 的 Claude/Gemini auth helper 暴露面：`extract_claude_auth_key_from_settings`、`is_gemini_oauth_key_shape`、`parse_gemini_oauth_credentials` 仅作为 adapter 内部导入使用，不再作为 crate-visible 兼容出口。
 本轮继续收窄 Codex chat history 的 SSE helper 入口：`proxy/codex_chat_history.rs` 直接消费 `proxy-core::transforms::{append_utf8_safe,take_sse_block,inspect_codex_chat_history_sse_block}`，`proxy_core_adapter` 不再二次 re-export 这些纯 transform helper。
+本轮继续收窄 usage pricing 校验入口：`database/dao/proxy.rs` 直接消费 `proxy-core::api::usage::{validate_cost_multiplier_value,normalize_pricing_source,PRICING_SOURCE_*}`，`proxy_core_adapter` 不再 re-export 这些纯计费配置 helper。
 forwarder 的 Claude/ClaudeAuth rectifier gate 一跳 wrapper `forwarder_uses_anthropic_rectifiers` 已删除；request source 直接复用 provider 级 rectifier 判定，`forwarder.rs` 仍只通过 source 获取 rectifier gate。
 Codex Responses→Chat 上游模型覆写与 reasoning options 解析已由 forwarder request source 直接复用 provider 级 adapter API；此前的 `forwarder_apply_codex_chat_upstream_model` / `forwarder_codex_chat_reasoning_options` 一跳 wrapper 已删除。
 forwarder 的 Codex OAuth header-casing fact 一跳 wrapper `forwarder_is_codex_oauth_provider` 已删除；request source 直接复用 provider 级 Codex OAuth 判定，`forwarder.rs` 仍只通过 source 获取 header policy。
