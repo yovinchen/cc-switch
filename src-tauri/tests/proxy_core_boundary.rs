@@ -2021,7 +2021,11 @@ fn is_allowed_managed_auth_command_core_import(relative: &str, code: &str) -> bo
 
 fn is_allowed_claude_desktop_provider_issue_core_import(relative: &str, code: &str) -> bool {
     relative == "src/claude_desktop_config.rs"
-        && code.trim() == "use crate::proxy_core::api::auth::{"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::auth::{"
+                | "use crate::proxy_core::api::auth::ClaudeDesktopProxyRequestBodyIssue;"
+        )
 }
 
 fn is_allowed_claude_desktop_live_url_core_import(relative: &str, code: &str) -> bool {
@@ -9427,7 +9431,7 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
     let claude_desktop_adapter_import = function_slice(
         &claude_desktop_source,
         "use crate::proxy_core_adapter::{",
-        "};\n#[cfg(test)]",
+        "};",
     );
     for marker in [
         "ClaudeDesktopDirectProviderValidationIssue",
@@ -10404,6 +10408,11 @@ fn claude_desktop_config_delegates_proxy_gateway_origin_to_core() {
     let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let adapter_auth_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::auth::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
     let live_takeover_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
             .expect("read live_takeover.rs");
@@ -10451,6 +10460,44 @@ fn claude_desktop_config_delegates_proxy_gateway_origin_to_core() {
         ),
         "proxy_core_adapter should not re-export proxy live URL formatting"
     );
+    assert!(
+        source.contains("use crate::proxy_core::api::auth::{")
+            && !source.contains("crate::proxy_core_adapter::claude_desktop_proxy_gateway_base_url")
+            && !source
+                .contains("crate::proxy_core_adapter::claude_desktop_profile_gateway_base_url")
+            && !source
+                .contains("crate::proxy_core_adapter::claude_desktop_profile_has_unsafe_model_ids"),
+        "claude_desktop_config should import pure Claude Desktop auth/profile helpers directly from proxy_core auth"
+    );
+    for marker in [
+        "claude_desktop_config_with_deployment_mode",
+        "claude_desktop_config_without_gateway_enterprise_config",
+        "claude_desktop_default_proxy_routes",
+        "claude_desktop_direct_gateway_credentials",
+        "claude_desktop_direct_inference_model_specs",
+        "claude_desktop_gateway_profile",
+        "claude_desktop_meta_applied_id",
+        "claude_desktop_meta_has_profile_entry",
+        "claude_desktop_meta_with_profile_entry",
+        "claude_desktop_profile_gateway_base_url",
+        "claude_desktop_profile_has_unsafe_model_ids",
+        "claude_desktop_proxy_gateway_base_url",
+        "claude_desktop_proxy_model_routes",
+        "claude_desktop_proxy_request_body_with_upstream_model",
+        "ClaudeDesktopDirectGatewayCredentialIssue",
+        "ClaudeDesktopDirectModelRouteIssue",
+        "ClaudeDesktopGatewayProfileModelSpec",
+        "ClaudeDesktopProxyRequestBodyIssue",
+        "ClaudeDesktopProxyRouteInput",
+        "ClaudeDesktopResolvedProxyRoute",
+    ] {
+        assert!(
+            !adapter_auth_reexport_blocks
+                .iter()
+                .any(|block| block.contains(marker)),
+            "proxy_core_adapter should not re-export Claude Desktop auth contract `{marker}`"
+        );
+    }
     assert!(
         !source.contains("fn proxy_origin_from_parts("),
         "claude_desktop_config should not keep a duplicate proxy origin formatter"

@@ -2002,14 +2002,9 @@ use crate::proxy_core::api::auth::{
     ManagedAccountBindingInput, ManagedAccountBindingSource, ProviderManagedAuthClassification,
     ProviderManagedAuthFacts, GITHUB_COPILOT_AUTH_PROVIDER,
 };
-pub(crate) use crate::proxy_core::api::auth::{
-    claude_desktop_config_with_deployment_mode,
-    claude_desktop_config_without_gateway_enterprise_config, claude_desktop_default_proxy_routes,
+use crate::proxy_core::api::auth::{
     claude_desktop_direct_gateway_credentials, claude_desktop_direct_inference_model_specs,
-    claude_desktop_gateway_profile, claude_desktop_meta_applied_id,
-    claude_desktop_meta_has_profile_entry, claude_desktop_meta_with_profile_entry,
-    claude_desktop_profile_gateway_base_url, claude_desktop_profile_has_unsafe_model_ids,
-    claude_desktop_proxy_gateway_base_url, claude_desktop_proxy_model_routes,
+    claude_desktop_gateway_profile, claude_desktop_proxy_model_routes,
     claude_desktop_proxy_request_body_with_upstream_model,
     ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectModelRouteIssue,
     ClaudeDesktopGatewayProfileModelSpec, ClaudeDesktopProxyRequestBodyIssue,

@@ -10,19 +10,25 @@ use crate::database::Database;
 use crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
+#[cfg(test)]
+use crate::proxy_core::api::auth::ClaudeDesktopProxyRequestBodyIssue;
 use crate::proxy_core::api::auth::{
-    ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
+    claude_desktop_config_with_deployment_mode,
+    claude_desktop_config_without_gateway_enterprise_config, claude_desktop_default_proxy_routes,
+    claude_desktop_gateway_profile, claude_desktop_meta_applied_id,
+    claude_desktop_meta_has_profile_entry, claude_desktop_meta_with_profile_entry,
+    claude_desktop_profile_gateway_base_url, claude_desktop_profile_has_unsafe_model_ids,
+    claude_desktop_proxy_gateway_base_url, ClaudeDesktopDirectGatewayCredentialIssue,
+    ClaudeDesktopDirectModelRouteIssue, ClaudeDesktopDirectProviderValidationIssue,
+    ClaudeDesktopProxyProviderConfigValidationIssue,
 };
 use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;
+#[cfg(test)]
+use crate::proxy_core_adapter::ClaudeDesktopProviderProxyRequestBodyIssue;
 use crate::proxy_core_adapter::{
-    ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectModelRouteIssue,
     ClaudeDesktopProviderDirectGatewayProfileIssue, ClaudeDesktopProviderDirectValidationIssue,
     ClaudeDesktopProviderProxyRouteIssue, ClaudeDesktopProviderProxyValidationIssue,
     ClaudeDesktopProviderValidationIssue,
-};
-#[cfg(test)]
-use crate::proxy_core_adapter::{
-    ClaudeDesktopProviderProxyRequestBodyIssue, ClaudeDesktopProxyRequestBodyIssue,
 };
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
@@ -105,10 +111,8 @@ pub fn get_status(db: &Database, proxy_running: bool) -> Result<ClaudeDesktopSta
     let applied_id = read_applied_id(&paths.meta_path);
     let configured = paths.profile_path.exists() || meta_has_profile_entry(&paths.meta_path);
     let profile = read_json_or_empty(&paths.profile_path).unwrap_or_else(|_| json!({}));
-    let actual_base_url =
-        crate::proxy_core_adapter::claude_desktop_profile_gateway_base_url(&profile);
-    let stale_raw_models =
-        crate::proxy_core_adapter::claude_desktop_profile_has_unsafe_model_ids(&profile);
+    let actual_base_url = claude_desktop_profile_gateway_base_url(&profile);
+    let stale_raw_models = claude_desktop_profile_has_unsafe_model_ids(&profile);
     let gateway_token_configured =
         crate::proxy_core_adapter::claude_desktop_gateway_token_configured_from_db_source(db);
     let current_provider = crate::settings::get_effective_current_provider(
@@ -152,7 +156,7 @@ pub fn get_config_library_path() -> Result<PathBuf, AppError> {
 }
 
 pub fn default_proxy_routes() -> Vec<ClaudeDesktopDefaultRoute> {
-    crate::proxy_core_adapter::claude_desktop_default_proxy_routes()
+    claude_desktop_default_proxy_routes()
         .iter()
         .map(|route| ClaudeDesktopDefaultRoute {
             route_id: route.route_id,
@@ -394,7 +398,7 @@ pub fn proxy_gateway_base_url_from_db(db: &Database) -> Result<String, AppError>
             "Claude Desktop 代理地址需要真实监听端口；请先启动本地代理或使用固定端口".to_string(),
         )
     })?;
-    Ok(crate::proxy_core_adapter::claude_desktop_proxy_gateway_base_url(&proxy_origin))
+    Ok(claude_desktop_proxy_gateway_base_url(&proxy_origin))
 }
 
 fn apply_provider_to_paths(
@@ -456,11 +460,7 @@ fn apply_provider_to_paths_inner(
                     provider,
                 )
                 .map_err(proxy_route_issue_to_error)?;
-            crate::proxy_core_adapter::claude_desktop_gateway_profile(
-                &base_url,
-                &api_key,
-                Some(model_specs.as_slice()),
-            )
+            claude_desktop_gateway_profile(&base_url, &api_key, Some(model_specs.as_slice()))
         }
     };
 
@@ -552,10 +552,7 @@ fn restore_snapshots(snapshots: &[FileSnapshot]) -> Result<(), AppError> {
 }
 
 fn write_deployment_mode(path: &Path, mode: &str) -> Result<(), AppError> {
-    let value = crate::proxy_core_adapter::claude_desktop_config_with_deployment_mode(
-        read_json_or_empty(path)?,
-        mode,
-    );
+    let value = claude_desktop_config_with_deployment_mode(read_json_or_empty(path)?, mode);
     write_json_file(path, &value)
 }
 
@@ -565,9 +562,7 @@ fn remove_cc_switch_enterprise_config(path: &Path) -> Result<(), AppError> {
     }
 
     if let Some(value) =
-        crate::proxy_core_adapter::claude_desktop_config_without_gateway_enterprise_config(
-            read_json_or_empty(path)?,
-        )
+        claude_desktop_config_without_gateway_enterprise_config(read_json_or_empty(path)?)
     {
         write_json_file(path, &value)?;
     }
@@ -576,7 +571,7 @@ fn remove_cc_switch_enterprise_config(path: &Path) -> Result<(), AppError> {
 }
 
 fn write_meta(path: &Path, applied_profile_id: Option<&str>) -> Result<(), AppError> {
-    let value = crate::proxy_core_adapter::claude_desktop_meta_with_profile_entry(
+    let value = claude_desktop_meta_with_profile_entry(
         read_json_or_empty(path)?,
         PROFILE_ID,
         PROFILE_NAME,
@@ -588,13 +583,13 @@ fn write_meta(path: &Path, applied_profile_id: Option<&str>) -> Result<(), AppEr
 fn read_applied_id(path: &Path) -> Option<String> {
     read_json_or_empty(path)
         .ok()
-        .and_then(|value| crate::proxy_core_adapter::claude_desktop_meta_applied_id(&value))
+        .and_then(|value| claude_desktop_meta_applied_id(&value))
 }
 
 fn meta_has_profile_entry(path: &Path) -> bool {
-    read_json_or_empty(path).ok().is_some_and(|value| {
-        crate::proxy_core_adapter::claude_desktop_meta_has_profile_entry(&value, PROFILE_ID)
-    })
+    read_json_or_empty(path)
+        .ok()
+        .is_some_and(|value| claude_desktop_meta_has_profile_entry(&value, PROFILE_ID))
 }
 
 fn is_supported_platform() -> bool {

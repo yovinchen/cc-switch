@@ -633,6 +633,7 @@
 619. `proxy_core_adapter` 的 `proxy_core::api::transforms` 分组 re-export 已整体移除；Claude/Codex transform dispatch helper 仍由 adapter 包装 host provider facts，但底层 transform contract 均作为 adapter 私有 import 或调用方 direct-core import 使用。
 620. proxy channel DAO 的写入、patch、model/key 规范化 helper 与 stable channel id 生成已由 `database/dao/proxy_channels.rs` 直接引用 `proxy_core::api::routing`；`proxy_core_adapter` 不再 re-export 这些纯 channel write normalization helper，仅保留 legacy channel migration preview 的宿主投影入口。
 621. managed-auth 命令层、Codex OAuth 与 Copilot OAuth 的请求/状态/账号排序/helper 契约已改为直接引用 `proxy_core::api::auth`；`proxy_core_adapter` 不再 re-export managed-auth 命令 DTO/helper 或 OAuth helper，仅私有引用 provider binding 投影所需的 core auth facts。
+622. Claude Desktop config 的 profile/gateway/local-config/meta JSON helper 已改为直接引用 `proxy_core::api::auth`；`proxy_core_adapter` 的 `proxy_core::api::auth` 分组 re-export 已整体移除，Claude Desktop provider wrapper 仍在 adapter 内私有调用 core auth contract 并投影 host provider 形态。
 - raw Hyper 上游 transport、`ProxyResponse` 与 header-case preservation 实现已迁到 `proxy/transport/upstream/hyper_client.rs`，旧 `proxy/hyper_client.rs` 已删除；raw-hyper 发送仍与 reqwest/global HTTP client 迁移分开处理。
 - 上游 transport 分流已收敛到 `proxy/transport/upstream/mod.rs`：该模块负责 upstream send policy、raw-hyper fallback 与 pooled reqwest 分支调度；pooled reqwest 上游发送执行已迁到 `proxy/transport/upstream/reqwest_client.rs`，仍复用现有 global HTTP client。
 - failover switch 的 DB、Tauri `AppHandle`、托盘菜单与前端事件副作用实现已迁到 `proxy/host/cc_switch/failover_switch.rs`，旧 `proxy/failover_switch.rs` 已删除；adapter 和 command wiring 已引用 host 路径。
