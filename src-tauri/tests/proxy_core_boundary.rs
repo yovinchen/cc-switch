@@ -5758,6 +5758,30 @@ fn proxy_core_adapter_does_not_export_proxy_takeover_status_alias() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_proxy_config_contract_aliases() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    for alias in [
+        "pub(crate) type ProxyRuntimeConfig = crate::proxy_core::api::config::ProxyRuntimeConfig;",
+        "pub(crate) type ProxyGlobalConfig = crate::proxy_core::api::config::ProxyGlobalConfig;",
+        "pub(crate) type ProxyAppConfig = crate::proxy_core::api::config::ProxyAppConfig;",
+    ] {
+        assert!(
+            !adapter_source.contains(alias),
+            "proxy_core_adapter should not expose config contract alias `{alias}`"
+        );
+    }
+    assert!(
+        adapter_source.contains(
+            "use crate::proxy_core::api::config::{ProxyAppConfig, ProxyGlobalConfig, ProxyRuntimeConfig};"
+        ),
+        "proxy_core_adapter internals should import proxy config contracts directly from proxy_core config"
+    );
+}
+
+#[test]
 fn engine_and_host_test_fixtures_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases: &[(&str, &[&str], &[&str])] = &[
