@@ -1385,11 +1385,6 @@ use crate::proxy_core::api::ports::{
     OpenCodeLiveWriteActionDecision as CoreOpenCodeLiveWriteActionDecision,
     OpenCodeLiveWriteConfigDecision as CoreOpenCodeLiveWriteConfigDecision,
 };
-pub(crate) use crate::proxy_core::api::ports::{
-    proxy_takeover_marked_state_is_reusable,
-    proxy_takeover_should_restore_existing_backup_before_retakeover,
-};
-
 pub(crate) fn provider_openclaw_has_live_provider_fields(provider: &Provider) -> bool {
     crate::proxy_core::api::domain::openclaw_settings_have_live_provider_fields(
         &provider.settings_config,
@@ -7148,7 +7143,9 @@ mod tests {
         openclaw_credential_parts_from_settings, opencode_common_config_value_from_settings,
         opencode_credential_parts_from_settings, provider_credential_issue_spec,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
-        AuthInfo, CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderCredentialIssue,
+        proxy_takeover_marked_state_is_reusable,
+        proxy_takeover_should_restore_existing_backup_before_retakeover, AuthInfo,
+        CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderCredentialIssue,
     };
     use crate::proxy_core::api::transforms::{CodexChatHistorySseRecord, CodexChatHistoryState};
 

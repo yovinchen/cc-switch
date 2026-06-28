@@ -5943,6 +5943,11 @@ fn proxy_core_adapter_does_not_export_proxy_takeover_status_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let port_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::ports::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
 
     assert!(
         !adapter_source.contains(
@@ -5956,6 +5961,21 @@ fn proxy_core_adapter_does_not_export_proxy_takeover_status_alias() {
         ),
         "proxy_core_adapter should not re-export proxy takeover status enabled-options helper"
     );
+    for helper in [
+        "proxy_takeover_marked_state_is_reusable",
+        "proxy_takeover_should_restore_existing_backup_before_retakeover",
+    ] {
+        let single_line_reexport = adapter_source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::ports") && line.contains(helper)
+        });
+        let grouped_reexport = port_reexport_blocks
+            .iter()
+            .any(|block| block.contains(helper));
+        assert!(
+            !single_line_reexport && !grouped_reexport,
+            "proxy_core_adapter should not re-export proxy takeover state helper `{helper}`"
+        );
+    }
     assert!(
         adapter_source.contains("use crate::proxy_core::api::ports::{")
             && adapter_source.contains("ProxyTakeoverStatus"),
@@ -13130,7 +13150,9 @@ fn production_live_takeover_imports_runtime_contracts_directly() {
     let required_imports = [
         "use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};",
         "use crate::proxy_core::api::ports::{",
-        "proxy_live_urls_from_listen_parts, proxy_server_info_from_parts, ProxyConfig,",
+        "proxy_live_urls_from_listen_parts, proxy_server_info_from_parts,",
+        "proxy_takeover_marked_state_is_reusable,",
+        "proxy_takeover_should_restore_existing_backup_before_retakeover, ProxyConfig,",
         "ProxyRuntimeStatus, ProxyServerInfo,",
         "ProxyTakeoverStatus,",
     ];
@@ -13153,6 +13175,8 @@ fn production_live_takeover_imports_runtime_contracts_directly() {
         "ProxyServerInfo",
         "ProxyTakeoverStatus",
         "proxy_server_info_from_parts",
+        "proxy_takeover_marked_state_is_reusable",
+        "proxy_takeover_should_restore_existing_backup_before_retakeover",
     ] {
         if adapter_import_identifiers
             .iter()

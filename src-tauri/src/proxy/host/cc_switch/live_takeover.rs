@@ -10,7 +10,9 @@ use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};
 use crate::proxy_core::api::ports::{
-    proxy_live_urls_from_listen_parts, proxy_server_info_from_parts, ProxyConfig,
+    proxy_live_urls_from_listen_parts, proxy_server_info_from_parts,
+    proxy_takeover_marked_state_is_reusable,
+    proxy_takeover_should_restore_existing_backup_before_retakeover, ProxyConfig,
     ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::proxy_core_adapter::{
@@ -40,8 +42,7 @@ use crate::proxy_core_adapter::{
     proxy_hot_switch_should_sync_codex_live_while_proxy_active,
     proxy_hot_switch_target_state_from_db, proxy_live_config_owned_by_takeover,
     proxy_official_warning_event_from_current_provider_db, proxy_runtime_status_stopped,
-    proxy_server_from_runtime_config, proxy_takeover_marked_state_is_reusable,
-    proxy_takeover_should_restore_existing_backup_before_retakeover, proxy_takeover_status_from_db,
+    proxy_server_from_runtime_config, proxy_takeover_status_from_db,
     remove_claude_takeover_env_fields_if_present,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
