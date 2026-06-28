@@ -27,7 +27,7 @@ use crate::proxy::RequestForwarder;
 use crate::proxy_core::api::domain::{ProviderKind, ProviderMetadata, ProviderMetadataInput};
 use crate::proxy_core::api::engine::ProxyEngine;
 use crate::proxy_core::api::ports::{
-    CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+    CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, RouteResolveChannelRecordInput,
@@ -500,8 +500,6 @@ pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;
 pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
     crate::proxy::host::cc_switch::global_http_client::set_proxy_port(port);
 }
-
-pub(crate) type ProxyTakeoverStatus = crate::proxy_core::api::ports::ProxyTakeoverStatus;
 
 pub(crate) use crate::proxy_core::api::ports::proxy_takeover_status_from_enabled_options;
 

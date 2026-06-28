@@ -5739,6 +5739,25 @@ fn proxy_core_adapter_does_not_export_proxy_server_info_alias() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_proxy_takeover_status_alias() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    assert!(
+        !adapter_source.contains(
+            "pub(crate) type ProxyTakeoverStatus = crate::proxy_core::api::ports::ProxyTakeoverStatus;"
+        ),
+        "proxy_core_adapter should not expose ProxyTakeoverStatus as a runtime port alias"
+    );
+    assert!(
+        adapter_source.contains("use crate::proxy_core::api::ports::{")
+            && adapter_source.contains("ProxyTakeoverStatus"),
+        "proxy_core_adapter internals should import ProxyTakeoverStatus directly from proxy_core ports"
+    );
+}
+
+#[test]
 fn engine_and_host_test_fixtures_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases: &[(&str, &[&str], &[&str])] = &[
