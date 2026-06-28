@@ -513,7 +513,6 @@ pub(crate) type ProxyCoreResponse = crate::proxy_core::api::transport::ProxyCore
 pub(crate) type ProxyCoreResult<T> = crate::proxy_core::api::errors::ProxyCoreResult<T>;
 pub(crate) type ProxyEngine<S> = crate::proxy_core::api::engine::ProxyEngine<S>;
 pub(crate) type ProxyResult = crate::proxy_core::api::transport::ProxyResult;
-pub(crate) type ProxyCoreEvent = crate::proxy_core::api::events::ProxyCoreEvent;
 pub(crate) type ProxyResponseBody = crate::proxy_core::api::transport::ProxyResponseBody;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::api::ports::CurrentRouteTarget;
 
@@ -2139,7 +2138,7 @@ use crate::proxy_core::api::events::{
     attempt_event_name, build_attempt_event_payload, build_provider_switched_event_payload,
     build_proxy_official_warning_event_payload, build_request_started_event_payload,
     build_server_started_event_payload, build_server_stopped_event_payload, AttemptEventChannel,
-    AttemptEventPayloadInput, AttemptEventPhase,
+    AttemptEventPayloadInput, AttemptEventPhase, ProxyCoreEvent,
 };
 pub(crate) use crate::proxy_core::api::management::channel_not_found_error;
 pub(crate) use crate::proxy_core::api::management::{
