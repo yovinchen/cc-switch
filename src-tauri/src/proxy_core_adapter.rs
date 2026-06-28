@@ -78,7 +78,8 @@ fn log_rectified_gemini_tool_args(name: &str) {
 }
 
 use crate::proxy_core::api::auth::{
-    ClaudeAuthKey, ClaudeAuthKeySource, ProviderAuthInfo, ProviderAuthStrategy,
+    ClaudeAuthKey, ClaudeAuthKeySource, ClaudeDesktopModelRouteInput, ProviderAuthInfo,
+    ProviderAuthStrategy,
 };
 pub(crate) use crate::proxy_core::api::auth::{
     ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
@@ -507,8 +508,6 @@ pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
 
 pub(crate) use crate::proxy_core::api::ports::proxy_takeover_status_from_enabled_options;
 
-pub(crate) type ClaudeDesktopModelRouteInput =
-    crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
 pub(crate) use crate::proxy_core::api::auth::{
     claude_desktop_gateway_token_error, claude_desktop_provider_selection_error,
     claude_desktop_provider_unavailable_error,

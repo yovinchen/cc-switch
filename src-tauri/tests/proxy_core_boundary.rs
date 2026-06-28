@@ -18495,6 +18495,10 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/model_catalog_provider.rs");
     let source = fs::read_to_string(&source_path).expect("read model_catalog_provider.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
 
     assert!(
         source.contains("pub(crate) struct CcSwitchModelCatalogProvider")
@@ -18513,6 +18517,10 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
             && source.contains("use crate::proxy_core::api::model_catalog::ModelCatalog;")
             && source.contains("use crate::proxy_core::api::ports::ModelCatalogProvider;"),
         "CC Switch model catalog provider should import model catalog contracts directly from proxy_core"
+    );
+    assert!(
+        !adapter_runtime_source.contains("pub(crate) type ClaudeDesktopModelRouteInput"),
+        "proxy_core_adapter should not expose ClaudeDesktopModelRouteInput as a type alias; adapter internals and model catalog providers should import it from proxy_core::api::auth"
     );
     let adapter_import = function_slice(
         &source,
