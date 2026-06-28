@@ -2005,6 +2005,11 @@ fn is_allowed_claude_desktop_provider_issue_core_import(relative: &str, code: &s
         && code.trim() == "use crate::proxy_core::api::auth::{"
 }
 
+fn is_allowed_claude_desktop_live_url_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/claude_desktop_config.rs"
+        && code.trim() == "use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;"
+}
+
 fn is_allowed_engine_routing_test_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/engine/routing.rs" && code.trim() == "use crate::proxy_core::api::{"
 }
@@ -2138,6 +2143,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_proxy_core_host_test_contract_import(&relative, code)
                     && !is_allowed_http_server_runtime_core_import(&relative, code)
                     && !is_allowed_claude_desktop_provider_issue_core_import(&relative, code)
+                    && !is_allowed_claude_desktop_live_url_core_import(&relative, code)
                     && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
                     && !is_allowed_circuit_breaker_config_core_import(&relative, code)
@@ -8754,7 +8760,7 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
     let claude_desktop_core_auth_import = function_slice(
         &claude_desktop_source,
         "use crate::proxy_core::api::auth::{",
-        "};\nuse crate::proxy_core_adapter::{",
+        "};\nuse crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;",
     );
     let claude_desktop_adapter_import = function_slice(
         &claude_desktop_source,
@@ -9730,23 +9736,58 @@ fn proxy_management_auth_delegates_to_proxy_engine() {
 }
 
 #[test]
-fn claude_desktop_config_delegates_proxy_gateway_origin_to_adapter() {
+fn claude_desktop_config_delegates_proxy_gateway_origin_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/claude_desktop_config.rs");
     let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let live_takeover_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
+            .expect("read live_takeover.rs");
     let gateway_url_slice = function_slice(
         &source,
         "pub fn proxy_gateway_base_url_from_db(",
         "fn apply_provider_to_paths(",
     );
+    let live_takeover_core_ports_import = function_slice(
+        &live_takeover_source,
+        "use crate::proxy_core::api::ports::{",
+        "};\nuse crate::proxy_core_adapter::{",
+    );
+    let live_takeover_adapter_import = function_slice(
+        &live_takeover_source,
+        "use crate::proxy_core_adapter::{",
+        "};\n#[cfg(test)]",
+    );
 
     assert!(
         gateway_url_slice.contains("proxy_live_urls_from_listen_parts("),
-        "claude_desktop_config should delegate proxy gateway origin formatting to proxy_core_adapter/core"
+        "claude_desktop_config should delegate proxy gateway origin formatting to core"
+    );
+    assert!(
+        source
+            .contains("use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;"),
+        "claude_desktop_config should import proxy live URL formatting directly from proxy_core ports"
+    );
+    assert!(
+        !source.contains("crate::proxy_core_adapter::proxy_live_urls_from_listen_parts"),
+        "claude_desktop_config should not import proxy live URL formatting through proxy_core_adapter"
     );
     assert!(
         gateway_url_slice.contains("claude_desktop_proxy_gateway_base_url("),
         "claude_desktop_config should delegate Claude Desktop gateway endpoint formatting to proxy_core_adapter/core"
+    );
+    assert!(
+        live_takeover_core_ports_import.contains("proxy_live_urls_from_listen_parts")
+            && !live_takeover_adapter_import.contains("proxy_live_urls_from_listen_parts"),
+        "live_takeover should import proxy live URL formatting directly from proxy_core ports"
+    );
+    assert!(
+        !adapter_source.contains(
+            "pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts"
+        ),
+        "proxy_core_adapter should not re-export proxy live URL formatting"
     );
     assert!(
         !source.contains("fn proxy_origin_from_parts("),
@@ -13021,7 +13062,8 @@ fn production_live_takeover_imports_runtime_contracts_directly() {
     let required_imports = [
         "use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};",
         "use crate::proxy_core::api::ports::{",
-        "ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,",
+        "proxy_live_urls_from_listen_parts, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,",
+        "ProxyTakeoverStatus,",
     ];
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
     let mut violations = Vec::new();

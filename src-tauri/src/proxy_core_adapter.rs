@@ -490,8 +490,6 @@ pub(crate) fn proxy_server_from_runtime_config(
     ProxyServer::from_runtime_state(config, state)
 }
 
-pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;
-
 pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
     crate::proxy::host::cc_switch::global_http_client::set_proxy_port(port);
 }
@@ -13000,34 +12998,37 @@ base_url = "https://api.openai.com/v1"
         assert!(!takeover_from_config.openclaw);
 
         assert_eq!(
-            proxy_live_urls_from_listen_parts("127.0.0.1", 15721),
+            crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts("127.0.0.1", 15721),
             Some((
                 "http://127.0.0.1:15721".to_string(),
                 "http://127.0.0.1:15721/v1".to_string()
             ))
         );
         assert_eq!(
-            proxy_live_urls_from_listen_parts("0.0.0.0", 15721),
+            crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts("0.0.0.0", 15721),
             Some((
                 "http://127.0.0.1:15721".to_string(),
                 "http://127.0.0.1:15721/v1".to_string()
             ))
         );
         assert_eq!(
-            proxy_live_urls_from_listen_parts("::", 15721),
+            crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts("::", 15721),
             Some((
                 "http://[::1]:15721".to_string(),
                 "http://[::1]:15721/v1".to_string()
             ))
         );
         assert_eq!(
-            proxy_live_urls_from_listen_parts("fd00::1", 15721),
+            crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts("fd00::1", 15721),
             Some((
                 "http://[fd00::1]:15721".to_string(),
                 "http://[fd00::1]:15721/v1".to_string()
             ))
         );
-        assert_eq!(proxy_live_urls_from_listen_parts("127.0.0.1", 0), None);
+        assert_eq!(
+            crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts("127.0.0.1", 0),
+            None
+        );
 
         let target = CurrentRouteTarget {
             app_type: "claude".to_string(),

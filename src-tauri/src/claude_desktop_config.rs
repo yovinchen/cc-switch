@@ -13,6 +13,7 @@ use crate::provider::{ClaudeDesktopMode, Provider};
 use crate::proxy_core::api::auth::{
     ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
 };
+use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;
 use crate::proxy_core_adapter::{
     ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectModelRouteIssue,
     ClaudeDesktopProviderDirectGatewayProfileIssue, ClaudeDesktopProviderDirectValidationIssue,
@@ -384,7 +385,7 @@ pub fn proxy_gateway_base_url_from_db(db: &Database) -> Result<String, AppError>
     // get_proxy_config is async-tagged but its body is fully synchronous (rusqlite
     // under a Mutex), so block_on cannot deadlock the calling thread.
     let config = futures::executor::block_on(db.get_proxy_config())?;
-    let (proxy_origin, _) = crate::proxy_core_adapter::proxy_live_urls_from_listen_parts(
+    let (proxy_origin, _) = proxy_live_urls_from_listen_parts(
         &config.listen_address,
         config.listen_port,
     )
