@@ -4911,11 +4911,9 @@ pub(crate) fn claude_desktop_model_routes_to_core_inputs(
         .collect()
 }
 
-pub(crate) use crate::proxy_core::api::model_catalog::{
-    build_codex_model_catalog_from_settings as codex_model_catalog_from_settings,
+use crate::proxy_core::api::model_catalog::{
     client_model_catalog_raw_from_text, empty_client_model_catalog_raw,
-    has_codex_model_catalog_specs as codex_settings_have_model_catalog_specs,
-    provider_model_catalog_from_settings, simplify_codex_model_catalog,
+    provider_model_catalog_from_settings,
 };
 
 pub(crate) fn provider_model_catalog_from_db_source(
@@ -15121,6 +15119,11 @@ command = "latest-command"
 
     #[test]
     fn codex_catalog_adapter_builds_and_simplifies_model_catalog() {
+        use crate::proxy_core::api::model_catalog::{
+            build_codex_model_catalog_from_settings, has_codex_model_catalog_specs,
+            simplify_codex_model_catalog,
+        };
+
         let settings = json!({
             "modelCatalog": {
                 "models": [
@@ -15139,11 +15142,11 @@ command = "latest-command"
             "model_messages": {"base": "template"}
         });
 
-        assert!(codex_settings_have_model_catalog_specs(&settings));
+        assert!(has_codex_model_catalog_specs(&settings));
         assert_eq!(DEFAULT_CODEX_MODEL_CONTEXT_WINDOW, 128_000);
 
-        let catalog =
-            codex_model_catalog_from_settings(&settings, 128_000, &template).expect("catalog");
+        let catalog = build_codex_model_catalog_from_settings(&settings, 128_000, &template)
+            .expect("catalog");
         let models = catalog
             .get("models")
             .and_then(Value::as_array)

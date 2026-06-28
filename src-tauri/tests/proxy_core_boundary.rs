@@ -12169,8 +12169,9 @@ fn codex_config_uses_core_model_context_window_constant() {
     let codex_config_path = manifest_dir.join("src/codex_config.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let codex_config_source = fs::read_to_string(&codex_config_path).expect("read codex_config.rs");
-    let required_import =
+    let legacy_required_import =
         "use crate::proxy_core::api::model_catalog::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW;";
+    let grouped_model_catalog_import = "use crate::proxy_core::api::model_catalog::{";
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&adapter_source) {
@@ -12199,7 +12200,10 @@ fn codex_config_uses_core_model_context_window_constant() {
         }
         let direct_core =
             code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
-        if direct_core && code.trim() != required_import {
+        if direct_core
+            && code.trim() != legacy_required_import
+            && code.trim() != grouped_model_catalog_import
+        {
             violations.push(format!(
                 "src/codex_config.rs:{} contains non-Codex-model-context direct proxy-core import `{}`",
                 line_index + 1,
@@ -12209,7 +12213,7 @@ fn codex_config_uses_core_model_context_window_constant() {
     }
 
     assert!(
-        codex_config_source.contains(required_import),
+        codex_config_source.contains("DEFAULT_CODEX_MODEL_CONTEXT_WINDOW"),
         "codex_config.rs must import the Codex model context fallback constant directly from proxy_core"
     );
     assert!(
@@ -12221,6 +12225,59 @@ fn codex_config_uses_core_model_context_window_constant() {
         "Codex model context fallback constant must bypass proxy_core_adapter aliases:\n{}",
         violations.join("\n")
     );
+}
+
+#[test]
+fn codex_config_imports_model_catalog_helpers_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let codex_config_path = manifest_dir.join("src/codex_config.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let codex_config_source = fs::read_to_string(&codex_config_path).expect("read codex_config.rs");
+    let model_catalog_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::model_catalog::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+    let helper_import = "use crate::proxy_core::api::model_catalog::{";
+
+    for marker in [
+        "build_codex_model_catalog_from_settings",
+        "has_codex_model_catalog_specs",
+        "simplify_codex_model_catalog",
+    ] {
+        assert!(
+            codex_config_source.contains(helper_import) && codex_config_source.contains(marker),
+            "codex_config.rs should import `{marker}` directly from proxy_core model_catalog"
+        );
+        assert!(
+            !codex_config_source.contains(&format!("proxy_core_adapter::{marker}"))
+                && !codex_config_source.contains(&format!("proxy_core_adapter::{marker}(")),
+            "codex_config.rs should not call `{marker}` through proxy_core_adapter"
+        );
+    }
+
+    for marker in [
+        "build_codex_model_catalog_from_settings",
+        "client_model_catalog_raw_from_text",
+        "empty_client_model_catalog_raw",
+        "has_codex_model_catalog_specs",
+        "provider_model_catalog_from_settings",
+        "simplify_codex_model_catalog",
+    ] {
+        let single_line_reexport = adapter_source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::model_catalog")
+                && line.contains(marker)
+        });
+        let grouped_reexport = model_catalog_reexport_blocks
+            .iter()
+            .any(|block| block.contains(marker));
+
+        assert!(
+            !single_line_reexport && !grouped_reexport,
+            "proxy_core_adapter should not re-export pure model catalog helper `{marker}`"
+        );
+    }
 }
 
 #[test]
