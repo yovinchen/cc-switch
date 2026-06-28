@@ -509,11 +509,8 @@ pub(crate) use crate::proxy_core::api::auth::{
     claude_desktop_gateway_token_error, claude_desktop_provider_selection_error,
     claude_desktop_provider_unavailable_error,
 };
-pub(crate) type ProxyCoreResponse = crate::proxy_core::api::transport::ProxyCoreResponse;
 pub(crate) type ProxyCoreResult<T> = crate::proxy_core::api::errors::ProxyCoreResult<T>;
 pub(crate) type ProxyEngine<S> = crate::proxy_core::api::engine::ProxyEngine<S>;
-pub(crate) type ProxyResult = crate::proxy_core::api::transport::ProxyResult;
-pub(crate) type ProxyResponseBody = crate::proxy_core::api::transport::ProxyResponseBody;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::api::ports::CurrentRouteTarget;
 
 pub(crate) async fn record_codex_chat_response_history(
@@ -2206,7 +2203,7 @@ pub(crate) use crate::proxy_core::api::transport::{
 };
 use crate::proxy_core::api::transport::{
     ClaudeProviderAuthHeadersInput, CopilotClassification, ForwardFailureKind,
-    ForwarderRectifierRetryKind,
+    ForwarderRectifierRetryKind, ProxyCoreResponse, ProxyResponseBody, ProxyResult,
 };
 pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
