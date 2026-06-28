@@ -80,6 +80,7 @@ pub(crate) use crate::proxy_core::api::errors::{
     invalid_request_error as core_invalid_request_error,
     selected_provider_missing_from_source_message,
 };
+use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};
 pub(crate) fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     core_config_error_with_context(context, error)
 }
@@ -509,7 +510,6 @@ pub(crate) use crate::proxy_core::api::auth::{
     claude_desktop_gateway_token_error, claude_desktop_provider_selection_error,
     claude_desktop_provider_unavailable_error,
 };
-pub(crate) type ProxyCoreResult<T> = crate::proxy_core::api::errors::ProxyCoreResult<T>;
 pub(crate) type ProxyEngine<S> = crate::proxy_core::api::engine::ProxyEngine<S>;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::api::ports::CurrentRouteTarget;
 
@@ -2018,7 +2018,6 @@ pub(crate) type ProviderSelectionInput = crate::proxy_core::api::routing::Provid
 pub(crate) type AutoFailoverToggleInput = crate::proxy_core::api::routing::AutoFailoverToggleInput;
 pub(crate) type AutoFailoverTogglePlan = crate::proxy_core::api::routing::AutoFailoverTogglePlan;
 pub(crate) type FailoverQueuePosition = crate::proxy_core::api::routing::FailoverQueuePosition;
-pub(crate) type ProxyCoreError = crate::proxy_core::api::errors::ProxyCoreError;
 pub(crate) type AppKind = crate::proxy_core::api::domain::AppKind;
 pub(crate) type RouteResolveRequest = crate::proxy_core::api::management::RouteResolveRequest;
 pub(crate) type RouteResolveResponse = crate::proxy_core::api::management::RouteResolveResponse;

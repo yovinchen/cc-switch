@@ -5576,6 +5576,39 @@ fn proxy_core_adapter_does_not_export_response_transport_aliases() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_error_contract_aliases() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
+
+    for alias in [
+        "pub(crate) type ProxyCoreResult<T> = crate::proxy_core::api::errors::ProxyCoreResult<T>;",
+        "pub(crate) type ProxyCoreError = crate::proxy_core::api::errors::ProxyCoreError;",
+    ] {
+        assert!(
+            !adapter_source.contains(alias),
+            "proxy_core_adapter should not expose error contract alias `{alias}`; callers and adapter internals should use proxy_core::api::errors directly"
+        );
+    }
+
+    assert!(
+        host_source.contains("use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};"),
+        "proxy_core_host test harness should import ProxyCoreError and ProxyCoreResult directly from proxy_core errors"
+    );
+    let host_adapter_import = proxy_core_adapter_import_identifiers(&host_source);
+    for adapter_type in ["ProxyCoreError", "ProxyCoreResult"] {
+        assert!(
+            !host_adapter_import
+                .iter()
+                .any(|identifier| identifier == adapter_type),
+            "proxy_core_host must not import {adapter_type} through proxy_core_adapter"
+        );
+    }
+}
+
+#[test]
 fn engine_and_host_test_fixtures_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases: &[(&str, &[&str], &[&str])] = &[
