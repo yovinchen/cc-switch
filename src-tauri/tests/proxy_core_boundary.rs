@@ -5401,6 +5401,28 @@ fn proxy_core_adapter_does_not_export_circuit_breaker_failure_alias() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_reexport_circuit_breaker_config_helpers() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    for helper in [
+        "circuit_breaker_failure_decision",
+        "half_open_probe_allow_result",
+        "should_close_half_open_after_success",
+        "should_transition_open_to_half_open",
+    ] {
+        assert!(
+            !adapter_source.contains(&format!(
+                "pub(crate) use crate::proxy_core::api::config::{}",
+                helper
+            )) && !adapter_source.contains(&format!("    {},", helper)),
+            "proxy_core_adapter should not re-export circuit breaker config helper `{helper}`; circuit breaker code should import it from proxy_core::api::config"
+        );
+    }
+}
+
+#[test]
 fn proxy_core_adapter_does_not_export_forwarder_rectifier_retry_kind_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
@@ -20777,8 +20799,10 @@ fn production_circuit_breaker_imports_config_contracts_directly() {
 
     let required_imports = [
         "use crate::proxy_core::api::config::{",
-        "AllowResult, CircuitBreakerConfig, CircuitBreakerFailureDecision, CircuitBreakerStats,",
-        "CircuitState,",
+        "circuit_breaker_failure_decision, half_open_probe_allow_result,",
+        "should_close_half_open_after_success, should_transition_open_to_half_open, AllowResult,",
+        "CircuitBreakerConfig, CircuitBreakerFailureDecision, CircuitBreakerStats, CircuitState,",
+        "use crate::proxy_core_adapter::circuit_breaker_log_codes as log_cb;",
     ];
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
     let mut violations = Vec::new();
@@ -20797,6 +20821,10 @@ fn production_circuit_breaker_imports_config_contracts_directly() {
         "CircuitBreakerFailureDecision",
         "CircuitBreakerStats",
         "CircuitState",
+        "circuit_breaker_failure_decision",
+        "half_open_probe_allow_result",
+        "should_close_half_open_after_success",
+        "should_transition_open_to_half_open",
     ] {
         if adapter_import_identifiers
             .iter()

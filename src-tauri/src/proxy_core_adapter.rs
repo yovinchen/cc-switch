@@ -6014,11 +6014,6 @@ pub(crate) async fn management_route_response_from_router_source(
     Ok(response)
 }
 
-pub(crate) use crate::proxy_core::api::config::{
-    circuit_breaker_failure_decision, half_open_probe_allow_result,
-    should_close_half_open_after_success, should_transition_open_to_half_open,
-};
-
 pub(crate) async fn update_all_circuit_breaker_configs_source(
     router: &ProviderRouter,
     config: CircuitBreakerConfig,

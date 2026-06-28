@@ -3,14 +3,11 @@
 //! 实现熔断器模式，用于防止向不健康的供应商发送请求
 
 use crate::proxy_core::api::config::{
-    AllowResult, CircuitBreakerConfig, CircuitBreakerFailureDecision, CircuitBreakerStats,
-    CircuitState,
+    circuit_breaker_failure_decision, half_open_probe_allow_result,
+    should_close_half_open_after_success, should_transition_open_to_half_open, AllowResult,
+    CircuitBreakerConfig, CircuitBreakerFailureDecision, CircuitBreakerStats, CircuitState,
 };
-use crate::proxy_core_adapter::{
-    circuit_breaker_failure_decision, circuit_breaker_log_codes as log_cb,
-    half_open_probe_allow_result, should_close_half_open_after_success,
-    should_transition_open_to_half_open,
-};
+use crate::proxy_core_adapter::circuit_breaker_log_codes as log_cb;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
