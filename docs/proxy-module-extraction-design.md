@@ -1820,6 +1820,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1334. `proxy_core_adapter` 不再暴露 route resolve / route plan DTO alias：`RouteResolveRequest`、`RouteResolveResponse`、`RouteResolveChannelInput`、`ChannelRouteCandidate`、`ResolvedChannelAttempt` 与 `RoutePlan` 均由 adapter 内部、route resolver、forward pipeline 和 test harness 直接从 `proxy_core::api::{management,routing}` 获取；边界测试防止 route contract 重新经 adapter alias 回流。
 1335. `proxy_core_adapter` 不再暴露 legacy channel/provider projection DTO alias：`ChannelRecord`、`ChannelRouteSource`、`LegacyChannelModelProjection`、`LegacyChannelProjection`、`LegacyChannelMigrationPlanInput`、`LegacyEndpointInput`、`LegacyModelRouteInput`、`LegacyProviderChannelMigrationInput` 与 `LegacyProviderProjectionInput` 均由 adapter 内部和 host channel/router source 直接从 `proxy_core::api::{management,routing}` 获取；边界测试防止 legacy projection contract 重新经 adapter alias 回流。
 1336. `proxy_core_adapter` 不再暴露 `ModelMappingProjection` model catalog DTO alias：adapter 内部 provider-shaped mapping wrapper 直接从 `proxy_core::api::model_catalog` 获取 projection DTO，继续只保留宿主 `Provider` 到 core model mapping helper 的包装；边界测试防止 model mapping contract 重新经 adapter alias 回流。
+1337. `proxy/circuit_breaker` 不再通过 `proxy_core_adapter` 获取纯熔断配置 helper：`circuit_breaker_failure_decision`、`half_open_probe_allow_result`、`should_close_half_open_after_success` 与 `should_transition_open_to_half_open` 均直接来自 `proxy_core::api::config`；adapter 删除对应 re-export，边界测试防止 circuit breaker config helper 重新经 adapter 回流。
 
 ## 背景
 
