@@ -25,6 +25,7 @@ use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::api::domain::{ProviderKind, ProviderMetadata, ProviderMetadataInput};
+use crate::proxy_core::api::engine::ProxyEngine;
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, RouteResolveChannelRecordInput,
     RouteResolveModelRecordInput,
@@ -510,7 +511,6 @@ pub(crate) use crate::proxy_core::api::auth::{
     claude_desktop_gateway_token_error, claude_desktop_provider_selection_error,
     claude_desktop_provider_unavailable_error,
 };
-pub(crate) type ProxyEngine<S> = crate::proxy_core::api::engine::ProxyEngine<S>;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::api::ports::CurrentRouteTarget;
 
 pub(crate) async fn record_codex_chat_response_history(

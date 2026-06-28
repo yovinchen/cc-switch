@@ -5609,6 +5609,33 @@ fn proxy_core_adapter_does_not_export_error_contract_aliases() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_export_proxy_engine_alias() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
+
+    assert!(
+        !adapter_source.contains(
+            "pub(crate) type ProxyEngine<S> = crate::proxy_core::api::engine::ProxyEngine<S>;"
+        ),
+        "proxy_core_adapter should not expose ProxyEngine as a core engine alias"
+    );
+    assert!(
+        host_source.contains("use crate::proxy_core::api::engine::ProxyEngine;"),
+        "proxy_core_host test harness should import ProxyEngine directly from proxy_core engine"
+    );
+    let host_adapter_import = proxy_core_adapter_import_identifiers(&host_source);
+    assert!(
+        !host_adapter_import
+            .iter()
+            .any(|identifier| identifier == "ProxyEngine"),
+        "proxy_core_host must not import ProxyEngine through proxy_core_adapter"
+    );
+}
+
+#[test]
 fn engine_and_host_test_fixtures_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases: &[(&str, &[&str], &[&str])] = &[

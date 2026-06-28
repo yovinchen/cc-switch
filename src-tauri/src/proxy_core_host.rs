@@ -29,6 +29,8 @@ use crate::proxy_core::api::domain::{
     UpstreamEndpoint,
 };
 #[cfg(test)]
+use crate::proxy_core::api::engine::ProxyEngine;
+#[cfg(test)]
 use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};
 #[cfg(test)]
 use crate::proxy_core::api::events::ProxyCoreEvent;
@@ -65,8 +67,8 @@ mod tests {
     use crate::provider::Provider;
     use crate::proxy_core_adapter::{
         proxy_response_to_core_response, ProxyChannelKeyWriteRequest,
-        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, ProxyConfig, ProxyEngine,
-        ProxyRuntimeStatus, ResolvedChannelAttempt, RouteResolveRequest,
+        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, ProxyConfig, ProxyRuntimeStatus,
+        ResolvedChannelAttempt, RouteResolveRequest,
     };
     use bytes::Bytes;
     use futures::StreamExt;
