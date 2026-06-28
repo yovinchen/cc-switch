@@ -4443,15 +4443,15 @@ pub(crate) fn should_reapply_codex_official_live_for_provider(provider: &Provide
     core_should_reapply_codex_official_live_for_provider_category(provider.category.as_deref())
 }
 
-pub(crate) use crate::proxy_core::api::routing::{
+use crate::proxy_core::api::routing::{
     apply_route_candidate_circuit_availability, current_provider_db_fallback_required,
     current_provider_id_from_sources, current_provider_id_option_from_sources,
-    failover_switch_pending_key, legacy_provider_codex_catalog_models_from_settings,
-    legacy_provider_config_text_from_settings, legacy_provider_env_from_settings,
-    plan_auto_failover_toggle, provider_failover_circuit_lookups,
-    provider_selection_candidate_from_failover_lookup, resolve_channel_route,
-    restored_provider_switchback_decision, route_candidate_channel_circuit_keys,
-    select_provider_ids, should_block_proxy_switch_to_provider_category,
+    legacy_provider_codex_catalog_models_from_settings, legacy_provider_config_text_from_settings,
+    legacy_provider_env_from_settings, plan_auto_failover_toggle,
+    provider_failover_circuit_lookups, provider_selection_candidate_from_failover_lookup,
+    resolve_channel_route, restored_provider_switchback_decision,
+    route_candidate_channel_circuit_keys, select_provider_ids,
+    should_block_proxy_switch_to_provider_category,
 };
 
 pub(crate) fn legacy_provider_projection_input(

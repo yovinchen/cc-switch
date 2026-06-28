@@ -2033,6 +2033,11 @@ fn is_allowed_claude_desktop_live_url_core_import(relative: &str, code: &str) ->
         && code.trim() == "use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;"
 }
 
+fn is_allowed_failover_switch_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/host/cc_switch/failover_switch.rs"
+        && code.trim() == "use crate::proxy_core::api::routing::failover_switch_pending_key;"
+}
+
 fn is_allowed_engine_routing_test_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/engine/routing.rs" && code.trim() == "use crate::proxy_core::api::{"
 }
@@ -2199,6 +2204,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_http_server_runtime_core_import(&relative, code)
                     && !is_allowed_claude_desktop_provider_issue_core_import(&relative, code)
                     && !is_allowed_claude_desktop_live_url_core_import(&relative, code)
+                    && !is_allowed_failover_switch_core_import(&relative, code)
                     && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
                     && !is_allowed_provider_common_config_issue_core_import(&relative, code)
@@ -16510,6 +16516,15 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
         "default failover switch scheduler implementation should live in the CC Switch host module"
     );
     assert!(
+        failover_source
+            .contains("use crate::proxy_core::api::routing::failover_switch_pending_key;")
+            && !failover_source.contains(
+                "use crate::proxy_core_adapter::{\n    failover_switch_app_enabled_from_db, failover_switch_pending_key"
+            )
+            && !failover_source.contains("crate::proxy_core_adapter::failover_switch_pending_key"),
+        "failover switch should import the pending-key helper directly from proxy_core routing"
+    );
+    assert!(
         adapter_source.contains("use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources;")
             && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources")
             && !adapter_source.contains("struct CcSwitchFailoverSwitchScheduler"),
@@ -19906,6 +19921,22 @@ fn proxy_core_adapter_delegates_route_policy_source_to_host_module() {
         .collect();
     for marker in [
         "RoutePolicy",
+        "apply_route_candidate_circuit_availability",
+        "current_provider_db_fallback_required",
+        "current_provider_id_from_sources",
+        "current_provider_id_option_from_sources",
+        "failover_switch_pending_key",
+        "legacy_provider_codex_catalog_models_from_settings",
+        "legacy_provider_config_text_from_settings",
+        "legacy_provider_env_from_settings",
+        "plan_auto_failover_toggle",
+        "provider_failover_circuit_lookups",
+        "provider_selection_candidate_from_failover_lookup",
+        "resolve_channel_route",
+        "restored_provider_switchback_decision",
+        "route_candidate_channel_circuit_keys",
+        "select_provider_ids",
+        "should_block_proxy_switch_to_provider_category",
         "route_policy_failover_provider_ids",
         "provider_router_auto_failover_enabled_decision",
         "failover_config_read_error_log_line",

@@ -7,10 +7,10 @@
 
 use crate::database::Database;
 use crate::error::AppError;
+use crate::proxy_core::api::routing::failover_switch_pending_key;
 use crate::proxy_core_adapter::{
-    failover_switch_app_enabled_from_db, failover_switch_pending_key,
-    provider_switched_failover_event_message, FailoverSwitchScheduler, FailoverSwitchSchedulerRef,
-    ForwarderFailoverSwitchTarget,
+    failover_switch_app_enabled_from_db, provider_switched_failover_event_message,
+    FailoverSwitchScheduler, FailoverSwitchSchedulerRef, ForwarderFailoverSwitchTarget,
 };
 use std::collections::HashSet;
 use std::sync::Arc;
