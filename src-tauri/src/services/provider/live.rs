@@ -10,14 +10,14 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core::api::ports::{
-    common_config_settings_mutation_issue_message, CommonConfigSettingsMutationIssue,
+    common_config_settings_mutation_issue_message, gemini_live_settings_to_write,
+    CommonConfigSettingsMutationIssue,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::apply_common_config_to_settings as adapter_apply_common_config_to_settings;
 use crate::proxy_core_adapter::{
     build_effective_settings_with_common_config as adapter_build_effective_settings_with_common_config,
     codex_live_settings_with_model_catalog, gemini_live_settings_from_env_json_and_config,
-    gemini_live_settings_to_write,
     normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
     provider_codex_live_snapshot_parts,
     provider_common_config_storage_normalization_requires_snippet,

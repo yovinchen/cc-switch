@@ -7801,11 +7801,24 @@ fn proxy_core_adapter_delegates_gemini_live_config_policy_to_core() {
         .join("\n");
 
     assert!(
-        production_source.contains("core_gemini_live_config_object_from_settings")
-            && production_source.contains(
-                "pub(crate) use crate::proxy_core::api::ports::gemini_live_settings_to_write"
-            ),
-        "proxy_core_adapter should delegate Gemini live config selection/merge policy to core"
+        production_source.contains("core_gemini_live_config_object_from_settings"),
+        "proxy_core_adapter should delegate Gemini live config selection policy to core"
+    );
+    assert!(
+        !production_source.contains(
+            "pub(crate) use crate::proxy_core::api::ports::gemini_live_settings_to_write"
+        ),
+        "proxy_core_adapter should not re-export Gemini live settings write helper"
+    );
+    let live_service_source =
+        fs::read_to_string(manifest_dir.join("src/services/provider/live.rs"))
+            .expect("read services/provider/live.rs");
+    assert!(
+        live_service_source.contains("gemini_live_settings_to_write")
+            && live_service_source.contains("use crate::proxy_core::api::ports::{")
+            && !live_service_source
+                .contains("use crate::proxy_core_adapter::{\n    gemini_live_settings_to_write"),
+        "Gemini live service should import settings write helper directly from proxy-core ports"
     );
 
     let mut violations = Vec::new();
