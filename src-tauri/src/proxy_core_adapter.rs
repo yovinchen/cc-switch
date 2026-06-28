@@ -2035,7 +2035,7 @@ pub(crate) use crate::proxy_core::api::auth::{
     ManagedAuthStatus, ProviderManagedAuthClassification, ProviderManagedAuthFacts,
     CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
 };
-pub(crate) use crate::proxy_core::api::auth::{
+use crate::proxy_core::api::auth::{
     extract_claude_auth_key_from_settings, is_gemini_oauth_key_shape,
     parse_gemini_oauth_credentials,
 };

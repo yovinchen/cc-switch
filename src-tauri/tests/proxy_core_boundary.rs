@@ -6755,6 +6755,11 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         .skip(1)
         .map(|tail| tail.split("};").next().unwrap_or_default())
         .collect();
+    let auth_reexport_blocks: Vec<&str> = source
+        .split("pub(crate) use crate::proxy_core::api::auth::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
 
     for marker in [
         "app_type_from_circuit_key",
@@ -6775,6 +6780,21 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         assert!(
             !reexport_marker,
             "proxy_core_adapter should not re-export adapter-only config helper `{marker}`"
+        );
+    }
+    for marker in [
+        "extract_claude_auth_key_from_settings",
+        "is_gemini_oauth_key_shape",
+        "parse_gemini_oauth_credentials",
+    ] {
+        let reexport_marker = source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::auth") && line.contains(marker)
+        }) || auth_reexport_blocks
+            .iter()
+            .any(|block| block.contains(marker));
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export adapter-only auth helper `{marker}`"
         );
     }
     for marker in [
