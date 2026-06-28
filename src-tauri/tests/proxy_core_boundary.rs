@@ -2015,6 +2015,10 @@ fn is_allowed_test_proxy_config_core_import(relative: &str, code: &str) -> bool 
     ) && code.trim() == "use crate::proxy_core::api::ports::ProxyConfig;"
 }
 
+fn is_allowed_managed_auth_command_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/commands/auth.rs" && code.trim() == "use crate::proxy_core::api::auth::{"
+}
+
 fn is_allowed_claude_desktop_provider_issue_core_import(relative: &str, code: &str) -> bool {
     relative == "src/claude_desktop_config.rs"
         && code.trim() == "use crate::proxy_core::api::auth::{"
@@ -2181,6 +2185,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_provider_upstream_url_core_import(&relative, code)
                     && !is_allowed_provider_adapter_kind_core_import(&relative, code)
                     && !is_allowed_test_proxy_config_core_import(&relative, code)
+                    && !is_allowed_managed_auth_command_core_import(&relative, code)
                     && !is_allowed_engine_routing_test_core_import(&relative, code)
                     && !is_allowed_http_server_test_core_import(&relative, code)
                     && !is_allowed_channel_write_dao_core_import(&relative, code)
@@ -12878,6 +12883,7 @@ fn copilot_model_callers_use_core_dto_entrypoint() {
             "src/proxy/copilot_auth.rs" => &[
                 "#[serde(default = \"crate::proxy_core::api::model_catalog::default_copilot_github_domain\")]",
                 "pub use crate::proxy_core::api::auth::{",
+                "use crate::proxy_core::api::auth::{",
                 "use crate::proxy_core::api::model_catalog::{",
                 "use crate::proxy_core::api::model_catalog::CopilotModel;",
                 "pub use crate::proxy_core::api::model_catalog::CopilotUsageResponse;",
@@ -13432,6 +13438,13 @@ fn managed_auth_commands_delegate_provider_validation_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/commands/auth.rs");
     let source = fs::read_to_string(&path).expect("read commands/auth.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let adapter_auth_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::auth::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
 
     for marker in [
         "const AUTH_PROVIDER_",
@@ -13451,6 +13464,7 @@ fn managed_auth_commands_delegate_provider_validation_to_core() {
 
     assert!(
         source.contains("ensure_managed_auth_provider(")
+            && source.contains("use crate::proxy_core::api::auth::{")
             && source.contains("GITHUB_COPILOT_AUTH_PROVIDER")
             && source.contains("CODEX_OAUTH_AUTH_PROVIDER")
             && source.contains("ManagedAuthAccount")
@@ -13458,9 +13472,29 @@ fn managed_auth_commands_delegate_provider_validation_to_core() {
             && source.contains("ManagedAuthDeviceCodeResponse")
             && source.contains("managed_auth_account_from_parts(")
             && source.contains("managed_auth_status_from_parts(")
-            && source.contains("managed_auth_device_code_response_from_parts("),
-        "commands/auth.rs should consume core managed-auth command contracts through proxy_core_adapter"
+            && source.contains("managed_auth_device_code_response_from_parts(")
+            && !source.contains("use crate::proxy_core_adapter::{"),
+        "commands/auth.rs should consume core managed-auth command contracts directly from proxy_core"
     );
+
+    for marker in [
+        "ensure_managed_auth_provider",
+        "managed_auth_account_from_parts",
+        "managed_auth_device_code_response_from_parts",
+        "managed_auth_status_from_parts",
+        "ManagedAuthAccount",
+        "ManagedAuthDeviceCodeResponse",
+        "ManagedAuthStatus",
+        "CODEX_OAUTH_AUTH_PROVIDER",
+        "GITHUB_COPILOT_AUTH_PROVIDER",
+    ] {
+        assert!(
+            !adapter_auth_reexport_blocks
+                .iter()
+                .any(|block| block.contains(marker)),
+            "proxy_core_adapter should not re-export managed-auth command contract `{marker}`"
+        );
+    }
 }
 
 #[test]
@@ -13512,6 +13546,13 @@ fn production_managed_auth_legacy_command_dtos_delegate_to_core() {
     let copilot_source = fs::read_to_string(&copilot_path).expect("read copilot_auth.rs");
     let codex_path = manifest_dir.join("src/proxy/codex_oauth_auth.rs");
     let codex_source = fs::read_to_string(&codex_path).expect("read codex_oauth_auth.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let adapter_auth_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::auth::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
 
     for marker in [
         "pub struct GitHubDeviceCodeResponse",
@@ -13540,23 +13581,69 @@ fn production_managed_auth_legacy_command_dtos_delegate_to_core() {
         "copilot_auth.rs should re-export legacy managed-auth command DTOs directly from proxy_core"
     );
     assert!(
-        codex_source.contains("use crate::proxy_core::api::auth::CodexOAuthStatus;")
+        codex_source.contains("use crate::proxy_core::api::auth::{")
+            && codex_source.contains("CodexOAuthStatus")
+            && codex_source.contains("codex_oauth_status_from_parts")
             && !codex_source.contains("proxy_core_adapter::CodexOAuthStatus")
-            && !codex_source.contains("CodexOAuthDevicePollStatusKind, CodexOAuthStatus"),
-        "codex_oauth_auth.rs should consume the core Codex OAuth status DTO directly"
+            && !codex_source.contains("use crate::proxy_core_adapter::{"),
+        "codex_oauth_auth.rs should consume Codex OAuth core auth contracts directly"
     );
 
     for (line_index, line) in production_lines(&codex_source) {
         let code = line.split("//").next().unwrap_or_default();
         let direct_core =
             code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
-        if direct_core && code.trim() != "use crate::proxy_core::api::auth::CodexOAuthStatus;" {
+        if direct_core && code.trim() != "use crate::proxy_core::api::auth::{" {
             panic!(
                 "src/proxy/codex_oauth_auth.rs:{} contains non-DTO direct proxy-core import `{}`",
                 line_index + 1,
                 code.trim()
             );
         }
+    }
+
+    for marker in [
+        "codex_oauth_access_token_expires_at_ms",
+        "codex_oauth_authorization_code_form",
+        "codex_oauth_device_auth_token_request_body",
+        "codex_oauth_device_auth_token_url",
+        "codex_oauth_device_auth_usercode_url",
+        "codex_oauth_device_code_expires_at_ms",
+        "codex_oauth_device_code_expires_in_secs",
+        "codex_oauth_device_code_request_failure",
+        "codex_oauth_device_poll_failure",
+        "codex_oauth_device_poll_status_kind",
+        "codex_oauth_device_usercode_request_body",
+        "codex_oauth_device_verification_url",
+        "codex_oauth_identity_from_token_claims",
+        "codex_oauth_missing_account_id_message",
+        "codex_oauth_missing_pending_user_code_message",
+        "codex_oauth_missing_refresh_token_message",
+        "codex_oauth_pending_device_code_is_expired",
+        "codex_oauth_poll_interval_secs",
+        "codex_oauth_refresh_failure",
+        "codex_oauth_refresh_token_form",
+        "codex_oauth_status_from_parts",
+        "codex_oauth_token_exchange_failure",
+        "codex_oauth_token_is_expiring_soon",
+        "codex_oauth_token_url",
+        "compare_managed_auth_account_order",
+        "copilot_auth_status_from_parts",
+        "copilot_oauth_poll_error_kind",
+        "copilot_token_is_expiring_soon",
+        "managed_auth_fallback_default_account_id",
+        "CodexOAuthDevicePollStatusKind",
+        "CodexOAuthTokenClaims",
+        "CopilotOAuthPollErrorKind",
+        "ManagedAuthAccountSortKey",
+        "ManagedAuthDefaultAccountCandidate",
+    ] {
+        assert!(
+            !adapter_auth_reexport_blocks
+                .iter()
+                .any(|block| block.contains(marker)),
+            "proxy_core_adapter should not re-export managed-auth OAuth helper `{marker}`"
+        );
     }
 }
 

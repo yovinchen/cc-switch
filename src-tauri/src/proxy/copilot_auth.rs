@@ -24,6 +24,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
+use crate::proxy_core::api::auth::{
+    compare_managed_auth_account_order, copilot_auth_status_from_parts,
+    copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
+    managed_auth_fallback_default_account_id, CopilotOAuthPollErrorKind, ManagedAuthAccountSortKey,
+    ManagedAuthDefaultAccountCandidate,
+};
 use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core::api::model_catalog::{
     copilot_api_base, copilot_api_endpoint_from_usage_or_default, copilot_composite_account_id,
@@ -33,11 +39,7 @@ use crate::proxy_core::api::model_catalog::{
     parse_copilot_usage_response_bytes, COPILOT_PUBLIC_GITHUB_DOMAIN,
 };
 use crate::proxy_core_adapter::{
-    compare_managed_auth_account_order, copilot_auth_status_from_parts,
-    copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
-    managed_auth_fallback_default_account_id, CopilotOAuthPollErrorKind, ManagedAuthAccountSortKey,
-    ManagedAuthDefaultAccountCandidate, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION,
-    COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
+    COPILOT_API_VERSION, COPILOT_EDITOR_VERSION, COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
 };
 
 const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;
