@@ -1812,6 +1812,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1326. `proxy_core_adapter` 不再暴露 `ProxyRuntimeConfig` / `ProxyGlobalConfig` / `ProxyAppConfig` config contract alias：adapter 内部直接从 `proxy_core::api::config` 获取三类配置 DTO，host-owned `CcSwitchConfigSource` 继续直接引用 core config contract；边界测试防止配置 contract 重新经 adapter alias 回流。
 1327. `proxy_core_adapter` 不再暴露 `ResponseRuntimePolicy` / `AppProxyConfig` / `AllowResult` / `CircuitBreakerConfig` / `CircuitBreakerStats` config contract alias：adapter 内部直接从 `proxy_core::api::config` 获取 response runtime、app config 与熔断配置 DTO，commands、DAO、HTTP server、router 与 circuit breaker 路径继续直接引用 core config；边界测试防止这些 config contract 重新经 adapter alias 回流。
 1328. `proxy_core_adapter` 不再暴露 forwarder transport DTO alias：`ForwarderAuthHeaders`、`PreparedCopilotAuthOptimization`、`OptionalCopilotAuthOptimizationPreparationInput`、`ForwarderProtocolPreparation`、`ForwarderProtocolPreparationInput` 与 `ForwarderTransformPlan` 均由 adapter、forward pipeline 与 host forwarder source 直接从 `proxy_core::api::transport` 获取；边界测试防止 forwarder transport contract 重新经 adapter alias 回流。
+1329. `proxy_core_adapter` 不再暴露 `ProxyCoreAppKind` / `AppKind` / `ProviderSpec` / `ModelCatalog` domain 与 model catalog DTO alias：adapter 内部直接从 `proxy_core::api::{domain,model_catalog}` 获取类型，provider source、model catalog provider 与 route attempt 测试继续直接引用 core contract；边界测试防止这些 DTO 重新经 adapter alias 回流。
 
 ## 背景
 
