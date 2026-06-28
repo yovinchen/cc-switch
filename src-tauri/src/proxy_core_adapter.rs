@@ -2055,12 +2055,10 @@ use crate::proxy_core::api::model_catalog::{
 };
 use crate::proxy_core::api::ports::{
     channel_breaker_stats_from_parts, channel_health_reset_from_parts, AppSummaryConfig,
-    ChannelBreakerStats, ChannelKeyRuntimeSource, ProviderSource, ProxyConfigSource,
-    RoutePolicySource,
+    ChannelBreakerStats, ChannelHealthReset, ChannelKeyRuntimeSource, ProviderSource,
+    ProxyConfigSource, RoutePolicySource,
 };
-pub(crate) use crate::proxy_core::api::ports::{
-    AuthProvider, ChannelHealthReset, ChannelSource, ProxyServices,
-};
+pub(crate) use crate::proxy_core::api::ports::{AuthProvider, ChannelSource, ProxyServices};
 use crate::proxy_core::api::routing::{
     failover_config_read_error_log_line, provider_router_auto_failover_enabled_decision,
     route_policy_failover_provider_ids, RoutePolicy,
