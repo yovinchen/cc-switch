@@ -13156,7 +13156,7 @@ fn proxy_core_adapter_delegates_custom_user_agent_policy_to_core() {
     assert!(
         adapter_source.contains("parse_custom_user_agent")
             && adapter_source.contains("core_provider_custom_user_agent_header"),
-        "proxy_core_adapter should expose core custom User-Agent helpers"
+        "proxy_core_adapter should consume core custom User-Agent helpers"
     );
     assert!(
         provider_user_agent_slice.contains("core_provider_custom_user_agent_header("),
@@ -13177,7 +13177,9 @@ fn proxy_core_adapter_delegates_custom_user_agent_policy_to_core() {
         );
     }
     assert!(
-        provider_source.contains("crate::proxy_core_adapter::parse_custom_user_agent(raw)")
+        !adapter_source.contains(
+            "pub(crate) use crate::proxy_core::api::transport::{\n    parse_custom_user_agent"
+        ) && provider_source.contains("crate::proxy_core_adapter::parse_custom_user_agent(raw)")
             && !provider_source.contains("HeaderValue::from_str("),
         "provider.rs should keep only a compatibility wrapper around the adapter/core User-Agent parser"
     );

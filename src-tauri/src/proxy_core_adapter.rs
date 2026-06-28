@@ -2108,8 +2108,8 @@ pub(crate) use crate::proxy_core::api::transport::{
     codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
     codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required,
 };
-pub(crate) use crate::proxy_core::api::transport::{
-    parse_custom_user_agent,
+use crate::proxy_core::api::transport::{
+    parse_custom_user_agent as core_parse_custom_user_agent,
     provider_custom_user_agent_header as core_provider_custom_user_agent_header,
 };
 use crate::proxy_core::api::transport::{
@@ -6905,6 +6905,12 @@ pub(crate) fn provider_custom_user_agent_header(
     core_provider_custom_user_agent_header(raw, is_copilot)
         .ok()
         .flatten()
+}
+
+pub(crate) fn parse_custom_user_agent(
+    raw: Option<&str>,
+) -> Result<Option<http::HeaderValue>, http::header::InvalidHeaderValue> {
+    core_parse_custom_user_agent(raw)
 }
 
 pub(crate) fn model_fetch_custom_user_agent_header(raw: Option<&str>) -> Option<http::HeaderValue> {
