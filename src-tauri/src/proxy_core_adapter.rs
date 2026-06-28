@@ -36,7 +36,8 @@ use crate::proxy_core::api::management::{
     ChannelRecord, ChannelRouteSource, RouteResolveRequest, RouteResolveResponse,
 };
 use crate::proxy_core::api::ports::{
-    CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    proxy_takeover_status_from_enabled_options, CurrentRouteTarget, ProxyConfig,
+    ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, AutoFailoverToggleInput, AutoFailoverTogglePlan,
@@ -493,8 +494,6 @@ pub(crate) fn proxy_server_from_runtime_config(
 pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
     crate::proxy::host::cc_switch::global_http_client::set_proxy_port(port);
 }
-
-pub(crate) use crate::proxy_core::api::ports::proxy_takeover_status_from_enabled_options;
 
 pub(crate) use crate::proxy_core::api::auth::{
     claude_desktop_gateway_token_error, claude_desktop_provider_selection_error,
@@ -12984,13 +12983,14 @@ base_url = "https://api.openai.com/v1"
             circuit_error_rate_threshold: 0.6,
             circuit_min_requests: 10,
         };
-        let takeover_from_config = proxy_takeover_status_from_enabled_options(
-            Some(app_config("claude", true).enabled),
-            None,
-            Some(app_config("gemini", true).enabled),
-            None,
-            None,
-        );
+        let takeover_from_config =
+            crate::proxy_core::api::ports::proxy_takeover_status_from_enabled_options(
+                Some(app_config("claude", true).enabled),
+                None,
+                Some(app_config("gemini", true).enabled),
+                None,
+                None,
+            );
         assert!(takeover_from_config.claude);
         assert!(!takeover_from_config.codex);
         assert!(takeover_from_config.gemini);

@@ -5893,9 +5893,19 @@ fn proxy_core_adapter_does_not_export_proxy_takeover_status_alias() {
         "proxy_core_adapter should not expose ProxyTakeoverStatus as a runtime port alias"
     );
     assert!(
+        !adapter_source.contains(
+            "pub(crate) use crate::proxy_core::api::ports::proxy_takeover_status_from_enabled_options"
+        ),
+        "proxy_core_adapter should not re-export proxy takeover status enabled-options helper"
+    );
+    assert!(
         adapter_source.contains("use crate::proxy_core::api::ports::{")
             && adapter_source.contains("ProxyTakeoverStatus"),
         "proxy_core_adapter internals should import ProxyTakeoverStatus directly from proxy_core ports"
+    );
+    assert!(
+        adapter_source.contains("proxy_takeover_status_from_enabled_options"),
+        "proxy_core_adapter internals should call proxy takeover status enabled-options helper from core ports"
     );
 }
 
