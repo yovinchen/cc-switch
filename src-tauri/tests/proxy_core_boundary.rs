@@ -11766,6 +11766,7 @@ fn settings_runtime_config_callers_use_core_dto_entrypoint() {
                 required_import,
                 "use crate::proxy_core::api::routing::ResolvedChannelAttempt;",
                 "use crate::proxy_core::api::transport::ForwarderRectifierRetryKind;",
+                "use crate::proxy_core::api::transport::{",
             ]
         } else {
             vec![required_import]
@@ -15575,12 +15576,16 @@ fn production_forwarder_uses_auth_source_resource() {
         .unwrap_or(&adapter_source);
     let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/forwarder_auth_source.rs");
     let auth_source = fs::read_to_string(&auth_source_path).expect("read forwarder_auth_source.rs");
-    assert!(
-        adapter_source.contains(
-            "type ForwarderAuthHeaders = crate::proxy_core::api::transport::ForwarderAuthHeaders"
-        ),
-        "ForwarderAuthHeaders DTO must be owned by proxy-core and exposed through an adapter alias"
-    );
+    for marker in [
+        "pub(crate) type ForwarderAuthHeaders",
+        "pub(crate) type ForwarderPreparedCopilotAuthOptimization",
+        "pub(crate) type ForwarderMaybeCopilotAuthOptimizationInput",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "forwarder auth transport DTO `{marker}` must not be exposed through proxy_core_adapter aliases"
+        );
+    }
     let auth_input_slice = function_slice(
         &adapter_source,
         "pub(crate) struct ForwarderAuthHeadersInput",
@@ -15601,6 +15606,32 @@ fn production_forwarder_uses_auth_source_resource() {
         "impl ForwarderAuthSource for CcSwitchForwarderAuthSource",
         "pub(crate) fn forwarder_auth_source_from_managed_account_runtime_source",
     );
+    let auth_core_transport_import_slice = function_slice(
+        &auth_source,
+        "use crate::proxy_core::api::transport::{",
+        "};\nuse crate::proxy_core_adapter::{",
+    );
+    for marker in [
+        "ForwarderAuthHeaders",
+        "OptionalCopilotAuthOptimizationPreparationInput",
+        "PreparedCopilotAuthOptimization",
+    ] {
+        assert!(
+            auth_core_transport_import_slice.contains(marker),
+            "default ForwarderAuthSource should import `{marker}` directly from proxy_core::api::transport"
+        );
+    }
+    let auth_source_adapter_imports = proxy_core_adapter_import_identifiers(&auth_source);
+    for marker in [
+        "ForwarderAuthHeaders",
+        "ForwarderPreparedCopilotAuthOptimization",
+        "ForwarderMaybeCopilotAuthOptimizationInput",
+    ] {
+        assert!(
+            !auth_source_adapter_imports.iter().any(|identifier| identifier == marker),
+            "default ForwarderAuthSource must not import transport DTO `{marker}` through proxy_core_adapter"
+        );
+    }
 
     assert!(
         !auth_input_slice.contains("ManagedAccountRuntimeSourceRef"),
@@ -15807,8 +15838,13 @@ fn production_forwarder_uses_runtime_state_source_resource() {
             ),
         "default ForwarderRuntimeStateSource should import runtime/event/transport contracts directly from proxy_core"
     );
+    let forwarder_transport_import_slice = function_slice(
+        &source,
+        "use crate::proxy_core::api::transport::{",
+        "};\n#[cfg(test)]",
+    );
     assert!(
-        source.contains("use crate::proxy_core::api::transport::ForwarderRectifierRetryKind;"),
+        forwarder_transport_import_slice.contains("ForwarderRectifierRetryKind"),
         "RequestForwarder should import rectifier retry kind directly from proxy_core transport"
     );
     let forwarder_adapter_imports = proxy_core_adapter_import_identifiers(&source);
@@ -16857,6 +16893,40 @@ fn production_forwarder_uses_request_source_resource() {
         "impl CcSwitchForwarderRequestSource",
         "fn apply_forwarder_media_prevention_with_log",
     );
+    let forwarder_core_transport_import_slice = function_slice(
+        &source,
+        "use crate::proxy_core::api::transport::{",
+        "};\n#[cfg(test)]",
+    );
+    let forwarder_adapter_imports = proxy_core_adapter_import_identifiers(&source);
+    for marker in [
+        "ForwarderProtocolPreparationInput",
+        "OptionalCopilotAuthOptimizationPreparationInput",
+    ] {
+        assert!(
+            forwarder_core_transport_import_slice.contains(marker),
+            "RequestForwarder should import transport DTO `{marker}` directly from proxy_core::api::transport"
+        );
+        assert!(
+            !forwarder_adapter_imports
+                .iter()
+                .any(|identifier| identifier == marker),
+            "RequestForwarder must not import transport DTO `{marker}` through proxy_core_adapter"
+        );
+    }
+    let request_source_adapter_imports = proxy_core_adapter_import_identifiers(&request_source);
+    for marker in [
+        "ForwarderProtocolPreparation",
+        "ForwarderProtocolPreparationInput",
+        "ForwarderTransformPlan",
+    ] {
+        assert!(
+            !request_source_adapter_imports
+                .iter()
+                .any(|identifier| identifier == marker),
+            "default ForwarderRequestSource must not import transport DTO `{marker}` through proxy_core_adapter"
+        );
+    }
 
     assert!(
         struct_slice.contains("request_source"),
@@ -16892,14 +16962,9 @@ fn production_forwarder_uses_request_source_resource() {
         source.contains("transform_request_body"),
         "ForwarderRequestSource must own transformed request body selection"
     );
-    let has_transform_plan_alias = adapter_source.contains(
-        "pub(crate) type ForwarderTransformPlan = crate::proxy_core::api::transport::ForwarderTransformPlan;",
-    ) || adapter_source.contains(
-        "type ForwarderTransformPlan =\n    crate::proxy_core::api::transport::ForwarderTransformPlan",
-    );
     assert!(
-        has_transform_plan_alias,
-        "ForwarderTransformPlan DTO must be owned by proxy-core and exposed through an adapter alias"
+        !adapter_runtime_source.contains("pub(crate) type ForwarderTransformPlan"),
+        "ForwarderTransformPlan DTO must stay owned by proxy-core without a proxy_core_adapter alias"
     );
     let transform_plan_slice = function_slice(
         &core_transport_source,
@@ -16925,14 +16990,15 @@ fn production_forwarder_uses_request_source_resource() {
             && !upstream_url_input_slice.contains("claude_api_format: Option"),
         "ForwarderUpstreamUrlInput must not expose split transform-plan URL facts"
     );
-    assert!(
-        adapter_source.contains(
-            "type ForwarderProtocolPreparationInput<'a> =\n    crate::proxy_core::api::transport::ForwarderProtocolPreparationInput<'a>"
-        ) && adapter_source.contains(
-            "type ForwarderProtocolPreparation =\n    crate::proxy_core::api::transport::ForwarderProtocolPreparation"
-        ),
-        "ForwarderProtocolPreparation DTOs must be owned by proxy-core and exposed through adapter aliases"
-    );
+    for marker in [
+        "pub(crate) type ForwarderProtocolPreparationInput",
+        "pub(crate) type ForwarderProtocolPreparation",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "ForwarderProtocolPreparation DTO `{marker}` must stay owned by proxy-core without a proxy_core_adapter alias"
+        );
+    }
     let protocol_preparation_input_slice = function_slice(
         &core_transport_source,
         "pub struct ForwarderProtocolPreparationInput",

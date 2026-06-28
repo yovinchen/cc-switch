@@ -836,17 +836,6 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
         .await;
 }
 
-pub(crate) type ForwarderMaybeCopilotAuthOptimizationInput<'a> =
-    crate::proxy_core::api::transport::OptionalCopilotAuthOptimizationPreparationInput<'a>;
-pub(crate) type ForwarderAuthHeaders = crate::proxy_core::api::transport::ForwarderAuthHeaders;
-pub(crate) type ForwarderPreparedCopilotAuthOptimization =
-    crate::proxy_core::api::transport::PreparedCopilotAuthOptimization;
-pub(crate) type ForwarderProtocolPreparation =
-    crate::proxy_core::api::transport::ForwarderProtocolPreparation;
-pub(crate) type ForwarderProtocolPreparationInput<'a> =
-    crate::proxy_core::api::transport::ForwarderProtocolPreparationInput<'a>;
-pub(crate) type ForwarderTransformPlan = crate::proxy_core::api::transport::ForwarderTransformPlan;
-
 pub(crate) use crate::proxy_core::api::config::{
     proxy_app_config_from_parts as proxy_app_config_from_config_parts,
     proxy_global_config_from_global_config as proxy_global_config_from_config,
@@ -2195,7 +2184,10 @@ pub(crate) use crate::proxy_core::api::transport::{
 };
 use crate::proxy_core::api::transport::{
     ClaudeProviderAuthHeadersInput, CopilotClassification, ForwardFailureKind,
-    ForwarderRectifierRetryKind, ProxyCoreResponse, ProxyResponseBody, ProxyResult,
+    ForwarderAuthHeaders, ForwarderProtocolPreparation, ForwarderProtocolPreparationInput,
+    ForwarderRectifierRetryKind, ForwarderTransformPlan,
+    OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization,
+    ProxyCoreResponse, ProxyResponseBody, ProxyResult,
 };
 pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
@@ -5315,14 +5307,14 @@ pub(crate) struct ForwarderAuthHeadersInput<'a> {
     pub(crate) attempt: &'a ForwardAttempt,
     pub(crate) session_id: &'a str,
     pub(crate) session_client_provided: bool,
-    pub(crate) copilot_optimization: Option<ForwarderPreparedCopilotAuthOptimization>,
+    pub(crate) copilot_optimization: Option<PreparedCopilotAuthOptimization>,
 }
 
 pub(crate) trait ForwarderAuthSource {
     fn prepare_optional_copilot_auth_optimization(
         &self,
-        input: ForwarderMaybeCopilotAuthOptimizationInput<'_>,
-    ) -> Option<ForwarderPreparedCopilotAuthOptimization>;
+        input: OptionalCopilotAuthOptimizationPreparationInput<'_>,
+    ) -> Option<PreparedCopilotAuthOptimization>;
 
     fn resolve_upstream_auth_headers<'a>(
         &'a self,
@@ -8882,7 +8874,7 @@ base_url = "https://api.openai.com/v1"
         };
 
         let skipped = source.prepare_optional_copilot_auth_optimization(
-            ForwarderMaybeCopilotAuthOptimizationInput {
+            OptionalCopilotAuthOptimizationPreparationInput {
                 classification: None,
                 config: &config,
                 session_source_body: &json!({}),
@@ -8900,7 +8892,7 @@ base_url = "https://api.openai.com/v1"
         };
         let prepared = source
             .prepare_optional_copilot_auth_optimization(
-                ForwarderMaybeCopilotAuthOptimizationInput {
+                OptionalCopilotAuthOptimizationPreparationInput {
                     classification: Some(classification),
                     config: &config,
                     session_source_body: &json!({
@@ -9118,7 +9110,7 @@ base_url = "https://api.openai.com/v1"
                 attempt: &attempt,
                 session_id: "session-a",
                 session_client_provided: false,
-                copilot_optimization: Some(ForwarderPreparedCopilotAuthOptimization {
+                copilot_optimization: Some(PreparedCopilotAuthOptimization {
                     request_classification_enabled: true,
                     initiator: "agent",
                     is_subagent: true,

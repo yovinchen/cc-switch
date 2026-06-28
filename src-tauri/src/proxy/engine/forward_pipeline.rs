@@ -11,7 +11,10 @@ use crate::proxy::{
 };
 use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 use crate::proxy_core::api::routing::ResolvedChannelAttempt;
-use crate::proxy_core::api::transport::ForwarderRectifierRetryKind;
+use crate::proxy_core::api::transport::{
+    ForwarderProtocolPreparationInput, ForwarderRectifierRetryKind,
+    OptionalCopilotAuthOptimizationPreparationInput,
+};
 #[cfg(test)]
 use crate::proxy_core_adapter::provider_is_codex_oauth;
 use crate::proxy_core_adapter::{
@@ -22,9 +25,8 @@ use crate::proxy_core_adapter::{
     ForwarderClaudeBodyPolicyInput, ForwarderClaudeProtocolTransformInput,
     ForwarderCodexChatProtocolEnrichmentInput, ForwarderCopilotDynamicBaseUrlInput,
     ForwarderCopilotLiveModelInput, ForwarderCopilotRequestOptimizationGateInput,
-    ForwarderFailureDecision, ForwarderMaybeCopilotAuthOptimizationInput,
-    ForwarderMediaRetryPlanInput, ForwarderProtocolPreparationInput,
-    ForwarderProtocolStateSourceRef, ForwarderProviderRequestBodyInput, ForwarderProviderUrlFacts,
+    ForwarderFailureDecision, ForwarderMediaRetryPlanInput, ForwarderProtocolStateSourceRef,
+    ForwarderProviderRequestBodyInput, ForwarderProviderUrlFacts,
     ForwarderRectifierRetryFailureDecision, ForwarderRequestBodyTransformInput,
     ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan,
     ForwarderRequestSourceRef, ForwarderResponseFinalizationInput, ForwarderResponseSourceRef,
@@ -794,7 +796,7 @@ impl RequestForwarder {
         );
         mapped_body = optimized.body;
         let copilot_optimization = self.auth_source.prepare_optional_copilot_auth_optimization(
-            ForwarderMaybeCopilotAuthOptimizationInput {
+            OptionalCopilotAuthOptimizationPreparationInput {
                 classification: optimized.classification,
                 config: &self.copilot_optimizer_config,
                 session_source_body: body,

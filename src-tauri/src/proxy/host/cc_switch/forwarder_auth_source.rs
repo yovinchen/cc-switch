@@ -11,12 +11,12 @@ use crate::proxy_core::api::routing::auth_channel_spec_from_attempt;
 use crate::proxy_core::api::transport::{
     auth_provider_proxy_request_from_context, finalize_forwarder_auth_headers,
     prepare_optional_copilot_auth_optimization_for_forwarder, resolve_auth_provider_headers,
-    AuthProviderHeaderResolution, ForwarderAuthHeaderFinalizationInput,
+    AuthProviderHeaderResolution, ForwarderAuthHeaderFinalizationInput, ForwarderAuthHeaders,
+    OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization,
 };
 use crate::proxy_core_adapter::{
-    proxy_provider_to_core_spec, AuthProviderRef, ForwarderAuthHeaders, ForwarderAuthHeadersInput,
-    ForwarderAuthSource, ForwarderAuthSourceRef, ForwarderMaybeCopilotAuthOptimizationInput,
-    ForwarderPreparedCopilotAuthOptimization,
+    proxy_provider_to_core_spec, AuthProviderRef, ForwarderAuthHeadersInput, ForwarderAuthSource,
+    ForwarderAuthSourceRef,
 };
 
 #[cfg(test)]
@@ -42,8 +42,8 @@ impl CcSwitchForwarderAuthSource {
 impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
     fn prepare_optional_copilot_auth_optimization(
         &self,
-        input: ForwarderMaybeCopilotAuthOptimizationInput<'_>,
-    ) -> Option<ForwarderPreparedCopilotAuthOptimization> {
+        input: OptionalCopilotAuthOptimizationPreparationInput<'_>,
+    ) -> Option<PreparedCopilotAuthOptimization> {
         prepare_optional_copilot_auth_optimization_for_forwarder(input, || {
             uuid::Uuid::new_v4().to_string()
         })
