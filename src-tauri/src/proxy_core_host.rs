@@ -37,7 +37,7 @@ use crate::proxy_core::api::events::ProxyCoreEvent;
 #[cfg(test)]
 use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;
 #[cfg(test)]
-use crate::proxy_core::api::ports::ChannelAttemptResult;
+use crate::proxy_core::api::ports::{ChannelAttemptResult, ProxyRuntimeStatus};
 #[cfg(test)]
 use crate::proxy_core::api::routing::{
     ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RouteSelection, DEFAULT_ROUTE_GROUP,
@@ -67,7 +67,7 @@ mod tests {
     use crate::provider::Provider;
     use crate::proxy_core_adapter::{
         proxy_response_to_core_response, ProxyChannelKeyWriteRequest,
-        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, ProxyConfig, ProxyRuntimeStatus,
+        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, ProxyConfig,
         ResolvedChannelAttempt, RouteResolveRequest,
     };
     use bytes::Bytes;
