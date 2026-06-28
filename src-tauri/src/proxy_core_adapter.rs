@@ -2051,12 +2051,12 @@ use crate::proxy_core::api::events::{
 };
 use crate::proxy_core::api::management::channel_not_found_error;
 pub(crate) use crate::proxy_core::api::management::{
-    channel_health_update_from_input, channel_reachability_probe_error,
+    channel_reachability_probe_error,
     channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
     channel_test_app_type_error, channel_test_provider_not_found_error, merge_stream_check_config,
     should_retry_channel_reachability_failure, stream_check_failed_result,
     stream_check_failed_result_with_retry_count, stream_check_result_from_probe_result,
-    ChannelHealthUpdateInput, StreamCheckConfigOverride, CHANNEL_HEALTH_UNKNOWN_STATUS,
+    StreamCheckConfigOverride,
 };
 use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogSource,
@@ -2069,7 +2069,6 @@ use crate::proxy_core::api::ports::{
     AppSummaryConfig, ChannelKeyRuntimeSource, ProviderSource, ProxyConfigSource, RoutePolicySource,
 };
 pub(crate) use crate::proxy_core::api::routing::{
-    channel_status_after_health_attempt, channel_status_after_health_reset,
     effective_channel_health_failure_threshold, failover_config_read_error_log_line,
     provider_router_auto_failover_enabled_decision, route_policy_failover_provider_ids,
     RoutePolicy,

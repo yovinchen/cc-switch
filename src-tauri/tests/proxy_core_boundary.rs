@@ -2028,6 +2028,7 @@ fn is_allowed_channel_write_dao_core_import(relative: &str, code: &str) -> bool 
         && matches!(
             code.trim(),
             "use crate::proxy_core::api::management::{"
+                | "use crate::proxy_core::api::routing::{"
                 | "use crate::proxy_core::api::routing::ChannelRequestValidationError;"
         )
 }
@@ -6241,7 +6242,7 @@ fn proxy_core_adapter_does_not_export_channel_write_request_aliases() {
         .unwrap_or(&adapter_source);
     let adapter_management_pub_use = function_slice(
         adapter_runtime_source,
-        "pub(crate) use crate::proxy_core::api::management::{\n    channel_health_update_from_input",
+        "pub(crate) use crate::proxy_core::api::management::{\n    channel_reachability_probe_error",
         "};\nuse crate::proxy_core::api::model_catalog::{",
     );
 
@@ -6316,8 +6317,9 @@ fn engine_and_host_test_fixtures_import_core_contracts_directly() {
             "src/database/dao/proxy_channels.rs",
             &[
                 "use crate::proxy_core::api::management::{",
-                "ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,",
-                "use crate::proxy_core::api::routing::ChannelRequestValidationError;",
+                "ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,",
+                "use crate::proxy_core::api::routing::{",
+                "ChannelRequestValidationError,",
             ],
             &[
                 "ChannelRequestValidationError",
@@ -22550,10 +22552,38 @@ fn proxy_channel_health_auto_disable_policy_stays_core_owned() {
         );
     }
     assert!(
-        adapter_source.contains("channel_status_after_health_attempt")
-            && adapter_source.contains("channel_status_after_health_reset"),
-        "proxy_core_adapter should expose core channel status decisions to DB adapters"
+        dao_production.contains(
+            "use crate::proxy_core::api::management::{\n    channel_health_update_from_input"
+        ) && dao_production.contains("ChannelHealthUpdateInput")
+            && dao_production.contains("CHANNEL_HEALTH_UNKNOWN_STATUS")
+            && dao_production.contains(
+                "use crate::proxy_core::api::routing::{\n    channel_status_after_health_attempt"
+            )
+            && dao_production.contains("channel_status_after_health_reset"),
+        "proxy channel DAO should import channel health state rules directly from core"
     );
+    let adapter_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+    for marker in [
+        "channel_health_update_from_input",
+        "ChannelHealthUpdateInput",
+        "CHANNEL_HEALTH_UNKNOWN_STATUS",
+        "channel_status_after_health_attempt",
+        "channel_status_after_health_reset",
+    ] {
+        let reexport_marker = adapter_source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::") && line.contains(marker)
+        }) || adapter_reexport_blocks
+            .iter()
+            .any(|block| block.contains(marker));
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export channel health state rule `{marker}`"
+        );
+    }
 }
 
 #[test]
