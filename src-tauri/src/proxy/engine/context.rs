@@ -14,6 +14,7 @@ use crate::proxy_core::api::errors::{
     selected_provider_display_name_for_error, selected_provider_not_applied_message,
     unselected_provider_fallback_id,
 };
+use crate::proxy_core::api::ports::ProxyServices;
 use crate::proxy_core::api::session::extract_session_id_with_generator;
 use crate::proxy_core::api::transforms::claude_api_format_from_metadata;
 use crate::proxy_core::api::transport::{
@@ -23,7 +24,7 @@ use crate::proxy_core::api::usage::UsageRouteContext;
 use crate::proxy_core_adapter::{
     app_proxy_config_from_proxy_app_config, provider_claude_api_format,
     proxy_core_app_kind_from_app_type, request_context_route_update_from_proxy_result_source,
-    ProxyServices, RequestContextRouteUpdateError,
+    RequestContextRouteUpdateError,
 };
 use axum::http::HeaderMap;
 use std::time::Instant;

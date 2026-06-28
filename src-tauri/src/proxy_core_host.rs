@@ -37,6 +37,8 @@ use crate::proxy_core::api::events::ProxyCoreEvent;
 #[cfg(test)]
 use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;
 #[cfg(test)]
+use crate::proxy_core::api::ports::{AuthProvider, ProxyServices};
+#[cfg(test)]
 use crate::proxy_core::api::ports::{ChannelAttemptResult, ProxyConfig, ProxyRuntimeStatus};
 #[cfg(test)]
 use crate::proxy_core::api::routing::{
@@ -51,8 +53,7 @@ use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest, ProxyResponseBo
 use crate::proxy_core::api::usage::UsageRecord;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    forward_result_to_proxy_result, management_route_response_from_router_source, AuthProvider,
-    ProxyServices,
+    forward_result_to_proxy_result, management_route_response_from_router_source,
 };
 #[cfg(test)]
 use serde_json::Value;
