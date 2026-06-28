@@ -1344,6 +1344,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 本轮继续把 active connection RAII guard 的 acquire/release 生命周期接入 `ForwarderRuntimeStateSource`：guard 不再直持 `ProxyRuntimeStatus`，连接计数增减的异步释放也通过 runtime source 方法执行，避免流式响应生命周期把 status lock 类型泄漏到 forwarder。
 本轮继续把 request-started 事件发射与 request-started 状态写入接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 只保留请求生命周期顺序编排，不再直接拆出 `ProxyEventBus`/`ProxyRuntimeStatus` 调用 request lifecycle helper。
 本轮继续移除 `proxy_core_adapter` 对 Copilot GitHub domain、composite account id 与模型/usage 响应解析 helper 的 re-export：`proxy::copilot_auth` 直接从 `proxy_core::api::model_catalog` 导入纯模型目录契约，adapter 只保留仍承担宿主适配职责的 URL/OAuth/status/runtime helper。
+本轮继续移除 `proxy_core_adapter` 对 Copilot GitHub OAuth URL、token URL、usage URL、API base 和 usage endpoint fallback helper 的 re-export：`proxy::copilot_auth` 直接消费 `proxy_core::api::model_catalog` 的 URL/endpoint 契约，adapter 不再作为 Copilot URL 构造的二次出口。
 本轮继续把 provider/channel attempt started/succeeded/failed 事件发射接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 只决定 attempt 阶段与时机，不再直接拆出 `ProxyEventBus` 调用 attempt event helper。
 本轮继续把 active route target 写入与 route-selected 事件发射接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再同时拆出 `current_providers` 与 `ProxyEventBus` 调用 active target helper，后续外部宿主可替换当前路由目标存储/事件桥接。
 本轮继续把 forward success/failure 状态写入接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再直接拆出 `ProxyRuntimeStatus` 调用 success/failure status helper，成功后是否触发 failover switch 仍由 source 返回布尔结果交给 forwarder 调度。
