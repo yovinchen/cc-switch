@@ -2074,9 +2074,9 @@ pub(crate) use crate::proxy_core::api::routing::{
     provider_router_auto_failover_enabled_decision, route_policy_failover_provider_ids,
     RoutePolicy,
 };
-pub(crate) use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
+use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
-pub(crate) use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY;
+use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY;
 pub(crate) use crate::proxy_core::api::transforms::{
     append_utf8_safe, build_gemini_upstream_url, chat_completion_to_response_with_context,
     claude_provider_transform_required as core_claude_provider_transform_required,

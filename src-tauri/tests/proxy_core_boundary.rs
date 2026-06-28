@@ -11251,8 +11251,14 @@ fn proxy_core_adapter_delegates_claude_request_format_dispatch_to_core() {
     );
     let adapter_transform_import_window = function_slice(
         &source,
-        "pub(crate) use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
+        "use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
         "pub(crate) use crate::proxy_core::api::transforms::{\n    append_utf8_safe,",
+    );
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::transforms::resolve_claude_forward_api_format"
+        ),
+        "proxy_core_adapter should not re-export Claude forward api_format resolver"
     );
     for marker in [
         "anthropic_to_openai_responses_request",
@@ -11534,8 +11540,14 @@ fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
     );
     let adapter_transform_import_window = function_slice(
         &source,
-        "pub(crate) use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
+        "use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
         "pub(crate) use crate::proxy_core::api::transforms::{\n    append_utf8_safe,",
+    );
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY"
+        ),
+        "proxy_core_adapter should not re-export Claude api_format metadata key"
     );
     for marker in [
         "openai_responses_to_anthropic_message",
@@ -19273,7 +19285,7 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
     let adapter_routing_import = function_slice(
         &adapter_source,
         "pub(crate) use crate::proxy_core::api::routing::{",
-        "};\npub(crate) use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
+        "};\nuse crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
     );
     assert!(
         !adapter_routing_import.contains("RouteRequest"),
