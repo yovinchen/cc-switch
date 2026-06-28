@@ -2000,6 +2000,11 @@ fn is_allowed_test_proxy_config_core_import(relative: &str, code: &str) -> bool 
     ) && code.trim() == "use crate::proxy_core::api::ports::ProxyConfig;"
 }
 
+fn is_allowed_claude_desktop_provider_issue_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/claude_desktop_config.rs"
+        && code.trim() == "use crate::proxy_core::api::auth::{"
+}
+
 fn is_allowed_engine_routing_test_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/engine/routing.rs" && code.trim() == "use crate::proxy_core::api::{"
 }
@@ -2132,6 +2137,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_channel_write_dao_core_import(&relative, code)
                     && !is_allowed_proxy_core_host_test_contract_import(&relative, code)
                     && !is_allowed_http_server_runtime_core_import(&relative, code)
+                    && !is_allowed_claude_desktop_provider_issue_core_import(&relative, code)
                     && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
                     && !is_allowed_circuit_breaker_config_core_import(&relative, code)
@@ -8715,6 +8721,9 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let claude_desktop_source =
+        fs::read_to_string(manifest_dir.join("src/claude_desktop_config.rs"))
+            .expect("read claude_desktop_config.rs");
 
     assert!(
         source.contains("ClaudeDesktopProviderValidationInput"),
@@ -8734,8 +8743,37 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
     assert!(
         !source.contains("enum ClaudeDesktopDirectProviderValidationIssue")
             && !source.contains("enum ClaudeDesktopProxyProviderConfigValidationIssue"),
-        "proxy_core_adapter must re-export Claude Desktop validation issue types from core"
+        "proxy_core_adapter should not own Claude Desktop validation issue enums"
     );
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::auth::{\n    ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,\n};"
+        ),
+        "proxy_core_adapter should not re-export Claude Desktop validation issue types"
+    );
+    let claude_desktop_core_auth_import = function_slice(
+        &claude_desktop_source,
+        "use crate::proxy_core::api::auth::{",
+        "};\nuse crate::proxy_core_adapter::{",
+    );
+    let claude_desktop_adapter_import = function_slice(
+        &claude_desktop_source,
+        "use crate::proxy_core_adapter::{",
+        "};\n#[cfg(test)]",
+    );
+    for marker in [
+        "ClaudeDesktopDirectProviderValidationIssue",
+        "ClaudeDesktopProxyProviderConfigValidationIssue",
+    ] {
+        assert!(
+            claude_desktop_core_auth_import.contains(marker),
+            "claude_desktop_config should import `{marker}` directly from proxy_core auth"
+        );
+        assert!(
+            !claude_desktop_adapter_import.contains(marker),
+            "claude_desktop_config should not import `{marker}` through proxy_core_adapter"
+        );
+    }
 
     let policy_slices = [
         function_slice(

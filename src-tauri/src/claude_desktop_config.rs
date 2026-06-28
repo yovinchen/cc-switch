@@ -10,12 +10,14 @@ use crate::database::Database;
 use crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
+use crate::proxy_core::api::auth::{
+    ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
+};
 use crate::proxy_core_adapter::{
     ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectModelRouteIssue,
-    ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProviderDirectGatewayProfileIssue,
-    ClaudeDesktopProviderDirectValidationIssue, ClaudeDesktopProviderProxyRouteIssue,
-    ClaudeDesktopProviderProxyValidationIssue, ClaudeDesktopProviderValidationIssue,
-    ClaudeDesktopProxyProviderConfigValidationIssue,
+    ClaudeDesktopProviderDirectGatewayProfileIssue, ClaudeDesktopProviderDirectValidationIssue,
+    ClaudeDesktopProviderProxyRouteIssue, ClaudeDesktopProviderProxyValidationIssue,
+    ClaudeDesktopProviderValidationIssue,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{

@@ -86,11 +86,9 @@ fn log_rectified_gemini_tool_args(name: &str) {
 }
 
 use crate::proxy_core::api::auth::{
-    ClaudeAuthKey, ClaudeAuthKeySource, ClaudeDesktopModelRouteInput, ProviderAuthInfo,
-    ProviderAuthStrategy,
-};
-pub(crate) use crate::proxy_core::api::auth::{
-    ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
+    ClaudeAuthKey, ClaudeAuthKeySource, ClaudeDesktopDirectProviderValidationIssue,
+    ClaudeDesktopModelRouteInput, ClaudeDesktopProxyProviderConfigValidationIssue,
+    ProviderAuthInfo, ProviderAuthStrategy,
 };
 
 pub(crate) use crate::proxy_core::api::errors::{
