@@ -2079,15 +2079,14 @@ use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY;
 pub(crate) use crate::proxy_core::api::transforms::{
-    append_utf8_safe, build_gemini_upstream_url, chat_completion_to_response_with_context,
+    build_gemini_upstream_url, chat_completion_to_response_with_context,
     claude_provider_transform_required as core_claude_provider_transform_required,
     claude_request_transform_for_api_format, claude_response_to_anthropic_message_for_api_format,
     claude_transform_streaming_decision as core_claude_transform_streaming_decision,
     create_claude_to_anthropic_sse_stream_for_api_format,
-    create_codex_chat_to_responses_sse_stream_with_context, inspect_codex_chat_history_sse_block,
-    should_preserve_reasoning_content_for_openai_chat, take_sse_block,
-    ClaudeApiFormatRequestTransformContext, ClaudeApiFormatSseTransformContext,
-    ClaudeTransformStreamingDecision,
+    create_codex_chat_to_responses_sse_stream_with_context,
+    should_preserve_reasoning_content_for_openai_chat, ClaudeApiFormatRequestTransformContext,
+    ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
 };
 pub(crate) use crate::proxy_core::api::transport::ProxyRequest;
 pub(crate) use crate::proxy_core::api::transport::{
@@ -7151,10 +7150,10 @@ mod tests {
         ProviderCredentialIssue,
     };
     use crate::proxy_core::api::transforms::{
-        infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
-        normalize_codex_chat_reasoning_profile, resolve_claude_api_format_from_settings,
-        resolve_claude_responses_prompt_cache_key, CodexChatHistorySseRecord,
-        CodexChatHistoryState,
+        append_utf8_safe, infer_codex_chat_reasoning_profile, inspect_codex_chat_history_sse_block,
+        is_copilot_prompt_cache_provider, normalize_codex_chat_reasoning_profile,
+        resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
+        take_sse_block, CodexChatHistorySseRecord, CodexChatHistoryState,
     };
     use crate::proxy_core::api::transport::{
         apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,

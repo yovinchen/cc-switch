@@ -2083,8 +2083,7 @@ fn is_allowed_circuit_breaker_config_core_import(relative: &str, code: &str) -> 
 
 fn is_allowed_codex_chat_history_transform_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/codex_chat_history.rs"
-        && code.trim()
-            == "use crate::proxy_core::api::transforms::{CodexChatHistorySseRecord, CodexChatHistoryState};"
+        && code.trim() == "use crate::proxy_core::api::transforms::{"
 }
 
 fn is_allowed_gemini_shadow_transform_core_import(relative: &str, code: &str) -> bool {
@@ -5596,15 +5595,53 @@ fn proxy_core_adapter_does_not_export_codex_transform_aliases() {
             "proxy_core_adapter should not expose Codex transform contract alias `{alias}`; callers and adapter internals should use proxy_core::api::transforms directly"
         );
     }
+    let transform_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::transforms::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+    for helper in [
+        "append_utf8_safe",
+        "inspect_codex_chat_history_sse_block",
+        "take_sse_block",
+    ] {
+        let reexport_marker = adapter_source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::transforms")
+                && line.contains(helper)
+        }) || transform_reexport_blocks
+            .iter()
+            .any(|block| block.contains(helper));
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export Codex chat history SSE helper `{helper}`"
+        );
+    }
 
-    assert!(
-        history_source.contains(
-            "use crate::proxy_core::api::transforms::{CodexChatHistorySseRecord, CodexChatHistoryState};"
-        ),
-        "CodexChatHistoryStore should import history transform contracts directly from proxy_core"
+    let history_transform_import = function_slice(
+        &history_source,
+        "use crate::proxy_core::api::transforms::{",
+        "};",
     );
+    for core_identifier in [
+        "append_utf8_safe",
+        "inspect_codex_chat_history_sse_block",
+        "take_sse_block",
+        "CodexChatHistorySseRecord",
+        "CodexChatHistoryState",
+    ] {
+        assert!(
+            history_transform_import.contains(core_identifier),
+            "CodexChatHistoryStore should import `{core_identifier}` directly from proxy_core transforms"
+        );
+    }
     let adapter_imports = proxy_core_adapter_import_identifiers(&history_source);
-    for adapter_type in ["CodexChatHistorySseRecord", "CodexChatHistoryState"] {
+    for adapter_type in [
+        "append_utf8_safe",
+        "inspect_codex_chat_history_sse_block",
+        "take_sse_block",
+        "CodexChatHistorySseRecord",
+        "CodexChatHistoryState",
+    ] {
         assert!(
             !adapter_imports
                 .iter()
@@ -11366,7 +11403,7 @@ fn proxy_core_adapter_delegates_claude_request_format_dispatch_to_core() {
     let adapter_transform_import_window = function_slice(
         &source,
         "use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
-        "pub(crate) use crate::proxy_core::api::transforms::{\n    append_utf8_safe,",
+        "pub(crate) use crate::proxy_core::api::transforms::{\n    build_gemini_upstream_url,",
     );
     assert!(
         !source.contains(
@@ -11668,7 +11705,7 @@ fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
     let adapter_transform_import_window = function_slice(
         &source,
         "use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
-        "pub(crate) use crate::proxy_core::api::transforms::{\n    append_utf8_safe,",
+        "pub(crate) use crate::proxy_core::api::transforms::{\n    build_gemini_upstream_url,",
     );
     assert!(
         !source.contains(
