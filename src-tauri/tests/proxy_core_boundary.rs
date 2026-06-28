@@ -2069,6 +2069,13 @@ fn is_allowed_live_takeover_runtime_core_import(relative: &str, code: &str) -> b
         )
 }
 
+fn is_allowed_provider_common_config_issue_core_import(relative: &str, code: &str) -> bool {
+    matches!(
+        relative,
+        "src/services/provider/mod.rs" | "src/services/provider/live.rs"
+    ) && code.trim() == "use crate::proxy_core::api::ports::{"
+}
+
 fn is_allowed_circuit_breaker_config_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/circuit_breaker.rs"
         && code.trim() == "use crate::proxy_core::api::config::{"
@@ -2146,6 +2153,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_claude_desktop_live_url_core_import(&relative, code)
                     && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
+                    && !is_allowed_provider_common_config_issue_core_import(&relative, code)
                     && !is_allowed_circuit_breaker_config_core_import(&relative, code)
                     && !is_allowed_codex_chat_history_transform_core_import(&relative, code)
                     && !is_allowed_gemini_shadow_transform_core_import(&relative, code)
@@ -6969,6 +6977,92 @@ fn production_provider_service_excludes_credential_extract_facade() {
         !source.contains("provider_credential_values"),
         "ProviderService tests should not depend on proxy_core_adapter provider credential test facades"
     );
+}
+
+#[test]
+fn provider_services_import_common_config_issue_contracts_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let files = [
+        (
+            "src/services/provider/mod.rs",
+            [
+                "common_config_snippet_issue_message",
+                "CommonConfigSnippetIssue",
+            ],
+        ),
+        (
+            "src/services/provider/live.rs",
+            [
+                "common_config_settings_mutation_issue_message",
+                "CommonConfigSettingsMutationIssue",
+            ],
+        ),
+    ];
+    let mut violations = Vec::new();
+
+    for (relative, required_symbols) in files {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read provider source");
+        if !source.contains("use crate::proxy_core::api::ports::{") {
+            violations.push(format!(
+                "{relative} should import common-config issue contracts directly from proxy_core::api::ports"
+            ));
+        }
+        for symbol in required_symbols {
+            if !source.contains(symbol) {
+                violations.push(format!(
+                    "{relative} should import `{symbol}` directly from proxy_core::api::ports"
+                ));
+            }
+        }
+
+        let adapter_import_identifiers = proxy_core_adapter_import_identifiers(&source);
+        for symbol in required_symbols {
+            if adapter_import_identifiers
+                .iter()
+                .any(|identifier| identifier == symbol)
+            {
+                violations.push(format!(
+                    "{relative} imports common-config issue contract `{symbol}` through proxy_core_adapter"
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider services should not route common-config issue contracts through proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_does_not_reexport_common_config_issue_contracts() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let port_reexport_blocks: Vec<&str> = source
+        .split("pub(crate) use crate::proxy_core::api::ports::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+
+    for symbol in [
+        "common_config_settings_mutation_issue_message",
+        "common_config_snippet_issue_message",
+        "CommonConfigSettingsMutationIssue",
+        "CommonConfigSnippetIssue",
+    ] {
+        let single_line_reexport = source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::ports") && line.contains(symbol)
+        });
+        let grouped_reexport = port_reexport_blocks
+            .iter()
+            .any(|block| block.contains(symbol));
+        assert!(
+            !single_line_reexport && !grouped_reexport,
+            "proxy_core_adapter should not re-export common-config issue contract `{symbol}`"
+        );
+    }
 }
 
 #[test]

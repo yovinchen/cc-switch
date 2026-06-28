@@ -9,12 +9,15 @@ use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
 use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
+use crate::proxy_core::api::ports::{
+    common_config_settings_mutation_issue_message, CommonConfigSettingsMutationIssue,
+};
 #[cfg(test)]
 use crate::proxy_core_adapter::apply_common_config_to_settings as adapter_apply_common_config_to_settings;
 use crate::proxy_core_adapter::{
     build_effective_settings_with_common_config as adapter_build_effective_settings_with_common_config,
-    codex_live_settings_with_model_catalog, common_config_settings_mutation_issue_message,
-    gemini_live_settings_from_env_json_and_config, gemini_live_settings_to_write,
+    codex_live_settings_with_model_catalog, gemini_live_settings_from_env_json_and_config,
+    gemini_live_settings_to_write,
     normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
     provider_codex_live_snapshot_parts,
     provider_common_config_storage_normalization_requires_snippet,
@@ -29,11 +32,10 @@ use crate::proxy_core_adapter::{
     sanitize_claude_settings_for_live, should_skip_manual_default_live_import,
     should_skip_startup_default_live_import,
     strip_common_config_from_live_settings_for_backfill as adapter_strip_common_config_from_live_settings_for_backfill,
-    validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue,
-    CommonConfigSettingsMutationIssue, GeminiLiveConfigIssue, HermesLiveImportIssue,
-    OpenClawLiveImportIssue, OpenClawLiveWriteAction, OpenCodeLiveImportIssue,
-    OpenCodeLiveWriteAction, ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
-    ProviderLiveSyncScope,
+    validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
+    HermesLiveImportIssue, OpenClawLiveImportIssue, OpenClawLiveWriteAction,
+    OpenCodeLiveImportIssue, OpenCodeLiveWriteAction, ProviderBackfillSettingsWarning,
+    ProviderEffectiveSettingsWarning, ProviderLiveSyncScope,
 };
 use crate::services::mcp::McpService;
 use crate::store::AppState;

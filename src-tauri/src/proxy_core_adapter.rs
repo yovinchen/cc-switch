@@ -1360,13 +1360,10 @@ use crate::proxy_core::api::domain::{
     additive_provider_stream_check_base_url_from_settings as core_additive_provider_stream_check_base_url_from_settings,
     additive_stream_check_base_url_missing_error_spec as core_additive_stream_check_base_url_missing_error_spec,
 };
-pub(crate) use crate::proxy_core::api::ports::common_config_settings_mutation_issue_message;
-pub(crate) use crate::proxy_core::api::ports::common_config_snippet_issue_message;
-pub(crate) use crate::proxy_core::api::ports::CommonConfigSettingsMutationIssue;
-pub(crate) use crate::proxy_core::api::ports::CommonConfigSnippetIssue;
 use crate::proxy_core::api::ports::{
     apply_claude_common_config_to_settings as core_apply_claude_common_config_to_settings,
     apply_gemini_common_config_to_settings as core_apply_gemini_common_config_to_settings,
+    common_config_settings_mutation_issue_message,
     contains_claude_common_config_snippet as core_contains_claude_common_config_snippet,
     contains_gemini_common_config_snippet as core_contains_gemini_common_config_snippet,
     openclaw_live_write_action_decision as core_openclaw_live_write_action_decision,
@@ -1380,6 +1377,7 @@ use crate::proxy_core::api::ports::{
     remove_gemini_common_config_from_settings as core_remove_gemini_common_config_from_settings,
     should_emit_proxy_official_warning_for_provider_category as core_should_emit_proxy_official_warning_for_provider_category,
     should_reapply_codex_official_live_for_provider_category as core_should_reapply_codex_official_live_for_provider_category,
+    CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue,
     OpenClawLiveWriteActionDecision as CoreOpenClawLiveWriteActionDecision,
     OpenClawLiveWriteConfigDecision as CoreOpenClawLiveWriteConfigDecision,
     OpenCodeLiveWriteActionDecision as CoreOpenCodeLiveWriteActionDecision,
@@ -7137,11 +7135,12 @@ mod tests {
     use crate::proxy_core::api::config::CircuitState;
     use crate::proxy_core::api::ports::{
         claude_env_credentials_from_settings, claude_takeover_model_fields_from_settings,
-        codex_auth_object_value_from_settings, gemini_env_map_from_settings, json_deep_merge,
-        json_deep_remove, json_remove_array_items, json_value_is_subset,
-        normalize_claude_models_in_value, openclaw_common_config_value_from_settings,
-        openclaw_credential_parts_from_settings, opencode_common_config_value_from_settings,
-        opencode_credential_parts_from_settings, provider_credential_issue_spec,
+        codex_auth_object_value_from_settings, common_config_snippet_issue_message,
+        gemini_env_map_from_settings, json_deep_merge, json_deep_remove, json_remove_array_items,
+        json_value_is_subset, normalize_claude_models_in_value,
+        openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
+        opencode_common_config_value_from_settings, opencode_credential_parts_from_settings,
+        provider_credential_issue_spec,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         proxy_takeover_marked_state_is_reusable,
         proxy_takeover_should_restore_existing_backup_before_retakeover, AuthInfo,
