@@ -3006,7 +3006,7 @@ pub(crate) fn provider_codex_chat_reasoning_options(
     .map(|profile| CodexChatReasoningOptions::from_profile(&profile))
 }
 
-pub(crate) use crate::proxy_core::api::transforms::{
+use crate::proxy_core::api::transforms::{
     infer_codex_chat_reasoning_profile, normalize_codex_chat_reasoning_profile,
 };
 
@@ -7145,7 +7145,8 @@ mod tests {
         CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderCredentialIssue,
     };
     use crate::proxy_core::api::transforms::{
-        is_copilot_prompt_cache_provider, resolve_claude_api_format_from_settings,
+        infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
+        normalize_codex_chat_reasoning_profile, resolve_claude_api_format_from_settings,
         resolve_claude_responses_prompt_cache_key, CodexChatHistorySseRecord,
         CodexChatHistoryState,
     };

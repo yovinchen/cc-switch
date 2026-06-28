@@ -5872,6 +5872,30 @@ fn proxy_core_adapter_does_not_reexport_codex_upstream_model_helper() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_reexport_codex_reasoning_profile_helpers() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let transform_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::transforms::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+
+    for helper in [
+        "infer_codex_chat_reasoning_profile",
+        "normalize_codex_chat_reasoning_profile",
+    ] {
+        assert!(
+            !transform_reexport_blocks
+                .iter()
+                .any(|block| block.contains(helper)),
+            "proxy_core_adapter should not re-export {helper} through grouped transform imports"
+        );
+    }
+}
+
+#[test]
 fn proxy_core_adapter_does_not_export_proxy_engine_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
