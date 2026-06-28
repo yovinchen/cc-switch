@@ -7487,7 +7487,10 @@ fn production_engine_routing_imports_route_contracts_directly() {
         "management::ChannelRouteSource,",
         "ports::{ChannelAttemptResult, ChannelHealthReset},",
         "routing::{",
-        "ProviderFailoverCircuitLookup, RouteCandidateCircuitKey, RouteResolveChannelInput",
+        "effective_channel_health_failure_threshold",
+        "ProviderFailoverCircuitLookup",
+        "RouteCandidateCircuitKey",
+        "RouteResolveChannelInput",
     ];
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
     let mut violations = Vec::new();
@@ -19554,6 +19557,28 @@ fn proxy_core_adapter_delegates_route_policy_source_to_host_module() {
         !adapter_core_ports_import.contains("RoutePolicySource"),
         "proxy_core_adapter should not re-export the RoutePolicySource port trait"
     );
+
+    let adapter_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+    for marker in [
+        "RoutePolicy",
+        "route_policy_failover_provider_ids",
+        "provider_router_auto_failover_enabled_decision",
+        "failover_config_read_error_log_line",
+    ] {
+        let reexport_marker = adapter_source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::") && line.contains(marker)
+        }) || adapter_reexport_blocks
+            .iter()
+            .any(|block| block.contains(marker));
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export route-policy helper `{marker}`"
+        );
+    }
 }
 
 #[test]
@@ -19647,13 +19672,15 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
         !adapter_core_ports_import.contains("RouteResolver"),
         "proxy_core_adapter should not re-export RouteResolver"
     );
-    let adapter_routing_import = function_slice(
-        &adapter_source,
-        "pub(crate) use crate::proxy_core::api::routing::{",
-        "};\nuse crate::proxy_core::api::transforms::resolve_claude_forward_api_format;",
-    );
+    let adapter_routing_reexports: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::routing::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
     assert!(
-        !adapter_routing_import.contains("RouteRequest"),
+        adapter_routing_reexports
+            .iter()
+            .all(|block| !block.contains("RouteRequest")),
         "proxy_core_adapter should not re-export RouteRequest"
     );
     assert!(
@@ -22583,6 +22610,12 @@ fn production_provider_router_records_channel_health_with_core_attempt_fact() {
             && router_slice.contains("allow_request_with_config(")
             && router_slice.contains("record_result_with_config("),
         "ProviderRouter channel health/circuit writes should resolve per-channel health policy through the core helper"
+    );
+    let adapter_import = function_slice(&source, "use crate::proxy_core_adapter::{", "};");
+    assert!(
+        source.contains("effective_channel_health_failure_threshold,")
+            && !adapter_import.contains("effective_channel_health_failure_threshold"),
+        "ProviderRouter should import the per-channel failure-threshold rule directly from proxy_core::api::routing"
     );
     assert!(
         !router_slice.contains("record_channel_health(\n            channel_id,"),

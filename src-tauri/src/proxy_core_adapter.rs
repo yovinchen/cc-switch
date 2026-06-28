@@ -2060,10 +2060,9 @@ pub(crate) use crate::proxy_core::api::ports::{
 use crate::proxy_core::api::ports::{
     AppSummaryConfig, ChannelKeyRuntimeSource, ProviderSource, ProxyConfigSource, RoutePolicySource,
 };
-pub(crate) use crate::proxy_core::api::routing::{
-    effective_channel_health_failure_threshold, failover_config_read_error_log_line,
-    provider_router_auto_failover_enabled_decision, route_policy_failover_provider_ids,
-    RoutePolicy,
+use crate::proxy_core::api::routing::{
+    failover_config_read_error_log_line, provider_router_auto_failover_enabled_decision,
+    route_policy_failover_provider_ids, RoutePolicy,
 };
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;

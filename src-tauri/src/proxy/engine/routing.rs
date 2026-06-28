@@ -12,11 +12,13 @@ use crate::proxy_core::api::{
     config::{AllowResult, CircuitBreakerConfig, CircuitBreakerStats},
     management::ChannelRouteSource,
     ports::{ChannelAttemptResult, ChannelHealthReset},
-    routing::{ProviderFailoverCircuitLookup, RouteCandidateCircuitKey, RouteResolveChannelInput},
+    routing::{
+        effective_channel_health_failure_threshold, ProviderFailoverCircuitLookup,
+        RouteCandidateCircuitKey, RouteResolveChannelInput,
+    },
 };
 use crate::proxy_core_adapter::{
-    channel_health_reset_from_parts, effective_channel_health_failure_threshold,
-    select_failover_provider_ids_from_router_lookup_availability,
+    channel_health_reset_from_parts, select_failover_provider_ids_from_router_lookup_availability,
 };
 use futures::future::BoxFuture;
 use std::collections::HashMap;
