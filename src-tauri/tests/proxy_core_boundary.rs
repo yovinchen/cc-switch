@@ -5763,6 +5763,34 @@ fn proxy_core_adapter_does_not_export_error_contract_aliases() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_reexport_channel_not_found_error_helper() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let management_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::management::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+
+    assert!(
+        !adapter_source
+            .contains("pub(crate) use crate::proxy_core::api::management::channel_not_found_error"),
+        "proxy_core_adapter should not re-export channel_not_found_error"
+    );
+    assert!(
+        !management_reexport_blocks
+            .iter()
+            .any(|block| block.contains("channel_not_found_error")),
+        "proxy_core_adapter should not re-export channel_not_found_error through grouped management imports"
+    );
+    assert!(
+        adapter_source.contains("use crate::proxy_core::api::management::channel_not_found_error;"),
+        "proxy_core_adapter internals should import channel_not_found_error privately from proxy_core management"
+    );
+}
+
+#[test]
 fn proxy_core_adapter_does_not_export_proxy_engine_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))

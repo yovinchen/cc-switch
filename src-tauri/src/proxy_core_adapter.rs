@@ -2048,7 +2048,7 @@ use crate::proxy_core::api::events::{
     build_server_started_event_payload, build_server_stopped_event_payload, AttemptEventChannel,
     AttemptEventPayloadInput, AttemptEventPhase, ProxyCoreEvent,
 };
-pub(crate) use crate::proxy_core::api::management::channel_not_found_error;
+use crate::proxy_core::api::management::channel_not_found_error;
 pub(crate) use crate::proxy_core::api::management::{
     channel_health_update_from_input, channel_reachability_probe_error,
     channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
