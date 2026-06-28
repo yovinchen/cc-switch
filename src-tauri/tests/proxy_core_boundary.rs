@@ -5786,6 +5786,7 @@ fn proxy_core_adapter_does_not_export_response_transport_aliases() {
         "pub(crate) type ProxyCoreResponse = crate::proxy_core::api::transport::ProxyCoreResponse;",
         "pub(crate) type ProxyResult = crate::proxy_core::api::transport::ProxyResult;",
         "pub(crate) type ProxyResponseBody = crate::proxy_core::api::transport::ProxyResponseBody;",
+        "pub(crate) use crate::proxy_core::api::transport::ProxyRequest;",
     ] {
         assert!(
             !adapter_source.contains(alias),
@@ -5794,16 +5795,18 @@ fn proxy_core_adapter_does_not_export_response_transport_aliases() {
     }
 
     assert!(
-        host_source.contains("use crate::proxy_core::api::transport::{ProxyBody, ProxyResponseBody};"),
-        "proxy_core_host test harness should import ProxyResponseBody directly from proxy_core transport"
+        host_source.contains("use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest, ProxyResponseBody};"),
+        "proxy_core_host test harness should import ProxyRequest/ProxyResponseBody directly from proxy_core transport"
     );
     let host_adapter_import = proxy_core_adapter_import_identifiers(&host_source);
-    assert!(
-        !host_adapter_import
-            .iter()
-            .any(|identifier| identifier == "ProxyResponseBody"),
-        "proxy_core_host must not import ProxyResponseBody through proxy_core_adapter"
-    );
+    for adapter_symbol in ["ProxyRequest", "ProxyResponseBody"] {
+        assert!(
+            !host_adapter_import
+                .iter()
+                .any(|identifier| identifier == adapter_symbol),
+            "proxy_core_host must not import {adapter_symbol} through proxy_core_adapter"
+        );
+    }
 }
 
 #[test]
@@ -20931,7 +20934,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         ) && host_source
             .contains("use crate::proxy_core::api::routing::ResolvedChannelAttempt;")
         && host_source.contains(
-            "use crate::proxy_core::api::transport::{ProxyBody, ProxyResponseBody};"
+            "use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest, ProxyResponseBody};"
         )
         ,
         "proxy_core_host test harness should import pure core contracts directly"
@@ -20943,6 +20946,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "client_model_catalog_from_optional_raw",
         "DEFAULT_ROUTE_GROUP",
         "ProxyBody",
+        "ProxyRequest",
         "ProxyResponseBody",
         "RetryPolicy",
         "RoutePlan",
@@ -20983,6 +20987,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
     );
     assert!(
         !host_tests_adapter_import.contains("ProxyBody")
+            && !host_tests_adapter_import.contains("ProxyRequest")
             && !host_tests_adapter_import.contains("ProxyResponseBody")
             && !host_tests_adapter_import.contains("RetryPolicy")
             && !host_tests_adapter_import.contains("RoutePlan")
@@ -21008,6 +21013,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "pub(crate) use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw",
         "pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP",
         "pub(crate) use crate::proxy_core::api::transport::ProxyBody",
+        "pub(crate) use crate::proxy_core::api::transport::ProxyRequest",
         "pub(crate) type ProxyCoreUpstreamEndpoint =",
         "pub(crate) type RetryPolicy =",
         "pub(crate) type RouteSelection =",

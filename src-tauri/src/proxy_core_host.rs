@@ -46,13 +46,13 @@ use crate::proxy_core::api::routing::{
 #[cfg(test)]
 use crate::proxy_core::api::transforms::GeminiShadowStore;
 #[cfg(test)]
-use crate::proxy_core::api::transport::{ProxyBody, ProxyResponseBody};
+use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest, ProxyResponseBody};
 #[cfg(test)]
 use crate::proxy_core::api::usage::UsageRecord;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     forward_result_to_proxy_result, management_route_response_from_router_source, AuthProvider,
-    ProxyRequest, ProxyServices,
+    ProxyServices,
 };
 #[cfg(test)]
 use serde_json::Value;

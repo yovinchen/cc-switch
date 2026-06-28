@@ -2088,7 +2088,6 @@ pub(crate) use crate::proxy_core::api::transforms::{
     should_preserve_reasoning_content_for_openai_chat, ClaudeApiFormatRequestTransformContext,
     ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
 };
-pub(crate) use crate::proxy_core::api::transport::ProxyRequest;
 pub(crate) use crate::proxy_core::api::transport::{
     build_claude_provider_auth_headers, build_claude_upstream_url,
     build_codex_provider_auth_headers, build_codex_upstream_url,
@@ -2117,7 +2116,7 @@ use crate::proxy_core::api::transport::{
     ForwarderAuthHeaders, ForwarderProtocolPreparation, ForwarderProtocolPreparationInput,
     ForwarderRectifierRetryKind, ForwarderTransformPlan,
     OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization,
-    ProxyCoreResponse, ProxyResponseBody, ProxyResult,
+    ProxyCoreResponse, ProxyRequest, ProxyResponseBody, ProxyResult,
 };
 use crate::proxy_core::api::usage::{
     usage_route_context_from_selection, ModelPricing, UsageRecord, UsageRouteContext,
