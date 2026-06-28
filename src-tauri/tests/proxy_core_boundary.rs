@@ -7485,7 +7485,9 @@ fn production_engine_routing_imports_route_contracts_directly() {
         "use crate::proxy_core::api::{",
         "config::{AllowResult, CircuitBreakerConfig, CircuitBreakerStats},",
         "management::ChannelRouteSource,",
-        "ports::{ChannelAttemptResult, ChannelHealthReset},",
+        "channel_health_reset_from_parts",
+        "ChannelAttemptResult",
+        "ChannelHealthReset",
         "routing::{",
         "effective_channel_health_failure_threshold",
         "ProviderFailoverCircuitLookup",
@@ -7508,6 +7510,7 @@ fn production_engine_routing_imports_route_contracts_directly() {
         "ChannelAttemptResult",
         "ChannelHealthReset",
         "ChannelRouteSource",
+        "channel_health_reset_from_parts",
         "CircuitBreakerConfig",
         "CircuitBreakerStats",
         "ProviderFailoverCircuitLookup",
@@ -22515,9 +22518,36 @@ fn production_provider_router_resets_channel_health_with_core_reset_fact() {
             && router_slice.contains(".reset_channel_health(channel_health_reset_from_parts"),
         "ProviderRouter channel reset must pass the app-scoped core ChannelHealthReset fact to its health store"
     );
+    let adapter_import = function_slice(
+        &source,
+        "use crate::proxy_core_adapter::",
+        ";\nuse futures::",
+    );
+    assert!(
+        !adapter_import.contains("channel_health_reset_from_parts"),
+        "ProviderRouter should import channel health reset facts directly from proxy_core::api::ports"
+    );
     assert!(
         !router_slice.contains(".reset_channel_health(channel_id)"),
         "ProviderRouter must not reset channel health through a bare channel_id"
+    );
+
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+    let reexport_marker = adapter_source.lines().any(|line| {
+        line.contains("pub(crate) use crate::proxy_core::api::")
+            && line.contains("channel_health_reset_from_parts")
+    }) || adapter_reexport_blocks
+        .iter()
+        .any(|block| block.contains("channel_health_reset_from_parts"));
+    assert!(
+        !reexport_marker,
+        "proxy_core_adapter should not re-export channel_health_reset_from_parts"
     );
 }
 
@@ -22611,10 +22641,13 @@ fn production_provider_router_records_channel_health_with_core_attempt_fact() {
             && router_slice.contains("record_result_with_config("),
         "ProviderRouter channel health/circuit writes should resolve per-channel health policy through the core helper"
     );
-    let adapter_import = function_slice(&source, "use crate::proxy_core_adapter::{", "};");
+    let import_slice = function_slice(&source, "use crate::error::AppError;", "use futures::");
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
     assert!(
         source.contains("effective_channel_health_failure_threshold,")
-            && !adapter_import.contains("effective_channel_health_failure_threshold"),
+            && !adapter_import_identifiers
+                .iter()
+                .any(|identifier| identifier == "effective_channel_health_failure_threshold"),
         "ProviderRouter should import the per-channel failure-threshold rule directly from proxy_core::api::routing"
     );
     assert!(
