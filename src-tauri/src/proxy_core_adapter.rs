@@ -3340,7 +3340,7 @@ pub(crate) fn provider_kind_from_app_type_and_config(
     }
 }
 
-pub(crate) use crate::proxy_core::api::transforms::is_copilot_prompt_cache_provider;
+use crate::proxy_core::api::transforms::is_copilot_prompt_cache_provider;
 
 pub(crate) fn provider_is_copilot_prompt_cache_provider(provider: &Provider) -> bool {
     is_copilot_prompt_cache_provider(
@@ -3359,7 +3359,7 @@ pub(crate) fn provider_claude_prompt_cache_key(provider: &Provider) -> Option<&s
         .and_then(|meta| meta.prompt_cache_key.as_deref())
 }
 
-pub(crate) use crate::proxy_core::api::transforms::resolve_claude_responses_prompt_cache_key;
+use crate::proxy_core::api::transforms::resolve_claude_responses_prompt_cache_key;
 
 pub(crate) fn provider_claude_responses_prompt_cache_key(
     provider: &Provider,
@@ -7144,7 +7144,9 @@ mod tests {
         CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderCredentialIssue,
     };
     use crate::proxy_core::api::transforms::{
-        resolve_claude_api_format_from_settings, CodexChatHistorySseRecord, CodexChatHistoryState,
+        is_copilot_prompt_cache_provider, resolve_claude_api_format_from_settings,
+        resolve_claude_responses_prompt_cache_key, CodexChatHistorySseRecord,
+        CodexChatHistoryState,
     };
 
     use super::*;

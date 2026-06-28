@@ -11281,6 +11281,18 @@ fn proxy_core_adapter_delegates_claude_transform_gate_to_core() {
         ),
         "proxy_core_adapter should not re-export the pure Claude api_format resolver helper"
     );
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::transforms::is_copilot_prompt_cache_provider"
+        ),
+        "proxy_core_adapter should not re-export the pure Copilot prompt-cache provider helper"
+    );
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::transforms::resolve_claude_responses_prompt_cache_key"
+        ),
+        "proxy_core_adapter should not re-export the pure Claude responses prompt-cache key helper"
+    );
 
     let forbidden_markers = [
         "return true",
