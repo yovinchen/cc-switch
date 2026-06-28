@@ -1,4 +1,7 @@
 use cc_switch_proxy_core::api::prelude::*;
+use cc_switch_proxy_core::api::ports::{
+    current_route_target_from_input, CurrentRouteChannelTargetInput, CurrentRouteTargetInput,
+};
 use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
@@ -551,16 +554,19 @@ impl RuntimeStatusSource for DemoRelayHost {
                 total_requests: 12,
                 success_requests: 12,
                 success_rate: 100.0,
-                active_targets: vec![CurrentRouteTarget {
-                    app_type: "claude".to_string(),
-                    provider_name: "Relay East".to_string(),
-                    provider_id: "relay-east".to_string(),
-                    channel_id: Some("claude-premium".to_string()),
-                    channel_name: Some("Claude Premium".to_string()),
-                    interface_kind: Some(InterfaceKind::AnthropicMessages.as_str().to_string()),
-                    public_model: Some("sonnet".to_string()),
-                    upstream_model: Some("anthropic/claude-sonnet-4-6".to_string()),
-                }],
+                active_targets: vec![current_route_target_from_input(CurrentRouteTargetInput {
+                    app_type: "claude",
+                    provider_id: "relay-east",
+                    provider_name: "Relay East",
+                    channel: Some(CurrentRouteChannelTargetInput {
+                        channel_id: "claude-premium",
+                        channel_name: "Claude Premium",
+                        interface_kind: InterfaceKind::AnthropicMessages.as_str(),
+                        public_model: Some("sonnet"),
+                        upstream_model: Some("anthropic/claude-sonnet-4-6"),
+                        pricing_model: Some("claude-sonnet-4-6"),
+                    }),
+                })],
                 ..ProxyRuntimeStatus::default()
             })
         })
