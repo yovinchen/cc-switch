@@ -7741,6 +7741,12 @@ fn proxy_core_adapter_delegates_required_provider_base_url_policy_to_core() {
         slice.matches("core_required_provider_base_url").count() == 3,
         "proxy_core_adapter should delegate required provider base URL errors to core for Codex/Gemini/Claude"
     );
+    assert!(
+        !source.contains(
+            "pub(crate) use crate::proxy_core::api::domain::extract_claude_base_url_from_settings"
+        ),
+        "proxy_core_adapter should not re-export pure Claude base URL extraction helper"
+    );
 
     let mut violations = Vec::new();
     for marker in FORBIDDEN_PROXY_CORE_ADAPTER_REQUIRED_BASE_URL_POLICY_MARKERS {

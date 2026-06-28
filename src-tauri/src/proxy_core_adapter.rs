@@ -3446,7 +3446,7 @@ pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderA
     }
 }
 
-pub(crate) use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;
+use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;
 
 pub(crate) fn provider_claude_base_url(provider: &Provider) -> Option<String> {
     extract_claude_base_url_from_settings(
@@ -7130,6 +7130,7 @@ fn account_ref(provider: &Provider) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use crate::proxy_core::api::config::CircuitState;
+    use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;
     use crate::proxy_core::api::ports::{
         claude_env_credentials_from_settings, claude_takeover_model_fields_from_settings,
         codex_auth_object_value_from_settings, common_config_snippet_issue_message,
