@@ -1047,6 +1047,7 @@ Codex forwarder media-prevention 的 app gate 已下沉到 `proxy-core::request_
 本轮继续删除 proxy event/server event payload 的 adapter 私有 passthrough helper；`proxy_core_adapter` 的 server lifecycle 消息构造直接消费 `proxy-core::events::{build_server_started_event_payload,build_server_stopped_event_payload}`，`proxy::events::ProxyEventBus` 直接消费 `build_proxy_events_connected_payload`/`build_proxy_events_lagged_payload`，payload shape 继续由 core 单测覆盖。
 
 本轮继续把 Codex provider `config` 文本读取、config TOML `wire_api`/`model` 投影与 active provider `base_url` 匹配收敛到 `proxy-core::ports::{codex_config_text_from_settings,codex_wire_api_from_config_toml,codex_model_from_config_toml,codex_config_has_base_url_matching}`；host adapter 不再维护 TOML value 解析、live takeover base_url 匹配或 legacy projection duplicate extractor。
+本轮继续收窄 `proxy_core_adapter` 的 config/circuit helper 暴露面：DB 兼容仍保留 `app_proxy_config_defaults_for_app` 出口，adapter-only 的 circuit key/config helper 改为私有导入，routing/runtime 调用方继续直接消费 owning core API 或宿主模块。
 forwarder 的 Claude/ClaudeAuth rectifier gate 一跳 wrapper `forwarder_uses_anthropic_rectifiers` 已删除；request source 直接复用 provider 级 rectifier 判定，`forwarder.rs` 仍只通过 source 获取 rectifier gate。
 Codex Responses→Chat 上游模型覆写与 reasoning options 解析已由 forwarder request source 直接复用 provider 级 adapter API；此前的 `forwarder_apply_codex_chat_upstream_model` / `forwarder_codex_chat_reasoning_options` 一跳 wrapper 已删除。
 forwarder 的 Codex OAuth header-casing fact 一跳 wrapper `forwarder_is_codex_oauth_provider` 已删除；request source 直接复用 provider 级 Codex OAuth 判定，`forwarder.rs` 仍只通过 source 获取 header policy。

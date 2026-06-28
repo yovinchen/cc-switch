@@ -6750,14 +6750,28 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let config_reexport_blocks: Vec<&str> = source
+        .split("pub(crate) use crate::proxy_core::api::config::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
 
     for marker in [
+        "app_type_from_circuit_key",
+        "channel_circuit_key",
+        "channel_circuit_key_prefix",
+        "circuit_breaker_config_from_app_config",
+        "circuit_failure_threshold_from_app_config",
         "proxy_app_config_from_parts",
         "proxy_global_config_from_global_config",
+        "provider_circuit_key",
+        "provider_circuit_key_prefix",
     ] {
         let reexport_marker = source.lines().any(|line| {
             line.contains("pub(crate) use crate::proxy_core::api::config") && line.contains(marker)
-        });
+        }) || config_reexport_blocks
+            .iter()
+            .any(|block| block.contains(marker));
         assert!(
             !reexport_marker,
             "proxy_core_adapter should not re-export adapter-only config helper `{marker}`"

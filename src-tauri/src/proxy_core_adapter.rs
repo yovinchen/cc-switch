@@ -2039,10 +2039,9 @@ pub(crate) use crate::proxy_core::api::auth::{
     extract_claude_auth_key_from_settings, is_gemini_oauth_key_shape,
     parse_gemini_oauth_credentials,
 };
-pub(crate) use crate::proxy_core::api::config::{
-    app_proxy_config_defaults_for_app, app_type_from_circuit_key, channel_circuit_key,
-    channel_circuit_key_prefix, circuit_breaker_config_from_app_config,
-    circuit_failure_threshold_from_app_config, provider_circuit_key, provider_circuit_key_prefix,
+pub(crate) use crate::proxy_core::api::config::app_proxy_config_defaults_for_app;
+use crate::proxy_core::api::config::{
+    circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
 };
 use crate::proxy_core::api::events::{
     attempt_event_name, build_attempt_event_payload, build_provider_switched_event_payload,
@@ -7132,7 +7131,9 @@ fn account_ref(provider: &Provider) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::proxy_core::api::config::CircuitState;
+    use crate::proxy_core::api::config::{
+        app_type_from_circuit_key, channel_circuit_key, provider_circuit_key, CircuitState,
+    };
     use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;
     use crate::proxy_core::api::ports::{
         claude_env_credentials_from_settings, claude_takeover_model_fields_from_settings,
