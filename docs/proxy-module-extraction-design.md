@@ -1815,6 +1815,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1329. `proxy_core_adapter` 不再暴露 `ProxyCoreAppKind` / `AppKind` / `ProviderSpec` / `ModelCatalog` domain 与 model catalog DTO alias：adapter 内部直接从 `proxy_core::api::{domain,model_catalog}` 获取类型，provider source、model catalog provider 与 route attempt 测试继续直接引用 core contract；边界测试防止这些 DTO 重新经 adapter alias 回流。
 1330. `proxy_core_adapter` 不再暴露 `ClaudeDesktopModelRouteInput` auth/model-list contract alias：adapter 内部和 host-owned model catalog provider 均直接从 `proxy_core::api::auth` 获取 Claude Desktop 模型路由输入 DTO；边界测试防止该 contract 重新经 adapter alias 回流。
 1331. `proxy_core_adapter` 不再暴露 `CcSwitchProxyServer` host transport type alias：`ProxyService` 继续通过 adapter 工厂构造 server runtime state，但运行中 server 类型直接来自 `proxy::transport::http::server::ProxyServer`；边界测试防止 host transport type 重新经 adapter alias 回流。
+1332. `proxy_core_adapter` 不再暴露 provider selection/failover routing DTO alias：`ProviderFailoverCircuitLookup`、`ProviderSelectionFailure`、`ProviderSelectionInput`、`AutoFailoverToggleInput`、`AutoFailoverTogglePlan` 与 `FailoverQueuePosition` 均由 adapter 内部和 routing source 直接从 `proxy_core::api::routing` 获取；边界测试防止 provider-selection routing contract 重新经 adapter alias 回流。
 
 ## 背景
 
