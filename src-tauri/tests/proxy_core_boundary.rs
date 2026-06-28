@@ -5200,7 +5200,7 @@ fn proxy_core_adapter_does_not_export_domain_or_model_catalog_aliases() {
         adapter_runtime_source.contains(
             "use crate::proxy_core::api::domain::{\n    AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,\n};"
         ) && adapter_runtime_source
-            .contains("use crate::proxy_core::api::model_catalog::ModelCatalog;"),
+            .contains("use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};"),
         "proxy_core_adapter internals should import domain/model catalog DTOs directly from proxy_core"
     );
 }
@@ -10954,10 +10954,20 @@ fn proxy_core_adapter_keeps_provider_model_mapping_facade_host_shaped() {
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
     let mapping_slice = function_slice(
         &source,
-        "pub(crate) type ModelMappingProjection",
-        "pub(crate) fn apply_forward_request_model_mapping_from_provider",
+        "pub(crate) fn apply_provider_model_mapping_from_provider",
+        "fn claude_desktop_proxy_request_body_issue_message",
     );
 
+    assert!(
+        !source.contains("pub(crate) type ModelMappingProjection"),
+        "adapter should not expose ModelMappingProjection as a model catalog DTO alias"
+    );
+    assert!(
+        source.contains(
+            "use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};"
+        ),
+        "adapter internals should import ModelMappingProjection directly from proxy_core::api::model_catalog"
+    );
     assert!(
         !source.contains(
             "pub(crate) use crate::proxy_core::api::model_catalog::apply_provider_model_mapping"

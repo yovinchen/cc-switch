@@ -192,12 +192,12 @@ pub(crate) fn mark_custom_endpoint_last_used(
 pub(crate) const COPILOT_PUBLIC_GITHUB_DOMAIN: &str =
     crate::proxy_core::api::model_catalog::COPILOT_PUBLIC_GITHUB_DOMAIN;
 
-use crate::proxy_core::api::model_catalog::ModelCatalog;
 pub(crate) use crate::proxy_core::api::model_catalog::{
     copilot_composite_account_id, default_copilot_github_domain, is_copilot_ghes_domain,
     normalize_github_domain, parse_copilot_models_response_bytes,
     parse_copilot_usage_response_bytes,
 };
+use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};
 
 pub(crate) use crate::proxy_core::api::model_catalog::{
     copilot_api_base, copilot_api_endpoint_from_usage_or_default, copilot_github_client_id,
@@ -6124,9 +6124,6 @@ pub(crate) fn anthropic_tool_thinking_placeholder() -> &'static str {
 pub(crate) fn anthropic_redacted_thinking_placeholder() -> &'static str {
     crate::proxy_core::api::transforms::ANTHROPIC_REDACTED_THINKING_PLACEHOLDER
 }
-
-pub(crate) type ModelMappingProjection =
-    crate::proxy_core::api::model_catalog::ModelMappingProjection;
 
 pub(crate) fn apply_provider_model_mapping_from_provider(
     body: Value,
