@@ -1904,6 +1904,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1349. custom endpoint 列表读取不再保留 `proxy_core_adapter::provider_custom_endpoint_list` 普通 accessor；endpoint service 与 adapter 自测直接调用 `Provider::custom_endpoint_list()`，adapter 继续只承接 URL 归一化错误映射。
 1350. custom endpoint last-used 更新不再保留 `proxy_core_adapter::mark_custom_endpoint_last_used` 普通 mutation helper；endpoint service 和 adapter 自测直接调用 `Provider::mark_custom_endpoint_last_used()`，避免把 provider meta 写入细节挂在代理 core adapter 面上。
 1351. Attempt/route-selected 事件 envelope 已收敛到 `proxy-core::events::{attempt_event,route_selected_event}`：`proxy_core_adapter` 只保留 `ForwardAttempt -> AttemptEventPayloadInput` 的宿主投影，默认 runtime state source 继续拥有 event bus 副作用但不再经 adapter-local message/payload wrapper 组装事件名与 payload。
+1352. Provider-switched failover 事件 constructor 已停止经 `proxy_core_adapter` re-export：failover command 与 host failover scheduler 直接引用 `proxy-core::events::{provider_switched_failover_event,provider_switched_failover_enabled_event}`，adapter 只保留真正需要 host 副作用或 DB/runtime 投影的 failover helper。
 
 ## 背景
 

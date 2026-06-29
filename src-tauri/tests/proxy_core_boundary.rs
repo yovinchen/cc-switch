@@ -2069,7 +2069,17 @@ fn is_allowed_claude_desktop_live_url_core_import(relative: &str, code: &str) ->
 
 fn is_allowed_failover_switch_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/host/cc_switch/failover_switch.rs"
-        && code.trim() == "use crate::proxy_core::api::routing::failover_switch_pending_key;"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::events::provider_switched_failover_event;"
+                | "use crate::proxy_core::api::routing::failover_switch_pending_key;"
+        )
+}
+
+fn is_allowed_failover_command_event_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/commands/failover.rs"
+        && code.trim()
+            == "use crate::proxy_core::api::events::provider_switched_failover_enabled_event;"
 }
 
 fn is_allowed_gemini_config_ports_core_import(relative: &str, code: &str) -> bool {
@@ -2275,6 +2285,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_claude_desktop_provider_issue_core_import(&relative, code)
                     && !is_allowed_claude_desktop_live_url_core_import(&relative, code)
                     && !is_allowed_failover_switch_core_import(&relative, code)
+                    && !is_allowed_failover_command_event_core_import(&relative, code)
                     && !is_allowed_gemini_config_ports_core_import(&relative, code)
                     && !is_allowed_provider_usage_ports_core_import(&relative, code)
                     && !is_allowed_config_service_ports_core_import(&relative, code)
@@ -5902,6 +5913,10 @@ fn proxy_core_adapter_does_not_export_proxy_core_event_alias() {
             "pub(crate) type ProxyCoreEvent = crate::proxy_core::api::events::ProxyCoreEvent;"
         ),
         "proxy_core_adapter should not expose ProxyCoreEvent as an event contract alias"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) use crate::proxy_core::api::events::"),
+        "proxy_core_adapter should not re-export core event constructors"
     );
     assert!(
         host_source.contains("use crate::proxy_core::api::events::ProxyCoreEvent;"),
@@ -17021,11 +17036,13 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
     assert!(
         failover_source
             .contains("use crate::proxy_core::api::routing::failover_switch_pending_key;")
+            && failover_source
+                .contains("use crate::proxy_core::api::events::provider_switched_failover_event;")
             && !failover_source.contains(
                 "use crate::proxy_core_adapter::{\n    failover_switch_app_enabled_from_db, failover_switch_pending_key"
             )
             && !failover_source.contains("crate::proxy_core_adapter::failover_switch_pending_key"),
-        "failover switch should import the pending-key helper directly from proxy_core routing"
+        "failover switch should import pure routing/event helpers directly from proxy_core"
     );
     assert!(
         adapter_source.contains("use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources;")
@@ -18843,6 +18860,14 @@ fn production_set_auto_failover_command_delegates_plan_sources_to_adapter() {
         violations.is_empty(),
         "set_auto_failover_enabled command must delegate plan source reads and core input construction to proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        source.contains(
+            "use crate::proxy_core::api::events::provider_switched_failover_enabled_event;"
+        ) && !source.contains(
+            "use crate::proxy_core_adapter::{\n    auto_failover_toggle_plan_from_db, provider_switched_failover_enabled_event"
+        ),
+        "set_auto_failover_enabled should import provider-switched event construction directly from proxy_core"
     );
 }
 

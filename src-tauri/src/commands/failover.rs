@@ -4,9 +4,8 @@
 
 use crate::database::FailoverQueueItem;
 use crate::provider::Provider;
-use crate::proxy_core_adapter::{
-    auto_failover_toggle_plan_from_db, provider_switched_failover_enabled_event,
-};
+use crate::proxy_core::api::events::provider_switched_failover_enabled_event;
+use crate::proxy_core_adapter::auto_failover_toggle_plan_from_db;
 use crate::store::AppState;
 use tauri::Emitter;
 

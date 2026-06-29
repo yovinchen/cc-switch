@@ -1802,9 +1802,6 @@ use crate::proxy_core::api::events::{
     server_started_event, server_stopped_event, AttemptEventChannel, AttemptEventPayloadInput,
     AttemptEventPhase, ProxyCoreEvent,
 };
-pub(crate) use crate::proxy_core::api::events::{
-    provider_switched_failover_enabled_event, provider_switched_failover_event,
-};
 use crate::proxy_core::api::management::channel_not_found_error;
 use crate::proxy_core::api::management::StreamCheckConfigOverride;
 use crate::proxy_core::api::model_catalog::{
