@@ -1498,11 +1498,11 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 本轮继续把 OpenCode live provider fragment 提取和 live write typed/raw/reject 决策收敛到 `proxy-core::ports`：core 维护 full config 中 `provider.{id}` 片段选择、raw fallback 和 reject 文案策略；adapter 继续负责宿主 `OpenCodeProviderConfig` 反序列化，service 继续负责实际写入 live config。
 本轮继续把非 Codex provider credential value 组装收敛到 `proxy-core::ports`：core 维护 Claude/Gemini/OpenCode/OpenClaw/Hermes 的缺字段分类、Gemini 默认 base URL 和 additive app 空 base URL fallback；adapter 继续保留 Codex auth/config.toml 合并、base_url regex 兼容解析和宿主 `Provider` 投影。
 本轮继续把 additive app 的 stream-check base URL 分发收敛到 `proxy-core::domain` 与 `proxy_core_adapter::stream_check_provider_base_url`：core 维护 OpenCode npm fallback、OpenClaw `baseUrl`、Hermes `base_url` 纯解析和缺失 base URL 错误规格，service 只调用统一入口并保留 reachability 探测职责。
-本轮继续把 Gemini provider settings 基础结构校验收敛到 `proxy-core::ports::validate_gemini_settings_basic`：core 维护 `env`/`config` 字段形状和本地化错误规格，`gemini_config` 与 `ProviderService` 只通过 adapter 复用同一校验入口。
+本轮继续把 Gemini provider settings 基础结构校验收敛到 `proxy-core::ports::validate_gemini_settings_basic`：core 维护 `env`/`config` 字段形状和本地化错误规格，`gemini_config` 与 `ProviderService` 只通过 adapter 复用同一校验入口；结构化 issue 到 `AppError` 的映射已收为 adapter 私有。
 本轮继续把 Gemini settings 的 env map 与 JSON settings 双向投影收敛到 `proxy-core::ports`：core 维护纯 HashMap/JSON 转换和非字符串值过滤，`gemini_config` 仅保留兼容函数名并委托 adapter。
-本轮继续把 Gemini settings 严格切换校验收敛到 `proxy-core::ports::validate_gemini_settings_strict`：core 维护 OAuth 空 env 放行、非空 env 必须含 `GEMINI_API_KEY` 和本地化错误规格，host 只保留 AppError 映射。
+本轮继续把 Gemini settings 严格切换校验收敛到 `proxy-core::ports::validate_gemini_settings_strict`：core 维护 OAuth 空 env 放行、非空 env 必须含 `GEMINI_API_KEY` 和本地化错误规格，host 只保留 adapter 私有的 AppError 映射。
 本轮继续把 Gemini provider 鉴权类型判定收敛到 `proxy-core::ports::detect_gemini_auth_type`：core 维护 partner key 优先级、Google official 名称匹配与 PackyCode 关键词规则，`services::provider::gemini_auth` 直接从 `Provider` 投影 `GeminiAuthTypeInput` 并执行 settings 文件写入；`GeminiAuthType` 出口也直接 re-export `proxy_core::api::ports`，adapter 不再作为该 enum 或 detector 的二次出口。
-本轮继续把 Gemini `.env` 解析和序列化收敛到 `proxy-core::ports`：core 维护宽松解析、严格行号错误分类和稳定排序输出，adapter 负责把结构化 parse issue 映射回宿主 `AppError`。
+本轮继续把 Gemini `.env` 解析和序列化收敛到 `proxy-core::ports`：core 维护宽松解析、严格行号错误分类和稳定排序输出，adapter 只通过 strict parse wrapper 暴露宿主 `AppError` 结果，结构化 parse issue 映射 helper 已收为私有。
 本轮继续把 usage script 凭据覆盖策略收敛到 `proxy-core::ports::usage_script_credentials_from_parts`：core 维护脚本显式非空值优先、空值回退 provider 凭据和 `baseUrl` 去尾斜杠规则，host 继续负责按 app/provider settings 提取 fallback 与执行脚本。
 本轮继续把 usage script 凭据覆盖策略的 service 入口收敛到 `proxy_core::api::ports::usage_script_credentials_from_parts`：service 层直接使用纯 core 策略，adapter 只保留 `Provider.meta.usage_script` 宿主投影，不再保留 provider-scoped credential wrapper。
 本轮继续把 Claude takeover 的 provider facts 决策收敛到 `proxy-core::ports::apply_claude_takeover_fields_for_provider_facts`：core 维护 managed-account/Copilot auth policy、provider-vs-live 模型字段来源和 env 写入，adapter 只投影宿主 provider facts。

@@ -2843,14 +2843,12 @@ pub(crate) fn parse_gemini_env_file_strict(
         .map_err(gemini_env_parse_issue_to_app_error)
 }
 
-pub(crate) fn gemini_env_parse_issue_to_app_error(issue: GeminiEnvParseIssue) -> AppError {
+fn gemini_env_parse_issue_to_app_error(issue: GeminiEnvParseIssue) -> AppError {
     let spec = core_gemini_env_parse_issue_spec(&issue);
     AppError::localized(spec.key, spec.zh, spec.en)
 }
 
-pub(crate) fn gemini_settings_validation_issue_to_app_error(
-    issue: GeminiSettingsValidationIssue,
-) -> AppError {
+fn gemini_settings_validation_issue_to_app_error(issue: GeminiSettingsValidationIssue) -> AppError {
     let spec = core_gemini_settings_validation_issue_spec(issue);
     AppError::localized(spec.key, spec.zh, spec.en)
 }

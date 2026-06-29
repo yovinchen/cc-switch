@@ -7144,6 +7144,8 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn auto_failover_toggle_plan_from_sources",
         "pub(crate) fn failover_switch_app_enabled_from_config_result",
         "pub(crate) fn reset_circuit_breaker_switchback_target_from_sources",
+        "pub(crate) fn gemini_env_parse_issue_to_app_error",
+        "pub(crate) fn gemini_settings_validation_issue_to_app_error",
     ] {
         assert!(
             !source.contains(marker),
