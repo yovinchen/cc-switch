@@ -8160,6 +8160,98 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
 }
 
 #[test]
+fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let files = [
+        ("src/lib.rs", &["proxy_live_config_owned_by_takeover"][..]),
+        (
+            "src/services/provider/mod.rs",
+            &[
+                "proxy_live_config_owned_by_takeover",
+                "proxy_switch_should_hot_switch",
+            ][..],
+        ),
+        (
+            "src/services/provider/live.rs",
+            &["proxy_live_config_owned_by_takeover"][..],
+        ),
+        (
+            "src/proxy/host/cc_switch/live_takeover.rs",
+            &[
+                "apply_gemini_takeover_env_fields",
+                "is_local_proxy_url",
+                "proxy_live_config_owned_by_takeover",
+                "proxy_runtime_status_stopped",
+                "remove_claude_takeover_env_fields_if_present",
+                "remove_codex_takeover_auth_placeholder_if_present",
+                "remove_gemini_takeover_env_fields_if_present",
+            ][..],
+        ),
+    ];
+    let mut violations = Vec::new();
+
+    for (relative, required_symbols) in files {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read source");
+        if !source.contains("use crate::proxy_core::api::ports::{")
+            && !source
+                .contains("use crate::proxy_core::api::ports::proxy_live_config_owned_by_takeover;")
+        {
+            violations.push(format!(
+                "{relative} should import proxy/live policy helpers directly from proxy_core::api::ports"
+            ));
+        }
+        for symbol in required_symbols {
+            if !source.contains(symbol) {
+                violations.push(format!(
+                    "{relative} should import `{symbol}` directly from proxy_core::api::ports"
+                ));
+            }
+            if source.contains(&format!("proxy_core_adapter::{symbol}")) {
+                violations.push(format!(
+                    "{relative} routes proxy/live policy helper `{symbol}` through proxy_core_adapter"
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "live takeover callers should not route pure proxy/live policy helpers through proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let port_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::ports::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+
+    for symbol in [
+        "apply_gemini_takeover_env_fields",
+        "is_local_proxy_url",
+        "proxy_live_config_owned_by_takeover",
+        "proxy_runtime_status_stopped",
+        "proxy_switch_should_hot_switch",
+        "remove_claude_takeover_env_fields_if_present",
+        "remove_codex_takeover_auth_placeholder_if_present",
+        "remove_gemini_takeover_env_fields_if_present",
+    ] {
+        let single_line_reexport = adapter_source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::ports") && line.contains(symbol)
+        });
+        let grouped_reexport = port_reexport_blocks
+            .iter()
+            .any(|block| block.contains(symbol));
+        assert!(
+            !single_line_reexport && !grouped_reexport,
+            "proxy_core_adapter should not re-export proxy/live policy helper `{symbol}`"
+        );
+    }
+}
+
+#[test]
 fn proxy_core_adapter_delegates_default_live_import_category_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");

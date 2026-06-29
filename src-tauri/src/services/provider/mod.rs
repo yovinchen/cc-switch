@@ -18,7 +18,8 @@ use crate::provider::{Provider, UsageResult};
 use crate::proxy_core::api::ports::{
     common_config_snippet_issue_message, provider_key_change_policy_issue_message,
     provider_live_config_presence_error_policy, provider_settings_validation_issue_spec,
-    CommonConfigSnippetIssue, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
+    proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch, CommonConfigSnippetIssue,
+    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
     ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
     ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
     ProviderTakeoverLiveSyncTarget,
@@ -34,7 +35,6 @@ use crate::proxy_core_adapter::{
     provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
     provider_takeover_live_sync_target,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
-    proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
     should_block_proxy_switch_to_provider, should_reapply_codex_official_live_for_provider,
     should_skip_provider_legacy_common_config_migration, validate_provider_gemini_settings,
 };

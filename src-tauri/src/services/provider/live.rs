@@ -11,8 +11,8 @@ use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core::api::ports::{
     common_config_settings_mutation_issue_message, gemini_live_settings_from_env_json_and_config,
-    gemini_live_settings_to_write, CodexLiveSnapshotIssue, CommonConfigSettingsMutationIssue,
-    GeminiLiveConfigIssue, ProviderLiveSyncScope,
+    gemini_live_settings_to_write, proxy_live_config_owned_by_takeover, CodexLiveSnapshotIssue,
+    CommonConfigSettingsMutationIssue, GeminiLiveConfigIssue, ProviderLiveSyncScope,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::apply_common_config_to_settings as adapter_apply_common_config_to_settings;
@@ -27,7 +27,7 @@ use crate::proxy_core_adapter::{
     provider_from_opencode_live_config, provider_gemini_env_map,
     provider_gemini_live_config_object, provider_live_sync_scope,
     provider_openclaw_live_write_projection, provider_opencode_live_write_projection,
-    provider_should_sync_to_live, proxy_live_config_owned_by_takeover,
+    provider_should_sync_to_live,
     remove_common_config_from_settings as adapter_remove_common_config_from_settings,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
     sanitize_claude_settings_for_live, should_skip_manual_default_live_import,
