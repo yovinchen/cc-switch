@@ -202,8 +202,10 @@ const FORBIDDEN_MODEL_FETCH_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_MODEL_FETCH_COMMAND_DTO_IMPORT_MARKERS: &[&str] =
     &["services::model_fetch_transport::FetchedModel"];
-const FORBIDDEN_MODEL_FETCH_COMMAND_PROVIDER_DETAIL_MARKERS: &[&str] =
-    &["crate::provider::parse_custom_user_agent("];
+const FORBIDDEN_MODEL_FETCH_COMMAND_PROVIDER_DETAIL_MARKERS: &[&str] = &[
+    "crate::provider::parse_custom_user_agent(",
+    "proxy_core_adapter::model_fetch_custom_user_agent_header",
+];
 const FORBIDDEN_COPILOT_MODEL_ADAPTER_DTO_EXPORT_MARKERS: &[&str] = &[
     "type CopilotModel = crate::proxy_core::api::model_catalog::CopilotModel",
     "pub use crate::proxy_core::api::model_catalog::CopilotModel",
@@ -2167,6 +2169,11 @@ fn is_allowed_provider_common_config_issue_core_import(relative: &str, code: &st
                 == "pub(crate) use crate::proxy_core::api::ports::sanitize_claude_settings_for_live;")
 }
 
+fn is_allowed_provider_custom_user_agent_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/provider.rs"
+        && code.trim() == "crate::proxy_core::api::transport::parse_custom_user_agent(raw)"
+}
+
 fn is_allowed_circuit_breaker_config_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/circuit_breaker.rs"
         && code.trim() == "use crate::proxy_core::api::config::{"
@@ -2253,6 +2260,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
                     && !is_allowed_provider_live_policy_app_kind_import(&relative, code)
                     && !is_allowed_provider_common_config_issue_core_import(&relative, code)
+                    && !is_allowed_provider_custom_user_agent_core_import(&relative, code)
                     && !is_allowed_circuit_breaker_config_core_import(&relative, code)
                     && !is_allowed_codex_chat_history_transform_core_import(&relative, code)
                     && !is_allowed_gemini_shadow_transform_core_import(&relative, code)
@@ -13239,7 +13247,11 @@ fn model_fetch_commands_use_core_dto_entrypoint() {
             let direct_core =
                 code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
             if direct_core
-                && code.trim() != "use crate::proxy_core::api::model_catalog::FetchedModel;"
+                && !matches!(
+                    code.trim(),
+                    "use crate::proxy_core::api::model_catalog::FetchedModel;"
+                        | "use crate::proxy_core::api::transport::parse_custom_user_agent;"
+                )
             {
                 violations.push(format!(
                     "{}:{} contains non-DTO direct proxy-core import `{}`",
@@ -13258,7 +13270,7 @@ fn model_fetch_commands_use_core_dto_entrypoint() {
 
     assert!(
         violations.is_empty(),
-        "model fetch commands must use proxy_core::api::model_catalog as the FetchedModel DTO entrypoint:\n{}",
+        "model fetch commands must restrict direct proxy-core imports to approved DTO/parser entrypoints:\n{}",
         violations.join("\n")
     );
 }
@@ -14090,7 +14102,7 @@ fn production_managed_auth_status_assembly_delegates_to_core() {
 }
 
 #[test]
-fn model_fetch_command_delegates_user_agent_parsing_to_adapter() {
+fn model_fetch_command_imports_user_agent_parser_from_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/commands/model_fetch.rs");
     let source = fs::read_to_string(&path).expect("read model_fetch.rs");
@@ -14111,8 +14123,15 @@ fn model_fetch_command_delegates_user_agent_parsing_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "model fetch command must delegate provider-specific User-Agent parsing to proxy_core_adapter:\n{}",
+        "model fetch command must avoid provider-specific User-Agent parsing details:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        source.contains("use crate::proxy_core::api::transport::parse_custom_user_agent;")
+            && source.contains("parse_custom_user_agent(custom_user_agent.as_deref())")
+            && source.contains(".ok()")
+            && source.contains(".flatten()"),
+        "model fetch command should consume the core custom User-Agent parser directly and silently ignore invalid values"
     );
 }
 
@@ -14123,16 +14142,17 @@ fn proxy_core_adapter_delegates_custom_user_agent_policy_to_core() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let provider_path = manifest_dir.join("src/provider.rs");
     let provider_source = fs::read_to_string(&provider_path).expect("read provider.rs");
+    let model_fetch_path = manifest_dir.join("src/commands/model_fetch.rs");
+    let model_fetch_source = fs::read_to_string(&model_fetch_path).expect("read model_fetch.rs");
 
     let provider_user_agent_slice = function_slice(
         &adapter_source,
         "pub(crate) fn provider_custom_user_agent_header(",
-        "pub(crate) fn model_fetch_custom_user_agent_header(",
+        "pub(crate) fn success_usage_record_from_app_type_with_request_id_fallback(",
     );
 
     assert!(
-        adapter_source.contains("parse_custom_user_agent")
-            && adapter_source.contains("core_provider_custom_user_agent_header"),
+        adapter_source.contains("core_provider_custom_user_agent_header"),
         "proxy_core_adapter should consume core custom User-Agent helpers"
     );
     assert!(
@@ -14141,8 +14161,10 @@ fn proxy_core_adapter_delegates_custom_user_agent_policy_to_core() {
     );
     assert!(
         !adapter_source.contains("crate::provider::parse_custom_user_agent(")
+            && !adapter_source.contains("pub(crate) fn parse_custom_user_agent(")
+            && !adapter_source.contains("pub(crate) fn model_fetch_custom_user_agent_header(")
             && !adapter_source.contains("HeaderValue::from_str("),
-        "proxy_core_adapter must not own or call host-local custom User-Agent parsing policy"
+        "proxy_core_adapter must not own or expose host-local custom User-Agent parsing policy"
     );
     for marker in [
         "if is_copilot",
@@ -14154,11 +14176,12 @@ fn proxy_core_adapter_delegates_custom_user_agent_policy_to_core() {
         );
     }
     assert!(
-        !adapter_source.contains(
-            "pub(crate) use crate::proxy_core::api::transport::{\n    parse_custom_user_agent"
-        ) && provider_source.contains("crate::proxy_core_adapter::parse_custom_user_agent(raw)")
+        provider_source.contains("crate::proxy_core::api::transport::parse_custom_user_agent(raw)")
+            && model_fetch_source
+                .contains("use crate::proxy_core::api::transport::parse_custom_user_agent;")
+            && !provider_source.contains("crate::proxy_core_adapter::parse_custom_user_agent(raw)")
             && !provider_source.contains("HeaderValue::from_str("),
-        "provider.rs should keep only a compatibility wrapper around the adapter/core User-Agent parser"
+        "provider.rs and model_fetch.rs should consume the core User-Agent parser directly"
     );
 }
 

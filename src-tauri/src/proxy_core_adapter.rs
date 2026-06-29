@@ -1867,6 +1867,7 @@ use crate::proxy_core::api::transforms::{
     should_preserve_reasoning_content_for_openai_chat, ClaudeApiFormatRequestTransformContext,
     ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
 };
+use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;
 use crate::proxy_core::api::transport::{
     build_claude_provider_auth_headers, build_codex_provider_auth_headers,
     build_gemini_provider_auth_headers,
@@ -1881,10 +1882,6 @@ use crate::proxy_core::api::transport::{
     forwarder_no_providers_configured_log_line, forwarder_rectifier_retry_failure_label,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
-};
-use crate::proxy_core::api::transport::{
-    parse_custom_user_agent as core_parse_custom_user_agent,
-    provider_custom_user_agent_header as core_provider_custom_user_agent_header,
 };
 use crate::proxy_core::api::transport::{
     ClaudeProviderAuthHeadersInput, CopilotClassification, ForwardFailureKind,
@@ -6614,16 +6611,6 @@ pub(crate) fn provider_custom_user_agent_header(
     core_provider_custom_user_agent_header(raw, is_copilot)
         .ok()
         .flatten()
-}
-
-pub(crate) fn parse_custom_user_agent(
-    raw: Option<&str>,
-) -> Result<Option<http::HeaderValue>, http::header::InvalidHeaderValue> {
-    core_parse_custom_user_agent(raw)
-}
-
-pub(crate) fn model_fetch_custom_user_agent_header(raw: Option<&str>) -> Option<http::HeaderValue> {
-    parse_custom_user_agent(raw).ok().flatten()
 }
 
 #[cfg(test)]
@@ -17824,11 +17811,6 @@ command = "latest-command"
         let provider_user_agent =
             provider_custom_user_agent_header(&provider, false).expect("custom user agent");
         let copilot_provider_user_agent = provider_custom_user_agent_header(&provider, true);
-        let model_fetch_user_agent =
-            model_fetch_custom_user_agent_header(Some(" cc-switch-model-fetch/1.0 "))
-                .expect("model fetch custom user agent");
-        assert!(model_fetch_custom_user_agent_header(Some("   ")).is_none());
-        assert!(model_fetch_custom_user_agent_header(Some("bad\nua")).is_none());
         assert_eq!(
             bedrock_env_flag_from_provider_settings(&provider.settings_config),
             Some("1")
@@ -17885,10 +17867,6 @@ command = "latest-command"
             http::HeaderValue::from_static("cc-switch-test/1.0")
         );
         assert!(copilot_provider_user_agent.is_none());
-        assert_eq!(
-            model_fetch_user_agent,
-            http::HeaderValue::from_static("cc-switch-model-fetch/1.0")
-        );
         assert!(provider_is_github_copilot_upstream(
             &Provider::with_id("plain".to_string(), "Plain".to_string(), json!({}), None,),
             "https://api.githubcopilot.com"

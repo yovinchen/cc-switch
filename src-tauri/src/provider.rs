@@ -532,7 +532,7 @@ pub struct ProviderMeta {
 pub fn parse_custom_user_agent(
     raw: Option<&str>,
 ) -> Result<Option<HeaderValue>, InvalidHeaderValue> {
-    crate::proxy_core_adapter::parse_custom_user_agent(raw)
+    crate::proxy_core::api::transport::parse_custom_user_agent(raw)
 }
 
 impl ProviderMeta {
@@ -944,8 +944,8 @@ pub struct OpenCodeModelLimit {
 #[cfg(test)]
 mod tests {
     use super::{
-        ClaudeModelConfig, CodexModelConfig, GeminiModelConfig, OpenCodeProviderConfig, Provider,
-        ProviderManager, ProviderMeta, UniversalProvider,
+        parse_custom_user_agent, ClaudeModelConfig, CodexModelConfig, GeminiModelConfig,
+        OpenCodeProviderConfig, Provider, ProviderManager, ProviderMeta, UniversalProvider,
     };
     use serde_json::json;
 
@@ -973,6 +973,17 @@ mod tests {
         let value = serde_json::to_value(&meta).expect("serialize ProviderMeta");
 
         assert!(value.get("pricingModelSource").is_none());
+    }
+
+    #[test]
+    fn custom_user_agent_parser_delegates_to_core_contract() {
+        assert_eq!(parse_custom_user_agent(None).expect("none"), None);
+        assert_eq!(parse_custom_user_agent(Some("   ")).expect("blank"), None);
+        let header = parse_custom_user_agent(Some(" cc-switch/1.0\t中文 "))
+            .expect("valid user agent")
+            .expect("header");
+        assert_eq!(header.as_bytes(), "cc-switch/1.0\t中文".as_bytes());
+        assert!(parse_custom_user_agent(Some("bad\nua")).is_err());
     }
 
     #[test]

@@ -835,7 +835,7 @@
 786. forwarder 发送策略里的 Codex OAuth provider 判定已改为 `proxy_core_adapter::provider_is_codex_oauth`：exact header casing 判断继续由 core request-header policy 执行，但 forwarder 不再直接调用 host `Provider::is_codex_oauth()`。
 787. forwarder 的 GitHub Copilot upstream 判定已改为 `proxy_core_adapter::provider_is_github_copilot_upstream`：provider_type 与 base URL 的组合识别仍复用 core request URL policy，但 forwarder 不再直接拆 `provider.meta.provider_type`。
 788. full-url provider metadata 判定已回到 `Provider::is_full_url()`；Copilot dynamic endpoint 与 upstream URL planning 仍消费布尔事实，但普通 provider meta 读取不再经 adapter 中转。
-789. forwarder 的 Provider 级自定义 User-Agent 投影已改为 `proxy_core_adapter::provider_custom_user_agent_header`：forwarder 不再直接读取 `provider.meta.custom_user_agent_header()`，Copilot 指纹 UA 不可覆盖与非法 UA 静默忽略语义集中在 adapter。
+789. forwarder 的 Provider 级自定义 User-Agent 投影已改为 `proxy_core_adapter::provider_custom_user_agent_header`：forwarder 不再直接读取 `provider.meta.custom_user_agent_header()`，Copilot 指纹 UA 不可覆盖语义集中在 adapter；纯 `parse_custom_user_agent` 解析规则由 provider/model-fetch 直接引用 `proxy_core::api::transport::parse_custom_user_agent`。
 790. forwarder 的 Bedrock provider env flag 判定已改为 `proxy_core_adapter::provider_bedrock_env_flag`：Bedrock pre-send optimizer gate 继续复用 core transform policy，但 forwarder 不再直接传入 `provider.settings_config`。
 791. forwarder 的 provider settings 模型映射已改为 `proxy_core_adapter::apply_provider_model_mapping_from_provider`，text-only media 预防投影已改为 `proxy-core::request_media::apply_forwarder_media_prevention_from_facts`：forwarder 只传入 `Provider` 与运行期开关，settings schema 读取继续集中在 adapter/core policy 边界。
 792. forwarder 的 Anthropic thinking rectifier provider 判定已改为 `proxy_core_adapter::provider_uses_anthropic_rectifiers`：forwarder 不再直接调用 provider kind 推断并 matches `ProviderKind`，只消费是否可运行 rectifier 的布尔事实。
@@ -1307,7 +1307,7 @@ forwarder provider adapter name 的一跳 wrapper `forwarder_provider_adapter_na
 forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapter_for_app` 已删除；adapter context factory 和 stream check fallback 通过 `proxy/host/cc_switch/provider_adapter_context.rs` 调用 provider registry，`forwarder.rs` 仍不直接调用 provider 模块。
 本轮继续把 `ForwarderAdapterContext` 下沉到 `proxy/host/cc_switch/provider_adapter_context.rs`：provider adapter trait object、auth info/header fallback、base URL facts、transform gate/action 和 upstream URL assembly 的宿主调用都由该 host 模块拥有；后续已进一步收口为 forward runtime/request source 直接引用 host context，`proxy_core_adapter` 只在自身 runtime 装配中私有消费 context/factory。
 本轮继续把模型列表命令层的 `FetchedModel` DTO 入口从 `proxy_core_adapter` 二次出口收敛到 `proxy_core::api::model_catalog::FetchedModel`，`model_fetch_transport` 只保留 core model catalog transport port 的 reqwest 执行实现。
-本轮继续把模型列表命令层的自定义 User-Agent 解析入口收敛到 `proxy_core_adapter::model_fetch_custom_user_agent_header`，命令不再直接调用 provider 模块的 schema helper。
+本轮继续把模型列表命令层的自定义 User-Agent 解析入口从 provider 模块和 `proxy_core_adapter` 双重 facade 收敛为直接调用 `proxy_core::api::transport::parse_custom_user_agent`，命令保持非法 UA 静默忽略语义但不再经过 adapter。
 本轮继续把 stream_check 服务的标准 provider adapter base URL 提取收敛到 `proxy_core_adapter::stream_check_provider_base_url`，服务层不再直接导入 provider adapter registry、trait 或具体 Claude adapter，只保留 reachability HTTP 探测执行。
 本轮继续把 `FailoverSwitchManager` 的 proxy_config enabled 读取收敛到 `proxy_core_adapter::failover_switch_app_enabled_from_db`：manager 只保留 Tauri emit、托盘刷新和 `hot_switch_provider` 宿主副作用，配置读取失败时跳过切换的策略集中在 adapter。
 本轮继续收窄 `switch_proxy_provider` 命令边界：命令层不再直接读取 provider 或重复官方供应商拦截策略，只把 app/provider 交给 `ProxyService::switch_proxy_target`，由 service 热切换路径统一执行 provider 存在性校验和接管模式防线。
@@ -1558,7 +1558,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1010. `src-tauri` 已声明 Cargo workspace 并纳入 `crates/proxy-core`，独立代理模块测试复用主 `Cargo.lock` 与 workspace target，避免 path crate 单独测试生成游离构建产物。
 1011. `proxy-core` 纳入 workspace 后进入主 crate `cargo clippy --all-targets` 门禁，已清理 core 内部等价 clippy warning，保证迁移后的独立模块与宿主共享静态检查口径。
 1012. Forwarder attempt runtime 的最大尝试次数日志和 legacy 单 provider circuit-breaker bypass 决策已迁入 `proxy-core::forward_failure`，host adapter 只投影 `ForwardAttempt` 数量/channel 事实并继续执行 router permit。
-1013. 自定义 User-Agent 的 trim、空值忽略和 `HeaderValue` 校验规则已迁入 `proxy-core::request_headers::parse_custom_user_agent`，provider/model-fetch/stream-check/forwarder 路径继续经 `proxy_core_adapter` 共享同一解析入口。
+1013. 自定义 User-Agent 的 trim、空值忽略和 `HeaderValue` 校验规则已迁入 `proxy-core::request_headers::parse_custom_user_agent`，provider 与 model-fetch 路径已直接引用 core parser；stream-check/forwarder 中需要 `Provider` 形状和 Copilot upstream fact 的路径继续经 `proxy_core_adapter::provider_custom_user_agent_header` 投影。
 1014. Stream check 的 provider override 配置合并与 probe result 到 `StreamCheckResult` 的成功/失败/degraded envelope 构造已迁入 `proxy-core::api::management`，host `StreamCheckService` 只保留 reqwest 探测、timestamp 注入和 provider override 投影。
 1015. Stream check 批量命令捕获单 provider 异常后的 failed `StreamCheckResult` envelope 已迁入 `proxy-core::api::management::stream_check_failed_result`，host command 直接消费 core helper，只负责并发/循环调度、错误文本和 timestamp 注入。
 1016. Stream check retry loop 的终端兜底 failed envelope 已迁入 `proxy-core::api::management::stream_check_failed_result_with_retry_count`，host service 直接消费 core helper，仍负责重试循环和 `retry_count` 事实注入。
