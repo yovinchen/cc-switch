@@ -8024,14 +8024,6 @@ fn proxy_core_adapter_delegates_provider_settings_validation_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let production_source = production_lines(&source)
-        .map(|(_, line)| line)
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        production_source.contains("provider_settings_validation_issue_spec"),
-        "proxy_core_adapter should expose provider settings validation issue specs through the core re-export"
-    );
     let slice = function_slice(
         &source,
         "pub(crate) fn provider_settings_validation_parts",
@@ -8065,6 +8057,9 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         (
             "src/services/provider/mod.rs",
             &[
+                "provider_key_change_policy_issue_message",
+                "provider_live_config_presence_error_policy",
+                "provider_settings_validation_issue_spec",
                 "ProviderAdditiveLiveWriteAction",
                 "ProviderAdditiveUpdateRoute",
                 "ProviderLiveConfigPresenceErrorPolicy",
@@ -8137,6 +8132,9 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         "LiveTokenProviderSettingsIssue",
         "ProviderAdditiveLiveWriteAction",
         "ProviderAdditiveUpdateRoute",
+        "provider_key_change_policy_issue_message",
+        "provider_live_config_presence_error_policy",
+        "provider_settings_validation_issue_spec",
         "ProviderKeyChangePolicyIssue",
         "ProviderLiveConfigPresenceErrorPolicy",
         "ProviderLiveRemovalTarget",
