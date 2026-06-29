@@ -7106,11 +7106,16 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         );
     }
     for marker in [
+        "pub(crate) enum OpenClawLiveWriteConfig",
+        "pub(crate) enum OpenCodeLiveWriteConfig",
+        "pub(crate) struct OpenClawLiveWritePlan",
+        "pub(crate) struct OpenCodeLiveWritePlan",
         "pub(crate) fn provider_claude_auth_key",
         "pub(crate) fn provider_claude_base_url",
         "pub(crate) fn provider_claude_kind",
         "pub(crate) fn provider_claude_prompt_cache_key",
         "pub(crate) fn provider_claude_responses_prompt_cache_key",
+        "pub(crate) fn provider_codex_catalog_model_ids",
         "pub(crate) fn provider_codex_fast_mode_enabled",
         "pub(crate) fn provider_gemini_auth_strategy",
         "pub(crate) fn provider_gemini_kind",
@@ -7119,7 +7124,9 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn provider_managed_account_binding_input",
         "pub(crate) fn provider_managed_account_id_for",
         "pub(crate) fn provider_openclaw_has_live_provider_fields",
+        "pub(crate) fn provider_openclaw_live_write_plan",
         "pub(crate) fn provider_opencode_live_provider_fragment",
+        "pub(crate) fn provider_opencode_live_write_plan",
         "pub(crate) fn provider_is_copilot_prompt_cache_provider",
         "pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat",
     ] {

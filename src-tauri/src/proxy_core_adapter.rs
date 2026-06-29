@@ -1314,15 +1314,15 @@ fn provider_openclaw_has_live_provider_fields(provider: &Provider) -> bool {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum OpenClawLiveWriteConfig {
+enum OpenClawLiveWriteConfig {
     Typed(OpenClawProviderConfig),
     Raw { config: Value, parse_error: String },
     Invalid { parse_error: String },
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct OpenClawLiveWritePlan {
-    pub(crate) config: OpenClawLiveWriteConfig,
+struct OpenClawLiveWritePlan {
+    config: OpenClawLiveWriteConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -1343,7 +1343,7 @@ pub(crate) struct OpenClawLiveWriteProjection {
     pub(crate) action: OpenClawLiveWriteAction,
 }
 
-pub(crate) fn provider_openclaw_live_write_plan(provider: &Provider) -> OpenClawLiveWritePlan {
+fn provider_openclaw_live_write_plan(provider: &Provider) -> OpenClawLiveWritePlan {
     let config_to_write = provider.settings_config.clone();
     let typed_config = serde_json::from_value::<OpenClawProviderConfig>(config_to_write.clone());
     let decision = core_openclaw_live_write_config_decision(
@@ -1586,16 +1586,16 @@ fn provider_opencode_live_provider_fragment(provider: &Provider) -> OpenCodeLive
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum OpenCodeLiveWriteConfig {
+enum OpenCodeLiveWriteConfig {
     Typed(OpenCodeProviderConfig),
     Raw { config: Value, parse_error: String },
     Invalid { parse_error: String },
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct OpenCodeLiveWritePlan {
-    pub(crate) config: OpenCodeLiveWriteConfig,
-    pub(crate) from_full_config: bool,
+struct OpenCodeLiveWritePlan {
+    config: OpenCodeLiveWriteConfig,
+    from_full_config: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1617,7 +1617,7 @@ pub(crate) struct OpenCodeLiveWriteProjection {
     pub(crate) from_full_config: bool,
 }
 
-pub(crate) fn provider_opencode_live_write_plan(provider: &Provider) -> OpenCodeLiveWritePlan {
+fn provider_opencode_live_write_plan(provider: &Provider) -> OpenCodeLiveWritePlan {
     let fragment = provider_opencode_live_provider_fragment(provider);
     let config_to_write = fragment.config;
     let has_live_provider_fields =
@@ -2635,9 +2635,7 @@ pub(crate) fn codex_takeover_toml_config_for_provider(
     updated
 }
 
-pub(crate) fn provider_codex_catalog_model_ids(
-    provider: &Provider,
-) -> std::collections::HashSet<String> {
+fn provider_codex_catalog_model_ids(provider: &Provider) -> std::collections::HashSet<String> {
     codex_provider_catalog_model_ids_from_settings(&provider.settings_config)
 }
 
