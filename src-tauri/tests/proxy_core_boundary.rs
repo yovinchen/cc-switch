@@ -1180,6 +1180,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn proxy_event_envelope_to_sse_spec(",
     "fn apply_route_candidate_circuit_availability(",
     "fn route_candidate_channel_circuit_keys(",
+    "fn management_route_response_from_router_source(",
     "fn reject_unavailable_channel_ids(",
     "fn channel_route_source_for_materialized_records(",
     "fn channel_route_should_load_legacy_projection(",
@@ -7851,7 +7852,7 @@ fn engine_routing_tests_import_route_contracts_directly() {
     let required_imports = [
         "config::CircuitState,",
         "management::{ChannelRouteSource, ProxyChannelWriteRequest, RouteResolveRequest},",
-        "use crate::proxy_core_adapter::management_route_response_from_router_source;",
+        "use crate::proxy::host::cc_switch::route_resolver::management_route_response_from_router_source;",
     ];
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(test_imports);
     let mut violations = Vec::new();
@@ -8005,8 +8006,8 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
     }
     for marker in ["RouteResolveRequest", "RouteResolveResponse"] {
         assert!(
-            adapter_management_import.contains(marker),
-            "proxy_core_adapter internals should import route-resolve DTO `{marker}` directly from proxy_core::api::management"
+            !adapter_management_import.contains(marker),
+            "proxy_core_adapter should not import management dry-run route DTO `{marker}` after route resolver owns that helper"
         );
     }
 }
@@ -8083,7 +8084,7 @@ fn http_server_tests_import_route_contracts_directly() {
     let required_imports = [
         "use crate::proxy_core::api::management::RouteResolveRequest;",
         "use crate::proxy_core::api::ports::CurrentRouteTarget;",
-        "use crate::proxy_core_adapter::management_route_response_from_router_source;",
+        "use crate::proxy::host::cc_switch::route_resolver::management_route_response_from_router_source;",
     ];
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(test_imports);
     let mut violations = Vec::new();
@@ -20683,24 +20684,37 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
             && source.contains("impl RouteResolver for CcSwitchRouteResolver")
             && source.contains("build_route_plan_with_weighted_roll")
             && source.contains("route_plan_weighted_roll()")
+            && source.contains("pub(crate) async fn management_route_response_from_router_source")
+            && source.contains("list_route_channel_inputs_for_app(&request.app_type)")
+            && source.contains("resolve_channel_route(request, channels, source)")
+            && source.contains("route_candidate_channel_circuit_keys(&response)")
+            && source.contains(
+                "apply_route_candidate_circuit_availability(&mut response, availability)"
+            )
             && source
                 .contains("management_route_response_from_router_source(&self.router, request)"),
-        "CC Switch route resolver should live in host/cc_switch/route_resolver.rs"
+        "CC Switch route resolver and management dry-run response helper should live in host/cc_switch/route_resolver.rs"
     );
     assert!(
-        source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+        source.contains("use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};")
             && source.contains(
                 "use crate::proxy_core::api::management::{RouteResolveRequest, RouteResolveResponse};"
             )
             && source.contains("use crate::proxy_core::api::ports::RouteResolver;")
-            && source.contains(
-                "use crate::proxy_core::api::routing::{build_route_plan_with_weighted_roll, RoutePlan};"
-            )
+            && source.contains("use crate::proxy_core::api::routing::{")
+            && source.contains("apply_route_candidate_circuit_availability")
+            && source.contains("route_candidate_channel_circuit_keys")
+            && source.contains("resolve_channel_route")
+            && source.contains("build_route_plan_with_weighted_roll")
+            && source.contains("RoutePlan")
             && source.contains("pub(crate) use crate::proxy_core::api::routing::RouteRequest;"),
         "CC Switch route resolver should import route contracts directly from proxy_core"
     );
-    let adapter_import =
-        function_slice(&source, "use crate::proxy_core_adapter::", ";\nuse futures");
+    let adapter_import = if source.contains("use crate::proxy_core_adapter::") {
+        function_slice(&source, "use crate::proxy_core_adapter::", ";\nuse futures")
+    } else {
+        ""
+    };
     for adapter_type in [
         "ProxyCoreResult",
         "RoutePlan",
@@ -20710,6 +20724,7 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
         "RouteResolver",
         "build_route_plan_with_weighted_roll",
         "route_plan_from_request",
+        "management_route_response_from_router_source",
     ] {
         assert!(
             !adapter_import.contains(adapter_type),
@@ -20747,8 +20762,13 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
         !adapter_source.contains("route_plan_from_request"),
         "proxy_core_adapter should not re-export route planning through route_plan_from_request"
     );
+    assert!(
+        !adapter_source
+            .contains("pub(crate) async fn management_route_response_from_router_source"),
+        "proxy_core_adapter should not retain the management dry-run route response facade"
+    );
     let host_adapter_import =
-        function_slice(&host_source, "use crate::proxy_core_adapter::{", "};");
+        optional_function_slice(&host_source, "use crate::proxy_core_adapter::{", "};");
     assert!(
         !host_adapter_import.contains("RouteRequest"),
         "proxy_core_host test harness should not import RouteRequest through proxy_core_adapter"
@@ -20756,6 +20776,12 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
     assert!(
         host_source.contains("use crate::proxy::host::cc_switch::route_resolver::RouteRequest;"),
         "proxy_core_host test harness should import RouteRequest through the host route resolver module"
+    );
+    assert!(
+        host_source.contains(
+            "use crate::proxy::host::cc_switch::route_resolver::management_route_response_from_router_source;"
+        ),
+        "proxy_core_host test harness should import management dry-run route helper through the host route resolver module"
     );
 }
 
@@ -22150,7 +22176,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
     );
 
     let host_adapter_import =
-        function_slice(&host_source, "use crate::proxy_core_adapter::{", "};");
+        optional_function_slice(&host_source, "use crate::proxy_core_adapter::{", "};");
     for adapter_symbol in [
         "client_model_catalog_from_optional_raw",
         "DEFAULT_ROUTE_GROUP",

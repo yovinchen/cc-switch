@@ -20,6 +20,8 @@ use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from
 #[cfg(test)]
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 #[cfg(test)]
+use crate::proxy::host::cc_switch::route_resolver::management_route_response_from_router_source;
+#[cfg(test)]
 use crate::proxy::host::cc_switch::route_resolver::RouteRequest;
 #[cfg(test)]
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
@@ -52,9 +54,7 @@ use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest, ProxyResponseBo
 #[cfg(test)]
 use crate::proxy_core::api::usage::UsageRecord;
 #[cfg(test)]
-use crate::proxy_core_adapter::{
-    forward_result_to_proxy_result, management_route_response_from_router_source,
-};
+use crate::proxy_core_adapter::forward_result_to_proxy_result;
 #[cfg(test)]
 use serde_json::Value;
 #[cfg(test)]

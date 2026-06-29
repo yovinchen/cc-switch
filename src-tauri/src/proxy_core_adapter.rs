@@ -29,9 +29,7 @@ use crate::proxy_core::api::domain::{
     AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,
 };
 use crate::proxy_core::api::engine::ProxyEngine;
-use crate::proxy_core::api::management::{
-    ChannelRecord, ChannelRouteSource, RouteResolveRequest, RouteResolveResponse,
-};
+use crate::proxy_core::api::management::{ChannelRecord, ChannelRouteSource};
 use crate::proxy_core::api::ports::{
     proxy_server_info_from_parts, proxy_takeover_status_from_enabled_options,
     record_active_connection_acquired_status, record_active_connection_released_status,
@@ -4011,14 +4009,12 @@ pub(crate) fn should_reapply_codex_official_live_for_provider(provider: &Provide
 }
 
 use crate::proxy_core::api::routing::{
-    apply_route_candidate_circuit_availability, current_provider_db_fallback_required,
-    current_provider_id_from_sources, current_provider_id_option_from_sources,
-    legacy_provider_codex_catalog_models_from_settings, legacy_provider_config_text_from_settings,
-    legacy_provider_env_from_settings, plan_auto_failover_toggle,
-    provider_failover_circuit_lookups, provider_selection_candidate_from_failover_lookup,
-    resolve_channel_route, restored_provider_switchback_decision,
-    route_candidate_channel_circuit_keys, select_provider_ids,
-    should_block_proxy_switch_to_provider_category,
+    current_provider_db_fallback_required, current_provider_id_from_sources,
+    current_provider_id_option_from_sources, legacy_provider_codex_catalog_models_from_settings,
+    legacy_provider_config_text_from_settings, legacy_provider_env_from_settings,
+    plan_auto_failover_toggle, provider_failover_circuit_lookups,
+    provider_selection_candidate_from_failover_lookup, restored_provider_switchback_decision,
+    select_provider_ids, should_block_proxy_switch_to_provider_category,
 };
 
 pub(crate) fn legacy_provider_projection_input(
@@ -5438,22 +5434,6 @@ pub(crate) fn proxy_result_from_forward_parts(
     }
 }
 
-pub(crate) async fn management_route_response_from_router_source(
-    router: &ProviderRouter,
-    request: RouteResolveRequest,
-) -> ProxyCoreResult<RouteResolveResponse> {
-    let (channels, source) = router
-        .list_route_channel_inputs_for_app(&request.app_type)
-        .await
-        .map_err(|error| app_error("list channel route inputs", error))?;
-    let mut response = resolve_channel_route(request, channels, source)?;
-    let availability = router
-        .route_candidate_circuit_availability(route_candidate_channel_circuit_keys(&response))
-        .await;
-    apply_route_candidate_circuit_availability(&mut response, availability);
-    Ok(response)
-}
-
 pub(crate) async fn update_all_circuit_breaker_configs_source(
     router: &ProviderRouter,
     config: CircuitBreakerConfig,
@@ -6638,7 +6618,7 @@ mod tests {
     use crate::proxy_core::api::events::ProxyEventEnvelope;
     use crate::proxy_core::api::management::{
         ChannelKeyRuntimeCandidate, ChannelTestProbeRequest, ProxyChannelModelWriteRequest,
-        ProxyChannelWriteRequest, StreamCheckResult,
+        ProxyChannelWriteRequest, RouteResolveRequest, StreamCheckResult,
     };
     use crate::proxy_core::api::model_catalog::{CopilotModel, DEFAULT_CODEX_MODEL_CONTEXT_WINDOW};
     use crate::proxy_core::api::ports::{
@@ -6647,8 +6627,10 @@ mod tests {
         GeminiLiveConfigIssue,
     };
     use crate::proxy_core::api::routing::{
-        ChannelSpec, ChannelStatus, InterfaceKind, LegacyChannelProjectionInput,
-        ProviderSelectionCandidate, RouteResolveModelInput, RouteSelection,
+        apply_route_candidate_circuit_availability, resolve_channel_route,
+        route_candidate_channel_circuit_keys, ChannelSpec, ChannelStatus, InterfaceKind,
+        LegacyChannelProjectionInput, ProviderSelectionCandidate, RouteResolveModelInput,
+        RouteSelection,
     };
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{

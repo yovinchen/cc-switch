@@ -1,11 +1,13 @@
 //! CC Switch route resolver source.
 
 use crate::proxy::engine::routing::ProviderRouter;
-use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};
 use crate::proxy_core::api::management::{RouteResolveRequest, RouteResolveResponse};
 use crate::proxy_core::api::ports::RouteResolver;
-use crate::proxy_core::api::routing::{build_route_plan_with_weighted_roll, RoutePlan};
-use crate::proxy_core_adapter::management_route_response_from_router_source;
+use crate::proxy_core::api::routing::{
+    apply_route_candidate_circuit_availability, build_route_plan_with_weighted_roll,
+    resolve_channel_route, route_candidate_channel_circuit_keys, RoutePlan,
+};
 use futures::future::BoxFuture;
 use std::sync::Arc;
 
@@ -43,6 +45,22 @@ impl RouteResolver for CcSwitchRouteResolver {
             management_route_response_from_router_source(&self.router, request).await
         })
     }
+}
+
+pub(crate) async fn management_route_response_from_router_source(
+    router: &ProviderRouter,
+    request: RouteResolveRequest,
+) -> ProxyCoreResult<RouteResolveResponse> {
+    let (channels, source) = router
+        .list_route_channel_inputs_for_app(&request.app_type)
+        .await
+        .map_err(|error| ProxyCoreError::Config(format!("list channel route inputs: {error}")))?;
+    let mut response = resolve_channel_route(request, channels, source)?;
+    let availability = router
+        .route_candidate_circuit_availability(route_candidate_channel_circuit_keys(&response))
+        .await;
+    apply_route_candidate_circuit_availability(&mut response, availability);
+    Ok(response)
 }
 
 fn route_plan_weighted_roll() -> u64 {
