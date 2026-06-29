@@ -7135,6 +7135,22 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         );
     }
     for marker in [
+        "provider_non_codex_common_config_snippet_from_settings",
+        "provider_settings_validation_parts_from_settings",
+        "provider_settings_with_live_token_sync",
+        "required_provider_base_url",
+    ] {
+        let reexport_marker = source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::ports") && line.contains(marker)
+        }) || ports_reexport_blocks
+            .iter()
+            .any(|block| block.contains(marker));
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export adapter-only provider settings helper `{marker}`"
+        );
+    }
+    for marker in [
         "extract_claude_auth_key_from_settings",
         "is_gemini_oauth_key_shape",
         "parse_gemini_oauth_credentials",
