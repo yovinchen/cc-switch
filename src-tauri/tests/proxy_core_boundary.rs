@@ -1193,6 +1193,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_selection",
     "fn provider_usage_script(",
     "fn provider_launch_env_vars_for_app(",
+    "fn provider_gemini_env_map(",
     "fn launch_env_vars_from_provider_settings(",
     "launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings",
     "fn provider_stream_check_test_config(",

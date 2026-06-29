@@ -157,13 +157,12 @@ use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection
 
 use crate::proxy_core::api::ports::{
     apply_codex_takeover_auth_placeholder_if_present, ensure_codex_takeover_auth_placeholder,
-    gemini_env_string_map_from_settings, CodexLiveSettingsIssue, CodexLiveSettingsParts,
-    CodexLiveSnapshotIssue, CodexLiveSnapshotParts, CodexLiveTakeoverMatchFacts,
-    CodexProviderBackfillParts, CodexProviderLiveWriteIssue, CodexProviderLiveWriteParts,
-    CopilotOptimizerConfig, GeminiEnvParseIssue, GeminiLiveConfigIssue,
-    GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, OptimizerConfig,
-    ProviderAdditiveLiveWriteAction, ProviderKeyChangePolicyIssue, ProviderSettingsValidationIssue,
-    ProviderSettingsValidationParts, RectifierConfig,
+    CodexLiveSettingsIssue, CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
+    CodexLiveTakeoverMatchFacts, CodexProviderBackfillParts, CodexProviderLiveWriteIssue,
+    CodexProviderLiveWriteParts, CopilotOptimizerConfig, GeminiEnvParseIssue,
+    GeminiLiveConfigIssue, GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue,
+    OptimizerConfig, ProviderAdditiveLiveWriteAction, ProviderKeyChangePolicyIssue,
+    ProviderSettingsValidationIssue, ProviderSettingsValidationParts, RectifierConfig,
 };
 
 pub(crate) use crate::proxy_core::api::ports::{
@@ -2843,14 +2842,6 @@ use crate::proxy_core::api::auth::extract_gemini_api_key_from_settings;
 use crate::proxy_core::api::auth::extract_gemini_base_url_from_settings;
 
 use crate::proxy_core::api::ports::gemini_live_backup_from_effective_settings;
-
-pub(crate) fn provider_gemini_env_map(
-    provider: &Provider,
-) -> Result<HashMap<String, String>, AppError> {
-    Ok(gemini_env_string_map_from_settings(
-        &provider.settings_config,
-    ))
-}
 
 pub(crate) fn parse_gemini_env_file_strict(
     content: &str,
@@ -6892,6 +6883,7 @@ mod tests {
     use crate::proxy_core::api::model_catalog::{CopilotModel, DEFAULT_CODEX_MODEL_CONTEXT_WINDOW};
     use crate::proxy_core::api::ports::{
         codex_restored_live_settings_parts, gemini_env_json_from_map,
+        gemini_env_string_map_from_settings,
     };
     use crate::proxy_core::api::routing::{
         ChannelSpec, ChannelStatus, InterfaceKind, LegacyChannelProjectionInput,
@@ -11912,7 +11904,7 @@ base_url = "https://api.openai.com/v1"
             None,
         );
         assert!(provider_gemini_auth_info(&missing_auth).is_none());
-        let live_env = provider_gemini_env_map(&provider).expect("gemini env map");
+        let live_env = gemini_env_string_map_from_settings(&provider.settings_config);
         assert_eq!(
             live_env.get("GEMINI_API_KEY").map(String::as_str),
             Some(" ya29.access-token ")
