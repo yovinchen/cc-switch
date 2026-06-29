@@ -2038,6 +2038,10 @@ fn is_allowed_failover_switch_core_import(relative: &str, code: &str) -> bool {
         && code.trim() == "use crate::proxy_core::api::routing::failover_switch_pending_key;"
 }
 
+fn is_allowed_gemini_config_ports_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/gemini_config.rs" && code.trim() == "use crate::proxy_core::api::ports::{"
+}
+
 fn is_allowed_engine_routing_test_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/engine/routing.rs" && code.trim() == "use crate::proxy_core::api::{"
 }
@@ -2205,6 +2209,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_claude_desktop_provider_issue_core_import(&relative, code)
                     && !is_allowed_claude_desktop_live_url_core_import(&relative, code)
                     && !is_allowed_failover_switch_core_import(&relative, code)
+                    && !is_allowed_gemini_config_ports_core_import(&relative, code)
                     && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
                     && !is_allowed_provider_common_config_issue_core_import(&relative, code)
@@ -8133,6 +8138,8 @@ fn proxy_core_adapter_delegates_gemini_live_json_policy_to_core() {
     let live_service_source =
         fs::read_to_string(manifest_dir.join("src/services/provider/live.rs"))
             .expect("read services/provider/live.rs");
+    let gemini_config_source = fs::read_to_string(manifest_dir.join("src/gemini_config.rs"))
+        .expect("read gemini_config.rs");
     assert!(
         live_service_source.contains("use crate::proxy_core::api::ports::{")
             && live_service_source.contains("gemini_live_settings_from_env_json_and_config")
@@ -8141,11 +8148,37 @@ fn proxy_core_adapter_delegates_gemini_live_json_policy_to_core() {
         "Gemini live service should import live JSON merge helper directly from proxy-core ports"
     );
     assert!(
+        gemini_config_source.contains("use crate::proxy_core::api::ports::{")
+            && gemini_config_source.contains("gemini_env_json_from_map")
+            && gemini_config_source.contains("gemini_env_string_map_from_settings")
+            && gemini_config_source.contains("parse_gemini_env_file")
+            && gemini_config_source.contains("serialize_gemini_env_file")
+            && !gemini_config_source.contains("proxy_core_adapter::gemini_env_json_from_map")
+            && !gemini_config_source
+                .contains("proxy_core_adapter::gemini_env_string_map_from_settings")
+            && !gemini_config_source.contains("proxy_core_adapter::parse_gemini_env_file(")
+            && !gemini_config_source.contains("proxy_core_adapter::serialize_gemini_env_file("),
+        "gemini_config.rs should import pure Gemini env helpers directly from proxy-core ports"
+    );
+    assert!(
         !source.contains(
             "pub(crate) use crate::proxy_core::api::ports::gemini_env_value_from_env_json"
         ),
         "proxy_core_adapter should not re-export pure Gemini env JSON extraction for tests"
     );
+    for helper in [
+        "gemini_env_json_from_map",
+        "gemini_env_string_map_from_settings",
+        "parse_gemini_env_file",
+        "serialize_gemini_env_file",
+    ] {
+        assert!(
+            !ports_reexport_blocks
+                .iter()
+                .any(|block| block.contains(helper)),
+            "proxy_core_adapter should not re-export pure Gemini env helper `{helper}`"
+        );
+    }
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {

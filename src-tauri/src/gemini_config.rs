@@ -1,5 +1,9 @@
 use crate::config::{get_home_dir, write_text_file};
 use crate::error::AppError;
+use crate::proxy_core::api::ports::{
+    gemini_env_json_from_map, gemini_env_string_map_from_settings, parse_gemini_env_file,
+    serialize_gemini_env_file,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -24,7 +28,7 @@ pub fn get_gemini_env_path() -> PathBuf {
 /// 此函数宽松地解析 .env 文件，跳过无效行。
 /// 对于需要严格验证的场景，请使用 `parse_env_file_strict`。
 pub fn parse_env_file(content: &str) -> HashMap<String, String> {
-    crate::proxy_core_adapter::parse_gemini_env_file(content)
+    parse_gemini_env_file(content)
 }
 
 /// 严格解析 .env 文件内容，返回详细的错误信息
@@ -55,7 +59,7 @@ pub fn parse_env_file_strict(content: &str) -> Result<HashMap<String, String>, A
 
 /// 将键值对序列化为 .env 格式
 pub fn serialize_env_file(map: &HashMap<String, String>) -> String {
-    crate::proxy_core_adapter::serialize_gemini_env_file(map)
+    serialize_gemini_env_file(map)
 }
 
 /// 读取 Gemini .env 文件
@@ -110,12 +114,12 @@ pub fn write_gemini_env_atomic(map: &HashMap<String, String>) -> Result<(), AppE
 
 /// 从 .env 格式转换为 Provider.settings_config (JSON Value)
 pub fn env_to_json(env_map: &HashMap<String, String>) -> Value {
-    crate::proxy_core_adapter::gemini_env_json_from_map(env_map)
+    gemini_env_json_from_map(env_map)
 }
 
 /// 从 Provider.settings_config (JSON Value) 提取 .env 格式
 pub fn json_to_env(settings: &Value) -> Result<HashMap<String, String>, AppError> {
-    Ok(crate::proxy_core_adapter::gemini_env_string_map_from_settings(settings))
+    Ok(gemini_env_string_map_from_settings(settings))
 }
 
 /// 获取 Gemini settings.json 文件路径

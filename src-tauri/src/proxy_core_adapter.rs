@@ -192,7 +192,9 @@ pub(crate) fn mark_custom_endpoint_last_used(
 
 use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};
 
-use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
+use crate::proxy_core::api::ports::{
+    gemini_env_string_map_from_settings, CopilotOptimizerConfig, OptimizerConfig, RectifierConfig,
+};
 
 pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled,
@@ -209,9 +211,8 @@ pub(crate) use crate::proxy_core::api::ports::{
     codex_restored_live_settings_parts,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     detect_gemini_auth_type as core_detect_gemini_auth_type,
-    ensure_codex_takeover_auth_placeholder, gemini_env_json_from_map,
+    ensure_codex_takeover_auth_placeholder,
     gemini_env_parse_issue_spec as core_gemini_env_parse_issue_spec,
-    gemini_env_string_map_from_settings,
     gemini_live_config_object_from_settings as core_gemini_live_config_object_from_settings,
     gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
     is_local_proxy_url,
@@ -222,7 +223,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     live_takeover_config_matches_proxy_for_app as core_live_takeover_config_matches_proxy_for_app,
     live_token_sync_app_label as core_live_token_sync_app_label,
     normalize_provider_settings_for_storage as core_normalize_provider_settings_for_storage,
-    parse_gemini_env_file,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_additive_update_route_for_app as core_provider_additive_update_route,
     provider_app_has_current_provider as core_provider_app_has_current_provider,
@@ -257,7 +257,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present,
     required_provider_base_url as core_required_provider_base_url,
-    sanitize_claude_settings_for_live, serialize_gemini_env_file,
+    sanitize_claude_settings_for_live,
     should_skip_manual_default_live_import as core_should_skip_manual_default_live_import,
     should_skip_provider_legacy_common_config_migration as core_should_skip_provider_legacy_common_config_migration,
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
@@ -7158,6 +7158,7 @@ mod tests {
         ProxyChannelWriteRequest, StreamCheckResult,
     };
     use crate::proxy_core::api::model_catalog::{CopilotModel, DEFAULT_CODEX_MODEL_CONTEXT_WINDOW};
+    use crate::proxy_core::api::ports::gemini_env_json_from_map;
     use crate::proxy_core::api::routing::{
         ChannelSpec, ChannelStatus, InterfaceKind, LegacyChannelProjectionInput,
         ProviderSelectionCandidate, RouteResolveModelInput, RouteSelection,
