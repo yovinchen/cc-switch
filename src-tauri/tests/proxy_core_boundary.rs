@@ -9804,6 +9804,10 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
         "proxy_core_adapter should project Provider facts into the core Claude Desktop validation input"
     );
     assert!(
+        !source.contains("pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key"),
+        "proxy_core_adapter should not expose Claude Desktop proxy credential shape checks as a crate-visible facade"
+    );
+    assert!(
         source.contains("claude_desktop_proxy_has_base_url_and_key(")
             && source.contains("claude_desktop_provider_models_are_profile_safe(")
             && source.contains("claude_desktop_direct_provider_validation_issue(")
@@ -9865,11 +9869,11 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
         function_slice(
             &source,
             "pub(crate) fn provider_claude_desktop_suggested_proxy_routes",
-            "pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key",
+            "fn provider_claude_desktop_proxy_has_base_url_and_key",
         ),
         function_slice(
             &source,
-            "pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key",
+            "fn provider_claude_desktop_proxy_has_base_url_and_key",
             "pub(crate) fn provider_claude_desktop_direct_validation_issue",
         ),
         function_slice(
@@ -10037,7 +10041,7 @@ fn proxy_core_adapter_owns_claude_desktop_import_decision_policy() {
     let import_slice = function_slice(
         &source,
         "pub(crate) fn provider_claude_desktop_import_decision(",
-        "pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key(",
+        "fn provider_claude_desktop_proxy_has_base_url_and_key(",
     );
 
     assert!(
@@ -10085,7 +10089,7 @@ fn proxy_core_adapter_owns_claude_desktop_status_provider_facts() {
     let status_slice = function_slice(
         &source,
         "pub(crate) fn provider_claude_desktop_status_facts(",
-        "pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key(",
+        "fn provider_claude_desktop_proxy_has_base_url_and_key(",
     );
 
     assert!(

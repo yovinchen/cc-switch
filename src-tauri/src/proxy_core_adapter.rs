@@ -6494,7 +6494,7 @@ fn provider_claude_desktop_proxy_routes_missing(provider: &Provider) -> bool {
     provider_claude_desktop_proxy_model_routes(provider).is_err()
 }
 
-pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key(provider: &Provider) -> bool {
+fn provider_claude_desktop_proxy_has_base_url_and_key(provider: &Provider) -> bool {
     crate::proxy_core::api::auth::claude_desktop_proxy_has_base_url_and_key(
         claude_desktop_provider_validation_input(provider),
     )
