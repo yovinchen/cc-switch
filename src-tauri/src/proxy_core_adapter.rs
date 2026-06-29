@@ -2245,7 +2245,7 @@ pub(crate) fn provider_codex_auth_info(provider: &Provider) -> Option<ProviderAu
     provider_codex_api_key(provider).map(core_codex_auth_info_from_api_key)
 }
 
-pub(crate) fn provider_codex_base_url(provider: &Provider) -> Option<String> {
+fn provider_codex_base_url(provider: &Provider) -> Option<String> {
     core_codex_base_url_from_settings(&provider.settings_config)
 }
 

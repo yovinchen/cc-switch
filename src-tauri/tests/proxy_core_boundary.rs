@@ -7432,6 +7432,10 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
         "proxy_core_adapter should not expose raw Codex API key extraction as a crate-visible facade"
     );
     assert!(
+        !source.contains("pub(crate) fn provider_codex_base_url"),
+        "proxy_core_adapter should not expose raw Codex base URL extraction as a crate-visible facade"
+    );
+    assert!(
         !source.contains("pub(crate) type ProviderCredentialValues"),
         "proxy_core_adapter should not re-export provider credential DTOs as adapter aliases"
     );
@@ -7936,7 +7940,7 @@ fn proxy_core_adapter_delegates_codex_base_url_policy_to_core() {
 
     let slice = function_slice(
         &source,
-        "pub(crate) fn provider_codex_base_url",
+        "fn provider_codex_base_url",
         "pub(crate) fn required_codex_provider_base_url",
     );
     assert!(
