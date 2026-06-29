@@ -14,10 +14,10 @@ use crate::proxy_core::api::ports::{
     common_config_settings_mutation_issue_message, gemini_live_settings_from_env_json_and_config,
     gemini_live_settings_to_write, provider_default_live_import_settings,
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
-    proxy_live_config_owned_by_takeover, sanitize_claude_settings_for_live,
-    should_skip_manual_default_live_import, should_skip_startup_default_live_import,
-    CodexLiveSnapshotIssue, CommonConfigSettingsMutationIssue, GeminiLiveConfigIssue,
-    ProviderLiveSyncScope,
+    provider_should_sync_to_live, proxy_live_config_owned_by_takeover,
+    sanitize_claude_settings_for_live, should_skip_manual_default_live_import,
+    should_skip_startup_default_live_import, CodexLiveSnapshotIssue,
+    CommonConfigSettingsMutationIssue, GeminiLiveConfigIssue, ProviderLiveSyncScope,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::apply_common_config_to_settings as adapter_apply_common_config_to_settings;
@@ -31,7 +31,6 @@ use crate::proxy_core_adapter::{
     provider_from_openclaw_live_config, provider_from_opencode_live_config,
     provider_gemini_env_map, provider_gemini_live_config_object,
     provider_openclaw_live_write_projection, provider_opencode_live_write_projection,
-    provider_should_sync_to_live,
     remove_common_config_from_settings as adapter_remove_common_config_from_settings,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
     strip_common_config_from_live_settings_for_backfill as adapter_strip_common_config_from_live_settings_for_backfill,
@@ -381,7 +380,7 @@ fn sync_all_providers_to_live(state: &AppState, app_type: &AppType) -> Result<()
     let mut synced_count = 0usize;
 
     for provider in providers.values() {
-        if !provider_should_sync_to_live(provider) {
+        if !provider_should_sync_to_live(provider.live_config_managed()) {
             continue;
         }
 

@@ -193,7 +193,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
     provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
-    provider_should_sync_to_live as core_provider_should_sync_to_live,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active,
     proxy_hot_switch_should_refresh_codex_live_from_backup as core_proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -1546,14 +1545,6 @@ pub(crate) fn codex_common_config_snippet_from_settings(
     }
 
     Ok(cleaned.trim().to_string())
-}
-
-pub(crate) fn provider_should_sync_to_live(provider: &Provider) -> bool {
-    let live_config_managed = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.live_config_managed);
-    core_provider_should_sync_to_live(live_config_managed)
 }
 
 pub(crate) fn provider_key_change_policy_issue(
@@ -17149,29 +17140,6 @@ command = "latest-command"
         assert!(provider_app_has_current_provider(&AppKind::from(
             &AppType::Codex
         )));
-    }
-
-    #[test]
-    fn provider_live_sync_includes_unknown_and_managed_providers() {
-        let mut provider = Provider::with_id(
-            "sync-provider".to_string(),
-            "Sync Provider".to_string(),
-            json!({}),
-            None,
-        );
-        assert!(provider_should_sync_to_live(&provider));
-
-        provider.meta = Some(ProviderMeta {
-            live_config_managed: Some(true),
-            ..Default::default()
-        });
-        assert!(provider_should_sync_to_live(&provider));
-
-        provider.meta = Some(ProviderMeta {
-            live_config_managed: Some(false),
-            ..Default::default()
-        });
-        assert!(!provider_should_sync_to_live(&provider));
     }
 
     #[test]

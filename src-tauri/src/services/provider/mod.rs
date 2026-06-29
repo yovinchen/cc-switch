@@ -1279,10 +1279,7 @@ impl ProviderService {
     }
 
     fn provider_live_config_managed(provider: &Provider) -> Option<bool> {
-        provider
-            .meta
-            .as_ref()
-            .and_then(|meta| meta.live_config_managed)
+        provider.live_config_managed()
     }
 
     fn set_provider_live_config_managed(provider: &mut Provider, managed: bool) {

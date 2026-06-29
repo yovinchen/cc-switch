@@ -82,6 +82,10 @@ impl Provider {
             || self.claude_base_url_contains("chatgpt.com/backend-api/codex")
     }
 
+    pub fn live_config_managed(&self) -> Option<bool> {
+        self.meta.as_ref().and_then(|meta| meta.live_config_managed)
+    }
+
     fn provider_type(&self) -> Option<&str> {
         self.meta.as_ref().and_then(|m| m.provider_type.as_deref())
     }
@@ -984,6 +988,23 @@ mod tests {
             .expect("header");
         assert_eq!(header.as_bytes(), "cc-switch/1.0\t中文".as_bytes());
         assert!(parse_custom_user_agent(Some("bad\nua")).is_err());
+    }
+
+    #[test]
+    fn provider_exposes_live_config_managed_fact() {
+        let mut provider = Provider::with_id(
+            "provider-1".to_string(),
+            "Provider".to_string(),
+            json!({}),
+            None,
+        );
+        assert_eq!(provider.live_config_managed(), None);
+
+        provider.meta = Some(ProviderMeta {
+            live_config_managed: Some(false),
+            ..ProviderMeta::default()
+        });
+        assert_eq!(provider.live_config_managed(), Some(false));
     }
 
     #[test]
