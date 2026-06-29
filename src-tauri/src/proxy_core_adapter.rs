@@ -87,7 +87,7 @@ fn log_rectified_gemini_tool_args(name: &str) {
 use crate::proxy_core::api::auth::{
     ClaudeAuthKey, ClaudeAuthKeySource, ClaudeDesktopDirectProviderValidationIssue,
     ClaudeDesktopModelRouteInput, ClaudeDesktopProxyProviderConfigValidationIssue,
-    ProviderAuthInfo, ProviderAuthStrategy,
+    ProviderAuthInfo,
 };
 
 use crate::proxy_core::api::errors::{
@@ -1168,8 +1168,6 @@ use crate::proxy_core::api::ports::{ChannelAttemptResult, ProviderAttemptResult}
 use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
 use crate::proxy_core::api::auth::codex_auth_info_from_api_key as core_codex_auth_info_from_api_key;
-use crate::proxy_core::api::auth::gemini_auth_info_from_api_key as core_gemini_auth_info_from_api_key;
-use crate::proxy_core::api::auth::gemini_auth_strategy_for_provider_kind as core_gemini_auth_strategy_for_provider_kind;
 
 pub(crate) const CLAUDE_DESKTOP_GATEWAY_TOKEN_SETTING_KEY: &str = "claude_desktop_gateway_token";
 
@@ -1801,7 +1799,6 @@ use crate::proxy_core::api::transforms::{
 use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;
 use crate::proxy_core::api::transport::{
     build_claude_provider_auth_headers, build_codex_provider_auth_headers,
-    build_gemini_provider_auth_headers,
     codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
     codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required,
     CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts,
@@ -2121,13 +2118,6 @@ fn provider_codex_base_url(provider: &Provider) -> Option<String> {
 
 pub(crate) fn required_codex_provider_base_url(provider: &Provider) -> Result<String, String> {
     core_required_provider_base_url("Codex", provider_codex_base_url(provider))
-}
-
-pub(crate) fn required_gemini_provider_base_url(provider: &Provider) -> Result<String, String> {
-    core_required_provider_base_url(
-        "Gemini",
-        extract_gemini_base_url_from_settings(&provider.settings_config),
-    )
 }
 
 pub(crate) fn required_claude_provider_base_url(provider: &Provider) -> Result<String, String> {
@@ -2706,8 +2696,6 @@ pub(crate) async fn forwarder_runtime_config_from_db_sources(
 
 use crate::proxy_core::api::auth::extract_gemini_api_key_from_settings;
 
-use crate::proxy_core::api::auth::extract_gemini_base_url_from_settings;
-
 use crate::proxy_core::api::ports::gemini_live_backup_from_effective_settings;
 
 fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
@@ -2720,27 +2708,6 @@ fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
     } else {
         ProviderKind::Gemini
     }
-}
-
-fn provider_gemini_auth_strategy(provider: &Provider) -> ProviderAuthStrategy {
-    core_gemini_auth_strategy_for_provider_kind(&provider_gemini_kind(provider))
-}
-
-pub(crate) fn provider_gemini_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
-    let key = extract_gemini_api_key_from_settings(&provider.settings_config)?;
-    let strategy = provider_gemini_auth_strategy(provider);
-    let credentials = parse_gemini_oauth_credentials(&key);
-    Some(core_gemini_auth_info_from_api_key(
-        key,
-        strategy,
-        credentials.as_ref(),
-    ))
-}
-
-pub(crate) fn provider_gemini_auth_headers(
-    auth: &ProviderAuthInfo,
-) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {
-    build_gemini_provider_auth_headers(auth).map_err(|error| error.to_string())
 }
 
 use crate::proxy::host::cc_switch::provider_adapter_context::{
@@ -6677,9 +6644,10 @@ mod tests {
     use crate::proxy::provider::ProviderAdapter;
     use crate::proxy_core::api::auth::channel_auth_profile_missing_key_error;
     use crate::proxy_core::api::auth::{
-        claude_desktop_model_id_is_profile_safe, validate_claude_desktop_gateway_bearer_header,
-        ClaudeDesktopGatewayAuthError, ManagedAccountAuthRuntime,
-        ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagementAuthError,
+        claude_desktop_model_id_is_profile_safe, extract_gemini_base_url_from_settings,
+        validate_claude_desktop_gateway_bearer_header, ClaudeDesktopGatewayAuthError,
+        ManagedAccountAuthRuntime, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
+        ManagementAuthError, ProviderAuthStrategy,
     };
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
@@ -11719,52 +11687,17 @@ base_url = "https://api.openai.com/v1"
             Some("https://generativelanguage.googleapis.com/v1beta")
         );
         assert_eq!(
-            required_gemini_provider_base_url(&provider).as_deref(),
+            core_required_provider_base_url(
+                "Gemini",
+                extract_gemini_base_url_from_settings(&provider.settings_config)
+            )
+            .as_deref(),
             Ok("https://generativelanguage.googleapis.com/v1beta")
         );
-        let missing_gemini_base_url = Provider::with_id(
-            "gemini-missing-base-url".to_string(),
-            "Gemini Missing Base URL".to_string(),
-            json!({}),
-            None,
-        );
         assert_eq!(
-            required_gemini_provider_base_url(&missing_gemini_base_url).unwrap_err(),
+            core_required_provider_base_url("Gemini", None).unwrap_err(),
             "Gemini Provider 缺少 base_url 配置"
         );
-        let provider_auth = provider_gemini_auth_info(&provider).expect("gemini oauth auth info");
-        assert_eq!(
-            provider_gemini_auth_strategy(&provider),
-            ProviderAuthStrategy::GoogleOAuth
-        );
-        assert_eq!(provider_auth.api_key, "ya29.access-token");
-        assert_eq!(
-            provider_auth.access_token.as_deref(),
-            Some("ya29.access-token")
-        );
-        assert_eq!(provider_auth.strategy, ProviderAuthStrategy::GoogleOAuth);
-        let api_key_provider = Provider::with_id(
-            "gemini-api-key".to_string(),
-            "Gemini API Key".to_string(),
-            json!({"env": {"GEMINI_API_KEY": "AIza-api-key"}}),
-            None,
-        );
-        let api_key_auth =
-            provider_gemini_auth_info(&api_key_provider).expect("gemini api key auth info");
-        assert_eq!(
-            provider_gemini_auth_strategy(&api_key_provider),
-            ProviderAuthStrategy::Google
-        );
-        assert_eq!(api_key_auth.api_key, "AIza-api-key");
-        assert_eq!(api_key_auth.access_token, None);
-        assert_eq!(api_key_auth.strategy, ProviderAuthStrategy::Google);
-        let missing_auth = Provider::with_id(
-            "gemini-missing-auth".to_string(),
-            "Gemini Missing Auth".to_string(),
-            json!({}),
-            None,
-        );
-        assert!(provider_gemini_auth_info(&missing_auth).is_none());
         let live_env = gemini_env_string_map_from_settings(&provider.settings_config);
         assert_eq!(
             live_env.get("GEMINI_API_KEY").map(String::as_str),
@@ -11852,33 +11785,12 @@ base_url = "https://api.openai.com/v1"
             oauth_headers[0].1,
             http::HeaderValue::from_static("Bearer ya29.access-token")
         );
-        let provider_oauth_headers =
-            provider_gemini_auth_headers(&ProviderAuthInfo::with_access_token(
-                "refresh-token".to_string(),
-                "ya29.provider-access-token".to_string(),
-            ))
-            .expect("provider gemini oauth headers");
-        assert_eq!(provider_oauth_headers[0].0.as_str(), "authorization");
-        assert_eq!(
-            provider_oauth_headers[0].1,
-            http::HeaderValue::from_static("Bearer ya29.provider-access-token")
-        );
         let api_key_headers =
             build_gemini_auth_headers("AIza-api-key", None, false).expect("api key headers");
         assert_eq!(api_key_headers[0].0.as_str(), "x-goog-api-key");
         assert_eq!(
             api_key_headers[0].1,
             http::HeaderValue::from_static("AIza-api-key")
-        );
-        let provider_api_key_headers = provider_gemini_auth_headers(&ProviderAuthInfo::new(
-            "AIza-provider-key".to_string(),
-            ProviderAuthStrategy::Google,
-        ))
-        .expect("provider gemini api key headers");
-        assert_eq!(provider_api_key_headers[0].0.as_str(), "x-goog-api-key");
-        assert_eq!(
-            provider_api_key_headers[0].1,
-            http::HeaderValue::from_static("AIza-provider-key")
         );
     }
 

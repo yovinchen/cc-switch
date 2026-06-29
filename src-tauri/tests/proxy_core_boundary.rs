@@ -2008,6 +2008,17 @@ fn is_allowed_provider_auth_core_import(relative: &str, code: &str) -> bool {
     )
 }
 
+fn is_allowed_gemini_provider_direct_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/provider/gemini.rs"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::auth::{"
+                | "use crate::proxy_core::api::domain::ProviderKind;"
+                | "use crate::proxy_core::api::ports::required_provider_base_url;"
+                | "use crate::proxy_core::api::transport::build_gemini_provider_auth_headers;"
+        )
+}
+
 fn is_allowed_provider_upstream_url_core_import(relative: &str, code: &str) -> bool {
     matches!(
         (relative, code.trim()),
@@ -2270,6 +2281,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
             for marker in FORBIDDEN_MARKERS {
                 if code.contains(marker)
                     && !is_allowed_provider_auth_core_import(&relative, code)
+                    && !is_allowed_gemini_provider_direct_core_import(&relative, code)
                     && !is_allowed_provider_upstream_url_core_import(&relative, code)
                     && !is_allowed_provider_adapter_kind_core_import(&relative, code)
                     && !is_allowed_test_proxy_config_core_import(&relative, code)
@@ -5518,16 +5530,20 @@ fn provider_adapter_auth_contracts_import_core_types_directly() {
 
     for relative in auth_info_files {
         let source = fs::read_to_string(manifest_dir.join(relative)).expect("read provider source");
+        let has_grouped_auth_import = source.contains("use crate::proxy_core::api::auth::{");
         assert!(
-            source.contains("use crate::proxy_core::api::auth::ProviderAuthInfo;"),
+            source.contains("use crate::proxy_core::api::auth::ProviderAuthInfo;")
+                || (has_grouped_auth_import && source.contains("ProviderAuthInfo")),
             "{relative} should import ProviderAuthInfo directly from proxy_core::api::auth"
         );
     }
 
     for relative in auth_strategy_files {
         let source = fs::read_to_string(manifest_dir.join(relative)).expect("read provider source");
+        let has_grouped_auth_import = source.contains("use crate::proxy_core::api::auth::{");
         assert!(
-            source.contains("use crate::proxy_core::api::auth::ProviderAuthStrategy;"),
+            source.contains("use crate::proxy_core::api::auth::ProviderAuthStrategy;")
+                || (has_grouped_auth_import && source.contains("ProviderAuthStrategy")),
             "{relative} should import ProviderAuthStrategy directly from proxy_core::api::auth"
         );
     }
@@ -5606,12 +5622,6 @@ fn proxy_core_adapter_does_not_reexport_gemini_settings_extraction_helpers() {
         assert!(
             !single_line_reexport && !grouped_reexport,
             "proxy_core_adapter should not re-export Gemini settings extraction helper `{helper}`"
-        );
-        assert!(
-            adapter_source.contains(&format!(
-                "use crate::proxy_core::api::auth::{helper};"
-            )),
-            "proxy_core_adapter internals should import Gemini settings extraction helper `{helper}` privately from proxy_core auth"
         );
     }
 }
@@ -6575,33 +6585,52 @@ fn engine_and_host_test_fixtures_import_core_contracts_directly() {
 }
 
 #[test]
-fn production_gemini_provider_adapter_delegates_auth_info_to_adapter() {
+fn production_gemini_provider_adapter_imports_auth_policy_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider/gemini.rs");
     let source = fs::read_to_string(&path).expect("read gemini provider adapter source");
-    let extract_auth = function_slice(
-        &source,
-        "    fn extract_auth(&self, provider: &Provider)",
-        "    fn build_url(&self, base_url: &str, endpoint: &str) -> String",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(extract_auth) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy/provider/gemini.rs extract_auth:{} contains auth info marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
+    for required in [
+        "use crate::proxy_core::api::auth::{",
+        "extract_gemini_api_key_from_settings",
+        "extract_gemini_base_url_from_settings",
+        "gemini_auth_info_from_api_key",
+        "gemini_auth_strategy_for_provider_kind",
+        "is_gemini_oauth_key_shape",
+        "parse_gemini_oauth_credentials",
+        "ProviderAuthInfo",
+        "ProviderAuthStrategy",
+        "use crate::proxy_core::api::domain::ProviderKind;",
+        "use crate::proxy_core::api::ports::required_provider_base_url;",
+        "use crate::proxy_core::api::transport::build_gemini_provider_auth_headers;",
+    ] {
+        if !source.contains(required) {
+            violations.push(format!(
+                "src/proxy/provider/gemini.rs should import `{required}` directly from proxy_core"
+            ));
+        }
+    }
+
+    let adapter_import_identifiers = proxy_core_adapter_import_identifiers(&source);
+    for forbidden in [
+        "provider_gemini_auth_headers",
+        "provider_gemini_auth_info",
+        "required_gemini_provider_base_url",
+    ] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == forbidden)
+        {
+            violations.push(format!(
+                "src/proxy/provider/gemini.rs imports `{forbidden}` through proxy_core_adapter"
+            ));
         }
     }
 
     assert!(
         violations.is_empty(),
-        "Gemini provider adapter must delegate auth info construction to proxy_core_adapter helpers:\n{}",
+        "Gemini provider adapter should project Provider.settings_config locally and consume pure core auth/base-url helpers directly:\n{}",
         violations.join("\n")
     );
 }
@@ -6735,10 +6764,7 @@ fn production_claude_provider_adapter_delegates_auth_info_to_adapter() {
 #[test]
 fn production_simple_provider_adapters_delegate_auth_headers_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let provider_paths = [
-        "src/proxy/provider/codex.rs",
-        "src/proxy/provider/gemini.rs",
-    ];
+    let provider_paths = ["src/proxy/provider/codex.rs"];
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
     let adapter_transport_reexport_slice = optional_function_slice(
@@ -6780,7 +6806,7 @@ fn production_simple_provider_adapters_delegate_auth_headers_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "simple provider adapters must delegate auth header construction and error text to proxy_core_adapter helpers:\n{}",
+        "Codex provider adapter must delegate auth header construction and error text to proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }
@@ -8636,8 +8662,8 @@ fn proxy_core_adapter_delegates_required_provider_base_url_policy_to_core() {
         "fn provider_codex_config_text",
     );
     assert!(
-        slice.matches("core_required_provider_base_url").count() == 3,
-        "proxy_core_adapter should delegate required provider base URL errors to core for Codex/Gemini/Claude"
+        slice.matches("core_required_provider_base_url").count() == 2,
+        "proxy_core_adapter should delegate required provider base URL errors to core for Codex/Claude; Gemini now projects this in its provider adapter"
     );
     assert!(
         !source.contains(

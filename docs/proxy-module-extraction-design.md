@@ -1914,6 +1914,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1359. ProviderService 的 provider key-change 与 additive live-write 判断已直接消费 `proxy-core::ports::{provider_key_change_policy_issue_for_app,provider_additive_live_write_action_for_app}` 并在 service 层投影 host `Provider.category`；`proxy_core_adapter` 不再保留对应生产 facade，adapter 自测只在 tests module 内直接调用 core policy。
 1360. Gemini `.env` strict parse 入口已从 `proxy_core_adapter` wrapper 移回 `gemini_config.rs` 本地投影：配置模块直接消费 `proxy-core::ports::{parse_gemini_env_file_strict,gemini_env_parse_issue_spec,GeminiEnvParseIssue}`，adapter 不再承接纯 `.env` parse issue 到 `AppError` 的中转。
 1361. Gemini settings basic/strict validation 已从 `proxy_core_adapter` provider wrapper 移回 `gemini_config.rs` 本地投影：ProviderService 与 live 写入路径直接把 `Provider.settings_config` 交给 config 边界，adapter 不再暴露 Gemini settings validation façade。
+1362. Gemini provider adapter 的 base URL、auth info 与 auth header 构造已从 `proxy_core_adapter` façade 改为在 `proxy/provider/gemini.rs` 本地投影 `Provider.settings_config` 并直接调用 core auth/transport/ports helper；adapter 不再暴露 Gemini provider auth/base-url wrapper。
 
 ## 背景
 

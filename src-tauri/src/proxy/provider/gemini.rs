@@ -9,13 +9,17 @@
 use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
-use crate::proxy_core::api::auth::ProviderAuthInfo;
 #[cfg(test)]
 use crate::proxy_core::api::auth::ProviderAuthStrategy;
-use crate::proxy_core::api::transforms::build_gemini_upstream_url;
-use crate::proxy_core_adapter::{
-    provider_gemini_auth_headers, provider_gemini_auth_info, required_gemini_provider_base_url,
+use crate::proxy_core::api::auth::{
+    extract_gemini_api_key_from_settings, extract_gemini_base_url_from_settings,
+    gemini_auth_info_from_api_key, gemini_auth_strategy_for_provider_kind,
+    is_gemini_oauth_key_shape, parse_gemini_oauth_credentials, ProviderAuthInfo,
 };
+use crate::proxy_core::api::domain::ProviderKind;
+use crate::proxy_core::api::ports::required_provider_base_url;
+use crate::proxy_core::api::transforms::build_gemini_upstream_url;
+use crate::proxy_core::api::transport::build_gemini_provider_auth_headers;
 
 /// Gemini 适配器
 pub struct GeminiAdapter;
@@ -32,17 +36,50 @@ impl Default for GeminiAdapter {
     }
 }
 
+fn gemini_provider_kind(provider: &Provider) -> ProviderKind {
+    if extract_gemini_api_key_from_settings(&provider.settings_config)
+        .as_deref()
+        .map(is_gemini_oauth_key_shape)
+        .unwrap_or(false)
+    {
+        ProviderKind::GeminiCli
+    } else {
+        ProviderKind::Gemini
+    }
+}
+
+fn gemini_provider_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
+    let key = extract_gemini_api_key_from_settings(&provider.settings_config)?;
+    let strategy = gemini_auth_strategy_for_provider_kind(&gemini_provider_kind(provider));
+    let credentials = parse_gemini_oauth_credentials(&key);
+    Some(gemini_auth_info_from_api_key(
+        key,
+        strategy,
+        credentials.as_ref(),
+    ))
+}
+
+fn gemini_provider_auth_headers(
+    auth: &ProviderAuthInfo,
+) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {
+    build_gemini_provider_auth_headers(auth).map_err(|error| error.to_string())
+}
+
 impl ProviderAdapter for GeminiAdapter {
     fn name(&self) -> &'static str {
         "Gemini"
     }
 
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError> {
-        required_gemini_provider_base_url(provider).map_err(ProxyError::ConfigError)
+        required_provider_base_url(
+            "Gemini",
+            extract_gemini_base_url_from_settings(&provider.settings_config),
+        )
+        .map_err(ProxyError::ConfigError)
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
-        provider_gemini_auth_info(provider)
+        gemini_provider_auth_info(provider)
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {
@@ -53,7 +90,7 @@ impl ProviderAdapter for GeminiAdapter {
         &self,
         auth: &ProviderAuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
-        provider_gemini_auth_headers(auth).map_err(ProxyError::AuthError)
+        gemini_provider_auth_headers(auth).map_err(ProxyError::AuthError)
     }
 }
 
