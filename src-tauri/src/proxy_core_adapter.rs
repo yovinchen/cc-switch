@@ -193,7 +193,10 @@ pub(crate) fn mark_custom_endpoint_last_used(
 use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};
 
 use crate::proxy_core::api::ports::{
-    gemini_env_string_map_from_settings, CopilotOptimizerConfig, OptimizerConfig, RectifierConfig,
+    gemini_env_string_map_from_settings, CodexLiveSettingsIssue, CodexLiveSettingsParts,
+    CodexLiveSnapshotIssue, CodexLiveSnapshotParts, CodexProviderBackfillParts,
+    CodexProviderLiveWriteIssue, CodexProviderLiveWriteParts, CopilotOptimizerConfig,
+    OptimizerConfig, RectifierConfig,
 };
 
 pub(crate) use crate::proxy_core::api::ports::{
@@ -262,9 +265,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
     validate_gemini_settings_basic as core_validate_gemini_settings_basic,
     validate_gemini_settings_strict as core_validate_gemini_settings_strict,
-    CodexLiveSettingsIssue, CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
-    CodexLiveTakeoverMatchFacts, CodexProviderBackfillParts, CodexProviderLiveWriteIssue,
-    CodexProviderLiveWriteParts, GeminiEnvParseIssue, GeminiLiveConfigIssue,
+    CodexLiveTakeoverMatchFacts, GeminiEnvParseIssue, GeminiLiveConfigIssue,
     GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, ProviderAdditiveLiveWriteAction,
     ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
     ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,

@@ -2044,7 +2044,11 @@ fn is_allowed_gemini_config_ports_core_import(relative: &str, code: &str) -> boo
 
 fn is_allowed_config_service_ports_core_import(relative: &str, code: &str) -> bool {
     relative == "src/services/config.rs"
-        && code.trim() == "use crate::proxy_core::api::ports::codex_restored_live_settings_parts;"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::ports::{"
+                | "use crate::proxy_core::api::ports::{codex_restored_live_settings_parts, CodexLiveSettingsIssue};"
+        )
 }
 
 fn is_allowed_engine_routing_test_core_import(relative: &str, code: &str) -> bool {
@@ -7960,18 +7964,43 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
         );
     }
     assert!(
-        config_service_source
-            .contains("use crate::proxy_core::api::ports::codex_restored_live_settings_parts;")
+        (config_service_source.contains(
+            "use crate::proxy_core::api::ports::{codex_restored_live_settings_parts, CodexLiveSettingsIssue};"
+        ) || (config_service_source
+            .contains("use crate::proxy_core::api::ports::{")
+            && config_service_source.contains("codex_restored_live_settings_parts")
+            && config_service_source.contains("CodexLiveSettingsIssue")))
             && !config_service_source
                 .contains("use crate::proxy_core_adapter::{\n    codex_restored_live_settings_parts"),
-        "services/config.rs should import restored Codex live settings helper directly from proxy_core ports"
+        "services/config.rs should import restored Codex live settings helper and issue type directly from proxy_core ports"
     );
+    let live_service_source =
+        fs::read_to_string(manifest_dir.join("src/services/provider/live.rs"))
+            .expect("read services/provider/live.rs");
     assert!(
-        !ports_reexport_blocks
-            .iter()
-            .any(|block| block.contains("codex_restored_live_settings_parts")),
-        "proxy_core_adapter should not re-export codex_restored_live_settings_parts"
+        live_service_source.contains("use crate::proxy_core::api::ports::{")
+            && live_service_source.contains("CodexLiveSnapshotIssue")
+            && !live_service_source.contains("use crate::proxy_core_adapter::{\n    CodexLiveSnapshotIssue")
+            && !live_service_source.contains("proxy_core_adapter::CodexLiveSnapshotIssue"),
+        "services/provider/live.rs should import Codex live snapshot issue directly from proxy_core ports"
     );
+    for marker in [
+        "codex_restored_live_settings_parts",
+        "CodexLiveSettingsIssue",
+        "CodexLiveSettingsParts",
+        "CodexLiveSnapshotIssue",
+        "CodexLiveSnapshotParts",
+        "CodexProviderBackfillParts",
+        "CodexProviderLiveWriteIssue",
+        "CodexProviderLiveWriteParts",
+    ] {
+        assert!(
+            !ports_reexport_blocks
+                .iter()
+                .any(|block| block.contains(marker)),
+            "proxy_core_adapter should not re-export Codex live settings contract `{marker}`"
+        );
+    }
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {

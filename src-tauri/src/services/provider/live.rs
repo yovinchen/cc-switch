@@ -11,7 +11,7 @@ use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core::api::ports::{
     common_config_settings_mutation_issue_message, gemini_live_settings_from_env_json_and_config,
-    gemini_live_settings_to_write, CommonConfigSettingsMutationIssue,
+    gemini_live_settings_to_write, CodexLiveSnapshotIssue, CommonConfigSettingsMutationIssue,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::apply_common_config_to_settings as adapter_apply_common_config_to_settings;
@@ -32,10 +32,10 @@ use crate::proxy_core_adapter::{
     sanitize_claude_settings_for_live, should_skip_manual_default_live_import,
     should_skip_startup_default_live_import,
     strip_common_config_from_live_settings_for_backfill as adapter_strip_common_config_from_live_settings_for_backfill,
-    validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
-    HermesLiveImportIssue, OpenClawLiveImportIssue, OpenClawLiveWriteAction,
-    OpenCodeLiveImportIssue, OpenCodeLiveWriteAction, ProviderBackfillSettingsWarning,
-    ProviderEffectiveSettingsWarning, ProviderLiveSyncScope,
+    validate_provider_gemini_settings_strict, GeminiLiveConfigIssue, HermesLiveImportIssue,
+    OpenClawLiveImportIssue, OpenClawLiveWriteAction, OpenCodeLiveImportIssue,
+    OpenCodeLiveWriteAction, ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
+    ProviderLiveSyncScope,
 };
 use crate::services::mcp::McpService;
 use crate::store::AppState;
