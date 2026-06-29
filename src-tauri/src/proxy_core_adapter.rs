@@ -3065,7 +3065,7 @@ pub(crate) fn provider_kind_from_app_type_and_config(
 
 use crate::proxy_core::api::transforms::is_copilot_prompt_cache_provider;
 
-pub(crate) fn provider_is_copilot_prompt_cache_provider(provider: &Provider) -> bool {
+fn provider_is_copilot_prompt_cache_provider(provider: &Provider) -> bool {
     is_copilot_prompt_cache_provider(
         provider
             .meta
@@ -3075,7 +3075,7 @@ pub(crate) fn provider_is_copilot_prompt_cache_provider(provider: &Provider) -> 
     )
 }
 
-pub(crate) fn provider_claude_prompt_cache_key(provider: &Provider) -> Option<&str> {
+fn provider_claude_prompt_cache_key(provider: &Provider) -> Option<&str> {
     provider
         .meta
         .as_ref()
@@ -3084,7 +3084,7 @@ pub(crate) fn provider_claude_prompt_cache_key(provider: &Provider) -> Option<&s
 
 use crate::proxy_core::api::transforms::resolve_claude_responses_prompt_cache_key;
 
-pub(crate) fn provider_claude_responses_prompt_cache_key(
+fn provider_claude_responses_prompt_cache_key(
     provider: &Provider,
     body: &Value,
     session_id: Option<&str>,
@@ -3097,7 +3097,7 @@ pub(crate) fn provider_claude_responses_prompt_cache_key(
     )
 }
 
-pub(crate) fn provider_codex_fast_mode_enabled(provider: &Provider) -> bool {
+fn provider_codex_fast_mode_enabled(provider: &Provider) -> bool {
     provider.codex_fast_mode_enabled()
 }
 
@@ -3293,7 +3293,7 @@ pub(crate) fn provider_claude_transform_sse_for_api_format(
     )
 }
 
-pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat(
+fn provider_should_preserve_reasoning_content_for_openai_chat(
     provider: &Provider,
     body: &Value,
 ) -> bool {

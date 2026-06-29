@@ -7108,8 +7108,13 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
     for marker in [
         "pub(crate) fn provider_claude_auth_key",
         "pub(crate) fn provider_claude_base_url",
+        "pub(crate) fn provider_claude_prompt_cache_key",
+        "pub(crate) fn provider_claude_responses_prompt_cache_key",
+        "pub(crate) fn provider_codex_fast_mode_enabled",
         "pub(crate) fn provider_openclaw_has_live_provider_fields",
         "pub(crate) fn provider_opencode_live_provider_fragment",
+        "pub(crate) fn provider_is_copilot_prompt_cache_provider",
+        "pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat",
     ] {
         assert!(
             !source.contains(marker),
@@ -12355,7 +12360,7 @@ fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
     let stream_slice = function_slice(
         &source,
         "pub(crate) fn provider_claude_transform_sse_for_api_format",
-        "pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat",
+        "fn provider_should_preserve_reasoning_content_for_openai_chat",
     );
 
     assert!(
