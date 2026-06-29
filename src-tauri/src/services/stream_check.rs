@@ -23,13 +23,17 @@ use std::time::Instant;
 use crate::app_config::AppType;
 use crate::error::AppError;
 use crate::provider::Provider;
+use crate::proxy::host::cc_switch::provider_adapter_context::forwarder_provider_adapter_context_for_app;
+use crate::proxy_core::api::domain::{
+    additive_provider_stream_check_base_url_from_settings,
+    additive_stream_check_base_url_missing_error_spec, AppKind,
+};
 use crate::proxy_core::api::management::{
     merge_stream_check_config, should_retry_channel_reachability_failure,
     stream_check_failed_result_with_retry_count, stream_check_result_from_probe_result,
     StreamCheckConfigOverride,
 };
 use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;
-use crate::proxy_core_adapter::stream_check_provider_base_url;
 
 pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};
 
@@ -138,7 +142,29 @@ impl StreamCheckService {
     /// 没有 cc-switch 能可靠探测的目标——这类供应商的连通检测按钮在前端已隐藏
     /// （见 `ProviderCard.tsx`），故此处对其提取失败直接报错即可，不做官方端点回退。
     fn resolve_base_url(app_type: &AppType, provider: &Provider) -> Result<String, AppError> {
-        stream_check_provider_base_url(app_type, provider)
+        match app_type {
+            AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
+                additive_provider_stream_check_base_url_from_settings(
+                    &AppKind::from(app_type),
+                    &provider.settings_config,
+                )
+                .ok_or_else(|| Self::missing_base_url_error(app_type))
+            }
+            _ => forwarder_provider_adapter_context_for_app(app_type)
+                .provider_url_facts(provider)
+                .map(|facts| facts.base_url)
+                .map_err(|e| AppError::Message(format!("Failed to extract base_url: {e}"))),
+        }
+    }
+
+    fn missing_base_url_error(app_type: &AppType) -> AppError {
+        if let Some(spec) =
+            additive_stream_check_base_url_missing_error_spec(&AppKind::from(app_type))
+        {
+            AppError::localized(spec.key, spec.zh, spec.en)
+        } else {
+            AppError::Message("base_url 为空".to_string())
+        }
     }
 
     /// 轻量可达性探测：GET `base_url`，收到任意 HTTP 响应即可达。
@@ -338,6 +364,108 @@ mod tests {
         });
         let merged3 = StreamCheckService::merge_provider_config(&p3, &global);
         assert_eq!(merged3.timeout_secs, global.timeout_secs);
+    }
+
+    #[test]
+    fn test_resolve_base_url_uses_provider_adapter_and_additive_policies() {
+        let claude_desktop_provider = Provider::with_id(
+            "claude-desktop".to_string(),
+            "Claude Desktop".to_string(),
+            serde_json::json!({ "env": { "ANTHROPIC_BASE_URL": "https://claude-relay.example/v1" } }),
+            None,
+        );
+        assert_eq!(
+            StreamCheckService::resolve_base_url(&AppType::ClaudeDesktop, &claude_desktop_provider)
+                .expect("Claude Desktop base URL"),
+            "https://claude-relay.example/v1"
+        );
+
+        let codex_provider = Provider::with_id(
+            "codex".to_string(),
+            "Codex".to_string(),
+            serde_json::json!({ "base_url": "https://codex-relay.example/v1/" }),
+            None,
+        );
+        assert_eq!(
+            StreamCheckService::resolve_base_url(&AppType::Codex, &codex_provider)
+                .expect("Codex base URL"),
+            "https://codex-relay.example/v1"
+        );
+
+        let opencode_provider = Provider::with_id(
+            "opencode".to_string(),
+            "OpenCode".to_string(),
+            serde_json::json!({
+                "npm": "@ai-sdk/anthropic",
+                "options": {}
+            }),
+            None,
+        );
+        assert_eq!(
+            StreamCheckService::resolve_base_url(&AppType::OpenCode, &opencode_provider)
+                .expect("OpenCode base URL"),
+            "https://api.anthropic.com"
+        );
+
+        let openclaw_provider = Provider::with_id(
+            "openclaw".to_string(),
+            "OpenClaw".to_string(),
+            serde_json::json!({ "baseUrl": " https://openclaw.example/v1 " }),
+            None,
+        );
+        assert_eq!(
+            StreamCheckService::resolve_base_url(&AppType::OpenClaw, &openclaw_provider)
+                .expect("OpenClaw base URL"),
+            "https://openclaw.example/v1"
+        );
+
+        let hermes_provider = Provider::with_id(
+            "hermes".to_string(),
+            "Hermes".to_string(),
+            serde_json::json!({ "base_url": " https://hermes.example " }),
+            None,
+        );
+        assert_eq!(
+            StreamCheckService::resolve_base_url(&AppType::Hermes, &hermes_provider)
+                .expect("Hermes base URL"),
+            "https://hermes.example"
+        );
+
+        let missing_opencode = Provider::with_id(
+            "opencode-missing".to_string(),
+            "OpenCode Missing".to_string(),
+            serde_json::json!({
+                "npm": "@ai-sdk/openai-compatible",
+                "options": {}
+            }),
+            None,
+        );
+        assert!(matches!(
+            StreamCheckService::resolve_base_url(&AppType::OpenCode, &missing_opencode),
+            Err(AppError::Localized { key, .. }) if key == "opencode_base_url_missing"
+        ));
+
+        let missing_openclaw = Provider::with_id(
+            "openclaw-missing".to_string(),
+            "OpenClaw Missing".to_string(),
+            serde_json::json!({}),
+            None,
+        );
+        assert!(matches!(
+            StreamCheckService::resolve_base_url(&AppType::OpenClaw, &missing_openclaw),
+            Err(AppError::Localized { key, .. }) if key == "openclaw_base_url_missing"
+        ));
+
+        let missing_hermes = Provider::with_id(
+            "hermes-missing".to_string(),
+            "Hermes Missing".to_string(),
+            serde_json::json!({}),
+            None,
+        );
+        assert!(matches!(
+            StreamCheckService::resolve_base_url(&AppType::Hermes, &missing_hermes),
+            Err(AppError::Localized { key, .. }) if key == "hermes_base_url_missing"
+        ));
     }
 
     #[test]

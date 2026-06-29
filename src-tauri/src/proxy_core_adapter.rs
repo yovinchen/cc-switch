@@ -1246,10 +1246,6 @@ use crate::proxy_core::api::domain::{
     provider_account_ref, provider_metadata_from_input, unsupported_app_kind_config_error,
 };
 
-use crate::proxy_core::api::domain::{
-    additive_provider_stream_check_base_url_from_settings as core_additive_provider_stream_check_base_url_from_settings,
-    additive_stream_check_base_url_missing_error_spec as core_additive_stream_check_base_url_missing_error_spec,
-};
 use crate::proxy_core::api::ports::{
     apply_claude_common_config_to_settings as core_apply_claude_common_config_to_settings,
     apply_gemini_common_config_to_settings as core_apply_gemini_common_config_to_settings,
@@ -2702,9 +2698,7 @@ fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
     }
 }
 
-use crate::proxy::host::cc_switch::provider_adapter_context::{
-    forwarder_provider_adapter_context_for_app, ForwarderAdapterContext,
-};
+use crate::proxy::host::cc_switch::provider_adapter_context::ForwarderAdapterContext;
 use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;
 
 pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
@@ -2726,35 +2720,6 @@ pub(crate) fn resolve_forwarder_claude_api_format(
         is_copilot,
         copilot_model_vendor,
     )
-}
-
-pub(crate) fn stream_check_provider_base_url(
-    app_type: &AppType,
-    provider: &Provider,
-) -> Result<String, AppError> {
-    match app_type {
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
-            core_additive_provider_stream_check_base_url_from_settings(
-                &AppKind::from(app_type),
-                &provider.settings_config,
-            )
-            .ok_or_else(|| missing_stream_check_base_url_error(app_type))
-        }
-        _ => forwarder_provider_adapter_context_for_app(app_type)
-            .provider_url_facts(provider)
-            .map(|facts| facts.base_url)
-            .map_err(|e| AppError::Message(format!("Failed to extract base_url: {e}"))),
-    }
-}
-
-fn missing_stream_check_base_url_error(app_type: &AppType) -> AppError {
-    if let Some(spec) =
-        core_additive_stream_check_base_url_missing_error_spec(&AppKind::from(app_type))
-    {
-        AppError::localized(spec.key, spec.zh, spec.en)
-    } else {
-        AppError::Message("base_url 为空".to_string())
-    }
 }
 
 pub(crate) fn stream_check_proxy_target_ids_from_sources(
@@ -6303,6 +6268,7 @@ fn account_ref(provider: &Provider) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use crate::proxy::host::cc_switch::provider_adapter_context::forwarder_provider_adapter_context_for_app;
     use crate::proxy_core::api::config::{
         app_type_from_circuit_key, channel_circuit_key, provider_circuit_key, CircuitState,
     };
@@ -15738,108 +15704,6 @@ command = "latest-command"
                 reachability_status.as_str()
             );
         }
-    }
-
-    #[test]
-    fn stream_check_adapter_resolves_standard_provider_base_urls() {
-        let claude_desktop_provider = Provider::with_id(
-            "claude-desktop".to_string(),
-            "Claude Desktop".to_string(),
-            json!({ "env": { "ANTHROPIC_BASE_URL": "https://claude-relay.example/v1" } }),
-            None,
-        );
-        assert_eq!(
-            stream_check_provider_base_url(&AppType::ClaudeDesktop, &claude_desktop_provider)
-                .expect("Claude Desktop base URL"),
-            "https://claude-relay.example/v1"
-        );
-
-        let codex_provider = Provider::with_id(
-            "codex".to_string(),
-            "Codex".to_string(),
-            json!({ "base_url": "https://codex-relay.example/v1/" }),
-            None,
-        );
-        assert_eq!(
-            stream_check_provider_base_url(&AppType::Codex, &codex_provider)
-                .expect("Codex base URL"),
-            "https://codex-relay.example/v1"
-        );
-
-        let opencode_provider = Provider::with_id(
-            "opencode".to_string(),
-            "OpenCode".to_string(),
-            json!({
-                "npm": "@ai-sdk/anthropic",
-                "options": {}
-            }),
-            None,
-        );
-        assert_eq!(
-            stream_check_provider_base_url(&AppType::OpenCode, &opencode_provider)
-                .expect("OpenCode base URL"),
-            "https://api.anthropic.com"
-        );
-
-        let openclaw_provider = Provider::with_id(
-            "openclaw".to_string(),
-            "OpenClaw".to_string(),
-            json!({ "baseUrl": " https://openclaw.example/v1 " }),
-            None,
-        );
-        assert_eq!(
-            stream_check_provider_base_url(&AppType::OpenClaw, &openclaw_provider)
-                .expect("OpenClaw base URL"),
-            "https://openclaw.example/v1"
-        );
-
-        let hermes_provider = Provider::with_id(
-            "hermes".to_string(),
-            "Hermes".to_string(),
-            json!({ "base_url": " https://hermes.example " }),
-            None,
-        );
-        assert_eq!(
-            stream_check_provider_base_url(&AppType::Hermes, &hermes_provider)
-                .expect("Hermes base URL"),
-            "https://hermes.example"
-        );
-
-        let missing_opencode = Provider::with_id(
-            "opencode-missing".to_string(),
-            "OpenCode Missing".to_string(),
-            json!({
-                "npm": "@ai-sdk/openai-compatible",
-                "options": {}
-            }),
-            None,
-        );
-        assert!(matches!(
-            stream_check_provider_base_url(&AppType::OpenCode, &missing_opencode),
-            Err(AppError::Localized { key, .. }) if key == "opencode_base_url_missing"
-        ));
-
-        let missing_openclaw = Provider::with_id(
-            "openclaw-missing".to_string(),
-            "OpenClaw Missing".to_string(),
-            json!({}),
-            None,
-        );
-        assert!(matches!(
-            stream_check_provider_base_url(&AppType::OpenClaw, &missing_openclaw),
-            Err(AppError::Localized { key, .. }) if key == "openclaw_base_url_missing"
-        ));
-
-        let missing_hermes = Provider::with_id(
-            "hermes-missing".to_string(),
-            "Hermes Missing".to_string(),
-            json!({}),
-            None,
-        );
-        assert!(matches!(
-            stream_check_provider_base_url(&AppType::Hermes, &missing_hermes),
-            Err(AppError::Localized { key, .. }) if key == "hermes_base_url_missing"
-        ));
     }
 
     #[test]

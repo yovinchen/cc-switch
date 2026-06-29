@@ -2136,7 +2136,12 @@ fn is_allowed_stream_check_core_import(relative: &str, code: &str) -> bool {
         "src/services/stream_check.rs" | "src/commands/stream_check.rs"
     ) && matches!(
         code.trim(),
-        "use crate::proxy_core::api::management::{"
+        "use crate::proxy_core::api::domain::{"
+            | "additive_provider_stream_check_base_url_from_settings,"
+            | "additive_stream_check_base_url_missing_error_spec, AppKind,"
+            | "};"
+            | "use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;"
+            | "use crate::proxy_core::api::management::{"
             | "use crate::proxy_core::api::management::stream_check_failed_result;"
     )
 }
@@ -12882,9 +12887,14 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
         }
     }
 
+    let adapter_has_private_context_import = adapter_source.contains(
+        "use crate::proxy::host::cc_switch::provider_adapter_context::ForwarderAdapterContext;",
+    ) || adapter_source
+        .contains("use crate::proxy::host::cc_switch::provider_adapter_context::{");
     assert!(
-        adapter_source
-            .contains("use crate::proxy::host::cc_switch::provider_adapter_context::{")
+        adapter_has_private_context_import
+            && !adapter_source
+                .contains("pub(crate) use crate::proxy::host::cc_switch::provider_adapter_context::")
             && !adapter_source
                 .contains("pub(crate) use crate::proxy::host::cc_switch::provider_adapter_context::{")
             && adapter_source.contains("ForwarderAdapterContext"),
@@ -14594,6 +14604,7 @@ fn stream_check_service_owns_core_dto_and_user_agent_policy_imports() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let service_source = fs::read_to_string(&service_path).expect("read stream_check.rs");
     let required_direct_core_imports = [
+        "use crate::proxy_core::api::domain::{",
         "pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};",
         "use crate::proxy_core::api::management::{",
         "use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;",
@@ -14671,7 +14682,7 @@ fn stream_check_service_owns_core_dto_and_user_agent_policy_imports() {
     }
     assert!(
         violations.is_empty(),
-        "stream_check public DTOs and custom User-Agent policy must bypass proxy_core_adapter aliases through approved imports:\n{}",
+        "stream_check public DTOs, base URL policy, and custom User-Agent policy must bypass proxy_core_adapter aliases through approved imports:\n{}",
         violations.join("\n")
     );
 }
@@ -14786,18 +14797,32 @@ fn production_stream_check_command_delegates_proxy_target_filter_to_adapter() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_additive_stream_check_error_specs_to_core() {
+fn stream_check_service_delegates_additive_base_url_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let service_path = manifest_dir.join("src/services/stream_check.rs");
+    let service_source = fs::read_to_string(&service_path).expect("read stream_check.rs");
     let function = function_slice(
-        &source,
+        &service_source,
+        "fn missing_base_url_error",
+        "async fn probe_reachability",
+    );
+    let adapter_removed_slice = optional_function_slice(
+        &adapter_source,
         "fn missing_stream_check_base_url_error",
         "pub(crate) fn stream_check_proxy_target_ids_from_sources",
     );
 
     assert!(
-        function.contains("core_additive_stream_check_base_url_missing_error_spec("),
+        adapter_removed_slice.is_empty()
+            && !adapter_source.contains("stream_check_provider_base_url("),
+        "proxy_core_adapter should no longer own stream-check base URL projection"
+    );
+    assert!(
+        service_source.contains("additive_provider_stream_check_base_url_from_settings(")
+            && service_source.contains("forwarder_provider_adapter_context_for_app(app_type)")
+            && function.contains("additive_stream_check_base_url_missing_error_spec("),
         "stream-check missing base URL errors must be delegated to proxy-core"
     );
     for marker in [
@@ -14807,7 +14832,7 @@ fn proxy_core_adapter_delegates_additive_stream_check_error_specs_to_core() {
     ] {
         assert!(
             !function.contains(marker),
-            "proxy_core_adapter must not own additive stream-check error marker `{marker}`"
+            "stream_check service must not own additive stream-check error marker `{marker}`"
         );
     }
 }
