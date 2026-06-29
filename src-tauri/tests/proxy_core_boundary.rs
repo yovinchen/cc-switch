@@ -7119,6 +7119,22 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "proxy_core_adapter should not re-export adapter-only ports helper `{marker}`"
     );
     for marker in [
+        "gemini_env_parse_issue_spec",
+        "gemini_settings_validation_issue_spec",
+        "validate_gemini_settings_basic",
+        "validate_gemini_settings_strict",
+    ] {
+        let reexport_marker = source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::ports") && line.contains(marker)
+        }) || ports_reexport_blocks
+            .iter()
+            .any(|block| block.contains(marker));
+        assert!(
+            !reexport_marker,
+            "proxy_core_adapter should not re-export adapter-only Gemini settings helper `{marker}`"
+        );
+    }
+    for marker in [
         "extract_claude_auth_key_from_settings",
         "is_gemini_oauth_key_shape",
         "parse_gemini_oauth_credentials",

@@ -156,6 +156,10 @@ use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection
 use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled,
     apply_codex_takeover_auth_placeholder_if_present, ensure_codex_takeover_auth_placeholder,
+    gemini_env_parse_issue_spec as core_gemini_env_parse_issue_spec,
+    gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
+    validate_gemini_settings_basic as core_validate_gemini_settings_basic,
+    validate_gemini_settings_strict as core_validate_gemini_settings_strict,
     CodexLiveSettingsIssue, CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
     CodexLiveTakeoverMatchFacts, CodexProviderBackfillParts, CodexProviderLiveWriteIssue,
     CodexProviderLiveWriteParts, CopilotOptimizerConfig, GeminiEnvParseIssue,
@@ -175,8 +179,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     codex_provider_backfill_parts_from_settings as core_codex_provider_backfill_parts_from_settings,
     codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
-    gemini_env_parse_issue_spec as core_gemini_env_parse_issue_spec,
-    gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
     live_backup_snapshot_from_live_config as core_live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
     live_takeover_app_kinds,
@@ -194,8 +196,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     proxy_hot_switch_should_sync_codex_live_while_proxy_active as core_proxy_hot_switch_should_sync_codex_live_while_proxy_active,
     proxy_urls_match as core_proxy_urls_match,
     required_provider_base_url as core_required_provider_base_url,
-    validate_gemini_settings_basic as core_validate_gemini_settings_basic,
-    validate_gemini_settings_strict as core_validate_gemini_settings_strict,
 };
 pub(crate) fn record_forward_success_status(
     status: &mut ProxyRuntimeStatus,

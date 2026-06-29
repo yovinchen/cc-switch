@@ -1906,6 +1906,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1351. Attempt/route-selected 事件 envelope 已收敛到 `proxy-core::events::{attempt_event,route_selected_event}`：`proxy_core_adapter` 只保留 `ForwardAttempt -> AttemptEventPayloadInput` 的宿主投影，默认 runtime state source 继续拥有 event bus 副作用但不再经 adapter-local message/payload wrapper 组装事件名与 payload。
 1352. Provider-switched failover 事件 constructor 已停止经 `proxy_core_adapter` re-export：failover command 与 host failover scheduler 直接引用 `proxy-core::events::{provider_switched_failover_event,provider_switched_failover_enabled_event}`，adapter 只保留真正需要 host 副作用或 DB/runtime 投影的 failover helper。
 1353. `proxy_app_config_with_enabled` 已从 `proxy_core_adapter` 的 crate-visible ports re-export 收窄为 adapter 私有 core import：adapter 仍在 DB-backed enabled flag 写入路径复用 core config helper，但外部宿主/测试不再能通过 adapter facade 取得该纯 helper。
+1354. Gemini settings/env 校验 helper 已从 `proxy_core_adapter` 的 crate-visible ports re-export 收窄为 adapter 私有 core import：adapter 继续负责把 `GeminiEnvParseIssue`/`GeminiSettingsValidationIssue` 投影为宿主错误文案，外部宿主不再通过 adapter facade 取得这些纯校验函数。
 
 ## 背景
 
