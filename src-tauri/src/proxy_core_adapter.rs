@@ -4469,10 +4469,6 @@ impl From<&AppType> for AppKind {
     }
 }
 
-pub(crate) fn proxy_core_app_kind_from_app_type(app_type: &AppType) -> AppKind {
-    AppKind::from(app_type)
-}
-
 pub(crate) fn cc_switch_app_kinds() -> Vec<AppKind> {
     AppType::all().map(|app| AppKind::from(&app)).collect()
 }
@@ -7197,10 +7193,6 @@ mod tests {
     #[test]
     fn app_type_conversion_preserves_known_and_custom_names() {
         assert_eq!(AppKind::from(&AppType::Claude), AppKind::Claude);
-        assert_eq!(
-            proxy_core_app_kind_from_app_type(&AppType::Claude),
-            AppKind::Claude
-        );
         assert_eq!(
             AppKind::from(&AppType::ClaudeDesktop),
             AppKind::ClaudeDesktop

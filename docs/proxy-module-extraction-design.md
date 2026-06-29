@@ -1891,6 +1891,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1340. provider additive/OMO 的 category-only 策略 helper 已由 `services/provider` 直接从 `proxy_core::api::ports` 引用：`provider_omo_variant_for_app_category` 与 `provider_additive_update_route_for_app` 不再经 `proxy_core_adapter` re-export；adapter 仍保留 `provider_omo_switch_pair` 与 `provider_switch_dispatch` 这类读取宿主 `Provider.category` 的投影包装，等待后续按 Provider-shaped 边界单独处理。
 1341. provider switch 的 `Provider.category` 派生策略也已从 adapter 公开面移出：`services/provider` 直接把 `provider.category.as_deref()` 传给 `proxy_core::api::ports::{provider_omo_switch_pair_for_app_category,provider_switch_dispatch_for_app}`；`proxy_core_adapter` 不再保留这两个 wrapper，后续 adapter 只应保留真正需要 DB/runtime/host DTO 组合的 provider 侧投影。
 1342. provider adapter registry 的 AppType -> adapter-kind 选择已改为直接消费 `proxy_core::api::domain::{provider_adapter_kind_for_app,AppKind,AppProviderAdapterKind}`；`proxy_core_adapter::provider_adapter_kind_for_app_type` 一跳 facade 已删除，host registry 仍不内联 Claude/Codex/Gemini app 分支。
+1343. request context 不再通过 `proxy_core_adapter::proxy_core_app_kind_from_app_type` 做 AppType -> AppKind 纯转换；`proxy/engine/context` 直接使用 `AppKind::from(app_type.as_str())`，adapter 仅保留 crate-local `From<&AppType> for AppKind` impl 供 host 投影和测试复用。
 
 ## 背景
 

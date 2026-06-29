@@ -88,7 +88,6 @@ const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_PRESELECT_MARKERS: &[&str] = &[
 const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
     "providers::",
     "get_claude_api_format(",
-    "AppKind::from(",
     "selected_route.provider",
     "selected_provider_missing_from_source_message(",
     "request_context_route_update_from_proxy_result(",
@@ -1165,6 +1164,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn parse_json_proxy_request_body_or_null(",
     "fn json_proxy_request_from_input(",
     "fn codex_responses_proxy_request_from_input(",
+    "fn proxy_core_app_kind_from_app_type(",
     "fn current_provider_id_from_settings_for_app_type(",
     "fn error_message_with_context(",
     "fn request_model_from_body_for_context(",

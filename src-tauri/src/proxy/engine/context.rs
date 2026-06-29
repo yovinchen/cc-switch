@@ -23,8 +23,7 @@ use crate::proxy_core::api::transport::{
 use crate::proxy_core::api::usage::UsageRouteContext;
 use crate::proxy_core_adapter::{
     app_proxy_config_from_proxy_app_config, provider_claude_api_format,
-    proxy_core_app_kind_from_app_type, request_context_route_update_from_proxy_result_source,
-    RequestContextRouteUpdateError,
+    request_context_route_update_from_proxy_result_source, RequestContextRouteUpdateError,
 };
 use axum::http::HeaderMap;
 use std::time::Instant;
@@ -87,7 +86,7 @@ impl RequestContext {
     ) -> Result<Self, ProxyError> {
         let start_time = Instant::now();
 
-        let app_kind = proxy_core_app_kind_from_app_type(&app_type);
+        let app_kind = AppKind::from(app_type.as_str());
         let core_app_config = state
             .proxy_core_services
             .config()
