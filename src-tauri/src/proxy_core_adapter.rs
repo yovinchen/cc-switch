@@ -3432,7 +3432,7 @@ fn auto_failover_toggle_error_to_string(error: ProxyCoreError) -> String {
     }
 }
 
-pub(crate) fn auto_failover_toggle_plan_from_sources(
+fn auto_failover_toggle_plan_from_sources(
     config: AppProxyConfig,
     enabled: bool,
     queued_provider_ids: Vec<String>,
@@ -3487,7 +3487,7 @@ pub(crate) async fn auto_failover_toggle_plan_from_db(
     )
 }
 
-pub(crate) fn failover_switch_app_enabled_from_config_result(
+fn failover_switch_app_enabled_from_config_result(
     app_type: &str,
     result: Result<AppProxyConfig, AppError>,
 ) -> bool {
@@ -3515,7 +3515,7 @@ pub(crate) struct ResetCircuitBreakerSwitchbackTarget {
     pub(crate) current_sort_index: Option<usize>,
 }
 
-pub(crate) fn reset_circuit_breaker_switchback_target_from_sources(
+fn reset_circuit_breaker_switchback_target_from_sources(
     app_enabled: bool,
     auto_failover_enabled: bool,
     proxy_service_running: bool,

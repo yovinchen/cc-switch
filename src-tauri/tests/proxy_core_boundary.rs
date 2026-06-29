@@ -7141,6 +7141,9 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat",
         "pub(crate) fn app_error_from_provider_selection_failure",
         "pub(crate) fn provider_selection_failure_from_app_error",
+        "pub(crate) fn auto_failover_toggle_plan_from_sources",
+        "pub(crate) fn failover_switch_app_enabled_from_config_result",
+        "pub(crate) fn reset_circuit_breaker_switchback_target_from_sources",
     ] {
         assert!(
             !source.contains(marker),
