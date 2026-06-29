@@ -10,7 +10,7 @@ use crate::provider::Provider;
 use crate::proxy_core::api::management::stream_check_failed_result;
 use crate::proxy_core::api::transport::is_github_copilot_upstream as core_is_github_copilot_upstream;
 use crate::proxy_core_adapter::{
-    provider_github_copilot_managed_account_id, stream_check_proxy_target_ids_from_db,
+    provider_github_copilot_managed_account_id, stream_check_proxy_target_ids_from_sources,
 };
 use crate::services::stream_check::{StreamCheckConfig, StreamCheckResult, StreamCheckService};
 use crate::store::AppState;
@@ -58,8 +58,23 @@ pub async fn stream_check_all_providers(
     let config = state.db.get_stream_check_config()?;
     let providers = state.db.get_all_providers(app_type.as_str())?;
 
-    let allowed_ids =
-        stream_check_proxy_target_ids_from_db(&state.db, app_type.as_str(), proxy_targets_only);
+    let current_provider_id = state
+        .db
+        .get_current_provider(app_type.as_str())
+        .ok()
+        .flatten();
+    let failover_provider_ids = state
+        .db
+        .get_failover_queue(app_type.as_str())
+        .ok()
+        .into_iter()
+        .flatten()
+        .map(|item| item.provider_id);
+    let allowed_ids = stream_check_proxy_target_ids_from_sources(
+        proxy_targets_only,
+        current_provider_id,
+        failover_provider_ids,
+    );
 
     let mut results = Vec::new();
     for (id, provider) in providers {

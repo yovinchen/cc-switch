@@ -2739,30 +2739,6 @@ pub(crate) fn stream_check_proxy_target_ids_from_sources(
     Some(ids)
 }
 
-pub(crate) fn stream_check_proxy_target_ids_from_db(
-    db: &Database,
-    app_type: &str,
-    proxy_targets_only: bool,
-) -> Option<HashSet<String>> {
-    if !proxy_targets_only {
-        return None;
-    }
-
-    let current_provider_id = db.get_current_provider(app_type).ok().flatten();
-    let failover_provider_ids = db
-        .get_failover_queue(app_type)
-        .ok()
-        .into_iter()
-        .flatten()
-        .map(|item| item.provider_id);
-
-    stream_check_proxy_target_ids_from_sources(
-        proxy_targets_only,
-        current_provider_id,
-        failover_provider_ids,
-    )
-}
-
 pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
     core_claude_provider_transform_required(
         provider_claude_kind(provider).needs_transform(),

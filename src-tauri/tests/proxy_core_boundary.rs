@@ -244,12 +244,7 @@ const FORBIDDEN_STREAM_CHECK_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
     "ProviderAdapter",
     ".extract_base_url(",
 ];
-const FORBIDDEN_STREAM_CHECK_COMMAND_PROXY_TARGET_MARKERS: &[&str] = &[
-    "HashSet",
-    ".get_current_provider(",
-    ".get_failover_queue(",
-    "ids.insert(",
-];
+const FORBIDDEN_STREAM_CHECK_COMMAND_PROXY_TARGET_MARKERS: &[&str] = &["HashSet", "ids.insert("];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_STATUS_MARKERS: &[&str] = &[
     ".get_proxy_config_for_app(",
     "proxy_takeover_status_from_parts(",
@@ -14757,10 +14752,12 @@ fn gemini_auth_service_owns_core_auth_type_reexport() {
 }
 
 #[test]
-fn production_stream_check_command_delegates_proxy_target_filter_to_adapter() {
+fn stream_check_command_owns_proxy_target_db_reads() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/commands/stream_check.rs");
-    let source = fs::read_to_string(&path).expect("read commands/stream_check.rs");
+    let command_path = manifest_dir.join("src/commands/stream_check.rs");
+    let source = fs::read_to_string(&command_path).expect("read commands/stream_check.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "pub async fn stream_check_all_providers",
@@ -14783,6 +14780,10 @@ fn production_stream_check_command_delegates_proxy_target_filter_to_adapter() {
 
     assert!(
         function.contains("stream_check_failed_result(")
+            && function.contains(".get_current_provider(app_type.as_str())")
+            && function.contains(".get_failover_queue(app_type.as_str())")
+            && function.contains("stream_check_proxy_target_ids_from_sources(")
+            && !adapter_source.contains("pub(crate) fn stream_check_proxy_target_ids_from_db")
             && !function.contains("HealthStatus::Failed")
             && !function.contains("status:")
             && !function.contains("success:")
@@ -14792,7 +14793,7 @@ fn production_stream_check_command_delegates_proxy_target_filter_to_adapter() {
     );
     assert!(
         violations.is_empty(),
-        "stream_check_all_providers command must delegate proxy-target filter source projection to proxy_core_adapter:\n{}",
+        "stream_check_all_providers command may read DB sources but must delegate proxy-target set merging to the pure helper:\n{}",
         violations.join("\n")
     );
 }
