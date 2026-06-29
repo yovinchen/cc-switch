@@ -1502,7 +1502,7 @@ pub(crate) fn common_config_snippet_from_settings(
     }
 }
 
-pub(crate) fn codex_common_config_snippet_from_settings(
+fn codex_common_config_snippet_from_settings(
     settings: &Value,
 ) -> Result<String, CommonConfigSnippetIssue> {
     let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
@@ -4558,7 +4558,7 @@ pub(crate) fn channel_record_to_route_resolve_channel_input(
     })
 }
 
-pub(crate) fn channel_records_to_route_resolve_channel_inputs(
+fn channel_records_to_route_resolve_channel_inputs(
     channels: impl IntoIterator<Item = ChannelRecord>,
 ) -> Vec<RouteResolveChannelInput> {
     channels

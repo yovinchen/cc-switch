@@ -7146,6 +7146,8 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn reset_circuit_breaker_switchback_target_from_sources",
         "pub(crate) fn gemini_env_parse_issue_to_app_error",
         "pub(crate) fn gemini_settings_validation_issue_to_app_error",
+        "pub(crate) fn codex_common_config_snippet_from_settings",
+        "pub(crate) fn channel_records_to_route_resolve_channel_inputs",
     ] {
         assert!(
             !source.contains(marker),

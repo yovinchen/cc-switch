@@ -936,7 +936,7 @@
 887. Provider common-config 的 JSON deep merge/remove 编排已改为 `proxy_core_adapter::{json_deep_merge,json_deep_remove}`：`provider/live` 继续负责 Claude/Gemini snippet 解析和 AppError 映射，JSON 对象递归合并、数组差集删除与空对象清理语义集中在 adapter。
 888. Provider common-config 的命中判定已改为 `proxy_core_adapter::{contains_common_config_snippet,provider_uses_common_config}`：`provider/live` 继续负责 DB snippet 读取、apply/remove 编排和错误日志，App 类型、provider meta 开关与 legacy snippet 到“是否使用公共配置”的策略集中在 adapter。
 889. Provider credential 提取已改为 `proxy_core_adapter::{provider_credential_values,ProviderCredentialIssue}`：`ProviderService::extract_credentials` 继续保留 Claude Desktop gateway 解析和 AppError 本地化映射，Claude/Codex/Gemini/OpenCode/OpenClaw/Hermes 的 credential 来源解析与缺字段分类集中在 adapter。
-890. Provider common-config snippet 生成已改为 `proxy_core_adapter::{common_config_snippet_from_settings,CommonConfigSnippetIssue}`：`ProviderService` 继续负责 current provider 查询和 AppError 文案映射，Claude/Codex/Gemini/OpenCode/OpenClaw/Hermes 的 snippet 清洗、序列化、TOML parse 分类集中在 adapter。
+890. Provider common-config snippet 生成已改为 `proxy_core_adapter::{common_config_snippet_from_settings,CommonConfigSnippetIssue}`：`ProviderService` 继续负责 current provider 查询和 AppError 文案映射，Claude/Codex/Gemini/OpenCode/OpenClaw/Hermes 的 snippet 清洗、序列化、TOML parse 分类集中在 adapter；Codex TOML 分支 helper 已收为 adapter 私有。
 891. Claude provider 模型字段规范化已改为 `proxy_core_adapter::normalize_claude_models_in_value`：`provider/mod` 继续负责 add/update 时机，`provider/live` 继续负责 live import 时机，旧 `ANTHROPIC_SMALL_FAST_MODEL` 到 `ANTHROPIC_DEFAULT_*` 的回填与清理策略集中在 adapter。
 892. Provider settings 基础校验已改为 `proxy_core_adapter::{provider_settings_validation_parts,ProviderSettingsValidationIssue}`：`ProviderService` 继续负责 Claude Desktop/Gemini 专用校验、Codex TOML 语义校验和 AppError 本地化映射，Claude/Codex/OpenCode/OpenClaw/Hermes 的 settings object/auth/config 形态分类集中在 adapter。
 893. Provider common-config 的 TOML deep merge 算法已改为 `proxy_core_adapter::merge_toml_table_like`：`provider/live` 继续负责 snippet 解析、apply/remove 编排和 AppError 映射，TOML 表递归合并语义集中在 adapter 并与 subset/remove helper 同区维护。
@@ -1268,7 +1268,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续把 `response_adapter` 使用的 `AppKind`、`InterfaceKind`、`CurrentRouteTarget`、`ProxyRuntimeStatus`、Claude Desktop model-list response、Claude/Codex transform decision、Codex tool context 与 response build failure context 改为直接经 `proxy_core::api::{auth,domain,ports,routing,transforms,transport}` 引用；`proxy_core_adapter` 不再向 response adapter 暴露这些纯 DTO/context，且已移除未使用的 response build failure context 兼容别名。
 本轮继续把 ConfigSource 的 app summary DTO 组装收敛到 adapter，`proxy_core_host` 不再直接构造 `AppSummaryConfig`。
 本轮也把管理 API token-source 决策收敛到 adapter，handler middleware 不再直接读取 `CC_SWITCH_PROXY_MANAGEMENT_TOKEN` 或调用 core 决策函数。
-本轮继续把 ProviderRouter 的 channel route input/source fallback 决策收敛到 adapter，router 只消费 adapter 提供的 core route input 与 source，不再暴露 route record 命名。
+本轮继续把 ProviderRouter 的 channel route input/source fallback 决策收敛到 adapter，router 只消费 adapter 提供的 core route input 与 source，不再暴露 route record 命名；批量 channel record 到 route input 的投影 helper 已收为 adapter 私有。
 本轮继续把 ProviderRouter 的当前供应商选择结果组装收敛到 adapter，router 只消费 adapter 返回的当前 provider id，不再加载完整 Provider 实体或直接构造 `ProviderSelectionInput::current`。
 本轮继续把 ProviderRouter 的 failover 候选选择结果组装收敛到 adapter，router 只负责读取 failover lookup facts、已配置 provider id 列表和 circuit breaker 可用性，不再直接构造 `ProviderSelectionInput` 或调用 core `select_provider_ids`。
 本轮继续把 ProviderRouter 的 auto-failover 配置读取结果决策收敛到 adapter，router 只负责读取 proxy_config，读取失败时的日志和默认禁用故障转移策略由 adapter 维护。
