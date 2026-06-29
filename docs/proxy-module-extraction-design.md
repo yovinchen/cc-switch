@@ -1888,6 +1888,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1337. `proxy/circuit_breaker` 不再通过 `proxy_core_adapter` 获取纯熔断配置 helper：`circuit_breaker_failure_decision`、`half_open_probe_allow_result`、`should_close_half_open_after_success` 与 `should_transition_open_to_half_open` 均直接来自 `proxy_core::api::config`；adapter 删除对应 re-export，边界测试防止 circuit breaker config helper 重新经 adapter 回流。
 1338. `proxy_core_adapter` 不再 re-export `usage_route_context_from_selection` usage helper：adapter 内部 request-context route update 投影直接从 `proxy_core::api::usage` 私有导入该 helper，继续保留宿主 `Provider` hydration 包装；边界测试防止 usage route context helper 重新经 adapter 公开回流。
 1339. provider/live 的 AppKind-only 策略 helper 已由 `services/provider` 与 live takeover 调用方直接从 `proxy_core::api::ports` 引用：默认 live import settings、settings storage normalize、manual/startup import skip、live sync scope、current-provider scope、initial live managed marker、legacy common-config migration skip、switch takeover lock/backfill/managed-marker、takeover/removal target 与 token sync label 不再经 `proxy_core_adapter` re-export；adapter 继续只保留依赖宿主 `Provider`/DB/runtime 事实的投影与副作用包装。
+1340. provider additive/OMO 的 category-only 策略 helper 已由 `services/provider` 直接从 `proxy_core::api::ports` 引用：`provider_omo_variant_for_app_category` 与 `provider_additive_update_route_for_app` 不再经 `proxy_core_adapter` re-export；adapter 仍保留 `provider_omo_switch_pair` 与 `provider_switch_dispatch` 这类读取宿主 `Provider.category` 的投影包装，等待后续按 Provider-shaped 边界单独处理。
 
 ## 背景
 

@@ -8070,6 +8070,7 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         (
             "src/services/provider/mod.rs",
             &[
+                "provider_additive_update_route_for_app",
                 "normalize_provider_settings_for_storage",
                 "provider_app_has_current_provider",
                 "provider_delete_is_current_provider",
@@ -8078,6 +8079,7 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
                 "provider_live_config_presence_error_policy",
                 "provider_live_removal_target_for_app",
                 "provider_live_sync_scope_for_app",
+                "provider_omo_variant_for_app_category",
                 "provider_settings_validation_issue_spec",
                 "provider_switch_backfill_source_id",
                 "provider_switch_requires_takeover_lock",
@@ -8171,6 +8173,7 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         "normalize_provider_settings_for_storage",
         "ProviderAdditiveLiveWriteAction",
         "ProviderAdditiveUpdateRoute",
+        "provider_additive_update_route_for_app",
         "provider_app_has_current_provider",
         "provider_default_live_import_settings",
         "provider_delete_is_current_provider",
@@ -8179,6 +8182,7 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         "provider_live_config_presence_error_policy",
         "provider_live_removal_target_for_app",
         "provider_live_sync_scope_for_app",
+        "provider_omo_variant_for_app_category",
         "provider_settings_validation_issue_spec",
         "provider_switch_backfill_source_id",
         "provider_switch_requires_takeover_lock",

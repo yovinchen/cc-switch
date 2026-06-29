@@ -19,11 +19,13 @@ use crate::proxy_core::api::domain::AppKind;
 pub(crate) use crate::proxy_core::api::ports::sanitize_claude_settings_for_live;
 use crate::proxy_core::api::ports::{
     common_config_snippet_issue_message, normalize_provider_settings_for_storage,
+    provider_additive_update_route_for_app as core_provider_additive_update_route,
     provider_app_has_current_provider, provider_delete_is_current_provider,
     provider_initial_live_config_managed_marker, provider_key_change_policy_issue_message,
     provider_live_config_presence_error_policy,
     provider_live_removal_target_for_app as core_provider_live_removal_target,
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
+    provider_omo_variant_for_app_category as core_provider_omo_variant_for_category,
     provider_settings_validation_issue_spec, provider_switch_backfill_source_id,
     provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
@@ -36,8 +38,7 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, provider_additive_live_write_action,
-    provider_additive_update_route, provider_key_change_policy_issue, provider_omo_switch_pair,
-    provider_omo_variant_for_category, provider_settings_validation_parts,
+    provider_key_change_policy_issue, provider_omo_switch_pair, provider_settings_validation_parts,
     provider_switch_dispatch, proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     should_block_proxy_switch_to_provider, should_reapply_codex_official_live_for_provider,
     validate_provider_gemini_settings,
@@ -1461,8 +1462,10 @@ impl ProviderService {
 
         // Additive mode apps (OpenCode, OpenClaw): only sync to live when the provider
         // already exists in live config. Editing a DB-only provider must not auto-add it.
-        if let Some(route) = provider_additive_update_route(&app_type, provider.category.as_deref())
-        {
+        if let Some(route) = core_provider_additive_update_route(
+            &AppKind::from(&app_type),
+            provider.category.as_deref(),
+        ) {
             if let ProviderAdditiveUpdateRoute::OmoVariant(omo_variant) = route {
                 let variant = Self::omo_variant_descriptor(omo_variant);
                 let is_current = state.db.is_omo_provider_current(
@@ -1586,8 +1589,8 @@ impl ProviderService {
             let existing = state.db.get_provider_by_id(id, app_type.as_str())?;
 
             if matches!(app_type, AppType::OpenCode) {
-                let omo_variant = provider_omo_variant_for_category(
-                    &app_type,
+                let omo_variant = core_provider_omo_variant_for_category(
+                    &AppKind::from(&app_type),
                     existing.as_ref().and_then(|p| p.category.as_deref()),
                 );
                 if let Some(omo_variant) = omo_variant {
@@ -1654,9 +1657,10 @@ impl ProviderService {
                 .get_provider_by_id(id, app_type.as_str())?
                 .and_then(|p| p.category);
 
-            if let Some(omo_variant) =
-                provider_omo_variant_for_category(&app_type, provider_category.as_deref())
-            {
+            if let Some(omo_variant) = core_provider_omo_variant_for_category(
+                &AppKind::from(&app_type),
+                provider_category.as_deref(),
+            ) {
                 let variant = Self::omo_variant_descriptor(omo_variant);
                 state
                     .db

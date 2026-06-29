@@ -199,9 +199,9 @@ use crate::proxy_core::api::ports::{
     CodexProviderBackfillParts, CodexProviderLiveWriteIssue, CodexProviderLiveWriteParts,
     CopilotOptimizerConfig, GeminiEnvParseIssue, GeminiLiveConfigIssue,
     GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, OptimizerConfig,
-    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
-    ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
-    ProviderSettingsValidationParts, ProviderSwitchDispatch, RectifierConfig,
+    ProviderAdditiveLiveWriteAction, ProviderKeyChangePolicyIssue, ProviderOmoSwitchPair,
+    ProviderSettingsValidationIssue, ProviderSettingsValidationParts, ProviderSwitchDispatch,
+    RectifierConfig,
 };
 
 pub(crate) use crate::proxy_core::api::ports::{
@@ -226,12 +226,10 @@ pub(crate) use crate::proxy_core::api::ports::{
     live_takeover_app_kinds,
     live_takeover_config_matches_proxy_for_app as core_live_takeover_config_matches_proxy_for_app,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
-    provider_additive_update_route_for_app as core_provider_additive_update_route,
     provider_default_live_import_category_from_parts as core_provider_default_live_import_category_from_parts,
     provider_key_change_policy_issue_for_app as core_provider_key_change_policy_issue,
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
     provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
-    provider_omo_variant_for_app_category as core_provider_omo_variant_for_category,
     provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
     provider_should_sync_to_live as core_provider_should_sync_to_live,
@@ -1620,25 +1618,11 @@ pub(crate) fn provider_additive_live_write_action(
     )
 }
 
-pub(crate) fn provider_omo_variant_for_category(
-    app_type: &AppType,
-    category: Option<&str>,
-) -> Option<ProviderOmoVariant> {
-    core_provider_omo_variant_for_category(&AppKind::from(app_type), category)
-}
-
 pub(crate) fn provider_omo_switch_pair(
     app_type: &AppType,
     provider: &Provider,
 ) -> Option<ProviderOmoSwitchPair> {
     core_provider_omo_switch_pair(&AppKind::from(app_type), provider.category.as_deref())
-}
-
-pub(crate) fn provider_additive_update_route(
-    app_type: &AppType,
-    category: Option<&str>,
-) -> Option<ProviderAdditiveUpdateRoute> {
-    core_provider_additive_update_route(&AppKind::from(app_type), category)
 }
 
 pub(crate) fn provider_switch_dispatch(
@@ -6977,11 +6961,12 @@ mod tests {
         normalize_claude_models_in_value, normalize_provider_settings_for_storage,
         openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
         opencode_common_config_value_from_settings, opencode_credential_parts_from_settings,
-        provider_app_has_current_provider, provider_credential_issue_spec,
-        provider_default_live_import_settings, provider_delete_is_current_provider,
-        provider_initial_live_config_managed_marker, provider_key_change_policy_issue_message,
-        provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
-        provider_live_sync_scope_for_app, provider_settings_validation_issue_spec,
+        provider_additive_update_route_for_app, provider_app_has_current_provider,
+        provider_credential_issue_spec, provider_default_live_import_settings,
+        provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
+        provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
+        provider_live_removal_target_for_app, provider_live_sync_scope_for_app,
+        provider_omo_variant_for_app_category, provider_settings_validation_issue_spec,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         provider_switch_backfill_source_id, provider_switch_requires_takeover_lock,
         provider_switch_should_mark_live_config_managed,
@@ -6995,9 +6980,9 @@ mod tests {
         should_skip_manual_default_live_import,
         should_skip_provider_legacy_common_config_migration,
         should_skip_startup_default_live_import, AuthInfo, ClaudeTakeoverAuthPolicy,
-        CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderCredentialIssue,
-        ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
-        ProviderTakeoverLiveSyncTarget,
+        CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderAdditiveUpdateRoute,
+        ProviderCredentialIssue, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
+        ProviderLiveSyncScope, ProviderOmoVariant, ProviderTakeoverLiveSyncTarget,
     };
     use crate::proxy_core::api::routing::{
         normalize_channel_base_url, normalize_proxy_channel_write_request_fields, stable_channel_id,
@@ -17472,7 +17457,7 @@ command = "latest-command"
         );
         standard_provider.category = Some("omo".to_string());
         assert_eq!(
-            provider_omo_variant_for_category(&AppType::OpenCode, Some("omo")),
+            provider_omo_variant_for_app_category(&AppKind::from(&AppType::OpenCode), Some("omo")),
             Some(ProviderOmoVariant::Standard)
         );
         assert_eq!(
@@ -17486,7 +17471,10 @@ command = "latest-command"
         let mut slim_provider = standard_provider.clone();
         slim_provider.category = Some("omo-slim".to_string());
         assert_eq!(
-            provider_omo_variant_for_category(&AppType::OpenCode, Some("omo-slim")),
+            provider_omo_variant_for_app_category(
+                &AppKind::from(&AppType::OpenCode),
+                Some("omo-slim")
+            ),
             Some(ProviderOmoVariant::Slim)
         );
         assert_eq!(
@@ -17508,7 +17496,10 @@ command = "latest-command"
             None
         );
         assert_eq!(
-            provider_omo_variant_for_category(&AppType::OpenCode, Some("custom")),
+            provider_omo_variant_for_app_category(
+                &AppKind::from(&AppType::OpenCode),
+                Some("custom")
+            ),
             None
         );
         assert_eq!(
@@ -17516,7 +17507,7 @@ command = "latest-command"
             None
         );
         assert_eq!(
-            provider_omo_variant_for_category(&AppType::Claude, Some("omo")),
+            provider_omo_variant_for_app_category(&AppKind::from(&AppType::Claude), Some("omo")),
             None
         );
     }
@@ -17691,31 +17682,37 @@ command = "latest-command"
     #[test]
     fn provider_additive_update_route_keeps_omo_separate_from_live_presence() {
         assert_eq!(
-            provider_additive_update_route(&AppType::OpenCode, Some("omo")),
+            provider_additive_update_route_for_app(&AppKind::from(&AppType::OpenCode), Some("omo")),
             Some(ProviderAdditiveUpdateRoute::OmoVariant(
                 ProviderOmoVariant::Standard
             ))
         );
         assert_eq!(
-            provider_additive_update_route(&AppType::OpenCode, Some("omo-slim")),
+            provider_additive_update_route_for_app(
+                &AppKind::from(&AppType::OpenCode),
+                Some("omo-slim")
+            ),
             Some(ProviderAdditiveUpdateRoute::OmoVariant(
                 ProviderOmoVariant::Slim
             ))
         );
         assert_eq!(
-            provider_additive_update_route(&AppType::OpenCode, Some("custom")),
+            provider_additive_update_route_for_app(
+                &AppKind::from(&AppType::OpenCode),
+                Some("custom")
+            ),
             Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
         );
         assert_eq!(
-            provider_additive_update_route(&AppType::OpenClaw, None),
+            provider_additive_update_route_for_app(&AppKind::from(&AppType::OpenClaw), None),
             Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
         );
         assert_eq!(
-            provider_additive_update_route(&AppType::Hermes, None),
+            provider_additive_update_route_for_app(&AppKind::from(&AppType::Hermes), None),
             Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
         );
         assert_eq!(
-            provider_additive_update_route(&AppType::Claude, Some("omo")),
+            provider_additive_update_route_for_app(&AppKind::from(&AppType::Claude), Some("omo")),
             None
         );
     }
