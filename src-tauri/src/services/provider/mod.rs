@@ -19,10 +19,12 @@ use crate::proxy_core::api::domain::AppKind;
 pub(crate) use crate::proxy_core::api::ports::sanitize_claude_settings_for_live;
 use crate::proxy_core::api::ports::{
     common_config_snippet_issue_message, normalize_provider_settings_for_storage,
+    provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_additive_update_route_for_app as core_provider_additive_update_route,
     provider_app_has_current_provider, provider_delete_is_current_provider,
-    provider_initial_live_config_managed_marker, provider_key_change_policy_issue_message,
-    provider_live_config_presence_error_policy,
+    provider_initial_live_config_managed_marker,
+    provider_key_change_policy_issue_for_app as core_provider_key_change_policy_issue,
+    provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
     provider_live_removal_target_for_app as core_provider_live_removal_target,
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
     provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
@@ -33,14 +35,13 @@ use crate::proxy_core::api::ports::{
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
     proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
     should_skip_provider_legacy_common_config_migration, CommonConfigSnippetIssue,
-    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
+    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
     ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
     ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
     ProviderTakeoverLiveSyncTarget,
 };
 use crate::proxy_core_adapter::{
-    common_config_snippet_from_settings, provider_additive_live_write_action,
-    provider_key_change_policy_issue, provider_settings_validation_parts,
+    common_config_snippet_from_settings, provider_settings_validation_parts,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     should_block_proxy_switch_to_provider, should_reapply_codex_official_live_for_provider,
     validate_provider_gemini_settings,
@@ -68,6 +69,28 @@ use live::{
     remove_opencode_provider_from_live, write_gemini_live,
 };
 use usage::validate_usage_script;
+
+fn provider_key_change_policy_issue(
+    app_type: &AppType,
+    existing_provider: Option<&Provider>,
+) -> Option<ProviderKeyChangePolicyIssue> {
+    core_provider_key_change_policy_issue(
+        &AppKind::from(app_type),
+        existing_provider.and_then(|provider| provider.category.as_deref()),
+    )
+}
+
+fn provider_additive_live_write_action(
+    app_type: &AppType,
+    provider: &Provider,
+    add_to_live: bool,
+) -> ProviderAdditiveLiveWriteAction {
+    core_provider_additive_live_write_action(
+        &AppKind::from(app_type),
+        provider.category.as_deref(),
+        add_to_live,
+    )
+}
 
 /// 统一会话开关变更后，立即按新开关状态重写当前官方 Codex 供应商的
 /// live 配置，使开关即时生效（无需等下一次切换）。

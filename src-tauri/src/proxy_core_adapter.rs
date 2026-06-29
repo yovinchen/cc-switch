@@ -173,9 +173,7 @@ use crate::proxy_core::api::ports::{
     live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
     live_takeover_app_kinds,
     live_takeover_config_matches_proxy_for_app as core_live_takeover_config_matches_proxy_for_app,
-    provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_default_live_import_category_from_parts as core_provider_default_live_import_category_from_parts,
-    provider_key_change_policy_issue_for_app as core_provider_key_change_policy_issue,
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
     provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
@@ -192,8 +190,7 @@ use crate::proxy_core::api::ports::{
     CodexLiveTakeoverMatchFacts, CodexProviderBackfillParts, CodexProviderLiveWriteIssue,
     CodexProviderLiveWriteParts, CopilotOptimizerConfig, GeminiEnvParseIssue,
     GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, OptimizerConfig,
-    ProviderAdditiveLiveWriteAction, ProviderKeyChangePolicyIssue, ProviderSettingsValidationIssue,
-    ProviderSettingsValidationParts, RectifierConfig,
+    ProviderSettingsValidationIssue, ProviderSettingsValidationParts, RectifierConfig,
 };
 pub(crate) fn record_forward_success_status(
     status: &mut ProxyRuntimeStatus,
@@ -1517,28 +1514,6 @@ fn codex_common_config_snippet_from_settings(
     }
 
     Ok(cleaned.trim().to_string())
-}
-
-pub(crate) fn provider_key_change_policy_issue(
-    app_type: &AppType,
-    existing_provider: Option<&Provider>,
-) -> Option<ProviderKeyChangePolicyIssue> {
-    core_provider_key_change_policy_issue(
-        &AppKind::from(app_type),
-        existing_provider.and_then(|provider| provider.category.as_deref()),
-    )
-}
-
-pub(crate) fn provider_additive_live_write_action(
-    app_type: &AppType,
-    provider: &Provider,
-    add_to_live: bool,
-) -> ProviderAdditiveLiveWriteAction {
-    core_provider_additive_live_write_action(
-        &AppKind::from(app_type),
-        provider.category.as_deref(),
-        add_to_live,
-    )
 }
 
 fn live_takeover_app_types() -> [AppType; 3] {
@@ -6663,7 +6638,7 @@ mod tests {
     use crate::proxy_core::api::config::{
         app_type_from_circuit_key, channel_circuit_key, provider_circuit_key, CircuitState,
     };
-    use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;
+    use crate::proxy_core::api::domain::{extract_claude_base_url_from_settings, AppKind};
     use crate::proxy_core::api::ports::{
         apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
         claude_env_credentials_from_settings, claude_takeover_model_fields_from_settings,
@@ -6675,9 +6650,10 @@ mod tests {
         normalize_claude_models_in_value, normalize_provider_settings_for_storage,
         openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
         opencode_common_config_value_from_settings, opencode_credential_parts_from_settings,
-        provider_additive_update_route_for_app, provider_app_has_current_provider,
-        provider_credential_issue_spec, provider_default_live_import_settings,
-        provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
+        provider_additive_live_write_action_for_app, provider_additive_update_route_for_app,
+        provider_app_has_current_provider, provider_credential_issue_spec,
+        provider_default_live_import_settings, provider_delete_is_current_provider,
+        provider_initial_live_config_managed_marker, provider_key_change_policy_issue_for_app,
         provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
         provider_live_removal_target_for_app, provider_live_sync_scope_for_app,
         provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
@@ -6695,9 +6671,10 @@ mod tests {
         should_skip_manual_default_live_import,
         should_skip_provider_legacy_common_config_migration,
         should_skip_startup_default_live_import, AuthInfo, ClaudeTakeoverAuthPolicy,
-        CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderAdditiveUpdateRoute,
-        ProviderCredentialIssue, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
-        ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSwitchDispatch,
+        CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderAdditiveLiveWriteAction,
+        ProviderAdditiveUpdateRoute, ProviderCredentialIssue, ProviderKeyChangePolicyIssue,
+        ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
+        ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSwitchDispatch,
         ProviderTakeoverLiveSyncTarget,
     };
     use crate::proxy_core::api::routing::{
@@ -6798,6 +6775,28 @@ mod tests {
     };
     use crate::settings::CustomEndpoint;
     use indexmap::IndexMap;
+
+    fn provider_key_change_policy_issue(
+        app_type: &AppType,
+        existing_provider: Option<&Provider>,
+    ) -> Option<ProviderKeyChangePolicyIssue> {
+        provider_key_change_policy_issue_for_app(
+            &AppKind::from(app_type),
+            existing_provider.and_then(|provider| provider.category.as_deref()),
+        )
+    }
+
+    fn provider_additive_live_write_action(
+        app_type: &AppType,
+        provider: &Provider,
+        add_to_live: bool,
+    ) -> ProviderAdditiveLiveWriteAction {
+        provider_additive_live_write_action_for_app(
+            &AppKind::from(app_type),
+            provider.category.as_deref(),
+            add_to_live,
+        )
+    }
 
     fn codex_api_key_from_auth_and_config(
         auth: Option<&Value>,

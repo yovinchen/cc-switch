@@ -8270,11 +8270,13 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
             "src/services/provider/mod.rs",
             &[
                 "provider_additive_update_route_for_app",
+                "provider_additive_live_write_action_for_app",
                 "normalize_provider_settings_for_storage",
                 "provider_app_has_current_provider",
                 "provider_delete_is_current_provider",
                 "provider_initial_live_config_managed_marker",
                 "provider_key_change_policy_issue_message",
+                "provider_key_change_policy_issue_for_app",
                 "provider_live_config_presence_error_policy",
                 "provider_live_removal_target_for_app",
                 "provider_live_sync_scope_for_app",
@@ -8347,6 +8349,21 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
                 violations.push(format!(
                     "{relative} imports live/provider policy contract `{symbol}` through proxy_core_adapter"
                 ));
+            }
+        }
+        if relative == "src/services/provider/mod.rs" {
+            for facade in [
+                "provider_additive_live_write_action",
+                "provider_key_change_policy_issue",
+            ] {
+                if adapter_import_identifiers
+                    .iter()
+                    .any(|identifier| identifier == facade)
+                {
+                    violations.push(format!(
+                        "{relative} should project `{facade}` locally from proxy-core instead of importing it through proxy_core_adapter"
+                    ));
+                }
             }
         }
     }
