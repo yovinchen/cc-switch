@@ -1189,6 +1189,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate",
     "pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_selection",
     "fn provider_usage_script(",
+    "fn provider_stream_check_test_config(",
     "fn provider_usage_script_credentials(",
     "fn usage_script_credentials(",
     "usage_script_credentials_from_parts as usage_script_credentials",

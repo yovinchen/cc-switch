@@ -115,6 +115,13 @@ impl Provider {
             .and_then(|meta| meta.usage_script.as_ref())
     }
 
+    pub fn enabled_test_config(&self) -> Option<&ProviderTestConfig> {
+        self.meta
+            .as_ref()
+            .and_then(|meta| meta.test_config.as_ref())
+            .filter(|config| config.enabled)
+    }
+
     /// Resolve `(base_url, api_key)` for usage queries (native balance /
     /// coding-plan and the JS-script `{{apiKey}}`/`{{baseUrl}}` fallback)
     /// from the stored provider config.

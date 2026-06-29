@@ -845,7 +845,7 @@
 796. provider usage 查询命令里的 usage script 已回到 `Provider::usage_script()` 本地模型 accessor，Copilot account 投影继续走 `proxy_core_adapter::provider_github_copilot_managed_account_id`：命令层保留模板分支和外部查询副作用，不再通过 adapter 读取普通 provider meta 字段。
 797. Claude Desktop provider import 的 Claude env、Claude-safe 模型检查与 1M 默认支持 provider 投影已改为 `proxy_core_adapter::{provider_claude_env_settings,provider_claude_models_are_claude_safe,provider_claude_desktop_routes_support_1m_by_default}`：`commands/provider` 继续负责 route suggestion merge/import flow，settings/meta schema 读取集中在 adapter。
 798. saved usage script 查询服务的 usage script 读取已回到 `Provider::usage_script()`，script/provider credential 覆盖策略已改为直接调用 `proxy_core::api::ports::usage_script_credentials_from_parts`；custom endpoints 服务的列表排序、URL 归一化与 last-used mutation 已改为 `proxy_core_adapter::{provider_custom_endpoint_list,normalize_custom_endpoint_url,custom_endpoint_url_key,mark_custom_endpoint_last_used}`：`services/provider` 继续负责执行脚本、credential fallback、DB 读写与结果格式化，普通 provider meta accessor 不再经 adapter 中转。
-799. stream check 服务的 provider-level testConfig 读取已改为 `proxy_core_adapter::provider_stream_check_test_config`：服务层继续负责与全局 `StreamCheckConfig` 合并，`Provider.meta.test_config` 的启用过滤集中在 adapter。
+799. stream check 服务的 provider-level testConfig 读取已回到 `Provider::enabled_test_config()`；adapter 只保留 `proxy_core_adapter::provider_stream_check_config_override` 负责把启用后的 host testConfig 投影为 core override，服务层继续负责与全局 `StreamCheckConfig` 合并。
 800. Claude provider adapter 的 Codex OAuth 判定已改为 `proxy_core_adapter::provider_is_codex_oauth`：Claude transform 与 base URL 提取继续消费布尔事实，不再直接调用 `Provider::is_codex_oauth()` 或本地拆 `Provider.meta.provider_type`。
 801. proxy service 的接管策略 provider 判定已改为 `proxy_core_adapter::{provider_is_github_copilot,provider_is_codex_oauth}`：接管写配置仍负责占位符策略和模型字段合并，不再直接调用 `Provider::is_github_copilot()`/`Provider::is_codex_oauth()`。
 802. proxy service 的 managed-account 接管聚合判定已改为 `proxy_core_adapter::provider_uses_managed_account_auth`：服务层继续负责接管策略分支，不再直接调用 `Provider::uses_managed_account_auth()`。
@@ -1895,6 +1895,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1344. saved usage script 的凭据覆盖策略已由 `services/provider/usage` 直接调用 `proxy_core::api::ports::usage_script_credentials_from_parts`；`proxy_core_adapter::provider_usage_script_credentials` 一跳 facade 已删除，adapter 继续只保留必要的 host/provider 投影。
 1345. live takeover placeholder 检测不再保留 `provider_settings_have_proxy_placeholder_for_app` 这种 Provider-only 一跳 wrapper；adapter 内部 SSOT restore provider 检查直接把 `provider.settings_config` 传给 `live_config_has_proxy_placeholder_for_app`，统一使用同一个 app-aware core dispatch 入口。
 1346. usage script 读取不再保留 `proxy_core_adapter::provider_usage_script` 这种普通 provider meta accessor；命令和 service 层直接调用 `Provider::usage_script()`，adapter 只保留真正需要跨 core/host 边界的 managed-account 与 credential policy 投影。
+1347. stream check 的 provider-level testConfig 读取不再保留 `proxy_core_adapter::provider_stream_check_test_config` 普通 meta accessor；adapter 只保留 `provider_stream_check_config_override` 作为 host `ProviderTestConfig` 到 core `StreamCheckConfigOverride` 的投影入口。
 
 ## 背景
 

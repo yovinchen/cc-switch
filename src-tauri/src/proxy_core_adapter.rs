@@ -5,9 +5,7 @@ use crate::database::{
 };
 use crate::error::AppError;
 use crate::openclaw_config::OpenClawProviderConfig;
-use crate::provider::{
-    AuthBindingSource, OpenCodeProviderConfig, Provider, ProviderMeta, ProviderTestConfig,
-};
+use crate::provider::{AuthBindingSource, OpenCodeProviderConfig, Provider, ProviderMeta};
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::engine::routing::{ProviderFailoverRouterSources, ProviderRouter};
 use crate::proxy::error::ProxyError;
@@ -6628,20 +6626,10 @@ fn claude_desktop_provider_validation_input(
     }
 }
 
-pub(crate) fn provider_stream_check_test_config(
-    provider: &Provider,
-) -> Option<&ProviderTestConfig> {
-    provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.test_config.as_ref())
-        .filter(|config| config.enabled)
-}
-
 pub(crate) fn provider_stream_check_config_override(
     provider: &Provider,
 ) -> Option<StreamCheckConfigOverride> {
-    let config = provider_stream_check_test_config(provider)?;
+    let config = provider.enabled_test_config()?;
     Some(StreamCheckConfigOverride {
         timeout_secs: config.timeout_secs,
         max_retries: config.max_retries,
@@ -6950,7 +6938,7 @@ mod tests {
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{
         AuthBinding, AuthBindingSource, ClaudeDesktopMode, ClaudeDesktopModelRoute, ProviderMeta,
-        UsageScript,
+        ProviderTestConfig, UsageScript,
     };
     use crate::proxy::engine::response_pipeline::{
         forward_error_usage_record_from_response_context,
@@ -17884,8 +17872,9 @@ command = "latest-command"
             provider_is_github_copilot_stream_check_target(&provider);
         let copilot_account_id = provider_github_copilot_managed_account_id(&provider);
         let models_are_claude_safe = provider_claude_models_are_claude_safe(&provider);
-        let stream_check_timeout_secs =
-            provider_stream_check_test_config(&provider).and_then(|config| config.timeout_secs);
+        let stream_check_timeout_secs = provider
+            .enabled_test_config()
+            .and_then(|config| config.timeout_secs);
         assert_eq!(
             provider
                 .usage_script()
