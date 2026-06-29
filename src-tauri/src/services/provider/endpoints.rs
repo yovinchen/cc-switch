@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::app_config::AppType;
 use crate::error::AppError;
 use crate::proxy_core::api::management::custom_endpoint_url_key;
-use crate::proxy_core_adapter::{mark_custom_endpoint_last_used, normalize_custom_endpoint_url};
+use crate::proxy_core_adapter::normalize_custom_endpoint_url;
 use crate::settings::CustomEndpoint;
 use crate::store::AppState;
 
@@ -65,7 +65,7 @@ pub fn update_endpoint_last_used(
     // Get provider, update last_used, save back
     let mut providers = state.db.get_all_providers(app_type.as_str())?;
     if let Some(provider) = providers.get_mut(provider_id) {
-        if mark_custom_endpoint_last_used(provider, &normalized, now_millis()) {
+        if provider.mark_custom_endpoint_last_used(&normalized, now_millis()) {
             state.db.save_provider(app_type.as_str(), provider)?;
         }
     }

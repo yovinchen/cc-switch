@@ -160,23 +160,6 @@ pub(crate) fn normalize_custom_endpoint_url(url: &str) -> Result<String, AppErro
     })
 }
 
-pub(crate) fn mark_custom_endpoint_last_used(
-    provider: &mut Provider,
-    normalized_url: &str,
-    last_used: i64,
-) -> bool {
-    if let Some(endpoint) = provider
-        .meta
-        .as_mut()
-        .and_then(|meta| meta.custom_endpoints.get_mut(normalized_url))
-    {
-        endpoint.last_used = Some(last_used);
-        true
-    } else {
-        false
-    }
-}
-
 use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};
 
 use crate::proxy_core::api::ports::{
@@ -7944,22 +7927,14 @@ mod tests {
             }
         ));
 
-        assert!(mark_custom_endpoint_last_used(
-            &mut provider,
-            "https://old.example",
-            1234
-        ));
+        assert!(provider.mark_custom_endpoint_last_used("https://old.example", 1234));
         let old_last_used = provider
             .meta
             .as_ref()
             .and_then(|meta| meta.custom_endpoints.get("https://old.example"))
             .and_then(|endpoint| endpoint.last_used);
         assert_eq!(old_last_used, Some(1234));
-        assert!(!mark_custom_endpoint_last_used(
-            &mut provider,
-            "https://missing.example",
-            5678
-        ));
+        assert!(!provider.mark_custom_endpoint_last_used("https://missing.example", 5678));
     }
 
     #[test]

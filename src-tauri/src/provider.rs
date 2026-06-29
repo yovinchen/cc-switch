@@ -138,6 +138,19 @@ impl Provider {
         endpoints
     }
 
+    pub fn mark_custom_endpoint_last_used(&mut self, normalized_url: &str, last_used: i64) -> bool {
+        if let Some(endpoint) = self
+            .meta
+            .as_mut()
+            .and_then(|meta| meta.custom_endpoints.get_mut(normalized_url))
+        {
+            endpoint.last_used = Some(last_used);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Resolve `(base_url, api_key)` for usage queries (native balance /
     /// coding-plan and the JS-script `{{apiKey}}`/`{{baseUrl}}` fallback)
     /// from the stored provider config.
