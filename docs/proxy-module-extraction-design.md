@@ -1909,6 +1909,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1354. Gemini settings/env 校验 helper 已从 `proxy_core_adapter` 的 crate-visible ports re-export 收窄为 adapter 私有 core import：adapter 继续负责把 `GeminiEnvParseIssue`/`GeminiSettingsValidationIssue` 投影为宿主错误文案，外部宿主不再通过 adapter facade 取得这些纯校验函数。
 1355. provider settings 校验、live token sync 和 required base URL helper 已从 `proxy_core_adapter` 的 crate-visible ports re-export 收窄为 adapter 私有 core import：adapter 保留 host `Provider`/`AppType` 到 core facts 的投影，外部宿主不再通过 adapter facade 取得纯 provider settings policy。
 1356. Codex config/live settings helper 已从 `proxy_core_adapter` 的 crate-visible ports re-export 收窄为 adapter 私有 core import：adapter 继续承接 host `Provider.settings_config` 到 core Codex live/config facts 的投影，外部宿主不再通过 adapter facade 取得纯 Codex config policy。
+1357. live takeover/proxy config policy helper 已从 `proxy_core_adapter` 顶部 crate-visible ports re-export block 收窄为 adapter 私有 core import：adapter 继续保留 DB 写入、端口注入和 host TOML fact 投影函数，纯 proxy/live policy 不再经 adapter facade 对外暴露。
 
 ## 背景
 
