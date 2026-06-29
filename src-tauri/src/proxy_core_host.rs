@@ -16,6 +16,8 @@ use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
 #[cfg(test)]
 use crate::proxy::host::cc_switch::channel_key_runtime_source::channel_key_runtime_source_from_database;
 #[cfg(test)]
+use crate::proxy::host::cc_switch::forward_pipeline::forward_result_to_proxy_result;
+#[cfg(test)]
 use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
@@ -54,8 +56,6 @@ use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest, ProxyResponseBo
 #[cfg(test)]
 use crate::proxy_core::api::usage::UsageRecord;
 #[cfg(test)]
-use crate::proxy_core_adapter::forward_result_to_proxy_result;
-#[cfg(test)]
 use serde_json::Value;
 #[cfg(test)]
 use std::sync::Arc;
@@ -67,12 +67,12 @@ mod tests {
     use super::*;
     use crate::app_config::AppType;
     use crate::provider::Provider;
+    use crate::proxy::host::cc_switch::forward_pipeline::proxy_response_to_core_response;
     use crate::proxy_core::api::management::{
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,
         RouteResolveRequest,
     };
     use crate::proxy_core::api::routing::ResolvedChannelAttempt;
-    use crate::proxy_core_adapter::proxy_response_to_core_response;
     use bytes::Bytes;
     use futures::StreamExt;
     use http::{Method, StatusCode};

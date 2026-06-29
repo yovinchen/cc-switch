@@ -16604,10 +16604,14 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     assert!(
         !source.contains(
             "pub(crate) use crate::proxy_core::api::routing::select_route_for_forward_result as route_selection_for_forward_result;"
-        ) && source.contains(
-            "crate::proxy_core::api::routing::select_route_for_forward_result("
-        ),
-        "proxy_core_adapter should call the core forward-result route selection helper internally without re-exporting it"
+        ) && !source.contains("pub(crate) fn proxy_response_to_core_response")
+            && !source.contains("pub(crate) fn forward_result_to_proxy_result")
+            && !source.contains("pub(crate) fn proxy_result_from_forward_parts")
+            && pipeline_impl.contains("select_route_for_forward_result")
+            && pipeline_impl.contains("pub(crate) fn proxy_response_to_core_response")
+            && pipeline_impl.contains("pub(crate) fn forward_result_to_proxy_result")
+            && pipeline_impl.contains("pub(crate) fn proxy_result_from_forward_parts"),
+        "host forward pipeline should own forward-result response bridge and core route selection without adapter facades"
     );
     assert!(
         !source.contains("route_plan_provider_match;")
@@ -22235,9 +22239,9 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         );
     }
 
-    let host_tests_adapter_import = function_slice(
+    let host_tests_adapter_import = optional_function_slice(
         &host_source,
-        "use crate::proxy_core_adapter::proxy_response_to_core_response;",
+        "use crate::proxy_core_adapter::",
         "    use bytes::Bytes;",
     );
     assert!(
@@ -22262,6 +22266,14 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
             && !host_tests_adapter_import.contains("ProxyConfig")
             && !host_tests_adapter_import.contains("ProxyRuntimeStatus"),
         "proxy_core_host tests must not import pure core contracts through proxy_core_adapter"
+    );
+    assert!(
+        host_source.contains(
+            "use crate::proxy::host::cc_switch::forward_pipeline::proxy_response_to_core_response;"
+        ) && host_source.contains(
+            "use crate::proxy::host::cc_switch::forward_pipeline::forward_result_to_proxy_result;"
+        ),
+        "proxy_core_host test harness should import forward result/response bridge helpers through the host forward pipeline module"
     );
 
     for adapter_facade in [
@@ -23664,7 +23676,7 @@ fn production_channel_health_store_reads_channel_breaker_stats_through_core_port
     let adapter_slice = function_slice(
         &adapter_source,
         "pub(crate) async fn channel_breaker_stats_with_router_source",
-        "pub(crate) fn proxy_response_to_core_response",
+        "pub(crate) async fn update_all_circuit_breaker_configs_source",
     );
 
     assert!(

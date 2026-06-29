@@ -51,10 +51,10 @@ use crate::proxy_core::api::transforms::{
     CodexToolContext, GeminiShadowStore,
 };
 use bytes::Bytes;
-use futures::{future::BoxFuture, Stream, StreamExt};
+use futures::{future::BoxFuture, Stream};
 use http::{HeaderMap, Method};
 use rust_decimal::Decimal;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -1783,7 +1783,6 @@ use crate::proxy_core::api::routing::{
 };
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
-use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY;
 use crate::proxy_core::api::transforms::{
     chat_completion_to_response_with_context,
     claude_provider_transform_required as core_claude_provider_transform_required,
@@ -1813,8 +1812,8 @@ use crate::proxy_core::api::transport::{
     ClaudeProviderAuthHeadersInput, CopilotClassification, ForwardFailureKind,
     ForwardUpstreamUrlPlan, ForwarderAuthHeaders, ForwarderProtocolPreparation,
     ForwarderProtocolPreparationInput, ForwarderRectifierRetryKind, ForwarderTransformPlan,
-    OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization,
-    ProxyCoreResponse, ProxyRequest, ProxyResponseBody, ProxyResult,
+    OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization, ProxyRequest,
+    ProxyResult,
 };
 use crate::proxy_core::api::usage::{
     usage_route_context_from_selection, ModelPricing, UsageRecord, UsageRouteContext,
@@ -5098,6 +5097,7 @@ pub(crate) trait ForwarderResponseSource {
     ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
 }
 
+use crate::proxy::host::cc_switch::forward_pipeline::forward_result_to_proxy_result;
 use crate::proxy::host::cc_switch::forwarder_response_source::default_forwarder_response_source;
 
 #[cfg(test)]
@@ -5320,118 +5320,6 @@ pub(crate) async fn channel_breaker_stats_with_router_source(
         app_type.as_str(),
         stats,
     ))
-}
-
-pub(crate) fn proxy_response_to_core_response<G>(
-    response: ProxyResponse,
-    connection_guard: Option<G>,
-) -> ProxyCoreResponse
-where
-    G: Send + 'static,
-{
-    match response {
-        ProxyResponse::Buffered {
-            status,
-            headers,
-            body,
-        } => ProxyCoreResponse::with_body(status, headers, ProxyResponseBody::bytes(body)),
-        ProxyResponse::Streamed {
-            status,
-            headers,
-            stream,
-        } => ProxyCoreResponse::with_body(
-            status,
-            headers,
-            ProxyResponseBody::stream(stream_with_connection_guard(stream, connection_guard)),
-        ),
-        other => {
-            let status = other.status();
-            let headers = other.headers().clone();
-            ProxyCoreResponse::with_body(
-                status,
-                headers,
-                ProxyResponseBody::stream(stream_with_connection_guard(
-                    other.bytes_stream(),
-                    connection_guard,
-                )),
-            )
-        }
-    }
-}
-
-pub(crate) fn forward_result_to_proxy_result(
-    result: crate::proxy::ForwardResult,
-    plan: RoutePlan,
-) -> ProxyResult {
-    let crate::proxy::ForwardResult {
-        response,
-        provider,
-        claude_api_format,
-        outbound_model,
-        selected_channel,
-        connection_guard,
-    } = result;
-    let selected_channel_id = selected_channel
-        .as_ref()
-        .map(|channel| channel.channel_id.as_str());
-    let response = proxy_response_to_core_response(response, connection_guard);
-
-    proxy_result_from_forward_parts(
-        response,
-        plan,
-        &provider,
-        claude_api_format,
-        outbound_model,
-        selected_channel_id,
-    )
-}
-
-fn stream_with_connection_guard<S, G>(
-    stream: S,
-    connection_guard: Option<G>,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
-where
-    S: Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-    G: Send + 'static,
-{
-    async_stream::stream! {
-        let _connection_guard = connection_guard;
-        tokio::pin!(stream);
-        while let Some(chunk) = stream.next().await {
-            yield chunk;
-        }
-    }
-}
-
-pub(crate) fn proxy_result_from_forward_parts(
-    response: ProxyCoreResponse,
-    plan: RoutePlan,
-    provider: &Provider,
-    claude_api_format: Option<String>,
-    outbound_model: Option<String>,
-    selected_channel_id: Option<&str>,
-) -> ProxyResult {
-    let selected_route = crate::proxy_core::api::routing::select_route_for_forward_result(
-        &plan,
-        selected_channel_id,
-        &provider.id,
-    );
-    let mut metadata = Map::new();
-    metadata.insert("hostProviderId".to_string(), json!(provider.id.clone()));
-    metadata.insert("hostProviderName".to_string(), json!(provider.name.clone()));
-    metadata.insert(
-        CLAUDE_API_FORMAT_METADATA_KEY.to_string(),
-        json!(claude_api_format),
-    );
-    metadata.insert("selectedChannelId".to_string(), json!(selected_channel_id));
-
-    ProxyResult {
-        response,
-        selected_route,
-        outbound_model,
-        usage_record: None,
-        metadata: Value::Object(metadata),
-    }
 }
 
 pub(crate) async fn update_all_circuit_breaker_configs_source(
@@ -6648,9 +6536,10 @@ mod tests {
         build_upstream_request_headers, forward_upstream_url_plan,
         is_official_codex_client_user_agent, is_socks_proxy_url, resolve_upstream_send_policy,
         serialize_upstream_request_body, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
-        ForwardUpstreamUrlPlanInput, ForwarderMediaPreventionFacts, ProxyBody,
-        ProxyTransportResponseBody, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
-        UpstreamSseAggregationKind, UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
+        ForwardUpstreamUrlPlanInput, ForwarderMediaPreventionFacts, ProxyBody, ProxyCoreResponse,
+        ProxyResponseBody, ProxyTransportResponseBody, UpstreamRequestHeadersInput,
+        UpstreamSendPolicyInput, UpstreamSseAggregationKind, UpstreamTransportKind,
+        UNSUPPORTED_IMAGE_MARKER,
     };
     use crate::proxy_core::api::usage::{
         usage_selected_provider_missing_log_message, TokenUsage, TransformedResponseUsageFormat,
