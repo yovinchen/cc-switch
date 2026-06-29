@@ -2133,10 +2133,13 @@ fn is_allowed_live_takeover_runtime_core_import(relative: &str, code: &str) -> b
 }
 
 fn is_allowed_provider_common_config_issue_core_import(relative: &str, code: &str) -> bool {
-    matches!(
+    (matches!(
         relative,
         "src/services/provider/mod.rs" | "src/services/provider/live.rs"
-    ) && code.trim() == "use crate::proxy_core::api::ports::{"
+    ) && code.trim() == "use crate::proxy_core::api::ports::{")
+        || (relative == "src/services/provider/mod.rs"
+            && code.trim()
+                == "pub(crate) use crate::proxy_core::api::ports::sanitize_claude_settings_for_live;")
 }
 
 fn is_allowed_circuit_breaker_config_core_import(relative: &str, code: &str) -> bool {
@@ -8057,9 +8060,11 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         (
             "src/services/provider/mod.rs",
             &[
+                "provider_delete_is_current_provider",
                 "provider_key_change_policy_issue_message",
                 "provider_live_config_presence_error_policy",
                 "provider_settings_validation_issue_spec",
+                "sanitize_claude_settings_for_live",
                 "ProviderAdditiveLiveWriteAction",
                 "ProviderAdditiveUpdateRoute",
                 "ProviderLiveConfigPresenceErrorPolicy",
@@ -8073,11 +8078,18 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         ),
         (
             "src/services/provider/live.rs",
-            &["GeminiLiveConfigIssue", "ProviderLiveSyncScope"][..],
+            &[
+                "GeminiLiveConfigIssue",
+                "ProviderLiveSyncScope",
+                "sanitize_claude_settings_for_live",
+            ][..],
         ),
         (
             "src/proxy/host/cc_switch/live_takeover.rs",
-            &["LiveTokenProviderSettingsIssue"][..],
+            &[
+                "LiveTokenProviderSettingsIssue",
+                "sanitize_claude_settings_for_live",
+            ][..],
         ),
     ];
     let mut violations = Vec::new();
@@ -8132,6 +8144,7 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         "LiveTokenProviderSettingsIssue",
         "ProviderAdditiveLiveWriteAction",
         "ProviderAdditiveUpdateRoute",
+        "provider_delete_is_current_provider",
         "provider_key_change_policy_issue_message",
         "provider_live_config_presence_error_policy",
         "provider_settings_validation_issue_spec",
@@ -8145,6 +8158,7 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         "ProviderSettingsValidationParts",
         "ProviderSwitchDispatch",
         "ProviderTakeoverLiveSyncTarget",
+        "sanitize_claude_settings_for_live",
     ] {
         let single_line_reexport = adapter_source.lines().any(|line| {
             line.contains("pub(crate) use crate::proxy_core::api::ports") && line.contains(symbol)

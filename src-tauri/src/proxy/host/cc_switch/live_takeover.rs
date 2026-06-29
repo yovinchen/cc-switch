@@ -16,7 +16,8 @@ use crate::proxy_core::api::ports::{
     apply_gemini_takeover_env_fields, is_local_proxy_url, proxy_live_config_owned_by_takeover,
     proxy_runtime_status_stopped, remove_claude_takeover_env_fields_if_present,
     remove_codex_takeover_auth_placeholder_if_present,
-    remove_gemini_takeover_env_fields_if_present, LiveTokenProviderSettingsIssue,
+    remove_gemini_takeover_env_fields_if_present, sanitize_claude_settings_for_live,
+    LiveTokenProviderSettingsIssue,
 };
 use crate::proxy_core::api::ports::{
     proxy_live_urls_from_listen_parts, proxy_server_info_from_parts,
@@ -50,8 +51,7 @@ use crate::proxy_core_adapter::{
     proxy_hot_switch_target_state_from_db, proxy_official_warning_event_from_current_provider_db,
     proxy_server_from_runtime_config, proxy_takeover_status_from_db,
     remove_codex_takeover_config_placeholders_if_present, require_current_provider_for_app_from_db,
-    sanitize_claude_settings_for_live, save_live_backup_value_in_db,
-    save_provider_live_backup_from_effective_settings_in_db,
+    save_live_backup_value_in_db, save_provider_live_backup_from_effective_settings_in_db,
     set_legacy_live_takeover_active_best_effort_in_db, set_legacy_live_takeover_active_in_db,
     set_proxy_app_enabled_in_db, ssot_live_restore_provider_from_db,
     sync_provider_settings_with_live_token, update_live_token_sync_provider_settings_in_db,
