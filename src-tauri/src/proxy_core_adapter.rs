@@ -3103,7 +3103,7 @@ pub(crate) fn provider_codex_fast_mode_enabled(provider: &Provider) -> bool {
     provider.codex_fast_mode_enabled()
 }
 
-pub(crate) fn provider_claude_auth_key(provider: &Provider) -> Option<ClaudeAuthKey> {
+fn provider_claude_auth_key(provider: &Provider) -> Option<ClaudeAuthKey> {
     extract_claude_auth_key_from_settings(&provider.settings_config)
 }
 
@@ -3173,7 +3173,7 @@ pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderA
 
 use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;
 
-pub(crate) fn provider_claude_base_url(provider: &Provider) -> Option<String> {
+fn provider_claude_base_url(provider: &Provider) -> Option<String> {
     extract_claude_base_url_from_settings(
         provider_is_codex_oauth(provider),
         &provider.settings_config,

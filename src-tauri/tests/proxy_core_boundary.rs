@@ -7105,6 +7105,15 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
             "proxy_core_adapter should not re-export adapter-only domain helper `{marker}`"
         );
     }
+    for marker in [
+        "pub(crate) fn provider_claude_auth_key",
+        "pub(crate) fn provider_claude_base_url",
+    ] {
+        assert!(
+            !source.contains(marker),
+            "proxy_core_adapter should not expose adapter-local Claude settings helper `{marker}`"
+        );
+    }
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
