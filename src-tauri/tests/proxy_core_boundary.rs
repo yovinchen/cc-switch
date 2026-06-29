@@ -7108,6 +7108,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
     for marker in [
         "pub(crate) enum OpenClawLiveWriteConfig",
         "pub(crate) enum OpenCodeLiveWriteConfig",
+        "pub(crate) struct ProviderHealthAttemptDbUpdate",
         "pub(crate) struct OpenClawLiveWritePlan",
         "pub(crate) struct OpenCodeLiveWritePlan",
         "pub(crate) fn provider_claude_auth_key",
@@ -7119,6 +7120,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn provider_codex_fast_mode_enabled",
         "pub(crate) fn provider_gemini_auth_strategy",
         "pub(crate) fn provider_gemini_kind",
+        "pub(crate) fn provider_health_attempt_db_update",
         "pub(crate) fn provider_is_github_copilot(",
         "pub(crate) fn provider_kind_from_app_type_and_config",
         "pub(crate) fn provider_managed_account_binding_input",

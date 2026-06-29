@@ -3328,15 +3328,15 @@ pub(crate) async fn circuit_failure_threshold_from_router_config_source(
     circuit_failure_threshold_from_app_config(config.as_ref(), fallback)
 }
 
-pub(crate) struct ProviderHealthAttemptDbUpdate {
-    pub(crate) provider_id: String,
-    pub(crate) app_type: String,
-    pub(crate) success: bool,
-    pub(crate) error_msg: Option<String>,
-    pub(crate) failure_threshold: u32,
+struct ProviderHealthAttemptDbUpdate {
+    provider_id: String,
+    app_type: String,
+    success: bool,
+    error_msg: Option<String>,
+    failure_threshold: u32,
 }
 
-pub(crate) fn provider_health_attempt_db_update(
+fn provider_health_attempt_db_update(
     result: ProviderAttemptResult,
 ) -> ProviderHealthAttemptDbUpdate {
     ProviderHealthAttemptDbUpdate {
