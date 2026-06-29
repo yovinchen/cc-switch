@@ -155,7 +155,18 @@ use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection
 
 use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled,
-    apply_codex_takeover_auth_placeholder_if_present, ensure_codex_takeover_auth_placeholder,
+    apply_codex_takeover_auth_placeholder_if_present,
+    codex_auth_has_oauth_login_material as core_codex_auth_has_oauth_login_material,
+    codex_base_url_from_settings as core_codex_base_url_from_settings,
+    codex_config_has_base_url_matching as core_codex_config_has_base_url_matching,
+    codex_config_text_from_settings,
+    codex_live_settings_parts_from_settings as core_codex_live_settings_parts_from_settings,
+    codex_live_snapshot_parts_from_settings as core_codex_live_snapshot_parts_from_settings,
+    codex_model_from_config_toml as core_codex_model_from_config_toml,
+    codex_provider_backfill_parts_from_settings as core_codex_provider_backfill_parts_from_settings,
+    codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
+    codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
+    ensure_codex_takeover_auth_placeholder,
     gemini_env_parse_issue_spec as core_gemini_env_parse_issue_spec,
     gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
@@ -173,16 +184,6 @@ use crate::proxy_core::api::ports::{
 };
 
 pub(crate) use crate::proxy_core::api::ports::{
-    codex_auth_has_oauth_login_material as core_codex_auth_has_oauth_login_material,
-    codex_base_url_from_settings as core_codex_base_url_from_settings,
-    codex_config_has_base_url_matching as core_codex_config_has_base_url_matching,
-    codex_config_text_from_settings,
-    codex_live_settings_parts_from_settings as core_codex_live_settings_parts_from_settings,
-    codex_live_snapshot_parts_from_settings as core_codex_live_snapshot_parts_from_settings,
-    codex_model_from_config_toml as core_codex_model_from_config_toml,
-    codex_provider_backfill_parts_from_settings as core_codex_provider_backfill_parts_from_settings,
-    codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
-    codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     live_backup_snapshot_from_live_config as core_live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
     live_takeover_app_kinds,
