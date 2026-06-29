@@ -7428,6 +7428,10 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
         "proxy_core_adapter should not expose Codex API key extraction as a crate-visible test facade"
     );
     assert!(
+        !source.contains("pub(crate) fn provider_codex_api_key"),
+        "proxy_core_adapter should not expose raw Codex API key extraction as a crate-visible facade"
+    );
+    assert!(
         !source.contains("pub(crate) type ProviderCredentialValues"),
         "proxy_core_adapter should not re-export provider credential DTOs as adapter aliases"
     );

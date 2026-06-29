@@ -2189,7 +2189,7 @@ pub(crate) fn provider_codex_auth_headers(
 
 use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model;
 
-pub(crate) fn provider_codex_api_key(provider: &Provider) -> Option<String> {
+fn provider_codex_api_key(provider: &Provider) -> Option<String> {
     if let Some(env) = provider.settings_config.get("env") {
         if let Some(key) = env
             .get("OPENAI_API_KEY")
