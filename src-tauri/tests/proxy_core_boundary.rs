@@ -2135,10 +2135,10 @@ fn is_allowed_stream_check_core_import(relative: &str, code: &str) -> bool {
             | "additive_provider_stream_check_base_url_from_settings,"
             | "additive_stream_check_base_url_missing_error_spec, AppKind,"
             | "};"
+            | "use crate::proxy_core::api::management::{"
+            | "stream_check_failed_result, stream_check_proxy_target_ids_from_sources,"
             | "use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;"
             | "use crate::proxy_core::api::transport::is_github_copilot_upstream as core_is_github_copilot_upstream;"
-            | "use crate::proxy_core::api::management::{"
-            | "use crate::proxy_core::api::management::stream_check_failed_result;"
     )
 }
 
@@ -14783,7 +14783,10 @@ fn stream_check_command_owns_proxy_target_db_reads() {
             && function.contains(".get_current_provider(app_type.as_str())")
             && function.contains(".get_failover_queue(app_type.as_str())")
             && function.contains("stream_check_proxy_target_ids_from_sources(")
+            && source.contains("use crate::proxy_core::api::management::{")
+            && source.contains("stream_check_failed_result, stream_check_proxy_target_ids_from_sources,")
             && !adapter_source.contains("pub(crate) fn stream_check_proxy_target_ids_from_db")
+            && !adapter_source.contains("pub(crate) fn stream_check_proxy_target_ids_from_sources")
             && !function.contains("HealthStatus::Failed")
             && !function.contains("status:")
             && !function.contains("success:")

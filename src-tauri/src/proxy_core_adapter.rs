@@ -55,7 +55,7 @@ use futures::{future::BoxFuture, Stream};
 use http::{HeaderMap, Method};
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -2720,23 +2720,6 @@ pub(crate) fn resolve_forwarder_claude_api_format(
         is_copilot,
         copilot_model_vendor,
     )
-}
-
-pub(crate) fn stream_check_proxy_target_ids_from_sources(
-    proxy_targets_only: bool,
-    current_provider_id: Option<String>,
-    failover_provider_ids: impl IntoIterator<Item = String>,
-) -> Option<HashSet<String>> {
-    if !proxy_targets_only {
-        return None;
-    }
-
-    let mut ids = HashSet::new();
-    if let Some(current_provider_id) = current_provider_id {
-        ids.insert(current_provider_id);
-    }
-    ids.extend(failover_provider_ids);
-    Some(ids)
 }
 
 pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
@@ -16838,31 +16821,6 @@ command = "latest-command"
         assert!(!update.success);
         assert_eq!(update.error_msg.as_deref(), Some("timeout"));
         assert_eq!(update.failure_threshold, 3);
-    }
-
-    #[test]
-    fn stream_check_proxy_target_ids_adapter_projects_current_and_failover_sources() {
-        assert!(stream_check_proxy_target_ids_from_sources(
-            false,
-            Some("current".to_string()),
-            vec!["queued".to_string()],
-        )
-        .is_none());
-
-        let ids = stream_check_proxy_target_ids_from_sources(
-            true,
-            Some("current".to_string()),
-            vec!["queued".to_string(), "current".to_string()],
-        )
-        .expect("proxy target filter ids");
-        assert_eq!(ids.len(), 2);
-        assert!(ids.contains("current"));
-        assert!(ids.contains("queued"));
-
-        let empty_ids =
-            stream_check_proxy_target_ids_from_sources(true, None, Vec::<String>::new())
-                .expect("empty proxy target filter ids");
-        assert!(empty_ids.is_empty());
     }
 
     #[test]

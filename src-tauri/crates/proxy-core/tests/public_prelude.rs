@@ -1942,3 +1942,28 @@ fn external_host_can_use_codex_responses_to_chat_gate_from_prelude() {
         }
     ));
 }
+
+#[test]
+fn external_host_can_use_stream_check_proxy_target_filter_from_prelude() {
+    let ids = stream_check_proxy_target_ids_from_sources(
+        true,
+        Some("current-provider".to_string()),
+        vec![
+            "failover-a".to_string(),
+            "current-provider".to_string(),
+            "failover-b".to_string(),
+        ],
+    )
+    .expect("proxy target ids");
+
+    assert_eq!(ids.len(), 3);
+    assert!(ids.contains("current-provider"));
+    assert!(ids.contains("failover-a"));
+    assert!(ids.contains("failover-b"));
+    assert!(stream_check_proxy_target_ids_from_sources(
+        false,
+        Some("current-provider".to_string()),
+        vec!["failover-a".to_string()],
+    )
+    .is_none());
+}

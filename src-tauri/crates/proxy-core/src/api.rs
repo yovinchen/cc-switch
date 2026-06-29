@@ -421,6 +421,7 @@ pub mod prelude {
         select_enabled_channel_key_runtime_candidate,
         select_enabled_channel_key_runtime_candidate_with_failure_cooldown,
         DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+        stream_check_proxy_target_ids_from_sources,
         HealthCheckRequest, HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest,
         ProviderListResponse, ProviderListSource,
         ProviderSummary, ProviderSummaryInput, ProxyChannelKeyPatchRequest,

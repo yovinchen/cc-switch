@@ -16,6 +16,7 @@ use super::ports::{
     ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse, RouteGroupSourceInput,
     RouteResolveRequest, RouteResolveResponse,
 };
+use std::collections::HashSet;
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
     if app_type.trim().is_empty() {
@@ -46,6 +47,23 @@ pub fn normalize_channel_id_path(channel_id: impl AsRef<str>) -> ProxyCoreResult
     } else {
         Ok(channel_id)
     }
+}
+
+pub fn stream_check_proxy_target_ids_from_sources(
+    proxy_targets_only: bool,
+    current_provider_id: Option<String>,
+    failover_provider_ids: impl IntoIterator<Item = String>,
+) -> Option<HashSet<String>> {
+    if !proxy_targets_only {
+        return None;
+    }
+
+    let mut ids = HashSet::new();
+    if let Some(current_provider_id) = current_provider_id {
+        ids.insert(current_provider_id);
+    }
+    ids.extend(failover_provider_ids);
+    Some(ids)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1051,8 +1069,8 @@ mod tests {
         RouteResolveManagementRequest,
         channel_key_not_found_message, channel_not_found_message, custom_endpoint_url_issue_spec,
         custom_endpoint_url_key, normalize_channel_id_path, normalize_channel_key_ref_path,
-        normalize_custom_endpoint_url, validate_management_app_type,
-        validate_route_resolve_app_type, CustomEndpointUrlIssue,
+        normalize_custom_endpoint_url, stream_check_proxy_target_ids_from_sources,
+        validate_management_app_type, validate_route_resolve_app_type, CustomEndpointUrlIssue,
     };
     use crate::domain::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus,
@@ -1848,5 +1866,30 @@ mod tests {
         assert_eq!(response.groups[0].channel_count, 1);
         assert_eq!(response.groups[1].name, "default");
         assert_eq!(response.groups[1].channel_count, 2);
+    }
+
+    #[test]
+    fn stream_check_proxy_target_ids_from_sources_preserves_current_and_failover_sources() {
+        assert!(stream_check_proxy_target_ids_from_sources(
+            false,
+            Some("current".to_string()),
+            vec!["queued".to_string()],
+        )
+        .is_none());
+
+        let ids = stream_check_proxy_target_ids_from_sources(
+            true,
+            Some("current".to_string()),
+            vec!["queued".to_string(), "current".to_string()],
+        )
+        .expect("proxy target filter ids");
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains("current"));
+        assert!(ids.contains("queued"));
+
+        let empty_ids =
+            stream_check_proxy_target_ids_from_sources(true, None, Vec::<String>::new())
+                .expect("empty proxy target filter ids");
+        assert!(empty_ids.is_empty());
     }
 }
