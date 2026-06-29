@@ -85,13 +85,8 @@ const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_PRESELECT_MARKERS: &[&str] = &[
     ".select_providers(",
     ".select_provider_ids(",
 ];
-const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
-    "providers::",
-    "get_claude_api_format(",
-    "selected_route.provider",
-    "selected_provider_missing_from_source_message(",
-    "request_context_route_update_from_proxy_result(",
-];
+const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_COMPAT_MARKERS: &[&str] =
+    &["providers::", "get_claude_api_format("];
 const FORBIDDEN_PROXY_ERROR_MAPPER_FORWARD_FAILURE_PROJECTION_MARKERS: &[&str] = &[
     "ForwardFailureKind",
     "forward_failure_kind_from_proxy_status(",
@@ -2548,18 +2543,20 @@ fn request_context_does_not_preselect_provider() {
 }
 
 #[test]
-fn request_context_uses_adapter_for_provider_facts() {
+fn request_context_owns_route_update_after_proxy_result() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/context.rs");
     let source = fs::read_to_string(&path).expect("read engine/context.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_REQUEST_CONTEXT_PROVIDER_ADAPTER_MARKERS {
+        for marker in FORBIDDEN_REQUEST_CONTEXT_PROVIDER_COMPAT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/engine/context.rs:{} contains provider adapter marker `{}`",
+                    "src/proxy/engine/context.rs:{} contains provider compat marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -2569,9 +2566,28 @@ fn request_context_uses_adapter_for_provider_facts() {
 
     assert!(
         violations.is_empty(),
-        "RequestContext must consume provider facts through proxy_core_adapter helpers:\n{}",
+        "RequestContext must not revive legacy provider compat helpers:\n{}",
         violations.join("\n")
     );
+    assert!(
+        source.contains("fn request_context_route_update_from_proxy_result(")
+            && source.contains("fn request_context_route_update_from_proxy_result_source")
+            && source.contains("usage_route_context_from_selection")
+            && source.contains("ForwardAttempt::from_core_selection")
+            && source.contains("selected_provider_missing_from_source_message"),
+        "RequestContext should own route-result provider/usage update after ProxyEngine forwarding"
+    );
+    for adapter_marker in [
+        "struct RequestContextRouteUpdate",
+        "enum RequestContextRouteUpdateError",
+        "fn request_context_route_update_from_proxy_result(",
+        "fn request_context_route_update_from_proxy_result_source",
+    ] {
+        assert!(
+            !adapter_source.contains(adapter_marker),
+            "proxy_core_adapter should not retain request context route update facade `{adapter_marker}`"
+        );
+    }
 }
 
 #[test]
@@ -2624,6 +2640,7 @@ fn request_context_owns_core_context_imports() {
             && source.contains("use crate::proxy_core::api::domain::AppKind;")
             && source.contains("use crate::proxy_core::api::errors::{")
             && source.contains("selected_provider_display_name_for_error")
+            && source.contains("selected_provider_missing_from_source_message")
             && source.contains("selected_provider_not_applied_message")
             && source.contains("unselected_provider_fallback_id")
             && source.contains(
@@ -2637,7 +2654,9 @@ fn request_context_owns_core_context_imports() {
             && source.contains(
                 "use crate::proxy_core::api::transforms::claude_api_format_from_metadata;"
             )
-            && source.contains("use crate::proxy_core::api::usage::UsageRouteContext;"),
+            && source.contains("use crate::proxy_core::api::usage::{")
+            && source.contains("usage_route_context_from_selection")
+            && source.contains("UsageRouteContext"),
         "engine/context.rs should import pure request context contracts directly"
     );
     assert!(
@@ -2661,8 +2680,10 @@ fn request_context_owns_core_context_imports() {
         "request_model_for_forward",
         "response_runtime_policy_from_app_proxy_config",
         "selected_provider_display_name_for_error",
+        "selected_provider_missing_from_source_message",
         "selected_provider_not_applied_message",
         "unselected_provider_fallback_id",
+        "usage_route_context_from_selection",
     ] {
         if adapter_import_identifiers
             .iter()
@@ -5875,6 +5896,8 @@ fn proxy_core_adapter_does_not_export_usage_contract_aliases() {
         .expect("read proxy_core_adapter.rs");
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
+    let context_source = fs::read_to_string(manifest_dir.join("src/proxy/engine/context.rs"))
+        .expect("read proxy/engine/context.rs");
 
     for alias in [
         "pub(crate) type ModelPricing = crate::proxy_core::api::usage::ModelPricing;",
@@ -5890,12 +5913,13 @@ fn proxy_core_adapter_does_not_export_usage_contract_aliases() {
         !adapter_source.contains(
             "pub(crate) use crate::proxy_core::api::usage::usage_route_context_from_selection"
         ),
-        "proxy_core_adapter should not re-export usage_route_context_from_selection; adapter internals should import it from proxy_core::api::usage"
+        "proxy_core_adapter should not re-export usage_route_context_from_selection; owning modules should import it from proxy_core::api::usage"
     );
     assert!(
-        adapter_source.contains("use crate::proxy_core::api::usage::{")
-            && adapter_source.contains("usage_route_context_from_selection"),
-        "proxy_core_adapter internals should import usage_route_context_from_selection directly from proxy_core usage"
+        !adapter_source.contains("usage_route_context_from_selection")
+            && context_source.contains("use crate::proxy_core::api::usage::{")
+            && context_source.contains("usage_route_context_from_selection"),
+        "RequestContext should own usage_route_context_from_selection after route-result update migration"
     );
 
     assert!(

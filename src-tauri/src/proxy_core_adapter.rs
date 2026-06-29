@@ -92,7 +92,6 @@ use crate::proxy_core::api::errors::{
     config_error_with_context as core_config_error_with_context,
     internal_error_with_context as core_internal_error_with_context,
     invalid_request_error as core_invalid_request_error,
-    selected_provider_missing_from_source_message,
 };
 use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};
 pub(crate) fn app_error(context: &str, error: AppError) -> ProxyCoreError {
@@ -1815,9 +1814,7 @@ use crate::proxy_core::api::transport::{
     OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization, ProxyRequest,
     ProxyResult,
 };
-use crate::proxy_core::api::usage::{
-    usage_route_context_from_selection, ModelPricing, UsageRecord, UsageRouteContext,
-};
+use crate::proxy_core::api::usage::{ModelPricing, UsageRecord};
 
 use crate::proxy::host::cc_switch::managed_account_runtime_source::managed_account_runtime_source_from_app_handle;
 
@@ -6240,54 +6237,6 @@ pub(crate) fn usage_pricing_config_lookup_from_record(
     }
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct RequestContextRouteUpdate {
-    pub(crate) outbound_model: Option<String>,
-    pub(crate) usage_route_context: UsageRouteContext,
-    pub(crate) provider: Provider,
-}
-
-#[derive(Debug)]
-pub(crate) enum RequestContextRouteUpdateError<E> {
-    ProviderLoad(E),
-    ProviderMissing(String),
-}
-
-pub(crate) fn request_context_route_update_from_proxy_result(
-    app_type: &AppType,
-    provider: &Provider,
-    result: &ProxyResult,
-) -> RequestContextRouteUpdate {
-    RequestContextRouteUpdate {
-        outbound_model: result.outbound_model.clone(),
-        usage_route_context: usage_route_context_from_selection(&result.selected_route),
-        provider: ForwardAttempt::from_core_selection(app_type, provider, &result.selected_route)
-            .provider()
-            .clone(),
-    }
-}
-
-pub(crate) fn request_context_route_update_from_proxy_result_source<E>(
-    app_type: &AppType,
-    app_type_str: &str,
-    result: &ProxyResult,
-    source_name: &str,
-    load_provider: impl FnOnce(&str, &str) -> Result<Option<Provider>, E>,
-) -> Result<RequestContextRouteUpdate, RequestContextRouteUpdateError<E>> {
-    let provider_id = result.selected_route.provider.id.as_str();
-    let provider = load_provider(provider_id, app_type_str)
-        .map_err(RequestContextRouteUpdateError::ProviderLoad)?;
-    let Some(provider) = provider else {
-        return Err(RequestContextRouteUpdateError::ProviderMissing(
-            selected_provider_missing_from_source_message(provider_id, source_name),
-        ));
-    };
-
-    Ok(request_context_route_update_from_proxy_result(
-        app_type, &provider, result,
-    ))
-}
-
 pub(crate) fn usage_record_to_request_log(
     record: &UsageRecord,
     pricing_model_source: &str,
@@ -6499,9 +6448,9 @@ mod tests {
     };
     use crate::proxy_core::api::errors::{
         proxy_error_http_status_code, proxy_error_response_body,
-        selected_provider_display_name_for_error, selected_provider_not_applied_message,
-        unselected_provider_fallback_id, upstream_proxy_error_response_body, ProxyCoreError,
-        ProxyErrorStatusKind,
+        selected_provider_display_name_for_error, selected_provider_missing_from_source_message,
+        selected_provider_not_applied_message, unselected_provider_fallback_id,
+        upstream_proxy_error_response_body, ProxyCoreError, ProxyErrorStatusKind,
     };
     use crate::proxy_core::api::events::ProxyEventEnvelope;
     use crate::proxy_core::api::management::{
@@ -6543,7 +6492,7 @@ mod tests {
     };
     use crate::proxy_core::api::usage::{
         usage_selected_provider_missing_log_message, TokenUsage, TransformedResponseUsageFormat,
-        UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
+        UsageRecordFailureLogContext, UsageRouteContext, UsageSelectedProviderMissingPhase,
     };
     use crate::settings::CustomEndpoint;
     use indexmap::IndexMap;
@@ -14641,70 +14590,6 @@ command = "latest-command"
         let resolved =
             crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate(candidate);
         assert_eq!(resolved.channel_id, "ch-b");
-        let result = ProxyResult {
-            response: ProxyCoreResponse::empty(http::StatusCode::OK),
-            selected_route: selected,
-            outbound_model: Some("upstream-sonnet".to_string()),
-            usage_record: None,
-            metadata: json!({}),
-        };
-        let selected_host_provider = Provider::with_id(
-            "provider-b".to_string(),
-            "Provider B".to_string(),
-            json!({}),
-            None,
-        );
-        let update = request_context_route_update_from_proxy_result(
-            &AppType::Claude,
-            &selected_host_provider,
-            &result,
-        );
-        assert_eq!(update.outbound_model.as_deref(), Some("upstream-sonnet"));
-        assert_eq!(update.usage_route_context.channel_id, "ch-b");
-        assert_eq!(update.provider.id, "provider-b");
-        let sourced_update = request_context_route_update_from_proxy_result_source(
-            &AppType::Claude,
-            AppType::Claude.as_str(),
-            &result,
-            "host database",
-            |provider_id, app_type| {
-                assert_eq!(provider_id, "provider-b");
-                assert_eq!(app_type, AppType::Claude.as_str());
-                Ok::<_, String>(Some(selected_host_provider.clone()))
-            },
-        )
-        .expect("sourced route update");
-        assert_eq!(
-            sourced_update.outbound_model.as_deref(),
-            Some("upstream-sonnet")
-        );
-        assert_eq!(sourced_update.usage_route_context.channel_id, "ch-b");
-        assert_eq!(sourced_update.provider.id, "provider-b");
-        let missing_sourced_update = request_context_route_update_from_proxy_result_source(
-            &AppType::Claude,
-            AppType::Claude.as_str(),
-            &result,
-            "host database",
-            |_provider_id, _app_type| Ok::<_, String>(None),
-        )
-        .expect_err("missing provider");
-        assert!(matches!(
-            missing_sourced_update,
-            RequestContextRouteUpdateError::ProviderMissing(message)
-                if message == "selected provider is missing from host database: provider-b"
-        ));
-        let load_error = request_context_route_update_from_proxy_result_source(
-            &AppType::Claude,
-            AppType::Claude.as_str(),
-            &result,
-            "host database",
-            |_provider_id, _app_type| Err::<Option<Provider>, _>("db failed".to_string()),
-        )
-        .expect_err("load error");
-        assert!(matches!(
-            load_error,
-            RequestContextRouteUpdateError::ProviderLoad(message) if message == "db failed"
-        ));
         let host_provider = Provider::with_id(
             "provider-a".to_string(),
             "Provider A".to_string(),
