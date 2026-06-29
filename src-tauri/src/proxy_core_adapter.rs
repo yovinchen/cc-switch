@@ -52,7 +52,6 @@ use crate::proxy_core::api::transforms::{
     AnthropicToolSchemaHints, CodexChatReasoningOptions, CodexChatReasoningProfile,
     CodexToolContext, GeminiShadowStore,
 };
-use crate::settings::CustomEndpoint;
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
 use http::{HeaderMap, Method};
@@ -152,15 +151,6 @@ pub(crate) fn provider_selection_failure_from_app_error(
         AppError::NoProvidersConfigured => Some(ProviderSelectionFailure::NoProvidersConfigured),
         _ => None,
     }
-}
-
-pub(crate) fn provider_custom_endpoint_list(provider: Option<&Provider>) -> Vec<CustomEndpoint> {
-    let Some(meta) = provider.and_then(|provider| provider.meta.as_ref()) else {
-        return Vec::new();
-    };
-    let mut endpoints: Vec<_> = meta.custom_endpoints.values().cloned().collect();
-    endpoints.sort_by_key(|endpoint| std::cmp::Reverse(endpoint.added_at));
-    endpoints
 }
 
 pub(crate) fn normalize_custom_endpoint_url(url: &str) -> Result<String, AppError> {
@@ -7007,6 +6997,7 @@ mod tests {
         usage_selected_provider_missing_log_message, TokenUsage, TransformedResponseUsageFormat,
         UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
     };
+    use crate::settings::CustomEndpoint;
     use indexmap::IndexMap;
 
     fn codex_api_key_from_auth_and_config(
@@ -7916,7 +7907,7 @@ mod tests {
             ..ProviderMeta::default()
         });
 
-        let listed = provider_custom_endpoint_list(Some(&provider));
+        let listed = provider.custom_endpoint_list();
         assert_eq!(
             listed
                 .iter()
@@ -7924,13 +7915,13 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["https://new.example", "https://old.example"]
         );
-        assert!(provider_custom_endpoint_list(None).is_empty());
-        assert!(provider_custom_endpoint_list(Some(&Provider::with_id(
+        assert!(Provider::with_id(
             "provider-empty".to_string(),
             "Provider Empty".to_string(),
             json!({}),
             None,
-        )))
+        )
+        .custom_endpoint_list()
         .is_empty());
 
         assert_eq!(

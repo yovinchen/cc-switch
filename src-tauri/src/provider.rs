@@ -129,6 +129,15 @@ impl Provider {
             .unwrap_or(false)
     }
 
+    pub fn custom_endpoint_list(&self) -> Vec<crate::settings::CustomEndpoint> {
+        let Some(meta) = self.meta.as_ref() else {
+            return Vec::new();
+        };
+        let mut endpoints: Vec<_> = meta.custom_endpoints.values().cloned().collect();
+        endpoints.sort_by_key(|endpoint| std::cmp::Reverse(endpoint.added_at));
+        endpoints
+    }
+
     /// Resolve `(base_url, api_key)` for usage queries (native balance /
     /// coding-plan and the JS-script `{{apiKey}}`/`{{baseUrl}}` fallback)
     /// from the stored provider config.

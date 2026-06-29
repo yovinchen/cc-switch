@@ -1191,6 +1191,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn provider_usage_script(",
     "fn provider_stream_check_test_config(",
     "fn provider_is_full_url(",
+    "fn provider_custom_endpoint_list(",
     "fn provider_usage_script_credentials(",
     "fn usage_script_credentials(",
     "usage_script_credentials_from_parts as usage_script_credentials",
@@ -7341,17 +7342,17 @@ fn production_provider_endpoint_service_delegates_projection_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "provider endpoint service must delegate custom endpoint sorting and last-used mutation to proxy_core_adapter without reimplementing URL policy:\n{}",
+        "provider endpoint service must delegate custom endpoint metadata access and last-used mutation without reimplementing URL policy:\n{}",
         violations.join("\n")
     );
     assert!(
         source.contains("use crate::proxy_core::api::management::custom_endpoint_url_key;")
             && source.contains("use crate::proxy_core_adapter::{")
             && source.contains("normalize_custom_endpoint_url")
-            && source.contains("provider_custom_endpoint_list")
             && source.contains("mark_custom_endpoint_last_used")
+            && source.contains(".custom_endpoint_list()")
             && !source.contains("custom_endpoint_url_key,"),
-        "provider endpoint service should consume the pure URL key helper directly from proxy-core while keeping host projections in the adapter"
+        "provider endpoint service should consume the pure URL key helper directly from proxy-core, keep mutation projection in the adapter, and read sorted endpoint metadata through Provider"
     );
 }
 

@@ -7,9 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::app_config::AppType;
 use crate::error::AppError;
 use crate::proxy_core::api::management::custom_endpoint_url_key;
-use crate::proxy_core_adapter::{
-    mark_custom_endpoint_last_used, normalize_custom_endpoint_url, provider_custom_endpoint_list,
-};
+use crate::proxy_core_adapter::{mark_custom_endpoint_last_used, normalize_custom_endpoint_url};
 use crate::settings::CustomEndpoint;
 use crate::store::AppState;
 
@@ -20,7 +18,10 @@ pub fn get_custom_endpoints(
     provider_id: &str,
 ) -> Result<Vec<CustomEndpoint>, AppError> {
     let providers = state.db.get_all_providers(app_type.as_str())?;
-    Ok(provider_custom_endpoint_list(providers.get(provider_id)))
+    Ok(providers
+        .get(provider_id)
+        .map(|provider| provider.custom_endpoint_list())
+        .unwrap_or_default())
 }
 
 /// Add a custom endpoint to a provider
