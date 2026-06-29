@@ -6,8 +6,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::app_config::AppType;
 use crate::error::AppError;
-use crate::proxy_core::api::management::custom_endpoint_url_key;
-use crate::proxy_core_adapter::normalize_custom_endpoint_url;
+use crate::proxy_core::api::management::{
+    custom_endpoint_url_issue_spec, custom_endpoint_url_key,
+    normalize_custom_endpoint_url as core_normalize_custom_endpoint_url,
+};
 use crate::settings::CustomEndpoint;
 use crate::store::AppState;
 
@@ -78,4 +80,34 @@ fn now_millis() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as i64
+}
+
+fn normalize_custom_endpoint_url(url: &str) -> Result<String, AppError> {
+    core_normalize_custom_endpoint_url(url).map_err(|issue| {
+        let spec = custom_endpoint_url_issue_spec(issue);
+        AppError::localized(spec.key, spec.zh, spec.en)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_endpoint_url_and_maps_empty_url_error() {
+        assert_eq!(
+            normalize_custom_endpoint_url(" https://relay.example.com/v1/ ")
+                .expect("normalized endpoint URL"),
+            "https://relay.example.com/v1"
+        );
+
+        let empty_error = normalize_custom_endpoint_url(" / ").expect_err("empty URL");
+        assert!(matches!(
+            empty_error,
+            AppError::Localized {
+                key: "provider.endpoint.url_required",
+                ..
+            }
+        ));
+    }
 }

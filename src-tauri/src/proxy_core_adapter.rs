@@ -153,13 +153,6 @@ pub(crate) fn provider_selection_failure_from_app_error(
     }
 }
 
-pub(crate) fn normalize_custom_endpoint_url(url: &str) -> Result<String, AppError> {
-    crate::proxy_core::api::management::normalize_custom_endpoint_url(url).map_err(|issue| {
-        let spec = crate::proxy_core::api::management::custom_endpoint_url_issue_spec(issue);
-        AppError::localized(spec.key, spec.zh, spec.en)
-    })
-}
-
 use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};
 
 use crate::proxy_core::api::ports::{
@@ -7861,7 +7854,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_endpoint_adapter_projects_list_normalization_and_last_used() {
+    fn provider_endpoint_adapter_projects_list_and_last_used() {
         let mut endpoints = HashMap::new();
         endpoints.insert(
             "https://old.example".to_string(),
@@ -7906,26 +7899,6 @@ mod tests {
         )
         .custom_endpoint_list()
         .is_empty());
-
-        assert_eq!(
-            crate::proxy_core::api::management::custom_endpoint_url_key(
-                " https://relay.example.com/v1/// "
-            ),
-            "https://relay.example.com/v1"
-        );
-        assert_eq!(
-            normalize_custom_endpoint_url(" https://relay.example.com/v1/ ")
-                .expect("normalized endpoint URL"),
-            "https://relay.example.com/v1"
-        );
-        let empty_error = normalize_custom_endpoint_url(" / ").expect_err("empty URL");
-        assert!(matches!(
-            empty_error,
-            AppError::Localized {
-                key: "provider.endpoint.url_required",
-                ..
-            }
-        ));
 
         assert!(provider.mark_custom_endpoint_last_used("https://old.example", 1234));
         let old_last_used = provider

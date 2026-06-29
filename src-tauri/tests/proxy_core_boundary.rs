@@ -7347,17 +7347,19 @@ fn production_provider_endpoint_service_delegates_projection_to_adapter() {
         violations.join("\n")
     );
     assert!(
-        source.contains("use crate::proxy_core::api::management::custom_endpoint_url_key;")
-            && source.contains("normalize_custom_endpoint_url")
+        source.contains("use crate::proxy_core::api::management::{")
+            && source.contains("custom_endpoint_url_issue_spec")
+            && source.contains("custom_endpoint_url_key")
+            && source.contains("normalize_custom_endpoint_url as core_normalize_custom_endpoint_url")
             && source.contains(".custom_endpoint_list()")
             && source.contains(".mark_custom_endpoint_last_used(")
-            && !source.contains("custom_endpoint_url_key,"),
-        "provider endpoint service should consume the pure URL key helper directly from proxy-core and read/mutate endpoint metadata through Provider"
+            && !source.contains("use crate::proxy_core_adapter::normalize_custom_endpoint_url"),
+        "provider endpoint service should consume custom endpoint URL policy directly from proxy-core and read/mutate endpoint metadata through Provider"
     );
 }
 
 #[test]
-fn proxy_core_adapter_delegates_custom_endpoint_url_policy_to_core() {
+fn proxy_core_adapter_excludes_custom_endpoint_url_policy_facade() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
@@ -7367,21 +7369,14 @@ fn proxy_core_adapter_delegates_custom_endpoint_url_policy_to_core() {
             .contains("pub(crate) use crate::proxy_core::api::management::custom_endpoint_url_key"),
         "proxy_core_adapter should not re-export the pure custom endpoint URL key helper"
     );
-
-    let slice = function_slice(
-        &source,
-        "pub(crate) fn normalize_custom_endpoint_url",
-        "use crate::proxy_core::api::model_catalog",
-    );
     assert!(
-        slice.contains("crate::proxy_core::api::management::normalize_custom_endpoint_url")
-            && slice.contains("custom_endpoint_url_issue_spec"),
-        "proxy_core_adapter should delegate custom endpoint URL normalization and issue specs to core"
+        !source.contains("pub(crate) fn normalize_custom_endpoint_url"),
+        "proxy_core_adapter should not keep a custom endpoint URL normalization facade"
     );
 
     let mut violations = Vec::new();
     for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CUSTOM_ENDPOINT_URL_POLICY_MARKERS {
-        if slice.contains(marker) {
+        if source.contains(marker) {
             violations.push(*marker);
         }
     }
