@@ -26,11 +26,10 @@ use crate::provider::Provider;
 use crate::proxy_core::api::management::{
     merge_stream_check_config, should_retry_channel_reachability_failure,
     stream_check_failed_result_with_retry_count, stream_check_result_from_probe_result,
+    StreamCheckConfigOverride,
 };
 use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;
-use crate::proxy_core_adapter::{
-    provider_stream_check_config_override, stream_check_provider_base_url,
-};
+use crate::proxy_core_adapter::stream_check_provider_base_url;
 
 pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};
 
@@ -91,7 +90,16 @@ impl StreamCheckService {
 
     /// 合并供应商单独配置（`meta.testConfig`，仅当 `enabled`）与全局配置。
     fn merge_provider_config(provider: &Provider, global: &StreamCheckConfig) -> StreamCheckConfig {
-        merge_stream_check_config(global, provider_stream_check_config_override(provider))
+        merge_stream_check_config(global, Self::provider_config_override(provider))
+    }
+
+    fn provider_config_override(provider: &Provider) -> Option<StreamCheckConfigOverride> {
+        let config = provider.enabled_test_config()?;
+        Some(StreamCheckConfigOverride {
+            timeout_secs: config.timeout_secs,
+            max_retries: config.max_retries,
+            degraded_threshold_ms: config.degraded_threshold_ms,
+        })
     }
 
     /// 单次连通性探测。

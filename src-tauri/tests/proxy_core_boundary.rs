@@ -14530,8 +14530,16 @@ fn production_stream_check_delegates_provider_adapters_to_adapter() {
         "pub async fn check_with_retry",
         "/// 合并供应商单独配置",
     );
-    let merge_config_slice =
-        function_slice(&source, "fn merge_provider_config", "async fn check_once");
+    let merge_config_slice = function_slice(
+        &source,
+        "fn merge_provider_config",
+        "fn provider_config_override",
+    );
+    let provider_config_override_slice = function_slice(
+        &source,
+        "fn provider_config_override",
+        "async fn check_once",
+    );
     let build_result_slice = function_slice(&source, "fn build_result", "fn should_retry");
     assert!(
         source.contains("merge_stream_check_config(")
@@ -14547,11 +14555,20 @@ fn production_stream_check_delegates_provider_adapters_to_adapter() {
     );
     assert!(
         merge_config_slice.contains("merge_stream_check_config(")
-            && merge_config_slice.contains("provider_stream_check_config_override(provider)")
+            && merge_config_slice.contains("Self::provider_config_override(provider)")
             && !merge_config_slice.contains("timeout_secs:")
             && !merge_config_slice.contains("max_retries:")
             && !merge_config_slice.contains("degraded_threshold_ms:"),
         "merge_provider_config should only project provider overrides into the core config merge helper"
+    );
+    assert!(
+        provider_config_override_slice.contains("StreamCheckConfigOverride {")
+            && provider_config_override_slice.contains("provider.enabled_test_config()?")
+            && provider_config_override_slice.contains("timeout_secs: config.timeout_secs")
+            && provider_config_override_slice.contains("max_retries: config.max_retries")
+            && provider_config_override_slice
+                .contains("degraded_threshold_ms: config.degraded_threshold_ms"),
+        "stream_check should own provider testConfig projection before calling core merge policy"
     );
     assert!(
         build_result_slice.contains("stream_check_result_from_probe_result(")
@@ -14630,6 +14647,7 @@ fn stream_check_service_owns_core_dto_and_user_agent_policy_imports() {
         .collect();
     for helper in [
         "merge_stream_check_config",
+        "provider_stream_check_config_override",
         "should_retry_channel_reachability_failure",
         "stream_check_failed_result",
         "stream_check_failed_result_with_retry_count",

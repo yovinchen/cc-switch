@@ -1767,7 +1767,6 @@ use crate::proxy_core::api::events::{
     AttemptEventPhase, ProxyCoreEvent,
 };
 use crate::proxy_core::api::management::channel_not_found_error;
-use crate::proxy_core::api::management::StreamCheckConfigOverride;
 use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogSource,
 };
@@ -6154,17 +6153,6 @@ fn claude_desktop_provider_validation_input(
         provider_type: meta.and_then(|meta| meta.provider_type.as_deref()),
         is_full_url: meta.and_then(|meta| meta.is_full_url).unwrap_or(false),
     }
-}
-
-pub(crate) fn provider_stream_check_config_override(
-    provider: &Provider,
-) -> Option<StreamCheckConfigOverride> {
-    let config = provider.enabled_test_config()?;
-    Some(StreamCheckConfigOverride {
-        timeout_secs: config.timeout_secs,
-        max_retries: config.max_retries,
-        degraded_threshold_ms: config.degraded_threshold_ms,
-    })
 }
 
 #[cfg(test)]
