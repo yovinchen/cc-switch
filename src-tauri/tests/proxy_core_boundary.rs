@@ -2141,6 +2141,7 @@ fn is_allowed_stream_check_core_import(relative: &str, code: &str) -> bool {
             | "additive_stream_check_base_url_missing_error_spec, AppKind,"
             | "};"
             | "use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;"
+            | "use crate::proxy_core::api::transport::is_github_copilot_upstream as core_is_github_copilot_upstream;"
             | "use crate::proxy_core::api::management::{"
             | "use crate::proxy_core::api::management::stream_check_failed_result;"
     )
@@ -14793,6 +14794,35 @@ fn production_stream_check_command_delegates_proxy_target_filter_to_adapter() {
         violations.is_empty(),
         "stream_check_all_providers command must delegate proxy-target filter source projection to proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn stream_check_command_owns_copilot_target_projection() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let command_path = manifest_dir.join("src/commands/stream_check.rs");
+    let command_source = fs::read_to_string(&command_path).expect("read commands/stream_check.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &command_source,
+        "fn provider_is_github_copilot_stream_check_target",
+        "#[cfg(test)]",
+    );
+
+    assert!(
+        command_source.contains(
+            "use crate::proxy_core::api::transport::is_github_copilot_upstream as core_is_github_copilot_upstream;"
+        ) && function.contains("meta.provider_type.as_deref()")
+            && function.contains(".pointer(\"/env/ANTHROPIC_BASE_URL\")")
+            && function.contains("core_is_github_copilot_upstream(provider_type, base_url)"),
+        "stream_check command should project Copilot target facts locally and delegate upstream policy to core"
+    );
+    assert!(
+        !command_source.contains("use crate::proxy_core_adapter::{\n    provider_github_copilot_managed_account_id, provider_is_github_copilot_stream_check_target")
+            && !adapter_source.contains("pub(crate) fn provider_is_github_copilot_stream_check_target")
+            && !adapter_source.contains("pub(crate) fn provider_is_github_copilot_upstream"),
+        "proxy_core_adapter should not own stream-check-only Copilot target projection or Copilot upstream one-hop helpers"
     );
 }
 

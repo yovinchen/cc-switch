@@ -6,10 +6,11 @@
 use crate::app_config::AppType;
 use crate::commands::copilot::CopilotAuthState;
 use crate::error::AppError;
+use crate::provider::Provider;
 use crate::proxy_core::api::management::stream_check_failed_result;
+use crate::proxy_core::api::transport::is_github_copilot_upstream as core_is_github_copilot_upstream;
 use crate::proxy_core_adapter::{
-    provider_github_copilot_managed_account_id, provider_is_github_copilot_stream_check_target,
-    stream_check_proxy_target_ids_from_db,
+    provider_github_copilot_managed_account_id, stream_check_proxy_target_ids_from_db,
 };
 use crate::services::stream_check::{StreamCheckConfig, StreamCheckResult, StreamCheckService};
 use crate::store::AppState;
@@ -105,7 +106,7 @@ pub fn save_stream_check_config(
 /// Copilot 供应商的 base_url 需要从 OAuth 管理器动态解析（按账号或默认端点）。
 /// `is_full_url` 的供应商已是完整地址，无需解析。
 async fn resolve_copilot_base_url_override(
-    provider: &crate::provider::Provider,
+    provider: &Provider,
     copilot_state: &State<'_, CopilotAuthState>,
 ) -> Result<Option<String>, AppError> {
     let is_copilot = provider_is_github_copilot_stream_check_target(provider);
@@ -126,11 +127,25 @@ async fn resolve_copilot_base_url_override(
     Ok(Some(endpoint))
 }
 
+fn provider_is_github_copilot_stream_check_target(provider: &Provider) -> bool {
+    let provider_type = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.provider_type.as_deref());
+    let base_url = provider
+        .settings_config
+        .pointer("/env/ANTHROPIC_BASE_URL")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    core_is_github_copilot_upstream(provider_type, base_url)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::provider::{Provider, ProviderMeta};
-    use crate::proxy_core_adapter::provider_is_github_copilot_stream_check_target;
     use serde_json::json;
+
+    use super::provider_is_github_copilot_stream_check_target;
 
     #[test]
     fn copilot_provider_detection_accepts_provider_type_or_base_url() {
