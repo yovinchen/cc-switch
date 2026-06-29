@@ -748,7 +748,7 @@ use crate::proxy_core::api::config::{
     proxy_global_config_from_global_config as proxy_global_config_from_config,
 };
 
-pub(crate) fn current_provider_id_from_settings_for_app(app: &AppKind) -> Option<String> {
+fn current_provider_id_from_settings_for_app(app: &AppKind) -> Option<String> {
     app_type_option_from_proxy_core_app(app)
         .as_ref()
         .and_then(crate::settings::get_current_provider)
@@ -1127,7 +1127,7 @@ pub(crate) fn forward_current_provider_id_from_db_sources(
     })
 }
 
-pub(crate) fn proxy_app_config_from_config_source_parts(
+fn proxy_app_config_from_config_source_parts(
     app: AppKind,
     config: AppProxyConfig,
     settings_current_provider_id: Option<&str>,
