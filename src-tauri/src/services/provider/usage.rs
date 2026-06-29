@@ -6,7 +6,6 @@ use crate::app_config::AppType;
 use crate::error::AppError;
 use crate::provider::{UsageData, UsageResult, UsageScript};
 use crate::proxy_core::api::ports::usage_script_credentials_from_parts;
-use crate::proxy_core_adapter::provider_usage_script;
 use crate::settings;
 use crate::store::AppState;
 use crate::usage_script;
@@ -117,7 +116,7 @@ pub async fn query_usage(
             )
         })?;
 
-        let usage_script = provider_usage_script(Some(provider)).ok_or_else(|| {
+        let usage_script = provider.usage_script().ok_or_else(|| {
             AppError::localized(
                 "provider.usage.script.missing",
                 "未配置用量查询脚本",

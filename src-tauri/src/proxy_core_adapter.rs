@@ -7,7 +7,6 @@ use crate::error::AppError;
 use crate::openclaw_config::OpenClawProviderConfig;
 use crate::provider::{
     AuthBindingSource, OpenCodeProviderConfig, Provider, ProviderMeta, ProviderTestConfig,
-    UsageScript,
 };
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::engine::routing::{ProviderFailoverRouterSources, ProviderRouter};
@@ -6037,12 +6036,6 @@ pub(crate) fn provider_github_copilot_managed_account_id(provider: &Provider) ->
     provider_managed_account_id_for(provider, GITHUB_COPILOT_AUTH_PROVIDER)
 }
 
-pub(crate) fn provider_usage_script(provider: Option<&Provider>) -> Option<&UsageScript> {
-    provider
-        .and_then(|provider| provider.meta.as_ref())
-        .and_then(|meta| meta.usage_script.as_ref())
-}
-
 pub(crate) fn provider_launch_env_vars_for_app(
     provider: &Provider,
     app_type: &AppType,
@@ -6957,6 +6950,7 @@ mod tests {
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{
         AuthBinding, AuthBindingSource, ClaudeDesktopMode, ClaudeDesktopModelRoute, ProviderMeta,
+        UsageScript,
     };
     use crate::proxy::engine::response_pipeline::{
         forward_error_usage_record_from_response_context,
@@ -17893,11 +17887,19 @@ command = "latest-command"
         let stream_check_timeout_secs =
             provider_stream_check_test_config(&provider).and_then(|config| config.timeout_secs);
         assert_eq!(
-            provider_usage_script(Some(&provider))
+            provider
+                .usage_script()
                 .and_then(|script| script.template_type.as_deref()),
             Some("github_copilot")
         );
-        assert!(provider_usage_script(None).is_none());
+        assert!(Provider::with_id(
+            "without-usage".to_string(),
+            "Without Usage".to_string(),
+            json!({}),
+            None,
+        )
+        .usage_script()
+        .is_none());
         let usage_provider_is_full_url = provider_is_full_url(&provider);
         let provider_user_agent =
             provider_custom_user_agent_header(&provider, false).expect("custom user agent");

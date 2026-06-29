@@ -9,7 +9,7 @@ use crate::provider::{ClaudeDesktopMode, Provider};
 use crate::proxy_core_adapter::provider_claude_desktop_suggested_proxy_routes;
 use crate::proxy_core_adapter::{
     provider_claude_desktop_import_decision, provider_github_copilot_managed_account_id,
-    provider_usage_script, ClaudeDesktopProviderImportDecision,
+    ClaudeDesktopProviderImportDecision,
 };
 use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, SpeedtestService, SwitchResult,
@@ -340,7 +340,7 @@ async fn query_provider_usage_inner(
         .get_all_providers(app_type.as_str())
         .map_err(|e| format!("Failed to get providers: {e}"))?;
     let provider = providers.get(provider_id);
-    let usage_script = provider_usage_script(provider);
+    let usage_script = provider.and_then(Provider::usage_script);
     let template_type = usage_script
         .and_then(|s| s.template_type.as_deref())
         .unwrap_or("");

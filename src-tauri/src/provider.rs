@@ -109,6 +109,12 @@ impl Provider {
             .unwrap_or(false)
     }
 
+    pub fn usage_script(&self) -> Option<&UsageScript> {
+        self.meta
+            .as_ref()
+            .and_then(|meta| meta.usage_script.as_ref())
+    }
+
     /// Resolve `(base_url, api_key)` for usage queries (native balance /
     /// coding-plan and the JS-script `{{apiKey}}`/`{{baseUrl}}` fallback)
     /// from the stored provider config.
