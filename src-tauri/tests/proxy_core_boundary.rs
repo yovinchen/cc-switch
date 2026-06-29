@@ -7109,6 +7109,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn provider_claude_auth_key",
         "pub(crate) fn provider_claude_base_url",
         "pub(crate) fn provider_openclaw_has_live_provider_fields",
+        "pub(crate) fn provider_opencode_live_provider_fragment",
     ] {
         assert!(
             !source.contains(marker),

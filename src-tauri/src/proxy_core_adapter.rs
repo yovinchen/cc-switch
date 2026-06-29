@@ -1576,9 +1576,7 @@ pub(crate) struct OpenCodeLiveProviderFragment {
     pub(crate) from_full_config: bool,
 }
 
-pub(crate) fn provider_opencode_live_provider_fragment(
-    provider: &Provider,
-) -> OpenCodeLiveProviderFragment {
+fn provider_opencode_live_provider_fragment(provider: &Provider) -> OpenCodeLiveProviderFragment {
     let fragment =
         core_opencode_live_provider_fragment_decision(&provider.id, &provider.settings_config);
     OpenCodeLiveProviderFragment {
