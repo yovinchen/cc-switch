@@ -199,9 +199,8 @@ use crate::proxy_core::api::ports::{
     CodexProviderBackfillParts, CodexProviderLiveWriteIssue, CodexProviderLiveWriteParts,
     CopilotOptimizerConfig, GeminiEnvParseIssue, GeminiLiveConfigIssue,
     GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, OptimizerConfig,
-    ProviderAdditiveLiveWriteAction, ProviderKeyChangePolicyIssue, ProviderOmoSwitchPair,
-    ProviderSettingsValidationIssue, ProviderSettingsValidationParts, ProviderSwitchDispatch,
-    RectifierConfig,
+    ProviderAdditiveLiveWriteAction, ProviderKeyChangePolicyIssue, ProviderSettingsValidationIssue,
+    ProviderSettingsValidationParts, RectifierConfig,
 };
 
 pub(crate) use crate::proxy_core::api::ports::{
@@ -229,11 +228,9 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_default_live_import_category_from_parts as core_provider_default_live_import_category_from_parts,
     provider_key_change_policy_issue_for_app as core_provider_key_change_policy_issue,
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
-    provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
     provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
     provider_should_sync_to_live as core_provider_should_sync_to_live,
-    provider_switch_dispatch_for_app as core_provider_switch_dispatch,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active,
     proxy_hot_switch_should_refresh_codex_live_from_backup as core_proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -1616,20 +1613,6 @@ pub(crate) fn provider_additive_live_write_action(
         provider.category.as_deref(),
         add_to_live,
     )
-}
-
-pub(crate) fn provider_omo_switch_pair(
-    app_type: &AppType,
-    provider: &Provider,
-) -> Option<ProviderOmoSwitchPair> {
-    core_provider_omo_switch_pair(&AppKind::from(app_type), provider.category.as_deref())
-}
-
-pub(crate) fn provider_switch_dispatch(
-    app_type: &AppType,
-    provider: &Provider,
-) -> ProviderSwitchDispatch {
-    core_provider_switch_dispatch(&AppKind::from(app_type), provider.category.as_deref())
 }
 
 pub(crate) fn live_takeover_app_types() -> [AppType; 3] {
@@ -6966,10 +6949,11 @@ mod tests {
         provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
         provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
         provider_live_removal_target_for_app, provider_live_sync_scope_for_app,
-        provider_omo_variant_for_app_category, provider_settings_validation_issue_spec,
+        provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
+        provider_settings_validation_issue_spec,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
-        provider_switch_backfill_source_id, provider_switch_requires_takeover_lock,
-        provider_switch_should_mark_live_config_managed,
+        provider_switch_backfill_source_id, provider_switch_dispatch_for_app,
+        provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
         provider_takeover_live_sync_target_for_app, proxy_live_config_owned_by_takeover,
         proxy_runtime_status_stopped, proxy_switch_should_hot_switch,
         proxy_takeover_marked_state_is_reusable,
@@ -6982,7 +6966,8 @@ mod tests {
         should_skip_startup_default_live_import, AuthInfo, ClaudeTakeoverAuthPolicy,
         CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderAdditiveUpdateRoute,
         ProviderCredentialIssue, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
-        ProviderLiveSyncScope, ProviderOmoVariant, ProviderTakeoverLiveSyncTarget,
+        ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSwitchDispatch,
+        ProviderTakeoverLiveSyncTarget,
     };
     use crate::proxy_core::api::routing::{
         normalize_channel_base_url, normalize_proxy_channel_write_request_fields, stable_channel_id,
@@ -17461,7 +17446,10 @@ command = "latest-command"
             Some(ProviderOmoVariant::Standard)
         );
         assert_eq!(
-            provider_omo_switch_pair(&AppType::OpenCode, &standard_provider),
+            provider_omo_switch_pair_for_app_category(
+                &AppKind::from(&AppType::OpenCode),
+                standard_provider.category.as_deref()
+            ),
             Some(ProviderOmoSwitchPair {
                 enable: ProviderOmoVariant::Standard,
                 disable: ProviderOmoVariant::Slim,
@@ -17478,7 +17466,10 @@ command = "latest-command"
             Some(ProviderOmoVariant::Slim)
         );
         assert_eq!(
-            provider_omo_switch_pair(&AppType::OpenCode, &slim_provider),
+            provider_omo_switch_pair_for_app_category(
+                &AppKind::from(&AppType::OpenCode),
+                slim_provider.category.as_deref()
+            ),
             Some(ProviderOmoSwitchPair {
                 enable: ProviderOmoVariant::Slim,
                 disable: ProviderOmoVariant::Standard,
@@ -17492,7 +17483,10 @@ command = "latest-command"
             None,
         );
         assert_eq!(
-            provider_omo_switch_pair(&AppType::OpenCode, &custom_provider),
+            provider_omo_switch_pair_for_app_category(
+                &AppKind::from(&AppType::OpenCode),
+                custom_provider.category.as_deref()
+            ),
             None
         );
         assert_eq!(
@@ -17503,7 +17497,10 @@ command = "latest-command"
             None
         );
         assert_eq!(
-            provider_omo_switch_pair(&AppType::Claude, &standard_provider),
+            provider_omo_switch_pair_for_app_category(
+                &AppKind::from(&AppType::Claude),
+                standard_provider.category.as_deref()
+            ),
             None
         );
         assert_eq!(
@@ -17522,7 +17519,10 @@ command = "latest-command"
         );
         omo_provider.category = Some("omo".to_string());
         assert_eq!(
-            provider_switch_dispatch(&AppType::OpenCode, &omo_provider),
+            provider_switch_dispatch_for_app(
+                &AppKind::from(&AppType::OpenCode),
+                omo_provider.category.as_deref()
+            ),
             ProviderSwitchDispatch::Normal
         );
 
@@ -17533,15 +17533,24 @@ command = "latest-command"
             None,
         );
         assert_eq!(
-            provider_switch_dispatch(&AppType::ClaudeDesktop, &normal_provider),
+            provider_switch_dispatch_for_app(
+                &AppKind::from(&AppType::ClaudeDesktop),
+                normal_provider.category.as_deref()
+            ),
             ProviderSwitchDispatch::Normal
         );
         assert_eq!(
-            provider_switch_dispatch(&AppType::OpenCode, &normal_provider),
+            provider_switch_dispatch_for_app(
+                &AppKind::from(&AppType::OpenCode),
+                normal_provider.category.as_deref()
+            ),
             ProviderSwitchDispatch::TakeoverAware
         );
         assert_eq!(
-            provider_switch_dispatch(&AppType::Claude, &normal_provider),
+            provider_switch_dispatch_for_app(
+                &AppKind::from(&AppType::Claude),
+                normal_provider.category.as_deref()
+            ),
             ProviderSwitchDispatch::TakeoverAware
         );
 

@@ -25,8 +25,10 @@ use crate::proxy_core::api::ports::{
     provider_live_config_presence_error_policy,
     provider_live_removal_target_for_app as core_provider_live_removal_target,
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
+    provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
     provider_omo_variant_for_app_category as core_provider_omo_variant_for_category,
     provider_settings_validation_issue_spec, provider_switch_backfill_source_id,
+    provider_switch_dispatch_for_app as core_provider_switch_dispatch,
     provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
     proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
@@ -38,8 +40,8 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, provider_additive_live_write_action,
-    provider_key_change_policy_issue, provider_omo_switch_pair, provider_settings_validation_parts,
-    provider_switch_dispatch, proxy_hot_switch_should_sync_claude_live_while_proxy_active,
+    provider_key_change_policy_issue, provider_settings_validation_parts,
+    proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     should_block_proxy_switch_to_provider, should_reapply_codex_official_live_for_provider,
     validate_provider_gemini_settings,
 };
@@ -1721,7 +1723,7 @@ impl ProviderService {
             .ok_or_else(|| AppError::Message(format!("供应商 {id} 不存在")))?;
 
         if matches!(
-            provider_switch_dispatch(&app_type, _provider),
+            core_provider_switch_dispatch(&AppKind::from(&app_type), _provider.category.as_deref()),
             ProviderSwitchDispatch::Normal
         ) {
             return Self::switch_normal(state, app_type, id, &providers);
@@ -1801,7 +1803,9 @@ impl ProviderService {
             .ok_or_else(|| AppError::Message(format!("供应商 {id} 不存在")))?;
 
         // OMO ↔ OMO Slim are mutually exclusive; activating one removes the other's config file.
-        if let Some(omo_pair) = provider_omo_switch_pair(&app_type, provider) {
+        if let Some(omo_pair) =
+            core_provider_omo_switch_pair(&AppKind::from(&app_type), provider.category.as_deref())
+        {
             let enable = Self::omo_variant_descriptor(omo_pair.enable);
             let disable = Self::omo_variant_descriptor(omo_pair.disable);
             state
