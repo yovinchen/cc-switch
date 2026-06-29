@@ -567,8 +567,7 @@ pub(crate) fn emit_request_started_event_source(
     request_id: &str,
     app_type: &str,
 ) {
-    let message = request_started_event_message(request_id, app_type);
-    events.emit(message.event_name, message.payload);
+    emit_proxy_core_event_bus_source(events, request_started_event(request_id, app_type));
 }
 
 pub(crate) fn emit_attempt_event_source(
@@ -1817,9 +1816,8 @@ use crate::proxy_core::api::config::{
 };
 use crate::proxy_core::api::events::{
     attempt_event_name, build_attempt_event_payload, build_proxy_official_warning_event_payload,
-    build_request_started_event_payload, build_server_started_event_payload,
-    build_server_stopped_event_payload, AttemptEventChannel, AttemptEventPayloadInput,
-    AttemptEventPhase, ProxyCoreEvent,
+    request_started_event, server_started_event, server_stopped_event, AttemptEventChannel,
+    AttemptEventPayloadInput, AttemptEventPhase, ProxyCoreEvent,
 };
 pub(crate) use crate::proxy_core::api::events::{
     provider_switched_failover_enabled_event, provider_switched_failover_event,
@@ -1882,39 +1880,20 @@ use crate::proxy::host::cc_switch::managed_account_runtime_source::managed_accou
 
 const PROXY_OFFICIAL_WARNING_EVENT: &str =
     crate::proxy_core::api::events::PROXY_OFFICIAL_WARNING_EVENT;
-const REQUEST_STARTED_EVENT: &str = crate::proxy_core::api::events::REQUEST_STARTED_EVENT;
-const SERVER_STARTED_EVENT: &str = crate::proxy_core::api::events::SERVER_STARTED_EVENT;
-const SERVER_STOPPED_EVENT: &str = crate::proxy_core::api::events::SERVER_STOPPED_EVENT;
 #[cfg(test)]
 pub(crate) const AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE: &str =
     crate::proxy_core::api::routing::AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE;
-
-pub(crate) fn server_started_event_message(address: &str, port: u16) -> ProxyEventBusMessage {
-    ProxyEventBusMessage {
-        event_name: SERVER_STARTED_EVENT.to_string(),
-        payload: build_server_started_event_payload(address, port),
-    }
-}
-
-pub(crate) fn server_stopped_event_message() -> ProxyEventBusMessage {
-    ProxyEventBusMessage {
-        event_name: SERVER_STOPPED_EVENT.to_string(),
-        payload: build_server_stopped_event_payload(),
-    }
-}
 
 pub(crate) fn emit_proxy_server_started_event_source(
     events: &ProxyEventBus,
     address: &str,
     port: u16,
 ) {
-    let message = server_started_event_message(address, port);
-    events.emit(message.event_name, message.payload);
+    emit_proxy_core_event_bus_source(events, server_started_event(address, port));
 }
 
 pub(crate) fn emit_proxy_server_stopped_event_source(events: &ProxyEventBus) {
-    let message = server_stopped_event_message();
-    events.emit(message.event_name, message.payload);
+    emit_proxy_core_event_bus_source(events, server_stopped_event());
 }
 
 pub(crate) fn proxy_official_warning_event_message(
@@ -2116,16 +2095,6 @@ pub(crate) fn update_live_token_sync_provider_settings_in_db(
 pub(crate) struct ProxyEventBusMessage {
     pub(crate) event_name: String,
     pub(crate) payload: Value,
-}
-
-pub(crate) fn request_started_event_message(
-    request_id: &str,
-    app_type: &str,
-) -> ProxyEventBusMessage {
-    ProxyEventBusMessage {
-        event_name: REQUEST_STARTED_EVENT.to_string(),
-        payload: build_request_started_event_payload(request_id, app_type),
-    }
 }
 
 fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEventBusMessage {
@@ -10695,9 +10664,18 @@ base_url = "https://api.openai.com/v1"
             crate::proxy_core::api::events::PROVIDER_SWITCHED_EVENT,
             "provider-switched"
         );
-        assert_eq!(REQUEST_STARTED_EVENT, "request_started");
-        assert_eq!(SERVER_STARTED_EVENT, "server_started");
-        assert_eq!(SERVER_STOPPED_EVENT, "server_stopped");
+        assert_eq!(
+            crate::proxy_core::api::events::REQUEST_STARTED_EVENT,
+            "request_started"
+        );
+        assert_eq!(
+            crate::proxy_core::api::events::SERVER_STARTED_EVENT,
+            "server_started"
+        );
+        assert_eq!(
+            crate::proxy_core::api::events::SERVER_STOPPED_EVENT,
+            "server_stopped"
+        );
         assert_eq!(
             build_proxy_official_warning_event_payload("claude", "Official Claude"),
             json!({
@@ -10778,13 +10756,14 @@ base_url = "https://api.openai.com/v1"
             provider_switched_enabled.payload["source"],
             "failoverEnabled"
         );
-        let server_started = server_started_event_message("127.0.0.1", 15721);
+        let server_started =
+            proxy_core_event_to_bus_message(server_started_event("127.0.0.1", 15721));
         assert_eq!(server_started.event_name, "server_started");
         assert_eq!(
             server_started.payload,
             json!({"address": "127.0.0.1", "port": 15721})
         );
-        let server_stopped = server_stopped_event_message();
+        let server_stopped = proxy_core_event_to_bus_message(server_stopped_event());
         assert_eq!(server_stopped.event_name, "server_stopped");
         assert!(server_stopped
             .payload
@@ -10803,7 +10782,8 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(spec.event, "request_started");
         assert!(spec.data.contains("\"provider\":\"relay-a\""));
 
-        let request_started = request_started_event_message("req-start", "claude");
+        let request_started =
+            proxy_core_event_to_bus_message(request_started_event("req-start", "claude"));
         assert_eq!(request_started.event_name, "request_started");
         assert_eq!(request_started.payload["requestId"], "req-start");
         assert_eq!(request_started.payload["appType"], "claude");

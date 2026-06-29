@@ -152,6 +152,15 @@ pub fn build_request_started_event_payload(request_id: &str, app_type: &str) -> 
     })
 }
 
+pub fn request_started_event(request_id: &str, app_type: &str) -> ProxyCoreEvent {
+    ProxyCoreEvent {
+        event_type: ProxyCoreEventType::Custom(REQUEST_STARTED_EVENT.to_string()),
+        request_id: None,
+        channel_id: None,
+        payload: build_request_started_event_payload(request_id, app_type),
+    }
+}
+
 pub fn build_server_started_event_payload(address: &str, port: u16) -> Value {
     json!({
         "address": address,
@@ -159,8 +168,26 @@ pub fn build_server_started_event_payload(address: &str, port: u16) -> Value {
     })
 }
 
+pub fn server_started_event(address: &str, port: u16) -> ProxyCoreEvent {
+    ProxyCoreEvent {
+        event_type: ProxyCoreEventType::Custom(SERVER_STARTED_EVENT.to_string()),
+        request_id: None,
+        channel_id: None,
+        payload: build_server_started_event_payload(address, port),
+    }
+}
+
 pub fn build_server_stopped_event_payload() -> Value {
     json!({})
+}
+
+pub fn server_stopped_event() -> ProxyCoreEvent {
+    ProxyCoreEvent {
+        event_type: ProxyCoreEventType::Custom(SERVER_STOPPED_EVENT.to_string()),
+        request_id: None,
+        channel_id: None,
+        payload: build_server_stopped_event_payload(),
+    }
 }
 
 pub fn build_provider_switched_event_payload(
@@ -230,6 +257,7 @@ mod tests {
         build_provider_switched_event_payload, build_request_started_event_payload,
         build_server_started_event_payload, build_server_stopped_event_payload,
         provider_switched_failover_enabled_event, provider_switched_failover_event,
+        request_started_event, server_started_event, server_stopped_event,
         AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ProxyEventEnvelope,
         PROVIDER_SWITCHED_EVENT, PROVIDER_SWITCHED_SOURCE_FAILOVER,
         PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED, PROXY_OFFICIAL_WARNING_EVENT,
@@ -317,6 +345,11 @@ mod tests {
 
         assert_eq!(payload["requestId"], "req-1");
         assert_eq!(payload["appType"], "claude");
+
+        let event = request_started_event("req-1", "claude");
+        assert_eq!(event.event_type.event_name(), "request_started");
+        assert_eq!(event.payload["requestId"], "req-1");
+        assert_eq!(event.payload["appType"], "claude");
     }
 
     #[test]
@@ -330,6 +363,18 @@ mod tests {
 
         let stopped = build_server_stopped_event_payload();
         assert!(stopped.as_object().is_some_and(|object| object.is_empty()));
+
+        let started_event = server_started_event("127.0.0.1", 15721);
+        assert_eq!(started_event.event_type.event_name(), "server_started");
+        assert_eq!(started_event.payload["address"], "127.0.0.1");
+        assert_eq!(started_event.payload["port"], 15721);
+
+        let stopped_event = server_stopped_event();
+        assert_eq!(stopped_event.event_type.event_name(), "server_stopped");
+        assert!(stopped_event
+            .payload
+            .as_object()
+            .is_some_and(|object| object.is_empty()));
     }
 
     #[test]
