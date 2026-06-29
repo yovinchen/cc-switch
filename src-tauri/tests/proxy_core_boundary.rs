@@ -7108,11 +7108,13 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
     for marker in [
         "pub(crate) fn provider_claude_auth_key",
         "pub(crate) fn provider_claude_base_url",
+        "pub(crate) fn provider_claude_kind",
         "pub(crate) fn provider_claude_prompt_cache_key",
         "pub(crate) fn provider_claude_responses_prompt_cache_key",
         "pub(crate) fn provider_codex_fast_mode_enabled",
         "pub(crate) fn provider_gemini_auth_strategy",
         "pub(crate) fn provider_gemini_kind",
+        "pub(crate) fn provider_kind_from_app_type_and_config",
         "pub(crate) fn provider_openclaw_has_live_provider_fields",
         "pub(crate) fn provider_opencode_live_provider_fragment",
         "pub(crate) fn provider_is_copilot_prompt_cache_provider",
@@ -11890,7 +11892,7 @@ fn proxy_core_adapter_delegates_claude_transform_streaming_decision_to_core() {
     let claude_decision = function_slice(
         &source,
         "pub(crate) fn provider_claude_transform_streaming_decision",
-        "pub(crate) fn provider_claude_kind",
+        "fn provider_claude_kind",
     );
 
     assert!(

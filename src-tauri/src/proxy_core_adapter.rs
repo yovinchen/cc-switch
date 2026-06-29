@@ -3031,7 +3031,7 @@ pub(crate) fn provider_claude_transform_streaming_decision(
 
 use crate::proxy_core::api::domain::infer_claude_provider_kind;
 
-pub(crate) fn provider_claude_kind(provider: &Provider) -> ProviderKind {
+fn provider_claude_kind(provider: &Provider) -> ProviderKind {
     let api_format = provider_claude_api_format(provider);
     let uses_google_oauth = provider_claude_auth_key(provider)
         .map(|auth_key| is_gemini_oauth_key_shape(&auth_key.key))
@@ -3051,10 +3051,7 @@ pub(crate) fn provider_claude_kind(provider: &Provider) -> ProviderKind {
     )
 }
 
-pub(crate) fn provider_kind_from_app_type_and_config(
-    app_type: &AppType,
-    provider: &Provider,
-) -> ProviderKind {
+fn provider_kind_from_app_type_and_config(app_type: &AppType, provider: &Provider) -> ProviderKind {
     match app_type {
         AppType::Claude | AppType::ClaudeDesktop => provider_claude_kind(provider),
         AppType::Codex => ProviderKind::Codex,
