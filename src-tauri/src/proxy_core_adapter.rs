@@ -3378,7 +3378,7 @@ pub(crate) fn reset_channel_health_from_router_db(
     db.reset_proxy_channel_health(&reset.channel_id)
 }
 
-pub(crate) fn auto_failover_enabled_from_router_config_result(
+fn auto_failover_enabled_from_router_config_result(
     app_type: &str,
     result: Result<AppProxyConfig, AppError>,
 ) -> bool {
@@ -3590,7 +3590,7 @@ pub(crate) async fn reset_circuit_breaker_switchback_target_from_db(
     ))
 }
 
-pub(crate) fn select_current_provider_ids_from_router_provider_id_source(
+fn select_current_provider_ids_from_router_provider_id_source(
     app_type: &str,
     current_provider_id: Option<String>,
 ) -> Result<Vec<String>, AppError> {
@@ -3679,7 +3679,7 @@ where
         .collect())
 }
 
-pub(crate) fn provider_failover_circuit_lookups_from_router_sources(
+fn provider_failover_circuit_lookups_from_router_sources(
     app_type: &str,
     failover_provider_ids: impl IntoIterator<Item = String>,
     provider_ids: impl IntoIterator<Item = String>,
