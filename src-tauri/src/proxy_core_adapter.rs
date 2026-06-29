@@ -6500,7 +6500,7 @@ fn provider_claude_desktop_proxy_has_base_url_and_key(provider: &Provider) -> bo
     )
 }
 
-pub(crate) fn provider_claude_desktop_direct_validation_issue(
+fn provider_claude_desktop_direct_validation_issue(
     provider: &Provider,
 ) -> Option<ClaudeDesktopDirectProviderValidationIssue> {
     crate::proxy_core::api::auth::claude_desktop_direct_provider_validation_issue(
@@ -6508,7 +6508,7 @@ pub(crate) fn provider_claude_desktop_direct_validation_issue(
     )
 }
 
-pub(crate) fn provider_claude_desktop_proxy_config_validation_issue(
+fn provider_claude_desktop_proxy_config_validation_issue(
     provider: &Provider,
 ) -> Option<ClaudeDesktopProxyProviderConfigValidationIssue> {
     crate::proxy_core::api::auth::claude_desktop_proxy_provider_config_validation_issue(

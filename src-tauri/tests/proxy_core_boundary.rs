@@ -9807,6 +9807,15 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
         !source.contains("pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key"),
         "proxy_core_adapter should not expose Claude Desktop proxy credential shape checks as a crate-visible facade"
     );
+    for marker in [
+        "pub(crate) fn provider_claude_desktop_direct_validation_issue",
+        "pub(crate) fn provider_claude_desktop_proxy_config_validation_issue",
+    ] {
+        assert!(
+            !source.contains(marker),
+            "proxy_core_adapter should not expose Claude Desktop provider validation issue helpers as crate-visible facades"
+        );
+    }
     assert!(
         source.contains("claude_desktop_proxy_has_base_url_and_key(")
             && source.contains("claude_desktop_provider_models_are_profile_safe(")
@@ -9874,16 +9883,16 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
         function_slice(
             &source,
             "fn provider_claude_desktop_proxy_has_base_url_and_key",
-            "pub(crate) fn provider_claude_desktop_direct_validation_issue",
+            "fn provider_claude_desktop_direct_validation_issue",
         ),
         function_slice(
             &source,
-            "pub(crate) fn provider_claude_desktop_direct_validation_issue",
-            "pub(crate) fn provider_claude_desktop_proxy_config_validation_issue",
+            "fn provider_claude_desktop_direct_validation_issue",
+            "fn provider_claude_desktop_proxy_config_validation_issue",
         ),
         function_slice(
             &source,
-            "pub(crate) fn provider_claude_desktop_proxy_config_validation_issue",
+            "fn provider_claude_desktop_proxy_config_validation_issue",
             "fn claude_desktop_provider_validation_input",
         ),
         function_slice(
