@@ -4473,12 +4473,6 @@ pub(crate) fn proxy_core_app_kind_from_app_type(app_type: &AppType) -> AppKind {
     AppKind::from(app_type)
 }
 
-pub(crate) fn provider_adapter_kind_for_app_type(
-    app_type: &AppType,
-) -> crate::proxy_core::api::domain::AppProviderAdapterKind {
-    crate::proxy_core::api::domain::provider_adapter_kind_for_app(&AppKind::from(app_type))
-}
-
 pub(crate) fn cc_switch_app_kinds() -> Vec<AppKind> {
     AppType::all().map(|app| AppKind::from(&app)).collect()
 }

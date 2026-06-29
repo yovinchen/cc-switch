@@ -2005,7 +2005,11 @@ fn is_allowed_provider_upstream_url_core_import(relative: &str, code: &str) -> b
 
 fn is_allowed_provider_adapter_kind_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/provider/mod.rs"
-        && code.trim() == "use crate::proxy_core::api::domain::AppProviderAdapterKind;"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::domain::AppProviderAdapterKind;"
+                | "use crate::proxy_core::api::domain::{"
+        )
 }
 
 fn is_allowed_test_proxy_config_core_import(relative: &str, code: &str) -> bool {
@@ -5233,8 +5237,8 @@ fn production_provider_adapter_registry_uses_core_app_policy() {
     );
 
     assert!(
-        get_adapter.contains("provider_adapter_kind_for_app_type(app_type)"),
-        "provider adapter registry must delegate app-to-adapter selection to proxy_core_adapter"
+        get_adapter.contains("provider_adapter_kind_for_app(&AppKind::from(app_type.as_str()))"),
+        "provider adapter registry must delegate app-to-adapter selection directly to proxy-core"
     );
 
     let forbidden_markers = [
@@ -5268,21 +5272,14 @@ fn production_provider_adapter_registry_uses_core_app_policy() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_provider_adapter_selection_to_core() {
+fn proxy_core_adapter_excludes_provider_adapter_selection_facade() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let adapter_function = function_slice(
-        &source,
-        "pub(crate) fn provider_adapter_kind_for_app_type(",
-        "\n}\n\npub(crate) fn cc_switch_app_kinds()",
-    );
 
     assert!(
-        adapter_function.contains(
-            "crate::proxy_core::api::domain::provider_adapter_kind_for_app(&AppKind::from(app_type))"
-        ),
-        "proxy_core_adapter must delegate app-to-adapter selection to proxy-core"
+        !source.contains("pub(crate) fn provider_adapter_kind_for_app_type("),
+        "proxy_core_adapter should not keep a provider adapter selection facade; callers can import proxy_core::api::domain::provider_adapter_kind_for_app directly"
     );
 }
 
@@ -5297,23 +5294,35 @@ fn production_provider_adapter_registry_imports_adapter_kind_directly() {
         "pub use adapter",
     );
 
-    let required_import = "use crate::proxy_core::api::domain::AppProviderAdapterKind;";
+    let required_imports = [
+        "provider_adapter_kind_for_app",
+        "AppKind",
+        "AppProviderAdapterKind",
+    ];
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
     let mut violations = Vec::new();
 
-    if !import_slice.contains(required_import) {
-        violations.push(format!(
-            "{relative} should import `{required_import}` directly from proxy_core"
-        ));
+    for required_import in required_imports {
+        if !import_slice.contains(required_import) {
+            violations.push(format!(
+                "{relative} should import `{required_import}` directly from proxy_core"
+            ));
+        }
     }
 
-    if adapter_import_identifiers
-        .iter()
-        .any(|identifier| identifier == "AppProviderAdapterKind")
-    {
-        violations.push(format!(
-            "{relative} imports AppProviderAdapterKind through proxy_core_adapter"
-        ));
+    for forbidden in [
+        "provider_adapter_kind_for_app",
+        "AppKind",
+        "AppProviderAdapterKind",
+    ] {
+        if adapter_import_identifiers
+            .iter()
+            .any(|identifier| identifier == forbidden)
+        {
+            violations.push(format!(
+                "{relative} imports {forbidden} through proxy_core_adapter"
+            ));
+        }
     }
 
     assert!(
