@@ -14438,28 +14438,46 @@ fn model_fetch_command_imports_user_agent_parser_from_core() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_custom_user_agent_policy_to_core() {
+fn provider_custom_user_agent_policy_lives_at_owning_call_sites() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let forwarder_request_source_path =
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
+    let forwarder_request_source = fs::read_to_string(&forwarder_request_source_path)
+        .expect("read forwarder_request_source.rs");
+    let stream_check_path = manifest_dir.join("src/services/stream_check.rs");
+    let stream_check_source = fs::read_to_string(&stream_check_path).expect("read stream_check.rs");
     let provider_path = manifest_dir.join("src/provider.rs");
     let provider_source = fs::read_to_string(&provider_path).expect("read provider.rs");
     let model_fetch_path = manifest_dir.join("src/commands/model_fetch.rs");
     let model_fetch_source = fs::read_to_string(&model_fetch_path).expect("read model_fetch.rs");
 
-    let provider_user_agent_slice = function_slice(
+    let removed_adapter_user_agent_slice = optional_function_slice(
         &adapter_source,
         "pub(crate) fn provider_custom_user_agent_header(",
         "pub(crate) fn success_usage_record_from_app_type_with_request_id_fallback(",
     );
 
     assert!(
-        adapter_source.contains("core_provider_custom_user_agent_header"),
-        "proxy_core_adapter should consume core custom User-Agent helpers"
+        removed_adapter_user_agent_slice.is_empty()
+            && !adapter_source.contains("core_provider_custom_user_agent_header"),
+        "proxy_core_adapter should no longer own the provider custom User-Agent facade"
     );
     assert!(
-        provider_user_agent_slice.contains("core_provider_custom_user_agent_header("),
-        "proxy_core_adapter should delegate provider custom User-Agent policy to core"
+        forwarder_request_source.contains(
+            "provider_custom_user_agent_header as core_provider_custom_user_agent_header"
+        ) && forwarder_request_source.contains("fn custom_user_agent_header_for_provider(")
+            && forwarder_request_source.contains("meta.custom_user_agent.as_deref()")
+            && forwarder_request_source.contains("core_provider_custom_user_agent_header(raw, is_copilot)"),
+        "forwarder request source should own ProviderMeta custom User-Agent projection and delegate policy to core"
+    );
+    assert!(
+        stream_check_source.contains(
+            "provider_custom_user_agent_header as core_provider_custom_user_agent_header"
+        ) && stream_check_source.contains("meta.custom_user_agent.as_deref()")
+            && stream_check_source.contains("core_provider_custom_user_agent_header(raw, false)"),
+        "stream_check should own ProviderMeta custom User-Agent projection and delegate policy to core"
     );
     assert!(
         !adapter_source.contains("crate::provider::parse_custom_user_agent(")
@@ -14473,7 +14491,7 @@ fn proxy_core_adapter_delegates_custom_user_agent_policy_to_core() {
         ".custom_user_agent_header().ok().flatten()",
     ] {
         assert!(
-            !provider_user_agent_slice.contains(marker),
+            !adapter_source.contains(marker),
             "proxy_core_adapter must not own provider custom User-Agent policy marker `{marker}`"
         );
     }
@@ -14552,7 +14570,7 @@ fn production_stream_check_delegates_provider_adapters_to_adapter() {
 }
 
 #[test]
-fn stream_check_service_owns_core_dto_reexports() {
+fn stream_check_service_owns_core_dto_and_user_agent_policy_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let service_path = manifest_dir.join("src/services/stream_check.rs");
@@ -14561,6 +14579,7 @@ fn stream_check_service_owns_core_dto_reexports() {
     let required_direct_core_imports = [
         "pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};",
         "use crate::proxy_core::api::management::{",
+        "use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;",
     ];
 
     let mut violations = Vec::new();
@@ -14591,7 +14610,7 @@ fn stream_check_service_owns_core_dto_reexports() {
             code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
         if direct_core && !required_direct_core_imports.contains(&code.trim()) {
             violations.push(format!(
-                "src/services/stream_check.rs:{} contains non-stream-check direct proxy-core import `{}`",
+                "src/services/stream_check.rs:{} contains unapproved direct proxy-core import `{}`",
                 line_index + 1,
                 code.trim()
             ));
@@ -14634,7 +14653,7 @@ fn stream_check_service_owns_core_dto_reexports() {
     }
     assert!(
         violations.is_empty(),
-        "stream_check public DTOs must bypass proxy_core_adapter aliases:\n{}",
+        "stream_check public DTOs and custom User-Agent policy must bypass proxy_core_adapter aliases through approved imports:\n{}",
         violations.join("\n")
     );
 }

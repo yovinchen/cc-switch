@@ -1792,7 +1792,6 @@ use crate::proxy_core::api::transforms::{
     should_preserve_reasoning_content_for_openai_chat, ClaudeApiFormatRequestTransformContext,
     ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
 };
-use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;
 use crate::proxy_core::api::transport::{
     build_claude_provider_auth_headers, build_codex_provider_auth_headers,
     codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
@@ -6166,19 +6165,6 @@ pub(crate) fn provider_stream_check_config_override(
         max_retries: config.max_retries,
         degraded_threshold_ms: config.degraded_threshold_ms,
     })
-}
-
-pub(crate) fn provider_custom_user_agent_header(
-    provider: &Provider,
-    is_copilot: bool,
-) -> Option<http::HeaderValue> {
-    let raw = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.custom_user_agent.as_deref());
-    core_provider_custom_user_agent_header(raw, is_copilot)
-        .ok()
-        .flatten()
 }
 
 #[cfg(test)]
@@ -17144,9 +17130,6 @@ command = "latest-command"
         .usage_script()
         .is_none());
         let usage_provider_is_full_url = provider.is_full_url();
-        let provider_user_agent =
-            provider_custom_user_agent_header(&provider, false).expect("custom user agent");
-        let copilot_provider_user_agent = provider_custom_user_agent_header(&provider, true);
         assert_eq!(
             bedrock_env_flag_from_provider_settings(&provider.settings_config),
             Some("1")
@@ -17198,11 +17181,6 @@ command = "latest-command"
         assert!(models_are_claude_safe);
         assert_eq!(stream_check_timeout_secs, Some(20));
         assert!(usage_provider_is_full_url);
-        assert_eq!(
-            provider_user_agent,
-            http::HeaderValue::from_static("cc-switch-test/1.0")
-        );
-        assert!(copilot_provider_user_agent.is_none());
         assert!(provider_is_github_copilot_upstream(
             &Provider::with_id("plain".to_string(), "Plain".to_string(), json!({}), None,),
             "https://api.githubcopilot.com"

@@ -27,9 +27,9 @@ use crate::proxy_core::api::management::{
     merge_stream_check_config, should_retry_channel_reachability_failure,
     stream_check_failed_result_with_retry_count, stream_check_result_from_probe_result,
 };
+use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;
 use crate::proxy_core_adapter::{
-    provider_custom_user_agent_header, provider_stream_check_config_override,
-    stream_check_provider_base_url,
+    provider_stream_check_config_override, stream_check_provider_base_url,
 };
 
 pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};
@@ -197,7 +197,13 @@ impl StreamCheckService {
     /// Provider 级自定义 User-Agent（`meta.customUserAgent`），与转发路径共用单一口径：
     /// trim、空串视为未设置、非法值静默忽略（返回 `None`）。
     fn custom_user_agent(provider: &Provider) -> Option<HeaderValue> {
-        provider_custom_user_agent_header(provider, false)
+        let raw = provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.custom_user_agent.as_deref());
+        core_provider_custom_user_agent_header(raw, false)
+            .ok()
+            .flatten()
     }
 }
 

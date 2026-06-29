@@ -3,6 +3,7 @@ use serde_json::Value;
 use std::sync::Arc;
 
 use crate::app_config::AppType;
+use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::managed_account_runtime_source::default_managed_account_runtime_source;
@@ -33,31 +34,32 @@ use crate::proxy_core::api::transport::{
     forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
     forwarder_transform_plan_from_facts, is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results, prepare_upstream_request_body_with_report,
-    prompt_cache_trace_log_message, request_body_filter_log_message,
-    request_body_serialize_error_message, resolve_upstream_request_transport_policy,
-    sanitize_copilot_orphan_tool_results, serialize_upstream_request_body,
-    should_apply_bedrock_pre_send_optimizer, should_apply_forwarder_media_prevention_for_app,
-    should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-    strip_copilot_thinking_blocks, supports_reasoning_effort, upstream_host_header_from_url,
-    ForwardUpstreamUrlPlan, ForwardUpstreamUrlPlanInput, ForwarderMediaPreventionFacts,
-    ForwarderMediaRetryPlanFacts, ForwarderProtocolPreparation, ForwarderProtocolPreparationInput,
-    ForwarderRectifierErrorInput, ForwarderRequestBodyTransformAction, ForwarderTransformPlan,
-    ForwarderTransformPlanFacts, PromptCacheTraceLogInput, UpstreamRequestHeadersInput,
-    UNSUPPORTED_IMAGE_MARKER,
+    prompt_cache_trace_log_message,
+    provider_custom_user_agent_header as core_provider_custom_user_agent_header,
+    request_body_filter_log_message, request_body_serialize_error_message,
+    resolve_upstream_request_transport_policy, sanitize_copilot_orphan_tool_results,
+    serialize_upstream_request_body, should_apply_bedrock_pre_send_optimizer,
+    should_apply_forwarder_media_prevention_for_app, should_preserve_exact_request_header_case,
+    should_send_anthropic_request_headers, strip_copilot_thinking_blocks,
+    supports_reasoning_effort, upstream_host_header_from_url, ForwardUpstreamUrlPlan,
+    ForwardUpstreamUrlPlanInput, ForwarderMediaPreventionFacts, ForwarderMediaRetryPlanFacts,
+    ForwarderProtocolPreparation, ForwarderProtocolPreparationInput, ForwarderRectifierErrorInput,
+    ForwarderRequestBodyTransformAction, ForwarderTransformPlan, ForwarderTransformPlanFacts,
+    PromptCacheTraceLogInput, UpstreamRequestHeadersInput, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_adapter::{
     apply_forward_request_model_mapping_from_provider, provider_apply_codex_chat_upstream_model,
     provider_claude_api_format, provider_claude_normalize_anthropic_messages,
-    provider_codex_chat_reasoning_options, provider_custom_user_agent_header,
-    provider_is_codex_oauth, provider_should_convert_codex_responses_to_chat,
-    provider_uses_anthropic_rectifiers, ForwarderAnthropicRectifierGateInput,
-    ForwarderAppMediaPreventionInput, ForwarderAttemptBodyInput, ForwarderClaudeApiFormatInput,
-    ForwarderClaudeBodyPolicyInput, ForwarderCodexResponsesToChatInput,
-    ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
-    ForwarderCopilotRequestOptimization, ForwarderCopilotRequestOptimizationGateInput,
-    ForwarderCopilotRequestOptimizationInput, ForwarderMaybeCopilotRequestOptimization,
-    ForwarderMediaPreventionInput, ForwarderMediaRetryPlan, ForwarderMediaRetryPlanInput,
-    ForwarderPreparedRequest, ForwarderProviderRequestBodyInput, ForwarderProviderTransformInput,
+    provider_codex_chat_reasoning_options, provider_is_codex_oauth,
+    provider_should_convert_codex_responses_to_chat, provider_uses_anthropic_rectifiers,
+    ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
+    ForwarderAttemptBodyInput, ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
+    ForwarderCodexResponsesToChatInput, ForwarderCopilotDynamicBaseUrlInput,
+    ForwarderCopilotLiveModelInput, ForwarderCopilotRequestOptimization,
+    ForwarderCopilotRequestOptimizationGateInput, ForwarderCopilotRequestOptimizationInput,
+    ForwarderMaybeCopilotRequestOptimization, ForwarderMediaPreventionInput,
+    ForwarderMediaRetryPlan, ForwarderMediaRetryPlanInput, ForwarderPreparedRequest,
+    ForwarderProviderRequestBodyInput, ForwarderProviderTransformInput,
     ForwarderRequestBodyTransform, ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
     ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan, ForwarderRequestSource,
     ForwarderRequestSourceRef, ForwarderThinkingBudgetRectifierInput,
@@ -643,7 +645,8 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         } else {
             None
         };
-        let custom_user_agent = provider_custom_user_agent_header(input.provider, input.is_copilot);
+        let custom_user_agent =
+            custom_user_agent_header_for_provider(input.provider, input.is_copilot);
 
         let ordered_headers = build_upstream_request_headers(UpstreamRequestHeadersInput {
             inbound_headers: input.inbound_headers,
@@ -696,6 +699,19 @@ pub(crate) fn forwarder_rectifier_error_message(error: &ProxyError) -> Option<St
     }
 }
 
+fn custom_user_agent_header_for_provider(
+    provider: &Provider,
+    is_copilot: bool,
+) -> Option<http::HeaderValue> {
+    let raw = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.custom_user_agent.as_deref());
+    core_provider_custom_user_agent_header(raw, is_copilot)
+        .ok()
+        .flatten()
+}
+
 pub(crate) fn forwarder_request_source_from_managed_account_runtime_source(
     managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 ) -> ForwarderRequestSourceRef {
@@ -714,9 +730,29 @@ pub(crate) fn default_forwarder_request_source() -> ForwarderRequestSourceRef {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::Provider;
+    use crate::provider::{Provider, ProviderMeta};
     use crate::proxy_core::api::routing::ResolvedChannelAttempt;
     use serde_json::json;
+
+    #[test]
+    fn custom_user_agent_header_uses_core_policy_and_suppresses_copilot() {
+        let mut provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            custom_user_agent: Some("cc-switch-test/1.0".to_string()),
+            ..ProviderMeta::default()
+        });
+
+        let header =
+            custom_user_agent_header_for_provider(&provider, false).expect("custom user agent");
+
+        assert_eq!(header, http::HeaderValue::from_static("cc-switch-test/1.0"));
+        assert!(custom_user_agent_header_for_provider(&provider, true).is_none());
+    }
 
     #[test]
     fn provider_request_body_applies_channel_request_overrides_after_model_override() {
