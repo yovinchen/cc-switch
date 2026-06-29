@@ -5874,7 +5874,7 @@ pub(crate) fn provider_is_codex_oauth(provider: &Provider) -> bool {
     provider_managed_auth_classification(provider).is_codex_oauth
 }
 
-pub(crate) fn provider_is_github_copilot(provider: &Provider) -> bool {
+fn provider_is_github_copilot(provider: &Provider) -> bool {
     provider_managed_auth_classification(provider).is_github_copilot
 }
 
@@ -5905,7 +5905,7 @@ pub(crate) fn provider_is_github_copilot_stream_check_target(provider: &Provider
     provider_is_github_copilot_upstream(provider, base_url)
 }
 
-pub(crate) fn provider_managed_account_binding_input(
+fn provider_managed_account_binding_input(
     meta: &ProviderMeta,
 ) -> Option<ManagedAccountBindingInput<'_>> {
     let binding = meta.auth_binding.as_ref()?;
@@ -5935,10 +5935,7 @@ pub(crate) fn provider_managed_account_binding_context(
     }
 }
 
-pub(crate) fn provider_managed_account_id_for(
-    provider: &Provider,
-    auth_provider: &str,
-) -> Option<String> {
+fn provider_managed_account_id_for(provider: &Provider, auth_provider: &str) -> Option<String> {
     let context = provider_managed_account_binding_context(provider);
     core_managed_account_id_for_auth_provider(
         auth_provider,
