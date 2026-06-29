@@ -4,10 +4,11 @@ use crate::database::{Database, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE}
 use crate::error::AppError;
 use crate::proxy_core::api::errors::ProxyCoreResult;
 use crate::proxy_core::api::ports::UsageSink;
-use crate::proxy_core::api::usage::{CostBreakdown, ModelPricing, TokenUsage, UsageRecord};
+use crate::proxy_core::api::usage::{
+    resolve_usage_record_pricing_models, CostBreakdown, ModelPricing, TokenUsage, UsageRecord,
+};
 use crate::proxy_core_adapter::{
-    log_usage_request_projection_warnings, usage_error, usage_pricing_config_lookup_from_record,
-    usage_record_pricing_model, usage_record_to_request_log,
+    log_usage_request_projection_warnings, usage_error, usage_record_to_request_log,
 };
 use crate::services::usage_stats::find_model_pricing_row;
 use futures::future::BoxFuture;
@@ -45,6 +46,22 @@ pub struct RequestLog {
     pub is_streaming: bool,
     /// 成本倍数
     pub cost_multiplier: String,
+}
+
+struct UsagePricingConfigLookup {
+    provider_id: String,
+    app_type: String,
+}
+
+fn usage_pricing_config_lookup_from_record(record: &UsageRecord) -> UsagePricingConfigLookup {
+    UsagePricingConfigLookup {
+        provider_id: record.provider_id.clone(),
+        app_type: record.app.as_str().to_string(),
+    }
+}
+
+fn usage_record_pricing_model(record: &UsageRecord, pricing_model_source: &str) -> String {
+    resolve_usage_record_pricing_models(record, pricing_model_source).pricing_model
 }
 
 /// 使用量记录器
@@ -286,6 +303,7 @@ impl UsageSink for CcSwitchUsageSink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core::api::domain::{AppKind, ProviderKind};
 
     #[test]
     fn test_log_request() -> Result<(), AppError> {
@@ -356,5 +374,48 @@ mod tests {
         assert_eq!(channel_name, "Relay One");
         assert_eq!(route_group, "default");
         Ok(())
+    }
+
+    #[test]
+    fn pricing_lookup_uses_usage_record_provider_and_app() {
+        let record = UsageRecord {
+            request_id: Some("req-usage-1".to_string()),
+            message_id: Some("msg-usage-1".to_string()),
+            app: AppKind::Claude,
+            provider_id: "provider-a".to_string(),
+            provider_kind: Some(ProviderKind::Claude),
+            channel_id: Some("channel-a".to_string()),
+            channel_name: Some("Channel A".to_string()),
+            route_group: Some("default".to_string()),
+            request_model: "public-sonnet".to_string(),
+            outbound_model: "upstream-sonnet".to_string(),
+            response_model: Some("response-sonnet".to_string()),
+            pricing_model: None,
+            tokens: crate::proxy_core::api::usage::UsageTokens {
+                input_tokens: 1_000,
+                output_tokens: 500,
+                cache_read_tokens: 0,
+                cache_creation_tokens: 0,
+            },
+            latency_ms: 42,
+            first_token_ms: Some(7),
+            status_code: 200,
+            error_message: None,
+            session_id: Some("session-a".to_string()),
+            is_streaming: true,
+            metadata: serde_json::json!({}),
+        };
+
+        let lookup = usage_pricing_config_lookup_from_record(&record);
+        assert_eq!(lookup.provider_id, "provider-a");
+        assert_eq!(lookup.app_type, "claude");
+        assert_eq!(
+            usage_record_pricing_model(&record, PRICING_SOURCE_RESPONSE),
+            "response-sonnet"
+        );
+        assert_eq!(
+            usage_record_pricing_model(&record, PRICING_SOURCE_REQUEST),
+            "upstream-sonnet"
+        );
     }
 }

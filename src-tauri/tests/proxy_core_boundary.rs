@@ -21076,6 +21076,8 @@ fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
         usage_sink_source.contains("pub(crate) struct CcSwitchUsageSink")
             && usage_sink_source.contains("impl UsageSink for CcSwitchUsageSink")
             && usage_sink_source.contains("record_usage_in_db_source(")
+            && usage_sink_source.contains("fn usage_pricing_config_lookup_from_record(")
+            && usage_sink_source.contains("fn usage_record_pricing_model(")
             && usage_sink_source.contains("UsageLogger::new("),
         "CC Switch usage sink implementation should live in host/cc_switch/database_usage_sink.rs"
     );
@@ -21084,15 +21086,20 @@ fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
             "pub(crate) use crate::proxy::host::cc_switch::database_usage_sink::CcSwitchUsageSink"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchUsageSink")
             && !adapter_source.contains("impl UsageSink for CcSwitchUsageSink")
-            && !adapter_source.contains("pub(crate) async fn record_usage_in_db_source("),
-        "proxy_core_adapter should not re-export or own the CC Switch usage sink source"
+            && !adapter_source.contains("pub(crate) async fn record_usage_in_db_source(")
+            && !adapter_source.contains("fn usage_pricing_config_lookup_from_record(")
+            && !adapter_source.contains("fn usage_record_pricing_model("),
+        "proxy_core_adapter should not re-export or own the CC Switch usage sink source or pricing lookup facade"
     );
     assert!(
         usage_sink_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
             && usage_sink_source.contains("use crate::proxy_core::api::ports::UsageSink;")
-            && usage_sink_source.contains(
-                "use crate::proxy_core::api::usage::{CostBreakdown, ModelPricing, TokenUsage, UsageRecord};"
-            ),
+            && usage_sink_source.contains("use crate::proxy_core::api::usage::{")
+            && usage_sink_source.contains("resolve_usage_record_pricing_models")
+            && usage_sink_source.contains("CostBreakdown")
+            && usage_sink_source.contains("ModelPricing")
+            && usage_sink_source.contains("TokenUsage")
+            && usage_sink_source.contains("UsageRecord"),
         "CC Switch usage sink should import core usage sink/result/DTO contracts directly"
     );
     assert!(
