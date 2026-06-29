@@ -5,6 +5,9 @@
 use crate::error::AppError;
 use crate::provider::Provider;
 pub(crate) use crate::proxy_core::api::ports::GeminiAuthType;
+use crate::proxy_core::api::ports::{
+    detect_gemini_auth_type as core_detect_gemini_auth_type, GeminiAuthTypeInput,
+};
 
 /// Detect Gemini provider authentication type
 ///
@@ -16,7 +19,15 @@ pub(crate) use crate::proxy_core::api::ports::GeminiAuthType;
 /// - `GeminiAuthType::Packycode`: PackyCode provider, uses API Key
 /// - `GeminiAuthType::Generic`: Other generic providers, uses API Key
 pub(crate) fn detect_gemini_auth_type(provider: &Provider) -> GeminiAuthType {
-    crate::proxy_core_adapter::detect_gemini_auth_type(provider)
+    core_detect_gemini_auth_type(GeminiAuthTypeInput {
+        name: &provider.name,
+        website_url: provider.website_url.as_deref(),
+        partner_promotion_key: provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.partner_promotion_key.as_deref()),
+        settings_config: &provider.settings_config,
+    })
 }
 
 /// Detect if provider is Google Official Gemini (uses OAuth authentication)
@@ -69,4 +80,48 @@ pub(crate) fn ensure_google_oauth_security_flag(provider: &Provider) -> Result<(
     write_google_oauth_settings()?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::ProviderMeta;
+    use serde_json::json;
+
+    #[test]
+    fn detects_gemini_auth_type_from_provider_facts() {
+        let generic = Provider::with_id(
+            "gemini".to_string(),
+            "Gemini".to_string(),
+            json!({"env": {}}),
+            None,
+        );
+        assert_eq!(detect_gemini_auth_type(&generic), GeminiAuthType::Generic);
+
+        let google_official = Provider::with_id(
+            "google-official".to_string(),
+            "Google Gemini".to_string(),
+            json!({"env": {}}),
+            None,
+        );
+        assert_eq!(
+            detect_gemini_auth_type(&google_official),
+            GeminiAuthType::GoogleOfficial
+        );
+
+        let mut packy_partner = Provider::with_id(
+            "packy-partner".to_string(),
+            "Gemini Partner".to_string(),
+            json!({"env": {}}),
+            None,
+        );
+        packy_partner.meta = Some(ProviderMeta {
+            partner_promotion_key: Some("packycode".to_string()),
+            ..ProviderMeta::default()
+        });
+        assert_eq!(
+            detect_gemini_auth_type(&packy_partner),
+            GeminiAuthType::Packycode
+        );
+    }
 }

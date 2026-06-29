@@ -1174,6 +1174,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn request_model_from_gemini_path_for_context(",
     "fn claude_api_format_from_metadata(",
     "fn extract_gemini_model_from_path(",
+    "fn detect_gemini_auth_type(",
     "fn validate_claude_desktop_gateway_bearer_header(",
     "fn claude_desktop_gateway_token_error(",
     "fn proxy_event_envelope_to_sse_spec(",
@@ -14348,6 +14349,8 @@ fn gemini_auth_service_owns_core_auth_type_reexport() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let service_source = fs::read_to_string(&service_path).expect("read gemini_auth.rs");
     let required_import = "pub(crate) use crate::proxy_core::api::ports::GeminiAuthType;";
+    let required_detector_import =
+        "detect_gemini_auth_type as core_detect_gemini_auth_type, GeminiAuthTypeInput,";
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&adapter_source) {
@@ -14373,7 +14376,14 @@ fn gemini_auth_service_owns_core_auth_type_reexport() {
         }
         let direct_core =
             code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
-        if direct_core && code.trim() != required_import {
+        if direct_core
+            && !matches!(
+                code.trim(),
+                "use crate::proxy_core::api::ports::{"
+                    | "pub(crate) use crate::proxy_core::api::ports::GeminiAuthType;"
+            )
+            && !code.contains(required_detector_import)
+        {
             violations.push(format!(
                 "src/services/provider/gemini_auth.rs:{} contains non-GeminiAuthType direct proxy-core import `{}`",
                 line_index + 1,
@@ -14387,8 +14397,10 @@ fn gemini_auth_service_owns_core_auth_type_reexport() {
         "Gemini auth service must re-export GeminiAuthType directly from proxy_core"
     );
     assert!(
-        service_source.contains("crate::proxy_core_adapter::detect_gemini_auth_type(provider)"),
-        "Gemini auth service should keep provider-aware detection behind proxy_core_adapter"
+        service_source.contains("core_detect_gemini_auth_type(GeminiAuthTypeInput")
+            && !service_source
+                .contains("crate::proxy_core_adapter::detect_gemini_auth_type(provider)"),
+        "Gemini auth service should project Provider facts and call core detection directly"
     );
     assert!(
         violations.is_empty(),
