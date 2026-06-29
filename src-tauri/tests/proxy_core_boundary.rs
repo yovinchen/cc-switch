@@ -1194,6 +1194,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn provider_usage_script(",
     "fn provider_launch_env_vars_for_app(",
     "fn provider_gemini_env_map(",
+    "fn provider_gemini_live_config_object(",
     "fn launch_env_vars_from_provider_settings(",
     "launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings",
     "fn provider_stream_check_test_config(",
@@ -8558,8 +8559,9 @@ fn proxy_core_adapter_delegates_gemini_live_config_policy_to_core() {
         .join("\n");
 
     assert!(
-        production_source.contains("core_gemini_live_config_object_from_settings"),
-        "proxy_core_adapter should delegate Gemini live config selection policy to core"
+        !production_source.contains("provider_gemini_live_config_object")
+            && !production_source.contains("core_gemini_live_config_object_from_settings"),
+        "proxy_core_adapter should not keep a provider-shaped Gemini live config object facade"
     );
     assert!(
         !production_source.contains(
@@ -8572,10 +8574,11 @@ fn proxy_core_adapter_delegates_gemini_live_config_policy_to_core() {
             .expect("read services/provider/live.rs");
     assert!(
         live_service_source.contains("gemini_live_settings_to_write")
+            && live_service_source.contains("gemini_live_config_object_from_settings")
             && live_service_source.contains("use crate::proxy_core::api::ports::{")
             && !live_service_source
                 .contains("use crate::proxy_core_adapter::{\n    gemini_live_settings_to_write"),
-        "Gemini live service should import settings write helper directly from proxy-core ports"
+        "Gemini live service should import settings object/write helpers directly from proxy-core ports"
     );
 
     let mut violations = Vec::new();

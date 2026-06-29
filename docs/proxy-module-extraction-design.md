@@ -874,7 +874,7 @@
 825. provider live snapshot 的 Codex `auth`/`config` 提取已改为 `proxy_core_adapter::provider_codex_live_snapshot_parts`：live 写入继续负责文件落盘和错误文案，snapshot 路径保留旧的 auth 存在性语义，字段读取集中在 adapter。
 826. provider live snapshot 的 OpenCode provider fragment 投影已改为 `proxy_core_adapter::provider_opencode_live_provider_fragment`：live 写入继续负责 typed/raw 写入和日志，整份 opencode config 到单 provider fragment 的兼容提取集中在 adapter。
 827. OpenCode live 写入 fallback 的 raw provider shape 检测已改为直接调用 `proxy_core::api::domain::opencode_settings_have_live_provider_fields`：provider live 继续负责 raw write 策略，`npm`/`options` 字段存在性规则集中在 core/domain，adapter 不再保留 `opencode_live_provider_fragment_has_provider_fields` 别名。
-828. Gemini live 写入的 `config` object/null/absent/invalid 投影已改为 `proxy_core_adapter::provider_gemini_live_config_object`：`write_gemini_live` 继续负责 settings.json 合并与本地化错误，provider settings 字段读取集中在 adapter。
+828. Gemini live 写入的 `config` object/null/absent/invalid 投影已改为 `services/provider/live.rs` 直接调用 `proxy-core::ports::gemini_live_config_object_from_settings`：`write_gemini_live` 继续负责 settings.json 合并与本地化错误，Gemini config 字段读取集中在 core。
 829. Codex common-config 路径的 settings `config` TOML 文本读取已改为 `proxy_core_adapter::codex_config_text_from_settings`：ProviderService/provider live 继续负责 TOML merge/remove/export 与错误文案，Codex settings schema 字段读取集中在 adapter。
 830. Gemini common-config 路径的 settings `env` 对象读取已改为 `proxy_core_adapter::gemini_env_map_from_settings`：ProviderService/provider live 继续负责 JSON subset/merge/remove/export 与 credential 排除，Gemini settings schema 字段读取集中在 adapter。
 831. ProviderService Codex credential 提取的 auth 对象与 auth/config API key 解析已改为 `proxy_core_adapter::{codex_auth_object_value_from_settings,codex_api_key_from_auth_and_config}`：服务层继续负责本地化错误与 base_url regex 兼容解析，Codex settings 字段读取与 API key 来源规则集中在 adapter。
@@ -1065,7 +1065,7 @@ Codex forwarder media-prevention 的 app gate 已下沉到 `proxy-core::request_
 
 本轮继续把 Gemini live settings 的 env/config 组装与 env-only backup JSON contract 收敛到 `proxy-core::ports::{gemini_live_settings_from_env_json_and_config,gemini_live_backup_from_effective_settings}`；host adapter 只 re-export core helper 供 live write/backup 流程使用。
 
-本轮继续把 Gemini live provider `config` 对象选择与 settings.json 顶层 merge 写入 contract 收敛到 `proxy-core::ports::{gemini_live_config_object_from_settings,gemini_live_settings_to_write}`；host adapter 只负责从 `Provider.settings_config` 投影输入。
+本轮继续把 Gemini live provider `config` 对象选择与 settings.json 顶层 merge 写入 contract 收敛到 `proxy-core::ports::{gemini_live_config_object_from_settings,gemini_live_settings_to_write}`；provider live 服务直接从 `Provider.settings_config` 调用 core helper，adapter 不再保留 provider-shaped `config` 对象 facade。
 
 本轮继续删除 proxy event/server event payload 的 adapter 私有 passthrough helper；`proxy_core_adapter` 的 server lifecycle 消息构造直接消费 `proxy-core::events::{build_server_started_event_payload,build_server_stopped_event_payload}`，`proxy::events::ProxyEventBus` 直接消费 `build_proxy_events_connected_payload`/`build_proxy_events_lagged_payload`，payload shape 继续由 core 单测覆盖。
 

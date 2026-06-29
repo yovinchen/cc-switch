@@ -160,9 +160,9 @@ use crate::proxy_core::api::ports::{
     CodexLiveSettingsIssue, CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
     CodexLiveTakeoverMatchFacts, CodexProviderBackfillParts, CodexProviderLiveWriteIssue,
     CodexProviderLiveWriteParts, CopilotOptimizerConfig, GeminiEnvParseIssue,
-    GeminiLiveConfigIssue, GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue,
-    OptimizerConfig, ProviderAdditiveLiveWriteAction, ProviderKeyChangePolicyIssue,
-    ProviderSettingsValidationIssue, ProviderSettingsValidationParts, RectifierConfig,
+    GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, OptimizerConfig,
+    ProviderAdditiveLiveWriteAction, ProviderKeyChangePolicyIssue, ProviderSettingsValidationIssue,
+    ProviderSettingsValidationParts, RectifierConfig,
 };
 
 pub(crate) use crate::proxy_core::api::ports::{
@@ -178,7 +178,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     gemini_env_parse_issue_spec as core_gemini_env_parse_issue_spec,
-    gemini_live_config_object_from_settings as core_gemini_live_config_object_from_settings,
     gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
     live_backup_snapshot_from_live_config as core_live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
@@ -2880,12 +2879,6 @@ pub(crate) fn validate_provider_gemini_settings_strict(
     provider: &Provider,
 ) -> Result<(), AppError> {
     validate_gemini_settings_strict(&provider.settings_config)
-}
-
-pub(crate) fn provider_gemini_live_config_object(
-    provider: &Provider,
-) -> Result<Option<&Value>, GeminiLiveConfigIssue> {
-    core_gemini_live_config_object_from_settings(&provider.settings_config)
 }
 
 pub(crate) fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
@@ -6883,7 +6876,8 @@ mod tests {
     use crate::proxy_core::api::model_catalog::{CopilotModel, DEFAULT_CODEX_MODEL_CONTEXT_WINDOW};
     use crate::proxy_core::api::ports::{
         codex_restored_live_settings_parts, gemini_env_json_from_map,
-        gemini_env_string_map_from_settings,
+        gemini_env_string_map_from_settings, gemini_live_config_object_from_settings,
+        GeminiLiveConfigIssue,
     };
     use crate::proxy_core::api::routing::{
         ChannelSpec, ChannelStatus, InterfaceKind, LegacyChannelProjectionInput,
@@ -11928,32 +11922,19 @@ base_url = "https://api.openai.com/v1"
         validate_provider_gemini_settings_strict(&provider)
             .expect("provider Gemini settings should be valid for API key mode");
         assert_eq!(
-            provider_gemini_live_config_object(&Provider::with_id(
-                "gemini-config".to_string(),
-                "Gemini Config".to_string(),
-                json!({"config": {"mcpServers": {}}}),
-                None,
-            ))
-            .expect("config object")
-            .and_then(Value::as_object)
-            .map(|obj| obj.contains_key("mcpServers")),
+            gemini_live_config_object_from_settings(&json!({"config": {"mcpServers": {}}}))
+                .expect("config object")
+                .and_then(Value::as_object)
+                .map(|obj| obj.contains_key("mcpServers")),
             Some(true)
         );
-        assert!(provider_gemini_live_config_object(&Provider::with_id(
-            "gemini-null-config".to_string(),
-            "Gemini Null Config".to_string(),
-            json!({"config": Value::Null}),
-            None,
-        ))
-        .expect("null config should preserve live file")
-        .is_none());
+        assert!(
+            gemini_live_config_object_from_settings(&json!({"config": Value::Null}))
+                .expect("null config should preserve live file")
+                .is_none()
+        );
         assert!(matches!(
-            provider_gemini_live_config_object(&Provider::with_id(
-                "gemini-invalid-config".to_string(),
-                "Gemini Invalid Config".to_string(),
-                json!({"config": "not-object"}),
-                None,
-            )),
+            gemini_live_config_object_from_settings(&json!({"config": "not-object"})),
             Err(GeminiLiveConfigIssue::InvalidType)
         ));
         assert_eq!(
