@@ -4,8 +4,8 @@ use crate::database::Database;
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::errors::ProxyCoreResult;
 use crate::proxy_core::api::ports::RoutePolicySource;
-use crate::proxy_core::api::routing::RoutePolicy;
-use crate::proxy_core_adapter::route_policy_from_db_source;
+use crate::proxy_core::api::routing::{route_policy_from_failover_provider_ids, RoutePolicy};
+use crate::proxy_core_adapter::app_error;
 use futures::future::BoxFuture;
 use std::sync::Arc;
 
@@ -25,6 +25,15 @@ impl RoutePolicySource for CcSwitchRoutePolicySource {
         &'a self,
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<RoutePolicy>>> {
-        Box::pin(async move { route_policy_from_db_source(&self.db, app) })
+        Box::pin(async move {
+            let queue = self
+                .db
+                .get_failover_queue(app.as_str())
+                .map_err(|error| app_error("load route policy", error))?;
+            Ok(Some(route_policy_from_failover_provider_ids(
+                app.clone(),
+                queue.into_iter().map(|item| item.provider_id),
+            )))
+        })
     }
 }

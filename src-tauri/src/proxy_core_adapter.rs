@@ -1781,7 +1781,7 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core::api::routing::{
     failover_config_read_error_log_line, provider_router_auto_failover_enabled_decision,
-    route_policy_failover_provider_ids, RoutePolicy,
+    route_policy_failover_provider_ids,
 };
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
@@ -5233,33 +5233,6 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
     .await
 }
 
-pub(crate) fn route_policy_from_failover_queue(
-    app: AppKind,
-    queue: impl IntoIterator<Item = FailoverQueueItem>,
-) -> RoutePolicy {
-    crate::proxy_core::api::routing::route_policy_from_failover_provider_ids(
-        app,
-        queue.into_iter().map(|item| item.provider_id),
-    )
-}
-
-pub(crate) fn route_policy_from_source(
-    app: AppKind,
-    queue: impl IntoIterator<Item = FailoverQueueItem>,
-) -> Option<RoutePolicy> {
-    Some(route_policy_from_failover_queue(app, queue))
-}
-
-pub(crate) fn route_policy_from_db_source(
-    db: &Database,
-    app: &AppKind,
-) -> ProxyCoreResult<Option<RoutePolicy>> {
-    let queue = db
-        .get_failover_queue(app.as_str())
-        .map_err(|error| app_error("load route policy", error))?;
-    Ok(route_policy_from_source(app.clone(), queue))
-}
-
 #[derive(Debug)]
 pub(crate) struct ChannelHealthResetPlan {
     pub(crate) channel_id: String,
@@ -6604,7 +6577,8 @@ mod tests {
         ProviderTakeoverLiveSyncTarget,
     };
     use crate::proxy_core::api::routing::{
-        normalize_channel_base_url, normalize_proxy_channel_write_request_fields, stable_channel_id,
+        normalize_channel_base_url, normalize_proxy_channel_write_request_fields,
+        stable_channel_id, RoutePolicy,
     };
     use crate::proxy_core::api::transforms::{
         append_utf8_safe, infer_codex_chat_reasoning_profile, inspect_codex_chat_history_sse_block,
@@ -14899,16 +14873,24 @@ command = "latest-command"
             crate::proxy_core::api::routing::route_plan_providers_unconfigured_error_message(),
             "route plan providers are not configured in host database"
         );
-        let policy = route_policy_from_source(
+        let policy = crate::proxy_core::api::routing::route_policy_from_failover_provider_ids(
+            AppKind::Claude,
+            vec!["provider-b".to_string()],
+        );
+        assert_eq!(policy.app, AppKind::Claude);
+        assert_eq!(policy.raw["failoverProviderIds"], json!(["provider-b"]));
+
+        let policy = crate::proxy_core::api::routing::route_policy_from_failover_provider_ids(
             AppKind::Claude,
             vec![FailoverQueueItem {
                 provider_id: "provider-b".to_string(),
                 provider_name: "Provider B".to_string(),
                 sort_index: Some(1),
                 provider_notes: None,
-            }],
-        )
-        .expect("route policy");
+            }]
+            .into_iter()
+            .map(|item| item.provider_id),
+        );
         assert_eq!(policy.app, AppKind::Claude);
         assert_eq!(policy.raw["failoverProviderIds"], json!(["provider-b"]));
 

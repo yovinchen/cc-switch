@@ -16560,7 +16560,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let host_forward_function = function_slice(
         &source,
         "pub(crate) async fn forward_proxy_request_with_host_runtime",
-        "pub(crate) fn route_policy_from_failover_queue",
+        "#[derive(Debug)]\npub(crate) struct ChannelHealthResetPlan",
     );
     let adapter_core_ports_import = optional_function_slice(
         &source,
@@ -20558,16 +20558,12 @@ fn proxy_core_adapter_delegates_route_policy_source_to_host_module() {
         "pub(crate) use crate::proxy_core::api::ports::{",
         "};",
     );
-    let source_adapter_import = function_slice(
-        &source,
-        "use crate::proxy_core_adapter::route_policy_from_db_source;",
-        "use futures::future::BoxFuture;",
-    );
 
     assert!(
         source.contains("pub(crate) struct CcSwitchRoutePolicySource")
             && source.contains("impl RoutePolicySource for CcSwitchRoutePolicySource")
-            && source.contains("route_policy_from_db_source(&self.db, app)"),
+            && source.contains(".get_failover_queue(app.as_str())")
+            && source.contains("route_policy_from_failover_provider_ids("),
         "CC Switch route policy source should live in host/cc_switch/route_policy_source.rs"
     );
     assert!(
@@ -20581,20 +20577,30 @@ fn proxy_core_adapter_delegates_route_policy_source_to_host_module() {
         source.contains("use crate::proxy_core::api::domain::AppKind;")
             && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
             && source.contains("use crate::proxy_core::api::ports::RoutePolicySource;")
-            && source.contains("use crate::proxy_core::api::routing::RoutePolicy;"),
+            && source.contains("use crate::proxy_core::api::routing::{")
+            && source.contains("route_policy_from_failover_provider_ids")
+            && source.contains("RoutePolicy"),
         "CC Switch route policy source should import core route-policy contracts directly"
     );
     assert!(
-        !source_adapter_import.contains("ProxyCoreAppKind")
-            && !source_adapter_import.contains("ProxyCoreResult")
-            && !source_adapter_import.contains("RoutePolicy")
-            && !source_adapter_import.contains("RoutePolicySource"),
-        "route policy source should not import route-policy contracts through proxy_core_adapter"
+        !source.contains("use crate::proxy_core_adapter::route_policy_from_db_source;")
+            && !source.contains("route_policy_from_db_source(&self.db, app)"),
+        "route policy source should not delegate DB route policy loading through proxy_core_adapter"
     );
     assert!(
         !adapter_core_ports_import.contains("RoutePolicySource"),
         "proxy_core_adapter should not re-export the RoutePolicySource port trait"
     );
+    for marker in [
+        "pub(crate) fn route_policy_from_failover_queue",
+        "pub(crate) fn route_policy_from_source",
+        "pub(crate) fn route_policy_from_db_source",
+    ] {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not retain route policy facade `{marker}`"
+        );
+    }
 
     let adapter_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::")
