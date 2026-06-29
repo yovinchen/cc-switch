@@ -122,7 +122,7 @@ pub(crate) fn app_error_from_proxy_core_error(error: ProxyCoreError) -> AppError
     }
 }
 
-pub(crate) fn app_error_from_provider_selection_failure(
+fn app_error_from_provider_selection_failure(
     app_type: &str,
     error: ProviderSelectionFailure,
 ) -> AppError {
@@ -141,9 +141,7 @@ pub(crate) fn app_error_from_provider_selection_failure(
     }
 }
 
-pub(crate) fn provider_selection_failure_from_app_error(
-    error: &AppError,
-) -> Option<ProviderSelectionFailure> {
+fn provider_selection_failure_from_app_error(error: &AppError) -> Option<ProviderSelectionFailure> {
     match error {
         AppError::AllProvidersCircuitOpen => {
             Some(ProviderSelectionFailure::AllProvidersCircuitOpen)

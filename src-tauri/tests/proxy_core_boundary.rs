@@ -7139,6 +7139,8 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn select_current_provider_ids_from_router_provider_id_source",
         "pub(crate) fn provider_is_copilot_prompt_cache_provider",
         "pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat",
+        "pub(crate) fn app_error_from_provider_selection_failure",
+        "pub(crate) fn provider_selection_failure_from_app_error",
     ] {
         assert!(
             !source.contains(marker),
