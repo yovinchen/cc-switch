@@ -7245,6 +7245,8 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn auto_failover_toggle_plan_from_sources",
         "pub(crate) fn failover_switch_app_enabled_from_config_result",
         "pub(crate) fn reset_circuit_breaker_switchback_target_from_sources",
+        "pub(crate) fn parse_gemini_env_file_strict",
+        "fn gemini_env_parse_issue_to_app_error",
         "pub(crate) fn gemini_env_parse_issue_to_app_error",
         "pub(crate) fn gemini_settings_validation_issue_to_app_error",
         "pub(crate) fn codex_common_config_snippet_from_settings",
@@ -8701,10 +8703,14 @@ fn proxy_core_adapter_delegates_gemini_live_json_policy_to_core() {
     assert!(
         gemini_config_source.contains("use crate::proxy_core::api::ports::{")
             && gemini_config_source.contains("gemini_env_json_from_map")
+            && gemini_config_source.contains("gemini_env_parse_issue_spec")
             && gemini_config_source.contains("gemini_env_string_map_from_settings")
             && gemini_config_source.contains("parse_gemini_env_file")
+            && gemini_config_source.contains("parse_gemini_env_file_strict")
             && gemini_config_source.contains("serialize_gemini_env_file")
+            && gemini_config_source.contains("GeminiEnvParseIssue")
             && !gemini_config_source.contains("proxy_core_adapter::gemini_env_json_from_map")
+            && !gemini_config_source.contains("proxy_core_adapter::parse_gemini_env_file_strict")
             && !gemini_config_source
                 .contains("proxy_core_adapter::gemini_env_string_map_from_settings")
             && !gemini_config_source.contains("proxy_core_adapter::parse_gemini_env_file(")

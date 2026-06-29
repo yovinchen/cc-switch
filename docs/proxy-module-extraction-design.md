@@ -1912,6 +1912,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1357. live takeover/proxy config policy helper 已从 `proxy_core_adapter` 顶部 crate-visible ports re-export block 收窄为 adapter 私有 core import：adapter 继续保留 DB 写入、端口注入和 host TOML fact 投影函数，纯 proxy/live policy 不再经 adapter facade 对外暴露。
 1358. `live_takeover_app_types` 不再作为 `proxy_core_adapter` 的 crate-visible host facade 提供给 live takeover service：`proxy/host/cc_switch/live_takeover.rs` 直接消费 core `live_takeover_app_kinds()` 并在 host 层投影为 `AppType`，adapter 内同名 helper 降为 DB 清理路径私有函数。
 1359. ProviderService 的 provider key-change 与 additive live-write 判断已直接消费 `proxy-core::ports::{provider_key_change_policy_issue_for_app,provider_additive_live_write_action_for_app}` 并在 service 层投影 host `Provider.category`；`proxy_core_adapter` 不再保留对应生产 facade，adapter 自测只在 tests module 内直接调用 core policy。
+1360. Gemini `.env` strict parse 入口已从 `proxy_core_adapter` wrapper 移回 `gemini_config.rs` 本地投影：配置模块直接消费 `proxy-core::ports::{parse_gemini_env_file_strict,gemini_env_parse_issue_spec,GeminiEnvParseIssue}`，adapter 不再承接纯 `.env` parse issue 到 `AppError` 的中转。
 
 ## 背景
 

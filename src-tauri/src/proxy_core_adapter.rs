@@ -167,7 +167,6 @@ use crate::proxy_core::api::ports::{
     codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     ensure_codex_takeover_auth_placeholder,
-    gemini_env_parse_issue_spec as core_gemini_env_parse_issue_spec,
     gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
     live_backup_snapshot_from_live_config as core_live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
@@ -188,9 +187,9 @@ use crate::proxy_core::api::ports::{
     validate_gemini_settings_strict as core_validate_gemini_settings_strict,
     CodexLiveSettingsIssue, CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
     CodexLiveTakeoverMatchFacts, CodexProviderBackfillParts, CodexProviderLiveWriteIssue,
-    CodexProviderLiveWriteParts, CopilotOptimizerConfig, GeminiEnvParseIssue,
-    GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, OptimizerConfig,
-    ProviderSettingsValidationIssue, ProviderSettingsValidationParts, RectifierConfig,
+    CodexProviderLiveWriteParts, CopilotOptimizerConfig, GeminiSettingsValidationIssue,
+    LiveTokenProviderSettingsIssue, OptimizerConfig, ProviderSettingsValidationIssue,
+    ProviderSettingsValidationParts, RectifierConfig,
 };
 pub(crate) fn record_forward_success_status(
     status: &mut ProxyRuntimeStatus,
@@ -2713,18 +2712,6 @@ use crate::proxy_core::api::auth::extract_gemini_api_key_from_settings;
 use crate::proxy_core::api::auth::extract_gemini_base_url_from_settings;
 
 use crate::proxy_core::api::ports::gemini_live_backup_from_effective_settings;
-
-pub(crate) fn parse_gemini_env_file_strict(
-    content: &str,
-) -> Result<HashMap<String, String>, AppError> {
-    crate::proxy_core::api::ports::parse_gemini_env_file_strict(content)
-        .map_err(gemini_env_parse_issue_to_app_error)
-}
-
-fn gemini_env_parse_issue_to_app_error(issue: GeminiEnvParseIssue) -> AppError {
-    let spec = core_gemini_env_parse_issue_spec(&issue);
-    AppError::localized(spec.key, spec.zh, spec.en)
-}
 
 fn gemini_settings_validation_issue_to_app_error(issue: GeminiSettingsValidationIssue) -> AppError {
     let spec = core_gemini_settings_validation_issue_spec(issue);

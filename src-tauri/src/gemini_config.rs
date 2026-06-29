@@ -1,8 +1,9 @@
 use crate::config::{get_home_dir, write_text_file};
 use crate::error::AppError;
 use crate::proxy_core::api::ports::{
-    gemini_env_json_from_map, gemini_env_string_map_from_settings, parse_gemini_env_file,
-    serialize_gemini_env_file,
+    gemini_env_json_from_map, gemini_env_parse_issue_spec, gemini_env_string_map_from_settings,
+    parse_gemini_env_file, parse_gemini_env_file_strict, serialize_gemini_env_file,
+    GeminiEnvParseIssue,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -54,7 +55,12 @@ pub fn parse_env_file(content: &str) -> HashMap<String, String> {
 /// 已有完整的测试覆盖，可直接使用。
 #[allow(dead_code)]
 pub fn parse_env_file_strict(content: &str) -> Result<HashMap<String, String>, AppError> {
-    crate::proxy_core_adapter::parse_gemini_env_file_strict(content)
+    parse_gemini_env_file_strict(content).map_err(gemini_env_parse_issue_to_app_error)
+}
+
+fn gemini_env_parse_issue_to_app_error(issue: GeminiEnvParseIssue) -> AppError {
+    let spec = gemini_env_parse_issue_spec(&issue);
+    AppError::localized(spec.key, spec.zh, spec.en)
 }
 
 /// 将键值对序列化为 .env 格式
