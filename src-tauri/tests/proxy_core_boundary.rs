@@ -7143,6 +7143,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn provider_openclaw_live_write_plan",
         "pub(crate) fn provider_opencode_live_provider_fragment",
         "pub(crate) fn provider_opencode_live_write_plan",
+        "pub(crate) fn proxy_official_warning_event_message",
         "pub(crate) fn request_started_event_message",
         "pub(crate) fn server_started_event_message",
         "pub(crate) fn server_stopped_event_message",

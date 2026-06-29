@@ -1815,7 +1815,7 @@ use crate::proxy_core::api::config::{
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
 };
 use crate::proxy_core::api::events::{
-    attempt_event_name, build_attempt_event_payload, build_proxy_official_warning_event_payload,
+    attempt_event_name, build_attempt_event_payload, proxy_official_warning_event,
     request_started_event, server_started_event, server_stopped_event, AttemptEventChannel,
     AttemptEventPayloadInput, AttemptEventPhase, ProxyCoreEvent,
 };
@@ -1878,8 +1878,6 @@ use crate::proxy_core::api::usage::{
 
 use crate::proxy::host::cc_switch::managed_account_runtime_source::managed_account_runtime_source_from_app_handle;
 
-const PROXY_OFFICIAL_WARNING_EVENT: &str =
-    crate::proxy_core::api::events::PROXY_OFFICIAL_WARNING_EVENT;
 #[cfg(test)]
 pub(crate) const AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE: &str =
     crate::proxy_core::api::routing::AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE;
@@ -1896,16 +1894,6 @@ pub(crate) fn emit_proxy_server_stopped_event_source(events: &ProxyEventBus) {
     emit_proxy_core_event_bus_source(events, server_stopped_event());
 }
 
-pub(crate) fn proxy_official_warning_event_message(
-    app_type: &str,
-    provider_name: &str,
-) -> ProxyEventBusMessage {
-    ProxyEventBusMessage {
-        event_name: PROXY_OFFICIAL_WARNING_EVENT.to_string(),
-        payload: build_proxy_official_warning_event_payload(app_type, provider_name),
-    }
-}
-
 fn proxy_official_warning_event_from_provider(
     app_type: &str,
     provider: Option<&Provider>,
@@ -1915,9 +1903,8 @@ fn proxy_official_warning_event_from_provider(
         return None;
     }
 
-    Some(proxy_official_warning_event_message(
-        app_type,
-        &provider.name,
+    Some(proxy_core_event_to_bus_message(
+        proxy_official_warning_event(app_type, &provider.name),
     ))
 }
 
@@ -10659,7 +10646,10 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn proxy_event_adapter_projects_event_stream_contracts() {
-        assert_eq!(PROXY_OFFICIAL_WARNING_EVENT, "proxy-official-warning");
+        assert_eq!(
+            crate::proxy_core::api::events::PROXY_OFFICIAL_WARNING_EVENT,
+            "proxy-official-warning"
+        );
         assert_eq!(
             crate::proxy_core::api::events::PROVIDER_SWITCHED_EVENT,
             "provider-switched"
@@ -10676,14 +10666,10 @@ base_url = "https://api.openai.com/v1"
             crate::proxy_core::api::events::SERVER_STOPPED_EVENT,
             "server_stopped"
         );
-        assert_eq!(
-            build_proxy_official_warning_event_payload("claude", "Official Claude"),
-            json!({
-                "appType": "claude",
-                "providerName": "Official Claude",
-            })
-        );
-        let official_warning = proxy_official_warning_event_message("claude", "Official Claude");
+        let official_warning = proxy_core_event_to_bus_message(proxy_official_warning_event(
+            "claude",
+            "Official Claude",
+        ));
         assert_eq!(official_warning.event_name, "proxy-official-warning");
         assert_eq!(
             official_warning.payload,

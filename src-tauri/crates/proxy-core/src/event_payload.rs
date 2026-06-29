@@ -237,6 +237,15 @@ pub fn build_proxy_official_warning_event_payload(app_type: &str, provider_name:
     })
 }
 
+pub fn proxy_official_warning_event(app_type: &str, provider_name: &str) -> ProxyCoreEvent {
+    ProxyCoreEvent {
+        event_type: ProxyCoreEventType::Custom(PROXY_OFFICIAL_WARNING_EVENT.to_string()),
+        request_id: None,
+        channel_id: None,
+        payload: build_proxy_official_warning_event_payload(app_type, provider_name),
+    }
+}
+
 pub fn build_proxy_events_connected_payload(buffer_size: usize) -> Value {
     json!({
         "bufferSize": buffer_size,
@@ -257,7 +266,8 @@ mod tests {
         build_provider_switched_event_payload, build_request_started_event_payload,
         build_server_started_event_payload, build_server_stopped_event_payload,
         provider_switched_failover_enabled_event, provider_switched_failover_event,
-        request_started_event, server_started_event, server_stopped_event,
+        proxy_official_warning_event, request_started_event, server_started_event,
+        server_stopped_event,
         AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ProxyEventEnvelope,
         PROVIDER_SWITCHED_EVENT, PROVIDER_SWITCHED_SOURCE_FAILOVER,
         PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED, PROXY_OFFICIAL_WARNING_EVENT,
@@ -414,6 +424,11 @@ mod tests {
 
         assert_eq!(payload["appType"], "claude");
         assert_eq!(payload["providerName"], "Official Claude");
+
+        let event = proxy_official_warning_event("claude", "Official Claude");
+        assert_eq!(event.event_type.event_name(), "proxy-official-warning");
+        assert_eq!(event.payload["appType"], "claude");
+        assert_eq!(event.payload["providerName"], "Official Claude");
     }
 
     #[test]
