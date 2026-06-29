@@ -16,7 +16,10 @@ use crate::database::{validate_cost_multiplier, validate_pricing_source};
 use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
 use crate::proxy_core::api::ports::{
-    common_config_snippet_issue_message, CommonConfigSnippetIssue,
+    common_config_snippet_issue_message, CommonConfigSnippetIssue, ProviderAdditiveLiveWriteAction,
+    ProviderAdditiveUpdateRoute, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
+    ProviderLiveSyncScope, ProviderOmoVariant, ProviderSettingsValidationIssue,
+    ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
 };
 use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, normalize_provider_settings_for_storage,
@@ -33,10 +36,6 @@ use crate::proxy_core_adapter::{
     proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
     should_block_proxy_switch_to_provider, should_reapply_codex_official_live_for_provider,
     should_skip_provider_legacy_common_config_migration, validate_provider_gemini_settings,
-    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
-    ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
-    ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
-    ProviderTakeoverLiveSyncTarget,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;

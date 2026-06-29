@@ -11,6 +11,7 @@ use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};
 use crate::proxy_core::api::ports::{
     apply_claude_takeover_fields_with_policy, ClaudeTakeoverAuthPolicy,
+    LiveTokenProviderSettingsIssue,
 };
 use crate::proxy_core::api::ports::{
     proxy_live_urls_from_listen_parts, proxy_server_info_from_parts,
@@ -57,7 +58,7 @@ use crate::proxy_core_adapter::{
     sync_provider_settings_with_live_token, update_live_token_sync_provider_settings_in_db,
     update_proxy_config_preserving_live_takeover_active_in_db,
     write_ssot_live_restore_provider_with_common_config, CodexLiveWriteProjection,
-    CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue,
+    CodexTakeoverAuthPolicy,
 };
 #[cfg(test)]
 use serde_json::Map;

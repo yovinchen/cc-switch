@@ -194,9 +194,14 @@ use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection
 
 use crate::proxy_core::api::ports::{
     gemini_env_string_map_from_settings, CodexLiveSettingsIssue, CodexLiveSettingsParts,
-    CodexLiveSnapshotIssue, CodexLiveSnapshotParts, CodexProviderBackfillParts,
-    CodexProviderLiveWriteIssue, CodexProviderLiveWriteParts, CopilotOptimizerConfig,
-    OptimizerConfig, RectifierConfig,
+    CodexLiveSnapshotIssue, CodexLiveSnapshotParts, CodexLiveTakeoverMatchFacts,
+    CodexProviderBackfillParts, CodexProviderLiveWriteIssue, CodexProviderLiveWriteParts,
+    CopilotOptimizerConfig, GeminiEnvParseIssue, GeminiLiveConfigIssue,
+    GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, OptimizerConfig,
+    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
+    ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
+    ProviderSettingsValidationIssue, ProviderSettingsValidationParts, ProviderSwitchDispatch,
+    ProviderTakeoverLiveSyncTarget, RectifierConfig,
 };
 
 pub(crate) use crate::proxy_core::api::ports::{
@@ -265,12 +270,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
     validate_gemini_settings_basic as core_validate_gemini_settings_basic,
     validate_gemini_settings_strict as core_validate_gemini_settings_strict,
-    CodexLiveTakeoverMatchFacts, GeminiEnvParseIssue, GeminiLiveConfigIssue,
-    GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, ProviderAdditiveLiveWriteAction,
-    ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
-    ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
-    ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
-    ProviderSettingsValidationParts, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
 };
 use crate::proxy_core::api::ports::{GeminiAuthType, GeminiAuthTypeInput};
 
@@ -7094,7 +7093,7 @@ mod tests {
         proxy_takeover_marked_state_is_reusable,
         proxy_takeover_should_restore_existing_backup_before_retakeover, AuthInfo,
         ClaudeTakeoverAuthPolicy, CodexProviderValidationIssue, OpenCodeCredentialIssue,
-        ProviderCredentialIssue,
+        ProviderCredentialIssue, ProviderLiveConfigPresenceErrorPolicy,
     };
     use crate::proxy_core::api::routing::{
         normalize_channel_base_url, normalize_proxy_channel_write_request_fields, stable_channel_id,

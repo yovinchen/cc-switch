@@ -8059,6 +8059,109 @@ fn proxy_core_adapter_delegates_provider_settings_validation_policy_to_core() {
 }
 
 #[test]
+fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let files = [
+        (
+            "src/services/provider/mod.rs",
+            &[
+                "ProviderAdditiveLiveWriteAction",
+                "ProviderAdditiveUpdateRoute",
+                "ProviderLiveConfigPresenceErrorPolicy",
+                "ProviderLiveRemovalTarget",
+                "ProviderLiveSyncScope",
+                "ProviderOmoVariant",
+                "ProviderSettingsValidationIssue",
+                "ProviderSwitchDispatch",
+                "ProviderTakeoverLiveSyncTarget",
+            ][..],
+        ),
+        (
+            "src/services/provider/live.rs",
+            &["GeminiLiveConfigIssue", "ProviderLiveSyncScope"][..],
+        ),
+        (
+            "src/proxy/host/cc_switch/live_takeover.rs",
+            &["LiveTokenProviderSettingsIssue"][..],
+        ),
+    ];
+    let mut violations = Vec::new();
+
+    for (relative, required_symbols) in files {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read source");
+        if !source.contains("use crate::proxy_core::api::ports::{") {
+            violations.push(format!(
+                "{relative} should import live/provider policy contracts directly from proxy_core::api::ports"
+            ));
+        }
+        for symbol in required_symbols {
+            if !source.contains(symbol) {
+                violations.push(format!(
+                    "{relative} should import `{symbol}` directly from proxy_core::api::ports"
+                ));
+            }
+        }
+
+        let adapter_import_identifiers = proxy_core_adapter_import_identifiers(&source);
+        for symbol in required_symbols {
+            if adapter_import_identifiers
+                .iter()
+                .any(|identifier| identifier == symbol)
+            {
+                violations.push(format!(
+                    "{relative} imports live/provider policy contract `{symbol}` through proxy_core_adapter"
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider services should not route live/provider policy contracts through proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let port_reexport_blocks: Vec<&str> = adapter_source
+        .split("pub(crate) use crate::proxy_core::api::ports::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
+
+    for symbol in [
+        "CodexLiveTakeoverMatchFacts",
+        "GeminiEnvParseIssue",
+        "GeminiLiveConfigIssue",
+        "GeminiSettingsValidationIssue",
+        "LiveTokenProviderSettingsIssue",
+        "ProviderAdditiveLiveWriteAction",
+        "ProviderAdditiveUpdateRoute",
+        "ProviderKeyChangePolicyIssue",
+        "ProviderLiveConfigPresenceErrorPolicy",
+        "ProviderLiveRemovalTarget",
+        "ProviderLiveSyncScope",
+        "ProviderOmoSwitchPair",
+        "ProviderOmoVariant",
+        "ProviderSettingsValidationIssue",
+        "ProviderSettingsValidationParts",
+        "ProviderSwitchDispatch",
+        "ProviderTakeoverLiveSyncTarget",
+    ] {
+        let single_line_reexport = adapter_source.lines().any(|line| {
+            line.contains("pub(crate) use crate::proxy_core::api::ports") && line.contains(symbol)
+        });
+        let grouped_reexport = port_reexport_blocks
+            .iter()
+            .any(|block| block.contains(symbol));
+        assert!(
+            !single_line_reexport && !grouped_reexport,
+            "proxy_core_adapter should not re-export live/provider policy contract `{symbol}`"
+        );
+    }
+}
+
+#[test]
 fn proxy_core_adapter_delegates_default_live_import_category_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
