@@ -3675,10 +3675,13 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
                 "use crate::proxy_core::api::routing::effective_channel_key_failure_cooldown_ms;"
             )
             && runtime_source.contains("channel_key_runtime_candidate_from_input")
-            && runtime_source.contains("select_channel_key_runtime_candidate_with_weighted_roll")
+            && runtime_source.contains("select_channel_key_runtime_candidate_with_policy")
             && runtime_source.contains("ChannelKeyRuntimeCandidateInput")
+            && runtime_source.contains("ChannelKeyRuntimeSelectionInput")
+            && runtime_source.contains("ChannelKeyRuntimeSelectionPolicy")
+            && runtime_source.contains("ChannelKeyRuntimeSelectionPolicy::weighted(")
             && runtime_source.contains("DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS"),
-        "channel key runtime source should import pure candidate projection/weighted cooldown selection directly from proxy_core::api"
+        "channel key runtime source should import pure candidate projection/selection policy directly from proxy_core::api"
     );
     for marker in [
         "core_select_channel_key_runtime_candidate",
@@ -3687,8 +3690,11 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
         "select_channel_key_runtime_candidate_with_failure_cooldown",
         "select_enabled_channel_key_runtime_candidate_with_failure_cooldown",
         "select_channel_key_runtime_candidate_with_weighted_roll",
+        "select_channel_key_runtime_candidate_with_policy",
         "DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS",
         "ChannelKeyRuntimeCandidateInput",
+        "ChannelKeyRuntimeSelectionInput",
+        "ChannelKeyRuntimeSelectionPolicy",
     ] {
         assert!(
             !adapter_runtime_source.contains(marker),
@@ -16244,8 +16250,11 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
                 .contains("pub fn select_channel_key_runtime_candidate_with_failure_cooldown")
             && core_ports_source
                 .contains("pub fn select_channel_key_runtime_candidate_with_weighted_roll")
+            && core_ports_source.contains("pub fn select_channel_key_runtime_candidate_with_policy")
+            && core_ports_source.contains("pub struct ChannelKeyRuntimeSelectionInput")
+            && core_ports_source.contains("pub struct ChannelKeyRuntimeSelectionPolicy")
             && core_ports_source.contains("pub const DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS"),
-        "ChannelKeyRuntimeSource should return the selected runtime candidate and core should own key-ref candidate selection plus failure cooldown/weighted policy"
+        "ChannelKeyRuntimeSource should return the selected runtime candidate and core should own key-ref candidate selection plus explicit runtime selection policy"
     );
     assert!(
         services_trait.contains("channel_key_runtime_source("),
@@ -16326,8 +16335,9 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
             && runtime_source_lookup.contains("effective_channel_key_failure_cooldown_ms(")
             && runtime_source_lookup.contains("select_proxy_channel_key_runtime_candidate(")
             && runtime_source.contains("channel_key_runtime_selection_clock(")
+            && runtime_source.contains("ChannelKeyRuntimeSelectionPolicy::weighted(")
             && !runtime_source_lookup.contains(".key_value"),
-        "CC Switch channel key runtime lookup helper should own runtime DB candidate loading, per-channel cooldown policy, core key-ref selection, and preserve selected candidate metadata"
+        "CC Switch channel key runtime lookup helper should own runtime DB candidate loading, per-channel cooldown policy, explicit core key-ref selection policy, and preserve selected candidate metadata"
     );
     assert!(
         runtime_source.contains("impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource")

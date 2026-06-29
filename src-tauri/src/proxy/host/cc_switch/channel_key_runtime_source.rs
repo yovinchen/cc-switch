@@ -1,9 +1,9 @@
 use crate::database::{Database, ProxyChannelKeyRecord};
 use crate::proxy_core::api::errors::ProxyCoreResult;
 use crate::proxy_core::api::management::{
-    channel_key_runtime_candidate_from_input,
-    select_channel_key_runtime_candidate_with_weighted_roll, ChannelKeyRuntimeCandidate,
-    ChannelKeyRuntimeCandidateInput, DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+    channel_key_runtime_candidate_from_input, select_channel_key_runtime_candidate_with_policy,
+    ChannelKeyRuntimeCandidate, ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeSelectionInput,
+    ChannelKeyRuntimeSelectionPolicy, DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
 };
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
 use crate::proxy_core::api::routing::effective_channel_key_failure_cooldown_ms;
@@ -34,13 +34,15 @@ fn select_proxy_channel_key_runtime_candidate<I>(
 where
     I: IntoIterator<Item = ProxyChannelKeyRecord>,
 {
-    select_channel_key_runtime_candidate_with_weighted_roll(
+    select_channel_key_runtime_candidate_with_policy(
         keys.into_iter()
             .map(proxy_channel_key_record_to_runtime_candidate),
-        key_ref,
-        now_ms,
-        failure_cooldown_ms,
-        weighted_roll,
+        ChannelKeyRuntimeSelectionInput {
+            key_ref,
+            now_ms,
+            weighted_roll,
+            policy: ChannelKeyRuntimeSelectionPolicy::weighted(failure_cooldown_ms),
+        },
     )
 }
 

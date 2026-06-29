@@ -5987,6 +5987,51 @@ pub fn channel_key_runtime_candidate_from_input(
 
 pub const DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS: i64 = 60_000;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelKeyRuntimeSelectionStrategy {
+    Priority,
+    #[default]
+    Weighted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelKeyRuntimeSelectionPolicy {
+    pub strategy: ChannelKeyRuntimeSelectionStrategy,
+    pub failure_cooldown_ms: i64,
+}
+
+impl ChannelKeyRuntimeSelectionPolicy {
+    pub fn priority(failure_cooldown_ms: i64) -> Self {
+        Self {
+            strategy: ChannelKeyRuntimeSelectionStrategy::Priority,
+            failure_cooldown_ms,
+        }
+    }
+
+    pub fn weighted(failure_cooldown_ms: i64) -> Self {
+        Self {
+            strategy: ChannelKeyRuntimeSelectionStrategy::Weighted,
+            failure_cooldown_ms,
+        }
+    }
+}
+
+impl Default for ChannelKeyRuntimeSelectionPolicy {
+    fn default() -> Self {
+        Self::weighted(DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChannelKeyRuntimeSelectionInput<'a> {
+    pub key_ref: &'a str,
+    pub now_ms: i64,
+    pub weighted_roll: u64,
+    pub policy: ChannelKeyRuntimeSelectionPolicy,
+}
+
 pub fn select_enabled_channel_key_runtime_candidate<I>(
     candidates: I,
 ) -> Option<ChannelKeyRuntimeCandidate>
@@ -6213,6 +6258,34 @@ where
         now_ms,
         failure_cooldown_ms,
     )
+}
+
+pub fn select_channel_key_runtime_candidate_with_policy<I>(
+    candidates: I,
+    input: ChannelKeyRuntimeSelectionInput<'_>,
+) -> Option<ChannelKeyRuntimeCandidate>
+where
+    I: IntoIterator<Item = ChannelKeyRuntimeCandidate>,
+{
+    match input.policy.strategy {
+        ChannelKeyRuntimeSelectionStrategy::Priority => {
+            select_channel_key_runtime_candidate_with_failure_cooldown(
+                candidates,
+                input.key_ref,
+                input.now_ms,
+                input.policy.failure_cooldown_ms,
+            )
+        }
+        ChannelKeyRuntimeSelectionStrategy::Weighted => {
+            select_channel_key_runtime_candidate_with_weighted_roll(
+                candidates,
+                input.key_ref,
+                input.now_ms,
+                input.policy.failure_cooldown_ms,
+                input.weighted_roll,
+            )
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -6609,6 +6682,7 @@ mod tests {
         required_provider_base_url, sanitize_claude_settings_for_live,
         select_channel_key_runtime_candidate,
         select_channel_key_runtime_candidate_with_failure_cooldown,
+        select_channel_key_runtime_candidate_with_policy,
         select_channel_key_runtime_candidate_with_weighted_roll,
         select_enabled_channel_key_runtime_candidate,
         select_enabled_channel_key_runtime_candidate_with_failure_cooldown,
@@ -6624,7 +6698,8 @@ mod tests {
         validate_gemini_settings_strict, AppChannelListQuery, AppChannelListResponse,
         AppChannelResponse, AppChannelRouteResponse, AppListResponse, AppModelListQuery,
         AppProxyConfig, AppSummaryInput, ChannelDeleteResponse, ChannelHealthUpdateInput,
-        ChannelKeyRecordInput, ChannelKeyRuntimeCandidateInput, ChannelListQuery,
+        ChannelKeyRecordInput, ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeSelectionInput,
+        ChannelKeyRuntimeSelectionPolicy, ChannelListQuery,
         ChannelListResponse, ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
         ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelRecord,
         ChannelModelRecordInput, ChannelModelsResponse, ChannelReachabilityInput,
@@ -11766,6 +11841,50 @@ GEMINI_API_KEY=sk-test123
         )
         .expect("selected explicitly requested key");
         assert_eq!(explicit_key.key_ref, "primary");
+    }
+
+    #[test]
+    fn channel_key_runtime_selection_policy_selects_strategy_explicitly() {
+        fn candidate(key_ref: &str) -> super::ChannelKeyRuntimeCandidate {
+            channel_key_runtime_candidate_from_input(ChannelKeyRuntimeCandidateInput {
+                channel_id: "ch-1".to_string(),
+                key_ref: key_ref.to_string(),
+                key_value: format!("sk-{key_ref}"),
+                status: "enabled".to_string(),
+                priority: 20,
+                weight: 1,
+                last_failure_at: None,
+            })
+        }
+
+        let now_ms = 1_771_000_120_000;
+        let priority_selected = select_channel_key_runtime_candidate_with_policy(
+            vec![candidate("alpha"), candidate("beta")],
+            ChannelKeyRuntimeSelectionInput {
+                key_ref: "*",
+                now_ms,
+                weighted_roll: 1,
+                policy: ChannelKeyRuntimeSelectionPolicy::priority(
+                    DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+                ),
+            },
+        )
+        .expect("selected by deterministic priority order");
+        assert_eq!(priority_selected.key_ref, "alpha");
+
+        let weighted_selected = select_channel_key_runtime_candidate_with_policy(
+            vec![candidate("alpha"), candidate("beta")],
+            ChannelKeyRuntimeSelectionInput {
+                key_ref: "*",
+                now_ms,
+                weighted_roll: 1,
+                policy: ChannelKeyRuntimeSelectionPolicy::weighted(
+                    DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+                ),
+            },
+        )
+        .expect("selected by weighted roll");
+        assert_eq!(weighted_selected.key_ref, "beta");
     }
 
     #[test]
