@@ -578,9 +578,14 @@ pub(crate) fn emit_attempt_event_source(
     phase: AttemptEventPhase,
     error: Option<&str>,
 ) {
-    let message =
-        attempt_event_message_from_forward_attempt(request_id, app_type, attempt, phase, error);
-    events.emit(message.event_name, message.payload);
+    emit_proxy_core_event_bus_source(
+        events,
+        attempt_event(
+            attempt_event_payload_input_from_forward_attempt(request_id, app_type, attempt, error),
+            attempt.is_channel(),
+            phase,
+        ),
+    );
 }
 
 pub(crate) async fn record_forward_active_route_target_runtime_source(
@@ -598,8 +603,12 @@ pub(crate) async fn record_forward_active_route_target_runtime_source(
         );
     }
 
-    let message = route_selected_event_message_from_forward_attempt(request_id, app_type, attempt);
-    events.emit(message.event_name, message.payload);
+    emit_proxy_core_event_bus_source(
+        events,
+        route_selected_event(attempt_event_payload_input_from_forward_attempt(
+            request_id, app_type, attempt, None,
+        )),
+    );
 }
 
 pub(crate) async fn allow_forward_attempt_runtime_source(
@@ -1195,12 +1204,12 @@ pub(crate) fn get_or_create_claude_desktop_gateway_token_from_db_source(
     Ok(token)
 }
 
-pub(crate) fn attempt_event_payload_from_forward_attempt(
-    request_id: &str,
-    app_type: &str,
-    attempt: &ForwardAttempt,
-    error: Option<&str>,
-) -> Value {
+fn attempt_event_payload_input_from_forward_attempt<'a>(
+    request_id: &'a str,
+    app_type: &'a str,
+    attempt: &'a ForwardAttempt,
+    error: Option<&'a str>,
+) -> AttemptEventPayloadInput<'a> {
     let provider = attempt.provider();
     let channel = attempt.channel().map(|channel| AttemptEventChannel {
         channel_id: channel.channel_id.as_str(),
@@ -1211,40 +1220,14 @@ pub(crate) fn attempt_event_payload_from_forward_attempt(
         pricing_model: channel.pricing_model.as_deref(),
     });
 
-    build_attempt_event_payload(AttemptEventPayloadInput {
+    AttemptEventPayloadInput {
         request_id,
         app_type,
         provider_id: provider.id.as_str(),
         provider_name: provider.name.as_str(),
         channel,
         error,
-    })
-}
-
-pub(crate) fn attempt_event_message_from_forward_attempt(
-    request_id: &str,
-    app_type: &str,
-    attempt: &ForwardAttempt,
-    phase: AttemptEventPhase,
-    error: Option<&str>,
-) -> ProxyEventBusMessage {
-    ProxyEventBusMessage {
-        event_name: attempt_event_name(attempt.is_channel(), phase).to_string(),
-        payload: attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, error),
     }
-}
-
-pub(crate) fn route_selected_event_message_from_forward_attempt(
-    request_id: &str,
-    app_type: &str,
-    attempt: &ForwardAttempt,
-) -> ProxyEventBusMessage {
-    proxy_core_event_to_bus_message(ProxyCoreEvent {
-        event_type: crate::proxy_core::api::events::ProxyCoreEventType::RouteSelected,
-        request_id: Some(request_id.to_string()),
-        channel_id: attempt.channel().map(|channel| channel.channel_id.clone()),
-        payload: attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, None),
-    })
 }
 
 pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
@@ -1815,9 +1798,9 @@ use crate::proxy_core::api::config::{
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
 };
 use crate::proxy_core::api::events::{
-    attempt_event_name, build_attempt_event_payload, proxy_official_warning_event,
-    request_started_event, server_started_event, server_stopped_event, AttemptEventChannel,
-    AttemptEventPayloadInput, AttemptEventPhase, ProxyCoreEvent,
+    attempt_event, proxy_official_warning_event, request_started_event, route_selected_event,
+    server_started_event, server_stopped_event, AttemptEventChannel, AttemptEventPayloadInput,
+    AttemptEventPhase, ProxyCoreEvent,
 };
 pub(crate) use crate::proxy_core::api::events::{
     provider_switched_failover_enabled_event, provider_switched_failover_event,
@@ -10808,11 +10791,14 @@ base_url = "https://api.openai.com/v1"
                 source_kind: "manual".to_string(),
             },
         );
-        let route_message = route_selected_event_message_from_forward_attempt(
-            "req-route",
-            "claude",
-            &route_attempt,
-        );
+        let route_message = proxy_core_event_to_bus_message(route_selected_event(
+            attempt_event_payload_input_from_forward_attempt(
+                "req-route",
+                "claude",
+                &route_attempt,
+                None,
+            ),
+        ));
         assert_eq!(route_message.event_name, "route_selected");
         assert_eq!(route_message.payload["requestId"], "req-route");
         assert_eq!(route_message.payload["providerId"], "provider-1");
@@ -10820,13 +10806,16 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(route_message.payload["interfaceKind"], "openai_responses");
         assert_eq!(route_message.payload["upstreamModel"], "upstream-sonnet");
 
-        let failed_attempt_message = attempt_event_message_from_forward_attempt(
-            "req-failed",
-            "claude",
-            &route_attempt,
+        let failed_attempt_message = proxy_core_event_to_bus_message(attempt_event(
+            attempt_event_payload_input_from_forward_attempt(
+                "req-failed",
+                "claude",
+                &route_attempt,
+                Some("upstream failed"),
+            ),
+            route_attempt.is_channel(),
             AttemptEventPhase::Failed,
-            Some("upstream failed"),
-        );
+        ));
         assert_eq!(failed_attempt_message.event_name, "channel_failed");
         assert_eq!(failed_attempt_message.payload["requestId"], "req-failed");
         assert_eq!(failed_attempt_message.payload["channelId"], "channel-a");

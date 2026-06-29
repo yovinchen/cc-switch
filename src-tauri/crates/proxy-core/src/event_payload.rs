@@ -145,6 +145,30 @@ pub fn build_attempt_event_payload(input: AttemptEventPayloadInput<'_>) -> Value
     payload
 }
 
+pub fn attempt_event(
+    input: AttemptEventPayloadInput<'_>,
+    is_channel_attempt: bool,
+    phase: AttemptEventPhase,
+) -> ProxyCoreEvent {
+    ProxyCoreEvent {
+        event_type: ProxyCoreEventType::Custom(
+            attempt_event_name(is_channel_attempt, phase).to_string(),
+        ),
+        request_id: Some(input.request_id.to_string()),
+        channel_id: input.channel.map(|channel| channel.channel_id.to_string()),
+        payload: build_attempt_event_payload(input),
+    }
+}
+
+pub fn route_selected_event(input: AttemptEventPayloadInput<'_>) -> ProxyCoreEvent {
+    ProxyCoreEvent {
+        event_type: ProxyCoreEventType::RouteSelected,
+        request_id: Some(input.request_id.to_string()),
+        channel_id: input.channel.map(|channel| channel.channel_id.to_string()),
+        payload: build_attempt_event_payload(input),
+    }
+}
+
 pub fn build_request_started_event_payload(request_id: &str, app_type: &str) -> Value {
     json!({
         "requestId": request_id,
@@ -261,13 +285,13 @@ pub fn build_proxy_events_lagged_payload(skipped: u64) -> Value {
 #[cfg(test)]
 mod tests {
     use super::{
-        attempt_event_name, build_attempt_event_payload, build_proxy_events_connected_payload,
-        build_proxy_events_lagged_payload, build_proxy_official_warning_event_payload,
-        build_provider_switched_event_payload, build_request_started_event_payload,
-        build_server_started_event_payload, build_server_stopped_event_payload,
-        provider_switched_failover_enabled_event, provider_switched_failover_event,
-        proxy_official_warning_event, request_started_event, server_started_event,
-        server_stopped_event,
+        attempt_event, attempt_event_name, build_attempt_event_payload,
+        build_proxy_events_connected_payload, build_proxy_events_lagged_payload,
+        build_proxy_official_warning_event_payload, build_provider_switched_event_payload,
+        build_request_started_event_payload, build_server_started_event_payload,
+        build_server_stopped_event_payload, provider_switched_failover_enabled_event,
+        provider_switched_failover_event, proxy_official_warning_event, request_started_event,
+        route_selected_event, server_started_event, server_stopped_event,
         AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ProxyEventEnvelope,
         PROVIDER_SWITCHED_EVENT, PROVIDER_SWITCHED_SOURCE_FAILOVER,
         PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED, PROXY_OFFICIAL_WARNING_EVENT,
@@ -345,6 +369,61 @@ mod tests {
         assert_eq!(payload["appType"], "codex");
         assert!(payload.get("channelId").is_none());
         assert!(payload.get("error").is_none());
+    }
+
+    #[test]
+    fn attempt_event_contract_keeps_legacy_event_names() {
+        let event = attempt_event(
+            AttemptEventPayloadInput {
+                request_id: "req-1",
+                app_type: "claude",
+                provider_id: "provider-1",
+                provider_name: "Provider 1",
+                channel: Some(AttemptEventChannel {
+                    channel_id: "channel-a",
+                    channel_name: "Relay A",
+                    interface_kind: "openai_responses",
+                    public_model: Some("public-sonnet"),
+                    upstream_model: Some("upstream-sonnet"),
+                    pricing_model: Some("sonnet-price"),
+                }),
+                error: Some("upstream failed"),
+            },
+            true,
+            AttemptEventPhase::Failed,
+        );
+
+        assert_eq!(event.event_type.event_name(), "channel_failed");
+        assert_eq!(event.request_id.as_deref(), Some("req-1"));
+        assert_eq!(event.channel_id.as_deref(), Some("channel-a"));
+        assert_eq!(event.payload["requestId"], "req-1");
+        assert_eq!(event.payload["channelId"], "channel-a");
+        assert_eq!(event.payload["error"], "upstream failed");
+    }
+
+    #[test]
+    fn route_selected_event_contract_uses_attempt_payload() {
+        let event = route_selected_event(AttemptEventPayloadInput {
+            request_id: "req-route",
+            app_type: "claude",
+            provider_id: "provider-1",
+            provider_name: "Provider 1",
+            channel: Some(AttemptEventChannel {
+                channel_id: "channel-a",
+                channel_name: "Relay A",
+                interface_kind: "openai_responses",
+                public_model: Some("public-sonnet"),
+                upstream_model: Some("upstream-sonnet"),
+                pricing_model: None,
+            }),
+            error: None,
+        });
+
+        assert_eq!(event.event_type.event_name(), "route_selected");
+        assert_eq!(event.request_id.as_deref(), Some("req-route"));
+        assert_eq!(event.channel_id.as_deref(), Some("channel-a"));
+        assert_eq!(event.payload["providerId"], "provider-1");
+        assert_eq!(event.payload["upstreamModel"], "upstream-sonnet");
     }
 
     #[test]

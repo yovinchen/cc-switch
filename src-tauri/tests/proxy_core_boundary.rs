@@ -3191,7 +3191,7 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
     let token_source_slice = function_slice(
         &source,
         "pub(crate) fn get_or_create_claude_desktop_gateway_token_from_db_source(",
-        "pub(crate) fn attempt_event_payload_from_forward_attempt(",
+        "pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD",
     );
 
     assert!(

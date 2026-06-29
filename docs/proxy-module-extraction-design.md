@@ -804,16 +804,16 @@
 755. runtime status 的 active target 注入与按 appType 排序规则已迁入 `proxy-core::apply_proxy_runtime_active_targets`：server 只负责读取 host runtime map，状态响应里的排序口径由 core 维护。
 756. request started 与 active connection 的 runtime status 计数策略已迁入 `proxy-core::{record_forward_request_started_status,record_active_connection_acquired_status,record_active_connection_released_status}`：forwarder 保留 RAII guard 和时间戳注入，计数加减与饱和规则由 core 维护。
 757. server lifecycle 的 runtime status 更新策略已迁入 `proxy-core::{record_proxy_server_started_status,record_proxy_server_stopped_status,apply_proxy_runtime_uptime}`：server 继续负责 socket 监听、Instant 计时和事件发送，running/address/port/uptime 字段变更由 core 维护。
-758. server lifecycle 事件名与 payload contract 继续通过 `proxy_core_adapter::{server_started_event_message,server_stopped_event_message}` 投影为 event bus message；proxy events connected/lagged 事件名与 payload builder 已由 `proxy::events::ProxyEventBus` 直接经 `proxy_core::api::events` 消费：server/event bus 只负责监听事实、sequence/timestamp 和现有事件总线 emit。
+758. server lifecycle 事件名与 payload contract 已通过 `proxy-core::events::{server_started_event,server_stopped_event}` 构造；proxy events connected/lagged 事件名与 payload builder 已由 `proxy::events::ProxyEventBus` 直接经 `proxy_core::api::events` 消费：server/event bus 只负责监听事实、sequence/timestamp 和现有事件总线 emit。
 759. `ProxyServerInfo` 构造已迁入 `proxy-core::proxy_server_info_from_parts`：server start 和 service 已运行返回路径都只提供 address/port/started_at 事实，不再手写 core DTO 字段。
 760. `ProxyTakeoverStatus` 构造已迁入 `proxy-core::proxy_takeover_status_from_parts`：service 继续负责读取各 app 接管事实，DTO 字段 shape 与序列化 contract 由 core 统一维护。
-761. provider-switched 事件名、source 常量与 payload contract 已经通过 `proxy_core_adapter::{provider_switched_failover_event_message,provider_switched_failover_enabled_event_message}` 投影为 Tauri event message：failover manager 与 command 只负责切换副作用和 emit 时机。
-762. proxy-official-warning 事件名与 payload contract 已经通过 `proxy_core_adapter::proxy_official_warning_event_message` 投影为 Tauri event message：service 继续负责官方供应商风险判断和 Tauri emit，前端 warning payload shape 由 adapter/core 维护。
+761. provider-switched 事件名、source 常量与 payload contract 已经通过 `proxy-core::events::{provider_switched_failover_event,provider_switched_failover_enabled_event}` 构造：failover manager 与 command 只负责切换副作用和 emit 时机。
+762. proxy-official-warning 事件名与 payload contract 已经通过 `proxy-core::events::proxy_official_warning_event` 构造：service/adapter 继续负责官方供应商风险判断、DB 读取和 Tauri emit，前端 warning payload shape 由 core 维护。
 763. 未运行代理的 runtime status 默认 DTO 已迁入 `proxy-core::proxy_runtime_status_stopped`：service 只负责判定是否存在 server，stopped 状态字段 shape 由 core 维护。
 764. `ProxyError` HTTP JSON body contract 已迁入 `proxy-core::{proxy_error_http_status_code,proxy_error_response_body,upstream_proxy_error_response_body}`，并由 `proxy/error.rs` 直接经 `proxy_core::api::errors` 引用：host 仍负责错误枚举并通过 `proxy::error_mapper` 投影 status kind，上游 JSON 透传/文本包装/proxy_error envelope 由 core 统一维护。
-765. forwarder 的 route_selected 事件名与 `ForwardAttempt` 到 bus message 的投影已切到 `proxy_core_adapter::route_selected_event_message_from_forward_attempt`：forwarder 只负责 active target 写入和 emit 时机，不再手写事件名或 route-selected payload 组合。
-766. request_started 事件名与 payload message 已迁入 `proxy_core_adapter::request_started_event_message`：forwarder 继续负责请求开始时机，不再分别引用事件名常量和 payload builder。
-767. `ForwardAttempt` 到 attempt event bus message 的 host 投影已迁入 `proxy_core_adapter::attempt_event_message_from_forward_attempt`：forwarder 只负责 emit 时机和 attempt phase，不再手写 provider/channel 字段拆箱或 attempt 事件名/payload 组合。
+765. forwarder 的 route_selected 事件名与 payload envelope 已切到 `proxy-core::events::route_selected_event`：forwarder 只负责 active target 写入和 emit 时机，adapter 只保留 `ForwardAttempt` 到 core input 的宿主投影。
+766. request_started 事件名与 payload envelope 已迁入 `proxy-core::events::request_started_event`：forwarder 继续负责请求开始时机，不再分别引用事件名常量和 payload builder。
+767. `ForwardAttempt` 到 attempt event envelope 的纯构造已迁入 `proxy-core::events::attempt_event`：forwarder 只负责 emit 时机和 attempt phase，adapter 只保留 provider/channel 字段到 core input 的宿主投影。
 768. handler 请求体 `stream` 标志解析已迁入 `proxy-core::request_body_stream_flag`：Claude/Codex/Gemini handler 继续负责读取 body 与使用场景，stream 布尔 contract 由 core 统一维护并被 transport streaming 判定复用。
 769. handler 到 core `ProxyRequest` 的 observed request context 装配已迁入 `proxy-core::ProxyRequest::with_observed_request_context`：handler 继续负责 endpoint/model 来源，`requested_model`/headers/extensions 写入由 core domain builder 维护。
 770. handler 请求体 JSON 解析契约已迁入 `proxy-core::{parse_json_request_body,parse_json_request_body_or_null}`：host 继续负责 axum body collection，strict JSON 与 Gemini 空 body -> `Null` 语义及 parse error 前缀由 core 统一维护。
@@ -1903,6 +1903,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1348. full-url provider metadata 读取不再保留 `proxy_core_adapter::provider_is_full_url` 普通 accessor；stream check 的 Copilot dynamic endpoint guard 与 adapter 自测直接调用 `Provider::is_full_url()`。
 1349. custom endpoint 列表读取不再保留 `proxy_core_adapter::provider_custom_endpoint_list` 普通 accessor；endpoint service 与 adapter 自测直接调用 `Provider::custom_endpoint_list()`，adapter 继续只承接 URL 归一化错误映射。
 1350. custom endpoint last-used 更新不再保留 `proxy_core_adapter::mark_custom_endpoint_last_used` 普通 mutation helper；endpoint service 和 adapter 自测直接调用 `Provider::mark_custom_endpoint_last_used()`，避免把 provider meta 写入细节挂在代理 core adapter 面上。
+1351. Attempt/route-selected 事件 envelope 已收敛到 `proxy-core::events::{attempt_event,route_selected_event}`：`proxy_core_adapter` 只保留 `ForwardAttempt -> AttemptEventPayloadInput` 的宿主投影，默认 runtime state source 继续拥有 event bus 副作用但不再经 adapter-local message/payload wrapper 组装事件名与 payload。
 
 ## 背景
 
