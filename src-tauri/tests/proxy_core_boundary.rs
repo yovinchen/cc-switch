@@ -1192,6 +1192,9 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate",
     "pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_selection",
     "fn provider_usage_script(",
+    "fn provider_launch_env_vars_for_app(",
+    "fn launch_env_vars_from_provider_settings(",
+    "launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings",
     "fn provider_stream_check_test_config(",
     "fn provider_is_full_url(",
     "fn provider_custom_endpoint_list(",
@@ -2034,6 +2037,15 @@ fn is_allowed_managed_auth_command_core_import(relative: &str, code: &str) -> bo
     relative == "src/commands/auth.rs" && code.trim() == "use crate::proxy_core::api::auth::{"
 }
 
+fn is_allowed_misc_launch_env_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/commands/misc.rs"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::domain::AppKind;"
+                | "use crate::proxy_core::api::ports::launch_env_vars_from_provider_settings;"
+        )
+}
+
 fn is_allowed_claude_desktop_provider_issue_core_import(relative: &str, code: &str) -> bool {
     relative == "src/claude_desktop_config.rs"
         && matches!(
@@ -2245,6 +2257,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_provider_adapter_kind_core_import(&relative, code)
                     && !is_allowed_test_proxy_config_core_import(&relative, code)
                     && !is_allowed_managed_auth_command_core_import(&relative, code)
+                    && !is_allowed_misc_launch_env_core_import(&relative, code)
                     && !is_allowed_engine_routing_test_core_import(&relative, code)
                     && !is_allowed_http_server_test_core_import(&relative, code)
                     && !is_allowed_channel_write_dao_core_import(&relative, code)

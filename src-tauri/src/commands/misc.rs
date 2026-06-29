@@ -2,7 +2,8 @@
 
 use crate::app_config::AppType;
 use crate::init_status::{InitErrorPayload, SkillsMigrationPayload};
-use crate::proxy_core_adapter::provider_launch_env_vars_for_app;
+use crate::proxy_core::api::domain::AppKind;
+use crate::proxy_core::api::ports::launch_env_vars_from_provider_settings;
 use crate::services::ProviderService;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -2584,7 +2585,10 @@ pub async fn open_provider_terminal(
         .ok_or_else(|| format!("提供商 {providerId} 不存在"))?;
 
     // 从提供商配置中提取环境变量
-    let env_vars = provider_launch_env_vars_for_app(provider, &app_type);
+    let env_vars = launch_env_vars_from_provider_settings(
+        &provider.settings_config,
+        &AppKind::from(app_type.as_str()),
+    );
 
     // 根据平台启动终端，传入提供商ID用于生成唯一的配置文件名
     launch_terminal_with_env(env_vars, &providerId, launch_cwd.as_deref())

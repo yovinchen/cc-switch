@@ -181,7 +181,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     gemini_env_parse_issue_spec as core_gemini_env_parse_issue_spec,
     gemini_live_config_object_from_settings as core_gemini_live_config_object_from_settings,
     gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
-    launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings,
     live_backup_snapshot_from_live_config as core_live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
     live_takeover_app_kinds,
@@ -5973,13 +5972,6 @@ pub(crate) fn provider_github_copilot_managed_account_id(provider: &Provider) ->
     provider_managed_account_id_for(provider, GITHUB_COPILOT_AUTH_PROVIDER)
 }
 
-pub(crate) fn provider_launch_env_vars_for_app(
-    provider: &Provider,
-    app_type: &AppType,
-) -> Vec<(String, String)> {
-    launch_env_vars_from_provider_settings(&provider.settings_config, app_type)
-}
-
 pub(crate) fn live_config_has_proxy_placeholder_for_app(
     app_type: &AppType,
     config: &Value,
@@ -6216,13 +6208,6 @@ pub(crate) fn live_takeover_config_matches_proxy_for_app(
 
 fn proxy_urls_match(actual: &str, expected: &str) -> bool {
     core_proxy_urls_match(actual, expected)
-}
-
-fn launch_env_vars_from_provider_settings(
-    config: &Value,
-    app_type: &AppType,
-) -> Vec<(String, String)> {
-    core_launch_env_vars_from_provider_settings(config, &AppKind::from(app_type))
 }
 
 pub(crate) fn provider_claude_models_are_claude_safe(provider: &Provider) -> bool {
@@ -13454,46 +13439,6 @@ reasoning = "medium"
             provider_gemini_kind(&gemini_api_key_provider),
             ProviderKind::Gemini
         );
-    }
-
-    #[test]
-    fn provider_launch_env_adapter_projects_app_specific_settings() {
-        let provider = Provider::with_id(
-            "mixed-provider".to_string(),
-            "Mixed Provider".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_BASE_URL": "https://anthropic.example.com",
-                    "ANTHROPIC_AUTH_TOKEN": "anthropic-token",
-                    "GOOGLE_GEMINI_BASE_URL": "https://gemini.example.com",
-                    "IGNORED_NUMERIC": 1
-                },
-                "auth": "codex-token",
-                "api_key": "gemini-key"
-            }),
-            None,
-        );
-
-        let claude_env = provider_launch_env_vars_for_app(&provider, &AppType::Claude);
-        assert!(claude_env.contains(&(
-            "ANTHROPIC_AUTH_TOKEN".to_string(),
-            "anthropic-token".to_string()
-        )));
-        assert!(claude_env.contains(&(
-            "ANTHROPIC_BASE_URL".to_string(),
-            "https://anthropic.example.com".to_string()
-        )));
-        assert!(!claude_env.iter().any(|(key, _)| key == "IGNORED_NUMERIC"));
-
-        let codex_env = provider_launch_env_vars_for_app(&provider, &AppType::Codex);
-        assert!(codex_env.contains(&("OPENAI_API_KEY".to_string(), "codex-token".to_string())));
-
-        let gemini_env = provider_launch_env_vars_for_app(&provider, &AppType::Gemini);
-        assert!(gemini_env.contains(&(
-            "GOOGLE_GEMINI_BASE_URL".to_string(),
-            "https://gemini.example.com".to_string()
-        )));
-        assert!(gemini_env.contains(&("GEMINI_API_KEY".to_string(), "gemini-key".to_string())));
     }
 
     #[test]
