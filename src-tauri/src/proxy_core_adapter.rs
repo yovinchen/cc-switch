@@ -1816,10 +1816,13 @@ use crate::proxy_core::api::config::{
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
 };
 use crate::proxy_core::api::events::{
-    attempt_event_name, build_attempt_event_payload, build_provider_switched_event_payload,
-    build_proxy_official_warning_event_payload, build_request_started_event_payload,
-    build_server_started_event_payload, build_server_stopped_event_payload, AttemptEventChannel,
-    AttemptEventPayloadInput, AttemptEventPhase, ProxyCoreEvent,
+    attempt_event_name, build_attempt_event_payload, build_proxy_official_warning_event_payload,
+    build_request_started_event_payload, build_server_started_event_payload,
+    build_server_stopped_event_payload, AttemptEventChannel, AttemptEventPayloadInput,
+    AttemptEventPhase, ProxyCoreEvent,
+};
+pub(crate) use crate::proxy_core::api::events::{
+    provider_switched_failover_enabled_event, provider_switched_failover_event,
 };
 use crate::proxy_core::api::management::channel_not_found_error;
 use crate::proxy_core::api::management::StreamCheckConfigOverride;
@@ -1879,11 +1882,6 @@ use crate::proxy::host::cc_switch::managed_account_runtime_source::managed_accou
 
 const PROXY_OFFICIAL_WARNING_EVENT: &str =
     crate::proxy_core::api::events::PROXY_OFFICIAL_WARNING_EVENT;
-const PROVIDER_SWITCHED_EVENT: &str = crate::proxy_core::api::events::PROVIDER_SWITCHED_EVENT;
-const PROVIDER_SWITCHED_SOURCE_FAILOVER: &str =
-    crate::proxy_core::api::events::PROVIDER_SWITCHED_SOURCE_FAILOVER;
-const PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED: &str =
-    crate::proxy_core::api::events::PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED;
 const REQUEST_STARTED_EVENT: &str = crate::proxy_core::api::events::REQUEST_STARTED_EVENT;
 const SERVER_STARTED_EVENT: &str = crate::proxy_core::api::events::SERVER_STARTED_EVENT;
 const SERVER_STOPPED_EVENT: &str = crate::proxy_core::api::events::SERVER_STOPPED_EVENT;
@@ -1917,35 +1915,6 @@ pub(crate) fn emit_proxy_server_started_event_source(
 pub(crate) fn emit_proxy_server_stopped_event_source(events: &ProxyEventBus) {
     let message = server_stopped_event_message();
     events.emit(message.event_name, message.payload);
-}
-
-fn provider_switched_event_message(
-    app_type: &str,
-    provider_id: &str,
-    source: &str,
-) -> ProxyEventBusMessage {
-    ProxyEventBusMessage {
-        event_name: PROVIDER_SWITCHED_EVENT.to_string(),
-        payload: build_provider_switched_event_payload(app_type, provider_id, source),
-    }
-}
-
-pub(crate) fn provider_switched_failover_event_message(
-    app_type: &str,
-    provider_id: &str,
-) -> ProxyEventBusMessage {
-    provider_switched_event_message(app_type, provider_id, PROVIDER_SWITCHED_SOURCE_FAILOVER)
-}
-
-pub(crate) fn provider_switched_failover_enabled_event_message(
-    app_type: &str,
-    provider_id: &str,
-) -> ProxyEventBusMessage {
-    provider_switched_event_message(
-        app_type,
-        provider_id,
-        PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED,
-    )
 }
 
 pub(crate) fn proxy_official_warning_event_message(
@@ -10722,7 +10691,10 @@ base_url = "https://api.openai.com/v1"
     #[test]
     fn proxy_event_adapter_projects_event_stream_contracts() {
         assert_eq!(PROXY_OFFICIAL_WARNING_EVENT, "proxy-official-warning");
-        assert_eq!(PROVIDER_SWITCHED_EVENT, "provider-switched");
+        assert_eq!(
+            crate::proxy_core::api::events::PROVIDER_SWITCHED_EVENT,
+            "provider-switched"
+        );
         assert_eq!(REQUEST_STARTED_EVENT, "request_started");
         assert_eq!(SERVER_STARTED_EVENT, "server_started");
         assert_eq!(SERVER_STOPPED_EVENT, "server_stopped");
@@ -10787,19 +10759,20 @@ base_url = "https://api.openai.com/v1"
         assert!(!should_reapply_codex_official_live_for_provider(&provider));
         assert!(proxy_official_warning_event_from_provider("codex", Some(&provider)).is_none());
         assert!(proxy_official_warning_event_from_provider("codex", None).is_none());
-        assert_eq!(
-            build_provider_switched_event_payload("claude", "provider-1", "failover"),
-            json!({
-                "appType": "claude",
-                "providerId": "provider-1",
-                "source": "failover",
-            })
+        let provider_switched = proxy_core_event_to_bus_message(
+            crate::proxy_core::api::events::provider_switched_failover_event(
+                "claude",
+                "provider-1",
+            ),
         );
-        let provider_switched = provider_switched_failover_event_message("claude", "provider-1");
         assert_eq!(provider_switched.event_name, "provider-switched");
         assert_eq!(provider_switched.payload["source"], "failover");
-        let provider_switched_enabled =
-            provider_switched_failover_enabled_event_message("claude", "provider-1");
+        let provider_switched_enabled = proxy_core_event_to_bus_message(
+            crate::proxy_core::api::events::provider_switched_failover_enabled_event(
+                "claude",
+                "provider-1",
+            ),
+        );
         assert_eq!(provider_switched_enabled.event_name, "provider-switched");
         assert_eq!(
             provider_switched_enabled.payload["source"],

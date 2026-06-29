@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::ports::{ProxyCoreEvent, ProxyCoreEventType};
+
 pub const PROXY_EVENTS_CONNECTED_EVENT: &str = "proxy_events_connected";
 pub const PROXY_EVENTS_LAGGED_EVENT: &str = "proxy_events_lagged";
 pub const PROXY_OFFICIAL_WARNING_EVENT: &str = "proxy-official-warning";
@@ -173,6 +175,34 @@ pub fn build_provider_switched_event_payload(
     })
 }
 
+pub fn provider_switched_event(
+    app_type: &str,
+    provider_id: &str,
+    source: &str,
+) -> ProxyCoreEvent {
+    ProxyCoreEvent {
+        event_type: ProxyCoreEventType::Custom(PROVIDER_SWITCHED_EVENT.to_string()),
+        request_id: None,
+        channel_id: None,
+        payload: build_provider_switched_event_payload(app_type, provider_id, source),
+    }
+}
+
+pub fn provider_switched_failover_event(app_type: &str, provider_id: &str) -> ProxyCoreEvent {
+    provider_switched_event(app_type, provider_id, PROVIDER_SWITCHED_SOURCE_FAILOVER)
+}
+
+pub fn provider_switched_failover_enabled_event(
+    app_type: &str,
+    provider_id: &str,
+) -> ProxyCoreEvent {
+    provider_switched_event(
+        app_type,
+        provider_id,
+        PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED,
+    )
+}
+
 pub fn build_proxy_official_warning_event_payload(app_type: &str, provider_name: &str) -> Value {
     json!({
         "appType": app_type,
@@ -199,6 +229,7 @@ mod tests {
         build_proxy_events_lagged_payload, build_proxy_official_warning_event_payload,
         build_provider_switched_event_payload, build_request_started_event_payload,
         build_server_started_event_payload, build_server_stopped_event_payload,
+        provider_switched_failover_enabled_event, provider_switched_failover_event,
         AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ProxyEventEnvelope,
         PROVIDER_SWITCHED_EVENT, PROVIDER_SWITCHED_SOURCE_FAILOVER,
         PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED, PROXY_OFFICIAL_WARNING_EVENT,
@@ -315,6 +346,18 @@ mod tests {
         assert_eq!(payload["providerId"], "provider-1");
         assert_eq!(payload["source"], "failover");
         assert_eq!(PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED, "failoverEnabled");
+
+        let failover = provider_switched_failover_event("claude", "provider-1");
+        assert_eq!(failover.event_type.event_name(), "provider-switched");
+        assert_eq!(failover.payload["source"], "failover");
+
+        let failover_enabled =
+            provider_switched_failover_enabled_event("claude", "provider-1");
+        assert_eq!(
+            failover_enabled.event_type.event_name(),
+            "provider-switched"
+        );
+        assert_eq!(failover_enabled.payload["source"], "failoverEnabled");
     }
 
     #[test]

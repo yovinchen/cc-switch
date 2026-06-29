@@ -5,7 +5,7 @@
 use crate::database::FailoverQueueItem;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    auto_failover_toggle_plan_from_db, provider_switched_failover_enabled_event_message,
+    auto_failover_toggle_plan_from_db, provider_switched_failover_enabled_event,
 };
 use crate::store::AppState;
 use tauri::Emitter;
@@ -128,8 +128,9 @@ pub async fn set_auto_failover_enabled(
 
     if let Some(provider_id) = plan.provider_id_to_switch_to.as_ref() {
         // 发射 provider-switched 事件（让前端刷新当前供应商）
-        let message = provider_switched_failover_enabled_event_message(&app_type, provider_id);
-        let _ = app.emit(&message.event_name, message.payload);
+        let event = provider_switched_failover_enabled_event(&app_type, provider_id);
+        let event_name = event.event_type.event_name();
+        let _ = app.emit(&event_name, event.into_event_payload());
     }
 
     // 刷新托盘菜单，确保状态同步
