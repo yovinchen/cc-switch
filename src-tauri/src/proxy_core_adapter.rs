@@ -154,6 +154,7 @@ fn provider_selection_failure_from_app_error(error: &AppError) -> Option<Provide
 use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};
 
 use crate::proxy_core::api::ports::{
+    app_proxy_config_with_enabled as proxy_app_config_with_enabled,
     apply_codex_takeover_auth_placeholder_if_present, ensure_codex_takeover_auth_placeholder,
     CodexLiveSettingsIssue, CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
     CodexLiveTakeoverMatchFacts, CodexProviderBackfillParts, CodexProviderLiveWriteIssue,
@@ -164,7 +165,6 @@ use crate::proxy_core::api::ports::{
 };
 
 pub(crate) use crate::proxy_core::api::ports::{
-    app_proxy_config_with_enabled as proxy_app_config_with_enabled,
     codex_auth_has_oauth_login_material as core_codex_auth_has_oauth_login_material,
     codex_base_url_from_settings as core_codex_base_url_from_settings,
     codex_config_has_base_url_matching as core_codex_config_has_base_url_matching,
