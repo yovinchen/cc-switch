@@ -1307,7 +1307,7 @@ use crate::proxy_core::api::ports::{
     OpenCodeLiveWriteActionDecision as CoreOpenCodeLiveWriteActionDecision,
     OpenCodeLiveWriteConfigDecision as CoreOpenCodeLiveWriteConfigDecision,
 };
-pub(crate) fn provider_openclaw_has_live_provider_fields(provider: &Provider) -> bool {
+fn provider_openclaw_has_live_provider_fields(provider: &Provider) -> bool {
     crate::proxy_core::api::domain::openclaw_settings_have_live_provider_fields(
         &provider.settings_config,
     )
@@ -16437,9 +16437,9 @@ command = "latest-command"
         );
 
         for settings in [
-            json!({"baseUrl": Value::Null}),
+            json!({"baseUrl": []}),
             json!({"api": {"key": "sk-test"}}),
-            json!({"models": []}),
+            json!({"models": {}}),
         ] {
             let provider = Provider::with_id(
                 "openclaw-provider".to_string(),
@@ -16447,7 +16447,10 @@ command = "latest-command"
                 settings,
                 None,
             );
-            assert!(provider_openclaw_has_live_provider_fields(&provider));
+            assert!(matches!(
+                provider_openclaw_live_write_plan(&provider).config,
+                OpenClawLiveWriteConfig::Raw { .. }
+            ));
         }
 
         let typed_plan = provider_openclaw_live_write_plan(&credential_provider);
@@ -16539,8 +16542,6 @@ command = "latest-command"
             json!({"name": "Provider"}),
             None,
         );
-
-        assert!(!provider_openclaw_has_live_provider_fields(&provider));
 
         let plan = provider_openclaw_live_write_plan(&provider);
         assert!(matches!(plan.config, OpenClawLiveWriteConfig::Typed(_)));

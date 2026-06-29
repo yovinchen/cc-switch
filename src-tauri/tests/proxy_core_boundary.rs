@@ -7108,10 +7108,11 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
     for marker in [
         "pub(crate) fn provider_claude_auth_key",
         "pub(crate) fn provider_claude_base_url",
+        "pub(crate) fn provider_openclaw_has_live_provider_fields",
     ] {
         assert!(
             !source.contains(marker),
-            "proxy_core_adapter should not expose adapter-local Claude settings helper `{marker}`"
+            "proxy_core_adapter should not expose adapter-local provider settings helper `{marker}`"
         );
     }
 
