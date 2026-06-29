@@ -1187,6 +1187,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "default_route_candidate_from_selection as channel_route_candidate_from_selection",
     "pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate",
     "pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_selection",
+    "fn provider_usage_script_credentials(",
     "fn usage_script_credentials(",
     "usage_script_credentials_from_parts as usage_script_credentials",
     "fn forwarding_requires_runtime_error_message(",
@@ -2046,6 +2047,11 @@ fn is_allowed_gemini_config_ports_core_import(relative: &str, code: &str) -> boo
     relative == "src/gemini_config.rs" && code.trim() == "use crate::proxy_core::api::ports::{"
 }
 
+fn is_allowed_provider_usage_ports_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/services/provider/usage.rs"
+        && code.trim() == "use crate::proxy_core::api::ports::usage_script_credentials_from_parts;"
+}
+
 fn is_allowed_config_service_ports_core_import(relative: &str, code: &str) -> bool {
     relative == "src/services/config.rs"
         && matches!(
@@ -2235,6 +2241,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_claude_desktop_live_url_core_import(&relative, code)
                     && !is_allowed_failover_switch_core_import(&relative, code)
                     && !is_allowed_gemini_config_ports_core_import(&relative, code)
+                    && !is_allowed_provider_usage_ports_core_import(&relative, code)
                     && !is_allowed_config_service_ports_core_import(&relative, code)
                     && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)

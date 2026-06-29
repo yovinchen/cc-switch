@@ -5,7 +5,8 @@
 use crate::app_config::AppType;
 use crate::error::AppError;
 use crate::provider::{UsageData, UsageResult, UsageScript};
-use crate::proxy_core_adapter::{provider_usage_script, provider_usage_script_credentials};
+use crate::proxy_core::api::ports::usage_script_credentials_from_parts;
+use crate::proxy_core_adapter::provider_usage_script;
 use crate::settings;
 use crate::store::AppState;
 use crate::usage_script;
@@ -95,7 +96,7 @@ fn resolve_script_credentials(
 ) -> (String, String) {
     let (provider_base_url, provider_api_key) = provider.resolve_usage_credentials(app_type);
     let credentials =
-        provider_usage_script_credentials(provider_api_key, provider_base_url, api_key, base_url);
+        usage_script_credentials_from_parts(provider_api_key, provider_base_url, api_key, base_url);
 
     (credentials.api_key, credentials.base_url)
 }
