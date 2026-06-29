@@ -8442,6 +8442,7 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
             &[
                 "apply_gemini_takeover_env_fields",
                 "is_local_proxy_url",
+                "live_takeover_app_kinds",
                 "proxy_live_config_owned_by_takeover",
                 "proxy_runtime_status_stopped",
                 "remove_claude_takeover_env_fields_if_present",
@@ -8471,6 +8472,16 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
             if source.contains(&format!("proxy_core_adapter::{symbol}")) {
                 violations.push(format!(
                     "{relative} routes proxy/live policy helper `{symbol}` through proxy_core_adapter"
+                ));
+            }
+        }
+        if relative == "src/proxy/host/cc_switch/live_takeover.rs"
+            && source.contains("use crate::proxy_core_adapter::{")
+        {
+            let adapter_import = function_slice(&source, "use crate::proxy_core_adapter::{", "};");
+            if adapter_import.contains("live_takeover_app_types") {
+                violations.push(format!(
+                    "{relative} should project live takeover app kinds locally instead of importing live_takeover_app_types from proxy_core_adapter"
                 ));
             }
         }

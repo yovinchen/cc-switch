@@ -1541,7 +1541,7 @@ pub(crate) fn provider_additive_live_write_action(
     )
 }
 
-pub(crate) fn live_takeover_app_types() -> [AppType; 3] {
+fn live_takeover_app_types() -> [AppType; 3] {
     live_takeover_app_kinds().map(|app| {
         app.as_str()
             .parse::<AppType>()

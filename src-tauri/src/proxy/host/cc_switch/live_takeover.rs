@@ -14,8 +14,8 @@ use crate::proxy_core::api::ports::{
     apply_claude_takeover_fields_with_policy, ClaudeTakeoverAuthPolicy,
 };
 use crate::proxy_core::api::ports::{
-    apply_gemini_takeover_env_fields, is_local_proxy_url, live_token_sync_app_label,
-    proxy_live_config_owned_by_takeover, proxy_runtime_status_stopped,
+    apply_gemini_takeover_env_fields, is_local_proxy_url, live_takeover_app_kinds,
+    live_token_sync_app_label, proxy_live_config_owned_by_takeover, proxy_runtime_status_stopped,
     remove_claude_takeover_env_fields_if_present,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present, sanitize_claude_settings_for_live,
@@ -41,10 +41,9 @@ use crate::proxy_core_adapter::{
     existing_live_backup_value_for_update_from_db, live_backup_config_for_simple_restore_from_db,
     live_backup_snapshot_from_live_config, live_backup_value_for_restore_from_db,
     live_config_has_proxy_placeholder_for_app, live_takeover_any_enabled_from_db,
-    live_takeover_app_types, live_takeover_backup_exists_from_db,
-    live_takeover_config_matches_proxy_for_app, live_token_sync_provider_from_db,
-    persist_ephemeral_listen_port_if_needed_in_db, persist_hot_switch_current_provider_sources,
-    preserve_codex_mcp_servers_from_existing_config,
+    live_takeover_backup_exists_from_db, live_takeover_config_matches_proxy_for_app,
+    live_token_sync_provider_from_db, persist_ephemeral_listen_port_if_needed_in_db,
+    persist_hot_switch_current_provider_sources, preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     provider_effective_settings_with_common_config_from_db, proxy_app_enabled_from_db,
     proxy_config_from_db, proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -71,6 +70,13 @@ use tokio::sync::RwLock;
 
 /// 用于接管 Live 配置时的占位符（避免客户端提示缺少 key，同时不泄露真实 Token）
 const PROXY_TOKEN_PLACEHOLDER: &str = "PROXY_MANAGED";
+
+fn live_takeover_app_types() -> [AppType; 3] {
+    live_takeover_app_kinds().map(|app| {
+        AppType::from_str(app.as_str())
+            .expect("proxy-core live takeover app kind must be supported by cc-switch")
+    })
+}
 
 #[derive(Clone)]
 pub struct ProxyService {
