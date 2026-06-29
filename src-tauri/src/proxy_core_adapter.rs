@@ -2879,7 +2879,7 @@ pub(crate) fn validate_provider_gemini_settings_strict(
     validate_gemini_settings_strict(&provider.settings_config)
 }
 
-pub(crate) fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
+fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
     if extract_gemini_api_key_from_settings(&provider.settings_config)
         .as_deref()
         .map(is_gemini_oauth_key_shape)
@@ -2891,7 +2891,7 @@ pub(crate) fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
     }
 }
 
-pub(crate) fn provider_gemini_auth_strategy(provider: &Provider) -> ProviderAuthStrategy {
+fn provider_gemini_auth_strategy(provider: &Provider) -> ProviderAuthStrategy {
     core_gemini_auth_strategy_for_provider_kind(&provider_gemini_kind(provider))
 }
 
