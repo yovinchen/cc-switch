@@ -167,7 +167,6 @@ use crate::proxy_core::api::ports::{
     codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     ensure_codex_takeover_auth_placeholder,
-    gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
     live_backup_snapshot_from_live_config as core_live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
     live_takeover_app_kinds,
@@ -182,14 +181,12 @@ use crate::proxy_core::api::ports::{
     proxy_hot_switch_should_sync_claude_live_while_proxy_active as core_proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_hot_switch_should_sync_codex_live_while_proxy_active as core_proxy_hot_switch_should_sync_codex_live_while_proxy_active,
     proxy_urls_match as core_proxy_urls_match,
-    required_provider_base_url as core_required_provider_base_url,
-    validate_gemini_settings_basic as core_validate_gemini_settings_basic,
-    validate_gemini_settings_strict as core_validate_gemini_settings_strict,
-    CodexLiveSettingsIssue, CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
+    required_provider_base_url as core_required_provider_base_url, CodexLiveSettingsIssue,
+    CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
     CodexLiveTakeoverMatchFacts, CodexProviderBackfillParts, CodexProviderLiveWriteIssue,
-    CodexProviderLiveWriteParts, CopilotOptimizerConfig, GeminiSettingsValidationIssue,
-    LiveTokenProviderSettingsIssue, OptimizerConfig, ProviderSettingsValidationIssue,
-    ProviderSettingsValidationParts, RectifierConfig,
+    CodexProviderLiveWriteParts, CopilotOptimizerConfig, LiveTokenProviderSettingsIssue,
+    OptimizerConfig, ProviderSettingsValidationIssue, ProviderSettingsValidationParts,
+    RectifierConfig,
 };
 pub(crate) fn record_forward_success_status(
     status: &mut ProxyRuntimeStatus,
@@ -2712,31 +2709,6 @@ use crate::proxy_core::api::auth::extract_gemini_api_key_from_settings;
 use crate::proxy_core::api::auth::extract_gemini_base_url_from_settings;
 
 use crate::proxy_core::api::ports::gemini_live_backup_from_effective_settings;
-
-fn gemini_settings_validation_issue_to_app_error(issue: GeminiSettingsValidationIssue) -> AppError {
-    let spec = core_gemini_settings_validation_issue_spec(issue);
-    AppError::localized(spec.key, spec.zh, spec.en)
-}
-
-pub(crate) fn validate_gemini_settings_basic(settings: &Value) -> Result<(), AppError> {
-    core_validate_gemini_settings_basic(settings)
-        .map_err(gemini_settings_validation_issue_to_app_error)
-}
-
-pub(crate) fn validate_gemini_settings_strict(settings: &Value) -> Result<(), AppError> {
-    core_validate_gemini_settings_strict(settings)
-        .map_err(gemini_settings_validation_issue_to_app_error)
-}
-
-pub(crate) fn validate_provider_gemini_settings(provider: &Provider) -> Result<(), AppError> {
-    validate_gemini_settings_basic(&provider.settings_config)
-}
-
-pub(crate) fn validate_provider_gemini_settings_strict(
-    provider: &Provider,
-) -> Result<(), AppError> {
-    validate_gemini_settings_strict(&provider.settings_config)
-}
 
 fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
     if extract_gemini_api_key_from_settings(&provider.settings_config)
@@ -11802,7 +11774,7 @@ base_url = "https://api.openai.com/v1"
             gemini_env_string_map_from_settings(&gemini_env_json_from_map(&live_env)),
             live_env
         );
-        validate_provider_gemini_settings(&provider)
+        crate::gemini_config::validate_gemini_settings_basic(&provider.settings_config)
             .expect("provider Gemini settings should pass basic shape validation");
         let invalid_env_provider = Provider::with_id(
             "gemini-invalid-env".to_string(),
@@ -11811,10 +11783,12 @@ base_url = "https://api.openai.com/v1"
             None,
         );
         assert!(matches!(
-            validate_provider_gemini_settings(&invalid_env_provider),
+            crate::gemini_config::validate_gemini_settings_basic(
+                &invalid_env_provider.settings_config
+            ),
             Err(AppError::Localized { key, .. }) if key == "gemini.validation.invalid_env"
         ));
-        validate_provider_gemini_settings_strict(&provider)
+        crate::gemini_config::validate_gemini_settings_strict(&provider.settings_config)
             .expect("provider Gemini settings should be valid for API key mode");
         assert_eq!(
             gemini_live_config_object_from_settings(&json!({"config": {"mcpServers": {}}}))

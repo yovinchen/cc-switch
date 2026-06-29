@@ -7248,6 +7248,10 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn parse_gemini_env_file_strict",
         "fn gemini_env_parse_issue_to_app_error",
         "pub(crate) fn gemini_env_parse_issue_to_app_error",
+        "pub(crate) fn validate_gemini_settings_basic",
+        "pub(crate) fn validate_gemini_settings_strict",
+        "pub(crate) fn validate_provider_gemini_settings",
+        "fn gemini_settings_validation_issue_to_app_error",
         "pub(crate) fn gemini_settings_validation_issue_to_app_error",
         "pub(crate) fn codex_common_config_snippet_from_settings",
         "pub(crate) fn channel_records_to_route_resolve_channel_inputs",
@@ -8705,12 +8709,19 @@ fn proxy_core_adapter_delegates_gemini_live_json_policy_to_core() {
             && gemini_config_source.contains("gemini_env_json_from_map")
             && gemini_config_source.contains("gemini_env_parse_issue_spec")
             && gemini_config_source.contains("gemini_env_string_map_from_settings")
+            && gemini_config_source.contains("gemini_settings_validation_issue_spec")
             && gemini_config_source.contains("parse_gemini_env_file")
             && gemini_config_source.contains("parse_gemini_env_file_strict")
             && gemini_config_source.contains("serialize_gemini_env_file")
+            && gemini_config_source.contains("validate_gemini_settings_basic")
+            && gemini_config_source.contains("validate_gemini_settings_strict")
             && gemini_config_source.contains("GeminiEnvParseIssue")
+            && gemini_config_source.contains("GeminiSettingsValidationIssue")
             && !gemini_config_source.contains("proxy_core_adapter::gemini_env_json_from_map")
             && !gemini_config_source.contains("proxy_core_adapter::parse_gemini_env_file_strict")
+            && !gemini_config_source.contains("proxy_core_adapter::validate_gemini_settings_basic")
+            && !gemini_config_source
+                .contains("proxy_core_adapter::validate_gemini_settings_strict")
             && !gemini_config_source
                 .contains("proxy_core_adapter::gemini_env_string_map_from_settings")
             && !gemini_config_source.contains("proxy_core_adapter::parse_gemini_env_file(")

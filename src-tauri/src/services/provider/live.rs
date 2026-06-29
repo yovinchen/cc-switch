@@ -34,9 +34,9 @@ use crate::proxy_core_adapter::{
     remove_common_config_from_settings as adapter_remove_common_config_from_settings,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
     strip_common_config_from_live_settings_for_backfill as adapter_strip_common_config_from_live_settings_for_backfill,
-    validate_provider_gemini_settings_strict, HermesLiveImportIssue, OpenClawLiveImportIssue,
-    OpenClawLiveWriteAction, OpenCodeLiveImportIssue, OpenCodeLiveWriteAction,
-    ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
+    HermesLiveImportIssue, OpenClawLiveImportIssue, OpenClawLiveWriteAction,
+    OpenCodeLiveImportIssue, OpenCodeLiveWriteAction, ProviderBackfillSettingsWarning,
+    ProviderEffectiveSettingsWarning,
 };
 use crate::services::mcp::McpService;
 use crate::store::AppState;
@@ -781,7 +781,7 @@ pub(crate) fn write_gemini_live(provider: &Provider) -> Result<(), AppError> {
         }
         GeminiAuthType::Packycode | GeminiAuthType::Generic => {
             // API Key mode -- require GEMINI_API_KEY
-            validate_provider_gemini_settings_strict(provider)?;
+            crate::gemini_config::validate_gemini_settings_strict(&provider.settings_config)?;
             write_gemini_env_atomic(&env_map)?;
         }
     }

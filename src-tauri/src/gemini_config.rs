@@ -2,8 +2,11 @@ use crate::config::{get_home_dir, write_text_file};
 use crate::error::AppError;
 use crate::proxy_core::api::ports::{
     gemini_env_json_from_map, gemini_env_parse_issue_spec, gemini_env_string_map_from_settings,
-    parse_gemini_env_file, parse_gemini_env_file_strict, serialize_gemini_env_file,
-    GeminiEnvParseIssue,
+    gemini_settings_validation_issue_spec, parse_gemini_env_file, parse_gemini_env_file_strict,
+    serialize_gemini_env_file,
+    validate_gemini_settings_basic as core_validate_gemini_settings_basic,
+    validate_gemini_settings_strict as core_validate_gemini_settings_strict, GeminiEnvParseIssue,
+    GeminiSettingsValidationIssue,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -60,6 +63,21 @@ pub fn parse_env_file_strict(content: &str) -> Result<HashMap<String, String>, A
 
 fn gemini_env_parse_issue_to_app_error(issue: GeminiEnvParseIssue) -> AppError {
     let spec = gemini_env_parse_issue_spec(&issue);
+    AppError::localized(spec.key, spec.zh, spec.en)
+}
+
+pub(crate) fn validate_gemini_settings_basic(settings: &Value) -> Result<(), AppError> {
+    core_validate_gemini_settings_basic(settings)
+        .map_err(gemini_settings_validation_issue_to_app_error)
+}
+
+pub(crate) fn validate_gemini_settings_strict(settings: &Value) -> Result<(), AppError> {
+    core_validate_gemini_settings_strict(settings)
+        .map_err(gemini_settings_validation_issue_to_app_error)
+}
+
+fn gemini_settings_validation_issue_to_app_error(issue: GeminiSettingsValidationIssue) -> AppError {
+    let spec = gemini_settings_validation_issue_spec(issue);
     AppError::localized(spec.key, spec.zh, spec.en)
 }
 
@@ -458,9 +476,9 @@ KEY_WITH-DASH=value";
             "env": {}
         });
 
-        assert!(crate::proxy_core_adapter::validate_gemini_settings_basic(&settings).is_ok());
+        assert!(validate_gemini_settings_basic(&settings).is_ok());
         // 严格验证也应该通过（空 env 表示 OAuth）
-        assert!(crate::proxy_core_adapter::validate_gemini_settings_strict(&settings).is_ok());
+        assert!(validate_gemini_settings_strict(&settings).is_ok());
     }
 
     #[test]
@@ -473,8 +491,8 @@ KEY_WITH-DASH=value";
             }
         });
 
-        assert!(crate::proxy_core_adapter::validate_gemini_settings_basic(&settings).is_ok());
-        assert!(crate::proxy_core_adapter::validate_gemini_settings_strict(&settings).is_ok());
+        assert!(validate_gemini_settings_basic(&settings).is_ok());
+        assert!(validate_gemini_settings_strict(&settings).is_ok());
     }
 
     #[test]
@@ -487,9 +505,9 @@ KEY_WITH-DASH=value";
         });
 
         // 基本验证应该通过（允许稍后填写 API Key）
-        assert!(crate::proxy_core_adapter::validate_gemini_settings_basic(&settings).is_ok());
+        assert!(validate_gemini_settings_basic(&settings).is_ok());
         // 严格验证应该失败（切换时要求完整配置）
-        assert!(crate::proxy_core_adapter::validate_gemini_settings_strict(&settings).is_err());
+        assert!(validate_gemini_settings_strict(&settings).is_err());
     }
 
     #[test]
@@ -499,6 +517,6 @@ KEY_WITH-DASH=value";
             "env": "invalid_string"
         });
 
-        assert!(crate::proxy_core_adapter::validate_gemini_settings_basic(&settings).is_err());
+        assert!(validate_gemini_settings_basic(&settings).is_err());
     }
 }

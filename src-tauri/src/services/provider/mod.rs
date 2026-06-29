@@ -44,7 +44,6 @@ use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, provider_settings_validation_parts,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     should_block_proxy_switch_to_provider, should_reapply_codex_official_live_for_provider,
-    validate_provider_gemini_settings,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -2240,7 +2239,9 @@ impl ProviderService {
                     crate::codex_config::validate_config_toml(cfg_text)?;
                 }
             }
-            AppType::Gemini => validate_provider_gemini_settings(provider)?,
+            AppType::Gemini => {
+                crate::gemini_config::validate_gemini_settings_basic(&provider.settings_config)?
+            }
             AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {}
         }
 
