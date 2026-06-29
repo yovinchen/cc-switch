@@ -2132,6 +2132,15 @@ fn is_allowed_live_takeover_runtime_core_import(relative: &str, code: &str) -> b
         )
 }
 
+fn is_allowed_provider_live_policy_app_kind_import(relative: &str, code: &str) -> bool {
+    matches!(
+        relative,
+        "src/services/provider/mod.rs"
+            | "src/services/provider/live.rs"
+            | "src/proxy/host/cc_switch/live_takeover.rs"
+    ) && code.trim() == "use crate::proxy_core::api::domain::AppKind;"
+}
+
 fn is_allowed_provider_common_config_issue_core_import(relative: &str, code: &str) -> bool {
     (matches!(
         relative,
@@ -2225,6 +2234,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_config_service_ports_core_import(&relative, code)
                     && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
+                    && !is_allowed_provider_live_policy_app_kind_import(&relative, code)
                     && !is_allowed_provider_common_config_issue_core_import(&relative, code)
                     && !is_allowed_circuit_breaker_config_core_import(&relative, code)
                     && !is_allowed_codex_chat_history_transform_core_import(&relative, code)
@@ -8060,11 +8070,21 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         (
             "src/services/provider/mod.rs",
             &[
+                "normalize_provider_settings_for_storage",
+                "provider_app_has_current_provider",
                 "provider_delete_is_current_provider",
+                "provider_initial_live_config_managed_marker",
                 "provider_key_change_policy_issue_message",
                 "provider_live_config_presence_error_policy",
+                "provider_live_removal_target_for_app",
+                "provider_live_sync_scope_for_app",
                 "provider_settings_validation_issue_spec",
+                "provider_switch_backfill_source_id",
+                "provider_switch_requires_takeover_lock",
+                "provider_switch_should_mark_live_config_managed",
+                "provider_takeover_live_sync_target_for_app",
                 "sanitize_claude_settings_for_live",
+                "should_skip_provider_legacy_common_config_migration",
                 "ProviderAdditiveLiveWriteAction",
                 "ProviderAdditiveUpdateRoute",
                 "ProviderLiveConfigPresenceErrorPolicy",
@@ -8081,13 +8101,18 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
             &[
                 "GeminiLiveConfigIssue",
                 "ProviderLiveSyncScope",
+                "provider_default_live_import_settings",
+                "provider_live_sync_scope_for_app",
                 "sanitize_claude_settings_for_live",
+                "should_skip_manual_default_live_import",
+                "should_skip_startup_default_live_import",
             ][..],
         ),
         (
             "src/proxy/host/cc_switch/live_takeover.rs",
             &[
                 "LiveTokenProviderSettingsIssue",
+                "live_token_sync_app_label",
                 "sanitize_claude_settings_for_live",
             ][..],
         ),
@@ -8142,12 +8167,23 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         "GeminiLiveConfigIssue",
         "GeminiSettingsValidationIssue",
         "LiveTokenProviderSettingsIssue",
+        "live_token_sync_app_label",
+        "normalize_provider_settings_for_storage",
         "ProviderAdditiveLiveWriteAction",
         "ProviderAdditiveUpdateRoute",
+        "provider_app_has_current_provider",
+        "provider_default_live_import_settings",
         "provider_delete_is_current_provider",
+        "provider_initial_live_config_managed_marker",
         "provider_key_change_policy_issue_message",
         "provider_live_config_presence_error_policy",
+        "provider_live_removal_target_for_app",
+        "provider_live_sync_scope_for_app",
         "provider_settings_validation_issue_spec",
+        "provider_switch_backfill_source_id",
+        "provider_switch_requires_takeover_lock",
+        "provider_switch_should_mark_live_config_managed",
+        "provider_takeover_live_sync_target_for_app",
         "ProviderKeyChangePolicyIssue",
         "ProviderLiveConfigPresenceErrorPolicy",
         "ProviderLiveRemovalTarget",
@@ -8159,6 +8195,9 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         "ProviderSwitchDispatch",
         "ProviderTakeoverLiveSyncTarget",
         "sanitize_claude_settings_for_live",
+        "should_skip_manual_default_live_import",
+        "should_skip_provider_legacy_common_config_migration",
+        "should_skip_startup_default_live_import",
     ] {
         let single_line_reexport = adapter_source.lines().any(|line| {
             line.contains("pub(crate) use crate::proxy_core::api::ports") && line.contains(symbol)

@@ -15,28 +15,32 @@ use crate::app_config::AppType;
 use crate::database::{validate_cost_multiplier, validate_pricing_source};
 use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
+use crate::proxy_core::api::domain::AppKind;
 pub(crate) use crate::proxy_core::api::ports::sanitize_claude_settings_for_live;
 use crate::proxy_core::api::ports::{
-    common_config_snippet_issue_message, provider_delete_is_current_provider,
-    provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
-    provider_settings_validation_issue_spec, proxy_live_config_owned_by_takeover,
-    proxy_switch_should_hot_switch, CommonConfigSnippetIssue, ProviderAdditiveLiveWriteAction,
-    ProviderAdditiveUpdateRoute, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
-    ProviderLiveSyncScope, ProviderOmoVariant, ProviderSettingsValidationIssue,
-    ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+    common_config_snippet_issue_message, normalize_provider_settings_for_storage,
+    provider_app_has_current_provider, provider_delete_is_current_provider,
+    provider_initial_live_config_managed_marker, provider_key_change_policy_issue_message,
+    provider_live_config_presence_error_policy,
+    provider_live_removal_target_for_app as core_provider_live_removal_target,
+    provider_live_sync_scope_for_app as core_provider_live_sync_scope,
+    provider_settings_validation_issue_spec, provider_switch_backfill_source_id,
+    provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
+    provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
+    proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
+    should_skip_provider_legacy_common_config_migration, CommonConfigSnippetIssue,
+    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
+    ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
+    ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
+    ProviderTakeoverLiveSyncTarget,
 };
 use crate::proxy_core_adapter::{
-    common_config_snippet_from_settings, normalize_provider_settings_for_storage,
-    provider_additive_live_write_action, provider_additive_update_route,
-    provider_app_has_current_provider, provider_initial_live_config_managed_marker,
-    provider_key_change_policy_issue, provider_live_removal_target, provider_live_sync_scope,
-    provider_omo_switch_pair, provider_omo_variant_for_category,
-    provider_settings_validation_parts, provider_switch_backfill_source_id,
-    provider_switch_dispatch, provider_switch_requires_takeover_lock,
-    provider_switch_should_mark_live_config_managed, provider_takeover_live_sync_target,
-    proxy_hot_switch_should_sync_claude_live_while_proxy_active,
+    common_config_snippet_from_settings, provider_additive_live_write_action,
+    provider_additive_update_route, provider_key_change_policy_issue, provider_omo_switch_pair,
+    provider_omo_variant_for_category, provider_settings_validation_parts,
+    provider_switch_dispatch, proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     should_block_proxy_switch_to_provider, should_reapply_codex_official_live_for_provider,
-    should_skip_provider_legacy_common_config_migration, validate_provider_gemini_settings,
+    validate_provider_gemini_settings,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -1321,7 +1325,7 @@ impl ProviderService {
     ///
     /// 对于累加模式应用（OpenCode, OpenClaw），不存在"当前供应商"概念，直接返回空字符串。
     pub fn current(state: &AppState, app_type: AppType) -> Result<String, AppError> {
-        if !provider_app_has_current_provider(&app_type) {
+        if !provider_app_has_current_provider(&AppKind::from(&app_type)) {
             return Ok(String::new());
         }
         crate::settings::get_effective_current_provider(&state.db, &app_type)
@@ -1337,11 +1341,14 @@ impl ProviderService {
     ) -> Result<bool, AppError> {
         let mut provider = provider;
         // Normalize Claude model keys
-        let _ = normalize_provider_settings_for_storage(&app_type, &mut provider.settings_config);
+        let _ = normalize_provider_settings_for_storage(
+            &AppKind::from(&app_type),
+            &mut provider.settings_config,
+        );
         Self::validate_provider_settings(&app_type, &provider)?;
         normalize_provider_common_config_for_storage(state.db.as_ref(), &app_type, &mut provider)?;
         if let Some(live_config_managed) =
-            provider_initial_live_config_managed_marker(&app_type, add_to_live)
+            provider_initial_live_config_managed_marker(&AppKind::from(&app_type), add_to_live)
         {
             Self::set_provider_live_config_managed(&mut provider, live_config_managed);
         }
@@ -1387,7 +1394,10 @@ impl ProviderService {
             .db
             .get_provider_by_id(&original_id, app_type.as_str())?;
         // Normalize Claude model keys
-        let _ = normalize_provider_settings_for_storage(&app_type, &mut provider.settings_config);
+        let _ = normalize_provider_settings_for_storage(
+            &AppKind::from(&app_type),
+            &mut provider.settings_config,
+        );
         Self::validate_provider_settings(&app_type, &provider)?;
         normalize_provider_common_config_for_storage(state.db.as_ref(), &app_type, &mut provider)?;
 
@@ -1529,7 +1539,7 @@ impl ProviderService {
                 proxy_live_config_owned_by_takeover(has_live_backup, live_taken_over);
 
             if should_sync_via_proxy {
-                match provider_takeover_live_sync_target(&app_type) {
+                match core_provider_takeover_live_sync_target(&AppKind::from(&app_type)) {
                     ProviderTakeoverLiveSyncTarget::LiveConfig => {
                         write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
                     }
@@ -1606,7 +1616,7 @@ impl ProviderService {
                 .as_ref()
                 .and_then(Self::provider_live_config_managed);
             if Self::check_live_config_exists(&app_type, id, live_managed)? {
-                if let Some(target) = provider_live_removal_target(&app_type) {
+                if let Some(target) = core_provider_live_removal_target(&AppKind::from(&app_type)) {
                     Self::remove_provider_from_live_by_target(target, id)?;
                 }
             }
@@ -1661,15 +1671,16 @@ impl ProviderService {
                     crate::services::OmoService::delete_config_file(variant)?;
                 }
             } else {
-                let target = provider_live_removal_target(&app_type).ok_or_else(|| {
-                    AppError::Message(format!(
-                        "App {} does not support remove from live config",
-                        app_type.as_str()
-                    ))
-                })?;
+                let target = core_provider_live_removal_target(&AppKind::from(&app_type))
+                    .ok_or_else(|| {
+                        AppError::Message(format!(
+                            "App {} does not support remove from live config",
+                            app_type.as_str()
+                        ))
+                    })?;
                 Self::remove_provider_from_live_by_target(target, id)?;
             }
-        } else if let Some(target) = provider_live_removal_target(&app_type) {
+        } else if let Some(target) = core_provider_live_removal_target(&AppKind::from(&app_type)) {
             Self::remove_provider_from_live_by_target(target, id)?;
         } else {
             return Err(AppError::Message(format!(
@@ -1716,7 +1727,7 @@ impl ProviderService {
         // restore backup. Serialize them per app, then decide from the locked
         // current state so a just-started takeover cannot be overwritten by a
         // normal live write.
-        let _switch_guard = if provider_switch_requires_takeover_lock(&app_type) {
+        let _switch_guard = if provider_switch_requires_takeover_lock(&AppKind::from(&app_type)) {
             Some(futures::executor::block_on(
                 state.proxy_service.lock_switch_for_app(app_type.as_str()),
             ))
@@ -1804,7 +1815,7 @@ impl ProviderService {
         let current_id = crate::settings::get_effective_current_provider(&state.db, &app_type)?;
 
         if let Some(current_id) =
-            provider_switch_backfill_source_id(&app_type, current_id.as_deref(), id)
+            provider_switch_backfill_source_id(&AppKind::from(&app_type), current_id.as_deref(), id)
         {
             // Only backfill when switching exclusive-mode apps to a different provider.
             if let Ok(live_config) = read_live_settings(app_type.clone()) {
@@ -1826,7 +1837,7 @@ impl ProviderService {
         }
 
         // Additive mode apps skip setting is_current (no such concept)
-        if provider_app_has_current_provider(&app_type) {
+        if provider_app_has_current_provider(&AppKind::from(&app_type)) {
             // Update local settings (device-level, takes priority)
             crate::settings::set_current_provider(&app_type, Some(id))?;
 
@@ -1863,13 +1874,13 @@ impl ProviderService {
         // If persisting the marker fails, roll back the just-written live config so we don't leave
         // the provider in a silent inconsistent state (present in live, but still marked DB-only).
         if provider_switch_should_mark_live_config_managed(
-            &app_type,
+            &AppKind::from(&app_type),
             Self::provider_live_config_managed(provider),
         ) {
             let mut updated = provider.clone();
             Self::set_provider_live_config_managed(&mut updated, true);
             if let Err(e) = state.db.save_provider(app_type.as_str(), &updated) {
-                let rollback_result = provider_live_removal_target(&app_type)
+                let rollback_result = core_provider_live_removal_target(&AppKind::from(&app_type))
                     .map_or(Ok(()), |target| {
                         Self::remove_provider_from_live_by_target(target, &provider.id)
                     });
@@ -1906,7 +1917,7 @@ impl ProviderService {
         state: &AppState,
         app_type: AppType,
     ) -> Result<(), AppError> {
-        match provider_live_sync_scope(&app_type) {
+        match core_provider_live_sync_scope(&AppKind::from(&app_type)) {
             ProviderLiveSyncScope::AllProviders => {
                 return sync_current_provider_for_app_to_live(state, &app_type);
             }
@@ -1937,7 +1948,7 @@ impl ProviderService {
         // See the save path above: backup/placeholders are the ownership signal
         // here, not just proxy_config.enabled.
         if proxy_live_config_owned_by_takeover(has_live_backup, live_taken_over) {
-            match provider_takeover_live_sync_target(&app_type) {
+            match core_provider_takeover_live_sync_target(&AppKind::from(&app_type)) {
                 ProviderTakeoverLiveSyncTarget::LiveConfig => {
                     write_live_with_common_config(state.db.as_ref(), &app_type, provider)?;
                 }
@@ -1961,7 +1972,10 @@ impl ProviderService {
         app_type: AppType,
         legacy_snippet: &str,
     ) -> Result<(), AppError> {
-        if should_skip_provider_legacy_common_config_migration(&app_type, legacy_snippet) {
+        if should_skip_provider_legacy_common_config_migration(
+            &AppKind::from(&app_type),
+            legacy_snippet,
+        ) {
             return Ok(());
         }
 
@@ -2014,7 +2028,7 @@ impl ProviderService {
         state: &AppState,
         app_type: AppType,
     ) -> Result<(), AppError> {
-        if !provider_app_has_current_provider(&app_type) {
+        if !provider_app_has_current_provider(&AppKind::from(&app_type)) {
             return Ok(());
         }
 

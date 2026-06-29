@@ -200,9 +200,8 @@ use crate::proxy_core::api::ports::{
     CopilotOptimizerConfig, GeminiEnvParseIssue, GeminiLiveConfigIssue,
     GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, OptimizerConfig,
     ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
-    ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
-    ProviderSettingsValidationIssue, ProviderSettingsValidationParts, ProviderSwitchDispatch,
-    ProviderTakeoverLiveSyncTarget, RectifierConfig,
+    ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
+    ProviderSettingsValidationParts, ProviderSwitchDispatch, RectifierConfig,
 };
 
 pub(crate) use crate::proxy_core::api::ports::{
@@ -226,28 +225,17 @@ pub(crate) use crate::proxy_core::api::ports::{
     live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
     live_takeover_app_kinds,
     live_takeover_config_matches_proxy_for_app as core_live_takeover_config_matches_proxy_for_app,
-    live_token_sync_app_label as core_live_token_sync_app_label,
-    normalize_provider_settings_for_storage as core_normalize_provider_settings_for_storage,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_additive_update_route_for_app as core_provider_additive_update_route,
-    provider_app_has_current_provider as core_provider_app_has_current_provider,
     provider_default_live_import_category_from_parts as core_provider_default_live_import_category_from_parts,
-    provider_default_live_import_settings as core_provider_default_live_import_settings,
-    provider_initial_live_config_managed_marker as core_provider_initial_live_config_managed_marker,
     provider_key_change_policy_issue_for_app as core_provider_key_change_policy_issue,
-    provider_live_removal_target_for_app as core_provider_live_removal_target,
-    provider_live_sync_scope_for_app as core_provider_live_sync_scope,
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
     provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
     provider_omo_variant_for_app_category as core_provider_omo_variant_for_category,
     provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
     provider_should_sync_to_live as core_provider_should_sync_to_live,
-    provider_switch_backfill_source_id as core_provider_switch_backfill_source_id,
     provider_switch_dispatch_for_app as core_provider_switch_dispatch,
-    provider_switch_requires_takeover_lock as core_provider_switch_requires_takeover_lock,
-    provider_switch_should_mark_live_config_managed as core_provider_switch_should_mark_live_config_managed,
-    provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active,
     proxy_hot_switch_should_refresh_codex_live_from_backup as core_proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -255,9 +243,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     proxy_hot_switch_should_sync_codex_live_while_proxy_active as core_proxy_hot_switch_should_sync_codex_live_while_proxy_active,
     proxy_urls_match as core_proxy_urls_match,
     required_provider_base_url as core_required_provider_base_url,
-    should_skip_manual_default_live_import as core_should_skip_manual_default_live_import,
-    should_skip_provider_legacy_common_config_migration as core_should_skip_provider_legacy_common_config_migration,
-    should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
     validate_gemini_settings_basic as core_validate_gemini_settings_basic,
     validate_gemini_settings_strict as core_validate_gemini_settings_strict,
 };
@@ -1605,65 +1590,12 @@ pub(crate) fn codex_common_config_snippet_from_settings(
     Ok(cleaned.trim().to_string())
 }
 
-pub(crate) fn provider_default_live_import_settings(app_type: &AppType, settings: Value) -> Value {
-    core_provider_default_live_import_settings(&AppKind::from(app_type), settings)
-}
-
-pub(crate) fn normalize_provider_settings_for_storage(
-    app_type: &AppType,
-    settings: &mut Value,
-) -> bool {
-    core_normalize_provider_settings_for_storage(&AppKind::from(app_type), settings)
-}
-
-pub(crate) fn should_skip_manual_default_live_import(
-    app_type: &AppType,
-    has_non_official_seed_provider: bool,
-) -> bool {
-    core_should_skip_manual_default_live_import(
-        &AppKind::from(app_type),
-        has_non_official_seed_provider,
-    )
-}
-
-pub(crate) fn should_skip_startup_default_live_import(
-    app_type: &AppType,
-    has_any_provider: bool,
-) -> bool {
-    core_should_skip_startup_default_live_import(&AppKind::from(app_type), has_any_provider)
-}
-
-pub(crate) fn provider_live_sync_scope(app_type: &AppType) -> ProviderLiveSyncScope {
-    core_provider_live_sync_scope(&AppKind::from(app_type))
-}
-
-pub(crate) fn provider_app_has_current_provider(app_type: &AppType) -> bool {
-    core_provider_app_has_current_provider(&AppKind::from(app_type))
-}
-
 pub(crate) fn provider_should_sync_to_live(provider: &Provider) -> bool {
     let live_config_managed = provider
         .meta
         .as_ref()
         .and_then(|meta| meta.live_config_managed);
     core_provider_should_sync_to_live(live_config_managed)
-}
-
-pub(crate) fn provider_initial_live_config_managed_marker(
-    app_type: &AppType,
-    add_to_live: bool,
-) -> Option<bool> {
-    core_provider_initial_live_config_managed_marker(&AppKind::from(app_type), add_to_live)
-}
-
-pub(crate) fn should_skip_provider_legacy_common_config_migration(
-    app_type: &AppType,
-    legacy_snippet: &str,
-) -> bool {
-    core_should_skip_provider_legacy_common_config_migration(
-        &AppKind::from(app_type),
-        legacy_snippet,
-    )
 }
 
 pub(crate) fn provider_key_change_policy_issue(
@@ -1716,46 +1648,12 @@ pub(crate) fn provider_switch_dispatch(
     core_provider_switch_dispatch(&AppKind::from(app_type), provider.category.as_deref())
 }
 
-pub(crate) fn provider_switch_requires_takeover_lock(app_type: &AppType) -> bool {
-    core_provider_switch_requires_takeover_lock(&AppKind::from(app_type))
-}
-
 pub(crate) fn live_takeover_app_types() -> [AppType; 3] {
     live_takeover_app_kinds().map(|app| {
         app.as_str()
             .parse::<AppType>()
             .expect("proxy-core live takeover app kind must be supported by cc-switch")
     })
-}
-
-pub(crate) fn provider_takeover_live_sync_target(
-    app_type: &AppType,
-) -> ProviderTakeoverLiveSyncTarget {
-    core_provider_takeover_live_sync_target(&AppKind::from(app_type))
-}
-
-pub(crate) fn provider_live_removal_target(
-    app_type: &AppType,
-) -> Option<ProviderLiveRemovalTarget> {
-    core_provider_live_removal_target(&AppKind::from(app_type))
-}
-
-pub(crate) fn provider_switch_backfill_source_id<'a>(
-    app_type: &AppType,
-    current_id: Option<&'a str>,
-    target_id: &str,
-) -> Option<&'a str> {
-    core_provider_switch_backfill_source_id(&AppKind::from(app_type), current_id, target_id)
-}
-
-pub(crate) fn provider_switch_should_mark_live_config_managed(
-    app_type: &AppType,
-    live_config_managed: Option<bool>,
-) -> bool {
-    core_provider_switch_should_mark_live_config_managed(
-        &AppKind::from(app_type),
-        live_config_managed,
-    )
 }
 
 pub(crate) struct OpenCodeLiveProviderFragment {
@@ -2298,15 +2196,13 @@ pub(crate) fn write_ssot_live_restore_provider_with_common_config(
         .map_err(|e| format!("写入 {app_type:?} Live 配置失败: {e}"))
 }
 
-pub(crate) fn live_token_sync_app_label(app_type: &AppType) -> Option<&'static str> {
-    core_live_token_sync_app_label(&AppKind::from(app_type))
-}
-
 pub(crate) fn live_token_sync_provider_from_db(
     db: &Database,
     app_type: &AppType,
 ) -> Result<Option<Provider>, String> {
-    let Some(app_label) = live_token_sync_app_label(app_type) else {
+    let Some(app_label) =
+        crate::proxy_core::api::ports::live_token_sync_app_label(&AppKind::from(app_type))
+    else {
         return Ok(None);
     };
     let Some(provider_id) = crate::settings::get_effective_current_provider(db, app_type)
@@ -7077,21 +6973,31 @@ mod tests {
         ensure_codex_takeover_auth_placeholder, gemini_env_map_from_settings,
         gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
         gemini_live_settings_to_write, is_local_proxy_url, json_deep_merge, json_deep_remove,
-        json_remove_array_items, json_value_is_subset, normalize_claude_models_in_value,
+        json_remove_array_items, json_value_is_subset, live_token_sync_app_label,
+        normalize_claude_models_in_value, normalize_provider_settings_for_storage,
         openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
         opencode_common_config_value_from_settings, opencode_credential_parts_from_settings,
-        provider_credential_issue_spec, provider_delete_is_current_provider,
-        provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
-        provider_settings_validation_issue_spec,
+        provider_app_has_current_provider, provider_credential_issue_spec,
+        provider_default_live_import_settings, provider_delete_is_current_provider,
+        provider_initial_live_config_managed_marker, provider_key_change_policy_issue_message,
+        provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
+        provider_live_sync_scope_for_app, provider_settings_validation_issue_spec,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
-        proxy_live_config_owned_by_takeover, proxy_runtime_status_stopped,
-        proxy_switch_should_hot_switch, proxy_takeover_marked_state_is_reusable,
+        provider_switch_backfill_source_id, provider_switch_requires_takeover_lock,
+        provider_switch_should_mark_live_config_managed,
+        provider_takeover_live_sync_target_for_app, proxy_live_config_owned_by_takeover,
+        proxy_runtime_status_stopped, proxy_switch_should_hot_switch,
+        proxy_takeover_marked_state_is_reusable,
         proxy_takeover_should_restore_existing_backup_before_retakeover,
         remove_claude_takeover_env_fields_if_present,
         remove_codex_takeover_auth_placeholder_if_present,
-        remove_gemini_takeover_env_fields_if_present, sanitize_claude_settings_for_live, AuthInfo,
-        ClaudeTakeoverAuthPolicy, CodexProviderValidationIssue, OpenCodeCredentialIssue,
-        ProviderCredentialIssue, ProviderLiveConfigPresenceErrorPolicy,
+        remove_gemini_takeover_env_fields_if_present, sanitize_claude_settings_for_live,
+        should_skip_manual_default_live_import,
+        should_skip_provider_legacy_common_config_migration,
+        should_skip_startup_default_live_import, AuthInfo, ClaudeTakeoverAuthPolicy,
+        CodexProviderValidationIssue, OpenCodeCredentialIssue, ProviderCredentialIssue,
+        ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
+        ProviderTakeoverLiveSyncTarget,
     };
     use crate::proxy_core::api::routing::{
         normalize_channel_base_url, normalize_proxy_channel_write_request_fields, stable_channel_id,
@@ -17291,7 +17197,7 @@ command = "latest-command"
         assert!(!normalize_claude_models_in_value(&mut settings));
 
         let imported = provider_default_live_import_settings(
-            &AppType::Claude,
+            &AppKind::from(&AppType::Claude),
             json!({
                 "env": {
                     "ANTHROPIC_MODEL": "claude-sonnet",
@@ -17316,7 +17222,7 @@ command = "latest-command"
             }
         });
         assert!(normalize_provider_settings_for_storage(
-            &AppType::Claude,
+            &AppKind::from(&AppType::Claude),
             &mut saved
         ));
         assert_eq!(
@@ -17327,12 +17233,15 @@ command = "latest-command"
 
         let codex_settings = json!({"config": "model = \"gpt-5\""});
         assert_eq!(
-            provider_default_live_import_settings(&AppType::Codex, codex_settings.clone()),
+            provider_default_live_import_settings(
+                &AppKind::from(&AppType::Codex),
+                codex_settings.clone()
+            ),
             codex_settings
         );
         let mut codex_saved = codex_settings.clone();
         assert!(!normalize_provider_settings_for_storage(
-            &AppType::Codex,
+            &AppKind::from(&AppType::Codex),
             &mut codex_saved
         ));
         assert_eq!(codex_saved, codex_settings);
@@ -17341,29 +17250,29 @@ command = "latest-command"
     #[test]
     fn default_live_import_skip_policy_distinguishes_manual_and_startup() {
         assert!(should_skip_manual_default_live_import(
-            &AppType::OpenCode,
+            &AppKind::from(&AppType::OpenCode),
             false
         ));
         assert!(should_skip_startup_default_live_import(
-            &AppType::OpenCode,
+            &AppKind::from(&AppType::OpenCode),
             false
         ));
 
         assert!(!should_skip_manual_default_live_import(
-            &AppType::Claude,
+            &AppKind::from(&AppType::Claude),
             false
         ));
         assert!(should_skip_manual_default_live_import(
-            &AppType::Claude,
+            &AppKind::from(&AppType::Claude),
             true
         ));
 
         assert!(!should_skip_startup_default_live_import(
-            &AppType::Claude,
+            &AppKind::from(&AppType::Claude),
             false
         ));
         assert!(should_skip_startup_default_live_import(
-            &AppType::Claude,
+            &AppKind::from(&AppType::Claude),
             true
         ));
     }
@@ -17371,29 +17280,37 @@ command = "latest-command"
     #[test]
     fn provider_live_sync_scope_uses_all_only_for_additive_apps() {
         assert_eq!(
-            provider_live_sync_scope(&AppType::OpenCode),
+            provider_live_sync_scope_for_app(&AppKind::from(&AppType::OpenCode)),
             ProviderLiveSyncScope::AllProviders
         );
         assert_eq!(
-            provider_live_sync_scope(&AppType::OpenClaw),
+            provider_live_sync_scope_for_app(&AppKind::from(&AppType::OpenClaw)),
             ProviderLiveSyncScope::AllProviders
         );
         assert_eq!(
-            provider_live_sync_scope(&AppType::Claude),
+            provider_live_sync_scope_for_app(&AppKind::from(&AppType::Claude)),
             ProviderLiveSyncScope::CurrentProvider
         );
         assert_eq!(
-            provider_live_sync_scope(&AppType::ClaudeDesktop),
+            provider_live_sync_scope_for_app(&AppKind::from(&AppType::ClaudeDesktop)),
             ProviderLiveSyncScope::CurrentProvider
         );
     }
 
     #[test]
     fn provider_current_provider_scope_excludes_additive_apps() {
-        assert!(!provider_app_has_current_provider(&AppType::OpenCode));
-        assert!(!provider_app_has_current_provider(&AppType::OpenClaw));
-        assert!(provider_app_has_current_provider(&AppType::Claude));
-        assert!(provider_app_has_current_provider(&AppType::Codex));
+        assert!(!provider_app_has_current_provider(&AppKind::from(
+            &AppType::OpenCode
+        )));
+        assert!(!provider_app_has_current_provider(&AppKind::from(
+            &AppType::OpenClaw
+        )));
+        assert!(provider_app_has_current_provider(&AppKind::from(
+            &AppType::Claude
+        )));
+        assert!(provider_app_has_current_provider(&AppKind::from(
+            &AppType::Codex
+        )));
     }
 
     #[test]
@@ -17422,15 +17339,15 @@ command = "latest-command"
     #[test]
     fn provider_initial_live_config_managed_marker_only_applies_to_additive_apps() {
         assert_eq!(
-            provider_initial_live_config_managed_marker(&AppType::OpenCode, true),
+            provider_initial_live_config_managed_marker(&AppKind::from(&AppType::OpenCode), true),
             Some(true)
         );
         assert_eq!(
-            provider_initial_live_config_managed_marker(&AppType::OpenClaw, false),
+            provider_initial_live_config_managed_marker(&AppKind::from(&AppType::OpenClaw), false),
             Some(false)
         );
         assert_eq!(
-            provider_initial_live_config_managed_marker(&AppType::Claude, true),
+            provider_initial_live_config_managed_marker(&AppKind::from(&AppType::Claude), true),
             None
         );
     }
@@ -17444,15 +17361,15 @@ command = "latest-command"
             &AppKind::from(&AppType::OpenCode)
         ));
         assert!(!should_skip_provider_legacy_common_config_migration(
-            &AppType::Claude,
+            &AppKind::from(&AppType::Claude),
             "legacy = true"
         ));
         assert!(should_skip_provider_legacy_common_config_migration(
-            &AppType::Claude,
+            &AppKind::from(&AppType::Claude),
             "  \n  "
         ));
         assert!(should_skip_provider_legacy_common_config_migration(
-            &AppType::OpenClaw,
+            &AppKind::from(&AppType::OpenClaw),
             "legacy = true"
         ));
     }
@@ -17637,48 +17554,75 @@ command = "latest-command"
             ProviderSwitchDispatch::TakeoverAware
         );
 
-        assert!(provider_switch_requires_takeover_lock(&AppType::Claude));
-        assert!(provider_switch_requires_takeover_lock(&AppType::Codex));
-        assert!(provider_switch_requires_takeover_lock(&AppType::Gemini));
-        assert!(!provider_switch_requires_takeover_lock(
+        assert!(provider_switch_requires_takeover_lock(&AppKind::from(
+            &AppType::Claude
+        )));
+        assert!(provider_switch_requires_takeover_lock(&AppKind::from(
+            &AppType::Codex
+        )));
+        assert!(provider_switch_requires_takeover_lock(&AppKind::from(
+            &AppType::Gemini
+        )));
+        assert!(!provider_switch_requires_takeover_lock(&AppKind::from(
             &AppType::ClaudeDesktop
-        ));
-        assert!(!provider_switch_requires_takeover_lock(&AppType::OpenCode));
-        assert!(!provider_switch_requires_takeover_lock(&AppType::OpenClaw));
-        assert!(!provider_switch_requires_takeover_lock(&AppType::Hermes));
+        )));
+        assert!(!provider_switch_requires_takeover_lock(&AppKind::from(
+            &AppType::OpenCode
+        )));
+        assert!(!provider_switch_requires_takeover_lock(&AppKind::from(
+            &AppType::OpenClaw
+        )));
+        assert!(!provider_switch_requires_takeover_lock(&AppKind::from(
+            &AppType::Hermes
+        )));
 
         let live_takeover_apps = live_takeover_app_types();
         assert_eq!(
             live_takeover_apps,
             [AppType::Claude, AppType::Codex, AppType::Gemini]
         );
-        assert_eq!(live_token_sync_app_label(&AppType::Claude), Some("Claude"));
-        assert_eq!(live_token_sync_app_label(&AppType::Codex), Some("Codex"));
-        assert_eq!(live_token_sync_app_label(&AppType::Gemini), Some("Gemini"));
-        assert_eq!(live_token_sync_app_label(&AppType::ClaudeDesktop), None);
-        assert_eq!(live_token_sync_app_label(&AppType::OpenCode), None);
+        assert_eq!(
+            live_token_sync_app_label(&AppKind::from(&AppType::Claude)),
+            Some("Claude")
+        );
+        assert_eq!(
+            live_token_sync_app_label(&AppKind::from(&AppType::Codex)),
+            Some("Codex")
+        );
+        assert_eq!(
+            live_token_sync_app_label(&AppKind::from(&AppType::Gemini)),
+            Some("Gemini")
+        );
+        assert_eq!(
+            live_token_sync_app_label(&AppKind::from(&AppType::ClaudeDesktop)),
+            None
+        );
+        assert_eq!(
+            live_token_sync_app_label(&AppKind::from(&AppType::OpenCode)),
+            None
+        );
     }
 
     #[test]
     fn provider_takeover_live_sync_target_keeps_desktop_on_live_config() {
         assert_eq!(
-            provider_takeover_live_sync_target(&AppType::ClaudeDesktop),
+            provider_takeover_live_sync_target_for_app(&AppKind::from(&AppType::ClaudeDesktop)),
             ProviderTakeoverLiveSyncTarget::LiveConfig
         );
         assert_eq!(
-            provider_takeover_live_sync_target(&AppType::Claude),
+            provider_takeover_live_sync_target_for_app(&AppKind::from(&AppType::Claude)),
             ProviderTakeoverLiveSyncTarget::LiveBackup
         );
         assert_eq!(
-            provider_takeover_live_sync_target(&AppType::Codex),
+            provider_takeover_live_sync_target_for_app(&AppKind::from(&AppType::Codex)),
             ProviderTakeoverLiveSyncTarget::LiveBackup
         );
         assert_eq!(
-            provider_takeover_live_sync_target(&AppType::Gemini),
+            provider_takeover_live_sync_target_for_app(&AppKind::from(&AppType::Gemini)),
             ProviderTakeoverLiveSyncTarget::LiveBackup
         );
         assert_eq!(
-            provider_takeover_live_sync_target(&AppType::OpenCode),
+            provider_takeover_live_sync_target_for_app(&AppKind::from(&AppType::OpenCode)),
             ProviderTakeoverLiveSyncTarget::LiveBackup
         );
     }
@@ -17686,21 +17630,33 @@ command = "latest-command"
     #[test]
     fn provider_live_removal_target_only_covers_additive_live_configs() {
         assert_eq!(
-            provider_live_removal_target(&AppType::OpenCode),
+            provider_live_removal_target_for_app(&AppKind::from(&AppType::OpenCode)),
             Some(ProviderLiveRemovalTarget::OpenCode)
         );
         assert_eq!(
-            provider_live_removal_target(&AppType::OpenClaw),
+            provider_live_removal_target_for_app(&AppKind::from(&AppType::OpenClaw)),
             Some(ProviderLiveRemovalTarget::OpenClaw)
         );
         assert_eq!(
-            provider_live_removal_target(&AppType::Hermes),
+            provider_live_removal_target_for_app(&AppKind::from(&AppType::Hermes)),
             Some(ProviderLiveRemovalTarget::Hermes)
         );
-        assert_eq!(provider_live_removal_target(&AppType::Claude), None);
-        assert_eq!(provider_live_removal_target(&AppType::ClaudeDesktop), None);
-        assert_eq!(provider_live_removal_target(&AppType::Codex), None);
-        assert_eq!(provider_live_removal_target(&AppType::Gemini), None);
+        assert_eq!(
+            provider_live_removal_target_for_app(&AppKind::from(&AppType::Claude)),
+            None
+        );
+        assert_eq!(
+            provider_live_removal_target_for_app(&AppKind::from(&AppType::ClaudeDesktop)),
+            None
+        );
+        assert_eq!(
+            provider_live_removal_target_for_app(&AppKind::from(&AppType::Codex)),
+            None
+        );
+        assert_eq!(
+            provider_live_removal_target_for_app(&AppKind::from(&AppType::Gemini)),
+            None
+        );
     }
 
     #[test]
@@ -17767,19 +17723,31 @@ command = "latest-command"
     #[test]
     fn provider_switch_backfill_source_id_requires_exclusive_different_current() {
         assert_eq!(
-            provider_switch_backfill_source_id(&AppType::Claude, Some("current"), "target"),
+            provider_switch_backfill_source_id(
+                &AppKind::from(&AppType::Claude),
+                Some("current"),
+                "target"
+            ),
             Some("current")
         );
         assert_eq!(
-            provider_switch_backfill_source_id(&AppType::Claude, Some("target"), "target"),
+            provider_switch_backfill_source_id(
+                &AppKind::from(&AppType::Claude),
+                Some("target"),
+                "target"
+            ),
             None
         );
         assert_eq!(
-            provider_switch_backfill_source_id(&AppType::Claude, None, "target"),
+            provider_switch_backfill_source_id(&AppKind::from(&AppType::Claude), None, "target"),
             None
         );
         assert_eq!(
-            provider_switch_backfill_source_id(&AppType::OpenCode, Some("current"), "target"),
+            provider_switch_backfill_source_id(
+                &AppKind::from(&AppType::OpenCode),
+                Some("current"),
+                "target"
+            ),
             None
         );
     }
@@ -17787,19 +17755,19 @@ command = "latest-command"
     #[test]
     fn provider_switch_should_mark_live_config_managed_only_for_unmanaged_additive() {
         assert!(provider_switch_should_mark_live_config_managed(
-            &AppType::OpenCode,
+            &AppKind::from(&AppType::OpenCode),
             None
         ));
         assert!(provider_switch_should_mark_live_config_managed(
-            &AppType::OpenCode,
+            &AppKind::from(&AppType::OpenCode),
             Some(false)
         ));
         assert!(!provider_switch_should_mark_live_config_managed(
-            &AppType::OpenCode,
+            &AppKind::from(&AppType::OpenCode),
             Some(true)
         ));
         assert!(!provider_switch_should_mark_live_config_managed(
-            &AppType::Claude,
+            &AppKind::from(&AppType::Claude),
             None
         ));
     }

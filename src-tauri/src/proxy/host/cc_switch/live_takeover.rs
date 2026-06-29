@@ -9,12 +9,14 @@ use crate::provider::Provider;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};
+use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::ports::{
     apply_claude_takeover_fields_with_policy, ClaudeTakeoverAuthPolicy,
 };
 use crate::proxy_core::api::ports::{
-    apply_gemini_takeover_env_fields, is_local_proxy_url, proxy_live_config_owned_by_takeover,
-    proxy_runtime_status_stopped, remove_claude_takeover_env_fields_if_present,
+    apply_gemini_takeover_env_fields, is_local_proxy_url, live_token_sync_app_label,
+    proxy_live_config_owned_by_takeover, proxy_runtime_status_stopped,
+    remove_claude_takeover_env_fields_if_present,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present, sanitize_claude_settings_for_live,
     LiveTokenProviderSettingsIssue,
@@ -40,9 +42,9 @@ use crate::proxy_core_adapter::{
     live_backup_snapshot_from_live_config, live_backup_value_for_restore_from_db,
     live_config_has_proxy_placeholder_for_app, live_takeover_any_enabled_from_db,
     live_takeover_app_types, live_takeover_backup_exists_from_db,
-    live_takeover_config_matches_proxy_for_app, live_token_sync_app_label,
-    live_token_sync_provider_from_db, persist_ephemeral_listen_port_if_needed_in_db,
-    persist_hot_switch_current_provider_sources, preserve_codex_mcp_servers_from_existing_config,
+    live_takeover_config_matches_proxy_for_app, live_token_sync_provider_from_db,
+    persist_ephemeral_listen_port_if_needed_in_db, persist_hot_switch_current_provider_sources,
+    preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     provider_effective_settings_with_common_config_from_db, proxy_app_enabled_from_db,
     proxy_config_from_db, proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -470,7 +472,7 @@ impl ProxyService {
         app_type: &AppType,
         live_config: &Value,
     ) -> Result<(), String> {
-        let Some(app_label) = live_token_sync_app_label(app_type) else {
+        let Some(app_label) = live_token_sync_app_label(&AppKind::from(app_type)) else {
             return Ok(());
         };
         let Some(mut provider) = live_token_sync_provider_from_db(&self.db, app_type)? else {

@@ -9,11 +9,15 @@ use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
 use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
+use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::ports::{
     common_config_settings_mutation_issue_message, gemini_live_settings_from_env_json_and_config,
-    gemini_live_settings_to_write, proxy_live_config_owned_by_takeover,
-    sanitize_claude_settings_for_live, CodexLiveSnapshotIssue, CommonConfigSettingsMutationIssue,
-    GeminiLiveConfigIssue, ProviderLiveSyncScope,
+    gemini_live_settings_to_write, provider_default_live_import_settings,
+    provider_live_sync_scope_for_app as core_provider_live_sync_scope,
+    proxy_live_config_owned_by_takeover, sanitize_claude_settings_for_live,
+    should_skip_manual_default_live_import, should_skip_startup_default_live_import,
+    CodexLiveSnapshotIssue, CommonConfigSettingsMutationIssue, GeminiLiveConfigIssue,
+    ProviderLiveSyncScope,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::apply_common_config_to_settings as adapter_apply_common_config_to_settings;
@@ -23,15 +27,13 @@ use crate::proxy_core_adapter::{
     normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
     provider_codex_live_snapshot_parts,
     provider_common_config_storage_normalization_requires_snippet,
-    provider_default_live_import_settings, provider_from_default_live_settings,
-    provider_from_hermes_live_config, provider_from_openclaw_live_config,
-    provider_from_opencode_live_config, provider_gemini_env_map,
-    provider_gemini_live_config_object, provider_live_sync_scope,
+    provider_from_default_live_settings, provider_from_hermes_live_config,
+    provider_from_openclaw_live_config, provider_from_opencode_live_config,
+    provider_gemini_env_map, provider_gemini_live_config_object,
     provider_openclaw_live_write_projection, provider_opencode_live_write_projection,
     provider_should_sync_to_live,
     remove_common_config_from_settings as adapter_remove_common_config_from_settings,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
-    should_skip_manual_default_live_import, should_skip_startup_default_live_import,
     strip_common_config_from_live_settings_for_backfill as adapter_strip_common_config_from_live_settings_for_backfill,
     validate_provider_gemini_settings_strict, HermesLiveImportIssue, OpenClawLiveImportIssue,
     OpenClawLiveWriteAction, OpenCodeLiveImportIssue, OpenCodeLiveWriteAction,
@@ -402,7 +404,7 @@ pub(crate) fn sync_current_provider_for_app_to_live(
     state: &AppState,
     app_type: &AppType,
 ) -> Result<(), AppError> {
-    match provider_live_sync_scope(app_type) {
+    match core_provider_live_sync_scope(&AppKind::from(app_type)) {
         ProviderLiveSyncScope::AllProviders => sync_all_providers_to_live(state, app_type)?,
         ProviderLiveSyncScope::CurrentProvider => {
             let current_id =
@@ -475,7 +477,7 @@ fn sync_current_provider_for_app_respecting_takeover(
 pub fn sync_current_to_live(state: &AppState) -> Result<(), AppError> {
     // Sync providers based on mode
     for app_type in AppType::all() {
-        match provider_live_sync_scope(&app_type) {
+        match core_provider_live_sync_scope(&AppKind::from(&app_type)) {
             // Additive mode: sync ALL providers
             ProviderLiveSyncScope::AllProviders => sync_all_providers_to_live(state, &app_type)?,
             // Switch mode: sync only current provider. During proxy takeover,
@@ -621,7 +623,10 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
     // - 用户手动点 ProviderEmptyState 的导入按钮时，与官方 seed 共存而不被阻塞
     let has_non_official_seed_provider =
         state.db.has_non_official_seed_provider(app_type.as_str())?;
-    if should_skip_manual_default_live_import(&app_type, has_non_official_seed_provider) {
+    if should_skip_manual_default_live_import(
+        &AppKind::from(&app_type),
+        has_non_official_seed_provider,
+    ) {
         return Ok(false);
     }
 
@@ -696,7 +701,8 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
         }
     };
 
-    let settings_config = provider_default_live_import_settings(&app_type, settings_config);
+    let settings_config =
+        provider_default_live_import_settings(&AppKind::from(&app_type), settings_config);
     let provider = provider_from_default_live_settings(&app_type, settings_config);
 
     state.db.save_provider(app_type.as_str(), &provider)?;
@@ -719,7 +725,7 @@ pub fn should_import_default_config_on_startup(
 ) -> Result<bool, AppError> {
     let has_any_provider = state.db.has_any_provider_for_app(app_type.as_str())?;
     Ok(!should_skip_startup_default_live_import(
-        app_type,
+        &AppKind::from(app_type),
         has_any_provider,
     ))
 }
