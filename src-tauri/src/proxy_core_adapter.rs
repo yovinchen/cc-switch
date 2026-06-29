@@ -6637,14 +6637,6 @@ pub(crate) fn provider_stream_check_config_override(
     })
 }
 
-pub(crate) fn provider_is_full_url(provider: &Provider) -> bool {
-    provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.is_full_url)
-        .unwrap_or(false)
-}
-
 pub(crate) fn provider_custom_user_agent_header(
     provider: &Provider,
     is_copilot: bool,
@@ -17889,7 +17881,7 @@ command = "latest-command"
         )
         .usage_script()
         .is_none());
-        let usage_provider_is_full_url = provider_is_full_url(&provider);
+        let usage_provider_is_full_url = provider.is_full_url();
         let provider_user_agent =
             provider_custom_user_agent_header(&provider, false).expect("custom user agent");
         let copilot_provider_user_agent = provider_custom_user_agent_header(&provider, true);

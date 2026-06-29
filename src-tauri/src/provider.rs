@@ -122,6 +122,13 @@ impl Provider {
             .filter(|config| config.enabled)
     }
 
+    pub fn is_full_url(&self) -> bool {
+        self.meta
+            .as_ref()
+            .and_then(|meta| meta.is_full_url)
+            .unwrap_or(false)
+    }
+
     /// Resolve `(base_url, api_key)` for usage queries (native balance /
     /// coding-plan and the JS-script `{{apiKey}}`/`{{baseUrl}}` fallback)
     /// from the stored provider config.

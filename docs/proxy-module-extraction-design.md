@@ -834,7 +834,7 @@
 785. Claude transform handler 的 Codex OAuth provider 判定已改为 `proxy_core_adapter::provider_is_codex_oauth`：handler 只消费 provider fact 的布尔投影，`provider.meta.provider_type == "codex_oauth"` 字符串判断不再留在协议处理分支。
 786. forwarder 发送策略里的 Codex OAuth provider 判定已改为 `proxy_core_adapter::provider_is_codex_oauth`：exact header casing 判断继续由 core request-header policy 执行，但 forwarder 不再直接调用 host `Provider::is_codex_oauth()`。
 787. forwarder 的 GitHub Copilot upstream 判定已改为 `proxy_core_adapter::provider_is_github_copilot_upstream`：provider_type 与 base URL 的组合识别仍复用 core request URL policy，但 forwarder 不再直接拆 `provider.meta.provider_type`。
-788. forwarder 的 full-url provider metadata 判定已改为 `proxy_core_adapter::provider_is_full_url`：Copilot dynamic endpoint 与 upstream URL planning 仍消费布尔事实，但 forwarder 不再直接拆 `provider.meta.is_full_url`。
+788. full-url provider metadata 判定已回到 `Provider::is_full_url()`；Copilot dynamic endpoint 与 upstream URL planning 仍消费布尔事实，但普通 provider meta 读取不再经 adapter 中转。
 789. forwarder 的 Provider 级自定义 User-Agent 投影已改为 `proxy_core_adapter::provider_custom_user_agent_header`：forwarder 不再直接读取 `provider.meta.custom_user_agent_header()`，Copilot 指纹 UA 不可覆盖与非法 UA 静默忽略语义集中在 adapter。
 790. forwarder 的 Bedrock provider env flag 判定已改为 `proxy_core_adapter::provider_bedrock_env_flag`：Bedrock pre-send optimizer gate 继续复用 core transform policy，但 forwarder 不再直接传入 `provider.settings_config`。
 791. forwarder 的 provider settings 模型映射已改为 `proxy_core_adapter::apply_provider_model_mapping_from_provider`，text-only media 预防投影已改为 `proxy-core::request_media::apply_forwarder_media_prevention_from_facts`：forwarder 只传入 `Provider` 与运行期开关，settings schema 读取继续集中在 adapter/core policy 边界。
@@ -1896,6 +1896,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1345. live takeover placeholder 检测不再保留 `provider_settings_have_proxy_placeholder_for_app` 这种 Provider-only 一跳 wrapper；adapter 内部 SSOT restore provider 检查直接把 `provider.settings_config` 传给 `live_config_has_proxy_placeholder_for_app`，统一使用同一个 app-aware core dispatch 入口。
 1346. usage script 读取不再保留 `proxy_core_adapter::provider_usage_script` 这种普通 provider meta accessor；命令和 service 层直接调用 `Provider::usage_script()`，adapter 只保留真正需要跨 core/host 边界的 managed-account 与 credential policy 投影。
 1347. stream check 的 provider-level testConfig 读取不再保留 `proxy_core_adapter::provider_stream_check_test_config` 普通 meta accessor；adapter 只保留 `provider_stream_check_config_override` 作为 host `ProviderTestConfig` 到 core `StreamCheckConfigOverride` 的投影入口。
+1348. full-url provider metadata 读取不再保留 `proxy_core_adapter::provider_is_full_url` 普通 accessor；stream check 的 Copilot dynamic endpoint guard 与 adapter 自测直接调用 `Provider::is_full_url()`。
 
 ## 背景
 

@@ -8,8 +8,8 @@ use crate::commands::copilot::CopilotAuthState;
 use crate::error::AppError;
 use crate::proxy_core::api::management::stream_check_failed_result;
 use crate::proxy_core_adapter::{
-    provider_github_copilot_managed_account_id, provider_is_full_url,
-    provider_is_github_copilot_stream_check_target, stream_check_proxy_target_ids_from_db,
+    provider_github_copilot_managed_account_id, provider_is_github_copilot_stream_check_target,
+    stream_check_proxy_target_ids_from_db,
 };
 use crate::services::stream_check::{StreamCheckConfig, StreamCheckResult, StreamCheckService};
 use crate::store::AppState;
@@ -109,7 +109,7 @@ async fn resolve_copilot_base_url_override(
     copilot_state: &State<'_, CopilotAuthState>,
 ) -> Result<Option<String>, AppError> {
     let is_copilot = provider_is_github_copilot_stream_check_target(provider);
-    let is_full_url = provider_is_full_url(provider);
+    let is_full_url = provider.is_full_url();
 
     if !is_copilot || is_full_url {
         return Ok(None);
@@ -129,9 +129,7 @@ async fn resolve_copilot_base_url_override(
 #[cfg(test)]
 mod tests {
     use crate::provider::{Provider, ProviderMeta};
-    use crate::proxy_core_adapter::{
-        provider_is_full_url, provider_is_github_copilot_stream_check_target,
-    };
+    use crate::proxy_core_adapter::provider_is_github_copilot_stream_check_target;
     use serde_json::json;
 
     #[test]
@@ -202,6 +200,6 @@ mod tests {
         };
 
         assert!(provider_is_github_copilot_stream_check_target(&provider));
-        assert!(provider_is_full_url(&provider));
+        assert!(provider.is_full_url());
     }
 }
