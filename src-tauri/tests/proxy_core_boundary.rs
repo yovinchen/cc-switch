@@ -1166,6 +1166,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn codex_responses_proxy_request_from_input(",
     "fn proxy_core_app_kind_from_app_type(",
     "fn current_provider_id_from_settings_for_app_type(",
+    "fn provider_settings_have_proxy_placeholder_for_app(",
     "fn error_message_with_context(",
     "fn request_model_from_body_for_context(",
     "fn request_model_from_gemini_path_for_context(",

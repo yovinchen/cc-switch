@@ -2143,8 +2143,11 @@ pub(crate) fn ssot_live_restore_provider_from_db(
         return Ok(None);
     };
 
-    if provider_settings_have_proxy_placeholder_for_app(provider, app_type, proxy_token_placeholder)
-    {
+    if live_config_has_proxy_placeholder_for_app(
+        app_type,
+        &provider.settings_config,
+        proxy_token_placeholder,
+    ) {
         log::warn!(
             "{app_type:?} 当前供应商配置含代理接管占位符（疑似接管期间被导入的残留），跳过 SSOT 写回，改走占位符清理"
         );
@@ -6045,14 +6048,6 @@ pub(crate) fn provider_launch_env_vars_for_app(
     app_type: &AppType,
 ) -> Vec<(String, String)> {
     launch_env_vars_from_provider_settings(&provider.settings_config, app_type)
-}
-
-pub(crate) fn provider_settings_have_proxy_placeholder_for_app(
-    provider: &Provider,
-    app_type: &AppType,
-    placeholder: &str,
-) -> bool {
-    live_config_has_proxy_placeholder_for_app(app_type, &provider.settings_config, placeholder)
 }
 
 pub(crate) fn live_config_has_proxy_placeholder_for_app(
@@ -13729,19 +13724,20 @@ reasoning = "medium"
             json!({ "auth": placeholder }),
             None,
         );
-        assert!(!provider_settings_have_proxy_placeholder_for_app(
-            &provider,
+        assert!(!live_config_has_proxy_placeholder_for_app(
             &AppType::Claude,
+            &provider.settings_config,
             placeholder
         ));
-        assert!(provider_settings_have_proxy_placeholder_for_app(
-            &Provider::with_id(
-                "claude-live-residue".to_string(),
-                "Claude Live Residue".to_string(),
-                json!({ "env": { "ANTHROPIC_AUTH_TOKEN": placeholder } }),
-                None,
-            ),
+        let claude_provider = Provider::with_id(
+            "claude-live-residue".to_string(),
+            "Claude Live Residue".to_string(),
+            json!({ "env": { "ANTHROPIC_AUTH_TOKEN": placeholder } }),
+            None,
+        );
+        assert!(live_config_has_proxy_placeholder_for_app(
             &AppType::Claude,
+            &claude_provider.settings_config,
             placeholder
         ));
 

@@ -862,7 +862,7 @@
 813. `provider_kind_from_app_type_and_config` 的真实实现已收敛到 `proxy_core_adapter`，并新增 `provider_gemini_kind`：`proxy/providers` 只保留兼容 facade，`proxy_core_adapter` 不再反向依赖 provider adapter 模块来构造 `ProviderSpec` 或 rectifier 判定。
 814. provider terminal 启动环境变量投影已改为 `proxy_core_adapter::provider_launch_env_vars_for_app`：命令层只负责加载 provider 与启动终端，Claude/Codex/Gemini 的 settings schema、base URL env key 与 API key/env 转换规则集中在 adapter。
 815. Claude takeover 模型字段快照已改为 `proxy_core_adapter::{provider_claude_takeover_model_fields,claude_takeover_model_fields_from_settings}`：proxy service 继续负责 live config 写入、token 占位和 managed-account 分支，Claude 模型 env/schema、1M 标记与显示名 fallback 规则集中在 adapter。
-816. takeover placeholder 检测已改为 `proxy_core_adapter::{live_config_has_proxy_placeholder_for_app,provider_settings_have_proxy_placeholder_for_app}`：proxy service 继续决定 `PROXY_MANAGED` 写入和恢复流程，但 Claude/Codex/Gemini live/settings 中的占位符 schema 判定集中在 adapter。
+816. takeover placeholder 检测已改为 `proxy_core_adapter::live_config_has_proxy_placeholder_for_app`：proxy service 继续决定 `PROXY_MANAGED` 写入和恢复流程，但 Claude/Codex/Gemini live/settings 中的占位符 schema 判定集中在 adapter/core；Provider-only placeholder wrapper 已删除。
 817. Claude Desktop proxy provider 的 credential shape 检测已改为 `proxy_core_adapter::provider_claude_desktop_proxy_has_base_url_and_key`：`claude_desktop_config` 继续负责本地化错误和模式验证，base URL/API key/settings/meta schema 读取集中在 adapter，typed OAuth provider 的无静态 key 放行语义保持精确。
 818. Claude Desktop 的 MiMo Anthropic thinking history normalize gate 已改为 `proxy_core_adapter::provider_should_normalize_mimo_anthropic_thinking_history`：`claude_desktop_config` 继续负责请求体改写，provider API format、MiMo 模型/endpoint 判定集中在 adapter。
 819. Claude Desktop direct/proxy provider 的配置兼容性 validation facts 已改为 `proxy_core_adapter::{provider_claude_desktop_direct_validation_issue,provider_claude_desktop_proxy_config_validation_issue}`：`claude_desktop_config` 继续负责本地化错误、route 校验与直连凭证提取，settings/meta schema 判定集中在 adapter。
@@ -1893,6 +1893,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1342. provider adapter registry 的 AppType -> adapter-kind 选择已改为直接消费 `proxy_core::api::domain::{provider_adapter_kind_for_app,AppKind,AppProviderAdapterKind}`；`proxy_core_adapter::provider_adapter_kind_for_app_type` 一跳 facade 已删除，host registry 仍不内联 Claude/Codex/Gemini app 分支。
 1343. request context 不再通过 `proxy_core_adapter::proxy_core_app_kind_from_app_type` 做 AppType -> AppKind 纯转换；`proxy/engine/context` 直接使用 `AppKind::from(app_type.as_str())`，adapter 仅保留 crate-local `From<&AppType> for AppKind` impl 供 host 投影和测试复用。
 1344. saved usage script 的凭据覆盖策略已由 `services/provider/usage` 直接调用 `proxy_core::api::ports::usage_script_credentials_from_parts`；`proxy_core_adapter::provider_usage_script_credentials` 一跳 facade 已删除，adapter 继续只保留 `Provider.meta.usage_script` 的宿主投影。
+1345. live takeover placeholder 检测不再保留 `provider_settings_have_proxy_placeholder_for_app` 这种 Provider-only 一跳 wrapper；adapter 内部 SSOT restore provider 检查直接把 `provider.settings_config` 传给 `live_config_has_proxy_placeholder_for_app`，统一使用同一个 app-aware core dispatch 入口。
 
 ## 背景
 
