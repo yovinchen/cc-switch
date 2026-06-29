@@ -7127,6 +7127,9 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn provider_openclaw_live_write_plan",
         "pub(crate) fn provider_opencode_live_provider_fragment",
         "pub(crate) fn provider_opencode_live_write_plan",
+        "pub(crate) fn provider_switched_event_message",
+        "pub(crate) fn proxy_core_event_to_bus_message",
+        "pub(crate) fn proxy_official_warning_event_from_provider",
         "pub(crate) fn provider_is_copilot_prompt_cache_provider",
         "pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat",
     ] {

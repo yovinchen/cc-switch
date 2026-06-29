@@ -1921,7 +1921,7 @@ pub(crate) fn emit_proxy_server_stopped_event_source(events: &ProxyEventBus) {
     events.emit(message.event_name, message.payload);
 }
 
-pub(crate) fn provider_switched_event_message(
+fn provider_switched_event_message(
     app_type: &str,
     provider_id: &str,
     source: &str,
@@ -1960,7 +1960,7 @@ pub(crate) fn proxy_official_warning_event_message(
     }
 }
 
-pub(crate) fn proxy_official_warning_event_from_provider(
+fn proxy_official_warning_event_from_provider(
     app_type: &str,
     provider: Option<&Provider>,
 ) -> Option<ProxyEventBusMessage> {
@@ -2161,7 +2161,7 @@ pub(crate) fn request_started_event_message(
     }
 }
 
-pub(crate) fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEventBusMessage {
+fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEventBusMessage {
     ProxyEventBusMessage {
         event_name: event.event_type.event_name(),
         payload: event.into_event_payload(),

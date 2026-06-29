@@ -754,7 +754,7 @@
 706. ProviderSource 的列表/单条 provider 到 `ProviderSpec` 投影已移入 `proxy_core_adapter::provider_specs_from_source` / `provider_spec_from_source`：`proxy_core_host` 不再直接解析 app kind 或调用 provider spec conversion。
 707. ChannelSource 的列表/单条 channel 到 `ChannelSpec` 投影已移入 `proxy/host/cc_switch/database_channel_source.rs` 的 `channel_specs_from_source` / `channel_spec_from_source`：`proxy_core_host` 不再直接调用 channel record conversion，`proxy_core_adapter` 只保留测试兼容导出。
 708. ChannelHealthStore 的 attempt 写库参数投影已移入 `proxy_core_adapter::channel_health_attempt_db_update`，host-owned `CcSwitchChannelHealthStore` 负责调用 DB 写入；`proxy_core_adapter` 只保留 helper，`proxy_core_host` 只装配该 store。
-709. `ProxyCoreEvent` 到 host event bus name/payload 的投影已移入 `proxy_core_adapter::proxy_core_event_to_bus_message`：`proxy_core_host` 的 event sink 不再直接调用 `event_name()` 或 `into_event_payload()`。
+709. `ProxyCoreEvent` 到 host event bus name/payload 的 raw 投影已收成 adapter 私有 helper，公开入口保留 `proxy_core_adapter::{emit_proxy_core_event,emit_proxy_core_event_bus_source}`：`proxy_core_host` 的 event sink 不再直接调用 `event_name()`、`into_event_payload()` 或 raw bus message builder。
 710. RoutePolicySource 的 failover queue 到 optional `RoutePolicy` source 投影、DB queue 查询与错误映射已由 host-owned `CcSwitchRoutePolicySource` 包装；`proxy_core_adapter` 只保留投影 helper，`proxy_core_host` 不再保留该桥接实现。
 711. ChannelHealthStore reset 的 app lookup 结果校验、router reset 调用与 reset fact 投影已由 host-owned `CcSwitchChannelHealthStore` 包装；`proxy_core_adapter` 只保留 helper，`proxy_core_host` 不再保留该桥接实现。
 712. client model catalog 的 app 分派、Codex active catalog raw 读取与非 Codex 空目录默认值已移入 `proxy_core_adapter::client_model_catalog_from_source`：`proxy_core_host` 的 `ModelCatalogProvider` 不再维护客户端 catalog source 分支。
