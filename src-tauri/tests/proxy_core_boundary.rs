@@ -2042,6 +2042,11 @@ fn is_allowed_gemini_config_ports_core_import(relative: &str, code: &str) -> boo
     relative == "src/gemini_config.rs" && code.trim() == "use crate::proxy_core::api::ports::{"
 }
 
+fn is_allowed_config_service_ports_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/services/config.rs"
+        && code.trim() == "use crate::proxy_core::api::ports::codex_restored_live_settings_parts;"
+}
+
 fn is_allowed_engine_routing_test_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/engine/routing.rs" && code.trim() == "use crate::proxy_core::api::{"
 }
@@ -2210,6 +2215,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_claude_desktop_live_url_core_import(&relative, code)
                     && !is_allowed_failover_switch_core_import(&relative, code)
                     && !is_allowed_gemini_config_ports_core_import(&relative, code)
+                    && !is_allowed_config_service_ports_core_import(&relative, code)
                     && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
                     && !is_allowed_provider_common_config_issue_core_import(&relative, code)
@@ -7930,14 +7936,20 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let config_service_source = fs::read_to_string(manifest_dir.join("src/services/config.rs"))
+        .expect("read services/config.rs");
     let production_source = production_lines(&source)
         .map(|(_, line)| line)
         .collect::<Vec<_>>()
         .join("\n");
+    let ports_reexport_blocks: Vec<&str> = production_source
+        .split("pub(crate) use crate::proxy_core::api::ports::{")
+        .skip(1)
+        .map(|tail| tail.split("};").next().unwrap_or_default())
+        .collect();
 
     for marker in [
         "core_codex_provider_live_write_parts_from_settings(",
-        "codex_restored_live_settings_parts",
         "core_codex_live_settings_parts_from_settings(",
         "core_codex_live_snapshot_parts_from_settings(",
         "core_codex_auth_has_oauth_login_material(",
@@ -7947,6 +7959,19 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
             "proxy_core_adapter should delegate Codex live/settings shape marker `{marker}` to core"
         );
     }
+    assert!(
+        config_service_source
+            .contains("use crate::proxy_core::api::ports::codex_restored_live_settings_parts;")
+            && !config_service_source
+                .contains("use crate::proxy_core_adapter::{\n    codex_restored_live_settings_parts"),
+        "services/config.rs should import restored Codex live settings helper directly from proxy_core ports"
+    );
+    assert!(
+        !ports_reexport_blocks
+            .iter()
+            .any(|block| block.contains("codex_restored_live_settings_parts")),
+        "proxy_core_adapter should not re-export codex_restored_live_settings_parts"
+    );
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {

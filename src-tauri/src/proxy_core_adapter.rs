@@ -208,7 +208,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     codex_model_from_config_toml as core_codex_model_from_config_toml,
     codex_provider_backfill_parts_from_settings as core_codex_provider_backfill_parts_from_settings,
     codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
-    codex_restored_live_settings_parts,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     detect_gemini_auth_type as core_detect_gemini_auth_type,
     ensure_codex_takeover_auth_placeholder,
@@ -7158,7 +7157,9 @@ mod tests {
         ProxyChannelWriteRequest, StreamCheckResult,
     };
     use crate::proxy_core::api::model_catalog::{CopilotModel, DEFAULT_CODEX_MODEL_CONTEXT_WINDOW};
-    use crate::proxy_core::api::ports::gemini_env_json_from_map;
+    use crate::proxy_core::api::ports::{
+        codex_restored_live_settings_parts, gemini_env_json_from_map,
+    };
     use crate::proxy_core::api::routing::{
         ChannelSpec, ChannelStatus, InterfaceKind, LegacyChannelProjectionInput,
         ProviderSelectionCandidate, RouteResolveModelInput, RouteSelection,

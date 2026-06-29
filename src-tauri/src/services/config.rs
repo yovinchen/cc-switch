@@ -2,9 +2,10 @@ use super::provider::{sanitize_claude_settings_for_live, ProviderService};
 use crate::app_config::{AppType, MultiAppConfig};
 use crate::error::AppError;
 use crate::provider::Provider;
+use crate::proxy_core::api::ports::codex_restored_live_settings_parts;
 use crate::proxy_core_adapter::{
-    codex_restored_live_settings_parts, provider_codex_live_settings_parts,
-    restore_codex_settings_for_provider_backfill, CodexLiveSettingsIssue,
+    provider_codex_live_settings_parts, restore_codex_settings_for_provider_backfill,
+    CodexLiveSettingsIssue,
 };
 use chrono::Utc;
 use std::fs;
