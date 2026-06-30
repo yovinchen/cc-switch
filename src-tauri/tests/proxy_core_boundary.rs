@@ -161,10 +161,7 @@ const FORBIDDEN_RESET_CIRCUIT_BREAKER_COMMAND_MARKERS: &[&str] = &[
     "FailoverQueuePosition",
 ];
 const FORBIDDEN_SET_AUTO_FAILOVER_COMMAND_MARKERS: &[&str] = &[
-    ".get_proxy_config_for_app(",
-    ".get_failover_queue(",
-    "get_effective_current_provider(",
-    "AppType::from_str(",
+    "auto_failover_toggle_plan_from_db",
     "plan_auto_failover_toggle(",
     "AutoFailoverToggleInput",
     "AUTO_FAILOVER_",
@@ -2075,10 +2072,14 @@ fn is_allowed_failover_switch_core_import(relative: &str, code: &str) -> bool {
         )
 }
 
-fn is_allowed_failover_command_event_core_import(relative: &str, code: &str) -> bool {
+fn is_allowed_failover_command_core_import(relative: &str, code: &str) -> bool {
     relative == "src/commands/failover.rs"
-        && code.trim()
-            == "use crate::proxy_core::api::events::provider_switched_failover_enabled_event;"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::errors::ProxyCoreError;"
+                | "use crate::proxy_core::api::events::provider_switched_failover_enabled_event;"
+                | "use crate::proxy_core::api::management::auto_failover_toggle_plan_from_sources;"
+        )
 }
 
 fn is_allowed_gemini_config_ports_core_import(relative: &str, code: &str) -> bool {
@@ -2291,7 +2292,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_claude_desktop_provider_issue_core_import(&relative, code)
                     && !is_allowed_claude_desktop_live_url_core_import(&relative, code)
                     && !is_allowed_failover_switch_core_import(&relative, code)
-                    && !is_allowed_failover_command_event_core_import(&relative, code)
+                    && !is_allowed_failover_command_core_import(&relative, code)
                     && !is_allowed_gemini_config_ports_core_import(&relative, code)
                     && !is_allowed_provider_usage_ports_core_import(&relative, code)
                     && !is_allowed_config_service_ports_core_import(&relative, code)
@@ -7295,6 +7296,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn failover_switch_app_enabled_from_config_result",
         "pub(crate) fn reset_circuit_breaker_switchback_target_from_sources",
         "pub(crate) async fn reset_circuit_breaker_switchback_target_from_db",
+        "pub(crate) async fn auto_failover_toggle_plan_from_db",
         "pub(crate) fn parse_gemini_env_file_strict",
         "fn gemini_env_parse_issue_to_app_error",
         "pub(crate) fn gemini_env_parse_issue_to_app_error",
@@ -8014,8 +8016,6 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
         "ProviderFailoverCircuitLookup",
         "ProviderSelectionFailure",
         "ProviderSelectionInput",
-        "AutoFailoverToggleInput",
-        "AutoFailoverTogglePlan",
         "RouteResolveChannelInput",
         "ChannelRouteCandidate",
         "ResolvedChannelAttempt",
@@ -19118,7 +19118,7 @@ fn production_get_circuit_breaker_stats_command_delegates_to_proxy_service() {
 }
 
 #[test]
-fn production_set_auto_failover_command_delegates_plan_sources_to_adapter() {
+fn production_set_auto_failover_command_uses_core_toggle_policy() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/commands/failover.rs");
     let source = fs::read_to_string(&path).expect("read commands/failover.rs");
@@ -19143,16 +19143,18 @@ fn production_set_auto_failover_command_delegates_plan_sources_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "set_auto_failover_enabled command must delegate plan source reads and core input construction to proxy_core_adapter:\n{}",
+        "set_auto_failover_enabled command must keep toggle policy in proxy-core and avoid proxy_core_adapter DB wrappers:\n{}",
         violations.join("\n")
     );
     assert!(
         source.contains(
             "use crate::proxy_core::api::events::provider_switched_failover_enabled_event;"
+        ) && source.contains(
+            "use crate::proxy_core::api::management::auto_failover_toggle_plan_from_sources;"
         ) && !source.contains(
-            "use crate::proxy_core_adapter::{\n    auto_failover_toggle_plan_from_db, provider_switched_failover_enabled_event"
+            "use crate::proxy_core_adapter::auto_failover_toggle_plan_from_db"
         ),
-        "set_auto_failover_enabled should import provider-switched event construction directly from proxy_core"
+        "set_auto_failover_enabled should import failover event and toggle policy directly from proxy_core"
     );
 }
 

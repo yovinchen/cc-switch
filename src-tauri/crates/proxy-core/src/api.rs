@@ -421,8 +421,9 @@ pub mod prelude {
         select_enabled_channel_key_runtime_candidate,
         select_enabled_channel_key_runtime_candidate_with_failure_cooldown,
         DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
-        reset_circuit_breaker_switchback_target_from_sources,
+        auto_failover_toggle_plan_from_sources, reset_circuit_breaker_switchback_target_from_sources,
         stream_check_proxy_target_ids_from_sources,
+        AutoFailoverTogglePlanOutcome,
         HealthCheckRequest, HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest,
         ProviderListResponse, ProviderListSource,
         ProviderSummary, ProviderSummaryInput, ProxyChannelKeyPatchRequest,
@@ -439,7 +440,7 @@ pub mod prelude {
     };
     pub use super::ports::CurrentRouteTarget;
     pub use super::ports::{
-        AuthInfo, AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelHealthStore,
+        AppProxyConfig, AuthInfo, AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelHealthStore,
         ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource, ForwardPipeline, ModelCatalogProvider,
         ProviderAttemptResult,
         ProviderHealthStore, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,

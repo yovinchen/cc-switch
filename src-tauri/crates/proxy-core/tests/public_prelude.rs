@@ -1944,6 +1944,42 @@ fn external_host_can_use_codex_responses_to_chat_gate_from_prelude() {
 }
 
 #[test]
+fn external_host_can_use_auto_failover_toggle_plan_from_prelude() {
+    let config = AppProxyConfig {
+        app_type: "claude".to_string(),
+        enabled: true,
+        auto_failover_enabled: false,
+        max_retries: 3,
+        streaming_first_byte_timeout: 60,
+        streaming_idle_timeout: 120,
+        non_streaming_timeout: 600,
+        circuit_failure_threshold: 4,
+        circuit_success_threshold: 2,
+        circuit_timeout_seconds: 60,
+        circuit_error_rate_threshold: 0.6,
+        circuit_min_requests: 10,
+    };
+
+    let outcome = auto_failover_toggle_plan_from_sources(
+        config,
+        true,
+        Vec::new(),
+        Some("current-provider".to_string()),
+    )
+    .expect("auto failover toggle plan");
+
+    assert!(outcome.plan.auto_failover_enabled);
+    assert_eq!(
+        outcome.plan.provider_id_to_add_to_queue.as_deref(),
+        Some("current-provider")
+    );
+    assert_eq!(
+        outcome.plan.provider_id_to_switch_to.as_deref(),
+        Some("current-provider")
+    );
+}
+
+#[test]
 fn external_host_can_use_stream_check_proxy_target_filter_from_prelude() {
     let ids = stream_check_proxy_target_ids_from_sources(
         true,

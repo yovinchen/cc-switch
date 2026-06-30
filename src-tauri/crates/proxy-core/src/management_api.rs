@@ -4,7 +4,7 @@ use super::domain::{
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-    AppListResponse, AppModelListQuery, AppSummaryInput, ChannelBreakerStatsResponse,
+    AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput, ChannelBreakerStatsResponse,
     ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
     ChannelKeyRecordResponse,
     ChannelKeysResponse, ChannelListQuery, ChannelListResponse,
@@ -17,7 +17,8 @@ use super::ports::{
     RouteResolveRequest, RouteResolveResponse,
 };
 use super::provider_selection::{
-    restored_provider_switchback_decision, FailoverQueuePosition,
+    plan_auto_failover_toggle, restored_provider_switchback_decision, AutoFailoverToggleInput,
+    AutoFailoverTogglePlan, FailoverQueuePosition,
 };
 use std::collections::HashSet;
 
@@ -67,6 +68,28 @@ pub fn stream_check_proxy_target_ids_from_sources(
     }
     ids.extend(failover_provider_ids);
     Some(ids)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AutoFailoverTogglePlanOutcome {
+    pub config: AppProxyConfig,
+    pub plan: AutoFailoverTogglePlan,
+}
+
+pub fn auto_failover_toggle_plan_from_sources(
+    config: AppProxyConfig,
+    enabled: bool,
+    queued_provider_ids: Vec<String>,
+    current_provider_id: Option<String>,
+) -> ProxyCoreResult<AutoFailoverTogglePlanOutcome> {
+    let plan = plan_auto_failover_toggle(AutoFailoverToggleInput::new(
+        enabled,
+        config.enabled,
+        queued_provider_ids,
+        current_provider_id,
+    ))?;
+
+    Ok(AutoFailoverTogglePlanOutcome { config, plan })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1118,9 +1141,9 @@ mod tests {
         RouteResolveManagementRequest,
         channel_key_not_found_message, channel_not_found_message, custom_endpoint_url_issue_spec,
         custom_endpoint_url_key, normalize_channel_id_path, normalize_channel_key_ref_path,
-        normalize_custom_endpoint_url, reset_circuit_breaker_switchback_target_from_sources,
-        stream_check_proxy_target_ids_from_sources, validate_management_app_type,
-        validate_route_resolve_app_type, CustomEndpointUrlIssue,
+        normalize_custom_endpoint_url, auto_failover_toggle_plan_from_sources,
+        reset_circuit_breaker_switchback_target_from_sources, stream_check_proxy_target_ids_from_sources,
+        validate_management_app_type, validate_route_resolve_app_type, CustomEndpointUrlIssue,
         ResetCircuitBreakerSwitchbackTarget,
     };
     use crate::domain::{
@@ -1129,7 +1152,7 @@ mod tests {
         UpstreamEndpoint,
     };
     use crate::ports::{
-        AppChannelListQuery, AppModelListQuery, AppSummaryInput, ChannelListQuery,
+        AppChannelListQuery, AppModelListQuery, AppProxyConfig, AppSummaryInput, ChannelListQuery,
         ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelRouteSource,
         ChannelTestInput, GroupListQuery, ProviderSummaryInput, ProxyChannelWriteRequest,
         RouteResolveResponse,
@@ -1143,6 +1166,23 @@ mod tests {
             kind: ProviderKind::Claude,
             account_ref: None,
             metadata: ProviderMetadata::default(),
+        }
+    }
+
+    fn app_proxy_config(enabled: bool) -> AppProxyConfig {
+        AppProxyConfig {
+            app_type: "claude".to_string(),
+            enabled,
+            auto_failover_enabled: true,
+            max_retries: 3,
+            streaming_first_byte_timeout: 60,
+            streaming_idle_timeout: 120,
+            non_streaming_timeout: 600,
+            circuit_failure_threshold: 4,
+            circuit_success_threshold: 2,
+            circuit_timeout_seconds: 60,
+            circuit_error_rate_threshold: 0.6,
+            circuit_min_requests: 10,
         }
     }
 
@@ -1917,6 +1957,62 @@ mod tests {
         assert_eq!(response.groups[0].channel_count, 1);
         assert_eq!(response.groups[1].name, "default");
         assert_eq!(response.groups[1].channel_count, 2);
+    }
+
+    #[test]
+    fn auto_failover_toggle_plan_from_sources_projects_command_plan() {
+        let config = app_proxy_config(true);
+
+        let existing_p1_toggle = auto_failover_toggle_plan_from_sources(
+            config.clone(),
+            true,
+            vec!["provider-a".to_string()],
+            None,
+        )
+        .expect("toggle with existing P1");
+        assert!(existing_p1_toggle.plan.auto_failover_enabled);
+        assert_eq!(
+            existing_p1_toggle.plan.provider_id_to_switch_to.as_deref(),
+            Some("provider-a")
+        );
+        assert!(existing_p1_toggle
+            .plan
+            .provider_id_to_add_to_queue
+            .is_none());
+
+        let auto_add_current_toggle = auto_failover_toggle_plan_from_sources(
+            config,
+            true,
+            Vec::new(),
+            Some("current-provider".to_string()),
+        )
+        .expect("toggle with empty queue uses current provider");
+        assert_eq!(
+            auto_add_current_toggle
+                .plan
+                .provider_id_to_add_to_queue
+                .as_deref(),
+            Some("current-provider")
+        );
+        assert_eq!(
+            auto_add_current_toggle
+                .plan
+                .provider_id_to_switch_to
+                .as_deref(),
+            Some("current-provider")
+        );
+
+        let error = auto_failover_toggle_plan_from_sources(
+            app_proxy_config(false),
+            true,
+            Vec::new(),
+            None,
+        )
+        .expect_err("enabled toggle should require proxy takeover");
+        assert_eq!(
+            error.to_string(),
+            "invalid proxy request: 需要先启用该应用的代理接管，再开启故障转移"
+        );
     }
 
     #[test]

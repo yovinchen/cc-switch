@@ -2,12 +2,21 @@
 //!
 //! 管理代理模式下的故障转移队列（基于 providers 表的 in_failover_queue 字段）
 
+use crate::app_config::AppType;
 use crate::database::FailoverQueueItem;
 use crate::provider::Provider;
+use crate::proxy_core::api::errors::ProxyCoreError;
 use crate::proxy_core::api::events::provider_switched_failover_enabled_event;
-use crate::proxy_core_adapter::auto_failover_toggle_plan_from_db;
+use crate::proxy_core::api::management::auto_failover_toggle_plan_from_sources;
 use crate::store::AppState;
 use tauri::Emitter;
+
+fn auto_failover_toggle_error_to_string(error: ProxyCoreError) -> String {
+    match error {
+        ProxyCoreError::InvalidRequest(message) => message,
+        other => other.to_string(),
+    }
+}
 
 /// 获取故障转移队列
 #[tauri::command]
@@ -87,7 +96,40 @@ pub async fn set_auto_failover_enabled(
         "[Failover] Setting auto_failover_enabled: app_type='{app_type}', enabled={enabled}"
     );
 
-    let toggle_plan = auto_failover_toggle_plan_from_db(&state.db, &app_type, enabled).await?;
+    let config = state
+        .db
+        .get_proxy_config_for_app(&app_type)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let mut current_provider_id = None;
+    let queued_provider_ids = if enabled {
+        let queue = state
+            .db
+            .get_failover_queue(&app_type)
+            .map_err(|error| error.to_string())?;
+
+        if queue.is_empty() {
+            let app_enum = app_type
+                .parse::<AppType>()
+                .map_err(|_| format!("无效的应用类型: {app_type}"))?;
+            current_provider_id =
+                crate::settings::get_effective_current_provider(&state.db, &app_enum)
+                    .map_err(|error| error.to_string())?;
+        }
+
+        queue.into_iter().map(|item| item.provider_id).collect()
+    } else {
+        Vec::new()
+    };
+
+    let toggle_plan = auto_failover_toggle_plan_from_sources(
+        config,
+        enabled,
+        queued_provider_ids,
+        current_provider_id,
+    )
+    .map_err(auto_failover_toggle_error_to_string)?;
     let mut config = toggle_plan.config;
     let plan = toggle_plan.plan;
 
