@@ -8,7 +8,6 @@ use crate::provider::{AuthBindingSource, Provider, ProviderMeta};
 use crate::proxy::engine::routing::{ProviderFailoverRouterSources, ProviderRouter};
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status_kind};
-use crate::proxy::events::ProxyEventBus;
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 use crate::proxy::provider::claude_provider_api_format;
@@ -24,10 +23,7 @@ use crate::proxy_core::api::domain::{
     AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,
 };
 use crate::proxy_core::api::management::{ChannelRecord, ChannelRouteSource};
-use crate::proxy_core::api::ports::{
-    record_active_connection_acquired_status, record_active_connection_released_status,
-    CurrentRouteTarget, ProxyRuntimeStatus,
-};
+use crate::proxy_core::api::ports::CurrentRouteTarget;
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, ChannelRouteCandidate,
     LegacyChannelMigrationPlanInput, LegacyChannelModelProjection, LegacyChannelProjection,
@@ -132,6 +128,9 @@ fn provider_selection_failure_from_app_error(error: &AppError) -> Option<Provide
 
 use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};
 
+use crate::proxy_core::api::auth::{
+    claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
+};
 use crate::proxy_core::api::ports::{
     apply_codex_takeover_auth_placeholder_if_present,
     codex_auth_has_oauth_login_material as core_codex_auth_has_oauth_login_material,
@@ -145,228 +144,6 @@ use crate::proxy_core::api::ports::{
     LiveTokenProviderSettingsIssue, OptimizerConfig, ProviderSettingsValidationIssue,
     ProviderSettingsValidationParts, RectifierConfig,
 };
-fn record_forward_success_status(
-    status: &mut ProxyRuntimeStatus,
-    current_provider_id_at_start: &str,
-    provider_id: &str,
-) -> bool {
-    crate::proxy_core::api::ports::record_forward_success_status(
-        status,
-        crate::proxy_core::api::ports::ForwardSuccessStatusInput {
-            current_provider_id_at_start,
-            provider_id,
-        },
-    )
-    .should_switch_current_provider
-}
-
-fn record_forward_failure_status(status: &mut ProxyRuntimeStatus, error_message: &str) {
-    crate::proxy_core::api::ports::record_forward_failure_status(
-        status,
-        crate::proxy_core::api::ports::ForwardFailureStatusInput { error_message },
-    );
-}
-
-fn record_forward_request_started_status(status: &mut ProxyRuntimeStatus, timestamp: &str) {
-    crate::proxy_core::api::ports::record_forward_request_started_status(
-        status,
-        crate::proxy_core::api::ports::ForwardRequestStartedStatusInput { timestamp },
-    );
-}
-
-pub(crate) async fn record_forward_active_connection_acquired_runtime_source(
-    status: &RwLock<ProxyRuntimeStatus>,
-) {
-    let mut status = status.write().await;
-    record_active_connection_acquired_status(&mut status);
-}
-
-pub(crate) async fn record_forward_active_connection_released_runtime_source(
-    status: &RwLock<ProxyRuntimeStatus>,
-) {
-    let mut status = status.write().await;
-    record_active_connection_released_status(&mut status);
-}
-
-pub(crate) async fn record_forward_request_started_runtime_source(
-    status: &RwLock<ProxyRuntimeStatus>,
-    timestamp: &str,
-) {
-    let mut status = status.write().await;
-    record_forward_request_started_status(&mut status, timestamp);
-}
-
-pub(crate) async fn record_forward_current_provider_runtime_source(
-    status: &RwLock<ProxyRuntimeStatus>,
-    provider_id: &str,
-    provider_name: &str,
-) {
-    let mut status = status.write().await;
-    crate::proxy_core::api::ports::record_forward_current_provider_status(
-        &mut status,
-        crate::proxy_core::api::ports::ForwardCurrentProviderStatusInput {
-            provider_id,
-            provider_name,
-        },
-    );
-}
-
-pub(crate) async fn record_forward_success_runtime_source(
-    status: &RwLock<ProxyRuntimeStatus>,
-    current_provider_id_at_start: &str,
-    provider_id: &str,
-) -> bool {
-    let mut status = status.write().await;
-    record_forward_success_status(&mut status, current_provider_id_at_start, provider_id)
-}
-
-pub(crate) async fn record_forward_failure_runtime_source(
-    status: &RwLock<ProxyRuntimeStatus>,
-    error_message: &str,
-) {
-    let mut status = status.write().await;
-    record_forward_failure_status(&mut status, error_message);
-}
-
-pub(crate) async fn record_forward_provider_failure_runtime_source(
-    status: &RwLock<ProxyRuntimeStatus>,
-    provider: &Provider,
-    error: &ProxyError,
-) {
-    let mut status = status.write().await;
-    let error_message = error.to_string();
-    crate::proxy_core::api::ports::record_forward_provider_failure_status(
-        &mut status,
-        crate::proxy_core::api::ports::ForwardProviderFailureStatusInput {
-            provider_name: provider.name.as_str(),
-            error_message: &error_message,
-        },
-    );
-}
-
-pub(crate) async fn record_forward_provider_rectifier_retry_failure_runtime_source(
-    status: &RwLock<ProxyRuntimeStatus>,
-    provider: &Provider,
-    kind: ForwarderRectifierRetryKind,
-    error: &ProxyError,
-) {
-    let mut status = status.write().await;
-    let error_message = error.to_string();
-    crate::proxy_core::api::ports::record_forward_provider_rectifier_retry_failure_status(
-        &mut status,
-        crate::proxy_core::api::ports::ForwardProviderRectifierRetryFailureStatusInput {
-            provider_name: provider.name.as_str(),
-            rectifier_label: forwarder_rectifier_retry_failure_label(kind),
-            error_message: &error_message,
-        },
-    );
-}
-
-use crate::proxy_core::api::auth::{
-    claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
-};
-
-fn current_route_target_from_forward_attempt(
-    app_type: &str,
-    attempt: &ForwardAttempt,
-) -> CurrentRouteTarget {
-    let provider = attempt.provider();
-    let channel = attempt.channel();
-    crate::proxy_core::api::ports::current_route_target_from_input(
-        crate::proxy_core::api::ports::CurrentRouteTargetInput {
-            app_type,
-            provider_id: provider.id.as_str(),
-            provider_name: provider.name.as_str(),
-            channel: channel.map(|channel| {
-                crate::proxy_core::api::ports::CurrentRouteChannelTargetInput {
-                    channel_id: channel.channel_id.as_str(),
-                    channel_name: channel.channel_name.as_str(),
-                    interface_kind: channel.interface_kind.as_str(),
-                    public_model: channel.public_model.as_deref(),
-                    upstream_model: channel.upstream_model.as_deref(),
-                    pricing_model: channel.pricing_model.as_deref(),
-                }
-            }),
-        },
-    )
-}
-
-fn current_route_target_from_provider(
-    app_type: &str,
-    provider_id: &str,
-    provider_name: &str,
-) -> CurrentRouteTarget {
-    crate::proxy_core::api::ports::current_route_target_from_input(
-        crate::proxy_core::api::ports::CurrentRouteTargetInput {
-            app_type,
-            provider_id,
-            provider_name,
-            channel: None,
-        },
-    )
-}
-
-pub(crate) async fn set_active_route_target_runtime_source(
-    current_providers: &RwLock<HashMap<String, CurrentRouteTarget>>,
-    app_type: &str,
-    provider_id: &str,
-    provider_name: &str,
-) {
-    let mut current_providers = current_providers.write().await;
-    current_providers.insert(
-        app_type.to_string(),
-        current_route_target_from_provider(app_type, provider_id, provider_name),
-    );
-}
-
-pub(crate) fn emit_request_started_event_source(
-    events: &ProxyEventBus,
-    request_id: &str,
-    app_type: &str,
-) {
-    emit_proxy_core_event_bus_source(events, request_started_event(request_id, app_type));
-}
-
-pub(crate) fn emit_attempt_event_source(
-    events: &ProxyEventBus,
-    request_id: &str,
-    app_type: &str,
-    attempt: &ForwardAttempt,
-    phase: AttemptEventPhase,
-    error: Option<&str>,
-) {
-    emit_proxy_core_event_bus_source(
-        events,
-        attempt_event(
-            attempt_event_payload_input_from_forward_attempt(request_id, app_type, attempt, error),
-            attempt.is_channel(),
-            phase,
-        ),
-    );
-}
-
-pub(crate) async fn record_forward_active_route_target_runtime_source(
-    current_providers: &RwLock<HashMap<String, CurrentRouteTarget>>,
-    events: &ProxyEventBus,
-    request_id: &str,
-    app_type: &str,
-    attempt: &ForwardAttempt,
-) {
-    {
-        let mut current_providers = current_providers.write().await;
-        current_providers.insert(
-            app_type.to_string(),
-            current_route_target_from_forward_attempt(app_type, attempt),
-        );
-    }
-
-    emit_proxy_core_event_bus_source(
-        events,
-        route_selected_event(attempt_event_payload_input_from_forward_attempt(
-            request_id, app_type, attempt, None,
-        )),
-    );
-}
 
 pub(crate) async fn allow_forward_attempt_runtime_source(
     router: &ProviderRouter,
@@ -647,32 +424,6 @@ use crate::proxy_core::api::ports::{ChannelAttemptResult, ProviderAttemptResult}
 use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
 
-fn attempt_event_payload_input_from_forward_attempt<'a>(
-    request_id: &'a str,
-    app_type: &'a str,
-    attempt: &'a ForwardAttempt,
-    error: Option<&'a str>,
-) -> AttemptEventPayloadInput<'a> {
-    let provider = attempt.provider();
-    let channel = attempt.channel().map(|channel| AttemptEventChannel {
-        channel_id: channel.channel_id.as_str(),
-        channel_name: channel.channel_name.as_str(),
-        interface_kind: channel.interface_kind.as_str(),
-        public_model: channel.public_model.as_deref(),
-        upstream_model: channel.upstream_model.as_deref(),
-        pricing_model: channel.pricing_model.as_deref(),
-    });
-
-    AttemptEventPayloadInput {
-        request_id,
-        app_type,
-        provider_id: provider.id.as_str(),
-        provider_name: provider.name.as_str(),
-        channel,
-        error,
-    }
-}
-
 use crate::proxy_core::api::domain::{
     provider_account_ref, provider_metadata_from_input, unsupported_app_kind_config_error,
 };
@@ -756,10 +507,6 @@ use crate::proxy_core::api::auth::{
 use crate::proxy_core::api::config::{
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
 };
-use crate::proxy_core::api::events::{
-    attempt_event, request_started_event, route_selected_event, AttemptEventChannel,
-    AttemptEventPayloadInput, AttemptEventPhase, ProxyCoreEvent,
-};
 use crate::proxy_core::api::management::channel_not_found_error;
 use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogSource,
@@ -787,7 +534,7 @@ use crate::proxy_core::api::transport::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
     forwarder_all_providers_circuit_open_log_line, forwarder_failure_log_line,
-    forwarder_no_providers_configured_log_line, forwarder_rectifier_retry_failure_label,
+    forwarder_no_providers_configured_log_line,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
 };
@@ -799,29 +546,6 @@ use crate::proxy_core::api::transport::{
     ProxyResult,
 };
 use crate::proxy_core::api::usage::{ModelPricing, UsageRecord};
-
-struct ProxyEventBusMessage {
-    event_name: String,
-    payload: Value,
-}
-
-fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEventBusMessage {
-    ProxyEventBusMessage {
-        event_name: event.event_type.event_name(),
-        payload: event.into_event_payload(),
-    }
-}
-
-fn emit_proxy_core_event(event: ProxyCoreEvent, mut emit: impl FnMut(String, Value)) {
-    let message = proxy_core_event_to_bus_message(event);
-    emit(message.event_name, message.payload);
-}
-
-fn emit_proxy_core_event_bus_source(events: &ProxyEventBus, event: ProxyCoreEvent) {
-    emit_proxy_core_event(event, |event_name, payload| {
-        events.emit(event_name, payload);
-    });
-}
 
 pub(crate) fn codex_provider_live_write_parts<'a>(
     settings: &'a Value,
@@ -3896,6 +3620,7 @@ mod tests {
         ForwardErrorUsageContext, NonStreamingResponseUsageContext, StreamingResponseUsageContext,
         TransformedResponseUsageContext, TransformedStreamingResponseUsageContext,
     };
+    use crate::proxy::events::ProxyEventBus;
     use crate::proxy::host::cc_switch::database_channel_source::{
         channel_route_records_from_sources, channel_spec_from_source, proxy_channel_record_to_core,
         proxy_channel_record_to_core_spec,
@@ -3931,7 +3656,9 @@ mod tests {
         upstream_proxy_error_response_body, ProxyCoreError, ProxyErrorStatusKind,
     };
     use crate::proxy_core::api::events::{
-        server_started_event, server_stopped_event, ProxyEventEnvelope,
+        attempt_event, request_started_event, route_selected_event, server_started_event,
+        server_stopped_event, AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase,
+        ProxyCoreEvent, ProxyEventEnvelope,
     };
     use crate::proxy_core::api::management::{
         ChannelKeyRuntimeCandidate, ChannelTestProbeRequest, ProxyChannelModelWriteRequest,
@@ -3939,9 +3666,10 @@ mod tests {
     };
     use crate::proxy_core::api::model_catalog::{CopilotModel, DEFAULT_CODEX_MODEL_CONTEXT_WINDOW};
     use crate::proxy_core::api::ports::{
-        codex_restored_live_settings_parts, gemini_env_json_from_map,
-        gemini_env_string_map_from_settings, gemini_live_config_object_from_settings,
-        GeminiLiveConfigIssue, ProxyConfig,
+        codex_restored_live_settings_parts, current_route_target_from_input,
+        gemini_env_json_from_map, gemini_env_string_map_from_settings,
+        gemini_live_config_object_from_settings, CurrentRouteTarget, CurrentRouteTargetInput,
+        GeminiLiveConfigIssue, ProxyConfig, ProxyRuntimeStatus,
     };
     use crate::proxy_core::api::routing::{
         apply_route_candidate_circuit_availability, resolve_channel_route,
@@ -3979,6 +3707,62 @@ mod tests {
     };
     use crate::settings::CustomEndpoint;
     use indexmap::IndexMap;
+
+    struct ProxyEventBusMessage {
+        event_name: String,
+        payload: Value,
+    }
+
+    fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEventBusMessage {
+        ProxyEventBusMessage {
+            event_name: event.event_type.event_name(),
+            payload: event.into_event_payload(),
+        }
+    }
+
+    fn emit_proxy_core_event(event: ProxyCoreEvent, mut emit: impl FnMut(String, Value)) {
+        let message = proxy_core_event_to_bus_message(event);
+        emit(message.event_name, message.payload);
+    }
+
+    fn current_route_target_from_provider(
+        app_type: &str,
+        provider_id: &str,
+        provider_name: &str,
+    ) -> CurrentRouteTarget {
+        current_route_target_from_input(CurrentRouteTargetInput {
+            app_type,
+            provider_id,
+            provider_name,
+            channel: None,
+        })
+    }
+
+    fn attempt_event_payload_input_from_forward_attempt<'a>(
+        request_id: &'a str,
+        app_type: &'a str,
+        attempt: &'a ForwardAttempt,
+        error: Option<&'a str>,
+    ) -> AttemptEventPayloadInput<'a> {
+        let provider = attempt.provider();
+        let channel = attempt.channel().map(|channel| AttemptEventChannel {
+            channel_id: channel.channel_id.as_str(),
+            channel_name: channel.channel_name.as_str(),
+            interface_kind: channel.interface_kind.as_str(),
+            public_model: channel.public_model.as_deref(),
+            upstream_model: channel.upstream_model.as_deref(),
+            pricing_model: channel.pricing_model.as_deref(),
+        });
+
+        AttemptEventPayloadInput {
+            request_id,
+            app_type,
+            provider_id: provider.id.as_str(),
+            provider_name: provider.name.as_str(),
+            channel,
+            error,
+        }
+    }
 
     fn live_takeover_app_types() -> [AppType; 3] {
         live_takeover_app_kinds().map(|app| {

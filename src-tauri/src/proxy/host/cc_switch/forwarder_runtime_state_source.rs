@@ -8,27 +8,31 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::route_attempt::ForwardAttempt;
-use crate::proxy_core::api::events::AttemptEventPhase;
-use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
+use crate::proxy_core::api::events::{
+    attempt_event, request_started_event, route_selected_event, AttemptEventChannel,
+    AttemptEventPayloadInput, AttemptEventPhase, ProxyCoreEvent,
+};
+use crate::proxy_core::api::ports::{
+    current_route_target_from_input, record_active_connection_acquired_status,
+    record_active_connection_released_status, record_forward_current_provider_status,
+    record_forward_failure_status, record_forward_provider_failure_status,
+    record_forward_provider_rectifier_retry_failure_status, record_forward_request_started_status,
+    record_forward_success_status, CurrentRouteChannelTargetInput, CurrentRouteTarget,
+    CurrentRouteTargetInput, ForwardCurrentProviderStatusInput, ForwardFailureStatusInput,
+    ForwardProviderFailureStatusInput, ForwardProviderRectifierRetryFailureStatusInput,
+    ForwardRequestStartedStatusInput, ForwardSuccessStatusInput, ProxyRuntimeStatus,
+};
 use crate::proxy_core::api::transport::{
     categorize_forward_failure, forwarder_no_available_provider_status_message,
-    forwarder_terminal_failure_status_message, should_failover_after_rectifier_retry_failure,
-    ForwardFailureCategory, ForwarderRectifierRetryKind,
+    forwarder_rectifier_retry_failure_label, forwarder_terminal_failure_status_message,
+    should_failover_after_rectifier_retry_failure, ForwardFailureCategory,
+    ForwarderRectifierRetryKind,
 };
 use crate::proxy_core_adapter::{
-    emit_attempt_event_source, emit_request_started_event_source,
     forward_failure_kind_from_proxy_error, forwarder_rectifier_retry_failure_log_line,
-    forwarder_rectifier_retry_success_log_line,
-    record_forward_active_connection_acquired_runtime_source,
-    record_forward_active_connection_released_runtime_source,
-    record_forward_active_route_target_runtime_source,
-    record_forward_current_provider_runtime_source, record_forward_failure_runtime_source,
-    record_forward_provider_failure_runtime_source,
-    record_forward_provider_rectifier_retry_failure_runtime_source,
-    record_forward_request_started_runtime_source, record_forward_success_runtime_source,
-    retryable_forward_failure_log_line, terminal_forward_failure_log_line_for_error,
-    ForwarderFailoverSwitchTarget, ForwarderFailureDecision,
-    ForwarderRectifierRetryFailureDecision, ForwarderRuntimeStateSource,
+    forwarder_rectifier_retry_success_log_line, retryable_forward_failure_log_line,
+    terminal_forward_failure_log_line_for_error, ForwarderFailoverSwitchTarget,
+    ForwarderFailureDecision, ForwarderRectifierRetryFailureDecision, ForwarderRuntimeStateSource,
     ForwarderRuntimeStateSourceRef,
 };
 
@@ -55,6 +59,241 @@ impl CcSwitchForwarderRuntimeStateSource {
     pub(crate) fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>> {
         self.status.clone()
     }
+}
+
+fn record_forward_success_runtime_status(
+    status: &mut ProxyRuntimeStatus,
+    current_provider_id_at_start: &str,
+    provider_id: &str,
+) -> bool {
+    record_forward_success_status(
+        status,
+        ForwardSuccessStatusInput {
+            current_provider_id_at_start,
+            provider_id,
+        },
+    )
+    .should_switch_current_provider
+}
+
+fn record_forward_failure_runtime_status(status: &mut ProxyRuntimeStatus, error_message: &str) {
+    record_forward_failure_status(status, ForwardFailureStatusInput { error_message });
+}
+
+fn record_forward_request_started_runtime_status(status: &mut ProxyRuntimeStatus, timestamp: &str) {
+    record_forward_request_started_status(status, ForwardRequestStartedStatusInput { timestamp });
+}
+
+async fn record_forward_active_connection_acquired_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+) {
+    let mut status = status.write().await;
+    record_active_connection_acquired_status(&mut status);
+}
+
+async fn record_forward_active_connection_released_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+) {
+    let mut status = status.write().await;
+    record_active_connection_released_status(&mut status);
+}
+
+async fn record_forward_request_started_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    timestamp: &str,
+) {
+    let mut status = status.write().await;
+    record_forward_request_started_runtime_status(&mut status, timestamp);
+}
+
+async fn record_forward_current_provider_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    provider_id: &str,
+    provider_name: &str,
+) {
+    let mut status = status.write().await;
+    record_forward_current_provider_status(
+        &mut status,
+        ForwardCurrentProviderStatusInput {
+            provider_id,
+            provider_name,
+        },
+    );
+}
+
+async fn record_forward_success_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    current_provider_id_at_start: &str,
+    provider_id: &str,
+) -> bool {
+    let mut status = status.write().await;
+    record_forward_success_runtime_status(&mut status, current_provider_id_at_start, provider_id)
+}
+
+async fn record_forward_failure_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    error_message: &str,
+) {
+    let mut status = status.write().await;
+    record_forward_failure_runtime_status(&mut status, error_message);
+}
+
+async fn record_forward_provider_failure_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    provider: &Provider,
+    error: &ProxyError,
+) {
+    let mut status = status.write().await;
+    let error_message = error.to_string();
+    record_forward_provider_failure_status(
+        &mut status,
+        ForwardProviderFailureStatusInput {
+            provider_name: provider.name.as_str(),
+            error_message: &error_message,
+        },
+    );
+}
+
+async fn record_forward_provider_rectifier_retry_failure_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    provider: &Provider,
+    kind: ForwarderRectifierRetryKind,
+    error: &ProxyError,
+) {
+    let mut status = status.write().await;
+    let error_message = error.to_string();
+    record_forward_provider_rectifier_retry_failure_status(
+        &mut status,
+        ForwardProviderRectifierRetryFailureStatusInput {
+            provider_name: provider.name.as_str(),
+            rectifier_label: forwarder_rectifier_retry_failure_label(kind),
+            error_message: &error_message,
+        },
+    );
+}
+
+fn current_route_target_from_forward_attempt(
+    app_type: &str,
+    attempt: &ForwardAttempt,
+) -> CurrentRouteTarget {
+    let provider = attempt.provider();
+    let channel = attempt.channel();
+    current_route_target_from_input(CurrentRouteTargetInput {
+        app_type,
+        provider_id: provider.id.as_str(),
+        provider_name: provider.name.as_str(),
+        channel: channel.map(|channel| CurrentRouteChannelTargetInput {
+            channel_id: channel.channel_id.as_str(),
+            channel_name: channel.channel_name.as_str(),
+            interface_kind: channel.interface_kind.as_str(),
+            public_model: channel.public_model.as_deref(),
+            upstream_model: channel.upstream_model.as_deref(),
+            pricing_model: channel.pricing_model.as_deref(),
+        }),
+    })
+}
+
+fn current_route_target_from_provider(
+    app_type: &str,
+    provider_id: &str,
+    provider_name: &str,
+) -> CurrentRouteTarget {
+    current_route_target_from_input(CurrentRouteTargetInput {
+        app_type,
+        provider_id,
+        provider_name,
+        channel: None,
+    })
+}
+
+pub(crate) async fn set_active_route_target_runtime_source(
+    current_providers: &RwLock<HashMap<String, CurrentRouteTarget>>,
+    app_type: &str,
+    provider_id: &str,
+    provider_name: &str,
+) {
+    let mut current_providers = current_providers.write().await;
+    current_providers.insert(
+        app_type.to_string(),
+        current_route_target_from_provider(app_type, provider_id, provider_name),
+    );
+}
+
+fn emit_proxy_core_event(events: &ProxyEventBus, event: ProxyCoreEvent) {
+    let event_name = event.event_type.event_name();
+    let payload = event.into_event_payload();
+    events.emit(event_name, payload);
+}
+
+fn emit_request_started_event_source(events: &ProxyEventBus, request_id: &str, app_type: &str) {
+    emit_proxy_core_event(events, request_started_event(request_id, app_type));
+}
+
+fn attempt_event_payload_input_from_forward_attempt<'a>(
+    request_id: &'a str,
+    app_type: &'a str,
+    attempt: &'a ForwardAttempt,
+    error: Option<&'a str>,
+) -> AttemptEventPayloadInput<'a> {
+    let provider = attempt.provider();
+    let channel = attempt.channel().map(|channel| AttemptEventChannel {
+        channel_id: channel.channel_id.as_str(),
+        channel_name: channel.channel_name.as_str(),
+        interface_kind: channel.interface_kind.as_str(),
+        public_model: channel.public_model.as_deref(),
+        upstream_model: channel.upstream_model.as_deref(),
+        pricing_model: channel.pricing_model.as_deref(),
+    });
+
+    AttemptEventPayloadInput {
+        request_id,
+        app_type,
+        provider_id: provider.id.as_str(),
+        provider_name: provider.name.as_str(),
+        channel,
+        error,
+    }
+}
+
+fn emit_attempt_event_source(
+    events: &ProxyEventBus,
+    request_id: &str,
+    app_type: &str,
+    attempt: &ForwardAttempt,
+    phase: AttemptEventPhase,
+    error: Option<&str>,
+) {
+    emit_proxy_core_event(
+        events,
+        attempt_event(
+            attempt_event_payload_input_from_forward_attempt(request_id, app_type, attempt, error),
+            attempt.is_channel(),
+            phase,
+        ),
+    );
+}
+
+async fn record_forward_active_route_target_runtime_source(
+    current_providers: &RwLock<HashMap<String, CurrentRouteTarget>>,
+    events: &ProxyEventBus,
+    request_id: &str,
+    app_type: &str,
+    attempt: &ForwardAttempt,
+) {
+    {
+        let mut current_providers = current_providers.write().await;
+        current_providers.insert(
+            app_type.to_string(),
+            current_route_target_from_forward_attempt(app_type, attempt),
+        );
+    }
+
+    emit_proxy_core_event(
+        events,
+        route_selected_event(attempt_event_payload_input_from_forward_attempt(
+            request_id, app_type, attempt, None,
+        )),
+    );
 }
 
 impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {

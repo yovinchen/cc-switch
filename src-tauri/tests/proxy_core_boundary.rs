@@ -2324,8 +2324,8 @@ fn is_allowed_forwarder_runtime_state_core_import(relative: &str, code: &str) ->
     relative == "src/proxy/host/cc_switch/forwarder_runtime_state_source.rs"
         && matches!(
             code.trim(),
-            "use crate::proxy_core::api::events::AttemptEventPhase;"
-                | "use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};"
+            "use crate::proxy_core::api::events::{"
+                | "use crate::proxy_core::api::ports::{"
                 | "use crate::proxy_core::api::transport::{"
         )
 }
@@ -6368,6 +6368,10 @@ fn proxy_core_adapter_does_not_export_proxy_runtime_status_alias() {
         .expect("read proxy_core_adapter.rs");
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
+    let runtime_source = fs::read_to_string(
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_runtime_state_source.rs"),
+    )
+    .expect("read forwarder_runtime_state_source.rs");
     let port_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::ports::{")
         .skip(1)
@@ -6396,17 +6400,39 @@ fn proxy_core_adapter_does_not_export_proxy_runtime_status_alias() {
         );
     }
     assert!(
-        adapter_source.contains("use crate::proxy_core::api::ports::{")
-            && adapter_source.contains("ProxyRuntimeStatus"),
-        "proxy_core_adapter internals should import ProxyRuntimeStatus directly from proxy_core ports"
+        !adapter_source.contains("ProxyRuntimeStatus")
+            || adapter_source
+                .split("\n#[cfg(test)]\nmod tests")
+                .nth(1)
+                .unwrap_or_default()
+                .contains("ProxyRuntimeStatus"),
+        "proxy_core_adapter production internals should no longer import ProxyRuntimeStatus"
     );
     for helper in [
         "record_active_connection_acquired_status",
         "record_active_connection_released_status",
     ] {
         assert!(
-            adapter_source.contains(helper),
-            "proxy_core_adapter internals should call active connection status helper `{helper}` from core ports"
+            !adapter_source
+                .split("\n#[cfg(test)]\nmod tests")
+                .next()
+                .unwrap_or(&adapter_source)
+                .contains(helper),
+            "proxy_core_adapter production internals should not call active connection status helper `{helper}`"
+        );
+    }
+    assert!(
+        runtime_source.contains("ProxyRuntimeStatus")
+            && runtime_source.contains("use crate::proxy_core::api::ports::{"),
+        "default runtime state source should import ProxyRuntimeStatus directly from proxy_core ports"
+    );
+    for helper in [
+        "record_active_connection_acquired_status",
+        "record_active_connection_released_status",
+    ] {
+        assert!(
+            runtime_source.contains(helper),
+            "default runtime state source should call active connection status helper `{helper}` from core ports"
         );
     }
     assert!(
@@ -19408,14 +19434,14 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "pub(crate) fn terminal_forward_failure_log_line_for_error",
     );
     let provider_failure_runtime_source_slice = function_slice(
-        &adapter_source,
-        "pub(crate) async fn record_forward_provider_failure_runtime_source",
-        "pub(crate) async fn record_forward_provider_rectifier_retry_failure_runtime_source",
+        &runtime_source,
+        "async fn record_forward_provider_failure_runtime_source",
+        "async fn record_forward_provider_rectifier_retry_failure_runtime_source",
     );
     let provider_rectifier_failure_runtime_source_slice = function_slice(
-        &adapter_source,
-        "pub(crate) async fn record_forward_provider_rectifier_retry_failure_runtime_source",
-        "use crate::proxy_core::api::auth::{",
+        &runtime_source,
+        "async fn record_forward_provider_rectifier_retry_failure_runtime_source",
+        "fn current_route_target_from_forward_attempt",
     );
 
     assert!(
@@ -19429,9 +19455,14 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "default ForwarderRuntimeStateSource implementation must own status/current-provider/events runtime resources"
     );
     assert!(
-        runtime_source.contains("use crate::proxy_core::api::events::AttemptEventPhase;")
+        runtime_source.contains("use crate::proxy_core::api::events::{")
+            && runtime_source.contains("AttemptEventPhase")
+            && runtime_source.contains("ProxyCoreEvent")
             && runtime_source
-                .contains("use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};")
+                .contains("use crate::proxy_core::api::ports::{")
+            && runtime_source.contains("CurrentRouteTarget")
+            && runtime_source.contains("ProxyRuntimeStatus")
+            && runtime_source.contains("ForwardSuccessStatusInput")
             && runtime_source.contains("use crate::proxy_core::api::transport::{")
             && runtime_source.contains("categorize_forward_failure")
             && runtime_source.contains("forwarder_no_available_provider_status_message")

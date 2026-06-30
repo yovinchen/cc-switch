@@ -11,6 +11,7 @@ use crate::database::Database;
 use crate::proxy::error::ProxyError;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::claude_desktop_gateway_auth_source::get_or_create_claude_desktop_gateway_token_from_db_source;
+use crate::proxy::host::cc_switch::forwarder_runtime_state_source::set_active_route_target_runtime_source;
 use crate::proxy::host::cc_switch::proxy_server::{
     record_proxy_server_bound_runtime_source, record_proxy_server_started_info_runtime_source,
     record_proxy_server_stopped_runtime_event_source,
@@ -23,8 +24,7 @@ use crate::proxy_core::api::logging::srv as server_log_codes;
 use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo};
 use crate::proxy_core_adapter::{
     provider_circuit_breaker_stats_source, reset_provider_circuit_breaker_source,
-    set_active_route_target_runtime_source, update_all_circuit_breaker_configs_source,
-    update_app_circuit_breaker_config_source,
+    update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
 };
 use axum::{
     extract::DefaultBodyLimit,
