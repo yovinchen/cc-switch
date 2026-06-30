@@ -253,6 +253,10 @@ const FORBIDDEN_PROXY_SERVICE_OFFICIAL_WARNING_MARKERS: &[&str] = &[
     "should_emit_proxy_official_warning_for_provider(",
     "proxy_official_warning_event_message(",
 ];
+const FORBIDDEN_PROXY_SERVICE_OFFICIAL_WARNING_ADAPTER_MARKERS: &[&str] = &[
+    "pub(crate) fn proxy_official_warning_event_from_current_provider_db",
+    "fn proxy_official_warning_event_from_provider",
+];
 const FORBIDDEN_PROXY_SERVICE_CURRENT_PROVIDER_SOURCE_MARKERS: &[&str] = &[
     "get_effective_current_provider(&self.db, app_type)",
     ".get_provider_by_id(&current_id, app_type.as_str())",
@@ -2235,6 +2239,7 @@ fn is_allowed_live_takeover_runtime_core_import(relative: &str, code: &str) -> b
         && matches!(
             code.trim(),
             "use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};"
+                | "use crate::proxy_core::api::events::proxy_official_warning_event;"
                 | "use crate::proxy_core::api::ports::proxy_config_with_live_takeover_active;"
                 | "use crate::proxy_core::api::ports::{"
         )
@@ -7341,6 +7346,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn provider_switched_failover_enabled_event_message",
         "pub(crate) fn proxy_core_event_to_bus_message",
         "pub(crate) fn proxy_app_config_from_config_source_parts",
+        "pub(crate) fn proxy_official_warning_event_from_current_provider_db",
         "pub(crate) fn proxy_official_warning_event_from_provider",
         "pub(crate) fn select_current_provider_ids_from_router_provider_id_source",
         "pub(crate) fn provider_is_copilot_prompt_cache_provider",
@@ -15124,14 +15130,21 @@ fn production_proxy_service_delegates_live_takeover_app_catalog_to_adapter() {
 }
 
 #[test]
-fn production_proxy_service_delegates_official_warning_source_to_adapter() {
+fn production_proxy_service_owns_official_warning_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
         "fn read_claude_live",
+    );
+    let helper = function_slice(
+        &source,
+        "fn proxy_official_warning_event_from_current_provider_host_db",
+        "async fn clear_legacy_live_takeover_active_flag_from_host_db",
     );
 
     let mut violations = Vec::new();
@@ -15150,9 +15163,37 @@ fn production_proxy_service_delegates_official_warning_source_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService::set_takeover_for_app must delegate official-provider warning source reads and projection to proxy_core_adapter:\n{}",
+        "ProxyService::set_takeover_for_app must keep official-provider warning source reads and projection in its host helper:\n{}",
         violations.join("\n")
     );
+
+    assert!(
+        function
+            .contains("proxy_official_warning_event_from_current_provider_host_db(&self.db, &app)"),
+        "ProxyService::set_takeover_for_app must call the host-owned official warning helper"
+    );
+
+    for marker in [
+        "fn proxy_official_warning_event_from_current_provider_host_db(",
+        "crate::settings::get_effective_current_provider(db, app_type)",
+        ".get_provider_by_id(&current_id, app_type.as_str())",
+        "should_emit_proxy_official_warning_for_provider_category(provider.category.as_deref())",
+        "proxy_official_warning_event(app_type.as_str(), &provider.name)",
+        "event.event_type.event_name()",
+        "event.into_event_payload()",
+    ] {
+        assert!(
+            helper.contains(marker),
+            "host official warning helper must contain `{marker}`"
+        );
+    }
+
+    for marker in FORBIDDEN_PROXY_SERVICE_OFFICIAL_WARNING_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter must not retain official warning DB/helper wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]

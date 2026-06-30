@@ -968,7 +968,6 @@ use crate::proxy_core::api::ports::{
     provider_uses_common_config_from_parts as core_provider_uses_common_config_from_parts,
     remove_claude_common_config_from_settings as core_remove_claude_common_config_from_settings,
     remove_gemini_common_config_from_settings as core_remove_gemini_common_config_from_settings,
-    should_emit_proxy_official_warning_for_provider_category as core_should_emit_proxy_official_warning_for_provider_category,
     should_reapply_codex_official_live_for_provider_category as core_should_reapply_codex_official_live_for_provider_category,
     CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue,
     OpenClawLiveWriteActionDecision as CoreOpenClawLiveWriteActionDecision,
@@ -1457,9 +1456,9 @@ use crate::proxy_core::api::config::{
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
 };
 use crate::proxy_core::api::events::{
-    attempt_event, proxy_official_warning_event, request_started_event, route_selected_event,
-    server_started_event, server_stopped_event, AttemptEventChannel, AttemptEventPayloadInput,
-    AttemptEventPhase, ProxyCoreEvent,
+    attempt_event, request_started_event, route_selected_event, server_started_event,
+    server_stopped_event, AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase,
+    ProxyCoreEvent,
 };
 use crate::proxy_core::api::management::channel_not_found_error;
 use crate::proxy_core::api::model_catalog::{
@@ -1520,35 +1519,6 @@ pub(crate) fn emit_proxy_server_started_event_source(
 
 pub(crate) fn emit_proxy_server_stopped_event_source(events: &ProxyEventBus) {
     emit_proxy_core_event_bus_source(events, server_stopped_event());
-}
-
-fn proxy_official_warning_event_from_provider(
-    app_type: &str,
-    provider: Option<&Provider>,
-) -> Option<ProxyEventBusMessage> {
-    let provider = provider?;
-    if !should_emit_proxy_official_warning_for_provider(provider) {
-        return None;
-    }
-
-    Some(proxy_core_event_to_bus_message(
-        proxy_official_warning_event(app_type, &provider.name),
-    ))
-}
-
-pub(crate) fn proxy_official_warning_event_from_current_provider_db(
-    db: &Database,
-    app_type: &AppType,
-) -> Option<ProxyEventBusMessage> {
-    let current_id = crate::settings::get_effective_current_provider(db, app_type)
-        .ok()
-        .flatten()?;
-    let provider = db
-        .get_provider_by_id(&current_id, app_type.as_str())
-        .ok()
-        .flatten()?;
-
-    proxy_official_warning_event_from_provider(app_type.as_str(), Some(&provider))
 }
 
 #[derive(Debug, Clone)]
@@ -3361,10 +3331,6 @@ pub(crate) fn normalize_provider_common_config_for_storage(
     };
 
     remove_common_config_from_settings(app_type, &provider.settings_config, snippet).map(Some)
-}
-
-pub(crate) fn should_emit_proxy_official_warning_for_provider(provider: &Provider) -> bool {
-    core_should_emit_proxy_official_warning_for_provider_category(provider.category.as_deref())
 }
 
 pub(crate) fn should_reapply_codex_official_live_for_provider(provider: &Provider) -> bool {
@@ -9559,10 +9525,12 @@ base_url = "https://api.openai.com/v1"
             crate::proxy_core::api::events::SERVER_STOPPED_EVENT,
             "server_stopped"
         );
-        let official_warning = proxy_core_event_to_bus_message(proxy_official_warning_event(
-            "claude",
-            "Official Claude",
-        ));
+        let official_warning = proxy_core_event_to_bus_message(
+            crate::proxy_core::api::events::proxy_official_warning_event(
+                "claude",
+                "Official Claude",
+            ),
+        );
         assert_eq!(official_warning.event_name, "proxy-official-warning");
         assert_eq!(
             official_warning.payload,
@@ -9583,18 +9551,22 @@ base_url = "https://api.openai.com/v1"
                 provider.category.as_deref()
             )
         );
-        assert!(should_emit_proxy_official_warning_for_provider(&provider));
+        assert!(
+            crate::proxy_core::api::ports::should_emit_proxy_official_warning_for_provider_category(
+                provider.category.as_deref()
+            )
+        );
         assert!(should_reapply_codex_official_live_for_provider(&provider));
-        let official_warning_from_provider =
-            proxy_official_warning_event_from_provider("codex", Some(&provider))
-                .expect("official warning from provider");
+        let official_warning_from_core = proxy_core_event_to_bus_message(
+            crate::proxy_core::api::events::proxy_official_warning_event("codex", &provider.name),
+        );
         assert_eq!(
-            official_warning_from_provider.event_name,
+            official_warning_from_core.event_name,
             "proxy-official-warning"
         );
-        assert_eq!(official_warning_from_provider.payload["appType"], "codex");
+        assert_eq!(official_warning_from_core.payload["appType"], "codex");
         assert_eq!(
-            official_warning_from_provider.payload["providerName"],
+            official_warning_from_core.payload["providerName"],
             "Official Codex"
         );
         provider.category = Some("custom".to_string());
@@ -9603,19 +9575,24 @@ base_url = "https://api.openai.com/v1"
                 provider.category.as_deref()
             )
         );
-        assert!(!should_emit_proxy_official_warning_for_provider(&provider));
+        assert!(
+            !crate::proxy_core::api::ports::should_emit_proxy_official_warning_for_provider_category(
+                provider.category.as_deref()
+            )
+        );
         assert!(!should_reapply_codex_official_live_for_provider(&provider));
-        assert!(proxy_official_warning_event_from_provider("codex", Some(&provider)).is_none());
         provider.category = None;
         assert!(
             !crate::proxy_core::api::ports::provider_category_is_official(
                 provider.category.as_deref()
             )
         );
-        assert!(!should_emit_proxy_official_warning_for_provider(&provider));
+        assert!(
+            !crate::proxy_core::api::ports::should_emit_proxy_official_warning_for_provider_category(
+                provider.category.as_deref()
+            )
+        );
         assert!(!should_reapply_codex_official_live_for_provider(&provider));
-        assert!(proxy_official_warning_event_from_provider("codex", Some(&provider)).is_none());
-        assert!(proxy_official_warning_event_from_provider("codex", None).is_none());
         let provider_switched = proxy_core_event_to_bus_message(
             crate::proxy_core::api::events::provider_switched_failover_event(
                 "claude",

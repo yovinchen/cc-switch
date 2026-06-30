@@ -10,13 +10,14 @@ use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};
 use crate::proxy_core::api::domain::AppKind;
+use crate::proxy_core::api::events::proxy_official_warning_event;
 use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled, apply_gemini_takeover_env_fields, is_local_proxy_url,
     live_takeover_app_kinds, live_token_sync_app_label, proxy_live_config_owned_by_takeover,
     proxy_runtime_status_stopped, remove_claude_takeover_env_fields_if_present,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present, sanitize_claude_settings_for_live,
-    LiveTokenProviderSettingsIssue,
+    should_emit_proxy_official_warning_for_provider_category, LiveTokenProviderSettingsIssue,
 };
 use crate::proxy_core::api::ports::{
     apply_claude_takeover_fields_with_policy, gemini_live_backup_from_effective_settings,
@@ -45,11 +46,10 @@ use crate::proxy_core_adapter::{
     proxy_hot_switch_should_refresh_codex_live_from_backup,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_hot_switch_should_sync_codex_live_while_proxy_active,
-    proxy_hot_switch_target_state_from_db, proxy_official_warning_event_from_current_provider_db,
-    proxy_server_from_runtime_config, remove_codex_takeover_config_placeholders_if_present,
-    ssot_live_restore_provider_from_db, sync_provider_settings_with_live_token,
-    write_ssot_live_restore_provider_with_common_config, CodexLiveWriteProjection,
-    CodexTakeoverAuthPolicy,
+    proxy_hot_switch_target_state_from_db, proxy_server_from_runtime_config,
+    remove_codex_takeover_config_placeholders_if_present, ssot_live_restore_provider_from_db,
+    sync_provider_settings_with_live_token, write_ssot_live_restore_provider_with_common_config,
+    CodexLiveWriteProjection, CodexTakeoverAuthPolicy,
 };
 #[cfg(test)]
 use serde_json::Map;
@@ -61,6 +61,11 @@ use tokio::sync::RwLock;
 
 /// 用于接管 Live 配置时的占位符（避免客户端提示缺少 key，同时不泄露真实 Token）
 const PROXY_TOKEN_PLACEHOLDER: &str = "PROXY_MANAGED";
+
+struct ProxyEventMessage {
+    event_name: String,
+    payload: Value,
+}
 
 fn live_takeover_app_types() -> [AppType; 3] {
     live_takeover_app_kinds().map(|app| {
@@ -351,6 +356,29 @@ fn update_live_token_sync_provider_settings_in_host_db(
     } else {
         log::info!("已同步 {app_label} Token 到数据库 (provider: {provider_id})");
     }
+}
+
+fn proxy_official_warning_event_from_current_provider_host_db(
+    db: &Database,
+    app_type: &AppType,
+) -> Option<ProxyEventMessage> {
+    let current_id = crate::settings::get_effective_current_provider(db, app_type)
+        .ok()
+        .flatten()?;
+    let provider = db
+        .get_provider_by_id(&current_id, app_type.as_str())
+        .ok()
+        .flatten()?;
+
+    if !should_emit_proxy_official_warning_for_provider_category(provider.category.as_deref()) {
+        return None;
+    }
+
+    let event = proxy_official_warning_event(app_type.as_str(), &provider.name);
+    Some(ProxyEventMessage {
+        event_name: event.event_type.event_name(),
+        payload: event.into_event_payload(),
+    })
 }
 
 async fn clear_legacy_live_takeover_active_flag_from_host_db(db: &Database) {
@@ -755,7 +783,7 @@ impl ProxyService {
 
             // 8) Warn if the current provider is official (risk of account ban via proxy)
             if let Some(message) =
-                proxy_official_warning_event_from_current_provider_db(&self.db, &app)
+                proxy_official_warning_event_from_current_provider_host_db(&self.db, &app)
             {
                 if let Some(handle) = self.app_handle.read().await.as_ref() {
                     let _ = handle.emit(&message.event_name, message.payload);
