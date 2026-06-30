@@ -168,7 +168,7 @@ use crate::proxy_core::api::ports::{
     CopilotOptimizerConfig, LiveTokenProviderSettingsIssue, OptimizerConfig,
     ProviderSettingsValidationIssue, ProviderSettingsValidationParts, RectifierConfig,
 };
-pub(crate) fn record_forward_success_status(
+fn record_forward_success_status(
     status: &mut ProxyRuntimeStatus,
     current_provider_id_at_start: &str,
     provider_id: &str,
@@ -183,17 +183,14 @@ pub(crate) fn record_forward_success_status(
     .should_switch_current_provider
 }
 
-pub(crate) fn record_forward_failure_status(status: &mut ProxyRuntimeStatus, error_message: &str) {
+fn record_forward_failure_status(status: &mut ProxyRuntimeStatus, error_message: &str) {
     crate::proxy_core::api::ports::record_forward_failure_status(
         status,
         crate::proxy_core::api::ports::ForwardFailureStatusInput { error_message },
     );
 }
 
-pub(crate) fn record_forward_request_started_status(
-    status: &mut ProxyRuntimeStatus,
-    timestamp: &str,
-) {
+fn record_forward_request_started_status(status: &mut ProxyRuntimeStatus, timestamp: &str) {
     crate::proxy_core::api::ports::record_forward_request_started_status(
         status,
         crate::proxy_core::api::ports::ForwardRequestStartedStatusInput { timestamp },
@@ -288,11 +285,7 @@ pub(crate) async fn record_forward_provider_rectifier_retry_failure_runtime_sour
     );
 }
 
-pub(crate) fn record_proxy_server_started_status(
-    status: &mut ProxyRuntimeStatus,
-    address: &str,
-    port: u16,
-) {
+fn record_proxy_server_started_status(status: &mut ProxyRuntimeStatus, address: &str, port: u16) {
     crate::proxy_core::api::ports::record_proxy_server_started_status(
         status,
         crate::proxy_core::api::ports::ProxyServerStartedStatusInput { address, port },
@@ -379,7 +372,7 @@ pub(crate) fn proxy_server_from_runtime_config(
     ProxyServer::from_runtime_state(config, state)
 }
 
-pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
+fn record_proxy_server_listen_port_runtime_source(port: u16) {
     crate::proxy::host::cc_switch::global_http_client::set_proxy_port(port);
 }
 
@@ -421,7 +414,7 @@ pub(crate) fn transform_codex_chat_sse_with_history(
     record_codex_chat_response_sse_history(responses_stream, history)
 }
 
-pub(crate) fn current_route_target_from_forward_attempt(
+fn current_route_target_from_forward_attempt(
     app_type: &str,
     attempt: &ForwardAttempt,
 ) -> CurrentRouteTarget {
@@ -446,7 +439,7 @@ pub(crate) fn current_route_target_from_forward_attempt(
     )
 }
 
-pub(crate) fn current_route_target_from_provider(
+fn current_route_target_from_provider(
     app_type: &str,
     provider_id: &str,
     provider_name: &str,

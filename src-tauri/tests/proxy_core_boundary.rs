@@ -7405,7 +7405,14 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn provider_is_copilot_prompt_cache_provider",
         "pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat",
         "pub(crate) fn app_error_from_provider_selection_failure",
+        "pub(crate) fn current_route_target_from_forward_attempt",
+        "pub(crate) fn current_route_target_from_provider",
         "pub(crate) fn provider_selection_failure_from_app_error",
+        "pub(crate) fn record_forward_failure_status",
+        "pub(crate) fn record_forward_request_started_status",
+        "pub(crate) fn record_forward_success_status",
+        "pub(crate) fn record_proxy_server_listen_port_runtime_source",
+        "pub(crate) fn record_proxy_server_started_status",
         "pub(crate) fn auto_failover_toggle_plan_from_sources",
         "pub(crate) fn failover_switch_app_enabled_from_config_result",
         "pub(crate) async fn failover_switch_app_enabled_from_db",
@@ -19125,7 +19132,7 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     let provider_rectifier_failure_runtime_source_slice = function_slice(
         &adapter_source,
         "pub(crate) async fn record_forward_provider_rectifier_retry_failure_runtime_source",
-        "pub(crate) fn record_proxy_server_started_status",
+        "fn record_proxy_server_started_status",
     );
 
     assert!(
