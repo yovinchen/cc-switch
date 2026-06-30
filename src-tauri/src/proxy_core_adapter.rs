@@ -875,12 +875,6 @@ pub(crate) async fn save_live_backup_value_in_db(
         .map_err(|e| format!("备份 {error_label} 配置失败: {e}"))
 }
 
-pub(crate) async fn clear_all_provider_health_in_db(db: &Database) -> Result<(), String> {
-    db.clear_all_provider_health()
-        .await
-        .map_err(|e| format!("重置健康状态失败: {e}"))
-}
-
 pub(crate) async fn live_backup_value_for_restore_from_db(
     db: &Database,
     app_type: &AppType,

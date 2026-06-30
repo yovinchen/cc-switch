@@ -31,16 +31,15 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
-    apply_codex_unified_session_bucket_for_provider, clear_all_provider_health_in_db,
-    codex_backup_projection_error_message, codex_live_write_projection,
-    codex_preserved_auth_live_config_text_for_configured_policy, codex_provider_live_write_parts,
-    current_provider_for_app_from_db, disable_global_proxy_best_effort_in_db,
-    enable_global_proxy_in_db, existing_live_backup_value_for_update_from_db,
-    live_backup_config_for_simple_restore_from_db, live_backup_snapshot_from_live_config,
-    live_backup_value_for_restore_from_db, live_config_has_proxy_placeholder_for_app,
-    live_takeover_config_matches_proxy_for_app, live_token_sync_provider_from_db,
-    persist_ephemeral_listen_port_if_needed_in_db, persist_hot_switch_current_provider_sources,
-    preserve_codex_mcp_servers_from_existing_config,
+    apply_codex_unified_session_bucket_for_provider, codex_backup_projection_error_message,
+    codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
+    codex_provider_live_write_parts, current_provider_for_app_from_db,
+    disable_global_proxy_best_effort_in_db, enable_global_proxy_in_db,
+    existing_live_backup_value_for_update_from_db, live_backup_config_for_simple_restore_from_db,
+    live_backup_snapshot_from_live_config, live_backup_value_for_restore_from_db,
+    live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
+    live_token_sync_provider_from_db, persist_ephemeral_listen_port_if_needed_in_db,
+    persist_hot_switch_current_provider_sources, preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     provider_effective_settings_with_common_config_from_db, proxy_config_from_db,
     proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -176,6 +175,12 @@ async fn delete_all_live_backups_from_host_db(db: &Database) -> Result<(), Strin
     db.delete_all_live_backups()
         .await
         .map_err(|e| format!("删除备份失败: {e}"))
+}
+
+async fn clear_all_provider_health_from_host_db(db: &Database) -> Result<(), String> {
+    db.clear_all_provider_health()
+        .await
+        .map_err(|e| format!("重置健康状态失败: {e}"))
 }
 
 async fn clear_provider_health_for_app_from_host_db(
@@ -708,7 +713,7 @@ impl ProxyService {
         delete_all_live_backups_from_host_db(&self.db).await?;
 
         // 6. 重置健康状态（让健康徽章恢复为正常）
-        clear_all_provider_health_in_db(&self.db).await?;
+        clear_all_provider_health_from_host_db(&self.db).await?;
 
         // 注意：不清除故障转移队列和开关状态，保留供下次开启代理时使用
         log::info!("代理已停止，Live 配置已恢复");
@@ -735,7 +740,7 @@ impl ProxyService {
         delete_all_live_backups_from_host_db(&self.db).await?;
 
         // 5. 重置健康状态
-        clear_all_provider_health_in_db(&self.db).await?;
+        clear_all_provider_health_from_host_db(&self.db).await?;
 
         log::info!("代理已停止，Live 配置已恢复（保留代理状态，下次启动将自动恢复）");
         Ok(())

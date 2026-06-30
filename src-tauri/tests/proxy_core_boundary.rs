@@ -389,8 +389,10 @@ const FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_MARKERS: &[&str] = &[
     "删除备份失败",
     "重置健康状态失败",
 ];
-const FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_ADAPTER_MARKERS: &[&str] =
-    &["pub(crate) async fn clear_legacy_live_takeover_active_flag_strict_in_db"];
+const FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_ADAPTER_MARKERS: &[&str] = &[
+    "pub(crate) async fn clear_legacy_live_takeover_active_flag_strict_in_db",
+    "pub(crate) async fn clear_all_provider_health_in_db",
+];
 const FORBIDDEN_PROXY_SERVICE_GLOBAL_PROXY_ENABLED_MARKERS: &[&str] = &[
     ".get_global_proxy_config(",
     ".update_global_proxy_config(",
@@ -7326,6 +7328,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) async fn cleanup_all_live_backups_best_effort_in_db",
         "pub(crate) async fn delete_all_live_backups_best_effort_in_db",
         "pub(crate) async fn delete_all_live_backups_in_db",
+        "pub(crate) async fn clear_all_provider_health_in_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) async fn delete_live_backup_best_effort_in_db",
         "pub(crate) async fn delete_live_backup_in_db",
@@ -15953,10 +15956,22 @@ fn production_proxy_service_owns_stop_restore_active_flag_cleanup_source() {
         "ProxyService stop restore paths should delete all Live backups through the strict host-local helper"
     );
     assert!(
+        functions
+            .iter()
+            .all(|(_, function)| function.contains("clear_all_provider_health_from_host_db(&self.db).await?")),
+        "ProxyService stop restore paths should reset provider health through the host-local helper"
+    );
+    assert!(
         source.contains("async fn clear_legacy_live_takeover_active_flag_strict_from_host_db(")
             && source.contains(".set_live_takeover_active(false)")
             && source.contains("清除接管状态失败"),
         "ProxyService should own strict stop-restore legacy active flag cleanup source"
+    );
+    assert!(
+        source.contains("async fn clear_all_provider_health_from_host_db(")
+            && source.contains("db.clear_all_provider_health()")
+            && source.contains("重置健康状态失败"),
+        "ProxyService should own all-provider health reset source and error projection"
     );
 
     for marker in FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_ADAPTER_MARKERS {
