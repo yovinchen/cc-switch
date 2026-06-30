@@ -19,7 +19,8 @@ use crate::proxy_core::api::ports::{
     LiveTokenProviderSettingsIssue,
 };
 use crate::proxy_core::api::ports::{
-    apply_claude_takeover_fields_with_policy, ClaudeTakeoverAuthPolicy,
+    apply_claude_takeover_fields_with_policy, gemini_live_backup_from_effective_settings,
+    ClaudeTakeoverAuthPolicy,
 };
 use crate::proxy_core::api::ports::{
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
@@ -37,11 +38,9 @@ use crate::proxy_core_adapter::{
     apply_codex_unified_session_bucket_for_provider, codex_backup_projection_error_message,
     codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
     codex_provider_live_write_parts, current_provider_for_app_from_db,
-    existing_live_backup_value_for_update_from_db, live_backup_config_for_simple_restore_from_db,
-    live_backup_snapshot_from_live_config, live_backup_value_for_restore_from_db,
-    live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
-    live_token_sync_provider_from_db, persist_hot_switch_current_provider_sources,
-    preserve_codex_mcp_servers_from_existing_config,
+    live_backup_snapshot_from_live_config, live_config_has_proxy_placeholder_for_app,
+    live_takeover_config_matches_proxy_for_app, live_token_sync_provider_from_db,
+    persist_hot_switch_current_provider_sources, preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     provider_effective_settings_with_common_config_from_db,
     proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -49,8 +48,7 @@ use crate::proxy_core_adapter::{
     proxy_hot_switch_should_sync_codex_live_while_proxy_active,
     proxy_hot_switch_target_state_from_db, proxy_official_warning_event_from_current_provider_db,
     proxy_server_from_runtime_config, remove_codex_takeover_config_placeholders_if_present,
-    require_current_provider_for_app_from_db, save_live_backup_value_in_db,
-    save_provider_live_backup_from_effective_settings_in_db, ssot_live_restore_provider_from_db,
+    require_current_provider_for_app_from_db, ssot_live_restore_provider_from_db,
     sync_provider_settings_with_live_token, update_live_token_sync_provider_settings_in_db,
     write_ssot_live_restore_provider_with_common_config, CodexLiveWriteProjection,
     CodexTakeoverAuthPolicy,
@@ -204,6 +202,102 @@ async fn update_proxy_config_preserving_live_takeover_active_in_host_db(
         .await
         .map_err(|e| format!("保存代理配置失败: {e}"))?;
     Ok((previous, new_config))
+}
+
+async fn save_live_backup_value_in_host_db(
+    db: &Database,
+    app_type: &str,
+    backup_value: &Value,
+    error_label: &str,
+) -> Result<(), String> {
+    let json_str = serde_json::to_string(backup_value)
+        .map_err(|e| format!("序列化 {error_label} 配置失败: {e}"))?;
+    db.save_live_backup(app_type, &json_str)
+        .await
+        .map_err(|e| format!("备份 {error_label} 配置失败: {e}"))
+}
+
+async fn live_backup_value_for_restore_from_host_db(
+    db: &Database,
+    app_type: &AppType,
+) -> Result<Option<Value>, String> {
+    let app_type_str = app_type.as_str();
+    let backup = db
+        .get_live_backup(app_type_str)
+        .await
+        .map_err(|e| format!("获取 {app_type_str} Live 备份失败: {e}"))?;
+
+    let Some(backup) = backup else {
+        return Ok(None);
+    };
+
+    serde_json::from_str::<Value>(&backup.original_config)
+        .map(Some)
+        .map_err(|e| format!("解析 {app_type_str} 备份失败: {e}"))
+}
+
+async fn existing_live_backup_value_for_update_from_host_db(
+    db: &Database,
+    app_type: &str,
+) -> Result<Option<Value>, String> {
+    let backup = db
+        .get_live_backup(app_type)
+        .await
+        .map_err(|e| format!("读取 {app_type} 现有备份失败: {e}"))?;
+
+    let Some(backup) = backup else {
+        return Ok(None);
+    };
+
+    serde_json::from_str::<Value>(&backup.original_config)
+        .map(Some)
+        .map_err(|e| format!("解析 {app_type} 现有备份失败: {e}"))
+}
+
+async fn save_provider_live_backup_from_effective_settings_in_host_db(
+    db: &Database,
+    app_type: &AppType,
+    effective_settings: &Value,
+) -> Result<(), String> {
+    let app_type_str = app_type.as_str();
+    let backup_json = match app_type {
+        AppType::Claude => serde_json::to_string(effective_settings)
+            .map_err(|e| format!("序列化 Claude 配置失败: {e}"))?,
+        AppType::Codex => serde_json::to_string(effective_settings)
+            .map_err(|e| format!("序列化 Codex 配置失败: {e}"))?,
+        AppType::Gemini => {
+            let env_backup = gemini_live_backup_from_effective_settings(effective_settings);
+            serde_json::to_string(&env_backup)
+                .map_err(|e| format!("序列化 Gemini 配置失败: {e}"))?
+        }
+        _ => return Err(format!("未知的应用类型: {app_type_str}")),
+    };
+
+    db.save_live_backup(app_type_str, &backup_json)
+        .await
+        .map_err(|e| format!("更新 {app_type_str} 备份失败: {e}"))
+}
+
+async fn live_backup_config_for_simple_restore_from_host_db(
+    db: &Database,
+    app_type: &AppType,
+) -> Result<Option<Value>, String> {
+    let backup = match db.get_live_backup(app_type.as_str()).await {
+        Ok(backup) => backup,
+        Err(_) => return Ok(None),
+    };
+    let Some(backup) = backup else {
+        return Ok(None);
+    };
+    let app_label = match app_type {
+        AppType::Claude => "Claude",
+        AppType::Codex => "Codex",
+        AppType::Gemini => "Gemini",
+        _ => app_type.as_str(),
+    };
+    serde_json::from_str(&backup.original_config)
+        .map(Some)
+        .map_err(|e| format!("解析 {app_label} 备份失败: {e}"))
 }
 
 async fn clear_legacy_live_takeover_active_flag_from_host_db(db: &Database) {
@@ -833,7 +927,8 @@ impl ProxyService {
                 &config,
                 PROXY_TOKEN_PLACEHOLDER,
             ) {
-                save_live_backup_value_in_db(&self.db, "claude", &backup_value, "Claude").await?;
+                save_live_backup_value_in_host_db(&self.db, "claude", &backup_value, "Claude")
+                    .await?;
             } else {
                 log::warn!("claude Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live");
             }
@@ -846,7 +941,8 @@ impl ProxyService {
                 &config,
                 PROXY_TOKEN_PLACEHOLDER,
             ) {
-                save_live_backup_value_in_db(&self.db, "codex", &backup_value, "Codex").await?;
+                save_live_backup_value_in_host_db(&self.db, "codex", &backup_value, "Codex")
+                    .await?;
             } else {
                 log::warn!("codex Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live");
             }
@@ -859,7 +955,8 @@ impl ProxyService {
                 &config,
                 PROXY_TOKEN_PLACEHOLDER,
             ) {
-                save_live_backup_value_in_db(&self.db, "gemini", &backup_value, "Gemini").await?;
+                save_live_backup_value_in_host_db(&self.db, "gemini", &backup_value, "Gemini")
+                    .await?;
             } else {
                 log::warn!("gemini Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live");
             }
@@ -889,7 +986,8 @@ impl ProxyService {
             return Ok(());
         };
 
-        save_live_backup_value_in_db(&self.db, app_type_str, &backup_value, app_type_str).await?;
+        save_live_backup_value_in_host_db(&self.db, app_type_str, &backup_value, app_type_str)
+            .await?;
 
         Ok(())
     }
@@ -1086,7 +1184,7 @@ impl ProxyService {
         match app_type {
             AppType::Claude => {
                 if let Some(config) =
-                    live_backup_config_for_simple_restore_from_db(&self.db, app_type).await?
+                    live_backup_config_for_simple_restore_from_host_db(&self.db, app_type).await?
                 {
                     self.write_claude_live(&config)?;
                     log::info!("Claude Live 配置已恢复");
@@ -1094,7 +1192,7 @@ impl ProxyService {
             }
             AppType::Codex => {
                 if let Some(config) =
-                    live_backup_config_for_simple_restore_from_db(&self.db, app_type).await?
+                    live_backup_config_for_simple_restore_from_host_db(&self.db, app_type).await?
                 {
                     self.write_codex_live_verbatim(&config)?;
                     log::info!("Codex Live 配置已恢复");
@@ -1102,7 +1200,7 @@ impl ProxyService {
             }
             AppType::Gemini => {
                 if let Some(config) =
-                    live_backup_config_for_simple_restore_from_db(&self.db, app_type).await?
+                    live_backup_config_for_simple_restore_from_host_db(&self.db, app_type).await?
                 {
                     self.write_gemini_live(&config)?;
                     log::info!("Gemini Live 配置已恢复");
@@ -1150,7 +1248,8 @@ impl ProxyService {
         let app_type_str = app_type.as_str();
 
         // 1) 优先从 Live 备份恢复（这是"原始 Live"的唯一可靠来源）
-        if let Some(config) = live_backup_value_for_restore_from_db(&self.db, app_type).await? {
+        if let Some(config) = live_backup_value_for_restore_from_host_db(&self.db, app_type).await?
+        {
             // 备份若是代理占位符（异常历史：上次 stop 失败导致 Live 留在了代理状态，
             // 下次接管时又被错误地备份成"原始 Live"），不能直接用 — 否则 stop 后
             // Live 永远卡在 127.0.0.1:15721。落到下面的 SSOT 兜底重建。
@@ -1389,7 +1488,7 @@ impl ProxyService {
 
         if matches!(app_type_enum, AppType::Codex) {
             let existing_backup_value =
-                existing_live_backup_value_for_update_from_db(&self.db, app_type).await?;
+                existing_live_backup_value_for_update_from_host_db(&self.db, app_type).await?;
             if let Some(existing_value) = existing_backup_value.as_ref() {
                 preserve_codex_mcp_servers_from_existing_config(
                     &mut effective_settings,
@@ -1409,7 +1508,7 @@ impl ProxyService {
                 .map_err(|e| format!("注入统一会话路由失败: {e}"))?;
         }
 
-        save_provider_live_backup_from_effective_settings_in_db(
+        save_provider_live_backup_from_effective_settings_in_host_db(
             &self.db,
             &app_type_enum,
             &effective_settings,

@@ -319,12 +319,16 @@ const FORBIDDEN_PROXY_SERVICE_SIMPLE_RESTORE_BACKUP_SOURCE_MARKERS: &[&str] = &[
     "解析 Codex 备份失败",
     "解析 Gemini 备份失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_SIMPLE_RESTORE_BACKUP_SOURCE_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) async fn live_backup_config_for_simple_restore_from_db"];
 const FORBIDDEN_PROXY_SERVICE_FALLBACK_RESTORE_BACKUP_SOURCE_MARKERS: &[&str] = &[
     ".get_live_backup(",
     "backup.original_config",
     "获取 {app_type_str} Live 备份失败",
     "解析 {app_type_str} 备份失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_FALLBACK_RESTORE_BACKUP_SOURCE_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) async fn live_backup_value_for_restore_from_db"];
 const FORBIDDEN_PROXY_SERVICE_SSOT_RESTORE_PROVIDER_SOURCE_MARKERS: &[&str] = &[
     "crate::settings::get_effective_current_provider(",
     ".get_all_providers(",
@@ -347,12 +351,16 @@ const FORBIDDEN_PROXY_SERVICE_LIVE_BACKUP_SAVE_MARKERS: &[&str] = &[
     "备份 Codex 配置失败",
     "备份 Gemini 配置失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_LIVE_BACKUP_SAVE_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) async fn save_live_backup_value_in_db"];
 const FORBIDDEN_PROXY_SERVICE_UPDATE_BACKUP_EXISTING_SOURCE_MARKERS: &[&str] = &[
     ".get_live_backup(",
     "backup.original_config",
     "读取 {app_type} 现有备份失败",
     "解析 {app_type} 现有备份失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_UPDATE_BACKUP_EXISTING_SOURCE_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) async fn existing_live_backup_value_for_update_from_db"];
 const FORBIDDEN_PROXY_SERVICE_UPDATE_BACKUP_SAVE_MARKERS: &[&str] = &[
     ".save_live_backup(",
     "serde_json::to_string(&effective_settings)",
@@ -362,6 +370,8 @@ const FORBIDDEN_PROXY_SERVICE_UPDATE_BACKUP_SAVE_MARKERS: &[&str] = &[
     "序列化 Gemini 配置失败",
     "更新 {app_type} 备份失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_UPDATE_BACKUP_SAVE_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) async fn save_provider_live_backup_from_effective_settings_in_db"];
 const FORBIDDEN_PROXY_SERVICE_HOT_SWITCH_SOURCE_MARKERS: &[&str] = &[
     ".get_provider_by_id(",
     "should_block_proxy_switch_to_provider(",
@@ -7348,6 +7358,11 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) async fn proxy_config_from_db",
         "pub(crate) async fn persist_ephemeral_listen_port_if_needed_in_db",
         "pub(crate) async fn update_proxy_config_preserving_live_takeover_active_in_db",
+        "pub(crate) async fn save_live_backup_value_in_db",
+        "pub(crate) async fn live_backup_value_for_restore_from_db",
+        "pub(crate) async fn existing_live_backup_value_for_update_from_db",
+        "pub(crate) async fn save_provider_live_backup_from_effective_settings_in_db",
+        "pub(crate) async fn live_backup_config_for_simple_restore_from_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) async fn delete_live_backup_best_effort_in_db",
         "pub(crate) async fn delete_live_backup_in_db",
@@ -8783,11 +8798,14 @@ fn proxy_core_adapter_delegates_gemini_live_json_policy_to_core() {
         .map(|tail| tail.split("};").next().unwrap_or_default())
         .collect();
 
+    let live_takeover_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
+            .expect("read host/cc_switch/live_takeover.rs");
     assert!(
-        production_source.contains(
+        !production_source.contains(
             "use crate::proxy_core::api::ports::gemini_live_backup_from_effective_settings"
-        ),
-        "proxy_core_adapter should privately import Gemini live backup helper from core"
+        ) && live_takeover_source.contains("gemini_live_backup_from_effective_settings"),
+        "Gemini live backup helper should be imported by the host service that persists Live backups"
     );
     for helper in [
         "gemini_live_backup_from_effective_settings",
@@ -15150,7 +15168,7 @@ fn production_proxy_service_delegates_current_provider_source_to_adapter() {
     ];
 
     let mut violations = Vec::new();
-    for (function_name, function) in functions {
+    for (function_name, function) in &functions {
         for (line_index, line) in production_lines(function) {
             let code = line.split("//").next().unwrap_or_default();
             for marker in FORBIDDEN_PROXY_SERVICE_CURRENT_PROVIDER_SOURCE_MARKERS {
@@ -15625,10 +15643,12 @@ fn production_proxy_service_owns_stop_restore_enabled_cleanup_source() {
 }
 
 #[test]
-fn production_proxy_service_delegates_simple_restore_backup_source_to_adapter() {
+fn production_proxy_service_owns_simple_restore_backup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "async fn restore_live_config_for_app_inner",
@@ -15651,16 +15671,36 @@ fn production_proxy_service_delegates_simple_restore_backup_source_to_adapter() 
 
     assert!(
         violations.is_empty(),
-        "ProxyService::restore_live_config_for_app_inner must delegate backup source reads and parse-error projection to proxy_core_adapter:\n{}",
+        "ProxyService::restore_live_config_for_app_inner must route backup source reads through its host-local helper:\n{}",
         violations.join("\n")
     );
+    assert!(
+        function.matches("live_backup_config_for_simple_restore_from_host_db(&self.db, app_type).await?").count() == 3,
+        "ProxyService::restore_live_config_for_app_inner should read simple restore backups through the host-local helper"
+    );
+    assert!(
+        source.contains("async fn live_backup_config_for_simple_restore_from_host_db(")
+            && source.contains("db.get_live_backup(app_type.as_str()).await")
+            && source.contains("backup.original_config")
+            && source.contains("解析 {app_label} 备份失败"),
+        "ProxyService should own simple restore backup source and parse-error projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_SIMPLE_RESTORE_BACKUP_SOURCE_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep simple restore backup source wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
-fn production_proxy_service_delegates_fallback_restore_backup_source_to_adapter() {
+fn production_proxy_service_owns_fallback_restore_backup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "async fn restore_live_config_for_app_with_fallback_inner",
@@ -15683,9 +15723,28 @@ fn production_proxy_service_delegates_fallback_restore_backup_source_to_adapter(
 
     assert!(
         violations.is_empty(),
-        "ProxyService::restore_live_config_for_app_with_fallback_inner must delegate backup source reads and parse-error projection to proxy_core_adapter:\n{}",
+        "ProxyService::restore_live_config_for_app_with_fallback_inner must route backup source reads through its host-local helper:\n{}",
         violations.join("\n")
     );
+    assert!(
+        function.contains("live_backup_value_for_restore_from_host_db(&self.db, app_type).await?"),
+        "ProxyService::restore_live_config_for_app_with_fallback_inner should read fallback backups through the host-local helper"
+    );
+    assert!(
+        source.contains("async fn live_backup_value_for_restore_from_host_db(")
+            && source.contains(".get_live_backup(app_type_str)")
+            && source.contains("backup.original_config")
+            && source.contains("获取 {app_type_str} Live 备份失败")
+            && source.contains("解析 {app_type_str} 备份失败"),
+        "ProxyService should own fallback restore backup source and parse-error projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_FALLBACK_RESTORE_BACKUP_SOURCE_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep fallback restore backup source wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
@@ -15753,10 +15812,12 @@ fn production_proxy_service_delegates_ssot_restore_live_write_to_adapter() {
 }
 
 #[test]
-fn production_proxy_service_delegates_live_backup_save_to_adapter() {
+fn production_proxy_service_owns_live_backup_save_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let functions = [
         (
             "backup_live_configs",
@@ -15794,16 +15855,45 @@ fn production_proxy_service_delegates_live_backup_save_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService must delegate live backup serialization and persistence to proxy_core_adapter:\n{}",
+        "ProxyService backup paths must route live backup serialization and persistence through their host-local helper:\n{}",
         violations.join("\n")
     );
+    assert!(
+        functions.iter().any(|(name, function)| *name == "backup_live_configs"
+            && function.matches("save_live_backup_value_in_host_db(").count() == 3),
+        "ProxyService::backup_live_configs should save each Live backup through the host-local helper"
+    );
+    assert!(
+        functions
+            .iter()
+            .any(|(name, function)| *name == "backup_live_config_strict"
+                && function.contains("save_live_backup_value_in_host_db(")),
+        "ProxyService::backup_live_config_strict should save through the host-local helper"
+    );
+    assert!(
+        source.contains("async fn save_live_backup_value_in_host_db(")
+            && source.contains("serde_json::to_string(backup_value)")
+            && source.contains(".save_live_backup(app_type, &json_str)")
+            && source.contains("序列化 {error_label} 配置失败")
+            && source.contains("备份 {error_label} 配置失败"),
+        "ProxyService should own live backup serialization/persistence and error projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_LIVE_BACKUP_SAVE_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep live backup save wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
-fn production_proxy_service_delegates_update_backup_existing_source_to_adapter() {
+fn production_proxy_service_owns_update_backup_existing_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "async fn update_live_backup_from_provider_inner",
@@ -15826,16 +15916,37 @@ fn production_proxy_service_delegates_update_backup_existing_source_to_adapter()
 
     assert!(
         violations.is_empty(),
-        "ProxyService::update_live_backup_from_provider_inner must delegate existing backup source reads to proxy_core_adapter:\n{}",
+        "ProxyService::update_live_backup_from_provider_inner must route existing backup source reads through its host-local helper:\n{}",
         violations.join("\n")
     );
+    assert!(
+        function.contains("existing_live_backup_value_for_update_from_host_db(&self.db, app_type).await?"),
+        "ProxyService::update_live_backup_from_provider_inner should read existing backups through the host-local helper"
+    );
+    assert!(
+        source.contains("async fn existing_live_backup_value_for_update_from_host_db(")
+            && source.contains(".get_live_backup(app_type)")
+            && source.contains("backup.original_config")
+            && source.contains("读取 {app_type} 现有备份失败")
+            && source.contains("解析 {app_type} 现有备份失败"),
+        "ProxyService should own existing backup source and parse-error projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_UPDATE_BACKUP_EXISTING_SOURCE_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep existing backup source wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
-fn production_proxy_service_delegates_update_backup_save_to_adapter() {
+fn production_proxy_service_owns_update_backup_save_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "async fn update_live_backup_from_provider_inner",
@@ -15858,9 +15969,31 @@ fn production_proxy_service_delegates_update_backup_save_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService::update_live_backup_from_provider_inner must delegate provider-derived backup persistence to proxy_core_adapter:\n{}",
+        "ProxyService::update_live_backup_from_provider_inner must route provider-derived backup persistence through its host-local helper:\n{}",
         violations.join("\n")
     );
+    assert!(
+        function.contains("save_provider_live_backup_from_effective_settings_in_host_db("),
+        "ProxyService::update_live_backup_from_provider_inner should persist provider-derived backups through the host-local helper"
+    );
+    assert!(
+        source.contains("async fn save_provider_live_backup_from_effective_settings_in_host_db(")
+            && source.contains("serde_json::to_string(effective_settings)")
+            && source.contains("gemini_live_backup_from_effective_settings(effective_settings)")
+            && source.contains(".save_live_backup(app_type_str, &backup_json)")
+            && source.contains("序列化 Claude 配置失败")
+            && source.contains("序列化 Codex 配置失败")
+            && source.contains("序列化 Gemini 配置失败")
+            && source.contains("更新 {app_type_str} 备份失败"),
+        "ProxyService should own provider-derived backup persistence and error projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_UPDATE_BACKUP_SAVE_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep provider-derived backup save wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
@@ -16744,8 +16877,8 @@ fn proxy_core_adapter_keeps_claude_takeover_model_helpers_in_core() {
         "proxy_core_adapter should retain host Provider facts projection for Claude takeover"
     );
     assert!(
-        live_takeover_source
-            .contains("apply_claude_takeover_fields_with_policy, ClaudeTakeoverAuthPolicy"),
+        live_takeover_source.contains("apply_claude_takeover_fields_with_policy")
+            && live_takeover_source.contains("ClaudeTakeoverAuthPolicy"),
         "live takeover should consume pure Claude takeover policy directly from proxy-core"
     );
     for marker in [

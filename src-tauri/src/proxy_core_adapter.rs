@@ -787,102 +787,6 @@ pub(crate) async fn proxy_app_config_from_db_source(
     ))
 }
 
-pub(crate) async fn save_live_backup_value_in_db(
-    db: &Database,
-    app_type: &str,
-    backup_value: &Value,
-    error_label: &str,
-) -> Result<(), String> {
-    let json_str = serde_json::to_string(backup_value)
-        .map_err(|e| format!("序列化 {error_label} 配置失败: {e}"))?;
-    db.save_live_backup(app_type, &json_str)
-        .await
-        .map_err(|e| format!("备份 {error_label} 配置失败: {e}"))
-}
-
-pub(crate) async fn live_backup_value_for_restore_from_db(
-    db: &Database,
-    app_type: &AppType,
-) -> Result<Option<Value>, String> {
-    let app_type_str = app_type.as_str();
-    let backup = db
-        .get_live_backup(app_type_str)
-        .await
-        .map_err(|e| format!("获取 {app_type_str} Live 备份失败: {e}"))?;
-
-    let Some(backup) = backup else {
-        return Ok(None);
-    };
-
-    serde_json::from_str::<Value>(&backup.original_config)
-        .map(Some)
-        .map_err(|e| format!("解析 {app_type_str} 备份失败: {e}"))
-}
-
-pub(crate) async fn existing_live_backup_value_for_update_from_db(
-    db: &Database,
-    app_type: &str,
-) -> Result<Option<Value>, String> {
-    let backup = db
-        .get_live_backup(app_type)
-        .await
-        .map_err(|e| format!("读取 {app_type} 现有备份失败: {e}"))?;
-
-    let Some(backup) = backup else {
-        return Ok(None);
-    };
-
-    serde_json::from_str::<Value>(&backup.original_config)
-        .map(Some)
-        .map_err(|e| format!("解析 {app_type} 现有备份失败: {e}"))
-}
-
-pub(crate) async fn save_provider_live_backup_from_effective_settings_in_db(
-    db: &Database,
-    app_type: &AppType,
-    effective_settings: &Value,
-) -> Result<(), String> {
-    let app_type_str = app_type.as_str();
-    let backup_json = match app_type {
-        AppType::Claude => serde_json::to_string(effective_settings)
-            .map_err(|e| format!("序列化 Claude 配置失败: {e}"))?,
-        AppType::Codex => serde_json::to_string(effective_settings)
-            .map_err(|e| format!("序列化 Codex 配置失败: {e}"))?,
-        AppType::Gemini => {
-            let env_backup = gemini_live_backup_from_effective_settings(effective_settings);
-            serde_json::to_string(&env_backup)
-                .map_err(|e| format!("序列化 Gemini 配置失败: {e}"))?
-        }
-        _ => return Err(format!("未知的应用类型: {app_type_str}")),
-    };
-
-    db.save_live_backup(app_type_str, &backup_json)
-        .await
-        .map_err(|e| format!("更新 {app_type_str} 备份失败: {e}"))
-}
-
-pub(crate) async fn live_backup_config_for_simple_restore_from_db(
-    db: &Database,
-    app_type: &AppType,
-) -> Result<Option<Value>, String> {
-    let backup = match db.get_live_backup(app_type.as_str()).await {
-        Ok(backup) => backup,
-        Err(_) => return Ok(None),
-    };
-    let Some(backup) = backup else {
-        return Ok(None);
-    };
-    let app_label = match app_type {
-        AppType::Claude => "Claude",
-        AppType::Codex => "Codex",
-        AppType::Gemini => "Gemini",
-        _ => app_type.as_str(),
-    };
-    serde_json::from_str(&backup.original_config)
-        .map(Some)
-        .map_err(|e| format!("解析 {app_label} 备份失败: {e}"))
-}
-
 pub(crate) async fn app_summary_config_from_db_source(
     db: &Database,
     app: &AppKind,
@@ -2473,8 +2377,6 @@ pub(crate) async fn forwarder_runtime_config_from_db_sources(
 }
 
 use crate::proxy_core::api::auth::extract_gemini_api_key_from_settings;
-
-use crate::proxy_core::api::ports::gemini_live_backup_from_effective_settings;
 
 fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
     if extract_gemini_api_key_from_settings(&provider.settings_config)
