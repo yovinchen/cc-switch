@@ -41,10 +41,9 @@ use crate::proxy_core_adapter::{
     disable_global_proxy_best_effort_in_db, enable_global_proxy_in_db,
     existing_live_backup_value_for_update_from_db, live_backup_config_for_simple_restore_from_db,
     live_backup_snapshot_from_live_config, live_backup_value_for_restore_from_db,
-    live_config_has_proxy_placeholder_for_app, live_takeover_any_enabled_from_db,
-    live_takeover_config_matches_proxy_for_app, live_token_sync_provider_from_db,
-    persist_ephemeral_listen_port_if_needed_in_db, persist_hot_switch_current_provider_sources,
-    preserve_codex_mcp_servers_from_existing_config,
+    live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
+    live_token_sync_provider_from_db, persist_ephemeral_listen_port_if_needed_in_db,
+    persist_hot_switch_current_provider_sources, preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     provider_effective_settings_with_common_config_from_db, proxy_app_enabled_from_db,
     proxy_config_from_db, proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -101,6 +100,12 @@ async fn live_takeover_backup_exists_from_host_db(db: &Database, app_type: &str)
             false
         }
     }
+}
+
+async fn live_takeover_any_enabled_from_host_db(db: &Database) -> Result<bool, String> {
+    db.is_live_takeover_active()
+        .await
+        .map_err(|e| format!("检查接管状态失败: {e}"))
 }
 
 #[derive(Clone)]
@@ -469,7 +474,7 @@ impl ProxyService {
 
         // 5) 若无其它接管，更新旧标志，并停止代理服务
         // 检查是否还有其它 app 的 enabled = true
-        let any_enabled = live_takeover_any_enabled_from_db(&self.db).await?;
+        let any_enabled = live_takeover_any_enabled_from_host_db(&self.db).await?;
 
         if !any_enabled {
             set_legacy_live_takeover_active_best_effort_in_db(&self.db, false).await;

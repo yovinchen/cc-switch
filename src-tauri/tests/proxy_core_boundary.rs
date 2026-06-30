@@ -276,11 +276,10 @@ const FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_SOURCE_ADAPTER_MARKERS: &[&str] =
     &["pub(crate) async fn live_takeover_backup_exists_from_db"];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_DELETE_MARKERS: &[&str] =
     &[".delete_live_backup(", "删除 {app_type_str} Live 备份失败"];
-const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_MARKERS: &[&str] = &[
-    ".set_live_takeover_active(",
-    ".is_live_takeover_active(",
-    "检查接管状态失败",
-];
+const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_WRITE_MARKERS: &[&str] =
+    &[".set_live_takeover_active("];
+const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) async fn live_takeover_any_enabled_from_db"];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_HEALTH_CLEANUP_MARKERS: &[&str] = &[
     ".clear_provider_health_for_app(",
     "清除 {app_type_str} 健康状态失败",
@@ -7301,6 +7300,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn failover_switch_app_enabled_from_config_result",
         "pub(crate) async fn failover_switch_app_enabled_from_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
+        "pub(crate) async fn live_takeover_any_enabled_from_db",
         "pub(crate) fn reset_circuit_breaker_switchback_target_from_sources",
         "pub(crate) async fn reset_circuit_breaker_switchback_target_from_db",
         "pub(crate) async fn auto_failover_toggle_plan_from_db",
@@ -15250,10 +15250,12 @@ fn production_proxy_service_delegates_takeover_backup_delete_to_adapter() {
 }
 
 #[test]
-fn production_proxy_service_delegates_takeover_active_flag_to_adapter() {
+fn production_proxy_service_owns_takeover_any_enabled_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -15263,10 +15265,10 @@ fn production_proxy_service_delegates_takeover_active_flag_to_adapter() {
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(function) {
         let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_MARKERS {
+        for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_WRITE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/host/cc_switch/live_takeover.rs set_takeover_for_app:{} contains takeover active flag marker `{}`",
+                    "src/proxy/host/cc_switch/live_takeover.rs set_takeover_for_app:{} contains takeover active flag write marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -15276,9 +15278,26 @@ fn production_proxy_service_delegates_takeover_active_flag_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService::set_takeover_for_app must delegate legacy active-flag compatibility reads/writes to proxy_core_adapter:\n{}",
+        "ProxyService::set_takeover_for_app must delegate legacy active-flag writes to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
+    assert!(
+        function.contains("live_takeover_any_enabled_from_host_db(&self.db).await?"),
+        "ProxyService::set_takeover_for_app should read legacy active state through its host-local helper"
+    );
+    assert!(
+        source.contains("async fn live_takeover_any_enabled_from_host_db(")
+            && source.contains("db.is_live_takeover_active()")
+            && source.contains("检查接管状态失败: {e}"),
+        "ProxyService should own legacy active-state read and error projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep takeover active-state source wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]

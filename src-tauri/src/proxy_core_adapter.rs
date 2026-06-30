@@ -935,12 +935,6 @@ pub(crate) async fn set_legacy_live_takeover_active_in_db(
         .map_err(|e| format!("设置接管状态失败: {e}"))
 }
 
-pub(crate) async fn live_takeover_any_enabled_from_db(db: &Database) -> Result<bool, String> {
-    db.is_live_takeover_active()
-        .await
-        .map_err(|e| format!("检查接管状态失败: {e}"))
-}
-
 pub(crate) async fn clear_provider_health_for_app_in_db(
     db: &Database,
     app_type: &str,
