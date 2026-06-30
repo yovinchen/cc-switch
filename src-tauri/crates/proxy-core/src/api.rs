@@ -438,7 +438,10 @@ pub mod prelude {
         client_model_catalog_from_routable_models, ClientModelCatalogResponse, FetchedModel,
         ModelCapabilities, ModelCatalog, RoutableModel, RoutableModelList,
     };
-    pub use super::ports::CurrentRouteTarget;
+    pub use super::ports::{
+        current_route_target_from_input, CurrentRouteChannelTargetInput, CurrentRouteTarget,
+        CurrentRouteTargetInput,
+    };
     pub use super::ports::{
         AppProxyConfig, AuthInfo, AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelHealthStore,
         ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource, ForwardPipeline, ModelCatalogProvider,

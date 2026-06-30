@@ -1,7 +1,4 @@
 use cc_switch_proxy_core::api::prelude::*;
-use cc_switch_proxy_core::api::ports::{
-    current_route_target_from_input, CurrentRouteChannelTargetInput, CurrentRouteTargetInput,
-};
 use std::sync::{Arc, Mutex};
 
 #[derive(Default)]

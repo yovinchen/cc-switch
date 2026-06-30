@@ -2501,6 +2501,7 @@ fn proxy_core_external_example_uses_public_prelude_only() {
     let forbidden_markers = [
         "use cc_switch::",
         "use cc_switch_proxy_core::api::{",
+        "use cc_switch_proxy_core::api::ports",
         "use cc_switch_proxy_core::{",
         "use cc_switch_proxy_core::domain",
         "use cc_switch_proxy_core::ports",
@@ -2549,6 +2550,7 @@ fn proxy_core_public_prelude_smoke_uses_public_prelude_only() {
     let required_import = "use cc_switch_proxy_core::api::prelude::*;";
     let forbidden_markers = [
         "use cc_switch_proxy_core::api::{",
+        "use cc_switch_proxy_core::api::ports",
         "use cc_switch_proxy_core::{",
         "use cc_switch_proxy_core::domain",
         "use cc_switch_proxy_core::ports",
