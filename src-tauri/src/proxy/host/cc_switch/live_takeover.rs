@@ -24,8 +24,9 @@ use crate::proxy_core::api::ports::{
 use crate::proxy_core::api::ports::{
     proxy_live_urls_from_listen_parts, proxy_server_info_from_parts,
     proxy_takeover_marked_state_is_reusable,
-    proxy_takeover_should_restore_existing_backup_before_retakeover, ProxyConfig,
-    ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    proxy_takeover_should_restore_existing_backup_before_retakeover,
+    proxy_takeover_status_from_enabled_options, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+    ProxyTakeoverStatus,
 };
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
@@ -50,9 +51,9 @@ use crate::proxy_core_adapter::{
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_hot_switch_should_sync_codex_live_while_proxy_active,
     proxy_hot_switch_target_state_from_db, proxy_official_warning_event_from_current_provider_db,
-    proxy_server_from_runtime_config, proxy_takeover_status_from_db,
-    remove_codex_takeover_config_placeholders_if_present, require_current_provider_for_app_from_db,
-    save_live_backup_value_in_db, save_provider_live_backup_from_effective_settings_in_db,
+    proxy_server_from_runtime_config, remove_codex_takeover_config_placeholders_if_present,
+    require_current_provider_for_app_from_db, save_live_backup_value_in_db,
+    save_provider_live_backup_from_effective_settings_in_db,
     set_legacy_live_takeover_active_best_effort_in_db, set_legacy_live_takeover_active_in_db,
     set_proxy_app_enabled_in_db, ssot_live_restore_provider_from_db,
     sync_provider_settings_with_live_token, update_live_token_sync_provider_settings_in_db,
@@ -76,6 +77,20 @@ fn live_takeover_app_types() -> [AppType; 3] {
         AppType::from_str(app.as_str())
             .expect("proxy-core live takeover app kind must be supported by cc-switch")
     })
+}
+
+async fn proxy_app_enabled_option_from_host_db(db: &Database, app: AppType) -> Option<bool> {
+    db.get_proxy_config_for_app(app.as_str())
+        .await
+        .ok()
+        .map(|config| config.enabled)
+}
+
+async fn proxy_takeover_status_from_host_db(db: &Database) -> ProxyTakeoverStatus {
+    let claude = proxy_app_enabled_option_from_host_db(db, AppType::Claude).await;
+    let codex = proxy_app_enabled_option_from_host_db(db, AppType::Codex).await;
+    let gemini = proxy_app_enabled_option_from_host_db(db, AppType::Gemini).await;
+    proxy_takeover_status_from_enabled_options(claude, codex, gemini, None, None)
 }
 
 #[derive(Clone)]
@@ -321,7 +336,7 @@ impl ProxyService {
 
     /// 获取各应用的接管状态（是否改写该应用的 Live 配置指向本地代理）
     pub async fn get_takeover_status(&self) -> Result<ProxyTakeoverStatus, String> {
-        Ok(proxy_takeover_status_from_db(&self.db).await)
+        Ok(proxy_takeover_status_from_host_db(&self.db).await)
     }
 
     /// 为指定应用开启/关闭 Live 接管

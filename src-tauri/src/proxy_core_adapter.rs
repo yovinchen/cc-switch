@@ -31,10 +31,9 @@ use crate::proxy_core::api::domain::{
 use crate::proxy_core::api::engine::ProxyEngine;
 use crate::proxy_core::api::management::{ChannelRecord, ChannelRouteSource};
 use crate::proxy_core::api::ports::{
-    proxy_server_info_from_parts, proxy_takeover_status_from_enabled_options,
-    record_active_connection_acquired_status, record_active_connection_released_status,
-    record_proxy_server_stopped_status, CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus,
-    ProxyServerInfo, ProxyTakeoverStatus,
+    proxy_server_info_from_parts, record_active_connection_acquired_status,
+    record_active_connection_released_status, record_proxy_server_stopped_status,
+    CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
 };
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, ChannelRouteCandidate,
@@ -3110,25 +3109,6 @@ pub(crate) async fn auto_failover_enabled_from_router_config_source(
         app_type,
         router_app_proxy_config_from_config_source(source, app_type).await,
     )
-}
-
-pub(crate) async fn proxy_takeover_status_from_db(db: &Database) -> ProxyTakeoverStatus {
-    let claude = db
-        .get_proxy_config_for_app(AppType::Claude.as_str())
-        .await
-        .ok()
-        .map(|config| config.enabled);
-    let codex = db
-        .get_proxy_config_for_app(AppType::Codex.as_str())
-        .await
-        .ok()
-        .map(|config| config.enabled);
-    let gemini = db
-        .get_proxy_config_for_app(AppType::Gemini.as_str())
-        .await
-        .ok()
-        .map(|config| config.enabled);
-    proxy_takeover_status_from_enabled_options(claude, codex, gemini, None, None)
 }
 
 fn select_current_provider_ids_from_router_provider_id_source(

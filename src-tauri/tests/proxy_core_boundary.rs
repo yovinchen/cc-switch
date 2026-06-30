@@ -241,10 +241,8 @@ const FORBIDDEN_STREAM_CHECK_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
     ".extract_base_url(",
 ];
 const FORBIDDEN_STREAM_CHECK_COMMAND_PROXY_TARGET_MARKERS: &[&str] = &["HashSet", "ids.insert("];
-const FORBIDDEN_PROXY_SERVICE_TAKEOVER_STATUS_MARKERS: &[&str] = &[
-    ".get_proxy_config_for_app(",
-    "proxy_takeover_status_from_parts(",
-];
+const FORBIDDEN_PROXY_SERVICE_TAKEOVER_STATUS_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) async fn proxy_takeover_status_from_db"];
 const FORBIDDEN_PROXY_SERVICE_LIVE_TAKEOVER_APP_LIST_MARKERS: &[&str] = &[
     "[AppType::Claude",
     "AppType::Claude, AppType::Codex, AppType::Gemini",
@@ -6324,6 +6322,9 @@ fn proxy_core_adapter_does_not_export_proxy_takeover_status_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let live_takeover_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
+            .expect("read host/cc_switch/live_takeover.rs");
     let port_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::ports::{")
         .skip(1)
@@ -6358,13 +6359,12 @@ fn proxy_core_adapter_does_not_export_proxy_takeover_status_alias() {
         );
     }
     assert!(
-        adapter_source.contains("use crate::proxy_core::api::ports::{")
-            && adapter_source.contains("ProxyTakeoverStatus"),
-        "proxy_core_adapter internals should import ProxyTakeoverStatus directly from proxy_core ports"
+        !adapter_source.contains("pub(crate) async fn proxy_takeover_status_from_db"),
+        "proxy_core_adapter should not keep the ProxyService takeover status DB wrapper"
     );
     assert!(
-        adapter_source.contains("proxy_takeover_status_from_enabled_options"),
-        "proxy_core_adapter internals should call proxy takeover status enabled-options helper from core ports"
+        live_takeover_source.contains("proxy_takeover_status_from_enabled_options"),
+        "live_takeover host service should call proxy takeover status enabled-options helper from core ports"
     );
 }
 
@@ -14915,8 +14915,8 @@ fn production_live_takeover_imports_runtime_contracts_directly() {
         "use crate::proxy_core::api::ports::{",
         "proxy_live_urls_from_listen_parts, proxy_server_info_from_parts,",
         "proxy_takeover_marked_state_is_reusable,",
-        "proxy_takeover_should_restore_existing_backup_before_retakeover, ProxyConfig,",
-        "ProxyRuntimeStatus, ProxyServerInfo,",
+        "proxy_takeover_should_restore_existing_backup_before_retakeover,",
+        "proxy_takeover_status_from_enabled_options, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,",
         "ProxyTakeoverStatus,",
     ];
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
@@ -14940,6 +14940,7 @@ fn production_live_takeover_imports_runtime_contracts_directly() {
         "proxy_server_info_from_parts",
         "proxy_takeover_marked_state_is_reusable",
         "proxy_takeover_should_restore_existing_backup_before_retakeover",
+        "proxy_takeover_status_from_enabled_options",
     ] {
         if adapter_import_identifiers
             .iter()
@@ -14959,35 +14960,37 @@ fn production_live_takeover_imports_runtime_contracts_directly() {
 }
 
 #[test]
-fn production_proxy_service_delegates_takeover_status_sources_to_adapter() {
+fn production_proxy_service_owns_takeover_status_sources() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "pub async fn get_takeover_status",
         "/// 为指定应用开启/关闭 Live 接管",
     );
 
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(function) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_STATUS_MARKERS {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy/host/cc_switch/live_takeover.rs get_takeover_status:{} contains takeover status source marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
     assert!(
-        violations.is_empty(),
-        "ProxyService::get_takeover_status must delegate proxy_config source reads and status projection to proxy_core_adapter:\n{}",
-        violations.join("\n")
+        function.contains("proxy_takeover_status_from_host_db(&self.db).await"),
+        "ProxyService::get_takeover_status should delegate source reads to its host-local helper"
     );
+    assert!(
+        source.contains("async fn proxy_takeover_status_from_host_db(")
+            && source.contains("proxy_app_enabled_option_from_host_db(db, AppType::Claude).await")
+            && source.contains("proxy_app_enabled_option_from_host_db(db, AppType::Codex).await")
+            && source.contains("proxy_app_enabled_option_from_host_db(db, AppType::Gemini).await")
+            && source.contains("proxy_takeover_status_from_enabled_options(claude, codex, gemini, None, None)"),
+        "ProxyService should own takeover status proxy_config reads while core owns status DTO policy"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_STATUS_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep takeover status source wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
