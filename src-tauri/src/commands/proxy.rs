@@ -4,13 +4,13 @@
 
 use crate::error::AppError;
 use crate::proxy_core::api::config::{AppProxyConfig, CircuitBreakerConfig, CircuitBreakerStats};
+use crate::proxy_core::api::management::reset_circuit_breaker_switchback_target_from_sources;
 use crate::proxy_core::api::ports::GlobalProxyConfig;
 use crate::proxy_core::api::ports::ProviderHealth;
 use crate::proxy_core::api::ports::ProxyConfig;
 use crate::proxy_core::api::ports::ProxyRuntimeStatus;
 use crate::proxy_core::api::ports::ProxyServerInfo;
 use crate::proxy_core::api::ports::ProxyTakeoverStatus;
-use crate::proxy_core_adapter::reset_circuit_breaker_switchback_target_from_db;
 use crate::store::AppState;
 
 /// 启动代理服务器（仅启动服务，不接管 Live 配置）
@@ -333,15 +333,45 @@ pub async fn reset_circuit_breaker(
         .await?;
 
     let proxy_service_running = state.proxy_service.is_running().await;
-    if let Some(target) = reset_circuit_breaker_switchback_target_from_db(
-        db,
-        &app_type,
-        &provider_id,
+    let proxy_config = match db.get_proxy_config_for_app(&app_type).await {
+        Ok(config) => config,
+        Err(error) => {
+            log::error!(
+                "[{app_type}] Failed to read proxy_config: {error}, defaulting to disabled"
+            );
+            return Ok(());
+        }
+    };
+
+    if !(proxy_config.enabled && proxy_config.auto_failover_enabled && proxy_service_running) {
+        return Ok(());
+    }
+
+    let current_provider_id = db
+        .get_current_provider(&app_type)
+        .map_err(|e| e.to_string())?;
+    let queue = db
+        .get_failover_queue(&app_type)
+        .map_err(|e| e.to_string())?;
+    let provider_name = db.get_all_providers(&app_type).ok().and_then(|providers| {
+        providers
+            .get(&provider_id)
+            .map(|provider| provider.name.clone())
+    });
+
+    let target = reset_circuit_breaker_switchback_target_from_sources(
+        proxy_config.enabled,
+        proxy_config.auto_failover_enabled,
         proxy_service_running,
-    )
-    .await
-    .map_err(|e| e.to_string())?
-    {
+        &provider_id,
+        current_provider_id,
+        queue
+            .into_iter()
+            .map(|item| (item.provider_id, item.sort_index)),
+        provider_name,
+    );
+
+    if let Some(target) = target {
         if let (Some(restored), Some(current)) =
             (target.restored_sort_index, target.current_sort_index)
         {

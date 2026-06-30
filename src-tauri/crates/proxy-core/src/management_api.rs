@@ -16,6 +16,9 @@ use super::ports::{
     ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse, RouteGroupSourceInput,
     RouteResolveRequest, RouteResolveResponse,
 };
+use super::provider_selection::{
+    restored_provider_switchback_decision, FailoverQueuePosition,
+};
 use std::collections::HashSet;
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
@@ -64,6 +67,52 @@ pub fn stream_check_proxy_target_ids_from_sources(
     }
     ids.extend(failover_provider_ids);
     Some(ids)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResetCircuitBreakerSwitchbackTarget {
+    pub provider_id: String,
+    pub provider_name: String,
+    pub restored_sort_index: Option<usize>,
+    pub current_sort_index: Option<usize>,
+}
+
+pub fn reset_circuit_breaker_switchback_target_from_sources<I, P>(
+    app_enabled: bool,
+    auto_failover_enabled: bool,
+    proxy_service_running: bool,
+    restored_provider_id: &str,
+    current_provider_id: Option<String>,
+    queue_positions: I,
+    provider_name: Option<String>,
+) -> Option<ResetCircuitBreakerSwitchbackTarget>
+where
+    I: IntoIterator<Item = (P, Option<usize>)>,
+    P: Into<String>,
+{
+    let current_provider_id = current_provider_id?;
+    let decision = restored_provider_switchback_decision(
+        app_enabled,
+        auto_failover_enabled,
+        proxy_service_running,
+        restored_provider_id,
+        &current_provider_id,
+        queue_positions
+            .into_iter()
+            .map(|(provider_id, sort_index)| FailoverQueuePosition::new(provider_id, sort_index))
+            .collect::<Vec<_>>(),
+    );
+
+    if !decision.should_switch {
+        return None;
+    }
+
+    Some(ResetCircuitBreakerSwitchbackTarget {
+        provider_id: restored_provider_id.to_string(),
+        provider_name: provider_name.unwrap_or_else(|| restored_provider_id.to_string()),
+        restored_sort_index: decision.restored_sort_index,
+        current_sort_index: decision.current_sort_index,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1069,8 +1118,10 @@ mod tests {
         RouteResolveManagementRequest,
         channel_key_not_found_message, channel_not_found_message, custom_endpoint_url_issue_spec,
         custom_endpoint_url_key, normalize_channel_id_path, normalize_channel_key_ref_path,
-        normalize_custom_endpoint_url, stream_check_proxy_target_ids_from_sources,
-        validate_management_app_type, validate_route_resolve_app_type, CustomEndpointUrlIssue,
+        normalize_custom_endpoint_url, reset_circuit_breaker_switchback_target_from_sources,
+        stream_check_proxy_target_ids_from_sources, validate_management_app_type,
+        validate_route_resolve_app_type, CustomEndpointUrlIssue,
+        ResetCircuitBreakerSwitchbackTarget,
     };
     use crate::domain::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus,
@@ -1891,5 +1942,52 @@ mod tests {
             stream_check_proxy_target_ids_from_sources(true, None, Vec::<String>::new())
                 .expect("empty proxy target filter ids");
         assert!(empty_ids.is_empty());
+    }
+
+    #[test]
+    fn reset_circuit_breaker_switchback_target_from_sources_projects_switch_target() {
+        let target = reset_circuit_breaker_switchback_target_from_sources(
+            true,
+            true,
+            true,
+            "provider-a",
+            Some("provider-b".to_string()),
+            vec![
+                ("provider-a".to_string(), Some(1)),
+                ("provider-b".to_string(), Some(2)),
+            ],
+            Some("Provider A".to_string()),
+        )
+        .expect("restored provider should switch back");
+
+        assert_eq!(
+            target,
+            ResetCircuitBreakerSwitchbackTarget {
+                provider_id: "provider-a".to_string(),
+                provider_name: "Provider A".to_string(),
+                restored_sort_index: Some(1),
+                current_sort_index: Some(2),
+            }
+        );
+        assert!(reset_circuit_breaker_switchback_target_from_sources(
+            true,
+            true,
+            true,
+            "provider-a",
+            None,
+            Vec::<(String, Option<usize>)>::new(),
+            None,
+        )
+        .is_none());
+        assert!(reset_circuit_breaker_switchback_target_from_sources(
+            false,
+            true,
+            true,
+            "provider-a",
+            Some("provider-b".to_string()),
+            Vec::<(String, Option<usize>)>::new(),
+            None,
+        )
+        .is_none());
     }
 }

@@ -156,10 +156,7 @@ const FORBIDDEN_SWITCH_PROXY_PROVIDER_COMMAND_MARKERS: &[&str] = &[
     "should_block_proxy_switch_to_provider(",
 ];
 const FORBIDDEN_RESET_CIRCUIT_BREAKER_COMMAND_MARKERS: &[&str] = &[
-    ".get_proxy_config_for_app(",
-    ".get_current_provider(",
-    ".get_failover_queue(",
-    ".get_all_providers(",
+    "reset_circuit_breaker_switchback_target_from_db",
     "restored_provider_switchback_decision(",
     "FailoverQueuePosition",
 ];
@@ -7297,6 +7294,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn auto_failover_toggle_plan_from_sources",
         "pub(crate) fn failover_switch_app_enabled_from_config_result",
         "pub(crate) fn reset_circuit_breaker_switchback_target_from_sources",
+        "pub(crate) async fn reset_circuit_breaker_switchback_target_from_db",
         "pub(crate) fn parse_gemini_env_file_strict",
         "fn gemini_env_parse_issue_to_app_error",
         "pub(crate) fn gemini_env_parse_issue_to_app_error",
@@ -8018,7 +8016,6 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
         "ProviderSelectionInput",
         "AutoFailoverToggleInput",
         "AutoFailoverTogglePlan",
-        "FailoverQueuePosition",
         "RouteResolveChannelInput",
         "ChannelRouteCandidate",
         "ResolvedChannelAttempt",
@@ -13859,6 +13856,7 @@ fn proxy_management_dto_callers_use_core_entrypoints() {
             "src/commands/proxy.rs",
             &[
                 "use crate::proxy_core::api::config::{AppProxyConfig, CircuitBreakerConfig, CircuitBreakerStats};",
+                "use crate::proxy_core::api::management::reset_circuit_breaker_switchback_target_from_sources;",
                 "use crate::proxy_core::api::ports::ProxyConfig;",
                 "use crate::proxy_core::api::ports::GlobalProxyConfig;",
                 "use crate::proxy_core::api::ports::ProviderHealth;",
@@ -19062,7 +19060,7 @@ fn production_switch_proxy_provider_command_delegates_provider_policy_to_service
 }
 
 #[test]
-fn production_reset_circuit_breaker_command_delegates_switchback_sources_to_adapter() {
+fn production_reset_circuit_breaker_command_uses_core_switchback_policy() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/commands/proxy.rs");
     let source = fs::read_to_string(&path).expect("read commands/proxy.rs");
@@ -19088,8 +19086,16 @@ fn production_reset_circuit_breaker_command_delegates_switchback_sources_to_adap
 
     assert!(
         violations.is_empty(),
-        "reset_circuit_breaker command must delegate switchback source reads and decision projection to proxy_core_adapter:\n{}",
+        "reset_circuit_breaker command must keep switchback decision policy in proxy-core and avoid proxy_core_adapter DB wrappers:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        source.contains(
+            "use crate::proxy_core::api::management::reset_circuit_breaker_switchback_target_from_sources;"
+        ) && !source.contains(
+            "use crate::proxy_core_adapter::reset_circuit_breaker_switchback_target_from_db"
+        ),
+        "reset_circuit_breaker should import switchback target policy directly from proxy-core management API"
     );
 }
 

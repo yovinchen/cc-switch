@@ -1967,3 +1967,30 @@ fn external_host_can_use_stream_check_proxy_target_filter_from_prelude() {
     )
     .is_none());
 }
+
+#[test]
+fn external_host_can_use_reset_circuit_breaker_switchback_policy_from_prelude() {
+    let target = reset_circuit_breaker_switchback_target_from_sources(
+        true,
+        true,
+        true,
+        "provider-a",
+        Some("provider-b".to_string()),
+        vec![
+            ("provider-a".to_string(), Some(1)),
+            ("provider-b".to_string(), Some(2)),
+        ],
+        Some("Provider A".to_string()),
+    )
+    .expect("restored provider should switch back");
+
+    assert_eq!(
+        target,
+        ResetCircuitBreakerSwitchbackTarget {
+            provider_id: "provider-a".to_string(),
+            provider_name: "Provider A".to_string(),
+            restored_sort_index: Some(1),
+            current_sort_index: Some(2),
+        }
+    );
+}

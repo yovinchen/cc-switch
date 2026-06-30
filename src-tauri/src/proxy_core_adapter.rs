@@ -1,7 +1,7 @@
 use crate::app_config::AppType;
 use crate::database::{
-    Database, FailoverQueueItem, ProxyChannelMigrationPreview, ProxyChannelModelRecord,
-    ProxyChannelRecord, ProxyChannelSourceKind,
+    Database, ProxyChannelMigrationPreview, ProxyChannelModelRecord, ProxyChannelRecord,
+    ProxyChannelSourceKind,
 };
 use crate::error::AppError;
 use crate::openclaw_config::OpenClawProviderConfig;
@@ -38,9 +38,9 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, AutoFailoverToggleInput, AutoFailoverTogglePlan,
-    ChannelRouteCandidate, FailoverQueuePosition, LegacyChannelMigrationPlanInput,
-    LegacyChannelModelProjection, LegacyChannelProjection, LegacyEndpointInput,
-    LegacyModelRouteInput, LegacyProviderChannelMigrationInput, LegacyProviderProjectionInput,
+    ChannelRouteCandidate, LegacyChannelMigrationPlanInput, LegacyChannelModelProjection,
+    LegacyChannelProjection, LegacyEndpointInput, LegacyModelRouteInput,
+    LegacyProviderChannelMigrationInput, LegacyProviderProjectionInput,
     ProviderFailoverCircuitLookup, ProviderSelectionFailure, ProviderSelectionInput,
     ResolvedChannelAttempt, RoutePlan, RouteResolveChannelInput, RouteResolveChannelRecordInput,
     RouteResolveModelRecordInput,
@@ -3225,87 +3225,6 @@ pub(crate) async fn failover_switch_app_enabled_from_db(db: &Database, app_type:
     )
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ResetCircuitBreakerSwitchbackTarget {
-    pub(crate) provider_id: String,
-    pub(crate) provider_name: String,
-    pub(crate) restored_sort_index: Option<usize>,
-    pub(crate) current_sort_index: Option<usize>,
-}
-
-fn reset_circuit_breaker_switchback_target_from_sources(
-    app_enabled: bool,
-    auto_failover_enabled: bool,
-    proxy_service_running: bool,
-    restored_provider_id: &str,
-    current_provider_id: Option<String>,
-    queue: impl IntoIterator<Item = FailoverQueueItem>,
-    provider_name: Option<String>,
-) -> Option<ResetCircuitBreakerSwitchbackTarget> {
-    let current_provider_id = current_provider_id?;
-    let decision = restored_provider_switchback_decision(
-        app_enabled,
-        auto_failover_enabled,
-        proxy_service_running,
-        restored_provider_id,
-        &current_provider_id,
-        queue
-            .into_iter()
-            .map(|item| FailoverQueuePosition::new(item.provider_id, item.sort_index))
-            .collect::<Vec<_>>(),
-    );
-
-    if !decision.should_switch {
-        return None;
-    }
-
-    Some(ResetCircuitBreakerSwitchbackTarget {
-        provider_id: restored_provider_id.to_string(),
-        provider_name: provider_name.unwrap_or_else(|| restored_provider_id.to_string()),
-        restored_sort_index: decision.restored_sort_index,
-        current_sort_index: decision.current_sort_index,
-    })
-}
-
-pub(crate) async fn reset_circuit_breaker_switchback_target_from_db(
-    db: &Database,
-    app_type: &str,
-    restored_provider_id: &str,
-    proxy_service_running: bool,
-) -> Result<Option<ResetCircuitBreakerSwitchbackTarget>, AppError> {
-    let (app_enabled, auto_failover_enabled) = match db.get_proxy_config_for_app(app_type).await {
-        Ok(config) => (config.enabled, config.auto_failover_enabled),
-        Err(error) => {
-            log::error!(
-                "[{app_type}] Failed to read proxy_config: {error}, defaulting to disabled"
-            );
-            return Ok(None);
-        }
-    };
-
-    if !(app_enabled && auto_failover_enabled && proxy_service_running) {
-        return Ok(None);
-    }
-
-    let current_provider_id = db.get_current_provider(app_type)?;
-    let queue = db.get_failover_queue(app_type)?;
-    let provider_name = db.get_all_providers(app_type).ok().and_then(|providers| {
-        providers
-            .get(restored_provider_id)
-            .map(|provider| provider.name.clone())
-    });
-
-    Ok(reset_circuit_breaker_switchback_target_from_sources(
-        app_enabled,
-        auto_failover_enabled,
-        proxy_service_running,
-        restored_provider_id,
-        current_provider_id,
-        queue,
-        provider_name,
-    ))
-}
-
 fn select_current_provider_ids_from_router_provider_id_source(
     app_type: &str,
     current_provider_id: Option<String>,
@@ -3931,8 +3850,8 @@ use crate::proxy_core::api::routing::{
     current_provider_id_option_from_sources, legacy_provider_codex_catalog_models_from_settings,
     legacy_provider_config_text_from_settings, legacy_provider_env_from_settings,
     plan_auto_failover_toggle, provider_failover_circuit_lookups,
-    provider_selection_candidate_from_failover_lookup, restored_provider_switchback_decision,
-    select_provider_ids, should_block_proxy_switch_to_provider_category,
+    provider_selection_candidate_from_failover_lookup, select_provider_ids,
+    should_block_proxy_switch_to_provider_category,
 };
 
 pub(crate) fn legacy_provider_projection_input(
@@ -9521,59 +9440,6 @@ base_url = "https://api.openai.com/v1"
             proxy_app_config_with_enabled(takeover_disabled_app_config, true);
         assert!(takeover_enabled_app_config.enabled);
         assert!(takeover_enabled_app_config.auto_failover_enabled);
-        let switchback_target = reset_circuit_breaker_switchback_target_from_sources(
-            true,
-            true,
-            true,
-            "provider-a",
-            Some("provider-b".to_string()),
-            vec![
-                FailoverQueueItem {
-                    provider_id: "provider-a".to_string(),
-                    provider_name: "Provider A".to_string(),
-                    sort_index: Some(1),
-                    provider_notes: None,
-                },
-                FailoverQueueItem {
-                    provider_id: "provider-b".to_string(),
-                    provider_name: "Provider B".to_string(),
-                    sort_index: Some(2),
-                    provider_notes: None,
-                },
-            ],
-            Some("Provider A".to_string()),
-        )
-        .expect("restored provider should switch back");
-        assert_eq!(
-            switchback_target,
-            ResetCircuitBreakerSwitchbackTarget {
-                provider_id: "provider-a".to_string(),
-                provider_name: "Provider A".to_string(),
-                restored_sort_index: Some(1),
-                current_sort_index: Some(2),
-            }
-        );
-        assert!(reset_circuit_breaker_switchback_target_from_sources(
-            true,
-            true,
-            true,
-            "provider-a",
-            None,
-            Vec::<FailoverQueueItem>::new(),
-            None,
-        )
-        .is_none());
-        assert!(reset_circuit_breaker_switchback_target_from_sources(
-            false,
-            true,
-            true,
-            "provider-a",
-            Some("provider-b".to_string()),
-            Vec::<FailoverQueueItem>::new(),
-            None,
-        )
-        .is_none());
-
         let default_proxy_config = ProxyConfig::default();
         let loopback_auth = resolve_management_auth_decision(
             &default_proxy_config.listen_address,
@@ -14496,14 +14362,9 @@ command = "latest-command"
 
         let policy = crate::proxy_core::api::routing::route_policy_from_failover_provider_ids(
             AppKind::Claude,
-            vec![FailoverQueueItem {
-                provider_id: "provider-b".to_string(),
-                provider_name: "Provider B".to_string(),
-                sort_index: Some(1),
-                provider_notes: None,
-            }]
-            .into_iter()
-            .map(|item| item.provider_id),
+            vec![("provider-b".to_string(), Some(1))]
+                .into_iter()
+                .map(|(provider_id, _sort_index)| provider_id),
         );
         assert_eq!(policy.app, AppKind::Claude);
         assert_eq!(policy.raw["failoverProviderIds"], json!(["provider-b"]));
