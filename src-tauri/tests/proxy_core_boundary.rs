@@ -8613,6 +8613,7 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
                 "proxy_hot_switch_should_sync_claude_live_while_proxy_active",
                 "proxy_live_config_owned_by_takeover",
                 "proxy_switch_should_hot_switch",
+                "should_reapply_codex_official_live_for_provider_category",
             ][..],
         ),
         (
@@ -8715,6 +8716,7 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
         "proxy_runtime_status_stopped",
         "proxy_switch_should_hot_switch",
         "proxy_urls_match",
+        "should_reapply_codex_official_live_for_provider_category",
         "remove_claude_takeover_env_fields_if_present",
         "remove_codex_takeover_auth_placeholder_if_present",
         "remove_gemini_takeover_env_fields_if_present",
@@ -8730,6 +8732,11 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
             "proxy_core_adapter should not re-export proxy/live policy helper `{symbol}`"
         );
     }
+
+    assert!(
+        !adapter_source.contains("pub(crate) fn should_reapply_codex_official_live_for_provider"),
+        "proxy_core_adapter should not keep a Provider-shaped official live reapply facade"
+    );
 }
 
 #[test]

@@ -35,6 +35,7 @@ use crate::proxy_core::api::ports::{
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
+    should_reapply_codex_official_live_for_provider_category as core_should_reapply_codex_official_live_for_provider_category,
     should_skip_provider_legacy_common_config_migration, CommonConfigSnippetIssue,
     ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
     ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
@@ -43,7 +44,7 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, provider_settings_validation_parts,
-    should_block_proxy_switch_to_provider, should_reapply_codex_official_live_for_provider,
+    should_block_proxy_switch_to_provider,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -89,6 +90,10 @@ fn provider_additive_live_write_action(
         provider.category.as_deref(),
         add_to_live,
     )
+}
+
+fn should_reapply_codex_official_live_for_provider(provider: &Provider) -> bool {
+    core_should_reapply_codex_official_live_for_provider_category(provider.category.as_deref())
 }
 
 /// 统一会话开关变更后，立即按新开关状态重写当前官方 Codex 供应商的

@@ -958,7 +958,6 @@ use crate::proxy_core::api::ports::{
     provider_uses_common_config_from_parts as core_provider_uses_common_config_from_parts,
     remove_claude_common_config_from_settings as core_remove_claude_common_config_from_settings,
     remove_gemini_common_config_from_settings as core_remove_gemini_common_config_from_settings,
-    should_reapply_codex_official_live_for_provider_category as core_should_reapply_codex_official_live_for_provider_category,
     CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue,
     OpenClawLiveWriteActionDecision as CoreOpenClawLiveWriteActionDecision,
     OpenClawLiveWriteConfigDecision as CoreOpenClawLiveWriteConfigDecision,
@@ -3160,10 +3159,6 @@ pub(crate) fn normalize_provider_common_config_for_storage(
     };
 
     remove_common_config_from_settings(app_type, &provider.settings_config, snippet).map(Some)
-}
-
-pub(crate) fn should_reapply_codex_official_live_for_provider(provider: &Provider) -> bool {
-    core_should_reapply_codex_official_live_for_provider_category(provider.category.as_deref())
 }
 
 use crate::proxy_core::api::routing::{
@@ -9311,7 +9306,11 @@ base_url = "https://api.openai.com/v1"
                 provider.category.as_deref()
             )
         );
-        assert!(should_reapply_codex_official_live_for_provider(&provider));
+        assert!(
+            crate::proxy_core::api::ports::should_reapply_codex_official_live_for_provider_category(
+                provider.category.as_deref()
+            )
+        );
         let official_warning_from_core = proxy_core_event_to_bus_message(
             crate::proxy_core::api::events::proxy_official_warning_event("codex", &provider.name),
         );
@@ -9335,7 +9334,11 @@ base_url = "https://api.openai.com/v1"
                 provider.category.as_deref()
             )
         );
-        assert!(!should_reapply_codex_official_live_for_provider(&provider));
+        assert!(
+            !crate::proxy_core::api::ports::should_reapply_codex_official_live_for_provider_category(
+                provider.category.as_deref()
+            )
+        );
         provider.category = None;
         assert!(
             !crate::proxy_core::api::ports::provider_category_is_official(
@@ -9347,7 +9350,11 @@ base_url = "https://api.openai.com/v1"
                 provider.category.as_deref()
             )
         );
-        assert!(!should_reapply_codex_official_live_for_provider(&provider));
+        assert!(
+            !crate::proxy_core::api::ports::should_reapply_codex_official_live_for_provider_category(
+                provider.category.as_deref()
+            )
+        );
         let provider_switched = proxy_core_event_to_bus_message(
             crate::proxy_core::api::events::provider_switched_failover_event(
                 "claude",
