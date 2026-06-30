@@ -3310,7 +3310,7 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
     let token_source_slice = function_slice(
         &source,
         "pub(crate) fn get_or_create_claude_desktop_gateway_token_from_db_source(",
-        "pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD",
+        "fn attempt_event_payload_input_from_forward_attempt",
     );
 
     assert!(
@@ -3319,6 +3319,10 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
             && token_source_slice.contains(".set_setting(")
             && token_source_slice.contains("uuid::Uuid::new_v4()"),
         "proxy_core_adapter should keep Claude Desktop gateway token DB helper"
+    );
+    assert!(
+        !source.contains("pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD"),
+        "proxy_core_adapter should not re-export the pure channel health failure threshold constant"
     );
     assert!(
         auth_source.contains("pub(crate) struct CcSwitchClaudeDesktopGatewayAuthSource")

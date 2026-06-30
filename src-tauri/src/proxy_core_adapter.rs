@@ -914,9 +914,6 @@ fn attempt_event_payload_input_from_forward_attempt<'a>(
     }
 }
 
-pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
-    crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD;
-
 use crate::proxy_core::api::domain::{
     provider_account_ref, provider_metadata_from_input, unsupported_app_kind_config_error,
 };
@@ -4393,7 +4390,7 @@ pub(crate) fn channel_health_attempt_db_update(
         error_code: result.error_code,
         failure_threshold: result
             .failure_threshold
-            .unwrap_or(DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD),
+            .unwrap_or(crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD),
         response_time_ms: result.latency_ms.map(|latency| latency as i64),
     }
 }
@@ -15636,7 +15633,7 @@ command = "latest-command"
         assert_eq!(update.error_code.as_deref(), Some("rate_limited"));
         assert_eq!(
             update.failure_threshold,
-            DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD
+            crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD
         );
         assert_eq!(update.response_time_ms, Some(123));
 
