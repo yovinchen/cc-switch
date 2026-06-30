@@ -1327,7 +1327,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 本轮继续把 `set_takeover_for_app` 的 Live 备份存在性 source 读取收敛到 host service 边界：`live_takeover.rs` 本地 helper 直接读取 `get_live_backup`，读取失败按无备份继续重建接管并发出原 warning；adapter 不再持有 `live_takeover_backup_exists_from_db`。
 本轮继续把 `set_takeover_for_app` 的 per-app Live 备份删除收敛到 `proxy_core_adapter::{delete_live_backup_best_effort_in_db,delete_live_backup_in_db}`：同步/写入失败回滚继续静默清理，关闭接管时删除失败继续作为错误返回，两种语义在 adapter 中显式分离。
 本轮继续把 `set_takeover_for_app` 的 legacy 接管 active flag 写入保留在 `proxy_core_adapter::set_legacy_live_takeover_active_best_effort_in_db`，但 any-enabled 读取已收敛到 host service 边界：`live_takeover.rs` 本地 helper 直接调用 `is_live_takeover_active` 并维护“检查接管状态失败”错误投影；adapter 不再持有 `live_takeover_any_enabled_from_db`。
-本轮继续把 `set_takeover_for_app` 关闭接管后的 provider health 清理收敛到 `proxy_core_adapter::clear_provider_health_for_app_in_db`：service 不再直接调用 health DAO，清理失败继续按原中文错误返回。
+本轮继续把 `set_takeover_for_app` 关闭接管后的 provider health 清理收敛到 host service 边界：`live_takeover.rs` 本地 helper 直接调用 `clear_provider_health_for_app` 并维护“清除 {app_type} 健康状态失败”错误投影；adapter 不再持有 `clear_provider_health_for_app_in_db`。
 本轮继续把 `start_with_takeover` 的全量 Live 备份清理收敛到 `proxy_core_adapter::{cleanup_all_live_backups_best_effort_in_db,delete_all_live_backups_best_effort_in_db}`：启动前失败继续输出清理 warning，恢复成功后的清理继续静默 best-effort。
 本轮继续把 `start_with_takeover` 的 legacy 接管 active flag 写入收敛到 `proxy_core_adapter::{set_legacy_live_takeover_active_in_db,set_legacy_live_takeover_active_best_effort_in_db}`：首次写入失败仍中止启动，恢复成功后的回滚写入仍为 best-effort。
 本轮继续把 Live token 回填后的 provider settings 持久化收敛到 `proxy_core_adapter::update_live_token_sync_provider_settings_in_db`：`ProxyService::sync_live_config_to_provider` 只负责判断 token 投影是否产生变更，DB 写回失败继续 warning-only，不阻断接管。

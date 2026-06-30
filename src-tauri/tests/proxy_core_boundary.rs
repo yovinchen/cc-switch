@@ -280,10 +280,10 @@ const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_WRITE_MARKERS: &[&str] =
     &[".set_live_takeover_active("];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_ADAPTER_MARKERS: &[&str] =
     &["pub(crate) async fn live_takeover_any_enabled_from_db"];
-const FORBIDDEN_PROXY_SERVICE_TAKEOVER_HEALTH_CLEANUP_MARKERS: &[&str] = &[
-    ".clear_provider_health_for_app(",
-    "清除 {app_type_str} 健康状态失败",
-];
+const FORBIDDEN_PROXY_SERVICE_TAKEOVER_HEALTH_CLEANUP_MARKERS: &[&str] =
+    &[".clear_provider_health_for_app("];
+const FORBIDDEN_PROXY_SERVICE_TAKEOVER_HEALTH_CLEANUP_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) async fn clear_provider_health_for_app_in_db"];
 const FORBIDDEN_PROXY_SERVICE_START_TAKEOVER_BACKUP_CLEANUP_MARKERS: &[&str] =
     &[".delete_all_live_backups(", "清理 Live 备份失败"];
 const FORBIDDEN_PROXY_SERVICE_START_TAKEOVER_ACTIVE_FLAG_MARKERS: &[&str] =
@@ -7301,6 +7301,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) async fn failover_switch_app_enabled_from_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) async fn live_takeover_any_enabled_from_db",
+        "pub(crate) async fn clear_provider_health_for_app_in_db",
         "pub(crate) fn reset_circuit_breaker_switchback_target_from_sources",
         "pub(crate) async fn reset_circuit_breaker_switchback_target_from_db",
         "pub(crate) async fn auto_failover_toggle_plan_from_db",
@@ -15301,10 +15302,12 @@ fn production_proxy_service_owns_takeover_any_enabled_source() {
 }
 
 #[test]
-fn production_proxy_service_delegates_takeover_health_cleanup_to_adapter() {
+fn production_proxy_service_owns_takeover_health_cleanup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -15327,9 +15330,26 @@ fn production_proxy_service_delegates_takeover_health_cleanup_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService::set_takeover_for_app must delegate provider-health cleanup to proxy_core_adapter:\n{}",
+        "ProxyService::set_takeover_for_app must route provider-health cleanup through its host-local helper:\n{}",
         violations.join("\n")
     );
+    assert!(
+        function.contains("clear_provider_health_for_app_from_host_db(&self.db, app_type_str).await?"),
+        "ProxyService::set_takeover_for_app should clean provider health through its host-local helper"
+    );
+    assert!(
+        source.contains("async fn clear_provider_health_for_app_from_host_db(")
+            && source.contains("db.clear_provider_health_for_app(app_type)")
+            && source.contains("清除 {app_type} 健康状态失败: {e}"),
+        "ProxyService should own provider-health cleanup source and error projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_HEALTH_CLEANUP_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep takeover health cleanup wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]

@@ -33,11 +33,10 @@ use crate::proxy_core_adapter::{
     apply_codex_unified_session_bucket_for_provider, cleanup_all_live_backups_best_effort_in_db,
     clear_all_provider_health_in_db, clear_legacy_live_takeover_active_flag_in_db,
     clear_legacy_live_takeover_active_flag_strict_in_db, clear_live_takeover_enabled_flags_in_db,
-    clear_provider_health_for_app_in_db, codex_backup_projection_error_message,
-    codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
-    codex_provider_live_write_parts, current_provider_for_app_from_db,
-    delete_all_live_backups_best_effort_in_db, delete_all_live_backups_in_db,
-    delete_live_backup_best_effort_in_db, delete_live_backup_in_db,
+    codex_backup_projection_error_message, codex_live_write_projection,
+    codex_preserved_auth_live_config_text_for_configured_policy, codex_provider_live_write_parts,
+    current_provider_for_app_from_db, delete_all_live_backups_best_effort_in_db,
+    delete_all_live_backups_in_db, delete_live_backup_best_effort_in_db, delete_live_backup_in_db,
     disable_global_proxy_best_effort_in_db, enable_global_proxy_in_db,
     existing_live_backup_value_for_update_from_db, live_backup_config_for_simple_restore_from_db,
     live_backup_snapshot_from_live_config, live_backup_value_for_restore_from_db,
@@ -106,6 +105,15 @@ async fn live_takeover_any_enabled_from_host_db(db: &Database) -> Result<bool, S
     db.is_live_takeover_active()
         .await
         .map_err(|e| format!("检查接管状态失败: {e}"))
+}
+
+async fn clear_provider_health_for_app_from_host_db(
+    db: &Database,
+    app_type: &str,
+) -> Result<(), String> {
+    db.clear_provider_health_for_app(app_type)
+        .await
+        .map_err(|e| format!("清除 {app_type} 健康状态失败: {e}"))
 }
 
 #[derive(Clone)]
@@ -470,7 +478,7 @@ impl ProxyService {
         set_proxy_app_enabled_in_db(&self.db, app_type_str, false).await?;
 
         // 4) 清除该应用的健康状态（关闭代理时重置队列状态）
-        clear_provider_health_for_app_in_db(&self.db, app_type_str).await?;
+        clear_provider_health_for_app_from_host_db(&self.db, app_type_str).await?;
 
         // 5) 若无其它接管，更新旧标志，并停止代理服务
         // 检查是否还有其它 app 的 enabled = true
