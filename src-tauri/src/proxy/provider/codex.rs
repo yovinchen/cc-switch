@@ -8,11 +8,12 @@
 use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
+use crate::proxy_core::api::auth::codex_auth_info_from_api_key;
 use crate::proxy_core::api::auth::ProviderAuthInfo;
+use crate::proxy_core::api::ports::codex_base_url_from_settings;
+use crate::proxy_core::api::ports::required_provider_base_url;
+use crate::proxy_core::api::transport::build_codex_provider_auth_headers;
 use crate::proxy_core::api::transport::build_codex_upstream_url;
-use crate::proxy_core_adapter::{
-    provider_codex_auth_headers, provider_codex_auth_info, required_codex_provider_base_url,
-};
 
 /// Codex 适配器
 pub struct CodexAdapter;
@@ -29,6 +30,75 @@ impl Default for CodexAdapter {
     }
 }
 
+fn codex_provider_api_key(provider: &Provider) -> Option<String> {
+    if let Some(env) = provider.settings_config.get("env") {
+        if let Some(key) = env
+            .get("OPENAI_API_KEY")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+        {
+            return Some(key.to_string());
+        }
+    }
+
+    if let Some(auth) = provider.settings_config.get("auth") {
+        if let Some(key) = crate::codex_config::extract_codex_auth_api_key(auth) {
+            return Some(key.to_string());
+        }
+    }
+
+    if let Some(key) = provider
+        .settings_config
+        .get("apiKey")
+        .or_else(|| provider.settings_config.get("api_key"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+    {
+        return Some(key.to_string());
+    }
+
+    if let Some(config) = provider.settings_config.get("config") {
+        if let Some(key) = config
+            .get("api_key")
+            .or_else(|| config.get("apiKey"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+        {
+            return Some(key.to_string());
+        }
+
+        if let Some(config_str) = config.as_str() {
+            if let Some(key) =
+                crate::codex_config::extract_codex_experimental_bearer_token(config_str)
+            {
+                return Some(key);
+            }
+        }
+    }
+
+    None
+}
+
+fn codex_provider_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
+    codex_provider_api_key(provider).map(codex_auth_info_from_api_key)
+}
+
+fn required_codex_provider_base_url(provider: &Provider) -> Result<String, String> {
+    required_provider_base_url(
+        "Codex",
+        codex_base_url_from_settings(&provider.settings_config),
+    )
+}
+
+fn codex_provider_auth_headers(
+    auth: &ProviderAuthInfo,
+) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {
+    build_codex_provider_auth_headers(auth).map_err(|error| error.to_string())
+}
+
 impl ProviderAdapter for CodexAdapter {
     fn name(&self) -> &'static str {
         "Codex"
@@ -39,7 +109,7 @@ impl ProviderAdapter for CodexAdapter {
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
-        provider_codex_auth_info(provider)
+        codex_provider_auth_info(provider)
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {
@@ -50,7 +120,7 @@ impl ProviderAdapter for CodexAdapter {
         &self,
         auth: &ProviderAuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
-        provider_codex_auth_headers(auth).map_err(ProxyError::AuthError)
+        codex_provider_auth_headers(auth).map_err(ProxyError::AuthError)
     }
 }
 

@@ -1934,6 +1934,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1370. Claude 非流式响应转换测试不再通过 `proxy_core_adapter::provider_claude_transform_response` 这种结构化自动探测 facade；adapter 与 provider 测试改为显式调用 `provider_claude_transform_response_for_api_format` 或 core transform，生产边界只保留 api_format 明确分发入口。
 1371. response pipeline 的 usage provider facts 现在本地拥有 `Provider -> ProviderKind` 投影；`proxy_core_adapter::provider_kind_from_provider` 已收窄为 adapter 私有 helper，避免 response usage 归因继续通过宽 adapter 读取普通 Provider meta。
 1372. Codex OAuth/managed-account Provider 分类的外部调用点已改为使用 `Provider::{is_codex_oauth,uses_managed_account_auth}`；`proxy_core_adapter::{provider_is_codex_oauth,provider_uses_managed_account_auth}` 收窄为 adapter 私有组合 helper，避免普通 Provider 分类继续作为宽 adapter facade 暴露。
+1373. Codex provider auth/base URL 投影已移回 `proxy/provider/codex.rs`，Claude required base URL 投影已移回 `proxy/provider/claude.rs`；两个 provider adapter 直接消费 `proxy-core` 的 auth/header/base-url helper，`proxy_core_adapter` 不再暴露 `provider_codex_auth_*` 或 `required_*_provider_base_url` 这类 provider-local façade。
 
 ## 背景
 

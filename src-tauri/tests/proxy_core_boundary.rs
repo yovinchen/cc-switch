@@ -2055,6 +2055,27 @@ fn is_allowed_provider_auth_core_import(relative: &str, code: &str) -> bool {
         code.trim(),
         "use crate::proxy_core::api::auth::ProviderAuthInfo;"
             | "use crate::proxy_core::api::auth::ProviderAuthStrategy;"
+            | "use crate::proxy_core::api::auth::codex_auth_info_from_api_key;"
+            | "use crate::proxy_core::api::transport::build_codex_provider_auth_headers;"
+    )
+}
+
+fn is_allowed_provider_base_url_core_import(relative: &str, code: &str) -> bool {
+    matches!(
+        (relative, code.trim()),
+        (
+            "src/proxy/provider/claude.rs",
+            "use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;"
+        ) | (
+            "src/proxy/provider/claude.rs",
+            "use crate::proxy_core::api::ports::required_provider_base_url;"
+        ) | (
+            "src/proxy/provider/codex.rs",
+            "use crate::proxy_core::api::ports::codex_base_url_from_settings;"
+        ) | (
+            "src/proxy/provider/codex.rs",
+            "use crate::proxy_core::api::ports::required_provider_base_url;"
+        )
     )
 }
 
@@ -2351,6 +2372,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
             for marker in FORBIDDEN_MARKERS {
                 if code.contains(marker)
                     && !is_allowed_provider_auth_core_import(&relative, code)
+                    && !is_allowed_provider_base_url_core_import(&relative, code)
                     && !is_allowed_gemini_provider_direct_core_import(&relative, code)
                     && !is_allowed_provider_upstream_url_core_import(&relative, code)
                     && !is_allowed_provider_adapter_kind_core_import(&relative, code)
@@ -7767,6 +7789,14 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
         "proxy_core_adapter should not expose raw Codex base URL extraction as a crate-visible facade"
     );
     assert!(
+        !source.contains("pub(crate) fn provider_codex_auth_info"),
+        "proxy_core_adapter should not expose Codex provider auth projection as a crate-visible facade"
+    );
+    assert!(
+        !source.contains("pub(crate) fn provider_codex_auth_headers"),
+        "proxy_core_adapter should not expose Codex provider auth headers as a crate-visible facade"
+    );
+    assert!(
         !source.contains("pub(crate) type ProviderCredentialValues"),
         "proxy_core_adapter should not re-export provider credential DTOs as adapter aliases"
     );
@@ -8261,24 +8291,32 @@ fn http_server_tests_import_route_contracts_directly() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_codex_base_url_policy_to_core() {
+fn codex_provider_adapter_owns_codex_base_url_policy_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let provider_source = fs::read_to_string(manifest_dir.join("src/proxy/provider/codex.rs"))
+        .expect("read proxy/provider/codex.rs");
+    let base_url_slice = function_slice(
+        &provider_source,
+        "fn required_codex_provider_base_url",
+        "fn codex_provider_auth_headers",
+    );
 
-    let slice = function_slice(
-        &source,
-        "fn provider_codex_base_url",
-        "pub(crate) fn required_codex_provider_base_url",
+    assert!(
+        !adapter_source.contains("fn provider_codex_base_url")
+            && !adapter_source.contains("pub(crate) fn required_codex_provider_base_url"),
+        "proxy_core_adapter should not expose Codex provider base URL projection"
     );
     assert!(
-        slice.contains("core_codex_base_url_from_settings"),
-        "proxy_core_adapter should delegate Codex base URL extraction to core"
+        provider_source.contains("codex_base_url_from_settings")
+            && provider_source.contains("required_provider_base_url"),
+        "Codex provider adapter should own base URL projection and delegate parsing/error text to core"
     );
 
     let mut violations = Vec::new();
     for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_BASE_URL_POLICY_MARKERS {
-        if slice.contains(marker) {
+        if base_url_slice.contains(marker) {
             violations.push(*marker);
         }
     }
@@ -8816,22 +8854,27 @@ fn proxy_core_adapter_delegates_codex_backfill_policy_to_core() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_required_provider_base_url_policy_to_core() {
+fn provider_adapters_own_required_provider_base_url_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let codex_source = fs::read_to_string(manifest_dir.join("src/proxy/provider/codex.rs"))
+        .expect("read proxy/provider/codex.rs");
+    let claude_source = fs::read_to_string(manifest_dir.join("src/proxy/provider/claude.rs"))
+        .expect("read proxy/provider/claude.rs");
 
-    let slice = function_slice(
-        &source,
-        "pub(crate) fn required_codex_provider_base_url",
-        "fn provider_codex_config_text",
+    assert!(
+        !adapter_source.contains("pub(crate) fn required_codex_provider_base_url")
+            && !adapter_source.contains("pub(crate) fn required_claude_provider_base_url"),
+        "proxy_core_adapter should not expose provider base URL requirement facades"
     );
     assert!(
-        slice.matches("core_required_provider_base_url").count() == 2,
-        "proxy_core_adapter should delegate required provider base URL errors to core for Codex/Claude; Gemini now projects this in its provider adapter"
+        codex_source.contains("required_provider_base_url")
+            && claude_source.contains("required_provider_base_url"),
+        "Codex and Claude provider adapters should delegate missing base URL policy to core directly"
     );
     assert!(
-        !source.contains(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy_core::api::domain::extract_claude_base_url_from_settings"
         ),
         "proxy_core_adapter should not re-export pure Claude base URL extraction helper"
@@ -8839,7 +8882,7 @@ fn proxy_core_adapter_delegates_required_provider_base_url_policy_to_core() {
 
     let mut violations = Vec::new();
     for marker in FORBIDDEN_PROXY_CORE_ADAPTER_REQUIRED_BASE_URL_POLICY_MARKERS {
-        if slice.contains(marker) {
+        if codex_source.contains(marker) || claude_source.contains(marker) {
             violations.push(*marker);
         }
     }

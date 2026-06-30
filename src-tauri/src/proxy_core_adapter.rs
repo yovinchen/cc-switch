@@ -151,7 +151,6 @@ use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection
 use crate::proxy_core::api::ports::{
     apply_codex_takeover_auth_placeholder_if_present,
     codex_auth_has_oauth_login_material as core_codex_auth_has_oauth_login_material,
-    codex_base_url_from_settings as core_codex_base_url_from_settings,
     codex_config_text_from_settings,
     codex_live_settings_parts_from_settings as core_codex_live_settings_parts_from_settings,
     codex_live_snapshot_parts_from_settings as core_codex_live_snapshot_parts_from_settings,
@@ -164,8 +163,7 @@ use crate::proxy_core::api::ports::{
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
     provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
-    required_provider_base_url as core_required_provider_base_url, CodexLiveSettingsIssue,
-    CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
+    CodexLiveSettingsIssue, CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
     CodexProviderBackfillParts, CodexProviderLiveWriteIssue, CodexProviderLiveWriteParts,
     CopilotOptimizerConfig, LiveTokenProviderSettingsIssue, OptimizerConfig,
     ProviderSettingsValidationIssue, ProviderSettingsValidationParts, RectifierConfig,
@@ -862,7 +860,6 @@ use crate::proxy_core::api::ports::{ChannelAttemptResult, ProviderAttemptResult}
 
 use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
-use crate::proxy_core::api::auth::codex_auth_info_from_api_key as core_codex_auth_info_from_api_key;
 
 pub(crate) const CLAUDE_DESKTOP_GATEWAY_TOKEN_SETTING_KEY: &str = "claude_desktop_gateway_token";
 
@@ -1448,7 +1445,7 @@ use crate::proxy_core::api::transforms::{
     ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
 };
 use crate::proxy_core::api::transport::{
-    build_claude_provider_auth_headers, build_codex_provider_auth_headers,
+    build_claude_provider_auth_headers,
     codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
     codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required,
     CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts,
@@ -1507,81 +1504,7 @@ pub(crate) fn emit_proxy_core_event_bus_source(events: &ProxyEventBus, event: Pr
     });
 }
 
-pub(crate) fn provider_codex_auth_headers(
-    auth: &ProviderAuthInfo,
-) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {
-    build_codex_provider_auth_headers(auth).map_err(|error| error.to_string())
-}
-
 use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model;
-
-fn provider_codex_api_key(provider: &Provider) -> Option<String> {
-    if let Some(env) = provider.settings_config.get("env") {
-        if let Some(key) = env
-            .get("OPENAI_API_KEY")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|key| !key.is_empty())
-        {
-            return Some(key.to_string());
-        }
-    }
-
-    if let Some(auth) = provider.settings_config.get("auth") {
-        if let Some(key) = crate::codex_config::extract_codex_auth_api_key(auth) {
-            return Some(key.to_string());
-        }
-    }
-
-    if let Some(key) = provider
-        .settings_config
-        .get("apiKey")
-        .or_else(|| provider.settings_config.get("api_key"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|key| !key.is_empty())
-    {
-        return Some(key.to_string());
-    }
-
-    if let Some(config) = provider.settings_config.get("config") {
-        if let Some(key) = config
-            .get("api_key")
-            .or_else(|| config.get("apiKey"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|key| !key.is_empty())
-        {
-            return Some(key.to_string());
-        }
-
-        if let Some(config_str) = config.as_str() {
-            if let Some(key) =
-                crate::codex_config::extract_codex_experimental_bearer_token(config_str)
-            {
-                return Some(key);
-            }
-        }
-    }
-
-    None
-}
-
-pub(crate) fn provider_codex_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
-    provider_codex_api_key(provider).map(core_codex_auth_info_from_api_key)
-}
-
-fn provider_codex_base_url(provider: &Provider) -> Option<String> {
-    core_codex_base_url_from_settings(&provider.settings_config)
-}
-
-pub(crate) fn required_codex_provider_base_url(provider: &Provider) -> Result<String, String> {
-    core_required_provider_base_url("Codex", provider_codex_base_url(provider))
-}
-
-pub(crate) fn required_claude_provider_base_url(provider: &Provider) -> Result<String, String> {
-    core_required_provider_base_url("Claude", provider_claude_base_url(provider))
-}
 
 fn provider_codex_config_text(provider: &Provider) -> Option<&str> {
     codex_config_text_from_settings(&provider.settings_config)
@@ -9648,60 +9571,6 @@ base_url = "https://api.openai.com/v1"
             headers[0].1,
             http::HeaderValue::from_static("Bearer sk-test")
         );
-        let auth_headers = provider_codex_auth_headers(&ProviderAuthInfo::new(
-            "sk-provider".to_string(),
-            ProviderAuthStrategy::Bearer,
-        ))
-        .expect("provider codex auth headers");
-        assert_eq!(auth_headers[0].0.as_str(), "authorization");
-        assert_eq!(
-            auth_headers[0].1,
-            http::HeaderValue::from_static("Bearer sk-provider")
-        );
-        let provider = Provider::with_id(
-            "codex".to_string(),
-            "Codex".to_string(),
-            json!({
-                "env": {
-                    "OPENAI_API_KEY": " sk-provider "
-                },
-                "baseURL": "https://api.openai.com/v1/"
-            }),
-            None,
-        );
-        assert_eq!(
-            provider_codex_api_key(&provider).as_deref(),
-            Some("sk-provider")
-        );
-        let provider_auth = provider_codex_auth_info(&provider).expect("codex auth info");
-        assert_eq!(provider_auth.api_key, "sk-provider");
-        assert_eq!(provider_auth.access_token, None);
-        assert_eq!(provider_auth.strategy, ProviderAuthStrategy::Bearer);
-        let missing_codex_auth = Provider::with_id(
-            "codex-missing-auth".to_string(),
-            "Codex Missing Auth".to_string(),
-            json!({}),
-            None,
-        );
-        assert!(provider_codex_auth_info(&missing_codex_auth).is_none());
-        assert_eq!(
-            provider_codex_base_url(&provider).as_deref(),
-            Some("https://api.openai.com/v1")
-        );
-        assert_eq!(
-            required_codex_provider_base_url(&provider).as_deref(),
-            Ok("https://api.openai.com/v1")
-        );
-        let missing_codex_base_url = Provider::with_id(
-            "codex-missing-base-url".to_string(),
-            "Codex Missing Base URL".to_string(),
-            json!({}),
-            None,
-        );
-        assert_eq!(
-            required_codex_provider_base_url(&missing_codex_base_url).unwrap_err(),
-            "Codex Provider 缺少 base_url 配置"
-        );
         assert_eq!(
             codex_config_text_from_settings(&json!({"config": "model = \"gpt-5\""})),
             Some("model = \"gpt-5\"")
@@ -10351,7 +10220,7 @@ base_url = "https://api.openai.com/v1"
             Some("https://generativelanguage.googleapis.com/v1beta")
         );
         assert_eq!(
-            core_required_provider_base_url(
+            crate::proxy_core::api::ports::required_provider_base_url(
                 "Gemini",
                 extract_gemini_base_url_from_settings(&provider.settings_config)
             )
@@ -10359,7 +10228,7 @@ base_url = "https://api.openai.com/v1"
             Ok("https://generativelanguage.googleapis.com/v1beta")
         );
         assert_eq!(
-            core_required_provider_base_url("Gemini", None).unwrap_err(),
+            crate::proxy_core::api::ports::required_provider_base_url("Gemini", None).unwrap_err(),
             "Gemini Provider 缺少 base_url 配置"
         );
         let live_env = gemini_env_string_map_from_settings(&provider.settings_config);
@@ -10514,20 +10383,6 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(
             provider_claude_base_url(&provider).as_deref(),
             Some("https://api.anthropic.com/v1")
-        );
-        assert_eq!(
-            required_claude_provider_base_url(&provider).as_deref(),
-            Ok("https://api.anthropic.com/v1")
-        );
-        let missing_claude_base_url = Provider::with_id(
-            "claude-missing-base-url".to_string(),
-            "Claude Missing Base URL".to_string(),
-            json!({}),
-            None,
-        );
-        assert_eq!(
-            required_claude_provider_base_url(&missing_claude_base_url).unwrap_err(),
-            "Claude Provider 缺少 base_url 配置"
         );
         let direct_key_provider = Provider::with_id(
             "claude-direct-key".to_string(),

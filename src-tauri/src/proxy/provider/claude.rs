@@ -20,12 +20,13 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::api::auth::ProviderAuthInfo;
 #[cfg(test)]
 use crate::proxy_core::api::auth::ProviderAuthStrategy;
+use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;
+use crate::proxy_core::api::ports::required_provider_base_url;
 use crate::proxy_core::api::transforms::GeminiShadowStore;
 use crate::proxy_core::api::transport::build_claude_upstream_url;
 use crate::proxy_core_adapter::{
     provider_claude_api_format, provider_claude_auth_headers, provider_claude_auth_info,
     provider_claude_transform_request_for_api_format, provider_needs_claude_transform,
-    required_claude_provider_base_url,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -48,6 +49,13 @@ fn transform_claude_request_for_api_format(
         shadow_store,
     )
     .map_err(ProxyError::TransformError)
+}
+
+fn required_claude_provider_base_url(provider: &Provider) -> Result<String, String> {
+    required_provider_base_url(
+        "Claude",
+        extract_claude_base_url_from_settings(provider.is_codex_oauth(), &provider.settings_config),
+    )
 }
 
 /// Claude 适配器
