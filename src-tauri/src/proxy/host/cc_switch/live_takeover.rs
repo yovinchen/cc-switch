@@ -2557,10 +2557,8 @@ mod tests {
             }),
             None,
         );
-        assert!(crate::proxy_core_adapter::provider_uses_managed_account_auth(&provider));
-        assert!(!crate::proxy_core_adapter::provider_is_codex_oauth(
-            &provider
-        ));
+        assert!(provider.uses_managed_account_auth());
+        assert!(!provider.is_codex_oauth());
 
         let mut live_config = provider.settings_config.clone();
         apply_claude_takeover_fields_for_provider(

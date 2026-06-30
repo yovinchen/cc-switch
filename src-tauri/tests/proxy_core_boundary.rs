@@ -7352,10 +7352,12 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn provider_gemini_kind",
         "pub(crate) fn provider_health_attempt_db_update",
         "pub(crate) fn provider_failover_circuit_lookups_from_router_sources",
+        "pub(crate) fn provider_is_codex_oauth(",
         "pub(crate) fn provider_is_github_copilot(",
         "pub(crate) fn provider_kind_from_app_type_and_config",
         "pub(crate) fn provider_managed_account_binding_input",
         "pub(crate) fn provider_managed_account_id_for",
+        "pub(crate) fn provider_uses_managed_account_auth(",
         "pub(crate) fn provider_openclaw_has_live_provider_fields",
         "pub(crate) fn provider_openclaw_live_write_plan",
         "pub(crate) fn provider_opencode_live_provider_fragment",
@@ -13005,7 +13007,7 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
     let forward_pipeline_transport_import = function_slice(
         &forward_pipeline_source,
         "use crate::proxy_core::api::transport::{",
-        "};\n#[cfg(test)]",
+        "};\nuse crate::proxy_core_adapter::{",
     );
     assert!(
         forward_pipeline_transport_import.contains("ForwarderProviderUrlFacts"),
@@ -19125,7 +19127,7 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     let forwarder_transport_import_slice = function_slice(
         &source,
         "use crate::proxy_core::api::transport::{",
-        "};\n#[cfg(test)]",
+        "};\nuse crate::proxy_core_adapter::{",
     );
     assert!(
         forwarder_transport_import_slice.contains("ForwarderRectifierRetryKind"),
@@ -20195,7 +20197,7 @@ fn production_forwarder_uses_request_source_resource() {
     let forwarder_core_transport_import_slice = function_slice(
         &source,
         "use crate::proxy_core::api::transport::{",
-        "};\n#[cfg(test)]",
+        "};\nuse crate::proxy_core_adapter::{",
     );
     let forwarder_adapter_imports = proxy_core_adapter_import_identifiers(&source);
     for marker in [

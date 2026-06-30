@@ -15,8 +15,6 @@ use crate::proxy_core::api::transport::{
     ForwarderProtocolPreparationInput, ForwarderProviderUrlFacts, ForwarderRectifierRetryKind,
     OptionalCopilotAuthOptimizationPreparationInput,
 };
-#[cfg(test)]
-use crate::proxy_core_adapter::provider_is_codex_oauth;
 use crate::proxy_core_adapter::{
     ActiveConnectionGuard, FailoverSwitchSchedulerRef, ForwarderAnthropicRectifierGateInput,
     ForwarderAppMediaPreventionInput, ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput,
@@ -1558,25 +1556,25 @@ mod tests {
 
         assert!(should_preserve_exact_request_header_case(
             "Claude",
-            provider_is_codex_oauth(&provider),
+            provider.is_codex_oauth(),
             false,
             Some("anthropic"),
         ));
         assert!(!should_preserve_exact_request_header_case(
             "Claude",
-            provider_is_codex_oauth(&provider),
+            provider.is_codex_oauth(),
             false,
             Some("openai_responses"),
         ));
         assert!(!should_preserve_exact_request_header_case(
             "Codex",
-            provider_is_codex_oauth(&provider),
+            provider.is_codex_oauth(),
             false,
             None
         ));
         assert!(!should_preserve_exact_request_header_case(
             "Gemini",
-            provider_is_codex_oauth(&provider),
+            provider.is_codex_oauth(),
             false,
             None
         ));
@@ -1589,13 +1587,13 @@ mod tests {
 
         assert!(!should_preserve_exact_request_header_case(
             "Claude",
-            provider_is_codex_oauth(&codex_oauth),
+            codex_oauth.is_codex_oauth(),
             false,
             Some("openai_responses"),
         ));
         assert!(!should_preserve_exact_request_header_case(
             "Claude",
-            provider_is_codex_oauth(&copilot),
+            copilot.is_codex_oauth(),
             true,
             Some("openai_chat"),
         ));

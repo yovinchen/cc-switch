@@ -9,7 +9,6 @@ use crate::codex_config::{
 use crate::config::{atomic_write, copy_file, get_app_config_dir};
 use crate::database::{is_official_seed_id, Database};
 use crate::error::AppError;
-use crate::proxy_core_adapter::provider_is_codex_oauth;
 use crate::settings::{
     CodexOfficialHistoryUnifyMigration, CodexProviderTemplateMigration,
     CodexThirdPartyHistoryProviderBucketMigration,
@@ -666,7 +665,7 @@ fn migrate_codex_provider_templates_to_custom(
     for (_, provider) in providers {
         if provider.category.as_deref() == Some("official")
             || is_official_seed_id(&provider.id)
-            || provider_is_codex_oauth(&provider)
+            || provider.is_codex_oauth()
         {
             continue;
         }
@@ -711,7 +710,7 @@ fn collect_source_model_provider_ids(db: &Database) -> Result<BTreeSet<String>, 
     for provider in providers.values() {
         if provider.category.as_deref() == Some("official")
             || is_official_seed_id(&provider.id)
-            || provider_is_codex_oauth(provider)
+            || provider.is_codex_oauth()
         {
             continue;
         }

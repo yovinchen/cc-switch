@@ -4587,7 +4587,7 @@ fn provider_managed_auth_classification(provider: &Provider) -> ProviderManagedA
     })
 }
 
-pub(crate) fn provider_is_codex_oauth(provider: &Provider) -> bool {
+fn provider_is_codex_oauth(provider: &Provider) -> bool {
     provider_managed_auth_classification(provider).is_codex_oauth
 }
 
@@ -4595,7 +4595,7 @@ fn provider_is_github_copilot(provider: &Provider) -> bool {
     provider_managed_auth_classification(provider).is_github_copilot
 }
 
-pub(crate) fn provider_uses_managed_account_auth(provider: &Provider) -> bool {
+fn provider_uses_managed_account_auth(provider: &Provider) -> bool {
     provider_managed_auth_classification(provider).uses_managed_account
 }
 
