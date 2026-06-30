@@ -285,8 +285,11 @@ const FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_DELETE_ADAPTER_MARKERS: &[&str] = 
 ];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_WRITE_MARKERS: &[&str] =
     &[".set_live_takeover_active("];
-const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_ADAPTER_MARKERS: &[&str] =
-    &["pub(crate) async fn live_takeover_any_enabled_from_db"];
+const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_ADAPTER_MARKERS: &[&str] = &[
+    "pub(crate) async fn live_takeover_any_enabled_from_db",
+    "pub(crate) async fn set_legacy_live_takeover_active_best_effort_in_db",
+    "pub(crate) async fn set_legacy_live_takeover_active_in_db",
+];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_HEALTH_CLEANUP_MARKERS: &[&str] =
     &[".clear_provider_health_for_app("];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_HEALTH_CLEANUP_ADAPTER_MARKERS: &[&str] =
@@ -7329,6 +7332,8 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) async fn delete_all_live_backups_best_effort_in_db",
         "pub(crate) async fn delete_all_live_backups_in_db",
         "pub(crate) async fn clear_all_provider_health_in_db",
+        "pub(crate) async fn set_legacy_live_takeover_active_best_effort_in_db",
+        "pub(crate) async fn set_legacy_live_takeover_active_in_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) async fn delete_live_backup_best_effort_in_db",
         "pub(crate) async fn delete_live_backup_in_db",
@@ -15359,12 +15364,19 @@ fn production_proxy_service_owns_takeover_any_enabled_source() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService::set_takeover_for_app must delegate legacy active-flag writes to proxy_core_adapter:\n{}",
+        "ProxyService::set_takeover_for_app must route legacy active-flag writes through host-local helpers:\n{}",
         violations.join("\n")
     );
     assert!(
         function.contains("live_takeover_any_enabled_from_host_db(&self.db).await?"),
         "ProxyService::set_takeover_for_app should read legacy active state through its host-local helper"
+    );
+    assert!(
+        function.contains("set_legacy_live_takeover_active_best_effort_from_host_db(&self.db, true).await")
+            && function.contains(
+                "set_legacy_live_takeover_active_best_effort_from_host_db(&self.db, false).await"
+            ),
+        "ProxyService::set_takeover_for_app should write legacy active state through its host-local helper"
     );
     assert!(
         source.contains("async fn live_takeover_any_enabled_from_host_db(")
@@ -15489,10 +15501,12 @@ fn production_proxy_service_owns_all_backup_cleanup_source() {
 }
 
 #[test]
-fn production_proxy_service_delegates_start_takeover_active_flag_to_adapter() {
+fn production_proxy_service_owns_start_takeover_active_flag_write_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "pub async fn start_with_takeover",
@@ -15515,9 +15529,31 @@ fn production_proxy_service_delegates_start_takeover_active_flag_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService::start_with_takeover must delegate legacy active-flag compatibility writes to proxy_core_adapter:\n{}",
+        "ProxyService::start_with_takeover must route legacy active-flag compatibility writes through host-local helpers:\n{}",
         violations.join("\n")
     );
+    assert!(
+        function.contains("set_legacy_live_takeover_active_from_host_db(&self.db, true).await")
+            && function.contains(
+                "set_legacy_live_takeover_active_best_effort_from_host_db(&self.db, false)"
+            ),
+        "ProxyService::start_with_takeover should write legacy active state through host-local helpers"
+    );
+    assert!(
+        source.contains("async fn set_legacy_live_takeover_active_from_host_db(")
+            && source
+                .contains("async fn set_legacy_live_takeover_active_best_effort_from_host_db(")
+            && source.contains("db.set_live_takeover_active(active)")
+            && source.contains("设置接管状态失败"),
+        "ProxyService should own legacy active-state write source and error projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep takeover active-state write wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]

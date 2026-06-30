@@ -48,10 +48,8 @@ use crate::proxy_core_adapter::{
     proxy_hot_switch_target_state_from_db, proxy_official_warning_event_from_current_provider_db,
     proxy_server_from_runtime_config, remove_codex_takeover_config_placeholders_if_present,
     require_current_provider_for_app_from_db, save_live_backup_value_in_db,
-    save_provider_live_backup_from_effective_settings_in_db,
-    set_legacy_live_takeover_active_best_effort_in_db, set_legacy_live_takeover_active_in_db,
-    ssot_live_restore_provider_from_db, sync_provider_settings_with_live_token,
-    update_live_token_sync_provider_settings_in_db,
+    save_provider_live_backup_from_effective_settings_in_db, ssot_live_restore_provider_from_db,
+    sync_provider_settings_with_live_token, update_live_token_sync_provider_settings_in_db,
     update_proxy_config_preserving_live_takeover_active_in_db,
     write_ssot_live_restore_provider_with_common_config, CodexLiveWriteProjection,
     CodexTakeoverAuthPolicy,
@@ -159,6 +157,19 @@ async fn clear_legacy_live_takeover_active_flag_strict_from_host_db(
     db.set_live_takeover_active(false)
         .await
         .map_err(|e| format!("清除接管状态失败: {e}"))
+}
+
+async fn set_legacy_live_takeover_active_best_effort_from_host_db(db: &Database, active: bool) {
+    let _ = db.set_live_takeover_active(active).await;
+}
+
+async fn set_legacy_live_takeover_active_from_host_db(
+    db: &Database,
+    active: bool,
+) -> Result<(), String> {
+    db.set_live_takeover_active(active)
+        .await
+        .map_err(|e| format!("设置接管状态失败: {e}"))
 }
 
 async fn cleanup_all_live_backups_best_effort_from_host_db(db: &Database) {
@@ -393,7 +404,7 @@ impl ProxyService {
 
         // 3. 在写入接管配置之前先落盘接管标志：
         //    这样即使在接管过程中断电/kill，下次启动也能检测到并自动恢复。
-        if let Err(e) = set_legacy_live_takeover_active_in_db(&self.db, true).await {
+        if let Err(e) = set_legacy_live_takeover_active_from_host_db(&self.db, true).await {
             cleanup_all_live_backups_best_effort_from_host_db(&self.db).await;
             if started_proxy_before_takeover {
                 let _ = self.stop().await;
@@ -407,7 +418,7 @@ impl ProxyService {
             log::error!("接管 Live 配置失败，尝试恢复原始配置: {e}");
             match self.restore_live_configs().await {
                 Ok(()) => {
-                    set_legacy_live_takeover_active_best_effort_in_db(&self.db, false).await;
+                    set_legacy_live_takeover_active_best_effort_from_host_db(&self.db, false).await;
                     delete_all_live_backups_best_effort_from_host_db(&self.db).await;
                 }
                 Err(restore_err) => {
@@ -428,7 +439,8 @@ impl ProxyService {
                 log::error!("代理启动失败，尝试恢复原始配置: {e}");
                 match self.restore_live_configs().await {
                     Ok(()) => {
-                        set_legacy_live_takeover_active_best_effort_in_db(&self.db, false).await;
+                        set_legacy_live_takeover_active_best_effort_from_host_db(&self.db, false)
+                            .await;
                         delete_all_live_backups_best_effort_from_host_db(&self.db).await;
                     }
                     Err(restore_err) => {
@@ -530,7 +542,7 @@ impl ProxyService {
             set_proxy_app_enabled_in_host_db(&self.db, app_type_str, true).await?;
 
             // 7) 兼容旧逻辑：写入 any-of 标志（失败不影响功能）
-            set_legacy_live_takeover_active_best_effort_in_db(&self.db, true).await;
+            set_legacy_live_takeover_active_best_effort_from_host_db(&self.db, true).await;
 
             // 8) Warn if the current provider is official (risk of account ban via proxy)
             if let Some(message) =
@@ -571,7 +583,7 @@ impl ProxyService {
         let any_enabled = live_takeover_any_enabled_from_host_db(&self.db).await?;
 
         if !any_enabled {
-            set_legacy_live_takeover_active_best_effort_in_db(&self.db, false).await;
+            set_legacy_live_takeover_active_best_effort_from_host_db(&self.db, false).await;
 
             if self.is_running().await {
                 // 此时没有任何 app 处于接管状态，停止服务即可
