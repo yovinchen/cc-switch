@@ -1520,49 +1520,6 @@ pub(crate) fn emit_proxy_server_stopped_event_source(events: &ProxyEventBus) {
     emit_proxy_core_event_bus_source(events, server_stopped_event());
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct ProxyHotSwitchTargetState {
-    pub(crate) provider: Provider,
-    pub(crate) logical_target_changed: bool,
-    pub(crate) has_live_backup: bool,
-}
-
-pub(crate) async fn proxy_hot_switch_target_state_from_db(
-    db: &Database,
-    app_type: &AppType,
-    provider_id: &str,
-) -> Result<ProxyHotSwitchTargetState, String> {
-    let app_type_str = app_type.as_str();
-    let provider = db
-        .get_provider_by_id(provider_id, app_type_str)
-        .map_err(|e| format!("读取供应商失败: {e}"))?
-        .ok_or_else(|| format!("供应商不存在: {provider_id}"))?;
-
-    if should_block_proxy_switch_to_provider(true, &provider) {
-        return Err(
-            "代理接管模式下不能切换到官方供应商 (Cannot switch to official provider during proxy takeover)"
-                .to_string(),
-        );
-    }
-
-    let logical_target_changed = crate::settings::get_effective_current_provider(db, app_type)
-        .map_err(|e| format!("读取当前供应商失败: {e}"))?
-        .as_deref()
-        != Some(provider_id);
-
-    let has_live_backup = db
-        .get_live_backup(app_type_str)
-        .await
-        .map_err(|e| format!("读取 {app_type_str} 备份失败: {e}"))?
-        .is_some();
-
-    Ok(ProxyHotSwitchTargetState {
-        provider,
-        logical_target_changed,
-        has_live_backup,
-    })
-}
-
 pub(crate) fn write_ssot_live_restore_provider_with_common_config(
     db: &Database,
     app_type: &AppType,
