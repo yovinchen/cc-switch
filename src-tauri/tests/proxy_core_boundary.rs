@@ -1251,6 +1251,15 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn provider_custom_endpoint_list(",
     "fn mark_custom_endpoint_last_used(",
     "fn provider_should_sync_to_live(",
+    "openclaw_live_write_action_decision as core_openclaw_live_write_action_decision",
+    "openclaw_live_write_config_decision as core_openclaw_live_write_config_decision",
+    "opencode_live_provider_fragment_decision as core_opencode_live_provider_fragment_decision",
+    "opencode_live_write_action_decision as core_opencode_live_write_action_decision",
+    "opencode_live_write_config_decision as core_opencode_live_write_config_decision",
+    "OpenClawLiveWriteActionDecision as CoreOpenClawLiveWriteActionDecision",
+    "OpenClawLiveWriteConfigDecision as CoreOpenClawLiveWriteConfigDecision",
+    "OpenCodeLiveWriteActionDecision as CoreOpenCodeLiveWriteActionDecision",
+    "OpenCodeLiveWriteConfigDecision as CoreOpenCodeLiveWriteConfigDecision",
     "provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings",
     "apply_claude_common_config_to_settings as core_apply_claude_common_config_to_settings",
     "apply_gemini_common_config_to_settings as core_apply_gemini_common_config_to_settings",
@@ -2320,7 +2329,12 @@ fn is_allowed_provider_live_policy_app_kind_import(relative: &str, code: &str) -
         "src/services/provider/mod.rs"
             | "src/services/provider/live.rs"
             | "src/proxy/host/cc_switch/live_takeover.rs"
-    ) && code.trim() == "use crate::proxy_core::api::domain::AppKind;"
+    ) && matches!(
+        code.trim(),
+        "use crate::proxy_core::api::domain::AppKind;"
+            | "use crate::proxy_core::api::domain::openclaw_settings_have_live_provider_fields;"
+            | "use crate::proxy_core::api::domain::opencode_settings_have_live_provider_fields;"
+    )
 }
 
 fn is_allowed_provider_common_config_issue_core_import(relative: &str, code: &str) -> bool {
@@ -7407,10 +7421,21 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
     for marker in [
         "pub(crate) fn auto_failover_enabled_from_router_config_result",
         "pub(crate) enum OpenClawLiveWriteConfig",
+        "enum OpenClawLiveWriteConfig",
         "pub(crate) enum OpenCodeLiveWriteConfig",
+        "enum OpenCodeLiveWriteConfig",
+        "enum OpenClawLiveWriteAction",
+        "enum OpenCodeLiveWriteAction",
+        "enum OpenClawLiveImportIssue",
+        "enum OpenCodeLiveImportIssue",
+        "enum HermesLiveImportIssue",
         "pub(crate) struct ProviderHealthAttemptDbUpdate",
         "pub(crate) struct OpenClawLiveWritePlan",
+        "struct OpenClawLiveWritePlan",
         "pub(crate) struct OpenCodeLiveWritePlan",
+        "struct OpenCodeLiveWritePlan",
+        "struct OpenClawLiveWriteProjection",
+        "struct OpenCodeLiveWriteProjection",
         "pub(crate) fn current_provider_id_from_settings_for_app",
         "pub(crate) fn provider_claude_auth_key",
         "pub(crate) fn provider_claude_base_url",
@@ -7430,9 +7455,18 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn provider_managed_account_id_for",
         "pub(crate) fn provider_uses_managed_account_auth(",
         "pub(crate) fn provider_openclaw_has_live_provider_fields",
+        "fn provider_openclaw_has_live_provider_fields",
         "pub(crate) fn provider_openclaw_live_write_plan",
+        "fn provider_openclaw_live_write_plan",
+        "fn provider_openclaw_live_write_projection",
+        "fn provider_from_openclaw_live_config",
+        "fn provider_from_hermes_live_config",
         "pub(crate) fn provider_opencode_live_provider_fragment",
+        "fn provider_opencode_live_provider_fragment",
         "pub(crate) fn provider_opencode_live_write_plan",
+        "fn provider_opencode_live_write_plan",
+        "fn provider_opencode_live_write_projection",
+        "fn provider_from_opencode_live_config",
         "pub(crate) fn proxy_official_warning_event_message",
         "pub(crate) fn request_started_event_message",
         "pub(crate) fn server_started_event_message",
