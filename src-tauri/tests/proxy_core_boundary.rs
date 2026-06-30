@@ -374,6 +374,8 @@ const FORBIDDEN_PROXY_SERVICE_KEEP_STATE_ACTIVE_FLAG_MARKERS: &[&str] = &[
     ".update_proxy_config(",
     ".live_takeover_active =",
 ];
+const FORBIDDEN_PROXY_SERVICE_KEEP_STATE_ACTIVE_FLAG_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) async fn clear_legacy_live_takeover_active_flag_in_db"];
 const FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_MARKERS: &[&str] = &[
     ".set_live_takeover_active(",
     ".delete_all_live_backups(",
@@ -2194,6 +2196,7 @@ fn is_allowed_live_takeover_runtime_core_import(relative: &str, code: &str) -> b
         && matches!(
             code.trim(),
             "use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};"
+                | "use crate::proxy_core::api::ports::proxy_config_with_live_takeover_active;"
                 | "use crate::proxy_core::api::ports::{"
         )
 }
@@ -7311,6 +7314,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) async fn proxy_app_enabled_from_db",
         "pub(crate) async fn set_proxy_app_enabled_in_db",
         "pub(crate) async fn clear_live_takeover_enabled_flags_in_db",
+        "pub(crate) async fn clear_legacy_live_takeover_active_flag_in_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) async fn delete_live_backup_best_effort_in_db",
         "pub(crate) async fn delete_live_backup_in_db",
@@ -15804,10 +15808,12 @@ fn production_proxy_service_delegates_hot_switch_sources_to_adapter() {
 }
 
 #[test]
-fn production_proxy_service_delegates_keep_state_active_flag_to_adapter() {
+fn production_proxy_service_owns_keep_state_active_flag_cleanup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "pub async fn stop_with_restore_keep_state",
@@ -15830,9 +15836,27 @@ fn production_proxy_service_delegates_keep_state_active_flag_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService::stop_with_restore_keep_state must delegate legacy active-flag cleanup to proxy_core_adapter:\n{}",
+        "ProxyService::stop_with_restore_keep_state must route legacy active-flag cleanup through its host-local helper:\n{}",
         violations.join("\n")
     );
+    assert!(
+        function.contains("clear_legacy_live_takeover_active_flag_from_host_db(&self.db).await"),
+        "ProxyService::stop_with_restore_keep_state should clear the legacy active flag through its host-local helper"
+    );
+    assert!(
+        source.contains("async fn clear_legacy_live_takeover_active_flag_from_host_db(")
+            && source.contains(".get_proxy_config().await")
+            && source.contains("proxy_config_with_live_takeover_active(config, false)")
+            && source.contains(".update_proxy_config(config).await"),
+        "ProxyService should own keep-state legacy active flag cleanup source"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_KEEP_STATE_ACTIVE_FLAG_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep keep-state active flag cleanup wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]

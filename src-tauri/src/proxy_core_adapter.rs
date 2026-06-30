@@ -169,7 +169,6 @@ use crate::proxy_core::api::ports::{
     provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
-    proxy_config_with_live_takeover_active,
     proxy_hot_switch_should_refresh_codex_live_from_backup as core_proxy_hot_switch_should_refresh_codex_live_from_backup,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active as core_proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_hot_switch_should_sync_codex_live_while_proxy_active as core_proxy_hot_switch_should_sync_codex_live_while_proxy_active,
@@ -848,13 +847,6 @@ pub(crate) async fn update_proxy_config_preserving_live_takeover_active_in_db(
         .await
         .map_err(|e| format!("保存代理配置失败: {e}"))?;
     Ok((previous, new_config))
-}
-
-pub(crate) async fn clear_legacy_live_takeover_active_flag_in_db(db: &Database) {
-    if let Ok(config) = db.get_proxy_config().await {
-        let config = proxy_config_with_live_takeover_active(config, false);
-        let _ = db.update_proxy_config(config).await;
-    }
 }
 
 pub(crate) async fn clear_legacy_live_takeover_active_flag_strict_in_db(
