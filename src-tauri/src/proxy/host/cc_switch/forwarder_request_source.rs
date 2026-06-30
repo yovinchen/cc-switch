@@ -11,6 +11,10 @@ use crate::proxy::host::cc_switch::managed_account_runtime_source::ManagedAccoun
 use crate::proxy::host::cc_switch::provider_adapter_context::{
     forwarder_provider_adapter_context_for_app, ForwarderAdapterContext,
 };
+use crate::proxy::provider::{
+    codex_provider_apply_chat_upstream_model, codex_provider_chat_reasoning_options,
+    codex_provider_should_convert_responses_to_chat,
+};
 use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
 use crate::proxy_core::api::config::{
     cache_injection_log_message, normalize_thinking_type, rectify_anthropic_request,
@@ -48,17 +52,16 @@ use crate::proxy_core::api::transport::{
     PromptCacheTraceLogInput, UpstreamRequestHeadersInput, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_adapter::{
-    apply_forward_request_model_mapping_from_provider, provider_apply_codex_chat_upstream_model,
-    provider_claude_api_format, provider_claude_normalize_anthropic_messages,
-    provider_codex_chat_reasoning_options, provider_should_convert_codex_responses_to_chat,
-    provider_uses_anthropic_rectifiers, ForwarderAnthropicRectifierGateInput,
-    ForwarderAppMediaPreventionInput, ForwarderAttemptBodyInput, ForwarderClaudeApiFormatInput,
-    ForwarderClaudeBodyPolicyInput, ForwarderCodexResponsesToChatInput,
-    ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
-    ForwarderCopilotRequestOptimization, ForwarderCopilotRequestOptimizationGateInput,
-    ForwarderCopilotRequestOptimizationInput, ForwarderMaybeCopilotRequestOptimization,
-    ForwarderMediaPreventionInput, ForwarderMediaRetryPlan, ForwarderMediaRetryPlanInput,
-    ForwarderPreparedRequest, ForwarderProviderRequestBodyInput, ForwarderProviderTransformInput,
+    apply_forward_request_model_mapping_from_provider, provider_claude_api_format,
+    provider_claude_normalize_anthropic_messages, provider_uses_anthropic_rectifiers,
+    ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
+    ForwarderAttemptBodyInput, ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
+    ForwarderCodexResponsesToChatInput, ForwarderCopilotDynamicBaseUrlInput,
+    ForwarderCopilotLiveModelInput, ForwarderCopilotRequestOptimization,
+    ForwarderCopilotRequestOptimizationGateInput, ForwarderCopilotRequestOptimizationInput,
+    ForwarderMaybeCopilotRequestOptimization, ForwarderMediaPreventionInput,
+    ForwarderMediaRetryPlan, ForwarderMediaRetryPlanInput, ForwarderPreparedRequest,
+    ForwarderProviderRequestBodyInput, ForwarderProviderTransformInput,
     ForwarderRequestBodyTransform, ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
     ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan, ForwarderRequestSource,
     ForwarderRequestSourceRef, ForwarderThinkingBudgetRectifierInput,
@@ -91,8 +94,8 @@ impl CcSwitchForwarderRequestSource {
         input: ForwarderCodexResponsesToChatInput<'_>,
     ) -> Value {
         let mut body = input.body;
-        provider_apply_codex_chat_upstream_model(input.provider, &mut body);
-        let reasoning_options = provider_codex_chat_reasoning_options(input.provider, &body);
+        codex_provider_apply_chat_upstream_model(input.provider, &mut body);
+        let reasoning_options = codex_provider_chat_reasoning_options(input.provider, &body);
         let model = body
             .get("model")
             .and_then(|value| value.as_str())
@@ -321,7 +324,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
 
     fn transform_plan(&self, input: ForwarderTransformPlanInput<'_>) -> ForwarderTransformPlan {
         let codex_responses_to_chat = matches!(input.app_type, AppType::Codex)
-            && provider_should_convert_codex_responses_to_chat(input.provider, input.endpoint);
+            && codex_provider_should_convert_responses_to_chat(input.provider, input.endpoint);
         let adapter_facts = input.adapter.facts();
         let fallback_claude_api_format = adapter_facts
             .is_claude_adapter

@@ -6,14 +6,30 @@
 //! 支持检测官方 Codex 客户端 (codex_vscode, codex_cli_rs)
 
 use super::ProviderAdapter;
-use crate::provider::Provider;
+use crate::provider::{CodexChatReasoningConfig, Provider};
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::api::auth::codex_auth_info_from_api_key;
 use crate::proxy_core::api::auth::ProviderAuthInfo;
 use crate::proxy_core::api::ports::codex_base_url_from_settings;
+use crate::proxy_core::api::ports::codex_config_text_from_settings;
+use crate::proxy_core::api::ports::codex_model_from_config_toml;
+use crate::proxy_core::api::ports::codex_wire_api_from_config_toml;
 use crate::proxy_core::api::ports::required_provider_base_url;
+use crate::proxy_core::api::transforms::infer_codex_chat_reasoning_profile;
+use crate::proxy_core::api::transforms::normalize_codex_chat_reasoning_profile;
+use crate::proxy_core::api::transforms::CodexChatReasoningOptions;
+use crate::proxy_core::api::transforms::CodexChatReasoningProfile;
+use crate::proxy_core::api::transport::apply_codex_chat_upstream_model_policy;
 use crate::proxy_core::api::transport::build_codex_provider_auth_headers;
 use crate::proxy_core::api::transport::build_codex_upstream_url;
+use crate::proxy_core::api::transport::codex_provider_catalog_model_ids_from_settings;
+use crate::proxy_core::api::transport::codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions;
+use crate::proxy_core::api::transport::codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required;
+use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model;
+use crate::proxy_core::api::transport::CodexProviderChatCompletionsFacts;
+use crate::proxy_core::api::transport::CodexResponsesToChatConversionFacts;
+use serde_json::Value;
+use std::collections::HashSet;
 
 /// Codex 适配器
 pub struct CodexAdapter;
@@ -99,6 +115,149 @@ fn codex_provider_auth_headers(
     build_codex_provider_auth_headers(auth).map_err(|error| error.to_string())
 }
 
+fn codex_provider_config_text(provider: &Provider) -> Option<&str> {
+    codex_config_text_from_settings(&provider.settings_config)
+}
+
+fn with_codex_provider_chat_completions_facts<T>(
+    provider: &Provider,
+    evaluate: impl FnOnce(CodexProviderChatCompletionsFacts<'_>) -> T,
+) -> T {
+    let config_text = codex_provider_config_text(provider);
+    let wire_api = config_text.and_then(codex_wire_api_from_config_toml);
+    let config_base_url = config_text.and_then(crate::codex_config::extract_codex_base_url);
+
+    evaluate(CodexProviderChatCompletionsFacts {
+        api_format: provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.api_format.as_deref())
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("api_format")
+                    .and_then(Value::as_str)
+            })
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("apiFormat")
+                    .and_then(Value::as_str)
+            }),
+        wire_api: wire_api.as_deref(),
+        base_url: provider
+            .settings_config
+            .get("base_url")
+            .or_else(|| provider.settings_config.get("baseURL"))
+            .and_then(Value::as_str),
+        config_base_url: config_base_url.as_deref(),
+    })
+}
+
+pub(crate) fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
+    with_codex_provider_chat_completions_facts(provider, core_codex_provider_uses_chat_completions)
+}
+
+pub(crate) fn codex_provider_should_convert_responses_to_chat(
+    provider: &Provider,
+    endpoint: &str,
+) -> bool {
+    with_codex_provider_chat_completions_facts(provider, |provider_facts| {
+        core_codex_responses_to_chat_conversion_required(CodexResponsesToChatConversionFacts {
+            provider: provider_facts,
+            endpoint,
+        })
+    })
+}
+
+pub(crate) fn codex_provider_upstream_model(provider: &Provider) -> Option<String> {
+    let settings_model = provider
+        .settings_config
+        .get("model")
+        .and_then(Value::as_str);
+    let config_model = codex_provider_config_text(provider).and_then(codex_model_from_config_toml);
+    resolve_codex_provider_upstream_model(settings_model, config_model.as_deref())
+}
+
+fn codex_provider_catalog_model_ids(provider: &Provider) -> HashSet<String> {
+    codex_provider_catalog_model_ids_from_settings(&provider.settings_config)
+}
+
+fn codex_chat_reasoning_profile_from_config(
+    config: CodexChatReasoningConfig,
+) -> CodexChatReasoningProfile {
+    CodexChatReasoningProfile {
+        supports_thinking: config.supports_thinking,
+        supports_effort: config.supports_effort,
+        thinking_param: config.thinking_param,
+        effort_param: config.effort_param,
+        effort_value_mode: config.effort_value_mode,
+        output_format: config.output_format,
+    }
+}
+
+pub(crate) fn codex_provider_chat_reasoning_profile(
+    provider: &Provider,
+    request_model: Option<&str>,
+) -> Option<CodexChatReasoningProfile> {
+    if let Some(config) = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.codex_chat_reasoning.clone())
+    {
+        return Some(normalize_codex_chat_reasoning_profile(
+            codex_chat_reasoning_profile_from_config(config),
+        ));
+    }
+
+    let model = request_model
+        .map(ToString::to_string)
+        .or_else(|| codex_provider_upstream_model(provider))
+        .unwrap_or_default();
+    let base_url = provider
+        .settings_config
+        .get("base_url")
+        .or_else(|| provider.settings_config.get("baseURL"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .or_else(|| {
+            codex_provider_config_text(provider)
+                .and_then(crate::codex_config::extract_codex_base_url)
+        })
+        .unwrap_or_default();
+
+    infer_codex_chat_reasoning_profile(&provider.name, &base_url, &model)
+}
+
+pub(crate) fn codex_provider_apply_chat_upstream_model(
+    provider: &Provider,
+    body: &mut Value,
+) -> Option<String> {
+    if !codex_provider_uses_chat_completions(provider) {
+        return None;
+    }
+
+    let catalog_model_ids = codex_provider_catalog_model_ids(provider);
+    let upstream_model = codex_provider_upstream_model(provider);
+    apply_codex_chat_upstream_model_policy(
+        body,
+        true,
+        upstream_model.as_deref(),
+        &catalog_model_ids,
+    )
+}
+
+pub(crate) fn codex_provider_chat_reasoning_options(
+    provider: &Provider,
+    body: &Value,
+) -> Option<CodexChatReasoningOptions> {
+    codex_provider_chat_reasoning_profile(
+        provider,
+        body.get("model").and_then(|value| value.as_str()),
+    )
+    .map(|profile| CodexChatReasoningOptions::from_profile(&profile))
+}
+
 impl ProviderAdapter for CodexAdapter {
     fn name(&self) -> &'static str {
         "Codex"
@@ -129,10 +288,6 @@ mod tests {
     use super::*;
     use crate::provider::CodexChatReasoningConfig;
     use crate::proxy_core::api::auth::ProviderAuthStrategy;
-    use crate::proxy_core_adapter::{
-        provider_apply_codex_chat_upstream_model, provider_codex_chat_reasoning_profile,
-        provider_codex_uses_chat_completions, provider_should_convert_codex_responses_to_chat,
-    };
     use serde_json::json;
 
     fn create_provider(config: serde_json::Value) -> Provider {
@@ -278,12 +433,12 @@ wire_api = "chat"
 "#
         }));
 
-        assert!(provider_codex_uses_chat_completions(&provider));
-        assert!(provider_should_convert_codex_responses_to_chat(
+        assert!(codex_provider_uses_chat_completions(&provider));
+        assert!(codex_provider_should_convert_responses_to_chat(
             &provider,
             "/responses?stream=true"
         ));
-        assert!(!provider_should_convert_codex_responses_to_chat(
+        assert!(!codex_provider_should_convert_responses_to_chat(
             &provider,
             "/chat/completions"
         ));
@@ -295,8 +450,8 @@ wire_api = "chat"
             "base_url": "https://example.com/v1/chat/completions"
         }));
 
-        assert!(provider_codex_uses_chat_completions(&provider));
-        assert!(provider_should_convert_codex_responses_to_chat(
+        assert!(codex_provider_uses_chat_completions(&provider));
+        assert!(codex_provider_should_convert_responses_to_chat(
             &provider,
             "/v1/responses/compact"
         ));
@@ -312,8 +467,8 @@ wire_api = "chat"
             ..Default::default()
         });
 
-        assert!(provider_codex_uses_chat_completions(&provider));
-        assert!(provider_should_convert_codex_responses_to_chat(
+        assert!(codex_provider_uses_chat_completions(&provider));
+        assert!(codex_provider_should_convert_responses_to_chat(
             &provider,
             "/responses/compact?stream=true"
         ));
@@ -329,7 +484,7 @@ wire_api = "chat"
             ..Default::default()
         });
 
-        assert!(provider_should_convert_codex_responses_to_chat(
+        assert!(codex_provider_should_convert_responses_to_chat(
             &provider,
             "/v1/responses"
         ));
@@ -357,7 +512,7 @@ wire_api = "responses"
             "input": "ping"
         });
 
-        let upstream_model = provider_apply_codex_chat_upstream_model(&provider, &mut body);
+        let upstream_model = codex_provider_apply_chat_upstream_model(&provider, &mut body);
 
         assert_eq!(upstream_model.as_deref(), Some("deepseek-v4-flash"));
         assert_eq!(
@@ -394,7 +549,7 @@ wire_api = "responses"
             "input": "ping"
         });
 
-        let upstream_model = provider_apply_codex_chat_upstream_model(&provider, &mut body);
+        let upstream_model = codex_provider_apply_chat_upstream_model(&provider, &mut body);
 
         assert_eq!(upstream_model.as_deref(), Some("kimi-k2"));
         assert_eq!(body.get("model").and_then(|v| v.as_str()), Some("kimi-k2"));
@@ -415,7 +570,7 @@ wire_api = "chat"
         }));
 
         let config =
-            provider_codex_chat_reasoning_profile(&provider, Some("deepseek-v4-pro")).unwrap();
+            codex_provider_chat_reasoning_profile(&provider, Some("deepseek-v4-pro")).unwrap();
 
         assert_eq!(config.supports_thinking, Some(true));
         assert_eq!(config.supports_effort, Some(true));
@@ -448,7 +603,7 @@ wire_api = "chat"
         });
 
         let config =
-            provider_codex_chat_reasoning_profile(&provider, Some("deepseek-v4-pro")).unwrap();
+            codex_provider_chat_reasoning_profile(&provider, Some("deepseek-v4-pro")).unwrap();
 
         assert_eq!(config.supports_thinking, Some(false));
         assert_eq!(config.supports_effort, Some(false));
@@ -471,7 +626,7 @@ wire_api = "chat"
 
         // 模型名含 "deepseek"，但平台是 OpenRouter —— 平台规则必须覆盖模型规则。
         let config =
-            provider_codex_chat_reasoning_profile(&provider, Some("deepseek/deepseek-chat-v3.1"))
+            codex_provider_chat_reasoning_profile(&provider, Some("deepseek/deepseek-chat-v3.1"))
                 .unwrap();
 
         assert_eq!(config.thinking_param.as_deref(), Some("none"));
@@ -496,7 +651,7 @@ wire_api = "chat"
 
         // 模型是 MiniMax（官方用 reasoning_split），但平台是 SiliconFlow —— 应走平台的 enable_thinking。
         let config =
-            provider_codex_chat_reasoning_profile(&provider, Some("MiniMaxAI/MiniMax-M2.7"))
+            codex_provider_chat_reasoning_profile(&provider, Some("MiniMaxAI/MiniMax-M2.7"))
                 .unwrap();
 
         assert_eq!(config.thinking_param.as_deref(), Some("enable_thinking"));

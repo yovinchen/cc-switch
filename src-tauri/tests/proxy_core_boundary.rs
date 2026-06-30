@@ -116,9 +116,9 @@ const FORBIDDEN_FORWARDER_CLAUDE_PROVIDER_COMPAT_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_FORWARDER_CODEX_PROVIDER_COMPAT_MARKERS: &[&str] = &[
     "super::providers::should_convert_codex_responses_to_chat(",
-    "provider_should_convert_codex_responses_to_chat(",
-    "provider_apply_codex_chat_upstream_model(",
-    "provider_codex_chat_reasoning_options(",
+    "codex_provider_should_convert_responses_to_chat(",
+    "codex_provider_apply_chat_upstream_model(",
+    "codex_provider_chat_reasoning_options(",
     "provider_is_codex_oauth(",
     "super::providers::apply_codex_chat_upstream_model(",
     "super::providers::resolve_codex_chat_reasoning_options(",
@@ -1020,7 +1020,7 @@ const FORBIDDEN_HANDLER_PROVIDER_ADAPTER_DECISION_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_HANDLER_RESPONSE_BRANCH_GATE_MARKERS: &[&str] = &[
     "provider_needs_claude_transform(",
-    "provider_should_convert_codex_responses_to_chat(",
+    "codex_provider_should_convert_responses_to_chat(",
 ];
 const FORBIDDEN_PROTOCOL_HANDLER_ENDPOINT_BRIDGE_MARKERS: &[&str] =
     &["append_query_to_endpoint_path(", "strip_endpoint_prefix("];
@@ -1168,7 +1168,6 @@ const FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS: &[&str] = &[
 const FORBIDDEN_PROVIDER_ADAPTER_TEST_FACADE_MARKERS: &[&str] =
     &["pub fn provider_type(", "pub fn parse_oauth_credentials("];
 const FORBIDDEN_CODEX_PROVIDER_ADAPTER_TEST_FACADE_MARKERS: &[&str] = &[
-    "fn codex_provider_uses_chat_completions(",
     "fn should_convert_codex_responses_to_chat(",
     "fn apply_codex_chat_upstream_model(",
     "fn resolve_codex_chat_reasoning_config(",
@@ -2106,6 +2105,27 @@ fn is_allowed_provider_upstream_url_core_import(relative: &str, code: &str) -> b
     )
 }
 
+fn is_allowed_codex_provider_chat_policy_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/provider/codex.rs"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::ports::codex_config_text_from_settings;"
+                | "use crate::proxy_core::api::ports::codex_model_from_config_toml;"
+                | "use crate::proxy_core::api::ports::codex_wire_api_from_config_toml;"
+                | "use crate::proxy_core::api::transforms::infer_codex_chat_reasoning_profile;"
+                | "use crate::proxy_core::api::transforms::normalize_codex_chat_reasoning_profile;"
+                | "use crate::proxy_core::api::transforms::CodexChatReasoningOptions;"
+                | "use crate::proxy_core::api::transforms::CodexChatReasoningProfile;"
+                | "use crate::proxy_core::api::transport::apply_codex_chat_upstream_model_policy;"
+                | "use crate::proxy_core::api::transport::codex_provider_catalog_model_ids_from_settings;"
+                | "use crate::proxy_core::api::transport::codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions;"
+                | "use crate::proxy_core::api::transport::codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required;"
+                | "use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model;"
+                | "use crate::proxy_core::api::transport::CodexProviderChatCompletionsFacts;"
+                | "use crate::proxy_core::api::transport::CodexResponsesToChatConversionFacts;"
+        )
+}
+
 fn is_allowed_provider_adapter_kind_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/provider/mod.rs"
         && matches!(
@@ -2375,6 +2395,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_provider_base_url_core_import(&relative, code)
                     && !is_allowed_gemini_provider_direct_core_import(&relative, code)
                     && !is_allowed_provider_upstream_url_core_import(&relative, code)
+                    && !is_allowed_codex_provider_chat_policy_core_import(&relative, code)
                     && !is_allowed_provider_adapter_kind_core_import(&relative, code)
                     && !is_allowed_test_proxy_config_core_import(&relative, code)
                     && !is_allowed_managed_auth_command_core_import(&relative, code)
@@ -6169,6 +6190,8 @@ fn proxy_core_adapter_does_not_reexport_codex_upstream_model_helper() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let provider_source = fs::read_to_string(manifest_dir.join("src/proxy/provider/codex.rs"))
+        .expect("read proxy/provider/codex.rs");
     let transport_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::transport::{")
         .skip(1)
@@ -6199,9 +6222,18 @@ fn proxy_core_adapter_does_not_reexport_codex_upstream_model_helper() {
         );
     }
     assert!(
-        adapter_source
-            .contains("use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model;"),
-        "proxy_core_adapter internals should import resolve_codex_provider_upstream_model privately from proxy_core transport"
+        provider_source.contains(
+            "use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model;"
+        ),
+        "Codex provider adapter should own upstream model helper access"
+    );
+    assert!(
+        production_lines(&adapter_source).all(|(_, line)| {
+            !line.contains(
+                "use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model;",
+            )
+        }),
+        "proxy_core_adapter production code must not import resolve_codex_provider_upstream_model after Codex provider ownership migration"
     );
 }
 
@@ -12616,15 +12648,17 @@ fn proxy_core_adapter_delegates_claude_transform_gate_to_core() {
 #[test]
 fn proxy_core_adapter_delegates_codex_responses_to_chat_gate_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let provider_path = manifest_dir.join("src/proxy/provider/codex.rs");
+    let provider_source = fs::read_to_string(&provider_path).expect("read proxy/provider/codex.rs");
     let gate_slice = function_slice(
-        &source,
-        "fn with_provider_codex_chat_completions_facts",
-        "pub(crate) fn provider_codex_upstream_model",
+        &provider_source,
+        "fn with_codex_provider_chat_completions_facts",
+        "pub(crate) fn codex_provider_upstream_model",
     );
     let transport_reexport_slice = optional_function_slice(
-        &source,
+        &adapter_source,
         "pub(crate) use crate::proxy_core::api::transport::{",
         "};",
     );
@@ -12638,7 +12672,7 @@ fn proxy_core_adapter_delegates_codex_responses_to_chat_gate_to_core() {
         "codex_provider_uses_chat_completions",
         "codex_responses_to_chat_conversion_required",
     ] {
-        let reexport_marker = source.lines().any(|line| {
+        let reexport_marker = adapter_source.lines().any(|line| {
             line.contains("pub(crate) use crate::proxy_core::api::transport")
                 && line.contains(marker)
         });
@@ -12652,7 +12686,8 @@ fn proxy_core_adapter_delegates_codex_responses_to_chat_gate_to_core() {
         "should_convert_codex_responses_endpoint_to_chat",
     ] {
         assert!(
-            !source.contains(&format!("pub(crate) use crate::proxy_core::api::transport::{marker}")),
+            !adapter_source
+                .contains(&format!("pub(crate) use crate::proxy_core::api::transport::{marker}")),
             "proxy_core_adapter should not re-export pure Codex Responses to Chat helper `{marker}`"
         );
     }
@@ -12666,16 +12701,36 @@ fn proxy_core_adapter_delegates_codex_responses_to_chat_gate_to_core() {
         );
     }
     assert!(
-        !source.contains(
+        !adapter_source.contains(
             "resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat"
         ),
         "proxy_core_adapter should not re-export pure Codex Responses to Chat helpers as a grouped transport import"
     );
+    for marker in [
+        "fn with_provider_codex_chat_completions_facts",
+        "pub(crate) fn provider_codex_uses_chat_completions",
+        "pub(crate) fn provider_should_convert_codex_responses_to_chat",
+        "pub(crate) fn provider_codex_upstream_model",
+        "pub(crate) fn provider_codex_chat_reasoning_profile",
+        "pub(crate) fn provider_apply_codex_chat_upstream_model",
+        "pub(crate) fn provider_codex_chat_reasoning_options",
+        "pub(crate) fn codex_provider_uses_chat_completions",
+        "pub(crate) fn codex_provider_should_convert_responses_to_chat",
+        "pub(crate) fn codex_provider_upstream_model",
+        "pub(crate) fn codex_provider_chat_reasoning_profile",
+        "pub(crate) fn codex_provider_apply_chat_upstream_model",
+        "pub(crate) fn codex_provider_chat_reasoning_options",
+    ] {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter must not own Codex provider chat policy helper `{marker}`"
+        );
+    }
 
     let forbidden_markers = [
         "resolve_codex_provider_uses_chat_completions(",
         "should_convert_codex_responses_endpoint_to_chat(",
-        "provider_codex_uses_chat_completions(provider)",
+        "codex_provider_uses_chat_completions(provider)",
     ];
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(gate_slice) {
@@ -20812,9 +20867,9 @@ fn production_forwarder_uses_request_source_resource() {
         "thinking_optimization_log_message(",
         "cache_injection_log_message(",
         "forwarder_apply_codex_chat_upstream_model(",
-        "provider_apply_codex_chat_upstream_model(",
+        "codex_provider_apply_chat_upstream_model(",
         "forwarder_codex_chat_reasoning_options(",
-        "provider_codex_chat_reasoning_options(",
+        "codex_provider_chat_reasoning_options(",
         "responses_to_chat_completions_with_options(",
         "is_openai_o_series(",
         "supports_reasoning_effort(",

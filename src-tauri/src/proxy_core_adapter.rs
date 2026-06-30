@@ -17,6 +17,7 @@ use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices;
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
+use crate::proxy::provider::codex_provider_upstream_model;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
@@ -45,8 +46,7 @@ use crate::proxy_core::api::routing::{
 };
 use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::{
-    AnthropicToolSchemaHints, CodexChatReasoningOptions, CodexChatReasoningProfile,
-    CodexToolContext, GeminiShadowStore,
+    AnthropicToolSchemaHints, CodexToolContext, GeminiShadowStore,
 };
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream};
@@ -1437,12 +1437,7 @@ use crate::proxy_core::api::transforms::{
     should_preserve_reasoning_content_for_openai_chat, ClaudeApiFormatRequestTransformContext,
     ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
 };
-use crate::proxy_core::api::transport::{
-    build_claude_provider_auth_headers,
-    codex_provider_uses_chat_completions as core_codex_provider_uses_chat_completions,
-    codex_responses_to_chat_conversion_required as core_codex_responses_to_chat_conversion_required,
-    CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts,
-};
+use crate::proxy_core::api::transport::build_claude_provider_auth_headers;
 use crate::proxy_core::api::transport::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
@@ -1496,8 +1491,6 @@ pub(crate) fn emit_proxy_core_event_bus_source(events: &ProxyEventBus, event: Pr
         events.emit(event_name, payload);
     });
 }
-
-use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model;
 
 fn provider_codex_config_text(provider: &Provider) -> Option<&str> {
     codex_config_text_from_settings(&provider.settings_config)
@@ -1785,73 +1778,12 @@ pub(crate) fn preserve_codex_oauth_auth_in_backup_for_configured_policy(
     preserve_codex_oauth_auth_in_backup_if_present(target_settings, existing_backup)
 }
 
-fn with_provider_codex_chat_completions_facts<T>(
-    provider: &Provider,
-    evaluate: impl FnOnce(CodexProviderChatCompletionsFacts<'_>) -> T,
-) -> T {
-    let config_text = provider_codex_config_text(provider);
-    let wire_api = config_text.and_then(core_codex_wire_api_from_config_toml);
-    let config_base_url = config_text.and_then(crate::codex_config::extract_codex_base_url);
-
-    evaluate(CodexProviderChatCompletionsFacts {
-        api_format: provider
-            .meta
-            .as_ref()
-            .and_then(|meta| meta.api_format.as_deref())
-            .or_else(|| {
-                provider
-                    .settings_config
-                    .get("api_format")
-                    .and_then(Value::as_str)
-            })
-            .or_else(|| {
-                provider
-                    .settings_config
-                    .get("apiFormat")
-                    .and_then(Value::as_str)
-            }),
-        wire_api: wire_api.as_deref(),
-        base_url: provider
-            .settings_config
-            .get("base_url")
-            .or_else(|| provider.settings_config.get("baseURL"))
-            .and_then(Value::as_str),
-        config_base_url: config_base_url.as_deref(),
-    })
-}
-
-pub(crate) fn provider_codex_uses_chat_completions(provider: &Provider) -> bool {
-    with_provider_codex_chat_completions_facts(provider, core_codex_provider_uses_chat_completions)
-}
-
-pub(crate) fn provider_should_convert_codex_responses_to_chat(
-    provider: &Provider,
-    endpoint: &str,
-) -> bool {
-    with_provider_codex_chat_completions_facts(provider, |provider_facts| {
-        core_codex_responses_to_chat_conversion_required(CodexResponsesToChatConversionFacts {
-            provider: provider_facts,
-            endpoint,
-        })
-    })
-}
-
-pub(crate) fn provider_codex_upstream_model(provider: &Provider) -> Option<String> {
-    let settings_model = provider
-        .settings_config
-        .get("model")
-        .and_then(Value::as_str);
-    let config_model =
-        provider_codex_config_text(provider).and_then(core_codex_model_from_config_toml);
-    resolve_codex_provider_upstream_model(settings_model, config_model.as_deref())
-}
-
 pub(crate) fn codex_takeover_toml_config_for_provider(
     toml_str: &str,
     proxy_url: &str,
     provider: Option<&Provider>,
 ) -> String {
-    let upstream_model = provider.and_then(provider_codex_upstream_model);
+    let upstream_model = provider.and_then(codex_provider_upstream_model);
     let patch = crate::proxy_core::api::ports::codex_takeover_toml_config_patch(
         proxy_url,
         upstream_model.as_deref(),
@@ -1870,10 +1802,6 @@ pub(crate) fn codex_takeover_toml_config_for_provider(
     }
 
     updated
-}
-
-fn provider_codex_catalog_model_ids(provider: &Provider) -> std::collections::HashSet<String> {
-    codex_provider_catalog_model_ids_from_settings(&provider.settings_config)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1912,89 +1840,6 @@ pub(crate) fn apply_codex_takeover_fields_for_provider(
         }
     }
 }
-
-fn codex_chat_reasoning_profile_from_config(
-    config: crate::provider::CodexChatReasoningConfig,
-) -> CodexChatReasoningProfile {
-    CodexChatReasoningProfile {
-        supports_thinking: config.supports_thinking,
-        supports_effort: config.supports_effort,
-        thinking_param: config.thinking_param,
-        effort_param: config.effort_param,
-        effort_value_mode: config.effort_value_mode,
-        output_format: config.output_format,
-    }
-}
-
-pub(crate) fn provider_codex_chat_reasoning_profile(
-    provider: &Provider,
-    request_model: Option<&str>,
-) -> Option<CodexChatReasoningProfile> {
-    if let Some(config) = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.codex_chat_reasoning.clone())
-    {
-        return Some(normalize_codex_chat_reasoning_profile(
-            codex_chat_reasoning_profile_from_config(config),
-        ));
-    }
-
-    let model = request_model
-        .map(ToString::to_string)
-        .or_else(|| provider_codex_upstream_model(provider))
-        .unwrap_or_default();
-    let base_url = provider
-        .settings_config
-        .get("base_url")
-        .or_else(|| provider.settings_config.get("baseURL"))
-        .and_then(Value::as_str)
-        .map(ToString::to_string)
-        .or_else(|| {
-            provider_codex_config_text(provider)
-                .and_then(crate::codex_config::extract_codex_base_url)
-        })
-        .unwrap_or_default();
-
-    infer_codex_chat_reasoning_profile(&provider.name, &base_url, &model)
-}
-
-use crate::proxy_core::api::transport::{
-    apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
-};
-
-pub(crate) fn provider_apply_codex_chat_upstream_model(
-    provider: &Provider,
-    body: &mut Value,
-) -> Option<String> {
-    if !provider_codex_uses_chat_completions(provider) {
-        return None;
-    }
-
-    let catalog_model_ids = provider_codex_catalog_model_ids(provider);
-    let upstream_model = provider_codex_upstream_model(provider);
-    apply_codex_chat_upstream_model_policy(
-        body,
-        true,
-        upstream_model.as_deref(),
-        &catalog_model_ids,
-    )
-}
-
-pub(crate) fn provider_codex_chat_reasoning_options(
-    provider: &Provider,
-    body: &Value,
-) -> Option<CodexChatReasoningOptions> {
-    provider_codex_chat_reasoning_profile(
-        provider,
-        body.get("model").and_then(|value| value.as_str()),
-    )
-    .map(|profile| CodexChatReasoningOptions::from_profile(&profile))
-}
-
-use crate::proxy_core::api::transforms::{
-    infer_codex_chat_reasoning_profile, normalize_codex_chat_reasoning_profile,
-};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ForwarderRuntimeOptions {
@@ -5270,6 +5115,7 @@ mod tests {
     };
     use crate::proxy_core::api::transport::{
         apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
+        resolve_codex_provider_upstream_model,
     };
 
     use super::*;
@@ -5298,6 +5144,11 @@ mod tests {
         resolve_managed_account_auth_from_runtime_source, ManagedAccountRuntimeSource,
     };
     use crate::proxy::provider::ProviderAdapter;
+    use crate::proxy::provider::{
+        codex_provider_apply_chat_upstream_model, codex_provider_chat_reasoning_options,
+        codex_provider_chat_reasoning_profile, codex_provider_should_convert_responses_to_chat,
+        codex_provider_upstream_model, codex_provider_uses_chat_completions,
+    };
     use crate::proxy_core::api::auth::channel_auth_profile_missing_key_error;
     use crate::proxy_core::api::auth::{
         claude_desktop_model_id_is_profile_safe, extract_gemini_base_url_from_settings,
@@ -5342,6 +5193,9 @@ mod tests {
         should_normalize_mimo_anthropic_thinking_history, CodexProxyErrorContext,
         CodexProxyErrorKind, MimoAnthropicThinkingNormalizationInput,
         ANTHROPIC_TOOL_THINKING_PLACEHOLDER, GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
+    };
+    use crate::proxy_core::api::transforms::{
+        CodexChatReasoningOptions, CodexChatReasoningProfile,
     };
     use crate::proxy_core::api::transport::{
         anthropic_beta_header_value, apply_forwarder_media_prevention_from_facts,
@@ -9862,20 +9716,23 @@ base_url = "https://api.openai.com/v1"
             }),
             None,
         );
-        assert!(provider_codex_uses_chat_completions(&chat_provider));
-        assert!(provider_should_convert_codex_responses_to_chat(
+        assert!(codex_provider_uses_chat_completions(&chat_provider));
+        assert!(codex_provider_should_convert_responses_to_chat(
             &chat_provider,
             "/responses"
         ));
-        assert!(!provider_should_convert_codex_responses_to_chat(
+        assert!(!codex_provider_should_convert_responses_to_chat(
             &chat_provider,
             "/chat/completions"
         ));
         assert_eq!(
-            provider_codex_upstream_model(&chat_provider).as_deref(),
+            codex_provider_upstream_model(&chat_provider).as_deref(),
             Some("upstream-model")
         );
-        assert!(provider_codex_catalog_model_ids(&chat_provider).contains("catalog-model"));
+        assert!(
+            codex_provider_catalog_model_ids_from_settings(&chat_provider.settings_config)
+                .contains("catalog-model")
+        );
         let reasoning_provider = Provider::with_id(
             "codex-reasoning".to_string(),
             "DeepSeek Relay".to_string(),
@@ -9892,7 +9749,7 @@ wire_api = "chat"
             None,
         );
         let inferred_profile =
-            provider_codex_chat_reasoning_profile(&reasoning_provider, Some("deepseek-v4-pro"))
+            codex_provider_chat_reasoning_profile(&reasoning_provider, Some("deepseek-v4-pro"))
                 .expect("deepseek reasoning profile");
         assert_eq!(inferred_profile.supports_effort, Some(true));
         assert_eq!(
@@ -9916,7 +9773,7 @@ wire_api = "chat"
             }),
             ..Default::default()
         });
-        let explicit_profile = provider_codex_chat_reasoning_profile(
+        let explicit_profile = codex_provider_chat_reasoning_profile(
             &explicit_reasoning_provider,
             Some("deepseek-v4-pro"),
         )
@@ -9948,13 +9805,13 @@ wire_api = "chat"
         assert_eq!(body["model"], "upstream-model");
         let mut forwarder_body = json!({"model": "client-model"});
         assert_eq!(
-            provider_apply_codex_chat_upstream_model(&chat_provider, &mut forwarder_body)
+            codex_provider_apply_chat_upstream_model(&chat_provider, &mut forwarder_body)
                 .as_deref(),
             Some("upstream-model")
         );
         assert_eq!(forwarder_body["model"], "upstream-model");
         let reasoning_options =
-            provider_codex_chat_reasoning_options(&reasoning_provider, &forwarder_body)
+            codex_provider_chat_reasoning_options(&reasoning_provider, &forwarder_body)
                 .expect("deepseek reasoning options");
         assert_eq!(reasoning_options.supports_effort, Some(true));
         assert_eq!(
