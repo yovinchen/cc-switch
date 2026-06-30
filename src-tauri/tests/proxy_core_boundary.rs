@@ -399,6 +399,8 @@ const FORBIDDEN_PROXY_SERVICE_HOT_SWITCH_SOURCE_MARKERS: &[&str] = &[
     "更新本地当前供应商失败",
     "Cannot switch to official provider during proxy takeover",
 ];
+const FORBIDDEN_PROXY_SERVICE_HOT_SWITCH_PERSISTENCE_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) fn persist_hot_switch_current_provider_sources"];
 const FORBIDDEN_PROXY_SERVICE_KEEP_STATE_ACTIVE_FLAG_MARKERS: &[&str] = &[
     ".get_proxy_config()",
     ".update_proxy_config(",
@@ -7351,6 +7353,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn proxy_official_warning_event_from_current_provider_db",
         "pub(crate) fn proxy_official_warning_event_from_provider",
         "pub(crate) fn provider_effective_settings_with_common_config_from_db",
+        "pub(crate) fn persist_hot_switch_current_provider_sources",
         "pub(crate) fn select_current_provider_ids_from_router_provider_id_source",
         "pub(crate) fn provider_is_copilot_prompt_cache_provider",
         "pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat",
@@ -16117,10 +16120,12 @@ fn production_proxy_service_owns_update_backup_save_source() {
 }
 
 #[test]
-fn production_proxy_service_delegates_hot_switch_sources_to_adapter() {
+fn production_proxy_service_owns_hot_switch_current_provider_persistence() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "pub(crate) async fn hot_switch_provider_inner",
@@ -16143,9 +16148,36 @@ fn production_proxy_service_delegates_hot_switch_sources_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService::hot_switch_provider_inner must delegate provider/current/backup source reads and current-provider persistence to proxy_core_adapter:\n{}",
+        "ProxyService::hot_switch_provider_inner must keep hot-switch source reads and current-provider persistence behind dedicated helpers:\n{}",
         violations.join("\n")
     );
+
+    assert!(
+        function.contains("proxy_hot_switch_target_state_from_db(&self.db, &app_type_enum, provider_id).await"),
+        "ProxyService::hot_switch_provider_inner should still delegate target-state reads to proxy_core_adapter"
+    );
+    assert!(
+        function.contains("persist_hot_switch_current_provider_sources_in_host_db("),
+        "ProxyService::hot_switch_provider_inner should call the host-owned persistence helper"
+    );
+    for marker in [
+        "fn persist_hot_switch_current_provider_sources_in_host_db(",
+        "db.set_current_provider(app_type.as_str(), provider_id)",
+        "crate::settings::set_current_provider(app_type, Some(provider_id))",
+        "更新当前供应商失败",
+        "更新本地当前供应商失败",
+    ] {
+        assert!(
+            source.contains(marker),
+            "host hot-switch persistence helper should contain `{marker}`"
+        );
+    }
+    for marker in FORBIDDEN_PROXY_SERVICE_HOT_SWITCH_PERSISTENCE_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep hot-switch persistence wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]

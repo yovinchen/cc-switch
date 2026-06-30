@@ -42,8 +42,7 @@ use crate::proxy_core_adapter::{
     codex_backup_projection_error_message, codex_live_write_projection,
     codex_preserved_auth_live_config_text_for_configured_policy, codex_provider_live_write_parts,
     live_backup_snapshot_from_live_config, live_config_has_proxy_placeholder_for_app,
-    live_takeover_config_matches_proxy_for_app, persist_hot_switch_current_provider_sources,
-    preserve_codex_mcp_servers_from_existing_config,
+    live_takeover_config_matches_proxy_for_app, preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     proxy_hot_switch_should_refresh_codex_live_from_backup,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
@@ -413,6 +412,17 @@ fn log_provider_effective_settings_warnings_in_host(
             }
         }
     }
+}
+
+fn persist_hot_switch_current_provider_sources_in_host_db(
+    db: &Database,
+    app_type: &AppType,
+    provider_id: &str,
+) -> Result<(), String> {
+    db.set_current_provider(app_type.as_str(), provider_id)
+        .map_err(|e| format!("更新当前供应商失败: {e}"))?;
+    crate::settings::set_current_provider(app_type, Some(provider_id))
+        .map_err(|e| format!("更新本地当前供应商失败: {e}"))
 }
 
 async fn clear_legacy_live_takeover_active_flag_from_host_db(db: &Database) {
@@ -1675,7 +1685,11 @@ impl ProxyService {
                 should_sync_backup,
             );
 
-        persist_hot_switch_current_provider_sources(&self.db, &app_type_enum, provider_id)?;
+        persist_hot_switch_current_provider_sources_in_host_db(
+            &self.db,
+            &app_type_enum,
+            provider_id,
+        )?;
 
         if should_sync_backup {
             self.update_live_backup_from_provider_inner(app_type, &provider)

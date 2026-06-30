@@ -1563,17 +1563,6 @@ pub(crate) async fn proxy_hot_switch_target_state_from_db(
     })
 }
 
-pub(crate) fn persist_hot_switch_current_provider_sources(
-    db: &Database,
-    app_type: &AppType,
-    provider_id: &str,
-) -> Result<(), String> {
-    db.set_current_provider(app_type.as_str(), provider_id)
-        .map_err(|e| format!("更新当前供应商失败: {e}"))?;
-    crate::settings::set_current_provider(app_type, Some(provider_id))
-        .map_err(|e| format!("更新本地当前供应商失败: {e}"))
-}
-
 pub(crate) fn ssot_live_restore_provider_from_db(
     db: &Database,
     app_type: &AppType,
