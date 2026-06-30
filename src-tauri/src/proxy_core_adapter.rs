@@ -16,8 +16,8 @@ use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::api::config::{
-    AllowResult, AppProxyConfig, CircuitBreakerConfig, ProxyAppConfig, ProxyGlobalConfig,
-    ProxyRuntimeConfig, ResponseRuntimePolicy,
+    AllowResult, AppProxyConfig, ProxyAppConfig, ProxyGlobalConfig, ProxyRuntimeConfig,
+    ResponseRuntimePolicy,
 };
 use crate::proxy_core::api::domain::{
     AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,
@@ -504,9 +504,6 @@ use crate::proxy_core::api::auth::{
     extract_claude_auth_key_from_settings, is_gemini_oauth_key_shape,
     parse_gemini_oauth_credentials,
 };
-use crate::proxy_core::api::config::{
-    circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
-};
 use crate::proxy_core::api::management::channel_not_found_error;
 use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogSource,
@@ -514,11 +511,9 @@ use crate::proxy_core::api::model_catalog::{
 use crate::proxy_core::api::ports::{
     channel_breaker_stats_from_parts, channel_health_reset_from_parts, AppSummaryConfig,
     AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelKeyRuntimeSource, ChannelSource,
-    ProviderSource, ProxyConfigSource, RoutePolicySource,
+    ProviderSource, RoutePolicySource,
 };
-use crate::proxy_core::api::routing::{
-    provider_router_auto_failover_enabled_decision, route_policy_failover_provider_ids,
-};
+use crate::proxy_core::api::routing::route_policy_failover_provider_ids;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 use crate::proxy_core::api::transforms::{
@@ -1131,39 +1126,6 @@ fn provider_should_preserve_reasoning_content_for_openai_chat(
     should_preserve_reasoning_content_for_openai_chat(&provider.settings_config, body)
 }
 
-pub(crate) async fn router_app_proxy_config_from_config_source(
-    source: &(dyn ProxyConfigSource + Send + Sync),
-    app_type: &str,
-) -> Result<AppProxyConfig, AppError> {
-    let app = AppKind::from(app_type);
-    let config = source
-        .load_app(&app)
-        .await
-        .map_err(|error| AppError::Message(error.to_string()))?;
-    app_proxy_config_from_proxy_app_config(&config).map_err(AppError::Config)
-}
-
-pub(crate) async fn circuit_breaker_config_from_router_config_source(
-    source: &(dyn ProxyConfigSource + Send + Sync),
-    app_type: &str,
-) -> CircuitBreakerConfig {
-    let config = router_app_proxy_config_from_config_source(source, app_type)
-        .await
-        .ok();
-    circuit_breaker_config_from_app_config(config.as_ref())
-}
-
-pub(crate) async fn circuit_failure_threshold_from_router_config_source(
-    source: &(dyn ProxyConfigSource + Send + Sync),
-    app_type: &str,
-    fallback: u32,
-) -> u32 {
-    let config = router_app_proxy_config_from_config_source(source, app_type)
-        .await
-        .ok();
-    circuit_failure_threshold_from_app_config(config.as_ref(), fallback)
-}
-
 struct ProviderHealthAttemptDbUpdate {
     provider_id: String,
     app_type: String,
@@ -1212,30 +1174,6 @@ pub(crate) fn reset_channel_health_from_router_db(
     reset: ChannelHealthReset,
 ) -> Result<(), AppError> {
     db.reset_proxy_channel_health(&reset.channel_id)
-}
-
-fn auto_failover_enabled_from_router_config_result(
-    app_type: &str,
-    result: Result<AppProxyConfig, AppError>,
-) -> bool {
-    let decision = provider_router_auto_failover_enabled_decision(
-        app_type,
-        result.map(|config| config.auto_failover_enabled),
-    );
-    if let Some(log_line) = decision.error_log_line {
-        log::error!("{log_line}");
-    }
-    decision.enabled
-}
-
-pub(crate) async fn auto_failover_enabled_from_router_config_source(
-    source: &(dyn ProxyConfigSource + Send + Sync),
-    app_type: &str,
-) -> bool {
-    auto_failover_enabled_from_router_config_result(
-        app_type,
-        router_app_proxy_config_from_config_source(source, app_type).await,
-    )
 }
 
 fn select_current_provider_ids_from_router_provider_id_source(
@@ -3517,8 +3455,9 @@ mod tests {
     use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source;
     use crate::proxy::host::cc_switch::provider_adapter_context::forwarder_provider_adapter_context_for_app;
     use crate::proxy_core::api::config::{
-        app_type_from_circuit_key, channel_circuit_key, provider_circuit_key, CircuitBreakerStats,
-        CircuitState,
+        app_type_from_circuit_key, channel_circuit_key, circuit_breaker_config_from_app_config,
+        circuit_failure_threshold_from_app_config, provider_circuit_key, CircuitBreakerConfig,
+        CircuitBreakerStats, CircuitState,
     };
     use crate::proxy_core::api::domain::{extract_claude_base_url_from_settings, AppKind};
     use crate::proxy_core::api::ports::{
@@ -6824,20 +6763,6 @@ base_url = "https://api.openai.com/v1"
             circuit_error_rate_threshold: 0.6,
             circuit_min_requests: 10,
         };
-        assert!(auto_failover_enabled_from_router_config_result(
-            "claude",
-            Ok(app_config.clone())
-        ));
-        let mut no_failover_config = app_config.clone();
-        no_failover_config.auto_failover_enabled = false;
-        assert!(!auto_failover_enabled_from_router_config_result(
-            "claude",
-            Ok(no_failover_config)
-        ));
-        assert!(!auto_failover_enabled_from_router_config_result(
-            "claude",
-            Err(AppError::Config("missing proxy_config".to_string()))
-        ));
         let takeover_disabled_app_config = proxy_app_config_with_enabled(app_config.clone(), false);
         assert!(!takeover_disabled_app_config.enabled);
         assert!(takeover_disabled_app_config.auto_failover_enabled);

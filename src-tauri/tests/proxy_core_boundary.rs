@@ -8308,12 +8308,12 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
     let adapter_routing_import = function_slice(
         adapter_runtime_source,
         "use crate::proxy_core::api::routing::{",
-        "};\nuse crate::proxy_core::api::session::SessionIdResult;",
+        "};",
     );
     let adapter_management_import = function_slice(
         adapter_runtime_source,
         "use crate::proxy_core::api::management::{",
-        "};\nuse crate::proxy_core::api::routing::{",
+        "};",
     );
 
     for marker in [
@@ -8369,12 +8369,12 @@ fn proxy_core_adapter_does_not_export_legacy_channel_projection_aliases() {
     let adapter_management_import = function_slice(
         adapter_runtime_source,
         "use crate::proxy_core::api::management::{",
-        "};\nuse crate::proxy_core::api::routing::{",
+        "};",
     );
     let adapter_routing_import = function_slice(
         adapter_runtime_source,
         "use crate::proxy_core::api::routing::{",
-        "};\nuse crate::proxy_core::api::session::SessionIdResult;",
+        "};",
     );
 
     for marker in [
@@ -24623,11 +24623,6 @@ fn production_provider_router_config_source_uses_core_config_source() {
     let source_path =
         manifest_dir.join("src/proxy/host/cc_switch/provider_router_config_source.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_router_config_source.rs");
-    let source_adapter_import = function_slice(
-        &source,
-        "use crate::proxy_core_adapter::{",
-        "};\nuse futures::future::BoxFuture;",
-    );
 
     assert!(
         source.contains("source: CcSwitchConfigSource")
@@ -24636,6 +24631,7 @@ fn production_provider_router_config_source_uses_core_config_source() {
     );
     assert!(
         source.contains("auto_failover_enabled_from_router_config_source")
+            && source.contains("router_app_proxy_config_from_config_source")
             && source.contains("circuit_breaker_config_from_router_config_source")
             && source.contains("circuit_failure_threshold_from_router_config_source"),
         "ProviderRouter config source must project router config from ProxyConfigSource"
@@ -24643,13 +24639,28 @@ fn production_provider_router_config_source_uses_core_config_source() {
     assert!(
         source.contains(
             "use crate::proxy::host::cc_switch::config_source::CcSwitchConfigSource;"
-        ) && source.contains("use crate::proxy_core::api::config::CircuitBreakerConfig;"),
-        "ProviderRouter config source should import host config source and core config contract directly"
+        ) && source.contains("use crate::proxy_core::api::config::{")
+            && source.contains("AppProxyConfig")
+            && source.contains("CircuitBreakerConfig")
+            && source.contains("use crate::proxy_core::api::ports::ProxyConfigSource;")
+            && source.contains(
+                "use crate::proxy_core::api::routing::provider_router_auto_failover_enabled_decision;"
+            ),
+        "ProviderRouter config source should import host config source and core config/port/routing contracts directly"
     );
-    for adapter_type in ["CcSwitchConfigSource", "CircuitBreakerConfig"] {
+    assert!(
+        !source.contains("use crate::proxy_core_adapter::"),
+        "ProviderRouter config source should not import config projection helpers through proxy_core_adapter"
+    );
+    for adapter_marker in [
+        "pub(crate) async fn router_app_proxy_config_from_config_source",
+        "pub(crate) async fn auto_failover_enabled_from_router_config_source",
+        "pub(crate) async fn circuit_breaker_config_from_router_config_source",
+        "pub(crate) async fn circuit_failure_threshold_from_router_config_source",
+    ] {
         assert!(
-            !source_adapter_import.contains(adapter_type),
-            "ProviderRouter config source should not import {adapter_type} through proxy_core_adapter"
+            !adapter_source.contains(adapter_marker),
+            "proxy_core_adapter should not retain ProviderRouter config source helper `{adapter_marker}`"
         );
     }
     assert!(
