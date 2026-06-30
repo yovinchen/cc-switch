@@ -917,15 +917,6 @@ fn attempt_event_payload_input_from_forward_attempt<'a>(
 pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
     crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD;
 
-pub(crate) mod server_log_codes {
-    pub(crate) const STARTED: &str = crate::proxy_core::api::logging::srv::STARTED;
-    pub(crate) const STOPPED: &str = crate::proxy_core::api::logging::srv::STOPPED;
-    pub(crate) const STOP_TIMEOUT: &str = crate::proxy_core::api::logging::srv::STOP_TIMEOUT;
-    pub(crate) const TASK_ERROR: &str = crate::proxy_core::api::logging::srv::TASK_ERROR;
-    pub(crate) const ACCEPT_ERR: &str = crate::proxy_core::api::logging::srv::ACCEPT_ERR;
-    pub(crate) const CONN_ERR: &str = crate::proxy_core::api::logging::srv::CONN_ERR;
-}
-
 use crate::proxy_core::api::domain::{
     provider_account_ref, provider_metadata_from_input, unsupported_app_kind_config_error,
 };
@@ -11049,9 +11040,9 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn proxy_server_adapter_projects_runtime_contracts() {
-        assert_eq!(server_log_codes::STARTED, "SRV-001");
-        assert_eq!(server_log_codes::STOPPED, "SRV-002");
-        assert_eq!(server_log_codes::ACCEPT_ERR, "SRV-005");
+        assert_eq!(crate::proxy_core::api::logging::srv::STARTED, "SRV-001");
+        assert_eq!(crate::proxy_core::api::logging::srv::STOPPED, "SRV-002");
+        assert_eq!(crate::proxy_core::api::logging::srv::ACCEPT_ERR, "SRV-005");
         let _shadow_store = GeminiShadowStore::default();
         let stopped = proxy_runtime_status_stopped();
         assert!(!stopped.running);

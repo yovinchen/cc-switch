@@ -2232,6 +2232,7 @@ fn is_allowed_http_server_runtime_core_import(relative: &str, code: &str) -> boo
         && matches!(
             code.trim(),
             "use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};"
+                | "use crate::proxy_core::api::logging::srv as server_log_codes;"
                 | "use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo};"
         )
 }
@@ -23554,6 +23555,8 @@ fn production_proxy_server_delegates_stop_wait_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
     let stop_slice = function_slice(
         &source,
         "    pub async fn stop",
@@ -23581,6 +23584,12 @@ fn production_proxy_server_delegates_stop_wait_to_adapter() {
             && stop_wait.contains("handles.take_server_handle().await")
             && stop_wait.contains("await_proxy_http_accept_loop_stop(handle).await"),
         "HTTP transport module must own accept-loop stop wait timeout, shutdown signaling, handle taking, logging, and error mapping"
+    );
+
+    assert!(
+        source.contains("use crate::proxy_core::api::logging::srv as server_log_codes;")
+            && !adapter_source.contains("pub(crate) mod server_log_codes"),
+        "HTTP server should consume SRV log code constants directly from proxy-core, not through proxy_core_adapter"
     );
 
     let mut violations = Vec::new();
