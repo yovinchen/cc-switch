@@ -22,15 +22,13 @@ use crate::proxy_core::api::config::{
 use crate::proxy_core::api::domain::{
     AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,
 };
-use crate::proxy_core::api::management::{ChannelRecord, ChannelRouteSource};
 use crate::proxy_core::api::ports::CurrentRouteTarget;
 use crate::proxy_core::api::routing::{
-    route_resolve_channel_input_from_record, ChannelRouteCandidate,
-    LegacyChannelMigrationPlanInput, LegacyChannelModelProjection, LegacyChannelProjection,
-    LegacyEndpointInput, LegacyModelRouteInput, LegacyProviderChannelMigrationInput,
-    LegacyProviderProjectionInput, ProviderFailoverCircuitLookup, ProviderSelectionFailure,
-    ProviderSelectionInput, ResolvedChannelAttempt, RoutePlan, RouteResolveChannelInput,
-    RouteResolveChannelRecordInput, RouteResolveModelRecordInput,
+    ChannelRouteCandidate, LegacyChannelMigrationPlanInput, LegacyChannelModelProjection,
+    LegacyChannelProjection, LegacyEndpointInput, LegacyModelRouteInput,
+    LegacyProviderChannelMigrationInput, LegacyProviderProjectionInput,
+    ProviderFailoverCircuitLookup, ProviderSelectionFailure, ProviderSelectionInput,
+    ResolvedChannelAttempt, RoutePlan,
 };
 use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::{AnthropicToolSchemaHints, GeminiShadowStore};
@@ -510,8 +508,8 @@ use crate::proxy_core::api::model_catalog::{
 };
 use crate::proxy_core::api::ports::{
     channel_breaker_stats_from_parts, channel_health_reset_from_parts, AppSummaryConfig,
-    AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelKeyRuntimeSource, ChannelSource,
-    ProviderSource, RoutePolicySource,
+    AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelKeyRuntimeSource, ProviderSource,
+    RoutePolicySource,
 };
 use crate::proxy_core::api::routing::route_policy_failover_provider_ids;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
@@ -1646,53 +1644,6 @@ pub(crate) async fn route_candidate_provider_ids_from_router_source(
     route_candidate_provider_ids_from_selection_result(
         router.select_provider_ids(app.as_str()).await,
     )
-}
-
-pub(crate) fn channel_record_to_route_resolve_channel_input(
-    channel: ChannelRecord,
-) -> RouteResolveChannelInput {
-    route_resolve_channel_input_from_record(RouteResolveChannelRecordInput {
-        channel_id: channel.id,
-        provider_id: channel.provider_id,
-        channel_name: channel.name,
-        status: channel.status,
-        base_url: channel.base_url,
-        interface_kind: channel.interface_kind,
-        groups: channel.groups,
-        models: channel
-            .models
-            .into_iter()
-            .map(|model| RouteResolveModelRecordInput {
-                public_model: model.public_model,
-                upstream_model: model.upstream_model,
-            })
-            .collect(),
-        priority: channel.priority,
-        weight: channel.weight,
-        health_policy: channel.health_policy,
-        source_kind: channel.source_kind,
-    })
-}
-
-fn channel_records_to_route_resolve_channel_inputs(
-    channels: impl IntoIterator<Item = ChannelRecord>,
-) -> Vec<RouteResolveChannelInput> {
-    channels
-        .into_iter()
-        .map(channel_record_to_route_resolve_channel_input)
-        .collect()
-}
-
-pub(crate) async fn router_channel_route_inputs_from_channel_source(
-    source: &(dyn ChannelSource + Send + Sync),
-    app_type: &str,
-) -> ProxyCoreResult<(Vec<RouteResolveChannelInput>, ChannelRouteSource)> {
-    let app = AppKind::from(app_type);
-    let (route_source, channels) = source.list_channel_records(&app).await?;
-    Ok((
-        channel_records_to_route_resolve_channel_inputs(channels),
-        route_source,
-    ))
 }
 
 pub(crate) fn claude_desktop_model_routes_to_core_inputs(
@@ -3568,8 +3519,9 @@ mod tests {
         ProxyCoreEvent, ProxyEventEnvelope,
     };
     use crate::proxy_core::api::management::{
-        ChannelKeyRuntimeCandidate, ChannelTestProbeRequest, ProxyChannelModelWriteRequest,
-        ProxyChannelWriteRequest, RouteResolveRequest, StreamCheckResult,
+        ChannelKeyRuntimeCandidate, ChannelRouteSource, ChannelTestProbeRequest,
+        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, RouteResolveRequest,
+        StreamCheckResult,
     };
     use crate::proxy_core::api::model_catalog::{CopilotModel, DEFAULT_CODEX_MODEL_CONTEXT_WINDOW};
     use crate::proxy_core::api::ports::{
@@ -3581,8 +3533,8 @@ mod tests {
     use crate::proxy_core::api::routing::{
         apply_route_candidate_circuit_availability, resolve_channel_route,
         route_candidate_channel_circuit_keys, ChannelSpec, ChannelStatus, InterfaceKind,
-        LegacyChannelProjectionInput, ProviderSelectionCandidate, RouteResolveModelInput,
-        RouteSelection,
+        LegacyChannelProjectionInput, ProviderSelectionCandidate, RouteResolveChannelInput,
+        RouteResolveModelInput, RouteSelection,
     };
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{
@@ -12978,9 +12930,6 @@ command = "latest-command"
 
         let spec = proxy_channel_record_to_core_spec(&channel);
         let source_spec = channel_spec_from_source(Some(channel.clone())).expect("channel spec");
-        let route_input = channel_record_to_route_resolve_channel_input(
-            proxy_channel_record_to_core(channel.clone()),
-        );
         let (materialized_channels, materialized_source) =
             channel_route_records_from_sources(vec![channel.clone()], || {
                 panic!("materialized channels must not load legacy projection")
@@ -13005,15 +12954,6 @@ command = "latest-command"
         assert_eq!(materialized_channels[0].id, "ch-1");
         assert_eq!(legacy_source, ChannelRouteSource::LegacyProjection);
         assert_eq!(legacy_channels[0].id, "ch-1");
-        assert_eq!(route_input.channel_id, "ch-1");
-        assert_eq!(route_input.provider_id, "provider-1");
-        assert_eq!(route_input.channel_name, "Relay A");
-        assert_eq!(route_input.status, "enabled");
-        assert_eq!(route_input.interface_kind, "openai_chat_completions");
-        assert_eq!(route_input.source_kind, "manual");
-        assert_eq!(route_input.models.len(), 1);
-        assert_eq!(route_input.models[0].public_model, "sonnet");
-        assert_eq!(route_input.models[0].upstream_model, "anthropic/sonnet");
         assert_eq!(spec.app, AppKind::Claude);
         assert_eq!(spec.endpoint.base_url, "https://relay.example.com/v1");
         assert_eq!(spec.interface, InterfaceKind::OpenAiChatCompletions);

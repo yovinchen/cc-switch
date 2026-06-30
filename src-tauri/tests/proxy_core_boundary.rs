@@ -8310,7 +8310,7 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
         "use crate::proxy_core::api::routing::{",
         "};",
     );
-    let adapter_management_import = function_slice(
+    let adapter_management_import = optional_function_slice(
         adapter_runtime_source,
         "use crate::proxy_core::api::management::{",
         "};",
@@ -8339,7 +8339,6 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
         "ProviderFailoverCircuitLookup",
         "ProviderSelectionFailure",
         "ProviderSelectionInput",
-        "RouteResolveChannelInput",
         "ChannelRouteCandidate",
         "ResolvedChannelAttempt",
         "RoutePlan",
@@ -8366,7 +8365,7 @@ fn proxy_core_adapter_does_not_export_legacy_channel_projection_aliases() {
         .split("\n#[cfg(test)]\nmod tests")
         .next()
         .unwrap_or(&adapter_source);
-    let adapter_management_import = function_slice(
+    let adapter_management_import = optional_function_slice(
         adapter_runtime_source,
         "use crate::proxy_core::api::management::{",
         "};",
@@ -8393,12 +8392,14 @@ fn proxy_core_adapter_does_not_export_legacy_channel_projection_aliases() {
             "proxy_core_adapter should not expose legacy channel/projection contract `{marker}` as a type alias"
         );
     }
-    for marker in ["ChannelRecord", "ChannelRouteSource"] {
-        assert!(
-            adapter_management_import.contains(marker),
-            "proxy_core_adapter internals should import management DTO `{marker}` directly from proxy_core::api::management"
-        );
-    }
+    assert!(
+        !adapter_management_import.contains("ChannelRouteSource"),
+        "proxy_core_adapter should not retain ProviderRouter channel source route-source DTO imports after the host source owns route input projection"
+    );
+    assert!(
+        !adapter_management_import.contains("ChannelRecord"),
+        "proxy_core_adapter should not retain ProviderRouter channel source record DTO imports after the host source owns route input projection"
+    );
     for marker in [
         "LegacyChannelModelProjection",
         "LegacyChannelProjection",
@@ -24787,11 +24788,6 @@ fn production_provider_router_channel_source_uses_core_channel_source() {
     let source_path =
         manifest_dir.join("src/proxy/host/cc_switch/provider_router_channel_source.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_router_channel_source.rs");
-    let source_adapter_import = function_slice(
-        &source,
-        "use crate::proxy_core_adapter::{",
-        "};\nuse futures::future::BoxFuture;",
-    );
 
     assert!(
         source.contains("source: CcSwitchChannelSource")
@@ -24803,15 +24799,27 @@ fn production_provider_router_channel_source_uses_core_channel_source() {
         "ProviderRouter channel source must project route inputs from ChannelSource"
     );
     assert!(
-        source.contains("use crate::proxy_core::api::management::ChannelRouteSource;")
-            && source
-                .contains("use crate::proxy_core::api::routing::RouteResolveChannelInput;"),
+        source.contains("use crate::proxy_core::api::management::{ChannelRecord, ChannelRouteSource};")
+            && source.contains("use crate::proxy_core::api::ports::ChannelSource;")
+            && source.contains("use crate::proxy_core::api::routing::{")
+            && source.contains("route_resolve_channel_input_from_record")
+            && source.contains("RouteResolveChannelInput")
+            && source.contains("RouteResolveChannelRecordInput")
+            && source.contains("RouteResolveModelRecordInput"),
         "ProviderRouter channel source should import route input contracts directly from proxy_core"
     );
-    for adapter_type in ["ChannelRouteSource", "RouteResolveChannelInput"] {
+    assert!(
+        !source.contains("use crate::proxy_core_adapter::"),
+        "ProviderRouter channel source should not import route input projection helpers through proxy_core_adapter"
+    );
+    for adapter_marker in [
+        "pub(crate) fn channel_record_to_route_resolve_channel_input",
+        "fn channel_records_to_route_resolve_channel_inputs",
+        "pub(crate) async fn router_channel_route_inputs_from_channel_source",
+    ] {
         assert!(
-            !source_adapter_import.contains(adapter_type),
-            "ProviderRouter channel source should not import core route contract {adapter_type} through proxy_core_adapter"
+            !adapter_source.contains(adapter_marker),
+            "proxy_core_adapter should not retain ProviderRouter channel route helper `{adapter_marker}`"
         );
     }
     assert!(
