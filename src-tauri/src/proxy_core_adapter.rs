@@ -149,18 +149,15 @@ use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection
 use crate::proxy_core::api::ports::{
     apply_codex_takeover_auth_placeholder_if_present,
     codex_auth_has_oauth_login_material as core_codex_auth_has_oauth_login_material,
-    codex_live_settings_parts_from_settings as core_codex_live_settings_parts_from_settings,
     codex_model_from_config_toml as core_codex_model_from_config_toml,
-    codex_provider_backfill_parts_from_settings as core_codex_provider_backfill_parts_from_settings,
     codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     ensure_codex_takeover_auth_placeholder,
     provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
-    CodexLiveSettingsIssue, CodexLiveSettingsParts, CodexProviderLiveWriteIssue,
-    CodexProviderLiveWriteParts, CopilotOptimizerConfig, LiveTokenProviderSettingsIssue,
-    OptimizerConfig, ProviderSettingsValidationIssue, ProviderSettingsValidationParts,
-    RectifierConfig,
+    CodexProviderLiveWriteIssue, CodexProviderLiveWriteParts, CopilotOptimizerConfig,
+    LiveTokenProviderSettingsIssue, OptimizerConfig, ProviderSettingsValidationIssue,
+    ProviderSettingsValidationParts, RectifierConfig,
 };
 fn record_forward_success_status(
     status: &mut ProxyRuntimeStatus,
@@ -1036,21 +1033,6 @@ pub(crate) fn codex_provider_live_write_parts<'a>(
     core_codex_provider_live_write_parts_from_settings(settings, provider.category.as_deref())
 }
 
-pub(crate) fn restore_codex_settings_for_provider_backfill(
-    provider: &Provider,
-    settings: &mut Value,
-) -> Result<(), AppError> {
-    let backfill_parts = core_codex_provider_backfill_parts_from_settings(
-        provider.category.as_deref(),
-        &provider.settings_config,
-    );
-    crate::codex_config::restore_codex_settings_for_backfill(
-        settings,
-        backfill_parts.template_settings,
-        backfill_parts.restore_provider_token,
-    )
-}
-
 pub(crate) fn apply_codex_unified_session_bucket_for_provider(
     provider: &Provider,
     settings: &mut Value,
@@ -1058,15 +1040,6 @@ pub(crate) fn apply_codex_unified_session_bucket_for_provider(
     crate::codex_config::apply_codex_unified_session_bucket_to_settings(
         provider.category.as_deref(),
         settings,
-    )
-}
-
-pub(crate) fn provider_codex_live_settings_parts(
-    provider: &Provider,
-) -> Result<CodexLiveSettingsParts<'_>, CodexLiveSettingsIssue> {
-    core_codex_live_settings_parts_from_settings(
-        &provider.settings_config,
-        provider.category.as_deref(),
     )
 }
 
@@ -8280,38 +8253,8 @@ base_url = "https://api.openai.com/v1"
             }),
             None,
         );
-        let parts =
-            provider_codex_live_settings_parts(&official_live_provider).expect("codex live parts");
-        assert_eq!(parts.category, None);
-        assert!(parts.auth.is_object());
-        assert_eq!(parts.config_text, Some(""));
         let mut custom_category_provider = api_key_live_provider.clone();
         custom_category_provider.category = Some("custom".to_string());
-        let mut live_backfill_settings = json!({
-            "auth": {},
-            "config": r#"model_provider = "custom"
-
-[model_providers.custom]
-experimental_bearer_token = "live-token"
-"#
-        });
-        restore_codex_settings_for_provider_backfill(
-            &custom_category_provider,
-            &mut live_backfill_settings,
-        )
-        .expect("restore codex provider backfill");
-        assert_eq!(
-            live_backfill_settings
-                .get("auth")
-                .and_then(|auth| auth.get("OPENAI_API_KEY"))
-                .and_then(Value::as_str),
-            Some("live-token")
-        );
-        assert!(!live_backfill_settings
-            .get("config")
-            .and_then(Value::as_str)
-            .expect("restored config")
-            .contains("experimental_bearer_token"));
         let write_settings = json!({
             "auth": {"OPENAI_API_KEY": "sk-write"},
             "config": "model = \"gpt-5\""
@@ -8341,20 +8284,12 @@ experimental_bearer_token = "live-token"
             json!("not-object"),
             None,
         );
-        assert!(matches!(
-            provider_codex_live_settings_parts(&invalid_shape),
-            Err(CodexLiveSettingsIssue::NotObject)
-        ));
         let missing_auth = Provider::with_id(
             "codex-live-missing-auth".to_string(),
             "Codex Live Missing Auth".to_string(),
             json!({"config": ""}),
             None,
         );
-        assert!(matches!(
-            provider_codex_live_settings_parts(&missing_auth),
-            Err(CodexLiveSettingsIssue::MissingAuth)
-        ));
         let mut auth_not_object = Provider::with_id(
             "codex-live-auth-string".to_string(),
             "Codex Live Auth String".to_string(),
@@ -8362,10 +8297,6 @@ experimental_bearer_token = "live-token"
             None,
         );
         auth_not_object.category = Some("custom".to_string());
-        assert!(matches!(
-            provider_codex_live_settings_parts(&auth_not_object),
-            Err(CodexLiveSettingsIssue::AuthNotObject)
-        ));
         let provider_validation_parts =
             provider_settings_validation_parts(&AppType::Codex, &official_live_provider)
                 .expect("provider validation parts");

@@ -2,15 +2,41 @@ use super::provider::{sanitize_claude_settings_for_live, ProviderService};
 use crate::app_config::{AppType, MultiAppConfig};
 use crate::error::AppError;
 use crate::provider::Provider;
-use crate::proxy_core::api::ports::{codex_restored_live_settings_parts, CodexLiveSettingsIssue};
-use crate::proxy_core_adapter::{
-    provider_codex_live_settings_parts, restore_codex_settings_for_provider_backfill,
+use crate::proxy_core::api::ports::{
+    codex_live_settings_parts_from_settings as core_codex_live_settings_parts_from_settings,
+    codex_provider_backfill_parts_from_settings as core_codex_provider_backfill_parts_from_settings,
+    codex_restored_live_settings_parts, CodexLiveSettingsIssue, CodexLiveSettingsParts,
 };
 use chrono::Utc;
+use serde_json::Value;
 use std::fs;
 use std::path::Path;
 
 const MAX_BACKUPS: usize = 10;
+
+fn provider_codex_live_settings_parts(
+    provider: &Provider,
+) -> Result<CodexLiveSettingsParts<'_>, CodexLiveSettingsIssue> {
+    core_codex_live_settings_parts_from_settings(
+        &provider.settings_config,
+        provider.category.as_deref(),
+    )
+}
+
+fn restore_codex_settings_for_provider_backfill(
+    provider: &Provider,
+    settings: &mut Value,
+) -> Result<(), AppError> {
+    let backfill_parts = core_codex_provider_backfill_parts_from_settings(
+        provider.category.as_deref(),
+        &provider.settings_config,
+    );
+    crate::codex_config::restore_codex_settings_for_backfill(
+        settings,
+        backfill_parts.template_settings,
+        backfill_parts.restore_provider_token,
+    )
+}
 
 /// 配置导入导出相关业务逻辑
 pub struct ConfigService;
@@ -250,5 +276,103 @@ impl ConfigService {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn codex_live_settings_parts_are_owned_by_config_service() {
+        let provider = Provider::with_id(
+            "codex-live-official".to_string(),
+            "Codex Live Official".to_string(),
+            json!({
+                "auth": {
+                    "tokens": {"id_token": "id-token"},
+                    "auth_mode": "chatgpt"
+                },
+                "config": ""
+            }),
+            None,
+        );
+        let parts = provider_codex_live_settings_parts(&provider).expect("codex live parts");
+        assert_eq!(parts.category, None);
+        assert!(parts.auth.is_object());
+        assert_eq!(parts.config_text, Some(""));
+
+        let invalid_shape = Provider::with_id(
+            "codex-live-invalid".to_string(),
+            "Codex Live Invalid".to_string(),
+            json!("not-object"),
+            None,
+        );
+        assert!(matches!(
+            provider_codex_live_settings_parts(&invalid_shape),
+            Err(CodexLiveSettingsIssue::NotObject)
+        ));
+
+        let missing_auth = Provider::with_id(
+            "codex-live-missing-auth".to_string(),
+            "Codex Live Missing Auth".to_string(),
+            json!({"config": ""}),
+            None,
+        );
+        assert!(matches!(
+            provider_codex_live_settings_parts(&missing_auth),
+            Err(CodexLiveSettingsIssue::MissingAuth)
+        ));
+
+        let mut auth_not_object = Provider::with_id(
+            "codex-live-auth-string".to_string(),
+            "Codex Live Auth String".to_string(),
+            json!({"auth": "sk-test"}),
+            None,
+        );
+        auth_not_object.category = Some("custom".to_string());
+        assert!(matches!(
+            provider_codex_live_settings_parts(&auth_not_object),
+            Err(CodexLiveSettingsIssue::AuthNotObject)
+        ));
+    }
+
+    #[test]
+    fn codex_backfill_restore_is_owned_by_config_service() {
+        let mut provider = Provider::with_id(
+            "codex-live-api-key".to_string(),
+            "Codex Live API Key".to_string(),
+            json!({
+                "auth": {"OPENAI_API_KEY": "sk-test"},
+                "config": ""
+            }),
+            None,
+        );
+        provider.category = Some("custom".to_string());
+        let mut live_backfill_settings = json!({
+            "auth": {},
+            "config": r#"model_provider = "custom"
+
+[model_providers.custom]
+experimental_bearer_token = "live-token"
+"#
+        });
+
+        restore_codex_settings_for_provider_backfill(&provider, &mut live_backfill_settings)
+            .expect("restore codex provider backfill");
+
+        assert_eq!(
+            live_backfill_settings
+                .get("auth")
+                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+                .and_then(Value::as_str),
+            Some("live-token")
+        );
+        assert!(!live_backfill_settings
+            .get("config")
+            .and_then(Value::as_str)
+            .expect("restored config")
+            .contains("experimental_bearer_token"));
     }
 }

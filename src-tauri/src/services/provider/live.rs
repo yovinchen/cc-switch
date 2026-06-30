@@ -47,7 +47,6 @@ use crate::proxy_core::api::ports::{
     OpenCodeLiveWriteActionDecision as CoreOpenCodeLiveWriteActionDecision,
     OpenCodeLiveWriteConfigDecision as CoreOpenCodeLiveWriteConfigDecision, ProviderLiveSyncScope,
 };
-use crate::proxy_core_adapter::restore_codex_settings_for_provider_backfill as adapter_restore_codex_settings_for_provider_backfill;
 use crate::services::mcp::McpService;
 use crate::store::AppState;
 
@@ -586,6 +585,18 @@ fn provider_codex_backfill_parts(provider: &Provider) -> CodexProviderBackfillPa
     )
 }
 
+fn restore_codex_settings_for_provider_backfill(
+    provider: &Provider,
+    settings: &mut Value,
+) -> Result<(), AppError> {
+    let backfill_parts = provider_codex_backfill_parts(provider);
+    crate::codex_config::restore_codex_settings_for_backfill(
+        settings,
+        backfill_parts.template_settings,
+        backfill_parts.restore_provider_token,
+    )
+}
+
 fn strip_codex_unified_session_bucket_for_provider_backfill(
     provider: &Provider,
     settings: &mut Value,
@@ -656,8 +667,7 @@ fn restore_live_settings_for_provider_backfill_result(
 
     let mut settings = live_settings;
     let mut warnings = Vec::new();
-    if let Err(err) = adapter_restore_codex_settings_for_provider_backfill(provider, &mut settings)
-    {
+    if let Err(err) = restore_codex_settings_for_provider_backfill(provider, &mut settings) {
         warnings.push(ProviderBackfillSettingsWarning::CodexSettingsRestore(
             err.to_string(),
         ));
@@ -2668,11 +2678,8 @@ experimental_bearer_token = "bearer-token"
 experimental_bearer_token = "live-token"
 "#
         });
-        adapter_restore_codex_settings_for_provider_backfill(
-            &custom_provider,
-            &mut live_backfill_settings,
-        )
-        .expect("restore codex provider backfill");
+        restore_codex_settings_for_provider_backfill(&custom_provider, &mut live_backfill_settings)
+            .expect("restore codex provider backfill");
         assert_eq!(
             live_backfill_settings
                 .get("auth")
