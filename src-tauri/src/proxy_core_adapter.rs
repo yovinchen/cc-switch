@@ -912,16 +912,6 @@ pub(crate) async fn clear_legacy_live_takeover_active_flag_strict_in_db(
         .map_err(|e| format!("清除接管状态失败: {e}"))
 }
 
-pub(crate) async fn live_takeover_backup_exists_from_db(db: &Database, app_type: &str) -> bool {
-    match db.get_live_backup(app_type).await {
-        Ok(backup) => backup.is_some(),
-        Err(e) => {
-            log::warn!("读取 {app_type} 备份失败（将继续重建接管）: {e}");
-            false
-        }
-    }
-}
-
 pub(crate) async fn delete_live_backup_best_effort_in_db(db: &Database, app_type: &str) {
     let _ = db.delete_live_backup(app_type).await;
 }

@@ -1324,7 +1324,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 本轮继续把手动 `stop_with_restore` 的批量 enabled 清理收敛到 `proxy_core_adapter::clear_live_takeover_enabled_flags_in_db`：service 不再手写 Claude/Codex/Gemini app catalog 或配置表循环，读取失败忽略、写入失败 warning 的 best-effort 语义由 adapter 维护；`stop_with_restore_keep_state` 继续保留 enabled 状态以支持下次启动恢复。
 本轮继续把简单 Live 备份恢复的备份读取和 JSON 解析错误投影收敛到 `proxy_core_adapter::live_backup_config_for_simple_restore_from_db`：`ProxyService::restore_live_config_for_app_inner` 只负责 Claude/Codex/Gemini live 文件写回与日志，读备份失败静默跳过、备份 JSON 损坏时报错的旧语义由 adapter 锁定。
 本轮继续把 keep-state 关闭流程里的 legacy `live_takeover_active` 标志清理收敛到 `proxy_core_adapter::clear_legacy_live_takeover_active_flag_in_db`：`ProxyService::stop_with_restore_keep_state` 不再直接读写全局 proxy_config，同时继续保留 per-app enabled 状态用于下次启动自动恢复。
-本轮继续把 `set_takeover_for_app` 的 Live 备份存在性 source 读取收敛到 `proxy_core_adapter::live_takeover_backup_exists_from_db`：service 只消费是否存在备份的事实，读取失败按无备份继续重建接管的兼容策略和 warning 文案由 adapter 维护。
+本轮继续把 `set_takeover_for_app` 的 Live 备份存在性 source 读取收敛到 host service 边界：`live_takeover.rs` 本地 helper 直接读取 `get_live_backup`，读取失败按无备份继续重建接管并发出原 warning；adapter 不再持有 `live_takeover_backup_exists_from_db`。
 本轮继续把 `set_takeover_for_app` 的 per-app Live 备份删除收敛到 `proxy_core_adapter::{delete_live_backup_best_effort_in_db,delete_live_backup_in_db}`：同步/写入失败回滚继续静默清理，关闭接管时删除失败继续作为错误返回，两种语义在 adapter 中显式分离。
 本轮继续把 `set_takeover_for_app` 的 legacy 接管 active flag 兼容写入和 any-enabled 读取收敛到 `proxy_core_adapter::{set_legacy_live_takeover_active_best_effort_in_db,live_takeover_any_enabled_from_db}`：service 不再直接调用废弃 DAO 兼容方法或维护“检查接管状态失败”错误投影。
 本轮继续把 `set_takeover_for_app` 关闭接管后的 provider health 清理收敛到 `proxy_core_adapter::clear_provider_health_for_app_in_db`：service 不再直接调用 health DAO，清理失败继续按原中文错误返回。

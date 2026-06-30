@@ -42,9 +42,9 @@ use crate::proxy_core_adapter::{
     existing_live_backup_value_for_update_from_db, live_backup_config_for_simple_restore_from_db,
     live_backup_snapshot_from_live_config, live_backup_value_for_restore_from_db,
     live_config_has_proxy_placeholder_for_app, live_takeover_any_enabled_from_db,
-    live_takeover_backup_exists_from_db, live_takeover_config_matches_proxy_for_app,
-    live_token_sync_provider_from_db, persist_ephemeral_listen_port_if_needed_in_db,
-    persist_hot_switch_current_provider_sources, preserve_codex_mcp_servers_from_existing_config,
+    live_takeover_config_matches_proxy_for_app, live_token_sync_provider_from_db,
+    persist_ephemeral_listen_port_if_needed_in_db, persist_hot_switch_current_provider_sources,
+    preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     provider_effective_settings_with_common_config_from_db, proxy_app_enabled_from_db,
     proxy_config_from_db, proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -91,6 +91,16 @@ async fn proxy_takeover_status_from_host_db(db: &Database) -> ProxyTakeoverStatu
     let codex = proxy_app_enabled_option_from_host_db(db, AppType::Codex).await;
     let gemini = proxy_app_enabled_option_from_host_db(db, AppType::Gemini).await;
     proxy_takeover_status_from_enabled_options(claude, codex, gemini, None, None)
+}
+
+async fn live_takeover_backup_exists_from_host_db(db: &Database, app_type: &str) -> bool {
+    match db.get_live_backup(app_type).await {
+        Ok(backup) => backup.is_some(),
+        Err(e) => {
+            log::warn!("读取 {app_type} 备份失败（将继续重建接管）: {e}");
+            false
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -359,7 +369,8 @@ impl ProxyService {
 
             let mut restore_existing_backup_before_takeover = false;
             if proxy_app_enabled {
-                let has_backup = live_takeover_backup_exists_from_db(&self.db, app_type_str).await;
+                let has_backup =
+                    live_takeover_backup_exists_from_host_db(&self.db, app_type_str).await;
                 let live_matches_current_proxy =
                     match self.live_takeover_matches_current_proxy(&app).await {
                         Ok(value) => value,

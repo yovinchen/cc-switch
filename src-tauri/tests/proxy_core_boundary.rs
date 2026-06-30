@@ -272,8 +272,8 @@ const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ENABLED_CONFIG_MARKERS: &[&str] = &[
     "current_config.enabled",
     "updated_config.enabled",
 ];
-const FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_SOURCE_MARKERS: &[&str] =
-    &[".get_live_backup(", "读取 {app_type_str} 备份失败"];
+const FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_SOURCE_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) async fn live_takeover_backup_exists_from_db"];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_DELETE_MARKERS: &[&str] =
     &[".delete_live_backup(", "删除 {app_type_str} Live 备份失败"];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_MARKERS: &[&str] = &[
@@ -7300,6 +7300,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn auto_failover_toggle_plan_from_sources",
         "pub(crate) fn failover_switch_app_enabled_from_config_result",
         "pub(crate) async fn failover_switch_app_enabled_from_db",
+        "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) fn reset_circuit_breaker_switchback_target_from_sources",
         "pub(crate) async fn reset_circuit_breaker_switchback_target_from_db",
         "pub(crate) async fn auto_failover_toggle_plan_from_db",
@@ -15184,35 +15185,36 @@ fn production_proxy_service_delegates_takeover_enabled_config_to_adapter() {
 }
 
 #[test]
-fn production_proxy_service_delegates_takeover_backup_source_to_adapter() {
+fn production_proxy_service_owns_takeover_backup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
         "/// 同步 Live 配置中的 Token",
     );
 
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(function) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_SOURCE_MARKERS {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy/host/cc_switch/live_takeover.rs set_takeover_for_app:{} contains takeover backup source marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
     assert!(
-        violations.is_empty(),
-        "ProxyService::set_takeover_for_app must delegate takeover backup existence reads to proxy_core_adapter:\n{}",
-        violations.join("\n")
+        function.contains("live_takeover_backup_exists_from_host_db(&self.db, app_type_str).await"),
+        "ProxyService::set_takeover_for_app should read backup existence through its host-local helper"
     );
+    assert!(
+        source.contains("async fn live_takeover_backup_exists_from_host_db(")
+            && source.contains("db.get_live_backup(app_type).await")
+            && source.contains("读取 {app_type} 备份失败（将继续重建接管）: {e}")
+            && source.contains("backup.is_some()"),
+        "ProxyService should own takeover backup existence source reads and fallback warning"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_SOURCE_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep takeover backup source wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
