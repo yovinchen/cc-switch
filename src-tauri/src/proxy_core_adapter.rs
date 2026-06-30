@@ -168,9 +168,6 @@ use crate::proxy_core::api::ports::{
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
     provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
-    proxy_hot_switch_should_refresh_codex_live_from_backup as core_proxy_hot_switch_should_refresh_codex_live_from_backup,
-    proxy_hot_switch_should_sync_claude_live_while_proxy_active as core_proxy_hot_switch_should_sync_claude_live_while_proxy_active,
-    proxy_hot_switch_should_sync_codex_live_while_proxy_active as core_proxy_hot_switch_should_sync_codex_live_while_proxy_active,
     proxy_urls_match as core_proxy_urls_match,
     required_provider_base_url as core_required_provider_base_url, CodexLiveSettingsIssue,
     CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
@@ -2769,38 +2766,6 @@ pub(crate) fn should_block_proxy_switch_to_provider(
     should_block_proxy_switch_to_provider_category(
         proxy_takeover_active,
         provider.category.as_deref(),
-    )
-}
-
-pub(crate) fn proxy_hot_switch_should_refresh_codex_live_from_backup(
-    app_type: &AppType,
-    has_live_backup: bool,
-    live_taken_over: bool,
-) -> bool {
-    core_proxy_hot_switch_should_refresh_codex_live_from_backup(
-        &AppKind::from(app_type),
-        has_live_backup,
-        live_taken_over,
-    )
-}
-
-pub(crate) fn proxy_hot_switch_should_sync_codex_live_while_proxy_active(
-    app_type: &AppType,
-    live_taken_over: bool,
-) -> bool {
-    core_proxy_hot_switch_should_sync_codex_live_while_proxy_active(
-        &AppKind::from(app_type),
-        live_taken_over,
-    )
-}
-
-pub(crate) fn proxy_hot_switch_should_sync_claude_live_while_proxy_active(
-    app_type: &AppType,
-    proxy_live_owned_by_takeover: bool,
-) -> bool {
-    core_proxy_hot_switch_should_sync_claude_live_while_proxy_active(
-        &AppKind::from(app_type),
-        proxy_live_owned_by_takeover,
     )
 }
 
@@ -11330,49 +11295,6 @@ base_url = "https://api.openai.com/v1"
         assert!(!proxy_switch_should_hot_switch(false, false));
         assert!(proxy_switch_should_hot_switch(true, false));
         assert!(proxy_switch_should_hot_switch(false, true));
-
-        assert!(!proxy_hot_switch_should_refresh_codex_live_from_backup(
-            &AppType::Codex,
-            false,
-            false
-        ));
-        assert!(proxy_hot_switch_should_refresh_codex_live_from_backup(
-            &AppType::Codex,
-            true,
-            false
-        ));
-        assert!(!proxy_hot_switch_should_refresh_codex_live_from_backup(
-            &AppType::Codex,
-            true,
-            true
-        ));
-        assert!(!proxy_hot_switch_should_refresh_codex_live_from_backup(
-            &AppType::Claude,
-            true,
-            false
-        ));
-        assert!(!proxy_hot_switch_should_sync_codex_live_while_proxy_active(
-            &AppType::Codex,
-            false
-        ));
-        assert!(proxy_hot_switch_should_sync_codex_live_while_proxy_active(
-            &AppType::Codex,
-            true
-        ));
-        assert!(!proxy_hot_switch_should_sync_codex_live_while_proxy_active(
-            &AppType::Claude,
-            true
-        ));
-        assert!(
-            !proxy_hot_switch_should_sync_claude_live_while_proxy_active(&AppType::Claude, false)
-        );
-        assert!(proxy_hot_switch_should_sync_claude_live_while_proxy_active(
-            &AppType::Claude,
-            true
-        ));
-        assert!(
-            !proxy_hot_switch_should_sync_claude_live_while_proxy_active(&AppType::Codex, true)
-        );
 
         assert!(!proxy_takeover_marked_state_is_reusable(false, false));
         assert!(!proxy_takeover_marked_state_is_reusable(true, false));

@@ -30,8 +30,10 @@ use crate::proxy_core::api::ports::{
     proxy_config_with_live_takeover_active,
 };
 use crate::proxy_core::api::ports::{
-    proxy_live_urls_from_listen_parts, proxy_server_info_from_parts,
-    proxy_takeover_marked_state_is_reusable,
+    proxy_hot_switch_should_refresh_codex_live_from_backup,
+    proxy_hot_switch_should_sync_claude_live_while_proxy_active,
+    proxy_hot_switch_should_sync_codex_live_while_proxy_active, proxy_live_urls_from_listen_parts,
+    proxy_server_info_from_parts, proxy_takeover_marked_state_is_reusable,
     proxy_takeover_should_restore_existing_backup_before_retakeover,
     proxy_takeover_status_from_enabled_options, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
     ProxyTakeoverStatus,
@@ -43,10 +45,7 @@ use crate::proxy_core_adapter::{
     codex_preserved_auth_live_config_text_for_configured_policy, codex_provider_live_write_parts,
     live_backup_snapshot_from_live_config, live_config_has_proxy_placeholder_for_app,
     live_takeover_config_matches_proxy_for_app, preserve_codex_mcp_servers_from_existing_config,
-    preserve_codex_oauth_auth_in_backup_for_configured_policy,
-    proxy_hot_switch_should_refresh_codex_live_from_backup,
-    proxy_hot_switch_should_sync_claude_live_while_proxy_active,
-    proxy_hot_switch_should_sync_codex_live_while_proxy_active, proxy_server_from_runtime_config,
+    preserve_codex_oauth_auth_in_backup_for_configured_policy, proxy_server_from_runtime_config,
     remove_codex_takeover_config_placeholders_if_present, should_block_proxy_switch_to_provider,
     sync_provider_settings_with_live_token, CodexLiveWriteProjection, CodexTakeoverAuthPolicy,
     ProviderEffectiveSettingsWarning,
@@ -1756,18 +1755,18 @@ impl ProxyService {
             proxy_live_config_owned_by_takeover(target_state.has_live_backup, live_taken_over);
         let should_refresh_codex_live_from_backup =
             proxy_hot_switch_should_refresh_codex_live_from_backup(
-                &app_type_enum,
+                &AppKind::from(&app_type_enum),
                 target_state.has_live_backup,
                 live_taken_over,
             );
         let should_sync_codex_live_while_proxy_active =
             proxy_hot_switch_should_sync_codex_live_while_proxy_active(
-                &app_type_enum,
+                &AppKind::from(&app_type_enum),
                 live_taken_over,
             );
         let should_sync_claude_live_while_proxy_active =
             proxy_hot_switch_should_sync_claude_live_while_proxy_active(
-                &app_type_enum,
+                &AppKind::from(&app_type_enum),
                 should_sync_backup,
             );
 

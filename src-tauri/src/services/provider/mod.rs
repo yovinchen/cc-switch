@@ -33,6 +33,7 @@ use crate::proxy_core::api::ports::{
     provider_switch_dispatch_for_app as core_provider_switch_dispatch,
     provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
+    proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
     should_skip_provider_legacy_common_config_migration, CommonConfigSnippetIssue,
     ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
@@ -42,7 +43,6 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, provider_settings_validation_parts,
-    proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     should_block_proxy_switch_to_provider, should_reapply_codex_official_live_for_provider,
 };
 use crate::services::mcp::McpService;
@@ -1578,7 +1578,7 @@ impl ProviderService {
                 }
 
                 if proxy_hot_switch_should_sync_claude_live_while_proxy_active(
-                    &app_type,
+                    &AppKind::from(&app_type),
                     should_sync_via_proxy,
                 ) && futures::executor::block_on(state.proxy_service.is_running())
                 {

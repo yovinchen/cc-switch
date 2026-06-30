@@ -8611,6 +8611,7 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
         (
             "src/services/provider/mod.rs",
             &[
+                "proxy_hot_switch_should_sync_claude_live_while_proxy_active",
                 "proxy_live_config_owned_by_takeover",
                 "proxy_switch_should_hot_switch",
             ][..],
@@ -8625,6 +8626,9 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
                 "apply_gemini_takeover_env_fields",
                 "is_local_proxy_url",
                 "live_takeover_app_kinds",
+                "proxy_hot_switch_should_refresh_codex_live_from_backup",
+                "proxy_hot_switch_should_sync_claude_live_while_proxy_active",
+                "proxy_hot_switch_should_sync_codex_live_while_proxy_active",
                 "proxy_live_config_owned_by_takeover",
                 "proxy_runtime_status_stopped",
                 "remove_claude_takeover_env_fields_if_present",
@@ -8655,6 +8659,15 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
                 violations.push(format!(
                     "{relative} routes proxy/live policy helper `{symbol}` through proxy_core_adapter"
                 ));
+            }
+            if source.contains("use crate::proxy_core_adapter::{") {
+                let adapter_import =
+                    function_slice(&source, "use crate::proxy_core_adapter::{", "};");
+                if adapter_import.contains(symbol) {
+                    violations.push(format!(
+                        "{relative} imports proxy/live policy helper `{symbol}` through proxy_core_adapter"
+                    ));
+                }
             }
         }
         if relative == "src/proxy/host/cc_switch/live_takeover.rs"
@@ -15017,14 +15030,18 @@ fn production_live_takeover_imports_runtime_contracts_directly() {
         .expect("read host/cc_switch/live_takeover.rs");
     let import_slice = function_slice(&source, "use crate::app_config::AppType;", "#[cfg(test)]");
 
-    let required_imports = [
-        "use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};",
-        "use crate::proxy_core::api::ports::{",
-        "proxy_live_urls_from_listen_parts, proxy_server_info_from_parts,",
-        "proxy_takeover_marked_state_is_reusable,",
-        "proxy_takeover_should_restore_existing_backup_before_retakeover,",
-        "proxy_takeover_status_from_enabled_options, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,",
-        "ProxyTakeoverStatus,",
+    let required_imports =
+        ["use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};"];
+    let required_port_symbols = [
+        "proxy_live_urls_from_listen_parts",
+        "proxy_server_info_from_parts",
+        "proxy_takeover_marked_state_is_reusable",
+        "proxy_takeover_should_restore_existing_backup_before_retakeover",
+        "proxy_takeover_status_from_enabled_options",
+        "ProxyConfig",
+        "ProxyRuntimeStatus",
+        "ProxyServerInfo",
+        "ProxyTakeoverStatus",
     ];
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
     let mut violations = Vec::new();
@@ -15033,6 +15050,13 @@ fn production_live_takeover_imports_runtime_contracts_directly() {
         if !import_slice.contains(required_import) {
             violations.push(format!(
                 "{relative} should import `{required_import}` directly from proxy_core"
+            ));
+        }
+    }
+    for required_symbol in required_port_symbols {
+        if !import_slice.contains(required_symbol) {
+            violations.push(format!(
+                "{relative} should import `{required_symbol}` directly from proxy_core ports"
             ));
         }
     }
@@ -17107,31 +17131,22 @@ fn proxy_core_adapter_delegates_live_takeover_match_app_dispatch_to_core() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_hot_switch_takeover_policies_to_core() {
+fn proxy_core_adapter_excludes_hot_switch_takeover_policy_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let function = function_slice(
-        &source,
-        "pub(crate) fn proxy_hot_switch_should_refresh_codex_live_from_backup",
-        "pub(crate) fn toml_value_is_subset",
-    );
 
     for marker in [
-        "core_proxy_hot_switch_should_refresh_codex_live_from_backup(",
-        "core_proxy_hot_switch_should_sync_codex_live_while_proxy_active(",
-        "core_proxy_hot_switch_should_sync_claude_live_while_proxy_active(",
+        "pub(crate) fn proxy_hot_switch_should_refresh_codex_live_from_backup",
+        "pub(crate) fn proxy_hot_switch_should_sync_codex_live_while_proxy_active",
+        "pub(crate) fn proxy_hot_switch_should_sync_claude_live_while_proxy_active",
+        "core_proxy_hot_switch_should_refresh_codex_live_from_backup",
+        "core_proxy_hot_switch_should_sync_codex_live_while_proxy_active",
+        "core_proxy_hot_switch_should_sync_claude_live_while_proxy_active",
     ] {
         assert!(
-            function.contains(marker),
-            "proxy_core_adapter must delegate hot-switch takeover policy marker `{marker}` to proxy-core"
-        );
-    }
-
-    for marker in ["has_live_backup || live_taken_over", "matches!(app_type"] {
-        assert!(
-            !function.contains(marker),
-            "proxy_core_adapter must not keep hot-switch takeover policy marker `{marker}`"
+            !source.contains(marker),
+            "proxy_core_adapter should not keep hot-switch takeover policy facade marker `{marker}`"
         );
     }
 }
