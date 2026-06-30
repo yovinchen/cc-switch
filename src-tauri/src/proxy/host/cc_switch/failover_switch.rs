@@ -199,3 +199,16 @@ pub(crate) fn failover_switch_scheduler_from_runtime_sources(
 ) -> FailoverSwitchSchedulerRef {
     Arc::new(CcSwitchFailoverSwitchScheduler::new(manager, app_handle))
 }
+
+#[cfg(test)]
+struct NoopFailoverSwitchScheduler;
+
+#[cfg(test)]
+impl FailoverSwitchScheduler for NoopFailoverSwitchScheduler {
+    fn schedule_switch(&self, _app_type: &str, _target: ForwarderFailoverSwitchTarget) {}
+}
+
+#[cfg(test)]
+pub(crate) fn noop_failover_switch_scheduler() -> FailoverSwitchSchedulerRef {
+    Arc::new(NoopFailoverSwitchScheduler)
+}

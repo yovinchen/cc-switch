@@ -662,7 +662,8 @@ mod tests {
             response_source:
                 crate::proxy::host::cc_switch::forwarder_response_source::default_forwarder_response_source(
                 ),
-            failover_switch_scheduler: crate::proxy_core_adapter::noop_failover_switch_scheduler(),
+            failover_switch_scheduler:
+                crate::proxy::host::cc_switch::failover_switch::noop_failover_switch_scheduler(),
         }
     }
 

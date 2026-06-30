@@ -18115,7 +18115,8 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
     assert!(
         failover_source.contains("struct CcSwitchFailoverSwitchScheduler")
             && failover_source
-                .contains("impl FailoverSwitchScheduler for CcSwitchFailoverSwitchScheduler"),
+                .contains("impl FailoverSwitchScheduler for CcSwitchFailoverSwitchScheduler")
+            && failover_source.contains("fn noop_failover_switch_scheduler()"),
         "default failover switch scheduler implementation should live in the CC Switch host module"
     );
     assert!(
@@ -18131,7 +18132,8 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
     assert!(
         adapter_source.contains("use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources;")
             && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources")
-            && !adapter_source.contains("struct CcSwitchFailoverSwitchScheduler"),
+            && !adapter_source.contains("struct CcSwitchFailoverSwitchScheduler")
+            && !adapter_source.contains("noop_failover_switch_scheduler"),
         "proxy_core_adapter should only use, not re-export or own, the default failover switch scheduler"
     );
 

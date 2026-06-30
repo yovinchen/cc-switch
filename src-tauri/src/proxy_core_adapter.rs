@@ -3630,19 +3630,6 @@ pub(crate) trait FailoverSwitchScheduler {
 
 use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources;
 
-#[cfg(test)]
-struct NoopFailoverSwitchScheduler;
-
-#[cfg(test)]
-impl FailoverSwitchScheduler for NoopFailoverSwitchScheduler {
-    fn schedule_switch(&self, _app_type: &str, _target: ForwarderFailoverSwitchTarget) {}
-}
-
-#[cfg(test)]
-pub(crate) fn noop_failover_switch_scheduler() -> FailoverSwitchSchedulerRef {
-    Arc::new(NoopFailoverSwitchScheduler)
-}
-
 pub(crate) type ForwarderRuntimeStateSourceRef = Arc<dyn ForwarderRuntimeStateSource + Send + Sync>;
 
 /// 活跃连接 RAII guard
