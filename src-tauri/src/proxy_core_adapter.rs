@@ -5,17 +5,13 @@ use crate::database::{
 };
 use crate::error::AppError;
 use crate::provider::{AuthBindingSource, Provider, ProviderMeta};
-use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::engine::routing::{ProviderFailoverRouterSources, ProviderRouter};
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status_kind};
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
-use crate::proxy::host::cc_switch::failover_switch::FailoverSwitchManager;
-use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
-use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices;
-use crate::proxy::host::cc_switch::proxy_state::ProxyState;
+use crate::proxy::host::cc_switch::proxy_state::{proxy_state_from_runtime_sources, ProxyState};
 use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy::provider::codex_provider_upstream_model;
 use crate::proxy::route_attempt::ForwardAttempt;
@@ -29,7 +25,6 @@ use crate::proxy_core::api::config::{
 use crate::proxy_core::api::domain::{
     AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,
 };
-use crate::proxy_core::api::engine::ProxyEngine;
 use crate::proxy_core::api::management::{ChannelRecord, ChannelRouteSource};
 use crate::proxy_core::api::ports::{
     proxy_server_info_from_parts, record_active_connection_acquired_status,
@@ -61,12 +56,6 @@ pub(crate) const COPILOT_PLUGIN_VERSION: &str = "copilot-chat/0.38.2";
 pub(crate) const COPILOT_USER_AGENT: &str = "GitHubCopilotChat/0.38.2";
 pub(crate) const COPILOT_API_VERSION: &str = "2025-10-01";
 pub(crate) const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
-
-impl ProxyState {
-    pub(crate) fn proxy_engine(&self) -> ProxyEngine<CcSwitchProxyServices<CcSwitchProxyRuntime>> {
-        ProxyEngine::new(self.proxy_core_services.clone())
-    }
-}
 
 pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
     crate::proxy_core::api::transforms::synthesize_gemini_tool_call_id(
@@ -281,77 +270,6 @@ fn record_proxy_server_started_status(status: &mut ProxyRuntimeStatus, address: 
         status,
         crate::proxy_core::api::ports::ProxyServerStartedStatusInput { address, port },
     );
-}
-
-pub(crate) fn proxy_state_from_runtime_sources(
-    config: ProxyConfig,
-    db: Arc<Database>,
-    app_handle: Option<tauri::AppHandle>,
-) -> ProxyState {
-    let provider_router = Arc::new(provider_router_from_database(db.clone()));
-    let events = Arc::new(ProxyEventBus::default());
-    let failover_manager = Arc::new(FailoverSwitchManager::new(db.clone()));
-    let config = Arc::new(RwLock::new(config));
-    let status = Arc::new(RwLock::new(ProxyRuntimeStatus::default()));
-    let start_time = Arc::new(RwLock::new(None));
-    let current_providers = Arc::new(RwLock::new(HashMap::new()));
-    let gemini_shadow = Arc::new(GeminiShadowStore::default());
-    let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
-    let attempt_runtime_source =
-        forwarder_attempt_runtime_source_from_runtime_sources(provider_router.clone(), db.clone());
-    let protocol_state_source = forwarder_protocol_state_source_from_runtime_parts(
-        gemini_shadow.clone(),
-        codex_chat_history.clone(),
-    );
-    let runtime_state_source = forwarder_runtime_state_source_from_runtime_parts(
-        status.clone(),
-        current_providers.clone(),
-        events.clone(),
-    );
-    let failover_switch_scheduler = failover_switch_scheduler_from_runtime_sources(
-        failover_manager.clone(),
-        app_handle.clone(),
-    );
-    let managed_account_runtime_source =
-        managed_account_runtime_source_from_app_handle(app_handle.clone());
-    let auth_source = forwarder_auth_source_from_managed_account_runtime_source(
-        managed_account_runtime_source.clone(),
-    );
-    let request_source = forwarder_request_source_from_managed_account_runtime_source(
-        managed_account_runtime_source.clone(),
-    );
-    let transport_source = default_forwarder_transport_source();
-    let response_source = default_forwarder_response_source();
-    let proxy_core_services = Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
-        db: db.clone(),
-        config: config.clone(),
-        provider_router: provider_router.clone(),
-        status: status.clone(),
-        start_time: start_time.clone(),
-        events: events.clone(),
-        current_providers: current_providers.clone(),
-        attempt_runtime_source,
-        protocol_state_source,
-        runtime_state_source,
-        auth_source,
-        request_source,
-        transport_source,
-        response_source,
-        failover_switch_scheduler,
-    }));
-
-    ProxyState {
-        db,
-        config,
-        status,
-        start_time,
-        current_providers,
-        provider_router,
-        proxy_core_services,
-        gemini_shadow,
-        codex_chat_history,
-        events,
-    }
 }
 
 pub(crate) fn proxy_server_from_runtime_config(
@@ -964,8 +882,6 @@ use crate::proxy_core::api::transport::{
     ProxyResult,
 };
 use crate::proxy_core::api::usage::{ModelPricing, UsageRecord};
-
-use crate::proxy::host::cc_switch::managed_account_runtime_source::managed_account_runtime_source_from_app_handle;
 
 pub(crate) fn emit_proxy_server_started_event_source(
     events: &ProxyEventBus,
@@ -2324,8 +2240,6 @@ pub(crate) trait FailoverSwitchScheduler {
     fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget);
 }
 
-use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources;
-
 pub(crate) type ForwarderRuntimeStateSourceRef = Arc<dyn ForwarderRuntimeStateSource + Send + Sync>;
 
 /// 活跃连接 RAII guard
@@ -2444,8 +2358,6 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
 }
 
-use crate::proxy::host::cc_switch::forwarder_runtime_state_source::forwarder_runtime_state_source_from_runtime_parts;
-
 #[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_runtime_state_source::CcSwitchForwarderRuntimeStateSource;
 
@@ -2475,8 +2387,6 @@ pub(crate) trait ForwarderProtocolStateSource {
         input: ForwarderClaudeProtocolTransformInput<'_>,
     ) -> Result<Value, String>;
 }
-
-use crate::proxy::host::cc_switch::forwarder_protocol_state_source::forwarder_protocol_state_source_from_runtime_parts;
 
 #[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_protocol_state_source::CcSwitchForwarderProtocolStateSource;
@@ -2527,8 +2437,6 @@ pub(crate) trait ForwarderAttemptRuntimeSource {
     ) -> BoxFuture<'a, ()>;
 }
 
-use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_runtime_sources;
-
 pub(crate) type ForwarderAuthSourceRef = Arc<dyn ForwarderAuthSource + Send + Sync>;
 pub(crate) type AuthProviderRef = Arc<dyn AuthProvider + Send + Sync>;
 
@@ -2556,7 +2464,6 @@ pub(crate) trait ForwarderAuthSource {
         input: ForwarderAuthHeadersInput<'a>,
     ) -> BoxFuture<'a, Result<ForwarderAuthHeaders, ProxyError>>;
 }
-use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_auth_source::{
     default_forwarder_auth_source, forwarder_auth_source_from_sources,
@@ -2853,7 +2760,6 @@ pub(crate) trait ForwarderRequestSource {
     ) -> Result<ForwarderUpstreamRequestParts, ProxyError>;
 }
 
-use crate::proxy::host::cc_switch::forwarder_request_source::forwarder_request_source_from_managed_account_runtime_source;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_request_source::{
     default_forwarder_request_source, forwarder_rectifier_error_message,
@@ -2878,8 +2784,6 @@ pub(crate) trait ForwarderTransportSource {
         request: ForwarderUpstreamTransportRequest,
     ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
 }
-
-use crate::proxy::host::cc_switch::forwarder_transport_source::default_forwarder_transport_source;
 
 pub(crate) type ForwarderResponseSourceRef = Arc<dyn ForwarderResponseSource + Send + Sync>;
 
@@ -2908,7 +2812,6 @@ pub(crate) trait ForwarderResponseSource {
 }
 
 use crate::proxy::host::cc_switch::forward_pipeline::forward_result_to_proxy_result;
-use crate::proxy::host::cc_switch::forwarder_response_source::default_forwarder_response_source;
 
 #[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_response_source::CcSwitchForwarderResponseSource;
@@ -4014,6 +3917,8 @@ fn account_ref(provider: &Provider) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use crate::proxy::codex_chat_history::CodexChatHistoryStore;
+    use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source;
     use crate::proxy::host::cc_switch::provider_adapter_context::forwarder_provider_adapter_context_for_app;
     use crate::proxy_core::api::config::{
         app_type_from_circuit_key, channel_circuit_key, provider_circuit_key, CircuitState,

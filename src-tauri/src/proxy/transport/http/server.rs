@@ -417,7 +417,7 @@ impl ProxyServer {
         db: Arc<Database>,
         app_handle: Option<tauri::AppHandle>,
     ) -> Self {
-        let state = crate::proxy_core_adapter::proxy_state_from_runtime_sources(
+        let state = crate::proxy::host::cc_switch::proxy_state::proxy_state_from_runtime_sources(
             config.clone(),
             db,
             app_handle,

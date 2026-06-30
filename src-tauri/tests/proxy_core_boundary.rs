@@ -65,7 +65,8 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/services/session_usage_opencode.rs",
     "src/services/usage_stats.rs",
 ];
-const ALLOWED_PROXY_ENGINE_CONSTRUCTOR_FILES: &[&str] = &["src/proxy_core_adapter.rs"];
+const ALLOWED_PROXY_ENGINE_CONSTRUCTOR_FILES: &[&str] =
+    &["src/proxy/host/cc_switch/proxy_state.rs"];
 const PROVIDER_AUTH_DIRECT_CORE_IMPORT_FILES: &[&str] = &[
     "src/proxy/provider/adapter.rs",
     "src/proxy/provider/claude.rs",
@@ -17913,9 +17914,12 @@ fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
             && state_source.contains(
                 "pub proxy_core_services: Arc<CcSwitchProxyServices<CcSwitchProxyRuntime>>"
             )
-            && !state_source.contains("ProxyEngine::new(")
-            && !state_source.contains("impl ProxyState"),
-        "CC Switch proxy state data shape should live in host/cc_switch/proxy_state.rs"
+            && state_source.contains("\nimpl ProxyState")
+            && state_source.contains("ProxyEngine::new(self.proxy_core_services.clone())")
+            && state_source.contains("pub(crate) fn proxy_state_from_runtime_sources(")
+            && state_source.contains("CcSwitchProxyServices::with_runtime(")
+            && state_source.contains("CcSwitchProxyRuntime {"),
+        "CC Switch proxy state data shape, engine constructor, and runtime assembly should live in host/cc_switch/proxy_state.rs"
     );
     assert!(
         state_source.contains("use crate::proxy_core::api::ports::{")
@@ -17929,6 +17933,7 @@ fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
     for adapter_type in [
         "CurrentRouteTarget",
         "GeminiShadowStore",
+        "ProxyEngine",
         "ProxyConfig",
         "ProxyRuntimeStatus",
     ] {
@@ -17940,17 +17945,18 @@ fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
         );
     }
     assert!(
-        adapter_source
-            .contains("use crate::proxy::host::cc_switch::proxy_state::ProxyState;")
+        adapter_source.contains(
+            "use crate::proxy::host::cc_switch::proxy_state::{proxy_state_from_runtime_sources, ProxyState};"
+        )
             && !adapter_source
                 .contains("pub(crate) use crate::proxy::host::cc_switch::proxy_state::ProxyState")
             && !adapter_source.contains("\npub struct ProxyState")
             && !adapter_source.contains("type CcSwitchProxyRuntimeServices")
-            && adapter_source.contains("\nimpl ProxyState")
-            && adapter_source
-                .contains("ProxyEngine<CcSwitchProxyServices<CcSwitchProxyRuntime>>")
-            && adapter_source.contains("ProxyEngine::new(self.proxy_core_services.clone())"),
-        "proxy_core_adapter should only use the state privately and keep the ProxyEngine construction boundary"
+            && !adapter_source.contains("\nimpl ProxyState")
+            && !adapter_source.contains("ProxyEngine::new(self.proxy_core_services.clone())")
+            && !adapter_source.contains("CcSwitchProxyServices::with_runtime(")
+            && !adapter_source.contains("ProxyState {"),
+        "proxy_core_adapter should only use the host state constructor privately and not own ProxyState assembly"
     );
 }
 
@@ -17968,14 +17974,14 @@ fn proxy_core_adapter_delegates_proxy_services_to_host_module() {
         "CC Switch proxy service container should live in host/cc_switch/proxy_services.rs"
     );
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices;"
         ) && !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices"
         ) && !adapter_source.contains("type CcSwitchProxyRuntimeServices")
             && !adapter_source.contains("pub(crate) struct CcSwitchProxyServices")
             && !adapter_source.contains("impl<R> ProxyServices for CcSwitchProxyServices"),
-        "proxy_core_adapter should only use the generic CC Switch proxy service container privately without a runtime alias"
+        "proxy_core_adapter should not own or import the generic CC Switch proxy service container after host state assembly owns it"
     );
 }
 
@@ -18213,15 +18219,23 @@ fn production_adapter_managed_auth_runtime_source_is_trait() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let host_path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
     let host_source =
         fs::read_to_string(&host_path).expect("read managed_account_runtime_source.rs");
+    let state_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs"))
+            .expect("read proxy_state.rs");
 
     assert!(
         host_source.contains("trait ManagedAccountRuntimeSource")
             && host_source.contains("pub(crate) type ManagedAccountRuntimeSourceRef")
-            && adapter_source.contains("managed_account_runtime_source_from_app_handle"),
-        "managed-account runtime reads must stay behind a host source trait used by adapter assembly"
+            && state_source.contains("managed_account_runtime_source_from_app_handle(")
+            && !adapter_runtime_source.contains("managed_account_runtime_source_from_app_handle"),
+        "managed-account runtime reads must stay behind a host source trait used by host state assembly"
     );
 }
 
@@ -18354,9 +18368,16 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let failover_source_path = manifest_dir.join("src/proxy/host/cc_switch/failover_switch.rs");
     let failover_source =
         fs::read_to_string(&failover_source_path).expect("read failover_switch.rs");
+    let state_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs"))
+            .expect("read proxy_state.rs");
 
     assert!(
         source.contains("failover_switch_scheduler"),
@@ -18380,11 +18401,11 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
         "failover switch should import pure config/routing/event helpers directly from proxy_core"
     );
     assert!(
-        adapter_source.contains("use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources;")
-            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources")
-            && !adapter_source.contains("struct CcSwitchFailoverSwitchScheduler")
-            && !adapter_source.contains("noop_failover_switch_scheduler"),
-        "proxy_core_adapter should only use, not re-export or own, the default failover switch scheduler"
+        state_source.contains("failover_switch_scheduler_from_runtime_sources(")
+            && !adapter_runtime_source.contains("failover_switch_scheduler_from_runtime_sources")
+            && !adapter_runtime_source.contains("struct CcSwitchFailoverSwitchScheduler")
+            && !adapter_runtime_source.contains("noop_failover_switch_scheduler"),
+        "host proxy_state should use the default failover switch scheduler without routing it through proxy_core_adapter"
     );
 
     let forbidden_markers = [
@@ -19082,6 +19103,9 @@ fn production_forwarder_uses_auth_source_resource() {
         .unwrap_or(&adapter_source);
     let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/forwarder_auth_source.rs");
     let auth_source = fs::read_to_string(&auth_source_path).expect("read forwarder_auth_source.rs");
+    let state_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs"))
+            .expect("read proxy_state.rs");
     for marker in [
         "pub(crate) type ForwarderAuthHeaders",
         "pub(crate) type ForwarderPreparedCopilotAuthOptimization",
@@ -19105,7 +19129,7 @@ fn production_forwarder_uses_auth_source_resource() {
     let auth_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderAuthSource",
-        "use crate::proxy::host::cc_switch::forwarder_auth_source::",
+        "pub(crate) type ForwarderRequestSourceRef",
     );
     let auth_impl_slice = function_slice(
         &auth_source,
@@ -19206,10 +19230,11 @@ fn production_forwarder_uses_auth_source_resource() {
         );
     }
     assert!(
-        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source")
-            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source")
-            && !adapter_source.contains("struct CcSwitchForwarderAuthSource"),
-        "proxy_core_adapter should use the forwarder auth source factory without re-exporting or owning the implementation"
+        state_source.contains("forwarder_auth_source_from_managed_account_runtime_source(")
+            && !adapter_runtime_source
+                .contains("forwarder_auth_source_from_managed_account_runtime_source")
+            && !adapter_runtime_source.contains("struct CcSwitchForwarderAuthSource"),
+        "host proxy_state should use the forwarder auth source factory without routing it through proxy_core_adapter"
     );
     let auth_source_forbidden_markers = [
         "forwarder_provider_auth_info(",
@@ -19285,14 +19310,21 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let runtime_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_runtime_state_source.rs");
     let runtime_source =
         fs::read_to_string(&runtime_source_path).expect("read forwarder_runtime_state_source.rs");
+    let state_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs"))
+            .expect("read proxy_state.rs");
     let runtime_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderRuntimeStateSource",
-        "use crate::proxy::host::cc_switch::forwarder_runtime_state_source",
+        "pub(crate) type ForwarderProtocolStateSourceRef",
     );
     let runtime_source_slice = function_slice(
         &runtime_source,
@@ -19396,10 +19428,10 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         );
     }
     assert!(
-        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_runtime_state_source::forwarder_runtime_state_source_from_runtime_parts;")
-            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_runtime_state_source::forwarder_runtime_state_source_from_runtime_parts")
-            && !adapter_source.contains("struct CcSwitchForwarderRuntimeStateSource"),
-        "proxy_core_adapter should only use, not re-export or own, the default forwarder runtime state source"
+        state_source.contains("forwarder_runtime_state_source_from_runtime_parts(")
+            && !adapter_runtime_source.contains("forwarder_runtime_state_source_from_runtime_parts")
+            && !adapter_runtime_source.contains("struct CcSwitchForwarderRuntimeStateSource"),
+        "host proxy_state should use the default forwarder runtime state source without routing it through proxy_core_adapter"
     );
     assert!(
         !runtime_trait_slice.contains("fn status(") && !runtime_trait_slice.contains("fn events("),
@@ -19787,10 +19819,17 @@ fn production_forwarder_uses_protocol_state_source_resource() {
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let protocol_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_protocol_state_source.rs");
     let protocol_source =
         fs::read_to_string(&protocol_source_path).expect("read forwarder_protocol_state_source.rs");
+    let state_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs"))
+            .expect("read proxy_state.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -19814,10 +19853,11 @@ fn production_forwarder_uses_protocol_state_source_resource() {
         "default ForwarderProtocolStateSource implementation should live in the CC Switch host module"
     );
     assert!(
-        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_protocol_state_source::forwarder_protocol_state_source_from_runtime_parts;")
-            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_protocol_state_source::forwarder_protocol_state_source_from_runtime_parts")
-            && !adapter_source.contains("struct CcSwitchForwarderProtocolStateSource"),
-        "proxy_core_adapter should only use, not re-export or own, the default forwarder protocol state source"
+        state_source.contains("forwarder_protocol_state_source_from_runtime_parts(")
+            && !adapter_runtime_source
+                .contains("forwarder_protocol_state_source_from_runtime_parts")
+            && !adapter_runtime_source.contains("struct CcSwitchForwarderProtocolStateSource"),
+        "host proxy_state should use the default forwarder protocol state source without routing it through proxy_core_adapter"
     );
 
     let struct_forbidden_markers = [
@@ -19884,6 +19924,9 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_attempt_runtime_source.rs");
     let attempt_source =
         fs::read_to_string(&attempt_source_path).expect("read forwarder_attempt_runtime_source.rs");
+    let state_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs"))
+            .expect("read proxy_state.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -19973,10 +20016,11 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         );
     }
     assert!(
-        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_runtime_sources")
-            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source::forwarder_attempt_runtime_source_from_runtime_sources")
-            && !adapter_source.contains("struct CcSwitchForwarderAttemptRuntimeSource"),
-        "proxy_core_adapter should use, not re-export or own, the default forwarder attempt runtime source"
+        state_source.contains("forwarder_attempt_runtime_source_from_runtime_sources(")
+            && !adapter_runtime_source
+                .contains("forwarder_attempt_runtime_source_from_runtime_sources")
+            && !adapter_runtime_source.contains("struct CcSwitchForwarderAttemptRuntimeSource"),
+        "host proxy_state should use the default forwarder attempt runtime source without routing it through proxy_core_adapter"
     );
     assert!(
         !adapter_source.contains("pub(crate) fn forwarder_attempt_limit_reached_log_line")
@@ -19990,7 +20034,7 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     let attempt_runtime_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderAttemptRuntimeSource",
-        "use crate::proxy::host::cc_switch::forwarder_attempt_runtime_source",
+        "pub(crate) type ForwarderAuthSourceRef",
     );
     let attempt_failure_runtime_source_slice = function_slice(
         &adapter_source,
@@ -20306,6 +20350,9 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_transport_source.rs"),
     )
     .expect("read forwarder_transport_source.rs");
+    let state_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs"))
+            .expect("read proxy_state.rs");
     let upstream_source =
         fs::read_to_string(manifest_dir.join("src/proxy/transport/upstream/mod.rs"))
             .expect("read transport/upstream/mod.rs");
@@ -20323,10 +20370,10 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
         "default ForwarderTransportSource must delegate upstream transport execution to proxy::transport::upstream"
     );
     assert!(
-        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_transport_source::default_forwarder_transport_source;")
-            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_transport_source::default_forwarder_transport_source")
-            && !adapter_source.contains("struct CcSwitchForwarderTransportSource"),
-        "proxy_core_adapter should only use, not re-export or own, the default forwarder transport source"
+        state_source.contains("default_forwarder_transport_source()")
+            && !adapter_runtime_source.contains("default_forwarder_transport_source")
+            && !adapter_runtime_source.contains("struct CcSwitchForwarderTransportSource"),
+        "host proxy_state should use the default forwarder transport source without routing it through proxy_core_adapter"
     );
 
     let forbidden_adapter_markers = [
@@ -20415,6 +20462,9 @@ fn production_forwarder_uses_request_source_resource() {
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
     let request_source =
         fs::read_to_string(&request_source_path).expect("read forwarder_request_source.rs");
+    let state_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs"))
+            .expect("read proxy_state.rs");
     let core_transport_path = manifest_dir.join("crates/proxy-core/src/request_transport.rs");
     let core_transport_source =
         fs::read_to_string(&core_transport_path).expect("read request_transport.rs");
@@ -20931,7 +20981,7 @@ fn production_forwarder_uses_request_source_resource() {
     let request_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderRequestSource",
-        "use crate::proxy::host::cc_switch::forwarder_request_source",
+        "pub(crate) type ForwarderTransportSourceRef",
     );
     assert!(
         !request_trait_slice.contains("request_body_model")
@@ -20945,10 +20995,11 @@ fn production_forwarder_uses_request_source_resource() {
         "ForwarderRequestSource trait must not expose internal request body model, provider transform, Codex bridge body/gate, Copilot optimizer, media prevention, adapter facts, or provider URL facts helpers"
     );
     assert!(
-        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_request_source::forwarder_request_source_from_managed_account_runtime_source")
-            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_request_source::forwarder_request_source_from_managed_account_runtime_source")
-            && !adapter_source.contains("struct CcSwitchForwarderRequestSource"),
-        "proxy_core_adapter should use, not re-export or own, the default forwarder request source"
+        state_source.contains("forwarder_request_source_from_managed_account_runtime_source(")
+            && !adapter_runtime_source
+                .contains("forwarder_request_source_from_managed_account_runtime_source")
+            && !adapter_runtime_source.contains("struct CcSwitchForwarderRequestSource"),
+        "host proxy_state should use the default forwarder request source without routing it through proxy_core_adapter"
     );
 
     let impl_forbidden_markers = [
@@ -21113,6 +21164,9 @@ fn production_forwarder_uses_response_source_resource() {
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_response_source.rs");
     let response_source =
         fs::read_to_string(&response_source_path).expect("read forwarder_response_source.rs");
+    let state_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs"))
+            .expect("read proxy_state.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -21157,15 +21211,15 @@ fn production_forwarder_uses_response_source_resource() {
         "default ForwarderResponseSource should project upstream error responses inside finalize_upstream_response"
     );
     assert!(
-        adapter_source.contains("use crate::proxy::host::cc_switch::forwarder_response_source::default_forwarder_response_source;")
-            && !adapter_source.contains("pub(crate) use crate::proxy::host::cc_switch::forwarder_response_source::default_forwarder_response_source")
-            && !adapter_source.contains("struct CcSwitchForwarderResponseSource;"),
-        "proxy_core_adapter should only use, not re-export or own, the default forwarder response source"
+        state_source.contains("default_forwarder_response_source()")
+            && !adapter_runtime_source.contains("default_forwarder_response_source")
+            && !adapter_runtime_source.contains("struct CcSwitchForwarderResponseSource;"),
+        "host proxy_state should use the default forwarder response source without routing it through proxy_core_adapter"
     );
     let response_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderResponseSource",
-        "use crate::proxy::host::cc_switch::forwarder_response_source",
+        "use crate::proxy::host::cc_switch::forward_pipeline::forward_result_to_proxy_result;",
     );
     assert!(
         !response_trait_slice.contains("upstream_error_body")
@@ -23125,7 +23179,7 @@ fn production_proxy_server_legacy_module_removed_after_transport_split() {
 }
 
 #[test]
-fn production_proxy_server_delegates_runtime_state_type_to_adapter() {
+fn production_proxy_server_delegates_runtime_state_type_to_host_state() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
@@ -23146,7 +23200,7 @@ fn production_proxy_server_delegates_runtime_state_type_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "production ProxyServer must keep ProxyState type definition in proxy_core_adapter:\n{}",
+        "production ProxyServer must keep ProxyState type definition in host proxy_state.rs:\n{}",
         violations.join("\n")
     );
 }
@@ -23240,7 +23294,7 @@ fn production_proxy_state_does_not_retain_injected_host_resources() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs");
     let source = fs::read_to_string(&path).expect("read proxy_state.rs");
-    let proxy_state = source.as_str();
+    let proxy_state = function_slice(&source, "pub struct ProxyState {", "}\n\nimpl ProxyState");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(proxy_state) {
@@ -24375,14 +24429,14 @@ fn proxy_core_adapter_delegates_provider_router_sources_to_host_module() {
         "CC Switch ProviderRouter source assembly should live in host/cc_switch/provider_router_sources.rs"
     );
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;"
         ) && !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database"
         ) && !adapter_source.contains("CcSwitchProviderRouterSources")
             && !adapter_source.contains("pub(crate) struct CcSwitchProviderRouterSources")
             && !adapter_source.contains("pub(crate) fn provider_router_from_database("),
-        "proxy_core_adapter should only use the ProviderRouter factory privately and not re-export or own the source assembly"
+        "proxy_core_adapter should not own or import ProviderRouter source assembly after host state assembly owns it"
     );
 }
 
@@ -25155,7 +25209,7 @@ fn production_constructs_provider_router_through_adapter() {
 }
 
 #[test]
-fn production_host_constructs_proxy_engine_through_adapter() {
+fn production_host_constructs_proxy_engine_through_host_proxy_state() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut rust_files = Vec::new();
     collect_rust_files(&manifest_dir.join("src"), &mut rust_files);
@@ -25187,7 +25241,7 @@ fn production_host_constructs_proxy_engine_through_adapter() {
 
     assert!(
         violations.is_empty(),
-        "production host code must construct ProxyEngine through src/proxy_core_adapter.rs:\n{}",
+        "production host code must construct ProxyEngine through host proxy_state.rs:\n{}",
         violations.join("\n")
     );
 }
