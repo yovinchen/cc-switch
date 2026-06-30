@@ -24738,8 +24738,13 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
         source.contains(
             "use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource;"
         ) && source.contains("use crate::proxy_core::api::domain::{AppKind, ProviderSpec};")
-            && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
-            && source.contains("use crate::proxy_core::api::ports::ProviderSource;"),
+            && source.contains("ProxyCoreResult")
+            && source.contains("use crate::proxy_core::api::ports::{ProviderSource, RoutePolicySource};")
+            && source.contains("use crate::proxy_core::api::routing::{")
+            && source.contains("provider_failover_circuit_lookups")
+            && source.contains("route_policy_failover_provider_ids")
+            && source.contains("select_provider_ids")
+            && source.contains("ProviderSelectionInput"),
         "ProviderRouter provider source should import host route-policy source and core provider contracts directly"
     );
     for adapter_type in [
@@ -24748,10 +24753,27 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
         "ProviderSpec",
         "ProxyCoreAppKind",
         "ProxyCoreResult",
+        "failover_provider_ids_from_route_policy_source",
+        "provider_failover_sources_from_router_provider_source",
+        "select_current_provider_ids_from_router_provider_source",
     ] {
         assert!(
             !source_adapter_import.contains(adapter_type),
             "ProviderRouter provider source should not import {adapter_type} through proxy_core_adapter"
+        );
+    }
+    for adapter_marker in [
+        "pub(crate) async fn provider_ids_from_router_provider_source",
+        "pub(crate) async fn select_current_provider_ids_from_router_provider_source",
+        "pub(crate) async fn failover_provider_ids_from_route_policy_source",
+        "pub(crate) async fn provider_failover_sources_from_router_provider_source",
+        "pub(crate) fn current_provider_id_from_router_sources",
+        "fn provider_failover_circuit_lookups_from_router_sources",
+        "fn select_current_provider_ids_from_router_provider_id_source",
+    ] {
+        assert!(
+            !adapter_source.contains(adapter_marker),
+            "proxy_core_adapter should not retain ProviderRouter provider source helper `{adapter_marker}`"
         );
     }
     assert!(

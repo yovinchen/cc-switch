@@ -5,7 +5,7 @@ use crate::database::{
 };
 use crate::error::AppError;
 use crate::provider::{AuthBindingSource, Provider, ProviderMeta};
-use crate::proxy::engine::routing::{ProviderFailoverRouterSources, ProviderRouter};
+use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status_kind};
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
@@ -508,10 +508,8 @@ use crate::proxy_core::api::model_catalog::{
 };
 use crate::proxy_core::api::ports::{
     channel_breaker_stats_from_parts, channel_health_reset_from_parts, AppSummaryConfig,
-    AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelKeyRuntimeSource, ProviderSource,
-    RoutePolicySource,
+    AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelKeyRuntimeSource,
 };
-use crate::proxy_core::api::routing::route_policy_failover_provider_ids;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 use crate::proxy_core::api::transforms::{
@@ -1174,68 +1172,6 @@ pub(crate) fn reset_channel_health_from_router_db(
     db.reset_proxy_channel_health(&reset.channel_id)
 }
 
-fn select_current_provider_ids_from_router_provider_id_source(
-    app_type: &str,
-    current_provider_id: Option<String>,
-) -> Result<Vec<String>, AppError> {
-    let selected_ids =
-        select_provider_ids(ProviderSelectionInput::current(current_provider_id.clone()))
-            .map_err(|error| app_error_from_provider_selection_failure(app_type, error))?;
-
-    Ok(selected_ids
-        .into_iter()
-        .filter(|provider_id| current_provider_id.as_ref() == Some(provider_id))
-        .collect())
-}
-
-pub(crate) async fn provider_ids_from_router_provider_source(
-    source: &(dyn ProviderSource + Send + Sync),
-    app_type: &str,
-) -> Result<Vec<String>, AppError> {
-    let app = AppKind::from(app_type);
-    let providers = source
-        .list_providers(&app)
-        .await
-        .map_err(app_error_from_proxy_core_error)?;
-    Ok(providers.into_iter().map(|provider| provider.id).collect())
-}
-
-pub(crate) async fn select_current_provider_ids_from_router_provider_source(
-    source: &(dyn ProviderSource + Send + Sync),
-    app_type: &str,
-) -> Result<Vec<String>, AppError> {
-    let app = AppKind::from(app_type);
-    let current_provider_id = source
-        .current_provider_id(&app)
-        .await
-        .map_err(app_error_from_proxy_core_error)?;
-    let current_provider_id = match current_provider_id {
-        Some(current_provider_id) => source
-            .get_provider(&app, &current_provider_id)
-            .await
-            .map_err(app_error_from_proxy_core_error)?
-            .map(|provider| provider.id),
-        None => None,
-    };
-
-    select_current_provider_ids_from_router_provider_id_source(app_type, current_provider_id)
-}
-
-pub(crate) async fn failover_provider_ids_from_route_policy_source(
-    source: &(dyn RoutePolicySource + Send + Sync),
-    app_type: &str,
-) -> Result<Vec<String>, AppError> {
-    let app = AppKind::from(app_type);
-    let policy = source
-        .load_policy(&app)
-        .await
-        .map_err(app_error_from_proxy_core_error)?;
-    Ok(policy
-        .as_ref()
-        .map(route_policy_failover_provider_ids)
-        .unwrap_or_default())
-}
-
 pub(crate) fn select_failover_provider_ids_from_router_lookup_availability<I>(
     app_type: &str,
     provider_ids: &[String],
@@ -1263,56 +1199,6 @@ where
         .collect())
 }
 
-fn provider_failover_circuit_lookups_from_router_sources(
-    app_type: &str,
-    failover_provider_ids: impl IntoIterator<Item = String>,
-    provider_ids: impl IntoIterator<Item = String>,
-) -> Vec<ProviderFailoverCircuitLookup> {
-    provider_failover_circuit_lookups(
-        app_type,
-        failover_provider_ids.into_iter().collect::<Vec<_>>(),
-        provider_ids.into_iter().collect::<Vec<_>>(),
-    )
-}
-
-pub(crate) async fn provider_failover_sources_from_router_provider_source(
-    source: &(dyn ProviderSource + Send + Sync),
-    app_type: &str,
-    failover_provider_ids: impl IntoIterator<Item = String>,
-) -> Result<ProviderFailoverRouterSources, AppError> {
-    let provider_ids = provider_ids_from_router_provider_source(source, app_type).await?;
-    let lookups = provider_failover_circuit_lookups_from_router_sources(
-        app_type,
-        failover_provider_ids,
-        provider_ids.clone(),
-    );
-    Ok(ProviderFailoverRouterSources {
-        provider_ids,
-        lookups,
-    })
-}
-
-pub(crate) fn current_provider_id_from_router_sources(
-    app_type: &str,
-    load_settings_current_provider_id: impl FnOnce(&AppType) -> Option<String>,
-    load_db_current_provider_id: impl FnOnce() -> Option<String>,
-) -> Option<String> {
-    let settings_current_provider_id = app_type
-        .parse::<AppType>()
-        .ok()
-        .and_then(|app| load_settings_current_provider_id(&app));
-    let db_current_provider_id =
-        if current_provider_db_fallback_required(settings_current_provider_id.as_deref()) {
-            load_db_current_provider_id()
-        } else {
-            None
-        };
-    current_provider_id_option_from_sources(
-        settings_current_provider_id.as_deref(),
-        db_current_provider_id.as_deref(),
-    )
-}
-
 pub(crate) fn should_block_proxy_switch_to_provider(
     proxy_takeover_active: bool,
     provider: &Provider,
@@ -1327,8 +1213,8 @@ use crate::proxy_core::api::routing::{
     current_provider_db_fallback_required, current_provider_id_from_sources,
     current_provider_id_option_from_sources, legacy_provider_codex_catalog_models_from_settings,
     legacy_provider_config_text_from_settings, legacy_provider_env_from_settings,
-    provider_failover_circuit_lookups, provider_selection_candidate_from_failover_lookup,
-    select_provider_ids, should_block_proxy_switch_to_provider_category,
+    provider_selection_candidate_from_failover_lookup, select_provider_ids,
+    should_block_proxy_switch_to_provider_category,
 };
 
 pub(crate) fn legacy_provider_projection_input(
@@ -3449,8 +3335,7 @@ mod tests {
         ProviderTakeoverLiveSyncTarget,
     };
     use crate::proxy_core::api::routing::{
-        normalize_channel_base_url, normalize_proxy_channel_write_request_fields,
-        stable_channel_id, RoutePolicy,
+        normalize_channel_base_url, normalize_proxy_channel_write_request_fields, stable_channel_id,
     };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
@@ -3459,7 +3344,7 @@ mod tests {
     };
     use crate::proxy_core::api::transport::{
         apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
-        resolve_codex_provider_upstream_model,
+        forwarder_rectifier_retry_failure_label, resolve_codex_provider_upstream_model,
     };
 
     use super::*;
@@ -3480,7 +3365,7 @@ mod tests {
     };
     use crate::proxy::events::ProxyEventBus;
     use crate::proxy::host::cc_switch::database_channel_source::{
-        channel_route_records_from_sources, channel_spec_from_source, proxy_channel_record_to_core,
+        channel_route_records_from_sources, channel_spec_from_source,
         proxy_channel_record_to_core_spec,
     };
     use crate::proxy::host::cc_switch::managed_account_runtime_source::{
@@ -3664,10 +3549,15 @@ mod tests {
         app_type: &str,
         current: Option<Provider>,
     ) -> Result<Vec<String>, AppError> {
-        select_current_provider_ids_from_router_provider_id_source(
-            app_type,
-            current.map(|provider| provider.id),
-        )
+        let current_provider_id = current.map(|provider| provider.id);
+        let selected_ids =
+            select_provider_ids(ProviderSelectionInput::current(current_provider_id.clone()))
+                .map_err(|error| app_error_from_provider_selection_failure(app_type, error))?;
+
+        Ok(selected_ids
+            .into_iter()
+            .filter(|provider_id| current_provider_id.as_ref() == Some(provider_id))
+            .collect())
     }
 
     fn provider_credential_values_with_issue(
@@ -7042,7 +6932,7 @@ base_url = "https://api.openai.com/v1"
                 None,
             ),
         );
-        let failover_lookups = provider_failover_circuit_lookups_from_router_sources(
+        let failover_lookups = crate::proxy_core::api::routing::provider_failover_circuit_lookups(
             "claude",
             vec![
                 "missing".to_string(),
@@ -7112,57 +7002,23 @@ base_url = "https://api.openai.com/v1"
             "settings-provider"
         );
         assert_eq!(
-            current_provider_id_option_from_sources(Some("settings-provider"), Some("db-provider")),
-            Some("settings-provider".to_string())
-        );
-        assert!(!current_provider_db_fallback_required(Some(
-            "settings-provider"
-        )));
-        assert!(!current_provider_db_fallback_required(Some("")));
-        assert!(current_provider_db_fallback_required(None));
-        assert_eq!(current_provider_id_option_from_sources(None, None), None);
-        let mut db_lookup_called_for_settings = false;
-        assert_eq!(
-            current_provider_id_from_router_sources(
-                "claude",
-                |app| {
-                    assert_eq!(app, &AppType::Claude);
-                    Some("settings-provider".to_string())
-                },
-                || {
-                    db_lookup_called_for_settings = true;
-                    Some("db-provider".to_string())
-                },
+            crate::proxy_core::api::routing::current_provider_id_option_from_sources(
+                Some("settings-provider"),
+                Some("db-provider"),
             ),
             Some("settings-provider".to_string())
         );
-        assert!(!db_lookup_called_for_settings);
-        let mut settings_lookup_called_for_unknown = false;
-        assert_eq!(
-            current_provider_id_from_router_sources(
-                "unknown-app",
-                |_| {
-                    settings_lookup_called_for_unknown = true;
-                    Some("settings-provider".to_string())
-                },
-                || Some("db-provider".to_string()),
-            ),
-            Some("db-provider".to_string())
+        assert!(
+            !crate::proxy_core::api::routing::current_provider_db_fallback_required(Some(
+                "settings-provider"
+            ))
         );
-        assert!(!settings_lookup_called_for_unknown);
-        let mut db_lookup_called_for_empty = false;
+        assert!(!crate::proxy_core::api::routing::current_provider_db_fallback_required(Some("")));
+        assert!(crate::proxy_core::api::routing::current_provider_db_fallback_required(None));
         assert_eq!(
-            current_provider_id_from_router_sources(
-                "claude",
-                |_| Some(String::new()),
-                || {
-                    db_lookup_called_for_empty = true;
-                    Some("db-provider".to_string())
-                },
-            ),
-            Some(String::new())
+            crate::proxy_core::api::routing::current_provider_id_option_from_sources(None, None),
+            None
         );
-        assert!(!db_lookup_called_for_empty);
         let mut db_lookup_called = false;
         assert_eq!(
             forward_current_provider_id_from_source(Some("settings-provider"), || {
@@ -7187,14 +7043,6 @@ base_url = "https://api.openai.com/v1"
             select_current_provider_ids_from_router_source("claude", Some(current_provider))
                 .expect("selected current provider id");
         assert_eq!(selected_current, vec!["provider-a"]);
-        assert_eq!(
-            select_current_provider_ids_from_router_provider_id_source(
-                "claude",
-                Some("provider-a".to_string())
-            )
-            .expect("selected current provider id from id"),
-            vec!["provider-a"]
-        );
         assert!(matches!(
             select_current_provider_ids_from_router_source("claude", None),
             Err(AppError::NoProvidersConfigured)
@@ -7240,118 +7088,6 @@ base_url = "https://api.openai.com/v1"
         assert!(response.candidates.is_empty());
         assert_eq!(response.rejected.len(), 1);
         assert_eq!(response.rejected[0].reasons, vec!["circuit_open"]);
-    }
-
-    struct StaticProviderSource {
-        providers: Vec<ProviderSpec>,
-        current_provider_id: Option<String>,
-    }
-
-    struct StaticRoutePolicySource {
-        failover_provider_ids: Vec<String>,
-    }
-
-    impl ProviderSource for StaticProviderSource {
-        fn list_providers<'a>(
-            &'a self,
-            _app: &'a AppKind,
-        ) -> BoxFuture<'a, ProxyCoreResult<Vec<ProviderSpec>>> {
-            Box::pin(async move { Ok(self.providers.clone()) })
-        }
-
-        fn get_provider<'a>(
-            &'a self,
-            _app: &'a AppKind,
-            provider_id: &'a str,
-        ) -> BoxFuture<'a, ProxyCoreResult<Option<ProviderSpec>>> {
-            Box::pin(async move {
-                Ok(self
-                    .providers
-                    .iter()
-                    .find(|provider| provider.id == provider_id)
-                    .cloned())
-            })
-        }
-
-        fn current_provider_id<'a>(
-            &'a self,
-            _app: &'a AppKind,
-        ) -> BoxFuture<'a, ProxyCoreResult<Option<String>>> {
-            Box::pin(async move { Ok(self.current_provider_id.clone()) })
-        }
-    }
-
-    impl RoutePolicySource for StaticRoutePolicySource {
-        fn load_policy<'a>(
-            &'a self,
-            app: &'a AppKind,
-        ) -> BoxFuture<'a, ProxyCoreResult<Option<RoutePolicy>>> {
-            Box::pin(async move {
-                Ok(Some(
-                    crate::proxy_core::api::routing::route_policy_from_failover_provider_ids(
-                        app.clone(),
-                        self.failover_provider_ids.clone(),
-                    ),
-                ))
-            })
-        }
-    }
-
-    fn static_provider_spec(id: &str) -> ProviderSpec {
-        ProviderSpec {
-            id: id.to_string(),
-            name: id.to_string(),
-            kind: ProviderKind::Claude,
-            account_ref: None,
-            metadata: ProviderMetadata::default(),
-        }
-    }
-
-    #[tokio::test]
-    async fn provider_router_provider_source_projects_core_provider_source() {
-        let source = StaticProviderSource {
-            providers: vec![
-                static_provider_spec("provider-a"),
-                static_provider_spec("provider-b"),
-            ],
-            current_provider_id: Some("provider-a".to_string()),
-        };
-
-        let provider_ids = provider_ids_from_router_provider_source(&source, "claude")
-            .await
-            .expect("provider ids");
-        assert_eq!(provider_ids, vec!["provider-a", "provider-b"]);
-
-        let current_ids =
-            select_current_provider_ids_from_router_provider_source(&source, "claude")
-                .await
-                .expect("current provider ids");
-        assert_eq!(current_ids, vec!["provider-a"]);
-
-        let route_policy_source = StaticRoutePolicySource {
-            failover_provider_ids: vec!["provider-b".to_string(), "missing".to_string()],
-        };
-        let failover_provider_ids =
-            failover_provider_ids_from_route_policy_source(&route_policy_source, "claude")
-                .await
-                .expect("failover provider ids");
-        assert_eq!(failover_provider_ids, vec!["provider-b", "missing"]);
-
-        let failover_sources = provider_failover_sources_from_router_provider_source(
-            &source,
-            "claude",
-            failover_provider_ids,
-        )
-        .await
-        .expect("failover sources");
-        assert_eq!(
-            failover_sources.provider_ids,
-            vec!["provider-a", "provider-b"]
-        );
-        assert_eq!(failover_sources.lookups[0].provider_id, "provider-b");
-        assert!(failover_sources.lookups[0].configured);
-        assert_eq!(failover_sources.lookups[1].provider_id, "missing");
-        assert!(!failover_sources.lookups[1].configured);
     }
 
     #[test]
