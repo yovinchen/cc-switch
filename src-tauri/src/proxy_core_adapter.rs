@@ -16,8 +16,8 @@ use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::api::config::{
-    AllowResult, AppProxyConfig, CircuitBreakerConfig, CircuitBreakerStats, ProxyAppConfig,
-    ProxyGlobalConfig, ProxyRuntimeConfig, ResponseRuntimePolicy,
+    AllowResult, AppProxyConfig, CircuitBreakerConfig, ProxyAppConfig, ProxyGlobalConfig,
+    ProxyRuntimeConfig, ResponseRuntimePolicy,
 };
 use crate::proxy_core::api::domain::{
     AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,
@@ -2664,39 +2664,6 @@ pub(crate) async fn channel_breaker_stats_with_router_source(
     ))
 }
 
-pub(crate) async fn update_all_circuit_breaker_configs_source(
-    router: &ProviderRouter,
-    config: CircuitBreakerConfig,
-) {
-    router.update_all_configs(config).await;
-}
-
-pub(crate) async fn update_app_circuit_breaker_config_source(
-    router: &ProviderRouter,
-    app_type: &str,
-    config: CircuitBreakerConfig,
-) {
-    router.update_app_configs(app_type, config).await;
-}
-
-pub(crate) async fn reset_provider_circuit_breaker_source(
-    router: &ProviderRouter,
-    provider_id: &str,
-    app_type: &str,
-) {
-    router.reset_provider_breaker(provider_id, app_type).await;
-}
-
-pub(crate) async fn provider_circuit_breaker_stats_source(
-    router: &ProviderRouter,
-    provider_id: &str,
-    app_type: &str,
-) -> Option<CircuitBreakerStats> {
-    router
-        .get_circuit_breaker_stats(provider_id, app_type)
-        .await
-}
-
 pub(crate) fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> ForwardFailureKind {
     let upstream_body = match error {
         ProxyError::UpstreamError { body, .. } => body.clone(),
@@ -3550,7 +3517,8 @@ mod tests {
     use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source;
     use crate::proxy::host::cc_switch::provider_adapter_context::forwarder_provider_adapter_context_for_app;
     use crate::proxy_core::api::config::{
-        app_type_from_circuit_key, channel_circuit_key, provider_circuit_key, CircuitState,
+        app_type_from_circuit_key, channel_circuit_key, provider_circuit_key, CircuitBreakerStats,
+        CircuitState,
     };
     use crate::proxy_core::api::domain::{extract_claude_base_url_from_settings, AppKind};
     use crate::proxy_core::api::ports::{

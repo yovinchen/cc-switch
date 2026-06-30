@@ -24,6 +24,7 @@ pub(crate) mod management_auth_source;
 pub(crate) mod model_catalog_provider;
 pub(crate) mod provider_adapter_context;
 pub(crate) mod provider_router_channel_source;
+pub(crate) mod provider_router_circuit_runtime;
 pub(crate) mod provider_router_config_source;
 pub(crate) mod provider_router_health_store;
 pub(crate) mod provider_router_provider_source;

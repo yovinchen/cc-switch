@@ -2330,6 +2330,12 @@ fn is_allowed_forwarder_runtime_state_core_import(relative: &str, code: &str) ->
         )
 }
 
+fn is_allowed_provider_router_circuit_runtime_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/host/cc_switch/provider_router_circuit_runtime.rs"
+        && code.trim()
+            == "use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};"
+}
+
 fn is_allowed_live_takeover_runtime_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/host/cc_switch/live_takeover.rs"
         && matches!(
@@ -2464,6 +2470,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_provider_usage_ports_core_import(&relative, code)
                     && !is_allowed_config_service_ports_core_import(&relative, code)
                     && !is_allowed_forwarder_runtime_state_core_import(&relative, code)
+                    && !is_allowed_provider_router_circuit_runtime_core_import(&relative, code)
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
                     && !is_allowed_provider_live_policy_app_kind_import(&relative, code)
                     && !is_allowed_provider_common_config_issue_core_import(&relative, code)
@@ -23181,10 +23188,16 @@ fn production_proxy_core_host_delegates_forwarder_runtime_resources_to_adapter()
 }
 
 #[test]
-fn production_proxy_server_delegates_circuit_runtime_to_adapter() {
+fn production_proxy_server_delegates_circuit_runtime_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
+    let host_source = fs::read_to_string(
+        manifest_dir.join("src/proxy/host/cc_switch/provider_router_circuit_runtime.rs"),
+    )
+    .expect("read provider_router_circuit_runtime.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
     let circuit_runtime =
         function_slice(&source, "    /// 热更新熔断器配置", "\n}\n\n#[cfg(test)]");
 
@@ -23204,9 +23217,36 @@ fn production_proxy_server_delegates_circuit_runtime_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "production ProxyServer must delegate circuit runtime side effects to proxy_core_adapter:\n{}",
+        "production ProxyServer must delegate circuit runtime side effects to host provider router circuit runtime helper:\n{}",
         violations.join("\n")
     );
+    assert!(
+        source.contains(
+            "use crate::proxy::host::cc_switch::provider_router_circuit_runtime::{"
+        ) && source.contains("update_all_circuit_breaker_configs_source(")
+            && source.contains("update_app_circuit_breaker_config_source(")
+            && source.contains("reset_provider_circuit_breaker_source(")
+            && source.contains("provider_circuit_breaker_stats_source("),
+        "HTTP server must import and call provider circuit runtime helpers from host/cc_switch/provider_router_circuit_runtime.rs"
+    );
+    assert!(
+        host_source.contains(".update_all_configs(config).await")
+            && host_source.contains(".update_app_configs(app_type, config).await")
+            && host_source.contains(".reset_provider_breaker(provider_id, app_type).await")
+            && host_source.contains(".get_circuit_breaker_stats(provider_id, app_type)"),
+        "host provider router circuit runtime helper must own ProviderRouter circuit side effects"
+    );
+    for marker in [
+        "pub(crate) async fn update_all_circuit_breaker_configs_source",
+        "pub(crate) async fn update_app_circuit_breaker_config_source",
+        "pub(crate) async fn reset_provider_circuit_breaker_source",
+        "pub(crate) async fn provider_circuit_breaker_stats_source",
+    ] {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter must not retain provider circuit runtime helper `{marker}`"
+        );
+    }
 }
 
 #[test]
@@ -25060,7 +25100,7 @@ fn production_channel_health_store_reads_channel_breaker_stats_through_core_port
     let adapter_slice = function_slice(
         &adapter_source,
         "pub(crate) async fn channel_breaker_stats_with_router_source",
-        "pub(crate) async fn update_all_circuit_breaker_configs_source",
+        "pub(crate) fn forward_failure_kind_from_proxy_error",
     );
 
     assert!(
