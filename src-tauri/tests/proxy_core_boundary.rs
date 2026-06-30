@@ -9709,10 +9709,17 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
     );
     assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     assert!(
+        source.contains("use crate::proxy::codex_chat_history::{")
+            && source.contains("transform_codex_chat_sse_with_history"),
+        "response pipeline should import Codex chat history SSE wrappers from the owning module"
+    );
+    assert!(
         !adapter_source.contains("ClaudeTransformedSseStreamContext")
             && !adapter_source.contains("claude_transformed_sse_stream_from_context")
             && !adapter_source.contains("CodexAutoTransformedSseStreamContext")
             && !adapter_source.contains("codex_auto_transformed_sse_stream_from_context")
+            && !adapter_source.contains("pub(crate) fn record_codex_chat_response_sse_history")
+            && !adapter_source.contains("pub(crate) fn transform_codex_chat_sse_with_history")
             && !adapter_source.contains("fn claude_transform_tool_schema_hints(")
             && !adapter_source.contains("pub(crate) struct ClaudeTransformedSseStreamContext")
             && !adapter_source.contains("pub(crate) fn claude_transformed_sse_stream_from_context")
@@ -9777,11 +9784,19 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
     );
     assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     assert!(
+        source.contains("use crate::proxy::codex_chat_history::{")
+            && source.contains("transform_codex_chat_response_with_history"),
+        "response pipeline should import Codex chat history JSON wrappers from the owning module"
+    );
+    assert!(
         !adapter_source.contains("ClaudeTransformedJsonResponseContext")
             && !adapter_source.contains("claude_transformed_json_response_from_context")
             && !adapter_source.contains("CodexAutoTransformedJsonResponseContext")
             && !adapter_source.contains("codex_auto_transformed_json_response_from_context")
             && !adapter_source.contains("pub(crate) fn record_transformed_response_usage(")
+            && !adapter_source.contains("pub(crate) async fn record_codex_chat_response_history")
+            && !adapter_source
+                .contains("pub(crate) async fn transform_codex_chat_response_with_history")
             && !adapter_source.contains("pub(crate) struct ClaudeTransformedJsonResponseContext")
             && !adapter_source
                 .contains("pub(crate) fn claude_transformed_json_response_from_context")

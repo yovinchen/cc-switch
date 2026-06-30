@@ -1,6 +1,7 @@
 use crate::proxy_core::api::transforms::{
-    append_utf8_safe, inspect_codex_chat_history_sse_block, take_sse_block,
-    CodexChatHistorySseRecord, CodexChatHistoryState,
+    append_utf8_safe, chat_completion_to_response_with_context,
+    create_codex_chat_to_responses_sse_stream_with_context, inspect_codex_chat_history_sse_block,
+    take_sse_block, CodexChatHistorySseRecord, CodexChatHistoryState, CodexToolContext,
 };
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
@@ -65,6 +66,40 @@ pub fn record_responses_sse_stream(
             }
         }
     }
+}
+
+pub(crate) async fn record_codex_chat_response_history(
+    history: &CodexChatHistoryStore,
+    response: &Value,
+) -> usize {
+    history.record_response(response).await
+}
+
+pub(crate) async fn transform_codex_chat_response_with_history(
+    chat_response: &Value,
+    tool_context: &CodexToolContext,
+    history: &CodexChatHistoryStore,
+) -> Result<Value, String> {
+    let response = chat_completion_to_response_with_context(chat_response, tool_context)?;
+    record_codex_chat_response_history(history, &response).await;
+    Ok(response)
+}
+
+pub(crate) fn record_codex_chat_response_sse_history(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    history: Arc<CodexChatHistoryStore>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
+    record_responses_sse_stream(stream, history)
+}
+
+pub(crate) fn transform_codex_chat_sse_with_history(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    tool_context: CodexToolContext,
+    history: Arc<CodexChatHistoryStore>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
+    let responses_stream =
+        create_codex_chat_to_responses_sse_stream_with_context(stream, tool_context);
+    record_codex_chat_response_sse_history(responses_stream, history)
 }
 
 async fn inspect_sse_block(
@@ -460,5 +495,109 @@ mod tests {
 
         assert_eq!(history.enrich_request(&mut request).await, 1);
         assert_eq!(request["input"][0]["reasoning_content"], "Need a file.");
+    }
+
+    #[tokio::test]
+    async fn transform_codex_chat_response_with_history_records_non_stream_history() {
+        let history = CodexChatHistoryStore::default();
+        let tool_context = CodexToolContext::default();
+        let response = transform_codex_chat_response_with_history(
+            &json!({
+                "id": "chatcmpl_1",
+                "model": "chat-model",
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [{
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "read_file",
+                                "arguments": "{\"path\":\"README.md\"}"
+                            }
+                        }],
+                        "reasoning_content": "Need the file first."
+                    },
+                    "finish_reason": "tool_calls"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 2}
+            }),
+            &tool_context,
+            &history,
+        )
+        .await
+        .expect("transformed response");
+
+        let response_id = response["id"].as_str().expect("response id").to_string();
+        let call_id = response["output"]
+            .as_array()
+            .expect("output array")
+            .iter()
+            .find(|item| item["type"] == "function_call")
+            .and_then(|item| item["call_id"].as_str())
+            .expect("call id")
+            .to_string();
+        let mut request = json!({
+            "previous_response_id": response_id,
+            "input": [{
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": "ok"
+            }]
+        });
+
+        assert_eq!(history.enrich_request(&mut request).await, 1);
+        assert_eq!(request["input"][0]["type"], "function_call");
+        assert_eq!(
+            request["input"][0]["reasoning_content"],
+            "Need the file first."
+        );
+    }
+
+    #[tokio::test]
+    async fn transform_codex_chat_sse_with_history_records_stream_history() {
+        let history = Arc::new(CodexChatHistoryStore::default());
+        let upstream = futures::stream::iter(vec![
+            Ok::<_, std::io::Error>(Bytes::from_static(
+                b"data: {\"id\":\"chatcmpl_stream\",\"model\":\"deepseek-v4-flash\",\"choices\":[{\"delta\":{\"reasoning_content\":\"Need stream file.\"}}]}\n\n",
+            )),
+            Ok(Bytes::from_static(
+                b"data: {\"id\":\"chatcmpl_stream\",\"model\":\"deepseek-v4-flash\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_stream\",\"type\":\"function\",\"function\":{\"name\":\"read_file\"}}]}}]}\n\n",
+            )),
+            Ok(Bytes::from_static(
+                b"data: {\"id\":\"chatcmpl_stream\",\"model\":\"deepseek-v4-flash\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"path\\\":\\\"README.md\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            )),
+            Ok(Bytes::from_static(b"data: [DONE]\n\n")),
+        ]);
+
+        let output = transform_codex_chat_sse_with_history(
+            upstream,
+            CodexToolContext::default(),
+            history.clone(),
+        )
+        .collect::<Vec<_>>()
+        .await;
+        let bytes = output
+            .into_iter()
+            .map(|item| item.expect("stream chunk"))
+            .collect::<Vec<_>>();
+        let combined = String::from_utf8(bytes.concat()).expect("utf8 sse");
+        assert!(combined.contains("event: response.output_item.done"));
+
+        let mut request = json!({
+            "previous_response_id": "resp_chatcmpl_stream",
+            "input": [{
+                "type": "function_call_output",
+                "call_id": "call_stream",
+                "output": "ok"
+            }]
+        });
+
+        assert_eq!(history.enrich_request(&mut request).await, 1);
+        assert_eq!(request["input"][0]["type"], "function_call");
+        assert_eq!(
+            request["input"][0]["reasoning_content"],
+            "Need stream file."
+        );
     }
 }

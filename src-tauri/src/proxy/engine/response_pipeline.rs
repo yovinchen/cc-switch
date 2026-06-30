@@ -4,6 +4,9 @@
 
 use super::context::RequestContext;
 use crate::provider::Provider;
+use crate::proxy::codex_chat_history::{
+    transform_codex_chat_response_with_history, transform_codex_chat_sse_with_history,
+};
 #[cfg(test)]
 use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
@@ -49,8 +52,7 @@ use crate::proxy_core::api::usage::{
 use crate::proxy_core_adapter::success_usage_record_from_app_type_with_request_id_fallback;
 use crate::proxy_core_adapter::{
     provider_claude_transform_response_for_api_format,
-    provider_claude_transform_sse_for_api_format, transform_codex_chat_response_with_history,
-    transform_codex_chat_sse_with_history, ActiveConnectionGuard,
+    provider_claude_transform_sse_for_api_format, ActiveConnectionGuard,
 };
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
