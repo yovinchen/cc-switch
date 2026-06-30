@@ -811,30 +811,6 @@ use crate::proxy_core::api::ports::{ChannelAttemptResult, ProviderAttemptResult}
 use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
 
-pub(crate) const CLAUDE_DESKTOP_GATEWAY_TOKEN_SETTING_KEY: &str = "claude_desktop_gateway_token";
-
-pub(crate) fn claude_desktop_gateway_token_configured_from_db_source(db: &Database) -> bool {
-    db.get_setting(CLAUDE_DESKTOP_GATEWAY_TOKEN_SETTING_KEY)
-        .ok()
-        .flatten()
-        .is_some_and(|token| !token.trim().is_empty())
-}
-
-pub(crate) fn get_or_create_claude_desktop_gateway_token_from_db_source(
-    db: &Database,
-) -> Result<String, AppError> {
-    if let Some(token) = db.get_setting(CLAUDE_DESKTOP_GATEWAY_TOKEN_SETTING_KEY)? {
-        let trimmed = token.trim();
-        if !trimmed.is_empty() {
-            return Ok(trimmed.to_string());
-        }
-    }
-
-    let token = format!("ccs-{}", uuid::Uuid::new_v4().simple());
-    db.set_setting(CLAUDE_DESKTOP_GATEWAY_TOKEN_SETTING_KEY, &token)?;
-    Ok(token)
-}
-
 fn attempt_event_payload_input_from_forward_attempt<'a>(
     request_id: &'a str,
     app_type: &'a str,

@@ -9,14 +9,14 @@
 #[cfg(test)]
 use crate::database::Database;
 use crate::proxy::error::ProxyError;
+#[cfg(test)]
+use crate::proxy::host::cc_switch::claude_desktop_gateway_auth_source::get_or_create_claude_desktop_gateway_token_from_db_source;
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy::transport::http::handlers;
 use crate::proxy::transport::upstream::hyper_client::OriginalHeaderCases;
 use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};
 use crate::proxy_core::api::logging::srv as server_log_codes;
 use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo};
-#[cfg(test)]
-use crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source;
 use crate::proxy_core_adapter::{
     provider_circuit_breaker_stats_source, record_proxy_server_bound_runtime_source,
     record_proxy_server_started_info_runtime_source,

@@ -10,6 +10,10 @@ use crate::database::Database;
 use crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
+use crate::proxy::host::cc_switch::claude_desktop_gateway_auth_source::{
+    claude_desktop_gateway_token_configured_from_db_source,
+    get_or_create_claude_desktop_gateway_token_from_db_source,
+};
 #[cfg(test)]
 use crate::proxy_core::api::auth::ClaudeDesktopProxyRequestBodyIssue;
 use crate::proxy_core::api::auth::{
@@ -113,8 +117,7 @@ pub fn get_status(db: &Database, proxy_running: bool) -> Result<ClaudeDesktopSta
     let profile = read_json_or_empty(&paths.profile_path).unwrap_or_else(|_| json!({}));
     let actual_base_url = claude_desktop_profile_gateway_base_url(&profile);
     let stale_raw_models = claude_desktop_profile_has_unsafe_model_ids(&profile);
-    let gateway_token_configured =
-        crate::proxy_core_adapter::claude_desktop_gateway_token_configured_from_db_source(db);
+    let gateway_token_configured = claude_desktop_gateway_token_configured_from_db_source(db);
     let current_provider = crate::settings::get_effective_current_provider(
         db,
         &crate::app_config::AppType::ClaudeDesktop,
@@ -451,10 +454,7 @@ fn apply_provider_to_paths_inner(
         }
         ClaudeDesktopMode::Proxy => {
             let base_url = proxy_gateway_base_url_from_db(db)?;
-            let api_key =
-                crate::proxy_core_adapter::get_or_create_claude_desktop_gateway_token_from_db_source(
-                    db,
-                )?;
+            let api_key = get_or_create_claude_desktop_gateway_token_from_db_source(db)?;
             let model_specs =
                 crate::proxy_core_adapter::provider_claude_desktop_proxy_gateway_profile_model_specs(
                     provider,
