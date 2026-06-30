@@ -34,7 +34,6 @@ use crate::proxy_core_adapter::{
     apply_codex_unified_session_bucket_for_provider, codex_backup_projection_error_message,
     codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
     codex_provider_live_write_parts, current_provider_for_app_from_db,
-    disable_global_proxy_best_effort_in_db, enable_global_proxy_in_db,
     existing_live_backup_value_for_update_from_db, live_backup_config_for_simple_restore_from_db,
     live_backup_snapshot_from_live_config, live_backup_value_for_restore_from_db,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
@@ -142,6 +141,34 @@ async fn live_takeover_any_enabled_from_host_db(db: &Database) -> Result<bool, S
     db.is_live_takeover_active()
         .await
         .map_err(|e| format!("检查接管状态失败: {e}"))
+}
+
+async fn enable_global_proxy_from_host_db(db: &Database) -> Result<(), String> {
+    let mut config = db
+        .get_global_proxy_config()
+        .await
+        .map_err(|e| format!("获取全局代理配置失败: {e}"))?;
+    if !config.proxy_enabled {
+        config.proxy_enabled = true;
+        db.update_global_proxy_config(config)
+            .await
+            .map_err(|e| format!("更新代理总开关失败: {e}"))?;
+    }
+    Ok(())
+}
+
+async fn disable_global_proxy_best_effort_from_host_db(db: &Database) -> Result<(), String> {
+    let mut config = db
+        .get_global_proxy_config()
+        .await
+        .map_err(|e| format!("获取全局代理配置失败: {e}"))?;
+    if config.proxy_enabled {
+        config.proxy_enabled = false;
+        if let Err(e) = db.update_global_proxy_config(config).await {
+            log::warn!("更新代理总开关失败: {e}");
+        }
+    }
+    Ok(())
 }
 
 async fn clear_legacy_live_takeover_active_flag_from_host_db(db: &Database) {
@@ -324,7 +351,7 @@ impl ProxyService {
     /// 启动代理服务器
     pub async fn start(&self) -> Result<ProxyServerInfo, String> {
         // 1. 启动时自动设置 proxy_enabled = true
-        enable_global_proxy_in_db(&self.db).await?;
+        enable_global_proxy_from_host_db(&self.db).await?;
 
         // 2. 获取配置
         let config = proxy_config_from_db(&self.db).await?;
@@ -694,7 +721,7 @@ impl ProxyService {
                 .map_err(|e| format!("停止代理服务器失败: {e}"))?;
 
             // 停止时设置 proxy_enabled = false
-            disable_global_proxy_best_effort_in_db(&self.db).await?;
+            disable_global_proxy_best_effort_from_host_db(&self.db).await?;
 
             log::info!("代理服务器已停止");
             Ok(())

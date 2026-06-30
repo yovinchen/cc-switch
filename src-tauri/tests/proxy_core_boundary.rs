@@ -403,6 +403,10 @@ const FORBIDDEN_PROXY_SERVICE_GLOBAL_PROXY_ENABLED_MARKERS: &[&str] = &[
     "获取全局代理配置失败",
     "更新代理总开关失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_GLOBAL_PROXY_ENABLED_ADAPTER_MARKERS: &[&str] = &[
+    "pub(crate) async fn enable_global_proxy_in_db",
+    "pub(crate) async fn disable_global_proxy_best_effort_in_db",
+];
 const FORBIDDEN_PROXY_SERVICE_PROXY_CONFIG_SOURCE_MARKERS: &[&str] = &[
     ".get_proxy_config()",
     ".update_proxy_config(",
@@ -7334,6 +7338,8 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) async fn clear_all_provider_health_in_db",
         "pub(crate) async fn set_legacy_live_takeover_active_best_effort_in_db",
         "pub(crate) async fn set_legacy_live_takeover_active_in_db",
+        "pub(crate) async fn enable_global_proxy_in_db",
+        "pub(crate) async fn disable_global_proxy_best_effort_in_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) async fn delete_live_backup_best_effort_in_db",
         "pub(crate) async fn delete_live_backup_in_db",
@@ -16074,10 +16080,12 @@ fn production_proxy_service_owns_crash_recovery_active_flag_cleanup_source() {
 }
 
 #[test]
-fn production_proxy_service_delegates_global_proxy_enabled_to_adapter() {
+fn production_proxy_service_owns_global_proxy_enabled_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let functions = [
         (
             "start",
@@ -16115,9 +16123,37 @@ fn production_proxy_service_delegates_global_proxy_enabled_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService start/stop must delegate global proxy_enabled persistence to proxy_core_adapter:\n{}",
+        "ProxyService start/stop must route global proxy_enabled persistence through host-local helpers:\n{}",
         violations.join("\n")
     );
+    assert!(
+        functions.iter().any(|(name, function)| *name == "start"
+            && function.contains("enable_global_proxy_from_host_db(&self.db).await?")),
+        "ProxyService::start should enable global proxy through the host-local helper"
+    );
+    assert!(
+        functions.iter().any(|(name, function)| *name == "stop"
+            && function.contains("disable_global_proxy_best_effort_from_host_db(&self.db).await?")),
+        "ProxyService::stop should disable global proxy through the host-local helper"
+    );
+    assert!(
+        source.contains("async fn enable_global_proxy_from_host_db(")
+            && source.contains("async fn disable_global_proxy_best_effort_from_host_db(")
+            && source.contains(".get_global_proxy_config()")
+            && source.contains(".update_global_proxy_config(config)")
+            && source.contains("config.proxy_enabled = true")
+            && source.contains("config.proxy_enabled = false")
+            && source.contains("获取全局代理配置失败")
+            && source.contains("更新代理总开关失败"),
+        "ProxyService should own global proxy_enabled persistence source and error/log projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_GLOBAL_PROXY_ENABLED_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep global proxy_enabled wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
