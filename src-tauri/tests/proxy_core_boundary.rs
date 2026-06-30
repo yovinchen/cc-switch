@@ -2105,6 +2105,12 @@ fn is_allowed_provider_upstream_url_core_import(relative: &str, code: &str) -> b
     )
 }
 
+fn is_allowed_claude_provider_api_format_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/provider/claude.rs"
+        && code.trim()
+            == "use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;"
+}
+
 fn is_allowed_codex_provider_chat_policy_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/provider/codex.rs"
         && matches!(
@@ -2395,6 +2401,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_provider_base_url_core_import(&relative, code)
                     && !is_allowed_gemini_provider_direct_core_import(&relative, code)
                     && !is_allowed_provider_upstream_url_core_import(&relative, code)
+                    && !is_allowed_claude_provider_api_format_core_import(&relative, code)
                     && !is_allowed_codex_provider_chat_policy_core_import(&relative, code)
                     && !is_allowed_provider_adapter_kind_core_import(&relative, code)
                     && !is_allowed_test_proxy_config_core_import(&relative, code)
@@ -2743,7 +2750,7 @@ fn request_context_owns_core_context_imports() {
     let source = fs::read_to_string(&path).expect("read engine/context.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let adapter_import = function_slice(
+    let adapter_import = optional_function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
         "};\nuse axum::",
@@ -2775,7 +2782,8 @@ fn request_context_owns_core_context_imports() {
             )
             && source.contains("use crate::proxy_core::api::usage::{")
             && source.contains("usage_route_context_from_selection")
-            && source.contains("UsageRouteContext"),
+            && source.contains("UsageRouteContext")
+            && source.contains("use crate::proxy::provider::claude_provider_api_format;"),
         "engine/context.rs should import pure request context contracts directly"
     );
     assert!(
@@ -12606,6 +12614,10 @@ fn proxy_core_adapter_delegates_claude_transform_gate_to_core() {
             "pub(crate) use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings"
         ),
         "proxy_core_adapter should not re-export the pure Claude api_format resolver helper"
+    );
+    assert!(
+        !source.contains("pub(crate) fn provider_claude_api_format"),
+        "proxy_core_adapter should not own Claude provider api_format projection"
     );
     assert!(
         !source.contains(

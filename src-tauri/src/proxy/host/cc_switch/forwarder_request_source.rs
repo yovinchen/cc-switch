@@ -12,8 +12,8 @@ use crate::proxy::host::cc_switch::provider_adapter_context::{
     forwarder_provider_adapter_context_for_app, ForwarderAdapterContext,
 };
 use crate::proxy::provider::{
-    codex_provider_apply_chat_upstream_model, codex_provider_chat_reasoning_options,
-    codex_provider_should_convert_responses_to_chat,
+    claude_provider_api_format, codex_provider_apply_chat_upstream_model,
+    codex_provider_chat_reasoning_options, codex_provider_should_convert_responses_to_chat,
 };
 use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
 use crate::proxy_core::api::config::{
@@ -52,7 +52,7 @@ use crate::proxy_core::api::transport::{
     PromptCacheTraceLogInput, UpstreamRequestHeadersInput, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_adapter::{
-    apply_forward_request_model_mapping_from_provider, provider_claude_api_format,
+    apply_forward_request_model_mapping_from_provider,
     provider_claude_normalize_anthropic_messages, provider_uses_anthropic_rectifiers,
     ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
     ForwarderAttemptBodyInput, ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
@@ -328,7 +328,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         let adapter_facts = input.adapter.facts();
         let fallback_claude_api_format = adapter_facts
             .is_claude_adapter
-            .then(|| provider_claude_api_format(input.provider));
+            .then(|| claude_provider_api_format(input.provider));
         let provider_transform_required = input.resolved_claude_api_format.is_none()
             && input.adapter.provider_transform_required(input.provider);
 

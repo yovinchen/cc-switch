@@ -19,6 +19,7 @@ use crate::proxy_core::api::domain::{
 };
 
 pub use adapter::ProviderAdapter;
+pub(crate) use claude::claude_provider_api_format;
 pub use claude::ClaudeAdapter;
 pub use codex::CodexAdapter;
 pub(crate) use codex::{

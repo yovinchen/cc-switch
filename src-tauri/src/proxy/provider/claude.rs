@@ -22,10 +22,11 @@ use crate::proxy_core::api::auth::ProviderAuthInfo;
 use crate::proxy_core::api::auth::ProviderAuthStrategy;
 use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;
 use crate::proxy_core::api::ports::required_provider_base_url;
+use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;
 use crate::proxy_core::api::transforms::GeminiShadowStore;
 use crate::proxy_core::api::transport::build_claude_upstream_url;
 use crate::proxy_core_adapter::{
-    provider_claude_api_format, provider_claude_auth_headers, provider_claude_auth_info,
+    provider_claude_auth_headers, provider_claude_auth_info,
     provider_claude_transform_request_for_api_format, provider_needs_claude_transform,
 };
 #[cfg(test)]
@@ -58,6 +59,15 @@ fn required_claude_provider_base_url(provider: &Provider) -> Result<String, Stri
     )
 }
 
+pub(crate) fn claude_provider_api_format(provider: &Provider) -> &'static str {
+    let meta = provider.meta.as_ref();
+    resolve_claude_api_format_from_settings(
+        meta.and_then(|meta| meta.provider_type.as_deref()),
+        meta.and_then(|meta| meta.api_format.as_deref()),
+        &provider.settings_config,
+    )
+}
+
 /// Claude 适配器
 pub struct ClaudeAdapter;
 
@@ -73,7 +83,7 @@ impl ClaudeAdapter {
     /// - "openai_chat": OpenAI Chat Completions 格式，需要格式转换
     /// - "openai_responses": OpenAI Responses API 格式，需要格式转换
     fn get_api_format(&self, provider: &Provider) -> &'static str {
-        provider_claude_api_format(provider)
+        claude_provider_api_format(provider)
     }
 }
 

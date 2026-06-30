@@ -6,6 +6,7 @@ use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
+use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy_core::api::config::{
     ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
@@ -22,9 +23,7 @@ use crate::proxy_core::api::transport::{
     request_model_for_forward, resolve_response_runtime_policy, ProxyResult,
 };
 use crate::proxy_core::api::usage::{usage_route_context_from_selection, UsageRouteContext};
-use crate::proxy_core_adapter::{
-    app_proxy_config_from_proxy_app_config, provider_claude_api_format,
-};
+use crate::proxy_core_adapter::app_proxy_config_from_proxy_app_config;
 use axum::http::HeaderMap;
 use std::time::Instant;
 
@@ -260,7 +259,7 @@ impl RequestContext {
     ) -> Result<String, ProxyError> {
         Ok(claude_api_format_from_metadata(
             &result.metadata,
-            provider_claude_api_format(self.provider()?),
+            claude_provider_api_format(self.provider()?),
         ))
     }
 

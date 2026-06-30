@@ -17,6 +17,7 @@ use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices;
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
+use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy::provider::codex_provider_upstream_model;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::http::server::ProxyServer;
@@ -1929,16 +1930,6 @@ fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
 }
 
 use crate::proxy::host::cc_switch::provider_adapter_context::ForwarderAdapterContext;
-use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;
-
-pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
-    let meta = provider.meta.as_ref();
-    resolve_claude_api_format_from_settings(
-        meta.and_then(|meta| meta.provider_type.as_deref()),
-        meta.and_then(|meta| meta.api_format.as_deref()),
-        &provider.settings_config,
-    )
-}
 
 pub(crate) fn resolve_forwarder_claude_api_format(
     provider: &Provider,
@@ -1946,7 +1937,7 @@ pub(crate) fn resolve_forwarder_claude_api_format(
     copilot_model_vendor: Option<&str>,
 ) -> String {
     resolve_claude_forward_api_format(
-        provider_claude_api_format(provider),
+        claude_provider_api_format(provider),
         is_copilot,
         copilot_model_vendor,
     )
@@ -1955,7 +1946,7 @@ pub(crate) fn resolve_forwarder_claude_api_format(
 pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
     core_claude_provider_transform_required(
         provider_claude_kind(provider).needs_transform(),
-        provider_claude_api_format(provider),
+        claude_provider_api_format(provider),
     )
 }
 
@@ -1976,7 +1967,7 @@ pub(crate) fn provider_claude_transform_streaming_decision(
 use crate::proxy_core::api::domain::infer_claude_provider_kind;
 
 fn provider_claude_kind(provider: &Provider) -> ProviderKind {
-    let api_format = provider_claude_api_format(provider);
+    let api_format = claude_provider_api_format(provider);
     let uses_google_oauth = provider_claude_auth_key(provider)
         .map(|auth_key| is_gemini_oauth_key_shape(&auth_key.key))
         .unwrap_or(false);
@@ -10215,7 +10206,7 @@ base_url = "https://api.openai.com/v1"
             api_format: Some("openai_chat".to_string()),
             ..Default::default()
         });
-        assert_eq!(provider_claude_api_format(&provider), "openai_chat");
+        assert_eq!(claude_provider_api_format(&provider), "openai_chat");
         assert!(provider_needs_claude_transform(&provider));
         let no_transform_provider = Provider::with_id(
             "claude-no-transform".to_string(),
@@ -13551,7 +13542,7 @@ command = "latest-command"
             missing_base_url,
             ProxyError::ConfigError(message) if message == "Codex Provider 缺少 base_url 配置"
         ));
-        assert_eq!(provider_claude_api_format(&provider), "openai_chat");
+        assert_eq!(claude_provider_api_format(&provider), "openai_chat");
         assert_eq!(
             resolve_forwarder_claude_api_format(&provider, true, Some("OpenAI")),
             "openai_responses"
