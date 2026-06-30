@@ -912,16 +912,6 @@ pub(crate) async fn clear_legacy_live_takeover_active_flag_strict_in_db(
         .map_err(|e| format!("清除接管状态失败: {e}"))
 }
 
-pub(crate) async fn delete_live_backup_best_effort_in_db(db: &Database, app_type: &str) {
-    let _ = db.delete_live_backup(app_type).await;
-}
-
-pub(crate) async fn delete_live_backup_in_db(db: &Database, app_type: &str) -> Result<(), String> {
-    db.delete_live_backup(app_type)
-        .await
-        .map_err(|e| format!("删除 {app_type} Live 备份失败: {e}"))
-}
-
 pub(crate) async fn set_legacy_live_takeover_active_best_effort_in_db(db: &Database, active: bool) {
     let _ = db.set_live_takeover_active(active).await;
 }

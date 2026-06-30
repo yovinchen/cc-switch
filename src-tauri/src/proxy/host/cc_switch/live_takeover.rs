@@ -36,13 +36,13 @@ use crate::proxy_core_adapter::{
     codex_backup_projection_error_message, codex_live_write_projection,
     codex_preserved_auth_live_config_text_for_configured_policy, codex_provider_live_write_parts,
     current_provider_for_app_from_db, delete_all_live_backups_best_effort_in_db,
-    delete_all_live_backups_in_db, delete_live_backup_best_effort_in_db, delete_live_backup_in_db,
-    disable_global_proxy_best_effort_in_db, enable_global_proxy_in_db,
-    existing_live_backup_value_for_update_from_db, live_backup_config_for_simple_restore_from_db,
-    live_backup_snapshot_from_live_config, live_backup_value_for_restore_from_db,
-    live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
-    live_token_sync_provider_from_db, persist_ephemeral_listen_port_if_needed_in_db,
-    persist_hot_switch_current_provider_sources, preserve_codex_mcp_servers_from_existing_config,
+    delete_all_live_backups_in_db, disable_global_proxy_best_effort_in_db,
+    enable_global_proxy_in_db, existing_live_backup_value_for_update_from_db,
+    live_backup_config_for_simple_restore_from_db, live_backup_snapshot_from_live_config,
+    live_backup_value_for_restore_from_db, live_config_has_proxy_placeholder_for_app,
+    live_takeover_config_matches_proxy_for_app, live_token_sync_provider_from_db,
+    persist_ephemeral_listen_port_if_needed_in_db, persist_hot_switch_current_provider_sources,
+    preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     provider_effective_settings_with_common_config_from_db, proxy_app_enabled_from_db,
     proxy_config_from_db, proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -114,6 +114,16 @@ async fn clear_provider_health_for_app_from_host_db(
     db.clear_provider_health_for_app(app_type)
         .await
         .map_err(|e| format!("清除 {app_type} 健康状态失败: {e}"))
+}
+
+async fn delete_live_backup_best_effort_from_host_db(db: &Database, app_type: &str) {
+    let _ = db.delete_live_backup(app_type).await;
+}
+
+async fn delete_live_backup_from_host_db(db: &Database, app_type: &str) -> Result<(), String> {
+    db.delete_live_backup(app_type)
+        .await
+        .map_err(|e| format!("删除 {app_type} Live 备份失败: {e}"))
 }
 
 #[derive(Clone)]
@@ -418,7 +428,7 @@ impl ProxyService {
 
                 // 4) 同步 Live Token 到数据库（仅当前 app）
                 if let Err(e) = self.sync_live_to_provider(&app).await {
-                    delete_live_backup_best_effort_in_db(&self.db, app_type_str).await;
+                    delete_live_backup_best_effort_from_host_db(&self.db, app_type_str).await;
                     return Err(e);
                 }
             }
@@ -429,7 +439,7 @@ impl ProxyService {
                 match self.restore_live_config_for_app_inner(&app).await {
                     Ok(()) => {
                         // 恢复成功才清理备份，避免失败场景下丢失唯一可回滚来源
-                        delete_live_backup_best_effort_in_db(&self.db, app_type_str).await;
+                        delete_live_backup_best_effort_from_host_db(&self.db, app_type_str).await;
                     }
                     Err(restore_err) => {
                         log::error!(
@@ -472,7 +482,7 @@ impl ProxyService {
             .await?;
 
         // 2) 删除该 app 的备份（避免长期存储敏感 Token）
-        delete_live_backup_in_db(&self.db, app_type_str).await?;
+        delete_live_backup_from_host_db(&self.db, app_type_str).await?;
 
         // 3) 设置 proxy_config.enabled = false
         set_proxy_app_enabled_in_db(&self.db, app_type_str, false).await?;
