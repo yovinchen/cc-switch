@@ -32,17 +32,16 @@ use crate::proxy_core::api::ports::{
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
     apply_codex_unified_session_bucket_for_provider, cleanup_all_live_backups_best_effort_in_db,
-    clear_all_provider_health_in_db, clear_legacy_live_takeover_active_flag_strict_in_db,
-    codex_backup_projection_error_message, codex_live_write_projection,
-    codex_preserved_auth_live_config_text_for_configured_policy, codex_provider_live_write_parts,
-    current_provider_for_app_from_db, delete_all_live_backups_best_effort_in_db,
-    delete_all_live_backups_in_db, disable_global_proxy_best_effort_in_db,
-    enable_global_proxy_in_db, existing_live_backup_value_for_update_from_db,
-    live_backup_config_for_simple_restore_from_db, live_backup_snapshot_from_live_config,
-    live_backup_value_for_restore_from_db, live_config_has_proxy_placeholder_for_app,
-    live_takeover_config_matches_proxy_for_app, live_token_sync_provider_from_db,
-    persist_ephemeral_listen_port_if_needed_in_db, persist_hot_switch_current_provider_sources,
-    preserve_codex_mcp_servers_from_existing_config,
+    clear_all_provider_health_in_db, codex_backup_projection_error_message,
+    codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
+    codex_provider_live_write_parts, current_provider_for_app_from_db,
+    delete_all_live_backups_best_effort_in_db, delete_all_live_backups_in_db,
+    disable_global_proxy_best_effort_in_db, enable_global_proxy_in_db,
+    existing_live_backup_value_for_update_from_db, live_backup_config_for_simple_restore_from_db,
+    live_backup_snapshot_from_live_config, live_backup_value_for_restore_from_db,
+    live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
+    live_token_sync_provider_from_db, persist_ephemeral_listen_port_if_needed_in_db,
+    persist_hot_switch_current_provider_sources, preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     provider_effective_settings_with_common_config_from_db, proxy_config_from_db,
     proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -154,6 +153,14 @@ async fn clear_legacy_live_takeover_active_flag_from_host_db(db: &Database) {
         let config = proxy_config_with_live_takeover_active(config, false);
         let _ = db.update_proxy_config(config).await;
     }
+}
+
+async fn clear_legacy_live_takeover_active_flag_strict_from_host_db(
+    db: &Database,
+) -> Result<(), String> {
+    db.set_live_takeover_active(false)
+        .await
+        .map_err(|e| format!("清除接管状态失败: {e}"))
 }
 
 async fn clear_provider_health_for_app_from_host_db(
@@ -677,7 +684,7 @@ impl ProxyService {
         self.restore_live_configs().await?;
 
         // 3. 清除 proxy_config 表中的接管状态（兼容旧版）
-        clear_legacy_live_takeover_active_flag_strict_in_db(&self.db).await?;
+        clear_legacy_live_takeover_active_flag_strict_from_host_db(&self.db).await?;
 
         // 4. 清除所有应用的 enabled 状态（用户手动关闭，不需要下次自动恢复）
         clear_live_takeover_enabled_flags_from_host_db(&self.db).await;
@@ -1238,7 +1245,7 @@ impl ProxyService {
         self.restore_live_configs().await?;
 
         // 2. 清除接管标志
-        clear_legacy_live_takeover_active_flag_strict_in_db(&self.db).await?;
+        clear_legacy_live_takeover_active_flag_strict_from_host_db(&self.db).await?;
 
         // 3. 删除备份
         delete_all_live_backups_in_db(&self.db).await?;

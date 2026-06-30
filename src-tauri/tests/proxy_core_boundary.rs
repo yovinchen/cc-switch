@@ -384,6 +384,8 @@ const FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_MARKERS: &[&str] = &[
     "删除备份失败",
     "重置健康状态失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) async fn clear_legacy_live_takeover_active_flag_strict_in_db"];
 const FORBIDDEN_PROXY_SERVICE_GLOBAL_PROXY_ENABLED_MARKERS: &[&str] = &[
     ".get_global_proxy_config(",
     ".update_global_proxy_config(",
@@ -7315,6 +7317,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) async fn set_proxy_app_enabled_in_db",
         "pub(crate) async fn clear_live_takeover_enabled_flags_in_db",
         "pub(crate) async fn clear_legacy_live_takeover_active_flag_in_db",
+        "pub(crate) async fn clear_legacy_live_takeover_active_flag_strict_in_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) async fn delete_live_backup_best_effort_in_db",
         "pub(crate) async fn delete_live_backup_in_db",
@@ -15860,10 +15863,12 @@ fn production_proxy_service_owns_keep_state_active_flag_cleanup_source() {
 }
 
 #[test]
-fn production_proxy_service_delegates_stop_restore_cleanup_to_adapter() {
+fn production_proxy_service_owns_stop_restore_active_flag_cleanup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let functions = [
         (
             "stop_with_restore",
@@ -15884,7 +15889,7 @@ fn production_proxy_service_delegates_stop_restore_cleanup_to_adapter() {
     ];
 
     let mut violations = Vec::new();
-    for (function_name, function) in functions {
+    for (function_name, function) in &functions {
         for (line_index, line) in production_lines(function) {
             let code = line.split("//").next().unwrap_or_default();
             for marker in FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_MARKERS {
@@ -15901,16 +15906,37 @@ fn production_proxy_service_delegates_stop_restore_cleanup_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService stop restore paths must delegate DB cleanup to proxy_core_adapter:\n{}",
+        "ProxyService stop restore paths must keep DB cleanup behind dedicated helper calls:\n{}",
         violations.join("\n")
     );
+    assert!(
+        functions.iter().any(|(name, function)| *name == "stop_with_restore"
+            && function
+                .contains("clear_legacy_live_takeover_active_flag_strict_from_host_db(&self.db).await?")),
+        "ProxyService::stop_with_restore should clear the legacy active flag through its strict host-local helper"
+    );
+    assert!(
+        source.contains("async fn clear_legacy_live_takeover_active_flag_strict_from_host_db(")
+            && source.contains(".set_live_takeover_active(false)")
+            && source.contains("清除接管状态失败"),
+        "ProxyService should own strict stop-restore legacy active flag cleanup source"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep stop-restore active flag cleanup wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
-fn production_proxy_service_delegates_crash_recovery_cleanup_to_adapter() {
+fn production_proxy_service_owns_crash_recovery_active_flag_cleanup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "pub async fn recover_from_crash",
@@ -15933,9 +15959,26 @@ fn production_proxy_service_delegates_crash_recovery_cleanup_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService::recover_from_crash must delegate DB cleanup to proxy_core_adapter:\n{}",
+        "ProxyService::recover_from_crash must keep DB cleanup behind dedicated helper calls:\n{}",
         violations.join("\n")
     );
+    assert!(
+        function.contains("clear_legacy_live_takeover_active_flag_strict_from_host_db(&self.db).await?"),
+        "ProxyService::recover_from_crash should clear the legacy active flag through its strict host-local helper"
+    );
+    assert!(
+        source.contains("async fn clear_legacy_live_takeover_active_flag_strict_from_host_db(")
+            && source.contains(".set_live_takeover_active(false)")
+            && source.contains("清除接管状态失败"),
+        "ProxyService should own crash-recovery legacy active flag cleanup source"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep crash-recovery active flag cleanup wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]

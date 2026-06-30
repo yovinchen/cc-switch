@@ -849,14 +849,6 @@ pub(crate) async fn update_proxy_config_preserving_live_takeover_active_in_db(
     Ok((previous, new_config))
 }
 
-pub(crate) async fn clear_legacy_live_takeover_active_flag_strict_in_db(
-    db: &Database,
-) -> Result<(), String> {
-    db.set_live_takeover_active(false)
-        .await
-        .map_err(|e| format!("清除接管状态失败: {e}"))
-}
-
 pub(crate) async fn set_legacy_live_takeover_active_best_effort_in_db(db: &Database, active: bool) {
     let _ = db.set_live_takeover_active(active).await;
 }
