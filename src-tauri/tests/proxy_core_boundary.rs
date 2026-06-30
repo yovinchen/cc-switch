@@ -344,11 +344,13 @@ const FORBIDDEN_PROXY_SERVICE_FALLBACK_RESTORE_BACKUP_SOURCE_ADAPTER_MARKERS: &[
 const FORBIDDEN_PROXY_SERVICE_SSOT_RESTORE_PROVIDER_SOURCE_MARKERS: &[&str] = &[
     "crate::settings::get_effective_current_provider(",
     ".get_all_providers(",
-    "provider_settings_have_proxy_placeholder_for_app(",
+    "live_config_has_proxy_placeholder_for_app(",
     "获取 {app_type:?} 当前供应商失败",
     "读取 {app_type:?} 供应商列表失败",
     "当前供应商配置含代理接管占位符",
 ];
+const FORBIDDEN_PROXY_SERVICE_SSOT_RESTORE_PROVIDER_SOURCE_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) fn ssot_live_restore_provider_from_db"];
 const FORBIDDEN_PROXY_SERVICE_SSOT_RESTORE_LIVE_WRITE_MARKERS: &[&str] = &[
     "write_live_with_common_config(",
     "写入 {app_type:?} Live 配置失败",
@@ -7354,6 +7356,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn proxy_official_warning_event_from_provider",
         "pub(crate) fn provider_effective_settings_with_common_config_from_db",
         "pub(crate) fn persist_hot_switch_current_provider_sources",
+        "pub(crate) fn ssot_live_restore_provider_from_db",
         "pub(crate) fn select_current_provider_ids_from_router_provider_id_source",
         "pub(crate) fn provider_is_copilot_prompt_cache_provider",
         "pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat",
@@ -15871,10 +15874,12 @@ fn production_proxy_service_owns_fallback_restore_backup_source() {
 }
 
 #[test]
-fn production_proxy_service_delegates_ssot_restore_provider_source_to_adapter() {
+fn production_proxy_service_owns_ssot_restore_provider_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "fn restore_live_from_ssot_for_app",
@@ -15897,9 +15902,37 @@ fn production_proxy_service_delegates_ssot_restore_provider_source_to_adapter() 
 
     assert!(
         violations.is_empty(),
-        "ProxyService::restore_live_from_ssot_for_app must delegate current-provider source reads and placeholder guard to proxy_core_adapter:\n{}",
+        "ProxyService::restore_live_from_ssot_for_app must keep SSOT provider source reads behind its host helper:\n{}",
         violations.join("\n")
     );
+
+    assert!(
+        function.contains(
+            "ssot_live_restore_provider_from_host_db(&self.db, app_type, PROXY_TOKEN_PLACEHOLDER)"
+        ),
+        "ProxyService::restore_live_from_ssot_for_app should call the host-owned SSOT provider helper"
+    );
+    for marker in [
+        "fn ssot_live_restore_provider_from_host_db(",
+        "crate::settings::get_effective_current_provider(db, app_type)",
+        ".get_all_providers(app_type.as_str())",
+        "live_config_has_proxy_placeholder_for_app(",
+        "获取 {app_type:?} 当前供应商失败",
+        "读取 {app_type:?} 供应商列表失败",
+        "当前供应商配置含代理接管占位符",
+        "Ok(Some(provider.clone()))",
+    ] {
+        assert!(
+            source.contains(marker),
+            "host SSOT restore provider helper should contain `{marker}`"
+        );
+    }
+    for marker in FORBIDDEN_PROXY_SERVICE_SSOT_RESTORE_PROVIDER_SOURCE_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep SSOT restore provider source wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]

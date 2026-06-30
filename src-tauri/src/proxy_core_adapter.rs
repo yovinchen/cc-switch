@@ -1563,40 +1563,6 @@ pub(crate) async fn proxy_hot_switch_target_state_from_db(
     })
 }
 
-pub(crate) fn ssot_live_restore_provider_from_db(
-    db: &Database,
-    app_type: &AppType,
-    proxy_token_placeholder: &str,
-) -> Result<Option<Provider>, String> {
-    let current_id = crate::settings::get_effective_current_provider(db, app_type)
-        .map_err(|e| format!("获取 {app_type:?} 当前供应商失败: {e}"))?;
-
-    let Some(current_id) = current_id else {
-        return Ok(None);
-    };
-
-    let providers = db
-        .get_all_providers(app_type.as_str())
-        .map_err(|e| format!("读取 {app_type:?} 供应商列表失败: {e}"))?;
-
-    let Some(provider) = providers.get(&current_id) else {
-        return Ok(None);
-    };
-
-    if live_config_has_proxy_placeholder_for_app(
-        app_type,
-        &provider.settings_config,
-        proxy_token_placeholder,
-    ) {
-        log::warn!(
-            "{app_type:?} 当前供应商配置含代理接管占位符（疑似接管期间被导入的残留），跳过 SSOT 写回，改走占位符清理"
-        );
-        return Ok(None);
-    }
-
-    Ok(Some(provider.clone()))
-}
-
 pub(crate) fn write_ssot_live_restore_provider_with_common_config(
     db: &Database,
     app_type: &AppType,

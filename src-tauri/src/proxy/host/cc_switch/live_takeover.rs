@@ -48,9 +48,9 @@ use crate::proxy_core_adapter::{
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_hot_switch_should_sync_codex_live_while_proxy_active,
     proxy_hot_switch_target_state_from_db, proxy_server_from_runtime_config,
-    remove_codex_takeover_config_placeholders_if_present, ssot_live_restore_provider_from_db,
-    sync_provider_settings_with_live_token, write_ssot_live_restore_provider_with_common_config,
-    CodexLiveWriteProjection, CodexTakeoverAuthPolicy, ProviderEffectiveSettingsWarning,
+    remove_codex_takeover_config_placeholders_if_present, sync_provider_settings_with_live_token,
+    write_ssot_live_restore_provider_with_common_config, CodexLiveWriteProjection,
+    CodexTakeoverAuthPolicy, ProviderEffectiveSettingsWarning,
 };
 #[cfg(test)]
 use serde_json::Map;
@@ -423,6 +423,40 @@ fn persist_hot_switch_current_provider_sources_in_host_db(
         .map_err(|e| format!("更新当前供应商失败: {e}"))?;
     crate::settings::set_current_provider(app_type, Some(provider_id))
         .map_err(|e| format!("更新本地当前供应商失败: {e}"))
+}
+
+fn ssot_live_restore_provider_from_host_db(
+    db: &Database,
+    app_type: &AppType,
+    proxy_token_placeholder: &str,
+) -> Result<Option<Provider>, String> {
+    let current_id = crate::settings::get_effective_current_provider(db, app_type)
+        .map_err(|e| format!("获取 {app_type:?} 当前供应商失败: {e}"))?;
+
+    let Some(current_id) = current_id else {
+        return Ok(None);
+    };
+
+    let providers = db
+        .get_all_providers(app_type.as_str())
+        .map_err(|e| format!("读取 {app_type:?} 供应商列表失败: {e}"))?;
+
+    let Some(provider) = providers.get(&current_id) else {
+        return Ok(None);
+    };
+
+    if live_config_has_proxy_placeholder_for_app(
+        app_type,
+        &provider.settings_config,
+        proxy_token_placeholder,
+    ) {
+        log::warn!(
+            "{app_type:?} 当前供应商配置含代理接管占位符（疑似接管期间被导入的残留），跳过 SSOT 写回，改走占位符清理"
+        );
+        return Ok(None);
+    }
+
+    Ok(Some(provider.clone()))
 }
 
 async fn clear_legacy_live_takeover_active_flag_from_host_db(db: &Database) {
@@ -1456,7 +1490,7 @@ impl ProxyService {
     /// - Ok(false)：缺少当前供应商/供应商不存在/供应商本身含占位符，无法写回
     fn restore_live_from_ssot_for_app(&self, app_type: &AppType) -> Result<bool, String> {
         let Some(provider) =
-            ssot_live_restore_provider_from_db(&self.db, app_type, PROXY_TOKEN_PLACEHOLDER)?
+            ssot_live_restore_provider_from_host_db(&self.db, app_type, PROXY_TOKEN_PLACEHOLDER)?
         else {
             return Ok(false);
         };
