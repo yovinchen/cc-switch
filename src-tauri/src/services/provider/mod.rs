@@ -43,8 +43,7 @@ use crate::proxy_core::api::ports::{
     ProviderTakeoverLiveSyncTarget,
 };
 use crate::proxy_core_adapter::{
-    common_config_snippet_from_settings, provider_settings_validation_parts,
-    should_block_proxy_switch_to_provider,
+    provider_settings_validation_parts, should_block_proxy_switch_to_provider,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -58,9 +57,10 @@ pub use live::{
 };
 
 pub(crate) use live::{
+    build_effective_settings_with_common_config, common_config_snippet_from_settings,
     normalize_provider_common_config_for_storage, provider_exists_in_live_config,
     strip_common_config_from_live_settings, sync_current_provider_for_app_to_live,
-    write_live_with_common_config,
+    write_live_with_common_config, ProviderEffectiveSettingsWarning,
 };
 
 // Internal re-exports

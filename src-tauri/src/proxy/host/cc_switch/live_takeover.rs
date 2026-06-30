@@ -44,14 +44,15 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
-    apply_codex_unified_session_bucket_for_provider, build_effective_settings_with_common_config,
-    codex_backup_projection_error_message, codex_live_write_projection,
-    codex_preserved_auth_live_config_text_for_configured_policy, codex_provider_live_write_parts,
-    preserve_codex_mcp_servers_from_existing_config,
+    apply_codex_unified_session_bucket_for_provider, codex_backup_projection_error_message,
+    codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
+    codex_provider_live_write_parts, preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy, proxy_server_from_runtime_config,
     remove_codex_takeover_config_placeholders_if_present, should_block_proxy_switch_to_provider,
     sync_provider_settings_with_live_token, CodexLiveWriteProjection, CodexTakeoverAuthPolicy,
-    ProviderEffectiveSettingsWarning,
+};
+use crate::services::provider::{
+    build_effective_settings_with_common_config, ProviderEffectiveSettingsWarning,
 };
 #[cfg(test)]
 use serde_json::Map;

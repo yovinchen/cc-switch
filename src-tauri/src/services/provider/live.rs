@@ -11,32 +11,35 @@ use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::ports::{
-    common_config_settings_mutation_issue_message, gemini_env_string_map_from_settings,
-    gemini_live_config_object_from_settings, gemini_live_settings_from_env_json_and_config,
-    gemini_live_settings_to_write, provider_default_live_import_settings,
+    apply_claude_common_config_to_settings as core_apply_claude_common_config_to_settings,
+    apply_gemini_common_config_to_settings as core_apply_gemini_common_config_to_settings,
+    codex_config_text_from_settings, common_config_settings_mutation_issue_message,
+    contains_claude_common_config_snippet as core_contains_claude_common_config_snippet,
+    contains_gemini_common_config_snippet as core_contains_gemini_common_config_snippet,
+    gemini_env_string_map_from_settings, gemini_live_config_object_from_settings,
+    gemini_live_settings_from_env_json_and_config, gemini_live_settings_to_write,
+    provider_common_config_storage_normalization_requires_snippet as core_provider_common_config_storage_normalization_requires_snippet,
+    provider_default_live_import_settings,
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
-    provider_should_sync_to_live, proxy_live_config_owned_by_takeover,
+    provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
+    provider_should_sync_to_live,
+    provider_uses_common_config_from_parts as core_provider_uses_common_config_from_parts,
+    proxy_live_config_owned_by_takeover,
+    remove_claude_common_config_from_settings as core_remove_claude_common_config_from_settings,
+    remove_gemini_common_config_from_settings as core_remove_gemini_common_config_from_settings,
     sanitize_claude_settings_for_live, should_skip_manual_default_live_import,
     should_skip_startup_default_live_import, CodexLiveSnapshotIssue,
-    CommonConfigSettingsMutationIssue, GeminiLiveConfigIssue, ProviderLiveSyncScope,
+    CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue, GeminiLiveConfigIssue,
+    ProviderLiveSyncScope,
 };
-#[cfg(test)]
-use crate::proxy_core_adapter::apply_common_config_to_settings as adapter_apply_common_config_to_settings;
 use crate::proxy_core_adapter::{
-    build_effective_settings_with_common_config as adapter_build_effective_settings_with_common_config,
-    codex_live_settings_with_model_catalog,
-    normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
-    provider_codex_live_snapshot_parts,
-    provider_common_config_storage_normalization_requires_snippet,
+    codex_live_settings_with_model_catalog, provider_codex_live_snapshot_parts,
     provider_from_default_live_settings, provider_from_hermes_live_config,
     provider_from_openclaw_live_config, provider_from_opencode_live_config,
     provider_openclaw_live_write_projection, provider_opencode_live_write_projection,
-    remove_common_config_from_settings as adapter_remove_common_config_from_settings,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
-    strip_common_config_from_live_settings_for_backfill as adapter_strip_common_config_from_live_settings_for_backfill,
     HermesLiveImportIssue, OpenClawLiveImportIssue, OpenClawLiveWriteAction,
     OpenCodeLiveImportIssue, OpenCodeLiveWriteAction, ProviderBackfillSettingsWarning,
-    ProviderEffectiveSettingsWarning,
 };
 use crate::services::mcp::McpService;
 use crate::store::AppState;
@@ -44,10 +47,6 @@ use crate::store::AppState;
 use super::gemini_auth::{
     detect_gemini_auth_type, ensure_google_oauth_security_flag, GeminiAuthType,
 };
-#[cfg(test)]
-use crate::proxy_core_adapter::contains_common_config_snippet;
-pub(crate) use crate::proxy_core_adapter::provider_uses_common_config;
-
 pub(crate) fn provider_exists_in_live_config(
     app_type: &AppType,
     provider_id: &str,
@@ -63,13 +62,293 @@ pub(crate) fn provider_exists_in_live_config(
     }
 }
 
-pub(crate) fn remove_common_config_from_settings(
+fn common_config_settings_mutation_issue_to_app_error(
+    issue: CommonConfigSettingsMutationIssue,
+) -> AppError {
+    AppError::Message(common_config_settings_mutation_issue_message(issue))
+}
+
+pub(crate) fn common_config_snippet_from_settings(
     app_type: &AppType,
     settings: &Value,
-    snippet: &str,
-) -> Result<Value, AppError> {
-    adapter_remove_common_config_from_settings(app_type, settings, snippet)
-        .map_err(common_config_settings_mutation_issue_to_app_error)
+) -> Result<String, CommonConfigSnippetIssue> {
+    match app_type {
+        AppType::Codex => codex_common_config_snippet_from_settings(settings),
+        AppType::Claude
+        | AppType::ClaudeDesktop
+        | AppType::Gemini
+        | AppType::OpenCode
+        | AppType::OpenClaw
+        | AppType::Hermes => core_provider_non_codex_common_config_snippet_from_settings(
+            &AppKind::from(app_type),
+            settings,
+        )
+        .map(|snippet| snippet.expect("known non-Codex app should project common config snippet")),
+    }
+}
+
+fn codex_common_config_snippet_from_settings(
+    settings: &Value,
+) -> Result<String, CommonConfigSnippetIssue> {
+    let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
+
+    if config_toml.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut doc = config_toml
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| CommonConfigSnippetIssue::TomlParse(e.to_string()))?;
+
+    let root = doc.as_table_mut();
+    root.remove("model");
+    root.remove("model_provider");
+    root.remove("base_url");
+    root.remove("model_providers");
+
+    let mut cleaned = String::new();
+    let mut blank_run = 0usize;
+    for line in doc.to_string().lines() {
+        if line.trim().is_empty() {
+            blank_run += 1;
+            if blank_run <= 1 {
+                cleaned.push('\n');
+            }
+            continue;
+        }
+        blank_run = 0;
+        cleaned.push_str(line);
+        cleaned.push('\n');
+    }
+
+    Ok(cleaned.trim().to_string())
+}
+
+fn toml_value_is_subset(target: &toml_edit::Value, source: &toml_edit::Value) -> bool {
+    match (target, source) {
+        (toml_edit::Value::String(target), toml_edit::Value::String(source)) => {
+            target.value() == source.value()
+        }
+        (toml_edit::Value::Integer(target), toml_edit::Value::Integer(source)) => {
+            target.value() == source.value()
+        }
+        (toml_edit::Value::Float(target), toml_edit::Value::Float(source)) => {
+            target.value() == source.value()
+        }
+        (toml_edit::Value::Boolean(target), toml_edit::Value::Boolean(source)) => {
+            target.value() == source.value()
+        }
+        (toml_edit::Value::Datetime(target), toml_edit::Value::Datetime(source)) => {
+            target.value() == source.value()
+        }
+        (toml_edit::Value::Array(target), toml_edit::Value::Array(source)) => {
+            toml_array_contains_subset(target, source)
+        }
+        (toml_edit::Value::InlineTable(target), toml_edit::Value::InlineTable(source)) => {
+            source.iter().all(|(key, source_item)| {
+                target
+                    .get(key)
+                    .is_some_and(|target_item| toml_value_is_subset(target_item, source_item))
+            })
+        }
+        _ => false,
+    }
+}
+
+fn toml_array_contains_subset(target: &toml_edit::Array, source: &toml_edit::Array) -> bool {
+    let mut matched = vec![false; target.len()];
+    let target_items: Vec<&toml_edit::Value> = target.iter().collect();
+
+    source.iter().all(|source_item| {
+        if let Some((index, _)) = target_items
+            .iter()
+            .enumerate()
+            .find(|(index, target_item)| {
+                !matched[*index] && toml_value_is_subset(target_item, source_item)
+            })
+        {
+            matched[index] = true;
+            true
+        } else {
+            false
+        }
+    })
+}
+
+fn toml_remove_array_items(target: &mut toml_edit::Array, source: &toml_edit::Array) {
+    for source_item in source.iter() {
+        let index = {
+            let target_items: Vec<&toml_edit::Value> = target.iter().collect();
+            target_items
+                .iter()
+                .enumerate()
+                .find(|(_, target_item)| toml_value_is_subset(target_item, source_item))
+                .map(|(index, _)| index)
+        };
+
+        if let Some(index) = index {
+            target.remove(index);
+        }
+    }
+}
+
+fn toml_item_is_subset(target: &toml_edit::Item, source: &toml_edit::Item) -> bool {
+    if let Some(source_table) = source.as_table_like() {
+        let Some(target_table) = target.as_table_like() else {
+            return false;
+        };
+        return source_table.iter().all(|(key, source_item)| {
+            target_table
+                .get(key)
+                .is_some_and(|target_item| toml_item_is_subset(target_item, source_item))
+        });
+    }
+
+    match (target.as_value(), source.as_value()) {
+        (Some(target_value), Some(source_value)) => {
+            toml_value_is_subset(target_value, source_value)
+        }
+        _ => false,
+    }
+}
+
+fn merge_toml_item(target: &mut toml_edit::Item, source: &toml_edit::Item) {
+    if let Some(source_table) = source.as_table_like() {
+        if let Some(target_table) = target.as_table_like_mut() {
+            merge_toml_table_like(target_table, source_table);
+            return;
+        }
+    }
+
+    *target = source.clone();
+}
+
+fn merge_toml_table_like(target: &mut dyn toml_edit::TableLike, source: &dyn toml_edit::TableLike) {
+    for (key, source_item) in source.iter() {
+        match target.get_mut(key) {
+            Some(target_item) => merge_toml_item(target_item, source_item),
+            None => {
+                target.insert(key, source_item.clone());
+            }
+        }
+    }
+}
+
+fn remove_toml_item(target: &mut toml_edit::Item, source: &toml_edit::Item) {
+    if let Some(source_table) = source.as_table_like() {
+        if let Some(target_table) = target.as_table_like_mut() {
+            remove_toml_table_like(target_table, source_table);
+            if target_table.is_empty() {
+                *target = toml_edit::Item::None;
+            }
+            return;
+        }
+    }
+
+    if let Some(source_value) = source.as_value() {
+        let mut remove_item = false;
+
+        if let Some(target_value) = target.as_value_mut() {
+            match (target_value, source_value) {
+                (toml_edit::Value::Array(target_arr), toml_edit::Value::Array(source_arr)) => {
+                    toml_remove_array_items(target_arr, source_arr);
+                    remove_item = target_arr.is_empty();
+                }
+                (target_value, source_value)
+                    if toml_value_is_subset(target_value, source_value) =>
+                {
+                    remove_item = true;
+                }
+                _ => {}
+            }
+        }
+
+        if remove_item {
+            *target = toml_edit::Item::None;
+        }
+    }
+}
+
+fn remove_toml_table_like(
+    target: &mut dyn toml_edit::TableLike,
+    source: &dyn toml_edit::TableLike,
+) {
+    let keys: Vec<String> = source.iter().map(|(key, _)| key.to_string()).collect();
+
+    for key in keys {
+        let mut remove_key = false;
+        if let (Some(target_item), Some(source_item)) = (target.get_mut(&key), source.get(&key)) {
+            remove_toml_item(target_item, source_item);
+            remove_key = target_item.is_none()
+                || target_item
+                    .as_table_like()
+                    .is_some_and(|table_like| table_like.is_empty());
+        }
+
+        if remove_key {
+            target.remove(&key);
+        }
+    }
+}
+
+fn contains_common_config_snippet(app_type: &AppType, settings: &Value, snippet: &str) -> bool {
+    let trimmed = snippet.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    match app_type {
+        AppType::Claude => core_contains_claude_common_config_snippet(settings, trimmed),
+        AppType::Codex => {
+            let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
+            if config_toml.trim().is_empty() {
+                return false;
+            }
+
+            let target_doc = match config_toml.parse::<toml_edit::DocumentMut>() {
+                Ok(doc) => doc,
+                Err(_) => return false,
+            };
+            let source_doc = match trimmed.parse::<toml_edit::DocumentMut>() {
+                Ok(doc) => doc,
+                Err(_) => return false,
+            };
+
+            toml_item_is_subset(target_doc.as_item(), source_doc.as_item())
+        }
+        AppType::Gemini => core_contains_gemini_common_config_snippet(settings, trimmed),
+        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => false,
+    }
+}
+
+pub(crate) fn provider_uses_common_config(
+    app_type: &AppType,
+    provider: &Provider,
+    snippet: Option<&str>,
+) -> bool {
+    let explicit_enabled = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.common_config_enabled);
+    let settings_contains_snippet = explicit_enabled.is_none()
+        && snippet.is_some_and(|value| {
+            contains_common_config_snippet(app_type, &provider.settings_config, value)
+        });
+
+    core_provider_uses_common_config_from_parts(
+        explicit_enabled,
+        snippet,
+        settings_contains_snippet,
+    )
+}
+
+fn provider_common_config_storage_normalization_requires_snippet(provider: &Provider) -> bool {
+    let explicit_enabled = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.common_config_enabled);
+
+    core_provider_common_config_storage_normalization_requires_snippet(explicit_enabled)
 }
 
 #[cfg(test)]
@@ -78,27 +357,141 @@ fn apply_common_config_to_settings(
     settings: &Value,
     snippet: &str,
 ) -> Result<Value, AppError> {
-    adapter_apply_common_config_to_settings(app_type, settings, snippet)
+    apply_common_config_to_settings_core(app_type, settings, snippet)
         .map_err(common_config_settings_mutation_issue_to_app_error)
 }
 
-fn common_config_settings_mutation_issue_to_app_error(
-    issue: CommonConfigSettingsMutationIssue,
-) -> AppError {
-    AppError::Message(common_config_settings_mutation_issue_message(issue))
+fn apply_common_config_to_settings_core(
+    app_type: &AppType,
+    settings: &Value,
+    snippet: &str,
+) -> Result<Value, CommonConfigSettingsMutationIssue> {
+    let trimmed = snippet.trim();
+    if trimmed.is_empty() {
+        return Ok(settings.clone());
+    }
+
+    match app_type {
+        AppType::Claude => core_apply_claude_common_config_to_settings(settings, trimmed),
+        AppType::Codex => {
+            let mut result = settings.clone();
+            let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
+            let mut target_doc = if config_toml.trim().is_empty() {
+                toml_edit::DocumentMut::new()
+            } else {
+                config_toml.parse::<toml_edit::DocumentMut>().map_err(|e| {
+                    CommonConfigSettingsMutationIssue::CodexApplyTargetToml(e.to_string())
+                })?
+            };
+            let source_doc = trimmed.parse::<toml_edit::DocumentMut>().map_err(|e| {
+                CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(e.to_string())
+            })?;
+
+            merge_toml_table_like(target_doc.as_table_mut(), source_doc.as_table());
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("config".to_string(), Value::String(target_doc.to_string()));
+            }
+            Ok(result)
+        }
+        AppType::Gemini => core_apply_gemini_common_config_to_settings(settings, trimmed),
+        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => {
+            Ok(settings.clone())
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ProviderEffectiveSettingsWarning {
+    CommonConfigApply(CommonConfigSettingsMutationIssue),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ProviderEffectiveSettingsResult {
+    pub(crate) settings: Value,
+    pub(crate) warnings: Vec<ProviderEffectiveSettingsWarning>,
 }
 
 pub(crate) fn build_effective_settings_with_common_config(
+    app_type: &AppType,
+    provider: &Provider,
+    snippet: Option<&str>,
+) -> ProviderEffectiveSettingsResult {
+    let mut settings = provider.settings_config.clone();
+    let mut warnings = Vec::new();
+
+    if provider_uses_common_config(app_type, provider, snippet) {
+        if let Some(snippet_text) = snippet {
+            match apply_common_config_to_settings_core(app_type, &settings, snippet_text) {
+                Ok(applied_settings) => settings = applied_settings,
+                Err(issue) => {
+                    warnings.push(ProviderEffectiveSettingsWarning::CommonConfigApply(issue))
+                }
+            }
+        }
+    }
+
+    ProviderEffectiveSettingsResult { settings, warnings }
+}
+
+pub(crate) fn build_effective_settings_with_common_config_from_db(
     db: &Database,
     app_type: &AppType,
     provider: &Provider,
 ) -> Result<Value, AppError> {
     let snippet = db.get_config_snippet(app_type.as_str())?;
     let result =
-        adapter_build_effective_settings_with_common_config(app_type, provider, snippet.as_deref());
+        build_effective_settings_with_common_config(app_type, provider, snippet.as_deref());
     log_provider_effective_settings_warnings(app_type, provider, result.warnings);
 
     Ok(result.settings)
+}
+
+pub(crate) fn remove_common_config_from_settings(
+    app_type: &AppType,
+    settings: &Value,
+    snippet: &str,
+) -> Result<Value, AppError> {
+    remove_common_config_from_settings_core(app_type, settings, snippet)
+        .map_err(common_config_settings_mutation_issue_to_app_error)
+}
+
+fn remove_common_config_from_settings_core(
+    app_type: &AppType,
+    settings: &Value,
+    snippet: &str,
+) -> Result<Value, CommonConfigSettingsMutationIssue> {
+    let trimmed = snippet.trim();
+    if trimmed.is_empty() {
+        return Ok(settings.clone());
+    }
+
+    match app_type {
+        AppType::Claude => core_remove_claude_common_config_from_settings(settings, trimmed),
+        AppType::Codex => {
+            let mut result = settings.clone();
+            let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
+            let mut target_doc = if config_toml.trim().is_empty() {
+                toml_edit::DocumentMut::new()
+            } else {
+                config_toml.parse::<toml_edit::DocumentMut>().map_err(|e| {
+                    CommonConfigSettingsMutationIssue::CodexRemoveTargetToml(e.to_string())
+                })?
+            };
+            let source_doc = trimmed.parse::<toml_edit::DocumentMut>().map_err(|e| {
+                CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(e.to_string())
+            })?;
+
+            remove_toml_table_like(target_doc.as_table_mut(), source_doc.as_table());
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("config".to_string(), Value::String(target_doc.to_string()));
+            }
+            Ok(result)
+        }
+        AppType::Gemini => core_remove_gemini_common_config_from_settings(settings, trimmed),
+        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => {
+            Ok(settings.clone())
+        }
+    }
 }
 
 pub(crate) fn write_live_with_common_config(
@@ -108,7 +501,7 @@ pub(crate) fn write_live_with_common_config(
 ) -> Result<(), AppError> {
     let mut effective_provider = provider.clone();
     effective_provider.settings_config =
-        build_effective_settings_with_common_config(db, app_type, provider)?;
+        build_effective_settings_with_common_config_from_db(db, app_type, provider)?;
 
     if matches!(app_type, AppType::ClaudeDesktop) {
         crate::claude_desktop_config::apply_provider(db, &effective_provider)?;
@@ -141,14 +534,12 @@ pub(crate) fn strip_common_config_from_live_settings(
         }
     };
 
-    let result = adapter_strip_common_config_from_live_settings_for_backfill(
+    strip_common_config_from_live_settings_for_backfill(
         app_type,
         provider,
         live_settings,
         snippet.as_deref(),
-    );
-    log_provider_backfill_settings_warnings(app_type, provider, result.warnings);
-    result.settings
+    )
 }
 
 fn restore_live_settings_for_provider_backfill(
@@ -161,6 +552,38 @@ fn restore_live_settings_for_provider_backfill(
     log_provider_backfill_settings_warnings(app_type, provider, result.warnings);
 
     result.settings
+}
+
+fn strip_common_config_from_live_settings_for_backfill(
+    app_type: &AppType,
+    provider: &Provider,
+    live_settings: Value,
+    snippet: Option<&str>,
+) -> Value {
+    let mut warnings = Vec::new();
+    let backfill_settings = if provider_uses_common_config(app_type, provider, snippet) {
+        match snippet {
+            Some(snippet_text) => {
+                match remove_common_config_from_settings_core(
+                    app_type,
+                    &live_settings,
+                    snippet_text,
+                ) {
+                    Ok(settings) => settings,
+                    Err(issue) => {
+                        warnings.push(ProviderBackfillSettingsWarning::CommonConfigStrip(issue));
+                        live_settings
+                    }
+                }
+            }
+            None => live_settings,
+        }
+    } else {
+        live_settings
+    };
+
+    log_provider_backfill_settings_warnings(app_type, provider, warnings);
+    restore_live_settings_for_provider_backfill(app_type, provider, backfill_settings)
 }
 
 fn log_provider_backfill_settings_warnings(
@@ -223,7 +646,7 @@ pub(crate) fn normalize_provider_common_config_for_storage(
     }
 
     let snippet = db.get_config_snippet(app_type.as_str())?;
-    match adapter_normalize_provider_common_config_for_storage(
+    match normalize_provider_common_config_for_storage_from_snippet(
         app_type,
         provider,
         snippet.as_deref(),
@@ -241,6 +664,22 @@ pub(crate) fn normalize_provider_common_config_for_storage(
     }
 
     Ok(())
+}
+
+fn normalize_provider_common_config_for_storage_from_snippet(
+    app_type: &AppType,
+    provider: &Provider,
+    snippet: Option<&str>,
+) -> Result<Option<Value>, CommonConfigSettingsMutationIssue> {
+    if !provider_common_config_storage_normalization_requires_snippet(provider) {
+        return Ok(None);
+    }
+
+    let Some(snippet) = snippet.filter(|value| !value.trim().is_empty()) else {
+        return Ok(None);
+    };
+
+    remove_common_config_from_settings_core(app_type, &provider.settings_config, snippet).map(Some)
 }
 
 /// Write live configuration snapshot for a provider
@@ -1147,6 +1586,147 @@ mod tests {
             !contains_common_config_snippet(&AppType::Gemini, &json!({"env": "invalid"}), snippet),
             "non-object env should not match Gemini common config"
         );
+    }
+
+    #[test]
+    fn provider_effective_settings_apply_common_config_returns_warnings() {
+        let mut provider = Provider::with_id(
+            "claude-test".to_string(),
+            "Claude Test".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                }
+            }),
+            None,
+        );
+        provider.meta = Some(crate::provider::ProviderMeta {
+            common_config_enabled: Some(true),
+            ..Default::default()
+        });
+
+        let result = build_effective_settings_with_common_config(
+            &AppType::Claude,
+            &provider,
+            Some(r#"{ "includeCoAuthoredBy": false }"#),
+        );
+        assert!(result.warnings.is_empty());
+        assert_eq!(
+            result.settings,
+            json!({
+                "includeCoAuthoredBy": false,
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                }
+            })
+        );
+
+        let result =
+            build_effective_settings_with_common_config(&AppType::Claude, &provider, Some("{"));
+        assert!(matches!(
+            result.warnings.as_slice(),
+            [ProviderEffectiveSettingsWarning::CommonConfigApply(_)]
+        ));
+        assert_eq!(result.settings, provider.settings_config);
+    }
+
+    #[test]
+    fn provider_common_config_storage_normalization_requires_explicit_enablement() {
+        let mut provider = Provider::with_id(
+            "claude-test".to_string(),
+            "Claude Test".to_string(),
+            json!({
+                "includeCoAuthoredBy": false,
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                }
+            }),
+            None,
+        );
+        let snippet = r#"{ "includeCoAuthoredBy": false }"#;
+
+        assert!(!provider_common_config_storage_normalization_requires_snippet(&provider));
+        assert_eq!(
+            normalize_provider_common_config_for_storage_from_snippet(
+                &AppType::Claude,
+                &provider,
+                Some(snippet)
+            )
+            .expect("disabled storage normalization"),
+            None
+        );
+
+        provider.meta = Some(crate::provider::ProviderMeta {
+            common_config_enabled: Some(true),
+            ..Default::default()
+        });
+
+        assert!(provider_common_config_storage_normalization_requires_snippet(&provider));
+        assert_eq!(
+            normalize_provider_common_config_for_storage_from_snippet(
+                &AppType::Claude,
+                &provider,
+                Some("   ")
+            )
+            .expect("empty snippet"),
+            None
+        );
+        assert_eq!(
+            normalize_provider_common_config_for_storage_from_snippet(
+                &AppType::Claude,
+                &provider,
+                Some(snippet)
+            )
+            .expect("enabled storage normalization"),
+            Some(json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                }
+            }))
+        );
+    }
+
+    #[test]
+    fn provider_backfill_common_config_strip_keeps_original_on_invalid_snippet() {
+        let mut provider = Provider::with_id(
+            "claude-test".to_string(),
+            "Claude Test".to_string(),
+            json!({}),
+            None,
+        );
+        provider.meta = Some(crate::provider::ProviderMeta {
+            common_config_enabled: Some(true),
+            ..Default::default()
+        });
+
+        let live_settings = json!({
+            "includeCoAuthoredBy": false,
+            "env": {
+                "ANTHROPIC_API_KEY": "sk-test"
+            }
+        });
+        let stripped = strip_common_config_from_live_settings_for_backfill(
+            &AppType::Claude,
+            &provider,
+            live_settings.clone(),
+            Some(r#"{ "includeCoAuthoredBy": false }"#),
+        );
+        assert_eq!(
+            stripped,
+            json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                }
+            })
+        );
+
+        let fallback = strip_common_config_from_live_settings_for_backfill(
+            &AppType::Claude,
+            &provider,
+            live_settings.clone(),
+            Some("{"),
+        );
+        assert_eq!(fallback, live_settings);
     }
 
     #[test]
