@@ -37,10 +37,10 @@ use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
     apply_codex_unified_session_bucket_for_provider, codex_backup_projection_error_message,
     codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
-    codex_provider_live_write_parts, current_provider_for_app_from_db,
-    live_backup_snapshot_from_live_config, live_config_has_proxy_placeholder_for_app,
-    live_takeover_config_matches_proxy_for_app, live_token_sync_provider_from_db,
-    persist_hot_switch_current_provider_sources, preserve_codex_mcp_servers_from_existing_config,
+    codex_provider_live_write_parts, live_backup_snapshot_from_live_config,
+    live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
+    live_token_sync_provider_from_db, persist_hot_switch_current_provider_sources,
+    preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     provider_effective_settings_with_common_config_from_db,
     proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -48,8 +48,8 @@ use crate::proxy_core_adapter::{
     proxy_hot_switch_should_sync_codex_live_while_proxy_active,
     proxy_hot_switch_target_state_from_db, proxy_official_warning_event_from_current_provider_db,
     proxy_server_from_runtime_config, remove_codex_takeover_config_placeholders_if_present,
-    require_current_provider_for_app_from_db, ssot_live_restore_provider_from_db,
-    sync_provider_settings_with_live_token, update_live_token_sync_provider_settings_in_db,
+    ssot_live_restore_provider_from_db, sync_provider_settings_with_live_token,
+    update_live_token_sync_provider_settings_in_db,
     write_ssot_live_restore_provider_with_common_config, CodexLiveWriteProjection,
     CodexTakeoverAuthPolicy,
 };
@@ -300,6 +300,28 @@ async fn live_backup_config_for_simple_restore_from_host_db(
         .map_err(|e| format!("解析 {app_label} 备份失败: {e}"))
 }
 
+fn current_provider_for_app_from_host_db(
+    db: &Database,
+    app_type: &AppType,
+) -> Result<Option<Provider>, String> {
+    let Some(current_id) = crate::settings::get_effective_current_provider(db, app_type)
+        .map_err(|error| format!("获取 {app_type:?} 当前供应商失败: {error}"))?
+    else {
+        return Ok(None);
+    };
+
+    db.get_provider_by_id(&current_id, app_type.as_str())
+        .map_err(|error| format!("读取 {app_type:?} 当前供应商失败: {error}"))
+}
+
+fn require_current_provider_for_app_from_host_db(
+    db: &Database,
+    app_type: &AppType,
+) -> Result<Provider, String> {
+    current_provider_for_app_from_host_db(db, app_type)?
+        .ok_or_else(|| format!("{app_type:?} 当前供应商不存在，无法接管 Live 配置"))
+}
+
 async fn clear_legacy_live_takeover_active_flag_from_host_db(db: &Database) {
     if let Ok(config) = db.get_proxy_config().await {
         let config = proxy_config_with_live_takeover_active(config, false);
@@ -456,11 +478,11 @@ impl ProxyService {
     }
 
     fn get_current_provider_for_app(&self, app_type: &AppType) -> Result<Option<Provider>, String> {
-        current_provider_for_app_from_db(&self.db, app_type)
+        current_provider_for_app_from_host_db(&self.db, app_type)
     }
 
     fn require_current_provider_for_app(&self, app_type: &AppType) -> Result<Provider, String> {
-        require_current_provider_for_app_from_db(&self.db, app_type)
+        require_current_provider_for_app_from_host_db(&self.db, app_type)
     }
 
     /// 设置 AppHandle（在应用初始化时调用）

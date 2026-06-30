@@ -258,6 +258,10 @@ const FORBIDDEN_PROXY_SERVICE_CURRENT_PROVIDER_SOURCE_MARKERS: &[&str] = &[
     ".get_provider_by_id(&current_id, app_type.as_str())",
     "当前供应商不存在，无法接管 Live 配置",
 ];
+const FORBIDDEN_PROXY_SERVICE_CURRENT_PROVIDER_SOURCE_ADAPTER_MARKERS: &[&str] = &[
+    "pub(crate) fn current_provider_for_app_from_db",
+    "pub(crate) fn require_current_provider_for_app_from_db",
+];
 const FORBIDDEN_PROXY_SERVICE_LIVE_TOKEN_SYNC_SOURCE_MARKERS: &[&str] = &[
     "get_effective_current_provider(&self.db, &AppType::",
     ".get_provider_by_id(&provider_id,",
@@ -7363,6 +7367,8 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) async fn existing_live_backup_value_for_update_from_db",
         "pub(crate) async fn save_provider_live_backup_from_effective_settings_in_db",
         "pub(crate) async fn live_backup_config_for_simple_restore_from_db",
+        "pub(crate) fn current_provider_for_app_from_db",
+        "pub(crate) fn require_current_provider_for_app_from_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) async fn delete_live_backup_best_effort_in_db",
         "pub(crate) async fn delete_live_backup_in_db",
@@ -15144,24 +15150,26 @@ fn production_proxy_service_delegates_official_warning_source_to_adapter() {
 }
 
 #[test]
-fn production_proxy_service_delegates_current_provider_source_to_adapter() {
+fn production_proxy_service_owns_current_provider_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let functions = [
         (
             "get_current_provider_for_app",
             function_slice(
                 &source,
-                "fn get_current_provider_for_app",
-                "fn require_current_provider_for_app",
+                "    fn get_current_provider_for_app",
+                "    fn require_current_provider_for_app",
             ),
         ),
         (
             "require_current_provider_for_app",
             function_slice(
                 &source,
-                "fn require_current_provider_for_app",
+                "    fn require_current_provider_for_app",
                 "/// 设置 AppHandle",
             ),
         ),
@@ -15185,9 +15193,41 @@ fn production_proxy_service_delegates_current_provider_source_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService current-provider helpers must delegate source reads and required-provider errors to proxy_core_adapter:\n{}",
+        "ProxyService current-provider methods must route source reads and required-provider errors through host-local helpers:\n{}",
         violations.join("\n")
     );
+    assert!(
+        functions
+            .iter()
+            .any(|(name, function)| *name == "get_current_provider_for_app"
+                && function.contains("current_provider_for_app_from_host_db(&self.db, app_type)")),
+        "ProxyService::get_current_provider_for_app should call the host-local source helper"
+    );
+    assert!(
+        functions
+            .iter()
+            .any(|(name, function)| *name == "require_current_provider_for_app"
+                && function
+                    .contains("require_current_provider_for_app_from_host_db(&self.db, app_type)")),
+        "ProxyService::require_current_provider_for_app should call the host-local required-provider helper"
+    );
+    assert!(
+        source.contains("fn current_provider_for_app_from_host_db(")
+            && source.contains("crate::settings::get_effective_current_provider(db, app_type)")
+            && source.contains(".get_provider_by_id(&current_id, app_type.as_str())")
+            && source.contains("获取 {app_type:?} 当前供应商失败")
+            && source.contains("读取 {app_type:?} 当前供应商失败")
+            && source.contains("fn require_current_provider_for_app_from_host_db(")
+            && source.contains("当前供应商不存在，无法接管 Live 配置"),
+        "ProxyService should own current-provider source reads and required-provider error projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_CURRENT_PROVIDER_SOURCE_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep current-provider source wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
