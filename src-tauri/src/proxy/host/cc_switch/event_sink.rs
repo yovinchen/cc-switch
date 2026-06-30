@@ -5,7 +5,6 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy_core::api::errors::ProxyCoreResult;
 use crate::proxy_core::api::events::ProxyCoreEvent;
 use crate::proxy_core::api::ports::ProxyEventSink;
-use crate::proxy_core_adapter::emit_proxy_core_event_bus_source;
 
 #[derive(Clone, Default)]
 pub(crate) struct CcSwitchEventSink {
@@ -22,7 +21,9 @@ impl ProxyEventSink for CcSwitchEventSink {
     fn emit_event<'a>(&'a self, event: ProxyCoreEvent) -> BoxFuture<'a, ProxyCoreResult<()>> {
         Box::pin(async move {
             if let Some(events) = self.events.as_ref() {
-                emit_proxy_core_event_bus_source(events.as_ref(), event);
+                let event_name = event.event_type.event_name();
+                let payload = event.into_event_payload();
+                events.emit(event_name, payload);
             }
             Ok(())
         })

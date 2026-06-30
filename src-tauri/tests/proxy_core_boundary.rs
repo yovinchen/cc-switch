@@ -22425,8 +22425,10 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
     assert!(
         event_sink_source.contains("pub(crate) struct CcSwitchEventSink")
             && event_sink_source.contains("impl ProxyEventSink for CcSwitchEventSink")
-            && event_sink_source.contains("emit_proxy_core_event_bus_source("),
-        "CC Switch event sink implementation should live in host/cc_switch/event_sink.rs"
+            && event_sink_source.contains("event.event_type.event_name()")
+            && event_sink_source.contains("event.into_event_payload()")
+            && event_sink_source.contains("events.emit("),
+        "CC Switch event sink implementation should live in host/cc_switch/event_sink.rs and own bus dispatch"
     );
     assert!(
         event_sink_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
@@ -22434,12 +22436,17 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
             && event_sink_source.contains("use crate::proxy_core::api::ports::ProxyEventSink;"),
         "CC Switch event sink should import event contracts directly from proxy_core"
     );
-    let adapter_import = function_slice(
+    let adapter_import = optional_function_slice(
         &event_sink_source,
         "use crate::proxy_core_adapter::",
         ";\n\n#[derive(Clone, Default)]",
     );
-    for adapter_type in ["ProxyCoreEvent", "ProxyCoreResult", "ProxyEventSink"] {
+    for adapter_type in [
+        "ProxyCoreEvent",
+        "ProxyCoreResult",
+        "ProxyEventSink",
+        "emit_proxy_core_event_bus_source",
+    ] {
         assert!(
             !adapter_import.contains(adapter_type),
             "CC Switch event sink must not import {adapter_type} through proxy_core_adapter"
@@ -22448,6 +22455,12 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
     assert!(
         !adapter_source.contains("type ProxyCoreEventType"),
         "proxy_core_adapter should not re-export event type DTOs as adapter aliases"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) fn emit_proxy_core_event(")
+            && !adapter_source.contains("pub(crate) fn emit_proxy_core_event_bus_source(")
+            && !adapter_source.contains("pub(crate) struct ProxyEventBusMessage"),
+        "proxy_core_adapter should not expose generic event bus dispatch facades"
     );
     assert!(
         !adapter_source.contains(

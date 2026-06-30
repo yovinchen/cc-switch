@@ -1003,9 +1003,9 @@ pub(crate) fn emit_proxy_server_stopped_event_source(events: &ProxyEventBus) {
     emit_proxy_core_event_bus_source(events, server_stopped_event());
 }
 
-pub(crate) struct ProxyEventBusMessage {
-    pub(crate) event_name: String,
-    pub(crate) payload: Value,
+struct ProxyEventBusMessage {
+    event_name: String,
+    payload: Value,
 }
 
 fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEventBusMessage {
@@ -1015,12 +1015,12 @@ fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEventBusMessag
     }
 }
 
-pub(crate) fn emit_proxy_core_event(event: ProxyCoreEvent, mut emit: impl FnMut(String, Value)) {
+fn emit_proxy_core_event(event: ProxyCoreEvent, mut emit: impl FnMut(String, Value)) {
     let message = proxy_core_event_to_bus_message(event);
     emit(message.event_name, message.payload);
 }
 
-pub(crate) fn emit_proxy_core_event_bus_source(events: &ProxyEventBus, event: ProxyCoreEvent) {
+fn emit_proxy_core_event_bus_source(events: &ProxyEventBus, event: ProxyCoreEvent) {
     emit_proxy_core_event(event, |event_name, payload| {
         events.emit(event_name, payload);
     });
