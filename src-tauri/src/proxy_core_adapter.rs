@@ -1520,15 +1520,6 @@ pub(crate) fn emit_proxy_server_stopped_event_source(events: &ProxyEventBus) {
     emit_proxy_core_event_bus_source(events, server_stopped_event());
 }
 
-pub(crate) fn write_ssot_live_restore_provider_with_common_config(
-    db: &Database,
-    app_type: &AppType,
-    provider: &Provider,
-) -> Result<(), String> {
-    crate::services::provider::write_live_with_common_config(db, app_type, provider)
-        .map_err(|e| format!("写入 {app_type:?} Live 配置失败: {e}"))
-}
-
 pub(crate) struct ProxyEventBusMessage {
     pub(crate) event_name: String,
     pub(crate) payload: Value,

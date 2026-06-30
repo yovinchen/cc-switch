@@ -48,8 +48,8 @@ use crate::proxy_core_adapter::{
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_hot_switch_should_sync_codex_live_while_proxy_active, proxy_server_from_runtime_config,
     remove_codex_takeover_config_placeholders_if_present, should_block_proxy_switch_to_provider,
-    sync_provider_settings_with_live_token, write_ssot_live_restore_provider_with_common_config,
-    CodexLiveWriteProjection, CodexTakeoverAuthPolicy, ProviderEffectiveSettingsWarning,
+    sync_provider_settings_with_live_token, CodexLiveWriteProjection, CodexTakeoverAuthPolicy,
+    ProviderEffectiveSettingsWarning,
 };
 #[cfg(test)]
 use serde_json::Map;
@@ -492,6 +492,15 @@ async fn proxy_hot_switch_target_state_from_host_db(
         logical_target_changed,
         has_live_backup,
     })
+}
+
+fn write_ssot_live_restore_provider_with_common_config_in_host(
+    db: &Database,
+    app_type: &AppType,
+    provider: &Provider,
+) -> Result<(), String> {
+    crate::services::provider::write_live_with_common_config(db, app_type, provider)
+        .map_err(|e| format!("写入 {app_type:?} Live 配置失败: {e}"))
 }
 
 async fn clear_legacy_live_takeover_active_flag_from_host_db(db: &Database) {
@@ -1537,7 +1546,7 @@ impl ProxyService {
             return Ok(false);
         };
 
-        write_ssot_live_restore_provider_with_common_config(&self.db, app_type, &provider)?;
+        write_ssot_live_restore_provider_with_common_config_in_host(&self.db, app_type, &provider)?;
 
         Ok(true)
     }
