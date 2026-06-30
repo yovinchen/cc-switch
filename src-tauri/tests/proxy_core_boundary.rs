@@ -2313,7 +2313,11 @@ fn is_allowed_http_server_runtime_core_import(relative: &str, code: &str) -> boo
 
 fn is_allowed_host_proxy_server_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/host/cc_switch/proxy_server.rs"
-        && code.trim() == "use crate::proxy_core::api::ports::ProxyConfig;"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::events::{server_started_event, server_stopped_event, ProxyCoreEvent};"
+                | "use crate::proxy_core::api::ports::{"
+        )
 }
 
 fn is_allowed_forwarder_runtime_state_core_import(relative: &str, code: &str) -> bool {
@@ -6456,6 +6460,13 @@ fn proxy_core_adapter_does_not_export_proxy_server_info_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
+    let host_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_server.rs"))
+            .expect("read proxy_server.rs");
     let port_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::ports::{")
         .skip(1)
@@ -6484,19 +6495,24 @@ fn proxy_core_adapter_does_not_export_proxy_server_info_alias() {
         );
     }
     assert!(
-        adapter_source.contains("use crate::proxy_core::api::ports::{")
-            && adapter_source.contains("ProxyServerInfo"),
-        "proxy_core_adapter internals should import ProxyServerInfo directly from proxy_core ports"
+        !adapter_runtime_source.contains("ProxyServerInfo")
+            && !adapter_runtime_source.contains("proxy_server_info_from_parts")
+            && !adapter_runtime_source.contains("record_proxy_server_stopped_status"),
+        "proxy_core_adapter production internals should not own server runtime info/status helpers"
     );
     for helper in [
         "proxy_server_info_from_parts",
         "record_proxy_server_stopped_status",
     ] {
         assert!(
-            adapter_source.contains(helper),
-            "proxy_core_adapter internals should call server runtime helper `{helper}` from core ports"
+            host_source.contains(helper),
+            "host proxy_server.rs should call server runtime helper `{helper}` from core ports"
         );
     }
+    assert!(
+        host_source.contains("ProxyServerInfo"),
+        "host proxy_server.rs should import ProxyServerInfo directly from proxy_core ports"
+    );
 }
 
 #[test]
@@ -17946,6 +17962,10 @@ fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let state_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs");
     let state_source = fs::read_to_string(&state_path).expect("read proxy_state.rs");
 
@@ -17985,17 +18005,19 @@ fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
         );
     }
     assert!(
-        adapter_source.contains("use crate::proxy::host::cc_switch::proxy_state::ProxyState;")
-            && !adapter_source
+        !adapter_runtime_source
+            .contains("use crate::proxy::host::cc_switch::proxy_state::ProxyState;")
+            && !adapter_runtime_source
                 .contains("pub(crate) use crate::proxy::host::cc_switch::proxy_state::ProxyState")
-            && !adapter_source.contains("proxy_state_from_runtime_sources")
-            && !adapter_source.contains("\npub struct ProxyState")
-            && !adapter_source.contains("type CcSwitchProxyRuntimeServices")
-            && !adapter_source.contains("\nimpl ProxyState")
-            && !adapter_source.contains("ProxyEngine::new(self.proxy_core_services.clone())")
-            && !adapter_source.contains("CcSwitchProxyServices::with_runtime(")
-            && !adapter_source.contains("ProxyState {"),
-        "proxy_core_adapter should only use the host state type privately and not own ProxyState assembly"
+            && !adapter_runtime_source.contains("proxy_state_from_runtime_sources")
+            && !adapter_runtime_source.contains("\npub struct ProxyState")
+            && !adapter_runtime_source.contains("type CcSwitchProxyRuntimeServices")
+            && !adapter_runtime_source.contains("\nimpl ProxyState")
+            && !adapter_runtime_source
+                .contains("ProxyEngine::new(self.proxy_core_services.clone())")
+            && !adapter_runtime_source.contains("CcSwitchProxyServices::with_runtime(")
+            && !adapter_runtime_source.contains("ProxyState {"),
+        "proxy_core_adapter should not depend on host ProxyState or own ProxyState assembly"
     );
 }
 
@@ -19393,7 +19415,7 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     let provider_rectifier_failure_runtime_source_slice = function_slice(
         &adapter_source,
         "pub(crate) async fn record_forward_provider_rectifier_retry_failure_runtime_source",
-        "fn record_proxy_server_started_status",
+        "use crate::proxy_core::api::auth::{",
     );
 
     assert!(
@@ -23601,7 +23623,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
 }
 
 #[test]
-fn production_proxy_server_delegates_runtime_state_to_adapter() {
+fn production_proxy_server_delegates_runtime_state_to_host_server_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
@@ -23613,21 +23635,13 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
     );
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let bound_source = function_slice(
-        &adapter_source,
-        "pub(crate) fn record_proxy_server_bound_runtime_source",
-        "pub(crate) async fn record_proxy_server_started_info_runtime_source",
-    );
-    let started_source = function_slice(
-        &adapter_source,
-        "pub(crate) async fn record_proxy_server_started_info_runtime_source",
-        "pub(crate) async fn record_proxy_server_stopped_runtime_source",
-    );
-    let stopped_source = function_slice(
-        &adapter_source,
-        "pub(crate) async fn record_proxy_server_stopped_runtime_event_source",
-        "pub(crate) async fn set_active_route_target_runtime_source",
-    );
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
+    let host_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_server.rs"))
+            .expect("read proxy_server.rs");
     let accept_loop_source = function_slice(
         &source,
         "pub(crate) fn spawn_proxy_http_accept_loop",
@@ -23638,29 +23652,53 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
         runtime_state.contains(
             "start_proxy_http_server(&self.config, self.state.clone(), &self.http_server_handles)"
         ),
-        "production ProxyServer::start must delegate start orchestration to proxy_core_adapter"
+        "production ProxyServer::start must delegate start orchestration to the HTTP transport helper"
     );
 
     assert!(
         start_orchestration.contains("record_proxy_server_bound_runtime_source(")
             && start_orchestration.contains("record_proxy_server_started_info_runtime_source("),
-        "HTTP transport start orchestration must use adapter-owned start runtime side-effect helpers"
+        "HTTP transport start orchestration must use host-owned start runtime side-effect helpers"
     );
 
     assert!(
         accept_loop_source
             .contains("record_proxy_server_stopped_runtime_event_source(&state).await"),
-        "HTTP transport accept loop must call adapter-owned stopped runtime side effects"
+        "HTTP transport accept loop must call host-owned stopped runtime side effects"
     );
 
     assert!(
-        bound_source.contains("emit_proxy_server_started_event_source(")
-            && bound_source.contains("record_proxy_server_listen_port_runtime_source(")
-            && started_source.contains("record_proxy_server_started_runtime_source(")
-            && started_source.contains("proxy_server_info_from_parts(")
-            && stopped_source.contains("record_proxy_server_stopped_runtime_source(")
-            && stopped_source.contains("emit_proxy_server_stopped_event_source("),
-        "proxy_core_adapter must own server start/stop event, status, port, and info side effects"
+        host_source.contains("emit_proxy_server_started_event_source(")
+            && host_source.contains("record_proxy_server_listen_port_runtime_source(")
+            && host_source.contains("record_proxy_server_started_runtime_source(")
+            && host_source.contains("proxy_server_info_from_parts(")
+            && host_source.contains("record_proxy_server_stopped_runtime_source(")
+            && host_source.contains("emit_proxy_server_stopped_event_source("),
+        "host proxy_server.rs must own server start/stop event, status, port, and info side effects"
+    );
+
+    for marker in [
+        "pub(crate) fn record_proxy_server_bound_runtime_source",
+        "pub(crate) async fn record_proxy_server_started_info_runtime_source",
+        "pub(crate) async fn record_proxy_server_stopped_runtime_event_source",
+        "pub(crate) async fn record_proxy_server_started_runtime_source",
+        "pub(crate) async fn record_proxy_server_stopped_runtime_source",
+        "fn record_proxy_server_started_status",
+        "fn record_proxy_server_listen_port_runtime_source",
+        "fn emit_proxy_server_started_event_source",
+        "fn emit_proxy_server_stopped_event_source",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter must not own server runtime side-effect helper `{marker}`"
+        );
+    }
+
+    assert!(
+        source.contains(
+            "use crate::proxy::host::cc_switch::proxy_server::{\n    record_proxy_server_bound_runtime_source, record_proxy_server_started_info_runtime_source,\n    record_proxy_server_stopped_runtime_event_source,\n};"
+        ),
+        "HTTP server must import lifecycle runtime helpers from host proxy_server.rs"
     );
 
     let mut violations = Vec::new();
@@ -23796,7 +23834,7 @@ fn production_proxy_server_delegates_route_assembly_to_adapter() {
 }
 
 #[test]
-fn production_proxy_server_delegates_accept_loop_to_adapter() {
+fn production_proxy_server_delegates_accept_loop_to_transport_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
@@ -23816,7 +23854,7 @@ fn production_proxy_server_delegates_accept_loop_to_adapter() {
         start_slice.contains(
             "start_proxy_http_server(&self.config, self.state.clone(), &self.http_server_handles)"
         ),
-        "ProxyServer::start must delegate start orchestration to proxy_core_adapter"
+        "ProxyServer::start must delegate start orchestration to the HTTP transport helper"
     );
 
     assert!(

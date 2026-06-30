@@ -11,7 +11,6 @@ use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
-use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy::provider::codex_provider_upstream_model;
 use crate::proxy::route_attempt::ForwardAttempt;
@@ -26,9 +25,8 @@ use crate::proxy_core::api::domain::{
 };
 use crate::proxy_core::api::management::{ChannelRecord, ChannelRouteSource};
 use crate::proxy_core::api::ports::{
-    proxy_server_info_from_parts, record_active_connection_acquired_status,
-    record_active_connection_released_status, record_proxy_server_stopped_status,
-    CurrentRouteTarget, ProxyRuntimeStatus, ProxyServerInfo,
+    record_active_connection_acquired_status, record_active_connection_released_status,
+    CurrentRouteTarget, ProxyRuntimeStatus,
 };
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, ChannelRouteCandidate,
@@ -264,17 +262,6 @@ pub(crate) async fn record_forward_provider_rectifier_retry_failure_runtime_sour
     );
 }
 
-fn record_proxy_server_started_status(status: &mut ProxyRuntimeStatus, address: &str, port: u16) {
-    crate::proxy_core::api::ports::record_proxy_server_started_status(
-        status,
-        crate::proxy_core::api::ports::ProxyServerStartedStatusInput { address, port },
-    );
-}
-
-fn record_proxy_server_listen_port_runtime_source(port: u16) {
-    crate::proxy::host::cc_switch::global_http_client::set_proxy_port(port);
-}
-
 use crate::proxy_core::api::auth::{
     claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
 };
@@ -317,65 +304,6 @@ fn current_route_target_from_provider(
             channel: None,
         },
     )
-}
-
-pub(crate) async fn record_proxy_server_started_runtime_source(
-    status: &RwLock<ProxyRuntimeStatus>,
-    start_time: &RwLock<Option<std::time::Instant>>,
-    address: &str,
-    port: u16,
-) {
-    {
-        let mut status = status.write().await;
-        record_proxy_server_started_status(&mut status, address, port);
-    }
-    *start_time.write().await = Some(std::time::Instant::now());
-}
-
-pub(crate) fn record_proxy_server_bound_runtime_source(
-    state: &ProxyState,
-    bound_address: &str,
-    port: u16,
-) {
-    emit_proxy_server_started_event_source(state.events.as_ref(), bound_address, port);
-    record_proxy_server_listen_port_runtime_source(port);
-}
-
-pub(crate) async fn record_proxy_server_started_info_runtime_source(
-    state: &ProxyState,
-    listen_address: &str,
-    port: u16,
-) -> ProxyServerInfo {
-    record_proxy_server_started_runtime_source(
-        state.status.as_ref(),
-        state.start_time.as_ref(),
-        listen_address,
-        port,
-    )
-    .await;
-
-    proxy_server_info_from_parts(
-        listen_address.to_string(),
-        port,
-        chrono::Utc::now().to_rfc3339(),
-    )
-}
-
-pub(crate) async fn record_proxy_server_stopped_runtime_source(
-    status: &RwLock<ProxyRuntimeStatus>,
-    start_time: &RwLock<Option<std::time::Instant>>,
-) {
-    {
-        let mut status = status.write().await;
-        record_proxy_server_stopped_status(&mut status);
-    }
-    *start_time.write().await = None;
-}
-
-pub(crate) async fn record_proxy_server_stopped_runtime_event_source(state: &ProxyState) {
-    record_proxy_server_stopped_runtime_source(state.status.as_ref(), state.start_time.as_ref())
-        .await;
-    emit_proxy_server_stopped_event_source(state.events.as_ref());
 }
 
 pub(crate) async fn set_active_route_target_runtime_source(
@@ -829,9 +757,8 @@ use crate::proxy_core::api::config::{
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
 };
 use crate::proxy_core::api::events::{
-    attempt_event, request_started_event, route_selected_event, server_started_event,
-    server_stopped_event, AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase,
-    ProxyCoreEvent,
+    attempt_event, request_started_event, route_selected_event, AttemptEventChannel,
+    AttemptEventPayloadInput, AttemptEventPhase, ProxyCoreEvent,
 };
 use crate::proxy_core::api::management::channel_not_found_error;
 use crate::proxy_core::api::model_catalog::{
@@ -872,18 +799,6 @@ use crate::proxy_core::api::transport::{
     ProxyResult,
 };
 use crate::proxy_core::api::usage::{ModelPricing, UsageRecord};
-
-pub(crate) fn emit_proxy_server_started_event_source(
-    events: &ProxyEventBus,
-    address: &str,
-    port: u16,
-) {
-    emit_proxy_core_event_bus_source(events, server_started_event(address, port));
-}
-
-pub(crate) fn emit_proxy_server_stopped_event_source(events: &ProxyEventBus) {
-    emit_proxy_core_event_bus_source(events, server_stopped_event());
-}
 
 struct ProxyEventBusMessage {
     event_name: String,
@@ -4015,7 +3930,9 @@ mod tests {
         selected_provider_not_applied_message, unselected_provider_fallback_id,
         upstream_proxy_error_response_body, ProxyCoreError, ProxyErrorStatusKind,
     };
-    use crate::proxy_core::api::events::ProxyEventEnvelope;
+    use crate::proxy_core::api::events::{
+        server_started_event, server_stopped_event, ProxyEventEnvelope,
+    };
     use crate::proxy_core::api::management::{
         ChannelKeyRuntimeCandidate, ChannelTestProbeRequest, ProxyChannelModelWriteRequest,
         ProxyChannelWriteRequest, RouteResolveRequest, StreamCheckResult,
