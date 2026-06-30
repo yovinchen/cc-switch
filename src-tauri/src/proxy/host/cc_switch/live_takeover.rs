@@ -11,15 +11,15 @@ use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::ports::{
-    apply_claude_takeover_fields_with_policy, ClaudeTakeoverAuthPolicy,
-};
-use crate::proxy_core::api::ports::{
-    apply_gemini_takeover_env_fields, is_local_proxy_url, live_takeover_app_kinds,
-    live_token_sync_app_label, proxy_live_config_owned_by_takeover, proxy_runtime_status_stopped,
-    remove_claude_takeover_env_fields_if_present,
+    app_proxy_config_with_enabled, apply_gemini_takeover_env_fields, is_local_proxy_url,
+    live_takeover_app_kinds, live_token_sync_app_label, proxy_live_config_owned_by_takeover,
+    proxy_runtime_status_stopped, remove_claude_takeover_env_fields_if_present,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present, sanitize_claude_settings_for_live,
     LiveTokenProviderSettingsIssue,
+};
+use crate::proxy_core::api::ports::{
+    apply_claude_takeover_fields_with_policy, ClaudeTakeoverAuthPolicy,
 };
 use crate::proxy_core::api::ports::{
     proxy_live_urls_from_listen_parts, proxy_server_info_from_parts,
@@ -44,8 +44,8 @@ use crate::proxy_core_adapter::{
     persist_ephemeral_listen_port_if_needed_in_db, persist_hot_switch_current_provider_sources,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
-    provider_effective_settings_with_common_config_from_db, proxy_app_enabled_from_db,
-    proxy_config_from_db, proxy_hot_switch_should_refresh_codex_live_from_backup,
+    provider_effective_settings_with_common_config_from_db, proxy_config_from_db,
+    proxy_hot_switch_should_refresh_codex_live_from_backup,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_hot_switch_should_sync_codex_live_while_proxy_active,
     proxy_hot_switch_target_state_from_db, proxy_official_warning_event_from_current_provider_db,
@@ -53,8 +53,8 @@ use crate::proxy_core_adapter::{
     require_current_provider_for_app_from_db, save_live_backup_value_in_db,
     save_provider_live_backup_from_effective_settings_in_db,
     set_legacy_live_takeover_active_best_effort_in_db, set_legacy_live_takeover_active_in_db,
-    set_proxy_app_enabled_in_db, ssot_live_restore_provider_from_db,
-    sync_provider_settings_with_live_token, update_live_token_sync_provider_settings_in_db,
+    ssot_live_restore_provider_from_db, sync_provider_settings_with_live_token,
+    update_live_token_sync_provider_settings_in_db,
     update_proxy_config_preserving_live_takeover_active_in_db,
     write_ssot_live_restore_provider_with_common_config, CodexLiveWriteProjection,
     CodexTakeoverAuthPolicy,
@@ -89,6 +89,34 @@ async fn proxy_takeover_status_from_host_db(db: &Database) -> ProxyTakeoverStatu
     let codex = proxy_app_enabled_option_from_host_db(db, AppType::Codex).await;
     let gemini = proxy_app_enabled_option_from_host_db(db, AppType::Gemini).await;
     proxy_takeover_status_from_enabled_options(claude, codex, gemini, None, None)
+}
+
+async fn proxy_app_enabled_from_host_db(db: &Database, app_type: &str) -> Result<bool, String> {
+    let config = db
+        .get_proxy_config_for_app(app_type)
+        .await
+        .map_err(|e| format!("获取 {app_type} 配置失败: {e}"))?;
+    Ok(config.enabled)
+}
+
+async fn set_proxy_app_enabled_in_host_db(
+    db: &Database,
+    app_type: &str,
+    enabled: bool,
+) -> Result<(), String> {
+    let config = db
+        .get_proxy_config_for_app(app_type)
+        .await
+        .map_err(|e| format!("获取 {app_type} 配置失败: {e}"))?;
+    db.update_proxy_config_for_app(app_proxy_config_with_enabled(config, enabled))
+        .await
+        .map_err(|e| {
+            if enabled {
+                format!("设置 {app_type} enabled 状态失败: {e}")
+            } else {
+                format!("清除 {app_type} enabled 状态失败: {e}")
+            }
+        })
 }
 
 async fn live_takeover_backup_exists_from_host_db(db: &Database, app_type: &str) -> bool {
@@ -388,7 +416,7 @@ impl ProxyService {
             }
 
             // 2) 已接管则直接返回（幂等）；但如果缺少备份或占位符残留，需要重建接管
-            let proxy_app_enabled = proxy_app_enabled_from_db(&self.db, app_type_str).await?;
+            let proxy_app_enabled = proxy_app_enabled_from_host_db(&self.db, app_type_str).await?;
 
             let mut restore_existing_backup_before_takeover = false;
             if proxy_app_enabled {
@@ -451,7 +479,7 @@ impl ProxyService {
             }
 
             // 6) 设置 proxy_config.enabled = true
-            set_proxy_app_enabled_in_db(&self.db, app_type_str, true).await?;
+            set_proxy_app_enabled_in_host_db(&self.db, app_type_str, true).await?;
 
             // 7) 兼容旧逻辑：写入 any-of 标志（失败不影响功能）
             set_legacy_live_takeover_active_best_effort_in_db(&self.db, true).await;
@@ -469,7 +497,7 @@ impl ProxyService {
         }
 
         // 关闭接管：检查 enabled 状态
-        if !proxy_app_enabled_from_db(&self.db, app_type_str).await? {
+        if !proxy_app_enabled_from_host_db(&self.db, app_type_str).await? {
             return Ok(()); // 未接管，幂等返回
         }
 
@@ -485,7 +513,7 @@ impl ProxyService {
         delete_live_backup_from_host_db(&self.db, app_type_str).await?;
 
         // 3) 设置 proxy_config.enabled = false
-        set_proxy_app_enabled_in_db(&self.db, app_type_str, false).await?;
+        set_proxy_app_enabled_in_host_db(&self.db, app_type_str, false).await?;
 
         // 4) 清除该应用的健康状态（关闭代理时重置队列状态）
         clear_provider_health_for_app_from_host_db(&self.db, app_type_str).await?;

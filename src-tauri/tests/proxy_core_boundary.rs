@@ -272,6 +272,10 @@ const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ENABLED_CONFIG_MARKERS: &[&str] = &[
     "current_config.enabled",
     "updated_config.enabled",
 ];
+const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ENABLED_CONFIG_ADAPTER_MARKERS: &[&str] = &[
+    "pub(crate) async fn proxy_app_enabled_from_db",
+    "pub(crate) async fn set_proxy_app_enabled_in_db",
+];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_SOURCE_ADAPTER_MARKERS: &[&str] =
     &["pub(crate) async fn live_takeover_backup_exists_from_db"];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_DELETE_MARKERS: &[&str] = &[".delete_live_backup("];
@@ -7302,6 +7306,8 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn auto_failover_toggle_plan_from_sources",
         "pub(crate) fn failover_switch_app_enabled_from_config_result",
         "pub(crate) async fn failover_switch_app_enabled_from_db",
+        "pub(crate) async fn proxy_app_enabled_from_db",
+        "pub(crate) async fn set_proxy_app_enabled_in_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) async fn delete_live_backup_best_effort_in_db",
         "pub(crate) async fn delete_live_backup_in_db",
@@ -15159,10 +15165,12 @@ fn production_proxy_service_delegates_live_token_sync_source_to_adapter() {
 }
 
 #[test]
-fn production_proxy_service_delegates_takeover_enabled_config_to_adapter() {
+fn production_proxy_service_owns_takeover_enabled_config_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -15185,9 +15193,34 @@ fn production_proxy_service_delegates_takeover_enabled_config_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService::set_takeover_for_app must delegate proxy_config enabled reads and writes to proxy_core_adapter:\n{}",
+        "ProxyService::set_takeover_for_app must route proxy_config enabled reads and writes through host-local helpers:\n{}",
         violations.join("\n")
     );
+    assert!(
+        function.contains("proxy_app_enabled_from_host_db(&self.db, app_type_str).await?")
+            && function.contains("set_proxy_app_enabled_in_host_db(&self.db, app_type_str, true).await?")
+            && function.contains("set_proxy_app_enabled_in_host_db(&self.db, app_type_str, false).await?"),
+        "ProxyService::set_takeover_for_app should read and write enabled state through host-local helpers"
+    );
+    assert!(
+        source.contains("async fn proxy_app_enabled_from_host_db(")
+            && source.contains("async fn set_proxy_app_enabled_in_host_db(")
+            && source.contains(".get_proxy_config_for_app(app_type)")
+            && source.contains(
+                ".update_proxy_config_for_app(app_proxy_config_with_enabled(config, enabled))"
+            )
+            && source.contains("获取 {app_type} 配置失败: {e}")
+            && source.contains("设置 {app_type} enabled 状态失败: {e}")
+            && source.contains("清除 {app_type} enabled 状态失败: {e}"),
+        "ProxyService should own takeover enabled config source and error projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_ENABLED_CONFIG_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep takeover enabled config wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]

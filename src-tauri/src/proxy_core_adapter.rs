@@ -819,37 +819,6 @@ pub(crate) async fn proxy_app_config_from_db_source(
     ))
 }
 
-pub(crate) async fn proxy_app_enabled_from_db(
-    db: &Database,
-    app_type: &str,
-) -> Result<bool, String> {
-    let config = db
-        .get_proxy_config_for_app(app_type)
-        .await
-        .map_err(|e| format!("获取 {app_type} 配置失败: {e}"))?;
-    Ok(config.enabled)
-}
-
-pub(crate) async fn set_proxy_app_enabled_in_db(
-    db: &Database,
-    app_type: &str,
-    enabled: bool,
-) -> Result<(), String> {
-    let config = db
-        .get_proxy_config_for_app(app_type)
-        .await
-        .map_err(|e| format!("获取 {app_type} 配置失败: {e}"))?;
-    db.update_proxy_config_for_app(proxy_app_config_with_enabled(config, enabled))
-        .await
-        .map_err(|e| {
-            if enabled {
-                format!("设置 {app_type} enabled 状态失败: {e}")
-            } else {
-                format!("清除 {app_type} enabled 状态失败: {e}")
-            }
-        })
-}
-
 pub(crate) async fn proxy_config_from_db(db: &Database) -> Result<ProxyConfig, String> {
     db.get_proxy_config()
         .await
