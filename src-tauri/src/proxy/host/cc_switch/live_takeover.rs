@@ -31,17 +31,16 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
-    apply_codex_unified_session_bucket_for_provider, cleanup_all_live_backups_best_effort_in_db,
-    clear_all_provider_health_in_db, codex_backup_projection_error_message,
-    codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
-    codex_provider_live_write_parts, current_provider_for_app_from_db,
-    delete_all_live_backups_best_effort_in_db, delete_all_live_backups_in_db,
-    disable_global_proxy_best_effort_in_db, enable_global_proxy_in_db,
-    existing_live_backup_value_for_update_from_db, live_backup_config_for_simple_restore_from_db,
-    live_backup_snapshot_from_live_config, live_backup_value_for_restore_from_db,
-    live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
-    live_token_sync_provider_from_db, persist_ephemeral_listen_port_if_needed_in_db,
-    persist_hot_switch_current_provider_sources, preserve_codex_mcp_servers_from_existing_config,
+    apply_codex_unified_session_bucket_for_provider, clear_all_provider_health_in_db,
+    codex_backup_projection_error_message, codex_live_write_projection,
+    codex_preserved_auth_live_config_text_for_configured_policy, codex_provider_live_write_parts,
+    current_provider_for_app_from_db, disable_global_proxy_best_effort_in_db,
+    enable_global_proxy_in_db, existing_live_backup_value_for_update_from_db,
+    live_backup_config_for_simple_restore_from_db, live_backup_snapshot_from_live_config,
+    live_backup_value_for_restore_from_db, live_config_has_proxy_placeholder_for_app,
+    live_takeover_config_matches_proxy_for_app, live_token_sync_provider_from_db,
+    persist_ephemeral_listen_port_if_needed_in_db, persist_hot_switch_current_provider_sources,
+    preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     provider_effective_settings_with_common_config_from_db, proxy_config_from_db,
     proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -161,6 +160,22 @@ async fn clear_legacy_live_takeover_active_flag_strict_from_host_db(
     db.set_live_takeover_active(false)
         .await
         .map_err(|e| format!("清除接管状态失败: {e}"))
+}
+
+async fn cleanup_all_live_backups_best_effort_from_host_db(db: &Database) {
+    if let Err(clean_err) = db.delete_all_live_backups().await {
+        log::warn!("清理 Live 备份失败: {clean_err}");
+    }
+}
+
+async fn delete_all_live_backups_best_effort_from_host_db(db: &Database) {
+    let _ = db.delete_all_live_backups().await;
+}
+
+async fn delete_all_live_backups_from_host_db(db: &Database) -> Result<(), String> {
+    db.delete_all_live_backups()
+        .await
+        .map_err(|e| format!("删除备份失败: {e}"))
 }
 
 async fn clear_provider_health_for_app_from_host_db(
@@ -357,7 +372,7 @@ impl ProxyService {
         // 2. 同步 Live 配置中的 Token 到数据库（确保代理能读到最新的 Token）
         if let Err(e) = self.sync_live_to_providers().await {
             // 同步失败时尚未写入接管配置，但备份可能包含敏感信息，尽量清理
-            cleanup_all_live_backups_best_effort_in_db(&self.db).await;
+            cleanup_all_live_backups_best_effort_from_host_db(&self.db).await;
             return Err(e);
         }
 
@@ -366,7 +381,7 @@ impl ProxyService {
             match self.start_before_takeover_if_ephemeral_port().await {
                 Ok(started) => started,
                 Err(e) => {
-                    cleanup_all_live_backups_best_effort_in_db(&self.db).await;
+                    cleanup_all_live_backups_best_effort_from_host_db(&self.db).await;
                     return Err(e);
                 }
             };
@@ -374,7 +389,7 @@ impl ProxyService {
         // 3. 在写入接管配置之前先落盘接管标志：
         //    这样即使在接管过程中断电/kill，下次启动也能检测到并自动恢复。
         if let Err(e) = set_legacy_live_takeover_active_in_db(&self.db, true).await {
-            cleanup_all_live_backups_best_effort_in_db(&self.db).await;
+            cleanup_all_live_backups_best_effort_from_host_db(&self.db).await;
             if started_proxy_before_takeover {
                 let _ = self.stop().await;
             }
@@ -388,7 +403,7 @@ impl ProxyService {
             match self.restore_live_configs().await {
                 Ok(()) => {
                     set_legacy_live_takeover_active_best_effort_in_db(&self.db, false).await;
-                    delete_all_live_backups_best_effort_in_db(&self.db).await;
+                    delete_all_live_backups_best_effort_from_host_db(&self.db).await;
                 }
                 Err(restore_err) => {
                     log::error!("恢复原始配置失败，将保留备份以便下次启动恢复: {restore_err}");
@@ -409,7 +424,7 @@ impl ProxyService {
                 match self.restore_live_configs().await {
                     Ok(()) => {
                         set_legacy_live_takeover_active_best_effort_in_db(&self.db, false).await;
-                        delete_all_live_backups_best_effort_in_db(&self.db).await;
+                        delete_all_live_backups_best_effort_from_host_db(&self.db).await;
                     }
                     Err(restore_err) => {
                         log::error!("恢复原始配置失败，将保留备份以便下次启动恢复: {restore_err}");
@@ -690,7 +705,7 @@ impl ProxyService {
         clear_live_takeover_enabled_flags_from_host_db(&self.db).await;
 
         // 5. 删除备份
-        delete_all_live_backups_in_db(&self.db).await?;
+        delete_all_live_backups_from_host_db(&self.db).await?;
 
         // 6. 重置健康状态（让健康徽章恢复为正常）
         clear_all_provider_health_in_db(&self.db).await?;
@@ -717,7 +732,7 @@ impl ProxyService {
         clear_legacy_live_takeover_active_flag_from_host_db(&self.db).await;
 
         // 4. 删除备份（Live 配置已恢复，备份不再需要）
-        delete_all_live_backups_in_db(&self.db).await?;
+        delete_all_live_backups_from_host_db(&self.db).await?;
 
         // 5. 重置健康状态
         clear_all_provider_health_in_db(&self.db).await?;
@@ -1248,7 +1263,7 @@ impl ProxyService {
         clear_legacy_live_takeover_active_flag_strict_from_host_db(&self.db).await?;
 
         // 3. 删除备份
-        delete_all_live_backups_in_db(&self.db).await?;
+        delete_all_live_backups_from_host_db(&self.db).await?;
 
         log::info!("已从异常退出中恢复 Live 配置");
         Ok(())

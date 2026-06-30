@@ -293,6 +293,11 @@ const FORBIDDEN_PROXY_SERVICE_TAKEOVER_HEALTH_CLEANUP_ADAPTER_MARKERS: &[&str] =
     &["pub(crate) async fn clear_provider_health_for_app_in_db"];
 const FORBIDDEN_PROXY_SERVICE_START_TAKEOVER_BACKUP_CLEANUP_MARKERS: &[&str] =
     &[".delete_all_live_backups(", "清理 Live 备份失败"];
+const FORBIDDEN_PROXY_SERVICE_ALL_BACKUP_CLEANUP_ADAPTER_MARKERS: &[&str] = &[
+    "pub(crate) async fn cleanup_all_live_backups_best_effort_in_db",
+    "pub(crate) async fn delete_all_live_backups_best_effort_in_db",
+    "pub(crate) async fn delete_all_live_backups_in_db",
+];
 const FORBIDDEN_PROXY_SERVICE_START_TAKEOVER_ACTIVE_FLAG_MARKERS: &[&str] =
     &[".set_live_takeover_active(", "设置接管状态失败"];
 const FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_ENABLED_CONFIG_MARKERS: &[&str] = &[
@@ -7318,6 +7323,9 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) async fn clear_live_takeover_enabled_flags_in_db",
         "pub(crate) async fn clear_legacy_live_takeover_active_flag_in_db",
         "pub(crate) async fn clear_legacy_live_takeover_active_flag_strict_in_db",
+        "pub(crate) async fn cleanup_all_live_backups_best_effort_in_db",
+        "pub(crate) async fn delete_all_live_backups_best_effort_in_db",
+        "pub(crate) async fn delete_all_live_backups_in_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) async fn delete_live_backup_best_effort_in_db",
         "pub(crate) async fn delete_live_backup_in_db",
@@ -15422,10 +15430,12 @@ fn production_proxy_service_owns_takeover_health_cleanup_source() {
 }
 
 #[test]
-fn production_proxy_service_delegates_start_takeover_backup_cleanup_to_adapter() {
+fn production_proxy_service_owns_all_backup_cleanup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "pub async fn start_with_takeover",
@@ -15448,9 +15458,31 @@ fn production_proxy_service_delegates_start_takeover_backup_cleanup_to_adapter()
 
     assert!(
         violations.is_empty(),
-        "ProxyService::start_with_takeover must delegate all-backup cleanup to proxy_core_adapter:\n{}",
+        "ProxyService::start_with_takeover must route all-backup cleanup through host-local helpers:\n{}",
         violations.join("\n")
     );
+    assert!(
+        function.contains("cleanup_all_live_backups_best_effort_from_host_db(&self.db).await")
+            && function
+                .contains("delete_all_live_backups_best_effort_from_host_db(&self.db).await"),
+        "ProxyService::start_with_takeover should clean all Live backups through host-local helpers"
+    );
+    assert!(
+        source.contains("async fn cleanup_all_live_backups_best_effort_from_host_db(")
+            && source.contains("async fn delete_all_live_backups_best_effort_from_host_db(")
+            && source.contains("async fn delete_all_live_backups_from_host_db(")
+            && source.contains(".delete_all_live_backups().await")
+            && source.contains("清理 Live 备份失败")
+            && source.contains("删除备份失败"),
+        "ProxyService should own all-backup cleanup source and error/log projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_ALL_BACKUP_CLEANUP_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep all-backup cleanup wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
@@ -15916,6 +15948,11 @@ fn production_proxy_service_owns_stop_restore_active_flag_cleanup_source() {
         "ProxyService::stop_with_restore should clear the legacy active flag through its strict host-local helper"
     );
     assert!(
+        functions.iter().all(|(_, function)| function
+            .contains("delete_all_live_backups_from_host_db(&self.db).await?")),
+        "ProxyService stop restore paths should delete all Live backups through the strict host-local helper"
+    );
+    assert!(
         source.contains("async fn clear_legacy_live_takeover_active_flag_strict_from_host_db(")
             && source.contains(".set_live_takeover_active(false)")
             && source.contains("清除接管状态失败"),
@@ -15965,6 +16002,10 @@ fn production_proxy_service_owns_crash_recovery_active_flag_cleanup_source() {
     assert!(
         function.contains("clear_legacy_live_takeover_active_flag_strict_from_host_db(&self.db).await?"),
         "ProxyService::recover_from_crash should clear the legacy active flag through its strict host-local helper"
+    );
+    assert!(
+        function.contains("delete_all_live_backups_from_host_db(&self.db).await?"),
+        "ProxyService::recover_from_crash should delete all Live backups through the strict host-local helper"
     );
     assert!(
         source.contains("async fn clear_legacy_live_takeover_active_flag_strict_from_host_db(")
