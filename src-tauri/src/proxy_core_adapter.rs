@@ -168,7 +168,6 @@ use crate::proxy_core::api::ports::{
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
     provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
-    proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_hot_switch_should_refresh_codex_live_from_backup as core_proxy_hot_switch_should_refresh_codex_live_from_backup,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active as core_proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_hot_switch_should_sync_codex_live_while_proxy_active as core_proxy_hot_switch_should_sync_codex_live_while_proxy_active,
@@ -786,39 +785,6 @@ pub(crate) async fn proxy_app_config_from_db_source(
         db.get_optimizer_config().unwrap_or_default(),
         db.get_copilot_optimizer_config().unwrap_or_default(),
     ))
-}
-
-pub(crate) async fn proxy_config_from_db(db: &Database) -> Result<ProxyConfig, String> {
-    db.get_proxy_config()
-        .await
-        .map_err(|e| format!("获取代理配置失败: {e}"))
-}
-
-pub(crate) async fn persist_ephemeral_listen_port_if_needed_in_db(
-    db: &Database,
-    config: &ProxyConfig,
-    actual_port: u16,
-) -> Result<(), String> {
-    let Some(resolved_config) = proxy_config_with_ephemeral_listen_port(config, actual_port) else {
-        return Ok(());
-    };
-
-    db.update_proxy_config(resolved_config)
-        .await
-        .map_err(|e| format!("保存动态代理端口失败: {e}"))
-}
-
-pub(crate) async fn update_proxy_config_preserving_live_takeover_active_in_db(
-    db: &Database,
-    config: &ProxyConfig,
-) -> Result<(ProxyConfig, ProxyConfig), String> {
-    let previous = proxy_config_from_db(db).await?;
-    let new_config = proxy_config_preserving_live_takeover_active(&previous, config.clone());
-
-    db.update_proxy_config(new_config.clone())
-        .await
-        .map_err(|e| format!("保存代理配置失败: {e}"))?;
-    Ok((previous, new_config))
 }
 
 pub(crate) async fn save_live_backup_value_in_db(

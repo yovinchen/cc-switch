@@ -10,7 +10,6 @@ use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};
 use crate::proxy_core::api::domain::AppKind;
-use crate::proxy_core::api::ports::proxy_config_with_live_takeover_active;
 use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled, apply_gemini_takeover_env_fields, is_local_proxy_url,
     live_takeover_app_kinds, live_token_sync_app_label, proxy_live_config_owned_by_takeover,
@@ -21,6 +20,10 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core::api::ports::{
     apply_claude_takeover_fields_with_policy, ClaudeTakeoverAuthPolicy,
+};
+use crate::proxy_core::api::ports::{
+    proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
+    proxy_config_with_live_takeover_active,
 };
 use crate::proxy_core::api::ports::{
     proxy_live_urls_from_listen_parts, proxy_server_info_from_parts,
@@ -37,10 +40,10 @@ use crate::proxy_core_adapter::{
     existing_live_backup_value_for_update_from_db, live_backup_config_for_simple_restore_from_db,
     live_backup_snapshot_from_live_config, live_backup_value_for_restore_from_db,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
-    live_token_sync_provider_from_db, persist_ephemeral_listen_port_if_needed_in_db,
-    persist_hot_switch_current_provider_sources, preserve_codex_mcp_servers_from_existing_config,
+    live_token_sync_provider_from_db, persist_hot_switch_current_provider_sources,
+    preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
-    provider_effective_settings_with_common_config_from_db, proxy_config_from_db,
+    provider_effective_settings_with_common_config_from_db,
     proxy_hot_switch_should_refresh_codex_live_from_backup,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_hot_switch_should_sync_codex_live_while_proxy_active,
@@ -49,7 +52,6 @@ use crate::proxy_core_adapter::{
     require_current_provider_for_app_from_db, save_live_backup_value_in_db,
     save_provider_live_backup_from_effective_settings_in_db, ssot_live_restore_provider_from_db,
     sync_provider_settings_with_live_token, update_live_token_sync_provider_settings_in_db,
-    update_proxy_config_preserving_live_takeover_active_in_db,
     write_ssot_live_restore_provider_with_common_config, CodexLiveWriteProjection,
     CodexTakeoverAuthPolicy,
 };
@@ -169,6 +171,39 @@ async fn disable_global_proxy_best_effort_from_host_db(db: &Database) -> Result<
         }
     }
     Ok(())
+}
+
+async fn proxy_config_from_host_db(db: &Database) -> Result<ProxyConfig, String> {
+    db.get_proxy_config()
+        .await
+        .map_err(|e| format!("获取代理配置失败: {e}"))
+}
+
+async fn persist_ephemeral_listen_port_if_needed_in_host_db(
+    db: &Database,
+    config: &ProxyConfig,
+    actual_port: u16,
+) -> Result<(), String> {
+    let Some(resolved_config) = proxy_config_with_ephemeral_listen_port(config, actual_port) else {
+        return Ok(());
+    };
+
+    db.update_proxy_config(resolved_config)
+        .await
+        .map_err(|e| format!("保存动态代理端口失败: {e}"))
+}
+
+async fn update_proxy_config_preserving_live_takeover_active_in_host_db(
+    db: &Database,
+    config: &ProxyConfig,
+) -> Result<(ProxyConfig, ProxyConfig), String> {
+    let previous = proxy_config_from_host_db(db).await?;
+    let new_config = proxy_config_preserving_live_takeover_active(&previous, config.clone());
+
+    db.update_proxy_config(new_config.clone())
+        .await
+        .map_err(|e| format!("保存代理配置失败: {e}"))?;
+    Ok((previous, new_config))
 }
 
 async fn clear_legacy_live_takeover_active_flag_from_host_db(db: &Database) {
@@ -354,7 +389,7 @@ impl ProxyService {
         enable_global_proxy_from_host_db(&self.db).await?;
 
         // 2. 获取配置
-        let config = proxy_config_from_db(&self.db).await?;
+        let config = proxy_config_from_host_db(&self.db).await?;
 
         // 3. 若已在运行：确保持久化状态（如需要）并返回当前信息
         if let Some(server) = self.server.read().await.as_ref() {
@@ -394,11 +429,11 @@ impl ProxyService {
         config: &ProxyConfig,
         actual_port: u16,
     ) -> Result<(), String> {
-        persist_ephemeral_listen_port_if_needed_in_db(&self.db, config, actual_port).await
+        persist_ephemeral_listen_port_if_needed_in_host_db(&self.db, config, actual_port).await
     }
 
     async fn start_before_takeover_if_ephemeral_port(&self) -> Result<bool, String> {
-        let config = proxy_config_from_db(&self.db).await?;
+        let config = proxy_config_from_host_db(&self.db).await?;
         if config.listen_port != 0 || self.is_running().await {
             return Ok(false);
         }
@@ -861,7 +896,7 @@ impl ProxyService {
 
     /// 构造写入 Live 的代理地址（处理 0.0.0.0 / IPv6 等特殊情况）
     async fn build_proxy_urls(&self) -> Result<(String, String), String> {
-        let config = proxy_config_from_db(&self.db).await?;
+        let config = proxy_config_from_host_db(&self.db).await?;
 
         let mut listen_port = config.listen_port;
         if let Some(server) = self.server.read().await.as_ref() {
@@ -1654,13 +1689,14 @@ impl ProxyService {
 
     /// 获取代理配置
     pub async fn get_config(&self) -> Result<ProxyConfig, String> {
-        proxy_config_from_db(&self.db).await
+        proxy_config_from_host_db(&self.db).await
     }
 
     /// 更新代理配置
     pub async fn update_config(&self, config: &ProxyConfig) -> Result<(), String> {
         let (previous, new_config) =
-            update_proxy_config_preserving_live_takeover_active_in_db(&self.db, config).await?;
+            update_proxy_config_preserving_live_takeover_active_in_host_db(&self.db, config)
+                .await?;
 
         // 检查服务器当前状态
         let mut server_guard = self.server.write().await;

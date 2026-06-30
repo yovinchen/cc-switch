@@ -415,6 +415,11 @@ const FORBIDDEN_PROXY_SERVICE_PROXY_CONFIG_SOURCE_MARKERS: &[&str] = &[
     "保存代理配置失败",
     "保存动态代理端口失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_PROXY_CONFIG_SOURCE_ADAPTER_MARKERS: &[&str] = &[
+    "pub(crate) async fn proxy_config_from_db",
+    "pub(crate) async fn persist_ephemeral_listen_port_if_needed_in_db",
+    "pub(crate) async fn update_proxy_config_preserving_live_takeover_active_in_db",
+];
 const FORBIDDEN_PROXY_SERVICE_SERVER_FACTORY_MARKERS: &[&str] = &["ProxyServer::new("];
 const FORBIDDEN_PROXY_SERVICE_SERVER_TYPE_MARKERS: &[&str] = &["crate::proxy::server::ProxyServer"];
 const FORBIDDEN_PROXY_SERVER_RUNTIME_ASSEMBLY_MARKERS: &[&str] = &[
@@ -7340,6 +7345,9 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) async fn set_legacy_live_takeover_active_in_db",
         "pub(crate) async fn enable_global_proxy_in_db",
         "pub(crate) async fn disable_global_proxy_best_effort_in_db",
+        "pub(crate) async fn proxy_config_from_db",
+        "pub(crate) async fn persist_ephemeral_listen_port_if_needed_in_db",
+        "pub(crate) async fn update_proxy_config_preserving_live_takeover_active_in_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) async fn delete_live_backup_best_effort_in_db",
         "pub(crate) async fn delete_live_backup_in_db",
@@ -15063,7 +15071,7 @@ fn production_proxy_service_delegates_live_takeover_app_catalog_to_adapter() {
     ];
 
     let mut violations = Vec::new();
-    for (function_name, function) in functions {
+    for (function_name, function) in &functions {
         for (line_index, line) in production_lines(function) {
             let code = line.split("//").next().unwrap_or_default();
             for marker in FORBIDDEN_PROXY_SERVICE_LIVE_TAKEOVER_APP_LIST_MARKERS {
@@ -16157,32 +16165,34 @@ fn production_proxy_service_owns_global_proxy_enabled_source() {
 }
 
 #[test]
-fn production_proxy_service_delegates_proxy_config_source_to_adapter() {
+fn production_proxy_service_owns_proxy_config_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let functions = [
         (
             "start",
             function_slice(
                 &source,
                 "pub async fn start",
-                "async fn persist_ephemeral_listen_port_if_needed",
+                "    async fn persist_ephemeral_listen_port_if_needed",
             ),
         ),
         (
             "persist_ephemeral_listen_port_if_needed",
             function_slice(
                 &source,
-                "async fn persist_ephemeral_listen_port_if_needed",
-                "async fn start_before_takeover_if_ephemeral_port",
+                "    async fn persist_ephemeral_listen_port_if_needed",
+                "    async fn start_before_takeover_if_ephemeral_port",
             ),
         ),
         (
             "start_before_takeover_if_ephemeral_port",
             function_slice(
                 &source,
-                "async fn start_before_takeover_if_ephemeral_port",
+                "    async fn start_before_takeover_if_ephemeral_port",
                 "/// 启动代理服务器（带 Live 配置接管）",
             ),
         ),
@@ -16226,9 +16236,78 @@ fn production_proxy_service_delegates_proxy_config_source_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService must delegate proxy_config source reads and persistence to proxy_core_adapter:\n{}",
+        "ProxyService public lifecycle methods must route proxy_config source reads and persistence through host-local helpers:\n{}",
         violations.join("\n")
     );
+    assert!(
+        functions.iter().any(|(name, function)| *name == "start"
+            && function.contains("let config = proxy_config_from_host_db(&self.db).await?")),
+        "ProxyService::start should load proxy config through the host-local helper"
+    );
+    assert!(
+        functions
+            .iter()
+            .any(|(name, function)| *name == "persist_ephemeral_listen_port_if_needed"
+                && function.contains(
+                    "persist_ephemeral_listen_port_if_needed_in_host_db(&self.db, config, actual_port).await"
+                )),
+        "ProxyService::persist_ephemeral_listen_port_if_needed should persist through the host-local helper"
+    );
+    assert!(
+        functions
+            .iter()
+            .any(|(name, function)| *name == "start_before_takeover_if_ephemeral_port"
+                && function.contains("let config = proxy_config_from_host_db(&self.db).await?")),
+        "ProxyService::start_before_takeover_if_ephemeral_port should load proxy config through the host-local helper"
+    );
+    assert!(
+        functions
+            .iter()
+            .any(|(name, function)| *name == "build_proxy_urls"
+                && function.contains("let config = proxy_config_from_host_db(&self.db).await?")),
+        "ProxyService::build_proxy_urls should load proxy config through the host-local helper"
+    );
+    assert!(
+        functions
+            .iter()
+            .any(|(name, function)| *name == "get_config"
+                && function.contains("proxy_config_from_host_db(&self.db).await")),
+        "ProxyService::get_config should load proxy config through the host-local helper"
+    );
+    assert!(
+        functions.iter().any(|(name, function)| {
+            *name == "update_config"
+            && function.contains(
+                "update_proxy_config_preserving_live_takeover_active_in_host_db(&self.db, config)"
+            )
+        }),
+        "ProxyService::update_config should save proxy config through the host-local helper"
+    );
+    assert!(
+        source.contains("async fn proxy_config_from_host_db(")
+            && source.contains(".get_proxy_config().await")
+            && source.contains("获取代理配置失败")
+            && source.contains("async fn persist_ephemeral_listen_port_if_needed_in_host_db(")
+            && source.contains("proxy_config_with_ephemeral_listen_port(config, actual_port)")
+            && source.contains(".update_proxy_config(resolved_config)")
+            && source.contains("保存动态代理端口失败")
+            && source.contains(
+                "async fn update_proxy_config_preserving_live_takeover_active_in_host_db("
+            )
+            && source.contains(
+                "proxy_config_preserving_live_takeover_active(&previous, config.clone())"
+            )
+            && source.contains(".update_proxy_config(new_config.clone())")
+            && source.contains("保存代理配置失败"),
+        "ProxyService should own proxy_config DB source/persistence and error projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_PROXY_CONFIG_SOURCE_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep proxy_config source wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
