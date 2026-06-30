@@ -269,6 +269,10 @@ const FORBIDDEN_PROXY_SERVICE_LIVE_TOKEN_SYNC_SOURCE_MARKERS: &[&str] = &[
     "同步 {app_label} Token 到数据库失败",
     "match app_type",
 ];
+const FORBIDDEN_PROXY_SERVICE_LIVE_TOKEN_SYNC_SOURCE_ADAPTER_MARKERS: &[&str] = &[
+    "pub(crate) fn live_token_sync_provider_from_db",
+    "pub(crate) fn update_live_token_sync_provider_settings_in_db",
+];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ENABLED_CONFIG_MARKERS: &[&str] = &[
     ".get_proxy_config_for_app(",
     ".update_proxy_config_for_app(",
@@ -7369,6 +7373,8 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) async fn live_backup_config_for_simple_restore_from_db",
         "pub(crate) fn current_provider_for_app_from_db",
         "pub(crate) fn require_current_provider_for_app_from_db",
+        "pub(crate) fn live_token_sync_provider_from_db",
+        "pub(crate) fn update_live_token_sync_provider_settings_in_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) async fn delete_live_backup_best_effort_in_db",
         "pub(crate) async fn delete_live_backup_in_db",
@@ -15231,10 +15237,12 @@ fn production_proxy_service_owns_current_provider_source() {
 }
 
 #[test]
-fn production_proxy_service_delegates_live_token_sync_source_to_adapter() {
+fn production_proxy_service_owns_live_token_sync_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "async fn sync_live_config_to_provider",
@@ -15257,9 +15265,37 @@ fn production_proxy_service_delegates_live_token_sync_source_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService::sync_live_config_to_provider must delegate current-provider source reads and app support labels to proxy_core_adapter:\n{}",
+        "ProxyService::sync_live_config_to_provider must route provider reads and settings writes through host-local helpers:\n{}",
         violations.join("\n")
     );
+    assert!(
+        function.contains("live_token_sync_app_label(&AppKind::from(app_type))")
+            && function.contains(
+                "live_token_sync_provider_from_host_db(&self.db, app_type, app_label)?"
+            )
+            && function.contains("update_live_token_sync_provider_settings_in_host_db("),
+        "ProxyService::sync_live_config_to_provider should keep app support policy in core and route DB source/write through host-local helpers"
+    );
+    assert!(
+        source.contains("fn live_token_sync_provider_from_host_db(")
+            && source.contains("crate::settings::get_effective_current_provider(db, app_type)")
+            && source.contains(".get_provider_by_id(&provider_id, app_type.as_str())")
+            && source.contains("获取 {app_label} 当前供应商失败")
+            && source.contains("fn update_live_token_sync_provider_settings_in_host_db(")
+            && source.contains(
+                ".update_provider_settings_config(app_type.as_str(), provider_id, settings_config)"
+            )
+            && source.contains("同步 {app_label} Token 到数据库失败")
+            && source.contains("已同步 {app_label} Token 到数据库 (provider: {provider_id})"),
+        "ProxyService should own live-token provider source and provider-settings write projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_LIVE_TOKEN_SYNC_SOURCE_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep live-token sync source wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]

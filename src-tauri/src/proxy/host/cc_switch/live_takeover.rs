@@ -39,8 +39,7 @@ use crate::proxy_core_adapter::{
     codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
     codex_provider_live_write_parts, live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
-    live_token_sync_provider_from_db, persist_hot_switch_current_provider_sources,
-    preserve_codex_mcp_servers_from_existing_config,
+    persist_hot_switch_current_provider_sources, preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     provider_effective_settings_with_common_config_from_db,
     proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -49,7 +48,6 @@ use crate::proxy_core_adapter::{
     proxy_hot_switch_target_state_from_db, proxy_official_warning_event_from_current_provider_db,
     proxy_server_from_runtime_config, remove_codex_takeover_config_placeholders_if_present,
     ssot_live_restore_provider_from_db, sync_provider_settings_with_live_token,
-    update_live_token_sync_provider_settings_in_db,
     write_ssot_live_restore_provider_with_common_config, CodexLiveWriteProjection,
     CodexTakeoverAuthPolicy,
 };
@@ -320,6 +318,39 @@ fn require_current_provider_for_app_from_host_db(
 ) -> Result<Provider, String> {
     current_provider_for_app_from_host_db(db, app_type)?
         .ok_or_else(|| format!("{app_type:?} 当前供应商不存在，无法接管 Live 配置"))
+}
+
+fn live_token_sync_provider_from_host_db(
+    db: &Database,
+    app_type: &AppType,
+    app_label: &str,
+) -> Result<Option<Provider>, String> {
+    let Some(provider_id) = crate::settings::get_effective_current_provider(db, app_type)
+        .map_err(|error| format!("获取 {app_label} 当前供应商失败: {error}"))?
+    else {
+        return Ok(None);
+    };
+
+    Ok(db
+        .get_provider_by_id(&provider_id, app_type.as_str())
+        .ok()
+        .flatten())
+}
+
+fn update_live_token_sync_provider_settings_in_host_db(
+    db: &Database,
+    app_type: &AppType,
+    app_label: &str,
+    provider_id: &str,
+    settings_config: &Value,
+) {
+    if let Err(e) =
+        db.update_provider_settings_config(app_type.as_str(), provider_id, settings_config)
+    {
+        log::warn!("同步 {app_label} Token 到数据库失败: {e}");
+    } else {
+        log::info!("已同步 {app_label} Token 到数据库 (provider: {provider_id})");
+    }
 }
 
 async fn clear_legacy_live_takeover_active_flag_from_host_db(db: &Database) {
@@ -796,7 +827,9 @@ impl ProxyService {
         let Some(app_label) = live_token_sync_app_label(&AppKind::from(app_type)) else {
             return Ok(());
         };
-        let Some(mut provider) = live_token_sync_provider_from_db(&self.db, app_type)? else {
+        let Some(mut provider) =
+            live_token_sync_provider_from_host_db(&self.db, app_type, app_label)?
+        else {
             return Ok(());
         };
 
@@ -808,7 +841,7 @@ impl ProxyService {
             &mut provider,
             live_config,
         ) {
-            update_live_token_sync_provider_settings_in_db(
+            update_live_token_sync_provider_settings_in_host_db(
                 &self.db,
                 app_type,
                 app_label,

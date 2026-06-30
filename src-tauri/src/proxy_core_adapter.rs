@@ -1648,43 +1648,6 @@ pub(crate) fn write_ssot_live_restore_provider_with_common_config(
         .map_err(|e| format!("写入 {app_type:?} Live 配置失败: {e}"))
 }
 
-pub(crate) fn live_token_sync_provider_from_db(
-    db: &Database,
-    app_type: &AppType,
-) -> Result<Option<Provider>, String> {
-    let Some(app_label) =
-        crate::proxy_core::api::ports::live_token_sync_app_label(&AppKind::from(app_type))
-    else {
-        return Ok(None);
-    };
-    let Some(provider_id) = crate::settings::get_effective_current_provider(db, app_type)
-        .map_err(|error| format!("获取 {app_label} 当前供应商失败: {error}"))?
-    else {
-        return Ok(None);
-    };
-
-    Ok(db
-        .get_provider_by_id(&provider_id, app_type.as_str())
-        .ok()
-        .flatten())
-}
-
-pub(crate) fn update_live_token_sync_provider_settings_in_db(
-    db: &Database,
-    app_type: &AppType,
-    app_label: &str,
-    provider_id: &str,
-    settings_config: &Value,
-) {
-    if let Err(e) =
-        db.update_provider_settings_config(app_type.as_str(), provider_id, settings_config)
-    {
-        log::warn!("同步 {app_label} Token 到数据库失败: {e}");
-    } else {
-        log::info!("已同步 {app_label} Token 到数据库 (provider: {provider_id})");
-    }
-}
-
 pub(crate) struct ProxyEventBusMessage {
     pub(crate) event_name: String,
     pub(crate) payload: Value,
