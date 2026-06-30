@@ -1931,6 +1931,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1367. Usage pricing lookup bridge 已从 `proxy_core_adapter` 移到 `proxy/host/cc_switch/database_usage_sink.rs`：usage sink 本地拥有 provider/app lookup 和 `resolve_usage_record_pricing_models` 调用，adapter 不再暴露 `usage_pricing_config_lookup_from_record` 或 `usage_record_pricing_model`。
 1368. Provider custom User-Agent bridge 已从 `proxy_core_adapter` 移到 owning modules：`forwarder_request_source.rs` 与 `stream_check.rs` 本地读取 `ProviderMeta.custom_user_agent` raw 值并调用 core `provider_custom_user_agent_header`，adapter 不再暴露 `provider_custom_user_agent_header`。
 1369. Stream-check provider `testConfig` override bridge 已从 `proxy_core_adapter` 移到 `services/stream_check.rs`：service 本地读取 `Provider::enabled_test_config()` 并构造 core `StreamCheckConfigOverride`，adapter 不再暴露 `provider_stream_check_config_override`。
+1370. Claude 非流式响应转换测试不再通过 `proxy_core_adapter::provider_claude_transform_response` 这种结构化自动探测 facade；adapter 与 provider 测试改为显式调用 `provider_claude_transform_response_for_api_format` 或 core transform，生产边界只保留 api_format 明确分发入口。
 
 ## 背景
 

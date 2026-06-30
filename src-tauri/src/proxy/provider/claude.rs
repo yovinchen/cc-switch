@@ -29,7 +29,7 @@ use crate::proxy_core_adapter::{
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    provider_claude_transform_response, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION,
+    provider_claude_transform_response_for_api_format, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION,
     COPILOT_INTEGRATION_ID, COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
 };
 
@@ -786,7 +786,8 @@ mod tests {
 
     #[test]
     fn test_transform_response_uses_adapter_contract() {
-        let transformed = provider_claude_transform_response(json!({
+        let transformed = provider_claude_transform_response_for_api_format(
+            &json!({
             "id": "chatcmpl_1",
             "model": "chat-model",
             "choices": [{
@@ -794,7 +795,13 @@ mod tests {
                 "finish_reason": "stop"
             }],
             "usage": {"prompt_tokens": 1, "completion_tokens": 2}
-        }))
+            }),
+            "openai_chat",
+            None,
+            None,
+            None,
+            None,
+        )
         .unwrap();
 
         assert_eq!(transformed["content"][0]["text"], "Hi");

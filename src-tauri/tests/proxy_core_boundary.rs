@@ -12433,7 +12433,7 @@ fn proxy_core_adapter_delegates_claude_request_format_dispatch_to_core() {
     let request_slice = function_slice(
         &source,
         "pub(crate) fn provider_claude_transform_request_for_api_format",
-        "#[cfg(test)]\npub(crate) fn provider_claude_transform_response",
+        "pub(crate) fn provider_claude_transform_response_for_api_format",
     );
 
     assert!(
@@ -12760,6 +12760,10 @@ fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
     assert!(
         response_slice.contains("claude_response_to_anthropic_message_for_api_format("),
         "Claude non-streaming response api_format dispatch must be delegated to proxy-core"
+    );
+    assert!(
+        !source.contains("pub(crate) fn provider_claude_transform_response("),
+        "proxy_core_adapter should not keep a test-only Claude response format auto-detection facade"
     );
     assert!(
         stream_slice.contains("create_claude_to_anthropic_sse_stream_for_api_format("),

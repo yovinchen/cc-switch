@@ -2407,27 +2407,6 @@ pub(crate) fn provider_claude_transform_request_for_api_format(
     Ok(output.request)
 }
 
-#[cfg(test)]
-pub(crate) fn provider_claude_transform_response(body: Value) -> Result<Value, String> {
-    // This test helper does not receive provider config, so detect structurally
-    // disjoint upstream response formats by their top-level fields.
-    if body.get("candidates").is_some() || body.get("promptFeedback").is_some() {
-        let output = crate::proxy_core::api::transforms::gemini_response_to_anthropic_message(
-            &body,
-            None,
-            synthesize_gemini_tool_call_id_with_uuid,
-        )?;
-        for name in &output.rectified_tool_names {
-            log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
-        }
-        Ok(output.response)
-    } else if body.get("output").is_some() {
-        crate::proxy_core::api::transforms::openai_responses_to_anthropic_message(&body)
-    } else {
-        crate::proxy_core::api::transforms::openai_chat_to_anthropic_message(&body)
-    }
-}
-
 pub(crate) fn provider_claude_transform_response_for_api_format(
     body: &Value,
     api_format: &str,
@@ -10784,7 +10763,8 @@ base_url = "https://api.openai.com/v1"
             }))
             .expect("chat response");
         assert_eq!(chat_response["content"][0]["text"], "Hi");
-        let delegated_chat_response = provider_claude_transform_response(json!({
+        let delegated_chat_response = provider_claude_transform_response_for_api_format(
+            &json!({
             "id": "chatcmpl_1",
             "model": "chat-model",
             "choices": [{
@@ -10792,7 +10772,13 @@ base_url = "https://api.openai.com/v1"
                 "finish_reason": "stop"
             }],
             "usage": {"prompt_tokens": 1, "completion_tokens": 2}
-        }))
+            }),
+            "openai_chat",
+            None,
+            None,
+            None,
+            None,
+        )
         .expect("delegated chat response");
         assert_eq!(delegated_chat_response["content"][0]["text"], "Hi");
 
@@ -10809,7 +10795,8 @@ base_url = "https://api.openai.com/v1"
             }))
             .expect("responses response");
         assert_eq!(responses_response["content"][0]["text"], "Done");
-        let delegated_responses_response = provider_claude_transform_response(json!({
+        let delegated_responses_response = provider_claude_transform_response_for_api_format(
+            &json!({
             "id": "resp_1",
             "model": "responses-model",
             "status": "completed",
@@ -10818,7 +10805,13 @@ base_url = "https://api.openai.com/v1"
                 "content": [{"type": "output_text", "text": "Done"}]
             }],
             "usage": {"input_tokens": 1, "output_tokens": 2}
-        }))
+            }),
+            "openai_responses",
+            None,
+            None,
+            None,
+            None,
+        )
         .expect("delegated responses response");
         assert_eq!(delegated_responses_response["content"][0]["text"], "Done");
 
@@ -10885,7 +10878,8 @@ base_url = "https://api.openai.com/v1"
             )
             .expect("gemini response");
         assert_eq!(gemini_output.response["content"][0]["text"], "Gemini hi");
-        let delegated_gemini_response = provider_claude_transform_response(json!({
+        let delegated_gemini_response = provider_claude_transform_response_for_api_format(
+            &json!({
             "responseId": "gemini_1",
             "candidates": [{
                 "content": {
@@ -10895,7 +10889,13 @@ base_url = "https://api.openai.com/v1"
                 "finishReason": "STOP"
             }],
             "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 2}
-        }))
+            }),
+            "gemini_native",
+            None,
+            None,
+            None,
+            None,
+        )
         .expect("delegated gemini response");
         assert_eq!(delegated_gemini_response["content"][0]["text"], "Gemini hi");
 
