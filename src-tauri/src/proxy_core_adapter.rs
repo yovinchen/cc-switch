@@ -11,11 +11,10 @@ use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
-use crate::proxy::host::cc_switch::proxy_state::{proxy_state_from_runtime_sources, ProxyState};
+use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy::provider::codex_provider_upstream_model;
 use crate::proxy::route_attempt::ForwardAttempt;
-use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::api::config::{
@@ -29,7 +28,7 @@ use crate::proxy_core::api::management::{ChannelRecord, ChannelRouteSource};
 use crate::proxy_core::api::ports::{
     proxy_server_info_from_parts, record_active_connection_acquired_status,
     record_active_connection_released_status, record_proxy_server_stopped_status,
-    CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+    CurrentRouteTarget, ProxyRuntimeStatus, ProxyServerInfo,
 };
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, ChannelRouteCandidate,
@@ -270,15 +269,6 @@ fn record_proxy_server_started_status(status: &mut ProxyRuntimeStatus, address: 
         status,
         crate::proxy_core::api::ports::ProxyServerStartedStatusInput { address, port },
     );
-}
-
-pub(crate) fn proxy_server_from_runtime_config(
-    config: ProxyConfig,
-    db: Arc<Database>,
-    app_handle: Option<tauri::AppHandle>,
-) -> ProxyServer {
-    let state = proxy_state_from_runtime_sources(config.clone(), db, app_handle);
-    ProxyServer::from_runtime_state(config, state)
 }
 
 fn record_proxy_server_listen_port_runtime_source(port: u16) {
@@ -4034,7 +4024,7 @@ mod tests {
     use crate::proxy_core::api::ports::{
         codex_restored_live_settings_parts, gemini_env_json_from_map,
         gemini_env_string_map_from_settings, gemini_live_config_object_from_settings,
-        GeminiLiveConfigIssue,
+        GeminiLiveConfigIssue, ProxyConfig,
     };
     use crate::proxy_core::api::routing::{
         apply_route_candidate_circuit_availability, resolve_channel_route,

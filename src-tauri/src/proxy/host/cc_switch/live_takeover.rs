@@ -7,6 +7,7 @@ use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
 use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
+use crate::proxy::host::cc_switch::proxy_server::proxy_server_from_runtime_config;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};
@@ -47,7 +48,7 @@ use crate::proxy_core_adapter::{
     apply_codex_unified_session_bucket_for_provider, codex_backup_projection_error_message,
     codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
     codex_provider_live_write_parts, preserve_codex_mcp_servers_from_existing_config,
-    preserve_codex_oauth_auth_in_backup_for_configured_policy, proxy_server_from_runtime_config,
+    preserve_codex_oauth_auth_in_backup_for_configured_policy,
     remove_codex_takeover_config_placeholders_if_present, should_block_proxy_switch_to_provider,
     sync_provider_settings_with_live_token, CodexLiveWriteProjection, CodexTakeoverAuthPolicy,
 };

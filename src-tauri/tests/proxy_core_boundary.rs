@@ -2311,6 +2311,11 @@ fn is_allowed_http_server_runtime_core_import(relative: &str, code: &str) -> boo
         )
 }
 
+fn is_allowed_host_proxy_server_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/host/cc_switch/proxy_server.rs"
+        && code.trim() == "use crate::proxy_core::api::ports::ProxyConfig;"
+}
+
 fn is_allowed_forwarder_runtime_state_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/host/cc_switch/forwarder_runtime_state_source.rs"
         && matches!(
@@ -2446,6 +2451,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_channel_reachability_probe_core_import(&relative, code)
                     && !is_allowed_proxy_core_host_test_contract_import(&relative, code)
                     && !is_allowed_http_server_runtime_core_import(&relative, code)
+                    && !is_allowed_host_proxy_server_core_import(&relative, code)
                     && !is_allowed_claude_desktop_provider_issue_core_import(&relative, code)
                     && !is_allowed_claude_desktop_live_url_core_import(&relative, code)
                     && !is_allowed_failover_switch_core_import(&relative, code)
@@ -16986,10 +16992,16 @@ fn production_proxy_service_owns_proxy_config_source() {
 }
 
 #[test]
-fn production_proxy_service_delegates_server_factory_to_adapter() {
+fn production_proxy_service_delegates_server_factory_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let factory_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_server.rs"))
+            .expect("read host/cc_switch/proxy_server.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let source_adapter_imports = proxy_core_adapter_import_identifiers(&source);
     let functions = [
         (
             "start",
@@ -17024,10 +17036,38 @@ fn production_proxy_service_delegates_server_factory_to_adapter() {
             }
         }
     }
+    if !source.contains(
+        "use crate::proxy::host::cc_switch::proxy_server::proxy_server_from_runtime_config;",
+    ) {
+        violations.push(
+            "src/proxy/host/cc_switch/live_takeover.rs should import server factory from host proxy_server".to_string(),
+        );
+    }
+    if source_adapter_imports
+        .iter()
+        .any(|identifier| identifier == "proxy_server_from_runtime_config")
+    {
+        violations.push(
+            "src/proxy/host/cc_switch/live_takeover.rs imports proxy_server_from_runtime_config through proxy_core_adapter".to_string(),
+        );
+    }
+    if adapter_source.contains("pub(crate) fn proxy_server_from_runtime_config(") {
+        violations
+            .push("proxy_core_adapter should not own the ProxyServer runtime factory".to_string());
+    }
+    if !factory_source.contains("pub(crate) fn proxy_server_from_runtime_config(")
+        || !factory_source
+            .contains("proxy_state_from_runtime_sources(config.clone(), db, app_handle)")
+        || !factory_source.contains("ProxyServer::from_runtime_state(config, state)")
+    {
+        violations.push(
+            "host proxy_server.rs should own DB/AppHandle to ProxyState assembly and ProxyServer construction".to_string(),
+        );
+    }
 
     assert!(
         violations.is_empty(),
-        "ProxyService must delegate ProxyServer construction to proxy_core_adapter:\n{}",
+        "ProxyService must delegate ProxyServer construction to host proxy_server.rs:\n{}",
         violations.join("\n")
     );
 }
@@ -17075,7 +17115,7 @@ fn production_proxy_service_imports_server_type_from_http_transport() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService must keep construction delegated to proxy_core_adapter but import the server type from HTTP transport:\n{}",
+        "ProxyService must keep construction delegated to host proxy_server.rs while importing the server type from HTTP transport:\n{}",
         violations.join("\n")
     );
 }
@@ -17945,18 +17985,17 @@ fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
         );
     }
     assert!(
-        adapter_source.contains(
-            "use crate::proxy::host::cc_switch::proxy_state::{proxy_state_from_runtime_sources, ProxyState};"
-        )
+        adapter_source.contains("use crate::proxy::host::cc_switch::proxy_state::ProxyState;")
             && !adapter_source
                 .contains("pub(crate) use crate::proxy::host::cc_switch::proxy_state::ProxyState")
+            && !adapter_source.contains("proxy_state_from_runtime_sources")
             && !adapter_source.contains("\npub struct ProxyState")
             && !adapter_source.contains("type CcSwitchProxyRuntimeServices")
             && !adapter_source.contains("\nimpl ProxyState")
             && !adapter_source.contains("ProxyEngine::new(self.proxy_core_services.clone())")
             && !adapter_source.contains("CcSwitchProxyServices::with_runtime(")
             && !adapter_source.contains("ProxyState {"),
-        "proxy_core_adapter should only use the host state constructor privately and not own ProxyState assembly"
+        "proxy_core_adapter should only use the host state type privately and not own ProxyState assembly"
     );
 }
 
