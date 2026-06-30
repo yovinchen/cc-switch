@@ -149,21 +149,18 @@ use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection
 use crate::proxy_core::api::ports::{
     apply_codex_takeover_auth_placeholder_if_present,
     codex_auth_has_oauth_login_material as core_codex_auth_has_oauth_login_material,
-    codex_config_text_from_settings,
     codex_live_settings_parts_from_settings as core_codex_live_settings_parts_from_settings,
-    codex_live_snapshot_parts_from_settings as core_codex_live_snapshot_parts_from_settings,
     codex_model_from_config_toml as core_codex_model_from_config_toml,
     codex_provider_backfill_parts_from_settings as core_codex_provider_backfill_parts_from_settings,
     codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     ensure_codex_takeover_auth_placeholder,
-    provider_default_live_import_category_from_parts as core_provider_default_live_import_category_from_parts,
     provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
-    CodexLiveSettingsIssue, CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
-    CodexProviderBackfillParts, CodexProviderLiveWriteIssue, CodexProviderLiveWriteParts,
-    CopilotOptimizerConfig, LiveTokenProviderSettingsIssue, OptimizerConfig,
-    ProviderSettingsValidationIssue, ProviderSettingsValidationParts, RectifierConfig,
+    CodexLiveSettingsIssue, CodexLiveSettingsParts, CodexProviderLiveWriteIssue,
+    CodexProviderLiveWriteParts, CopilotOptimizerConfig, LiveTokenProviderSettingsIssue,
+    OptimizerConfig, ProviderSettingsValidationIssue, ProviderSettingsValidationParts,
+    RectifierConfig,
 };
 fn record_forward_success_status(
     status: &mut ProxyRuntimeStatus,
@@ -871,8 +868,6 @@ use crate::proxy_core::api::domain::{
     provider_account_ref, provider_metadata_from_input, unsupported_app_kind_config_error,
 };
 
-use crate::proxy_core::api::ports::CommonConfigSettingsMutationIssue;
-
 pub(crate) enum ForwarderFailureDecision {
     Retryable,
     NonRetryable,
@@ -1034,39 +1029,6 @@ pub(crate) fn emit_proxy_core_event_bus_source(events: &ProxyEventBus, event: Pr
     });
 }
 
-fn provider_codex_config_text(provider: &Provider) -> Option<&str> {
-    codex_config_text_from_settings(&provider.settings_config)
-}
-
-pub(crate) fn provider_from_default_live_settings(
-    app_type: &AppType,
-    settings_config: Value,
-) -> Provider {
-    let mut provider = Provider::with_id(
-        "default".to_string(),
-        "default".to_string(),
-        settings_config,
-        None,
-    );
-    let codex_config_has_provider_key = if matches!(app_type, AppType::Codex) {
-        provider_codex_config_text(&provider)
-            .and_then(crate::codex_config::extract_codex_experimental_bearer_token)
-            .is_some()
-    } else {
-        false
-    };
-    provider.category = Some(
-        core_provider_default_live_import_category_from_parts(
-            &AppKind::from(app_type),
-            provider.settings_config.get("auth"),
-            codex_config_has_provider_key,
-        )
-        .to_string(),
-    );
-
-    provider
-}
-
 pub(crate) fn codex_provider_live_write_parts<'a>(
     settings: &'a Value,
     provider: &'a Provider,
@@ -1074,87 +1036,19 @@ pub(crate) fn codex_provider_live_write_parts<'a>(
     core_codex_provider_live_write_parts_from_settings(settings, provider.category.as_deref())
 }
 
-pub(crate) fn provider_codex_backfill_parts(provider: &Provider) -> CodexProviderBackfillParts<'_> {
-    core_codex_provider_backfill_parts_from_settings(
-        provider.category.as_deref(),
-        &provider.settings_config,
-    )
-}
-
 pub(crate) fn restore_codex_settings_for_provider_backfill(
     provider: &Provider,
     settings: &mut Value,
 ) -> Result<(), AppError> {
-    let backfill_parts = provider_codex_backfill_parts(provider);
+    let backfill_parts = core_codex_provider_backfill_parts_from_settings(
+        provider.category.as_deref(),
+        &provider.settings_config,
+    );
     crate::codex_config::restore_codex_settings_for_backfill(
         settings,
         backfill_parts.template_settings,
         backfill_parts.restore_provider_token,
     )
-}
-
-pub(crate) fn strip_codex_unified_session_bucket_for_provider_backfill(
-    provider: &Provider,
-    settings: &mut Value,
-) -> Result<(), AppError> {
-    let backfill_parts = provider_codex_backfill_parts(provider);
-    if backfill_parts.strip_unified_session_bucket {
-        crate::codex_config::strip_codex_unified_session_bucket_from_settings(settings)?;
-    }
-    Ok(())
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ProviderBackfillSettingsWarning {
-    CommonConfigStrip(CommonConfigSettingsMutationIssue),
-    CodexSettingsRestore(String),
-    CodexUnifiedSessionBucketStrip(String),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ProviderBackfillSettingsResult {
-    pub(crate) settings: Value,
-    pub(crate) warnings: Vec<ProviderBackfillSettingsWarning>,
-}
-
-pub(crate) fn restore_live_settings_for_provider_backfill(
-    app_type: &AppType,
-    provider: &Provider,
-    live_settings: Value,
-) -> ProviderBackfillSettingsResult {
-    if !matches!(app_type, AppType::Codex) {
-        return ProviderBackfillSettingsResult {
-            settings: live_settings,
-            warnings: Vec::new(),
-        };
-    }
-
-    let mut settings = live_settings;
-    let mut warnings = Vec::new();
-    if let Err(err) = restore_codex_settings_for_provider_backfill(provider, &mut settings) {
-        warnings.push(ProviderBackfillSettingsWarning::CodexSettingsRestore(
-            err.to_string(),
-        ));
-    }
-
-    if let Err(err) =
-        strip_codex_unified_session_bucket_for_provider_backfill(provider, &mut settings)
-    {
-        warnings
-            .push(ProviderBackfillSettingsWarning::CodexUnifiedSessionBucketStrip(err.to_string()));
-    }
-
-    // `modelCatalog` is a cc-switch-private field whose SSOT is the DB. Live's
-    // `config.toml` only carries a lossy projection (`model_catalog_json` to a
-    // generated catalog file) that proxy takeover/restore cycles and Codex.app
-    // config rewrites can drop. Prefer the DB provider's stored catalog so a
-    // switch-away backfill never erases it.
-    settings = codex_live_settings_with_model_catalog(
-        settings,
-        provider.settings_config.get("modelCatalog").cloned(),
-    );
-
-    ProviderBackfillSettingsResult { settings, warnings }
 }
 
 pub(crate) fn apply_codex_unified_session_bucket_for_provider(
@@ -1171,15 +1065,6 @@ pub(crate) fn provider_codex_live_settings_parts(
     provider: &Provider,
 ) -> Result<CodexLiveSettingsParts<'_>, CodexLiveSettingsIssue> {
     core_codex_live_settings_parts_from_settings(
-        &provider.settings_config,
-        provider.category.as_deref(),
-    )
-}
-
-pub(crate) fn provider_codex_live_snapshot_parts(
-    provider: &Provider,
-) -> Result<CodexLiveSnapshotParts<'_>, CodexLiveSnapshotIssue> {
-    core_codex_live_snapshot_parts_from_settings(
         &provider.settings_config,
         provider.category.as_deref(),
     )
@@ -2438,17 +2323,6 @@ pub(crate) async fn claude_desktop_model_routes_from_router_source(
         )
     })?;
     Ok(claude_desktop_model_routes_to_core_inputs(routes))
-}
-
-pub(crate) fn codex_live_settings_with_model_catalog(
-    mut live_settings: Value,
-    model_catalog: Option<Value>,
-) -> Value {
-    if let (Some(root), Some(model_catalog)) = (live_settings.as_object_mut(), model_catalog) {
-        root.insert("modelCatalog".to_string(), model_catalog);
-    }
-
-    live_settings
 }
 
 pub(crate) fn client_model_catalog_from_app_source(app: &AppKind) -> ProxyCoreResult<ModelCatalog> {
@@ -4405,8 +4279,10 @@ mod tests {
                     &provider.settings_config,
                 )
                 .ok_or(crate::proxy_core::api::ports::ProviderCredentialIssue::CodexAuthMissing)?;
-                let config_toml =
-                    codex_config_text_from_settings(&provider.settings_config).unwrap_or("");
+                let config_toml = crate::proxy_core::api::ports::codex_config_text_from_settings(
+                    &provider.settings_config,
+                )
+                .unwrap_or("");
                 crate::proxy_core::api::ports::provider_codex_credential_values_from_parts(
                     crate::proxy_core::api::ports::CodexCredentialParts {
                         api_key: codex_api_key_from_auth_and_config(Some(auth), Some(config_toml)),
@@ -8323,46 +8199,6 @@ base_url = "https://api.openai.com/v1"
     }
 
     #[test]
-    fn provider_backfill_live_settings_adapter_preserves_codex_catalog() {
-        let mut provider = Provider::with_id(
-            "deepseek".to_string(),
-            "DeepSeek".to_string(),
-            json!({
-                "auth": { "OPENAI_API_KEY": "sk-deepseek" },
-                "config": "model_provider = \"custom\"\nmodel = \"deepseek-v4-pro\"\n",
-                "modelCatalog": {
-                    "models": [
-                        { "model": "deepseek-v4-pro", "contextWindow": 1_000_000 }
-                    ]
-                }
-            }),
-            None,
-        );
-        provider.category = Some("cn_official".to_string());
-
-        let live_settings = json!({
-            "auth": { "OPENAI_API_KEY": "sk-deepseek" },
-            "config": "model_provider = \"custom\"\nmodel = \"deepseek-v4-pro\"\n"
-        });
-        let result =
-            restore_live_settings_for_provider_backfill(&AppType::Codex, &provider, live_settings);
-        assert!(result.warnings.is_empty());
-        assert_eq!(
-            result.settings.get("modelCatalog"),
-            provider.settings_config.get("modelCatalog")
-        );
-
-        let non_codex_settings = json!({"env": {"ANTHROPIC_API_KEY": "sk-test"}});
-        let result = restore_live_settings_for_provider_backfill(
-            &AppType::Claude,
-            &provider,
-            non_codex_settings.clone(),
-        );
-        assert!(result.warnings.is_empty());
-        assert_eq!(result.settings, non_codex_settings);
-    }
-
-    #[test]
     fn codex_provider_adapter_projects_chat_policy_headers_and_reasoning() {
         assert!(
             crate::proxy_core::api::transport::resolve_codex_provider_uses_chat_completions(
@@ -8393,14 +8229,19 @@ base_url = "https://api.openai.com/v1"
             http::HeaderValue::from_static("Bearer sk-test")
         );
         assert_eq!(
-            codex_config_text_from_settings(&json!({"config": "model = \"gpt-5\""})),
+            crate::proxy_core::api::ports::codex_config_text_from_settings(&json!({
+                "config": "model = \"gpt-5\""
+            })),
             Some("model = \"gpt-5\"")
         );
         assert_eq!(
-            codex_config_text_from_settings(&json!({"config": 42})),
+            crate::proxy_core::api::ports::codex_config_text_from_settings(&json!({"config": 42})),
             None
         );
-        assert_eq!(codex_config_text_from_settings(&json!({})), None);
+        assert_eq!(
+            crate::proxy_core::api::ports::codex_config_text_from_settings(&json!({})),
+            None
+        );
         let codex_auth_settings = json!({"auth": {"OPENAI_API_KEY": "sk-auth"}});
         let auth =
             codex_auth_object_value_from_settings(&codex_auth_settings).expect("codex auth object");
@@ -8430,16 +8271,6 @@ base_url = "https://api.openai.com/v1"
             }),
             None,
         );
-        let imported_official_provider = provider_from_default_live_settings(
-            &AppType::Codex,
-            official_live_provider.settings_config.clone(),
-        );
-        assert_eq!(imported_official_provider.id, "default");
-        assert_eq!(imported_official_provider.name, "default");
-        assert_eq!(
-            imported_official_provider.category.as_deref(),
-            Some("official")
-        );
         let api_key_live_provider = Provider::with_id(
             "codex-live-api-key".to_string(),
             "Codex Live API Key".to_string(),
@@ -8449,34 +8280,6 @@ base_url = "https://api.openai.com/v1"
             }),
             None,
         );
-        let imported_custom_provider = provider_from_default_live_settings(
-            &AppType::Codex,
-            api_key_live_provider.settings_config.clone(),
-        );
-        assert_eq!(imported_custom_provider.category.as_deref(), Some("custom"));
-        let imported_claude_provider = provider_from_default_live_settings(
-            &AppType::Claude,
-            json!({"env": {"ANTHROPIC_API_KEY": "sk-test"}}),
-        );
-        assert_eq!(imported_claude_provider.category.as_deref(), Some("custom"));
-        let bearer_live_provider = Provider::with_id(
-            "codex-live-bearer".to_string(),
-            "Codex Live Bearer".to_string(),
-            json!({
-                "auth": {"tokens": {"id_token": "id-token"}},
-                "config": r#"model_provider = "custom"
-
-[model_providers.custom]
-experimental_bearer_token = "bearer-token"
-"#
-            }),
-            None,
-        );
-        let imported_bearer_provider = provider_from_default_live_settings(
-            &AppType::Codex,
-            bearer_live_provider.settings_config.clone(),
-        );
-        assert_eq!(imported_bearer_provider.category.as_deref(), Some("custom"));
         let parts =
             provider_codex_live_settings_parts(&official_live_provider).expect("codex live parts");
         assert_eq!(parts.category, None);
@@ -8484,14 +8287,6 @@ experimental_bearer_token = "bearer-token"
         assert_eq!(parts.config_text, Some(""));
         let mut custom_category_provider = api_key_live_provider.clone();
         custom_category_provider.category = Some("custom".to_string());
-        let custom_backfill_parts = provider_codex_backfill_parts(&custom_category_provider);
-        assert!(custom_backfill_parts.restore_provider_token);
-        assert!(!custom_backfill_parts.strip_unified_session_bucket);
-        let mut official_category_provider = api_key_live_provider.clone();
-        official_category_provider.category = Some("official".to_string());
-        let official_backfill_parts = provider_codex_backfill_parts(&official_category_provider);
-        assert!(!official_backfill_parts.restore_provider_token);
-        assert!(official_backfill_parts.strip_unified_session_bucket);
         let mut live_backfill_settings = json!({
             "auth": {},
             "config": r#"model_provider = "custom"
@@ -8517,32 +8312,6 @@ experimental_bearer_token = "live-token"
             .and_then(Value::as_str)
             .expect("restored config")
             .contains("experimental_bearer_token"));
-        let injected_unified_config =
-            crate::codex_config::inject_codex_unified_session_bucket("").expect("inject");
-        let mut official_unified_backfill = json!({"config": injected_unified_config});
-        strip_codex_unified_session_bucket_for_provider_backfill(
-            &official_category_provider,
-            &mut official_unified_backfill,
-        )
-        .expect("strip official unified session bucket");
-        assert!(!official_unified_backfill
-            .get("config")
-            .and_then(Value::as_str)
-            .expect("official stripped config")
-            .contains("model_provider"));
-        let mut custom_unified_backfill = json!({
-            "config": crate::codex_config::inject_codex_unified_session_bucket("").expect("inject")
-        });
-        strip_codex_unified_session_bucket_for_provider_backfill(
-            &custom_category_provider,
-            &mut custom_unified_backfill,
-        )
-        .expect("custom backfill no-op");
-        assert!(custom_unified_backfill
-            .get("config")
-            .and_then(Value::as_str)
-            .expect("custom retained config")
-            .contains("model_provider"));
         let write_settings = json!({
             "auth": {"OPENAI_API_KEY": "sk-write"},
             "config": "model = \"gpt-5\""
@@ -8596,19 +8365,6 @@ experimental_bearer_token = "live-token"
         assert!(matches!(
             provider_codex_live_settings_parts(&auth_not_object),
             Err(CodexLiveSettingsIssue::AuthNotObject)
-        ));
-        let snapshot_parts = provider_codex_live_snapshot_parts(&auth_not_object)
-            .expect("snapshot keeps legacy auth shape tolerance");
-        assert_eq!(snapshot_parts.category, Some("custom"));
-        assert_eq!(snapshot_parts.auth, &json!("sk-test"));
-        assert_eq!(snapshot_parts.config_text, None);
-        assert!(matches!(
-            provider_codex_live_snapshot_parts(&invalid_shape),
-            Err(CodexLiveSnapshotIssue::NotObject)
-        ));
-        assert!(matches!(
-            provider_codex_live_snapshot_parts(&missing_auth),
-            Err(CodexLiveSnapshotIssue::MissingAuth)
         ));
         let provider_validation_parts =
             provider_settings_validation_parts(&AppType::Codex, &official_live_provider)
@@ -11419,52 +11175,6 @@ command = "latest-command"
             Err(ProxyCoreError::Internal(message))
                 if message == "select claude desktop provider: router failed"
         ));
-        let mut live_config = codex_live_settings_with_model_catalog(
-            json!({"auth": {}, "config": ""}),
-            provider.settings_config.get("modelCatalog").cloned(),
-        );
-        assert_eq!(
-            live_config.get("modelCatalog"),
-            settings.get("modelCatalog")
-        );
-        assert_eq!(
-            codex_live_settings_with_model_catalog(
-                json!({"auth": {}, "config": ""}),
-                settings.get("modelCatalog").cloned()
-            )
-            .get("modelCatalog"),
-            settings.get("modelCatalog")
-        );
-        assert_eq!(
-            codex_live_settings_with_model_catalog(json!({"auth": {}}), None),
-            json!({"auth": {}})
-        );
-        assert_eq!(
-            codex_live_settings_with_model_catalog(
-                json!("not-object"),
-                Some(json!({"models": []}))
-            ),
-            json!("not-object")
-        );
-
-        let provider_without_catalog = Provider::with_id(
-            "provider-b".to_string(),
-            "Provider B".to_string(),
-            json!({"config": ""}),
-            None,
-        );
-        let fallback_model_catalog = provider_without_catalog
-            .settings_config
-            .get("modelCatalog")
-            .cloned()
-            .unwrap_or_else(|| json!({ "models": [] }));
-        live_config =
-            codex_live_settings_with_model_catalog(live_config, Some(fallback_model_catalog));
-        assert_eq!(
-            live_config.get("modelCatalog"),
-            Some(&json!({ "models": [] }))
-        );
-
         let client_catalog =
             crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw(
                 AppKind::Codex.as_str(),

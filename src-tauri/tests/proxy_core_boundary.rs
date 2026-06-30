@@ -1731,6 +1731,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_LIVE_SETTINGS_SHAPE_MARKERS: &[&str] = 
     "pub(crate) enum CodexLiveSettingsIssue",
     "pub(crate) enum CodexLiveSnapshotIssue",
     "pub(crate) enum CodexProviderValidationIssue",
+    "pub(crate) fn provider_codex_live_snapshot_parts",
     ".ok_or(CodexProviderLiveWriteIssue::MissingAuth)",
     ".ok_or(CodexLiveSettingsIssue::NotObject)",
     ".ok_or(CodexLiveSettingsIssue::MissingAuth)",
@@ -1742,6 +1743,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_LIVE_SETTINGS_SHAPE_MARKERS: &[&str] = 
     "crate::codex_config::codex_auth_has_oauth_login_material",
 ];
 const FORBIDDEN_PROXY_CORE_ADAPTER_DEFAULT_LIVE_IMPORT_CATEGORY_MARKERS: &[&str] = &[
+    "pub(crate) fn provider_from_default_live_settings",
     "crate::codex_config::extract_codex_api_key(",
     "crate::codex_config::codex_auth_has_login_material",
     "has_login_material && !has_provider_key",
@@ -1749,6 +1751,11 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_DEFAULT_LIVE_IMPORT_CATEGORY_MARKERS: &[&str]
 ];
 const FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_BACKFILL_POLICY_MARKERS: &[&str] = &[
     "pub(crate) struct CodexProviderBackfillParts",
+    "pub(crate) enum ProviderBackfillSettingsWarning",
+    "pub(crate) struct ProviderBackfillSettingsResult",
+    "pub(crate) fn provider_codex_backfill_parts",
+    "pub(crate) fn strip_codex_unified_session_bucket_for_provider_backfill",
+    "pub(crate) fn restore_live_settings_for_provider_backfill",
     "crate::codex_config::should_restore_codex_provider_token_for_backfill(",
     "strip_unified_session_bucket: provider.category.as_deref() == Some(\"official\")",
     "restore_provider_token:",
@@ -8441,7 +8448,8 @@ fn proxy_core_adapter_delegates_codex_config_toml_projection_to_core() {
         .join("\n");
 
     assert!(
-        production_source.contains("codex_config_text_from_settings")
+        (production_source.contains("codex_config_text_from_settings")
+            || production_source.contains("legacy_provider_config_text_from_settings"))
             && production_source.contains("core_codex_wire_api_from_config_toml")
             && production_source.contains("core_codex_model_from_config_toml"),
         "proxy_core_adapter should delegate Codex config text/wire_api/model projection to core"
@@ -8484,7 +8492,6 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
     for marker in [
         "core_codex_provider_live_write_parts_from_settings(",
         "core_codex_live_settings_parts_from_settings(",
-        "core_codex_live_snapshot_parts_from_settings(",
         "core_codex_auth_has_oauth_login_material(",
     ] {
         assert!(
@@ -8509,9 +8516,14 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
     assert!(
         live_service_source.contains("use crate::proxy_core::api::ports::{")
             && live_service_source.contains("CodexLiveSnapshotIssue")
+            && live_service_source.contains("core_codex_live_snapshot_parts_from_settings(")
             && !live_service_source.contains("use crate::proxy_core_adapter::{\n    CodexLiveSnapshotIssue")
             && !live_service_source.contains("proxy_core_adapter::CodexLiveSnapshotIssue"),
         "services/provider/live.rs should import Codex live snapshot issue directly from proxy_core ports"
+    );
+    assert!(
+        !production_source.contains("pub(crate) fn provider_codex_live_snapshot_parts("),
+        "proxy_core_adapter should not own provider live snapshot projection"
     );
     for marker in [
         "codex_restored_live_settings_parts",
@@ -8895,25 +8907,31 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
 #[test]
 fn proxy_core_adapter_delegates_default_live_import_category_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let slice = function_slice(
-        &source,
-        "pub(crate) fn provider_from_default_live_settings",
-        "pub(crate) fn codex_provider_live_write_parts",
-    );
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let live_source = fs::read_to_string(manifest_dir.join("src/services/provider/live.rs"))
+        .expect("read services/provider/live.rs");
+    let live_production_source = production_lines(&live_source)
+        .map(|(_, line)| line)
+        .collect::<Vec<_>>()
+        .join("\n");
 
     assert!(
-        slice
+        live_production_source
             .matches("core_provider_default_live_import_category_from_parts")
             .count()
             >= 1,
-        "proxy_core_adapter should delegate default live import category decisions to core"
+        "provider live service should delegate default live import category decisions to core"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) fn provider_from_default_live_settings")
+            && !adapter_source.contains("fn provider_from_default_live_settings"),
+        "proxy_core_adapter should not own default live import provider projection"
     );
 
     let mut violations = Vec::new();
     for marker in FORBIDDEN_PROXY_CORE_ADAPTER_DEFAULT_LIVE_IMPORT_CATEGORY_MARKERS {
-        if slice.contains(marker) {
+        if live_production_source.contains(marker) {
             violations.push(*marker);
         }
     }
@@ -8928,22 +8946,32 @@ fn proxy_core_adapter_delegates_default_live_import_category_to_core() {
 #[test]
 fn proxy_core_adapter_delegates_codex_backfill_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let slice = function_slice(
-        &source,
-        "pub(crate) fn provider_codex_backfill_parts",
-        "pub(crate) fn restore_codex_settings_for_provider_backfill",
-    );
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let live_source = fs::read_to_string(manifest_dir.join("src/services/provider/live.rs"))
+        .expect("read services/provider/live.rs");
+    let live_production_source = production_lines(&live_source)
+        .map(|(_, line)| line)
+        .collect::<Vec<_>>()
+        .join("\n");
 
     assert!(
-        slice.contains("core_codex_provider_backfill_parts_from_settings("),
-        "proxy_core_adapter should delegate Codex provider backfill policy to core"
+        live_production_source.contains("core_codex_provider_backfill_parts_from_settings(")
+            && adapter_source.contains("core_codex_provider_backfill_parts_from_settings("),
+        "provider live service and the low-level adapter restore helper should delegate Codex provider backfill policy to core"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) fn provider_codex_backfill_parts")
+            && !adapter_source
+                .contains("pub(crate) fn strip_codex_unified_session_bucket_for_provider_backfill")
+            && !adapter_source
+                .contains("pub(crate) fn restore_live_settings_for_provider_backfill"),
+        "proxy_core_adapter should not own provider live backfill facades"
     );
 
     let mut violations = Vec::new();
     for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_BACKFILL_POLICY_MARKERS {
-        if slice.contains(marker) {
+        if live_production_source.contains(marker) {
             violations.push(*marker);
         }
     }
@@ -22104,7 +22132,7 @@ fn proxy_core_adapter_model_routes_source_uses_adapter_projection() {
     let source_slice = function_slice(
         &source,
         "pub(crate) async fn claude_desktop_model_routes_from_router_source(",
-        "pub(crate) fn codex_live_settings_with_model_catalog(",
+        "pub(crate) fn client_model_catalog_from_app_source(",
     );
 
     assert!(

@@ -16,7 +16,10 @@ use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::ports::{
     apply_claude_common_config_to_settings as core_apply_claude_common_config_to_settings,
     apply_gemini_common_config_to_settings as core_apply_gemini_common_config_to_settings,
-    codex_config_text_from_settings, common_config_settings_mutation_issue_message,
+    codex_config_text_from_settings,
+    codex_live_snapshot_parts_from_settings as core_codex_live_snapshot_parts_from_settings,
+    codex_provider_backfill_parts_from_settings as core_codex_provider_backfill_parts_from_settings,
+    common_config_settings_mutation_issue_message,
     contains_claude_common_config_snippet as core_contains_claude_common_config_snippet,
     contains_gemini_common_config_snippet as core_contains_gemini_common_config_snippet,
     gemini_env_string_map_from_settings, gemini_live_config_object_from_settings,
@@ -27,6 +30,7 @@ use crate::proxy_core::api::ports::{
     opencode_live_write_action_decision as core_opencode_live_write_action_decision,
     opencode_live_write_config_decision as core_opencode_live_write_config_decision,
     provider_common_config_storage_normalization_requires_snippet as core_provider_common_config_storage_normalization_requires_snippet,
+    provider_default_live_import_category_from_parts as core_provider_default_live_import_category_from_parts,
     provider_default_live_import_settings,
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
@@ -36,19 +40,14 @@ use crate::proxy_core::api::ports::{
     remove_claude_common_config_from_settings as core_remove_claude_common_config_from_settings,
     remove_gemini_common_config_from_settings as core_remove_gemini_common_config_from_settings,
     sanitize_claude_settings_for_live, should_skip_manual_default_live_import,
-    should_skip_startup_default_live_import, CodexLiveSnapshotIssue,
-    CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue, GeminiLiveConfigIssue,
-    OpenClawLiveWriteActionDecision as CoreOpenClawLiveWriteActionDecision,
+    should_skip_startup_default_live_import, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
+    CodexProviderBackfillParts, CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue,
+    GeminiLiveConfigIssue, OpenClawLiveWriteActionDecision as CoreOpenClawLiveWriteActionDecision,
     OpenClawLiveWriteConfigDecision as CoreOpenClawLiveWriteConfigDecision,
     OpenCodeLiveWriteActionDecision as CoreOpenCodeLiveWriteActionDecision,
     OpenCodeLiveWriteConfigDecision as CoreOpenCodeLiveWriteConfigDecision, ProviderLiveSyncScope,
 };
-use crate::proxy_core_adapter::{
-    codex_live_settings_with_model_catalog, provider_codex_live_snapshot_parts,
-    provider_from_default_live_settings,
-    restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
-    ProviderBackfillSettingsWarning,
-};
+use crate::proxy_core_adapter::restore_codex_settings_for_provider_backfill as adapter_restore_codex_settings_for_provider_backfill;
 use crate::services::mcp::McpService;
 use crate::store::AppState;
 
@@ -550,16 +549,136 @@ pub(crate) fn strip_common_config_from_live_settings(
     )
 }
 
+fn provider_codex_config_text(provider: &Provider) -> Option<&str> {
+    codex_config_text_from_settings(&provider.settings_config)
+}
+
+fn provider_from_default_live_settings(app_type: &AppType, settings_config: Value) -> Provider {
+    let mut provider = Provider::with_id(
+        "default".to_string(),
+        "default".to_string(),
+        settings_config,
+        None,
+    );
+    let codex_config_has_provider_key = if matches!(app_type, AppType::Codex) {
+        provider_codex_config_text(&provider)
+            .and_then(crate::codex_config::extract_codex_experimental_bearer_token)
+            .is_some()
+    } else {
+        false
+    };
+    provider.category = Some(
+        core_provider_default_live_import_category_from_parts(
+            &AppKind::from(app_type),
+            provider.settings_config.get("auth"),
+            codex_config_has_provider_key,
+        )
+        .to_string(),
+    );
+
+    provider
+}
+
+fn provider_codex_backfill_parts(provider: &Provider) -> CodexProviderBackfillParts<'_> {
+    core_codex_provider_backfill_parts_from_settings(
+        provider.category.as_deref(),
+        &provider.settings_config,
+    )
+}
+
+fn strip_codex_unified_session_bucket_for_provider_backfill(
+    provider: &Provider,
+    settings: &mut Value,
+) -> Result<(), AppError> {
+    let backfill_parts = provider_codex_backfill_parts(provider);
+    if backfill_parts.strip_unified_session_bucket {
+        crate::codex_config::strip_codex_unified_session_bucket_from_settings(settings)?;
+    }
+    Ok(())
+}
+
+fn provider_codex_live_snapshot_parts(
+    provider: &Provider,
+) -> Result<CodexLiveSnapshotParts<'_>, CodexLiveSnapshotIssue> {
+    core_codex_live_snapshot_parts_from_settings(
+        &provider.settings_config,
+        provider.category.as_deref(),
+    )
+}
+
+fn codex_live_settings_with_model_catalog(
+    mut live_settings: Value,
+    model_catalog: Option<Value>,
+) -> Value {
+    if let (Some(root), Some(model_catalog)) = (live_settings.as_object_mut(), model_catalog) {
+        root.insert("modelCatalog".to_string(), model_catalog);
+    }
+
+    live_settings
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ProviderBackfillSettingsWarning {
+    CommonConfigStrip(CommonConfigSettingsMutationIssue),
+    CodexSettingsRestore(String),
+    CodexUnifiedSessionBucketStrip(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct ProviderBackfillSettingsResult {
+    settings: Value,
+    warnings: Vec<ProviderBackfillSettingsWarning>,
+}
+
 fn restore_live_settings_for_provider_backfill(
     app_type: &AppType,
     provider: &Provider,
     live_settings: Value,
 ) -> Value {
     let result =
-        adapter_restore_live_settings_for_provider_backfill(app_type, provider, live_settings);
+        restore_live_settings_for_provider_backfill_result(app_type, provider, live_settings);
     log_provider_backfill_settings_warnings(app_type, provider, result.warnings);
 
     result.settings
+}
+
+fn restore_live_settings_for_provider_backfill_result(
+    app_type: &AppType,
+    provider: &Provider,
+    live_settings: Value,
+) -> ProviderBackfillSettingsResult {
+    if !matches!(app_type, AppType::Codex) {
+        return ProviderBackfillSettingsResult {
+            settings: live_settings,
+            warnings: Vec::new(),
+        };
+    }
+
+    let mut settings = live_settings;
+    let mut warnings = Vec::new();
+    if let Err(err) = adapter_restore_codex_settings_for_provider_backfill(provider, &mut settings)
+    {
+        warnings.push(ProviderBackfillSettingsWarning::CodexSettingsRestore(
+            err.to_string(),
+        ));
+    }
+
+    if let Err(err) =
+        strip_codex_unified_session_bucket_for_provider_backfill(provider, &mut settings)
+    {
+        warnings
+            .push(ProviderBackfillSettingsWarning::CodexUnifiedSessionBucketStrip(err.to_string()));
+    }
+
+    // `modelCatalog` is a cc-switch-private field whose SSOT is the DB. Live's
+    // `config.toml` only carries a lossy projection that proxy takeover/restore
+    // cycles and Codex.app config rewrites can drop.
+    settings = codex_live_settings_with_model_catalog(
+        settings,
+        provider.settings_config.get("modelCatalog").cloned(),
+    );
+
+    ProviderBackfillSettingsResult { settings, warnings }
 }
 
 fn strip_common_config_from_live_settings_for_backfill(
@@ -2472,6 +2591,197 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn default_live_import_classifies_codex_and_claude_providers() {
+        let official = provider_from_default_live_settings(
+            &AppType::Codex,
+            json!({
+                "auth": {
+                    "tokens": {"id_token": "id-token"},
+                    "auth_mode": "chatgpt"
+                },
+                "config": ""
+            }),
+        );
+        assert_eq!(official.id, "default");
+        assert_eq!(official.name, "default");
+        assert_eq!(official.category.as_deref(), Some("official"));
+
+        let custom = provider_from_default_live_settings(
+            &AppType::Codex,
+            json!({
+                "auth": {"OPENAI_API_KEY": "sk-test"},
+                "config": ""
+            }),
+        );
+        assert_eq!(custom.category.as_deref(), Some("custom"));
+
+        let bearer = provider_from_default_live_settings(
+            &AppType::Codex,
+            json!({
+                "auth": {"tokens": {"id_token": "id-token"}},
+                "config": r#"model_provider = "custom"
+
+[model_providers.custom]
+experimental_bearer_token = "bearer-token"
+"#
+            }),
+        );
+        assert_eq!(bearer.category.as_deref(), Some("custom"));
+
+        let claude = provider_from_default_live_settings(
+            &AppType::Claude,
+            json!({"env": {"ANTHROPIC_API_KEY": "sk-test"}}),
+        );
+        assert_eq!(claude.category.as_deref(), Some("custom"));
+    }
+
+    #[test]
+    fn codex_backfill_strategy_restores_custom_tokens_and_strips_official_unified_session() {
+        let mut custom_provider = Provider::with_id(
+            "codex-live-api-key".to_string(),
+            "Codex Live API Key".to_string(),
+            json!({
+                "auth": {"OPENAI_API_KEY": "sk-test"},
+                "config": ""
+            }),
+            None,
+        );
+        custom_provider.category = Some("custom".to_string());
+        let custom_backfill_parts = provider_codex_backfill_parts(&custom_provider);
+        assert!(custom_backfill_parts.restore_provider_token);
+        assert!(!custom_backfill_parts.strip_unified_session_bucket);
+
+        let mut official_provider = custom_provider.clone();
+        official_provider.category = Some("official".to_string());
+        let official_backfill_parts = provider_codex_backfill_parts(&official_provider);
+        assert!(!official_backfill_parts.restore_provider_token);
+        assert!(official_backfill_parts.strip_unified_session_bucket);
+
+        let mut live_backfill_settings = json!({
+            "auth": {},
+            "config": r#"model_provider = "custom"
+
+[model_providers.custom]
+experimental_bearer_token = "live-token"
+"#
+        });
+        adapter_restore_codex_settings_for_provider_backfill(
+            &custom_provider,
+            &mut live_backfill_settings,
+        )
+        .expect("restore codex provider backfill");
+        assert_eq!(
+            live_backfill_settings
+                .get("auth")
+                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+                .and_then(Value::as_str),
+            Some("live-token")
+        );
+        assert!(!live_backfill_settings
+            .get("config")
+            .and_then(Value::as_str)
+            .expect("restored config")
+            .contains("experimental_bearer_token"));
+
+        let injected_unified_config =
+            crate::codex_config::inject_codex_unified_session_bucket("").expect("inject");
+        let mut official_unified_backfill = json!({"config": injected_unified_config});
+        strip_codex_unified_session_bucket_for_provider_backfill(
+            &official_provider,
+            &mut official_unified_backfill,
+        )
+        .expect("strip official unified session bucket");
+        assert!(!official_unified_backfill
+            .get("config")
+            .and_then(Value::as_str)
+            .expect("official stripped config")
+            .contains("model_provider"));
+
+        let mut custom_unified_backfill = json!({
+            "config": crate::codex_config::inject_codex_unified_session_bucket("").expect("inject")
+        });
+        strip_codex_unified_session_bucket_for_provider_backfill(
+            &custom_provider,
+            &mut custom_unified_backfill,
+        )
+        .expect("custom backfill no-op");
+        assert!(custom_unified_backfill
+            .get("config")
+            .and_then(Value::as_str)
+            .expect("custom retained config")
+            .contains("model_provider"));
+    }
+
+    #[test]
+    fn codex_live_snapshot_parts_keep_legacy_auth_shape_tolerance() {
+        let invalid_shape = Provider::with_id(
+            "codex-live-invalid".to_string(),
+            "Codex Live Invalid".to_string(),
+            json!("not-object"),
+            None,
+        );
+        let missing_auth = Provider::with_id(
+            "codex-live-missing-auth".to_string(),
+            "Codex Live Missing Auth".to_string(),
+            json!({"config": ""}),
+            None,
+        );
+        let mut auth_not_object = Provider::with_id(
+            "codex-live-auth-string".to_string(),
+            "Codex Live Auth String".to_string(),
+            json!({"auth": "sk-test"}),
+            None,
+        );
+        auth_not_object.category = Some("custom".to_string());
+
+        let snapshot_parts = provider_codex_live_snapshot_parts(&auth_not_object)
+            .expect("snapshot keeps legacy auth shape tolerance");
+        assert_eq!(snapshot_parts.category, Some("custom"));
+        assert_eq!(snapshot_parts.auth, &json!("sk-test"));
+        assert_eq!(snapshot_parts.config_text, None);
+        assert!(matches!(
+            provider_codex_live_snapshot_parts(&invalid_shape),
+            Err(CodexLiveSnapshotIssue::NotObject)
+        ));
+        assert!(matches!(
+            provider_codex_live_snapshot_parts(&missing_auth),
+            Err(CodexLiveSnapshotIssue::MissingAuth)
+        ));
+    }
+
+    #[test]
+    fn codex_live_settings_with_model_catalog_only_overlays_object_settings() {
+        let settings = json!({
+            "modelCatalog": {
+                "models": [
+                    {"model": "deepseek-v4"},
+                    {"id": "kimi-k2"}
+                ]
+            }
+        });
+
+        let live_config = codex_live_settings_with_model_catalog(
+            json!({"auth": {}, "config": ""}),
+            settings.get("modelCatalog").cloned(),
+        );
+        assert_eq!(
+            live_config.get("modelCatalog"),
+            settings.get("modelCatalog")
+        );
+        assert_eq!(
+            codex_live_settings_with_model_catalog(json!({"auth": {}}), None),
+            json!({"auth": {}})
+        );
+        assert_eq!(
+            codex_live_settings_with_model_catalog(
+                json!("not-object"),
+                Some(json!({"models": []}))
+            ),
+            json!("not-object")
+        );
     }
 
     #[test]
