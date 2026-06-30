@@ -9221,6 +9221,9 @@ fn response_pipeline_owns_usage_provider_facts_projection() {
             && function.contains("pub(crate) fn fallback_response_usage_provider_facts")
             && function.contains("pub(crate) fn response_usage_provider_facts_from_optional")
             && function.contains("provider_kind_from_provider(provider)")
+            && function.contains("fn provider_kind_from_provider(provider: &Provider)")
+            && function.contains("meta.provider_type.as_deref()")
+            && function.contains(".map(ProviderKind::from)")
             && function.contains("AppKind::from(app_type)")
             && function.contains("usage_selected_provider_missing_log_message("),
         "response pipeline should own response usage provider facts projection"
@@ -9237,7 +9240,8 @@ fn response_pipeline_owns_usage_provider_facts_projection() {
             && !adapter_source.contains("pub(crate) fn response_usage_provider_facts")
             && !adapter_source.contains("pub(crate) fn fallback_response_usage_provider_facts")
             && !adapter_source
-                .contains("pub(crate) fn response_usage_provider_facts_from_optional"),
+                .contains("pub(crate) fn response_usage_provider_facts_from_optional")
+            && !adapter_source.contains("pub(crate) fn provider_kind_from_provider("),
         "proxy_core_adapter should not own or re-export response usage provider facts"
     );
 }
@@ -11809,7 +11813,7 @@ fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
     let classification_slice = function_slice(
         &source,
-        "pub(crate) fn provider_kind_from_provider(",
+        "fn provider_kind_from_provider(",
         "pub(crate) fn provider_uses_anthropic_rectifiers",
     );
 

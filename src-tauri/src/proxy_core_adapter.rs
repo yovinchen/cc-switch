@@ -4568,7 +4568,7 @@ pub(crate) struct UsageRequestLogProjection {
     pub(crate) missing_pricing_warning_message: Option<String>,
 }
 
-pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
+fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
     provider
         .meta
         .as_ref()

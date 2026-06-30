@@ -236,9 +236,17 @@ pub(crate) fn response_usage_provider_facts(
 ) -> ResponseUsageProviderFacts {
     ResponseUsageProviderFacts {
         provider_id: provider.id.clone(),
-        provider_kind: crate::proxy_core_adapter::provider_kind_from_provider(provider),
+        provider_kind: provider_kind_from_provider(provider),
         app: AppKind::from(app_type),
     }
+}
+
+fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.provider_type.as_deref())
+        .map(ProviderKind::from)
 }
 
 pub(crate) fn fallback_response_usage_provider_facts(
