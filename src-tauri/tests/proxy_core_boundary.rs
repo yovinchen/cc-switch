@@ -2283,7 +2283,11 @@ fn is_allowed_provider_custom_user_agent_core_import(relative: &str, code: &str)
 
 fn is_allowed_circuit_breaker_config_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/circuit_breaker.rs"
-        && code.trim() == "use crate::proxy_core::api::config::{"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::config::{"
+                | "use crate::proxy_core::api::logging::cb as log_cb;"
+        )
 }
 
 fn is_allowed_codex_chat_history_transform_core_import(relative: &str, code: &str) -> bool {
@@ -23879,14 +23883,16 @@ fn production_circuit_breaker_imports_config_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let relative = "src/proxy/circuit_breaker.rs";
     let source = fs::read_to_string(manifest_dir.join(relative)).expect("read circuit_breaker.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
     let import_slice = function_slice(&source, "use crate::", "use std::sync::atomic");
 
     let required_imports = [
         "use crate::proxy_core::api::config::{",
+        "use crate::proxy_core::api::logging::cb as log_cb;",
         "circuit_breaker_failure_decision, half_open_probe_allow_result,",
         "should_close_half_open_after_success, should_transition_open_to_half_open, AllowResult,",
         "CircuitBreakerConfig, CircuitBreakerFailureDecision, CircuitBreakerStats, CircuitState,",
-        "use crate::proxy_core_adapter::circuit_breaker_log_codes as log_cb;",
     ];
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
     let mut violations = Vec::new();
@@ -23905,6 +23911,7 @@ fn production_circuit_breaker_imports_config_contracts_directly() {
         "CircuitBreakerFailureDecision",
         "CircuitBreakerStats",
         "CircuitState",
+        "circuit_breaker_log_codes",
         "circuit_breaker_failure_decision",
         "half_open_probe_allow_result",
         "should_close_half_open_after_success",
@@ -23918,6 +23925,13 @@ fn production_circuit_breaker_imports_config_contracts_directly() {
                 "{relative} imports circuit-breaker contract `{forbidden}` through proxy_core_adapter"
             ));
         }
+    }
+
+    if adapter_source.contains("pub(crate) mod circuit_breaker_log_codes") {
+        violations.push(
+            "proxy_core_adapter should not re-export circuit breaker log code constants"
+                .to_string(),
+        );
     }
 
     assert!(

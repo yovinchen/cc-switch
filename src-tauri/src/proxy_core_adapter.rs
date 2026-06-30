@@ -917,20 +917,6 @@ fn attempt_event_payload_input_from_forward_attempt<'a>(
 pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
     crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD;
 
-pub(crate) mod circuit_breaker_log_codes {
-    pub(crate) const OPEN_TO_HALF_OPEN: &str =
-        crate::proxy_core::api::logging::cb::OPEN_TO_HALF_OPEN;
-    pub(crate) const HALF_OPEN_TO_CLOSED: &str =
-        crate::proxy_core::api::logging::cb::HALF_OPEN_TO_CLOSED;
-    pub(crate) const HALF_OPEN_PROBE_FAILED: &str =
-        crate::proxy_core::api::logging::cb::HALF_OPEN_PROBE_FAILED;
-    pub(crate) const TRIGGERED_FAILURES: &str =
-        crate::proxy_core::api::logging::cb::TRIGGERED_FAILURES;
-    pub(crate) const TRIGGERED_ERROR_RATE: &str =
-        crate::proxy_core::api::logging::cb::TRIGGERED_ERROR_RATE;
-    pub(crate) const MANUAL_RESET: &str = crate::proxy_core::api::logging::cb::MANUAL_RESET;
-}
-
 pub(crate) mod server_log_codes {
     pub(crate) const STARTED: &str = crate::proxy_core::api::logging::srv::STARTED;
     pub(crate) const STOPPED: &str = crate::proxy_core::api::logging::srv::STOPPED;
@@ -8864,8 +8850,14 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn circuit_and_route_adapter_projects_provider_router_contracts() {
-        assert_eq!(circuit_breaker_log_codes::OPEN_TO_HALF_OPEN, "CB-001");
-        assert_eq!(circuit_breaker_log_codes::HALF_OPEN_TO_CLOSED, "CB-002");
+        assert_eq!(
+            crate::proxy_core::api::logging::cb::OPEN_TO_HALF_OPEN,
+            "CB-001"
+        );
+        assert_eq!(
+            crate::proxy_core::api::logging::cb::HALF_OPEN_TO_CLOSED,
+            "CB-002"
+        );
         assert_eq!(
             provider_circuit_key("claude", "provider-a"),
             "claude:provider-a"

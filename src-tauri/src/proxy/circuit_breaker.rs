@@ -7,7 +7,7 @@ use crate::proxy_core::api::config::{
     should_close_half_open_after_success, should_transition_open_to_half_open, AllowResult,
     CircuitBreakerConfig, CircuitBreakerFailureDecision, CircuitBreakerStats, CircuitState,
 };
-use crate::proxy_core_adapter::circuit_breaker_log_codes as log_cb;
+use crate::proxy_core::api::logging::cb as log_cb;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
