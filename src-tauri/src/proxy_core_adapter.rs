@@ -4571,16 +4571,6 @@ pub(crate) fn provider_claude_normalize_anthropic_messages(
     )
 }
 
-#[cfg(test)]
-pub(crate) fn anthropic_tool_thinking_placeholder() -> &'static str {
-    crate::proxy_core::api::transforms::ANTHROPIC_TOOL_THINKING_PLACEHOLDER
-}
-
-#[cfg(test)]
-pub(crate) fn anthropic_redacted_thinking_placeholder() -> &'static str {
-    crate::proxy_core::api::transforms::ANTHROPIC_REDACTED_THINKING_PLACEHOLDER
-}
-
 pub(crate) fn apply_provider_model_mapping_from_provider(
     body: Value,
     provider: &Provider,
@@ -5495,7 +5485,7 @@ mod tests {
         should_normalize_anthropic_tool_thinking_history,
         should_normalize_mimo_anthropic_thinking_history, CodexProxyErrorContext,
         CodexProxyErrorKind, MimoAnthropicThinkingNormalizationInput,
-        GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
+        ANTHROPIC_TOOL_THINKING_PLACEHOLDER, GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
     };
     use crate::proxy_core::api::transport::{
         anthropic_beta_header_value, apply_forwarder_media_prevention_from_facts,
@@ -13652,7 +13642,7 @@ command = "latest-command"
         assert!(normalize_anthropic_tool_thinking_history(&mut tool_body));
         assert_eq!(
             tool_body["messages"][0]["content"][0]["thinking"],
-            anthropic_tool_thinking_placeholder()
+            ANTHROPIC_TOOL_THINKING_PLACEHOLDER
         );
     }
 

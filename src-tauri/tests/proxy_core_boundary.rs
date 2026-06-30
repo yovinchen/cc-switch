@@ -12639,7 +12639,7 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
     let normalize_slice = function_slice(
         &source,
         "pub(crate) fn provider_claude_normalize_anthropic_messages",
-        "#[cfg(test)]\npub(crate) fn anthropic_tool_thinking_placeholder",
+        "pub(crate) fn apply_provider_model_mapping_from_provider",
     );
 
     assert!(
@@ -12658,6 +12658,15 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
         ),
         "adapter should not keep a test-only OpenAI stream include_usage helper re-export"
     );
+    for marker in [
+        "pub(crate) fn anthropic_tool_thinking_placeholder",
+        "pub(crate) fn anthropic_redacted_thinking_placeholder",
+    ] {
+        assert!(
+            !source.contains(marker),
+            "adapter should not keep test-only Claude thinking placeholder facade `{marker}`"
+        );
+    }
 
     let forbidden_markers = [
         "api_format.trim()",

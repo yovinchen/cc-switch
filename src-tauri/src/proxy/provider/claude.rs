@@ -125,6 +125,9 @@ mod tests {
     use crate::proxy_core_adapter::provider_claude_normalize_anthropic_messages;
     use serde_json::{json, Value};
 
+    const EXPECTED_TOOL_THINKING_PLACEHOLDER: &str = "tool call";
+    const EXPECTED_REDACTED_THINKING_PLACEHOLDER: &str = "[redacted thinking]";
+
     fn create_provider(config: serde_json::Value) -> Provider {
         Provider {
             id: "test".to_string(),
@@ -1322,10 +1325,7 @@ mod tests {
         assert!(changed);
         let content = body["messages"][0]["content"].as_array().unwrap();
         assert_eq!(content[0]["type"], "thinking");
-        assert_eq!(
-            content[0]["thinking"],
-            crate::proxy_core_adapter::anthropic_tool_thinking_placeholder()
-        );
+        assert_eq!(content[0]["thinking"], EXPECTED_TOOL_THINKING_PLACEHOLDER);
         assert_eq!(content[1]["type"], "text");
         assert_eq!(content[2]["type"], "tool_use");
     }
@@ -1417,10 +1417,7 @@ mod tests {
         assert!(changed);
         let content = body["messages"][0]["content"].as_array().unwrap();
         assert_eq!(content[0]["type"], "thinking");
-        assert_eq!(
-            content[0]["thinking"],
-            crate::proxy_core_adapter::anthropic_tool_thinking_placeholder()
-        );
+        assert_eq!(content[0]["thinking"], EXPECTED_TOOL_THINKING_PLACEHOLDER);
         assert_eq!(content[1]["type"], "tool_use");
     }
 
@@ -1454,7 +1451,7 @@ mod tests {
         assert_eq!(content[0]["type"], "thinking");
         assert_eq!(
             content[0]["thinking"],
-            crate::proxy_core_adapter::anthropic_redacted_thinking_placeholder()
+            EXPECTED_REDACTED_THINKING_PLACEHOLDER
         );
         assert!(content[0].get("data").is_none());
     }
