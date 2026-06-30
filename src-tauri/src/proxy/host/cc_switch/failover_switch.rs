@@ -7,11 +7,13 @@
 
 use crate::database::Database;
 use crate::error::AppError;
+use crate::proxy_core::api::config::AppProxyConfig;
 use crate::proxy_core::api::events::provider_switched_failover_event;
-use crate::proxy_core::api::routing::failover_switch_pending_key;
+use crate::proxy_core::api::routing::{
+    failover_config_read_error_log_line, failover_switch_pending_key,
+};
 use crate::proxy_core_adapter::{
-    failover_switch_app_enabled_from_db, FailoverSwitchScheduler, FailoverSwitchSchedulerRef,
-    ForwarderFailoverSwitchTarget,
+    FailoverSwitchScheduler, FailoverSwitchSchedulerRef, ForwarderFailoverSwitchTarget,
 };
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -100,7 +102,8 @@ impl FailoverSwitchManager {
     ) -> Result<bool, AppError> {
         // 检查该应用是否已被代理接管（enabled=true）
         // 只有被接管的应用才允许执行故障转移切换
-        let app_enabled = failover_switch_app_enabled_from_db(self.db.as_ref(), app_type).await;
+        let app_enabled =
+            failover_switch_app_enabled_from_host_db(self.db.as_ref(), app_type).await;
 
         if !app_enabled {
             log::debug!("[Failover] {app_type} 未启用代理，跳过切换");
@@ -143,6 +146,26 @@ impl FailoverSwitchManager {
 
         Ok(switched)
     }
+}
+
+fn failover_switch_app_enabled_from_config_result(
+    app_type: &str,
+    result: Result<AppProxyConfig, AppError>,
+) -> bool {
+    match result {
+        Ok(config) => config.enabled,
+        Err(error) => {
+            log::warn!("{}", failover_config_read_error_log_line(app_type, error));
+            false
+        }
+    }
+}
+
+async fn failover_switch_app_enabled_from_host_db(db: &Database, app_type: &str) -> bool {
+    failover_switch_app_enabled_from_config_result(
+        app_type,
+        db.get_proxy_config_for_app(app_type).await,
+    )
 }
 
 struct CcSwitchFailoverSwitchScheduler {

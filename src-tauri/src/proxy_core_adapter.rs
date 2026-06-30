@@ -1771,8 +1771,7 @@ use crate::proxy_core::api::ports::{
     ProviderSource, ProxyConfigSource, RoutePolicySource,
 };
 use crate::proxy_core::api::routing::{
-    failover_config_read_error_log_line, provider_router_auto_failover_enabled_decision,
-    route_policy_failover_provider_ids,
+    provider_router_auto_failover_enabled_decision, route_policy_failover_provider_ids,
 };
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
@@ -3130,26 +3129,6 @@ pub(crate) async fn proxy_takeover_status_from_db(db: &Database) -> ProxyTakeove
         .ok()
         .map(|config| config.enabled);
     proxy_takeover_status_from_enabled_options(claude, codex, gemini, None, None)
-}
-
-fn failover_switch_app_enabled_from_config_result(
-    app_type: &str,
-    result: Result<AppProxyConfig, AppError>,
-) -> bool {
-    match result {
-        Ok(config) => config.enabled,
-        Err(error) => {
-            log::warn!("{}", failover_config_read_error_log_line(app_type, error));
-            false
-        }
-    }
-}
-
-pub(crate) async fn failover_switch_app_enabled_from_db(db: &Database, app_type: &str) -> bool {
-    failover_switch_app_enabled_from_config_result(
-        app_type,
-        db.get_proxy_config_for_app(app_type).await,
-    )
 }
 
 fn select_current_provider_ids_from_router_provider_id_source(
@@ -9293,20 +9272,6 @@ base_url = "https://api.openai.com/v1"
             Ok(no_failover_config)
         ));
         assert!(!auto_failover_enabled_from_router_config_result(
-            "claude",
-            Err(AppError::Config("missing proxy_config".to_string()))
-        ));
-        assert!(failover_switch_app_enabled_from_config_result(
-            "claude",
-            Ok(app_config.clone())
-        ));
-        let mut switch_disabled_app_config = app_config.clone();
-        switch_disabled_app_config.enabled = false;
-        assert!(!failover_switch_app_enabled_from_config_result(
-            "claude",
-            Ok(switch_disabled_app_config)
-        ));
-        assert!(!failover_switch_app_enabled_from_config_result(
             "claude",
             Err(AppError::Config("missing proxy_config".to_string()))
         ));

@@ -149,8 +149,10 @@ const FORBIDDEN_FORWARDER_CHANNEL_STATUS_MAPPING_MARKERS: &[&str] = &[
     "invalid_mapped_channel_response_status_message(",
     "StatusCode::from_u16(",
 ];
-const FORBIDDEN_FAILOVER_SWITCH_CONFIG_MARKERS: &[&str] =
-    &[".get_proxy_config_for_app(", ".enabled"];
+const FORBIDDEN_FAILOVER_SWITCH_ADAPTER_CONFIG_MARKERS: &[&str] = &[
+    "failover_switch_app_enabled_from_db",
+    "failover_switch_app_enabled_from_config_result",
+];
 const FORBIDDEN_SWITCH_PROXY_PROVIDER_COMMAND_MARKERS: &[&str] = &[
     ".get_provider_by_id(",
     "should_block_proxy_switch_to_provider(",
@@ -2067,8 +2069,11 @@ fn is_allowed_failover_switch_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/host/cc_switch/failover_switch.rs"
         && matches!(
             code.trim(),
-            "use crate::proxy_core::api::events::provider_switched_failover_event;"
-                | "use crate::proxy_core::api::routing::failover_switch_pending_key;"
+            "use crate::proxy_core::api::config::AppProxyConfig;"
+                | "use crate::proxy_core::api::events::provider_switched_failover_event;"
+                | "use crate::proxy_core::api::routing::{"
+                | "failover_config_read_error_log_line, failover_switch_pending_key,"
+                | "};"
         )
 }
 
@@ -7294,6 +7299,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn provider_selection_failure_from_app_error",
         "pub(crate) fn auto_failover_toggle_plan_from_sources",
         "pub(crate) fn failover_switch_app_enabled_from_config_result",
+        "pub(crate) async fn failover_switch_app_enabled_from_db",
         "pub(crate) fn reset_circuit_breaker_switchback_target_from_sources",
         "pub(crate) async fn reset_circuit_breaker_switchback_target_from_db",
         "pub(crate) async fn auto_failover_toggle_plan_from_db",
@@ -17311,15 +17317,14 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
         "default failover switch scheduler implementation should live in the CC Switch host module"
     );
     assert!(
-        failover_source
-            .contains("use crate::proxy_core::api::routing::failover_switch_pending_key;")
+        failover_source.contains("use crate::proxy_core::api::routing::{")
+            && failover_source.contains("failover_config_read_error_log_line")
+            && failover_source.contains("failover_switch_pending_key")
             && failover_source
                 .contains("use crate::proxy_core::api::events::provider_switched_failover_event;")
-            && !failover_source.contains(
-                "use crate::proxy_core_adapter::{\n    failover_switch_app_enabled_from_db, failover_switch_pending_key"
-            )
+            && failover_source.contains("use crate::proxy_core::api::config::AppProxyConfig;")
             && !failover_source.contains("crate::proxy_core_adapter::failover_switch_pending_key"),
-        "failover switch should import pure routing/event helpers directly from proxy_core"
+        "failover switch should import pure config/routing/event helpers directly from proxy_core"
     );
     assert!(
         adapter_source.contains("use crate::proxy::host::cc_switch::failover_switch::failover_switch_scheduler_from_runtime_sources;")
@@ -18995,30 +19000,27 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
 }
 
 #[test]
-fn production_failover_switch_delegates_proxy_config_to_adapter() {
+fn production_failover_switch_uses_host_proxy_config_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/failover_switch.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/failover_switch.rs");
-
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(&source) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_FAILOVER_SWITCH_CONFIG_MARKERS {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy/host/cc_switch/failover_switch.rs:{} contains proxy config marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
 
     assert!(
-        violations.is_empty(),
-        "FailoverSwitchManager must delegate proxy_config reads and enabled policy to proxy_core_adapter:\n{}",
-        violations.join("\n")
+        source.contains("async fn failover_switch_app_enabled_from_host_db(")
+            && source.contains("db.get_proxy_config_for_app(app_type).await")
+            && source.contains("failover_switch_app_enabled_from_config_result(")
+            && source.contains("failover_config_read_error_log_line(app_type, error)"),
+        "FailoverSwitchManager should own its app-enabled config source and reuse core warning policy"
     );
+
+    for marker in FORBIDDEN_FAILOVER_SWITCH_ADAPTER_CONFIG_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep FailoverSwitchManager config wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
