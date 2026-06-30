@@ -5,6 +5,7 @@
 use crate::app_config::AppType;
 use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
 use crate::database::Database;
+use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::transport::http::server::ProxyServer;
@@ -12,9 +13,10 @@ use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::events::proxy_official_warning_event;
 use crate::proxy_core::api::ports::{
-    app_proxy_config_with_enabled, apply_gemini_takeover_env_fields, is_local_proxy_url,
-    live_takeover_app_kinds, live_token_sync_app_label, proxy_live_config_owned_by_takeover,
-    proxy_runtime_status_stopped, remove_claude_takeover_env_fields_if_present,
+    app_proxy_config_with_enabled, apply_gemini_takeover_env_fields,
+    common_config_settings_mutation_issue_message, is_local_proxy_url, live_takeover_app_kinds,
+    live_token_sync_app_label, proxy_live_config_owned_by_takeover, proxy_runtime_status_stopped,
+    remove_claude_takeover_env_fields_if_present,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present, sanitize_claude_settings_for_live,
     should_emit_proxy_official_warning_for_provider_category, LiveTokenProviderSettingsIssue,
@@ -36,20 +38,20 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
-    apply_codex_unified_session_bucket_for_provider, codex_backup_projection_error_message,
-    codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
-    codex_provider_live_write_parts, live_backup_snapshot_from_live_config,
-    live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
-    persist_hot_switch_current_provider_sources, preserve_codex_mcp_servers_from_existing_config,
+    apply_codex_unified_session_bucket_for_provider, build_effective_settings_with_common_config,
+    codex_backup_projection_error_message, codex_live_write_projection,
+    codex_preserved_auth_live_config_text_for_configured_policy, codex_provider_live_write_parts,
+    live_backup_snapshot_from_live_config, live_config_has_proxy_placeholder_for_app,
+    live_takeover_config_matches_proxy_for_app, persist_hot_switch_current_provider_sources,
+    preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
-    provider_effective_settings_with_common_config_from_db,
     proxy_hot_switch_should_refresh_codex_live_from_backup,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_hot_switch_should_sync_codex_live_while_proxy_active,
     proxy_hot_switch_target_state_from_db, proxy_server_from_runtime_config,
     remove_codex_takeover_config_placeholders_if_present, ssot_live_restore_provider_from_db,
     sync_provider_settings_with_live_token, write_ssot_live_restore_provider_with_common_config,
-    CodexLiveWriteProjection, CodexTakeoverAuthPolicy,
+    CodexLiveWriteProjection, CodexTakeoverAuthPolicy, ProviderEffectiveSettingsWarning,
 };
 #[cfg(test)]
 use serde_json::Map;
@@ -381,6 +383,38 @@ fn proxy_official_warning_event_from_current_provider_host_db(
     })
 }
 
+fn provider_effective_settings_with_common_config_from_host_db(
+    db: &Database,
+    app_type: &AppType,
+    provider: &Provider,
+) -> Result<Value, AppError> {
+    let snippet = db.get_config_snippet(app_type.as_str())?;
+    let result =
+        build_effective_settings_with_common_config(app_type, provider, snippet.as_deref());
+    log_provider_effective_settings_warnings_in_host(app_type, provider, result.warnings);
+
+    Ok(result.settings)
+}
+
+fn log_provider_effective_settings_warnings_in_host(
+    app_type: &AppType,
+    provider: &Provider,
+    warnings: Vec<ProviderEffectiveSettingsWarning>,
+) {
+    for warning in warnings {
+        match warning {
+            ProviderEffectiveSettingsWarning::CommonConfigApply(issue) => {
+                let err = common_config_settings_mutation_issue_message(issue);
+                log::warn!(
+                    "Failed to apply common config for {} provider '{}': {err}",
+                    app_type.as_str(),
+                    provider.id
+                );
+            }
+        }
+    }
+}
+
 async fn clear_legacy_live_takeover_active_flag_from_host_db(db: &Database) {
     if let Ok(config) = db.get_proxy_config().await {
         let config = proxy_config_with_live_takeover_active(config, false);
@@ -480,7 +514,7 @@ impl ProxyService {
     ) -> Result<Provider, String> {
         let mut effective_provider = provider.clone();
         effective_provider.settings_config =
-            provider_effective_settings_with_common_config_from_db(
+            provider_effective_settings_with_common_config_from_host_db(
                 &self.db,
                 &AppType::Claude,
                 provider,
@@ -512,7 +546,7 @@ impl ProxyService {
         provider: &Provider,
     ) -> Result<(), String> {
         let existing_live = self.read_codex_live().ok();
-        let mut effective_settings = provider_effective_settings_with_common_config_from_db(
+        let mut effective_settings = provider_effective_settings_with_common_config_from_host_db(
             &self.db,
             &AppType::Codex,
             provider,
@@ -1562,7 +1596,7 @@ impl ProxyService {
     ) -> Result<(), String> {
         let app_type_enum =
             AppType::from_str(app_type).map_err(|_| format!("未知的应用类型: {app_type}"))?;
-        let mut effective_settings = provider_effective_settings_with_common_config_from_db(
+        let mut effective_settings = provider_effective_settings_with_common_config_from_host_db(
             &self.db,
             &app_type_enum,
             provider,
@@ -1657,7 +1691,7 @@ impl ProxyService {
         }
 
         if should_refresh_codex_live_from_backup {
-            let effective_settings = provider_effective_settings_with_common_config_from_db(
+            let effective_settings = provider_effective_settings_with_common_config_from_host_db(
                 &self.db,
                 &AppType::Codex,
                 &provider,

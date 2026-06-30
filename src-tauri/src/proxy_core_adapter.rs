@@ -956,7 +956,6 @@ use crate::proxy_core::api::domain::{
 use crate::proxy_core::api::ports::{
     apply_claude_common_config_to_settings as core_apply_claude_common_config_to_settings,
     apply_gemini_common_config_to_settings as core_apply_gemini_common_config_to_settings,
-    common_config_settings_mutation_issue_message,
     contains_claude_common_config_snippet as core_contains_claude_common_config_snippet,
     contains_gemini_common_config_snippet as core_contains_gemini_common_config_snippet,
     openclaw_live_write_action_decision as core_openclaw_live_write_action_decision,
@@ -3211,38 +3210,6 @@ pub(crate) fn build_effective_settings_with_common_config(
     }
 
     ProviderEffectiveSettingsResult { settings, warnings }
-}
-
-pub(crate) fn provider_effective_settings_with_common_config_from_db(
-    db: &Database,
-    app_type: &AppType,
-    provider: &Provider,
-) -> Result<Value, AppError> {
-    let snippet = db.get_config_snippet(app_type.as_str())?;
-    let result =
-        build_effective_settings_with_common_config(app_type, provider, snippet.as_deref());
-    log_provider_effective_settings_warnings(app_type, provider, result.warnings);
-
-    Ok(result.settings)
-}
-
-fn log_provider_effective_settings_warnings(
-    app_type: &AppType,
-    provider: &Provider,
-    warnings: Vec<ProviderEffectiveSettingsWarning>,
-) {
-    for warning in warnings {
-        match warning {
-            ProviderEffectiveSettingsWarning::CommonConfigApply(issue) => {
-                let err = common_config_settings_mutation_issue_message(issue);
-                log::warn!(
-                    "Failed to apply common config for {} provider '{}': {err}",
-                    app_type.as_str(),
-                    provider.id
-                );
-            }
-        }
-    }
 }
 
 pub(crate) fn remove_common_config_from_settings(
@@ -5627,22 +5594,23 @@ mod tests {
         app_proxy_config_with_enabled as proxy_app_config_with_enabled,
         apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
         claude_env_credentials_from_settings, claude_takeover_model_fields_from_settings,
-        codex_auth_object_value_from_settings, common_config_snippet_issue_message,
-        ensure_codex_takeover_auth_placeholder, gemini_env_map_from_settings,
-        gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
-        gemini_live_settings_to_write, is_local_proxy_url, json_deep_merge, json_deep_remove,
-        json_remove_array_items, json_value_is_subset, live_takeover_app_kinds,
-        live_token_sync_app_label, normalize_claude_models_in_value,
-        normalize_provider_settings_for_storage, openclaw_common_config_value_from_settings,
-        openclaw_credential_parts_from_settings, opencode_common_config_value_from_settings,
-        opencode_credential_parts_from_settings, provider_additive_live_write_action_for_app,
-        provider_additive_update_route_for_app, provider_app_has_current_provider,
-        provider_credential_issue_spec, provider_default_live_import_settings,
-        provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
-        provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
-        provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
-        provider_live_sync_scope_for_app, provider_omo_switch_pair_for_app_category,
-        provider_omo_variant_for_app_category, provider_settings_validation_issue_spec,
+        codex_auth_object_value_from_settings, common_config_settings_mutation_issue_message,
+        common_config_snippet_issue_message, ensure_codex_takeover_auth_placeholder,
+        gemini_env_map_from_settings, gemini_live_backup_from_effective_settings,
+        gemini_live_settings_from_env_json_and_config, gemini_live_settings_to_write,
+        is_local_proxy_url, json_deep_merge, json_deep_remove, json_remove_array_items,
+        json_value_is_subset, live_takeover_app_kinds, live_token_sync_app_label,
+        normalize_claude_models_in_value, normalize_provider_settings_for_storage,
+        openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
+        opencode_common_config_value_from_settings, opencode_credential_parts_from_settings,
+        provider_additive_live_write_action_for_app, provider_additive_update_route_for_app,
+        provider_app_has_current_provider, provider_credential_issue_spec,
+        provider_default_live_import_settings, provider_delete_is_current_provider,
+        provider_initial_live_config_managed_marker, provider_key_change_policy_issue_for_app,
+        provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
+        provider_live_removal_target_for_app, provider_live_sync_scope_for_app,
+        provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
+        provider_settings_validation_issue_spec,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         provider_switch_backfill_source_id, provider_switch_dispatch_for_app,
         provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,

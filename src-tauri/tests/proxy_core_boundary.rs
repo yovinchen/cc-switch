@@ -474,6 +474,8 @@ const FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_MARKERS: &[&str] = &[
     "get_config_snippet(",
     "self.db.as_ref()",
 ];
+const FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) fn provider_effective_settings_with_common_config_from_db"];
 const FORBIDDEN_PROXY_SERVICE_LIVE_WRITE_PROVIDER_FACADE_MARKERS: &[&str] =
     &["crate::services::provider::sanitize_claude_settings_for_live("];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
@@ -7348,6 +7350,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn proxy_app_config_from_config_source_parts",
         "pub(crate) fn proxy_official_warning_event_from_current_provider_db",
         "pub(crate) fn proxy_official_warning_event_from_provider",
+        "pub(crate) fn provider_effective_settings_with_common_config_from_db",
         "pub(crate) fn select_current_provider_ids_from_router_provider_id_source",
         "pub(crate) fn provider_is_copilot_prompt_cache_provider",
         "pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat",
@@ -16656,10 +16659,12 @@ fn production_proxy_service_imports_server_type_from_http_transport() {
 }
 
 #[test]
-fn production_proxy_service_delegates_effective_settings_source_to_adapter() {
+fn production_proxy_service_owns_effective_settings_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let functions = [
         (
             "claude_provider_with_effective_settings",
@@ -16696,7 +16701,7 @@ fn production_proxy_service_delegates_effective_settings_source_to_adapter() {
     ];
 
     let mut violations = Vec::new();
-    for (function_name, function) in functions {
+    for (function_name, function) in &functions {
         for (line_index, line) in production_lines(function) {
             let code = line.split("//").next().unwrap_or_default();
             for marker in FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_MARKERS {
@@ -16713,9 +16718,39 @@ fn production_proxy_service_delegates_effective_settings_source_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService must delegate common-config effective settings source reads to proxy_core_adapter:\n{}",
+        "ProxyService methods must keep common-config effective settings source reads in the host helper:\n{}",
         violations.join("\n")
     );
+
+    for (function_name, function) in &functions {
+        assert!(
+            function.contains("provider_effective_settings_with_common_config_from_host_db("),
+            "ProxyService {function_name} should call the host-owned effective settings helper"
+        );
+    }
+
+    for marker in [
+        "fn provider_effective_settings_with_common_config_from_host_db(",
+        "db.get_config_snippet(app_type.as_str())",
+        "build_effective_settings_with_common_config(app_type, provider, snippet.as_deref())",
+        "log_provider_effective_settings_warnings_in_host(app_type, provider, result.warnings)",
+        "fn log_provider_effective_settings_warnings_in_host(",
+        "ProviderEffectiveSettingsWarning::CommonConfigApply(issue)",
+        "common_config_settings_mutation_issue_message(issue)",
+        "Failed to apply common config for {} provider",
+    ] {
+        assert!(
+            source.contains(marker),
+            "host effective settings source should contain `{marker}`"
+        );
+    }
+
+    for marker in FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep effective settings source wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
