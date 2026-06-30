@@ -26,8 +26,12 @@ use crate::proxy_core::api::ports::{
     ClaudeTakeoverAuthPolicy,
 };
 use crate::proxy_core::api::ports::{
+    codex_config_has_base_url_matching,
+    live_backup_snapshot_from_live_config as core_live_backup_snapshot_from_live_config,
+    live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
+    live_takeover_config_matches_proxy_for_app as core_live_takeover_config_matches_proxy_for_app,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
-    proxy_config_with_live_takeover_active,
+    proxy_config_with_live_takeover_active, proxy_urls_match, CodexLiveTakeoverMatchFacts,
 };
 use crate::proxy_core::api::ports::{
     proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -43,8 +47,7 @@ use crate::proxy_core_adapter::{
     apply_codex_unified_session_bucket_for_provider, build_effective_settings_with_common_config,
     codex_backup_projection_error_message, codex_live_write_projection,
     codex_preserved_auth_live_config_text_for_configured_policy, codex_provider_live_write_parts,
-    live_backup_snapshot_from_live_config, live_config_has_proxy_placeholder_for_app,
-    live_takeover_config_matches_proxy_for_app, preserve_codex_mcp_servers_from_existing_config,
+    preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy, proxy_server_from_runtime_config,
     remove_codex_takeover_config_placeholders_if_present, should_block_proxy_switch_to_provider,
     sync_provider_settings_with_live_token, CodexLiveWriteProjection, CodexTakeoverAuthPolicy,
@@ -71,6 +74,80 @@ fn live_takeover_app_types() -> [AppType; 3] {
         AppType::from_str(app.as_str())
             .expect("proxy-core live takeover app kind must be supported by cc-switch")
     })
+}
+
+fn codex_config_has_proxy_placeholder_in_host(config: &Value, placeholder: &str) -> bool {
+    config
+        .get("config")
+        .and_then(Value::as_str)
+        .and_then(crate::codex_config::extract_codex_experimental_bearer_token)
+        .as_deref()
+        == Some(placeholder)
+}
+
+fn live_config_has_proxy_placeholder_for_app(
+    app_type: &AppType,
+    config: &Value,
+    placeholder: &str,
+) -> bool {
+    let codex_config_has_proxy_placeholder = matches!(app_type, AppType::Codex)
+        && codex_config_has_proxy_placeholder_in_host(config, placeholder);
+    core_live_config_has_proxy_placeholder_for_app(
+        &AppKind::from(app_type),
+        config,
+        placeholder,
+        codex_config_has_proxy_placeholder,
+    )
+}
+
+fn live_backup_snapshot_from_live_config(
+    app_type: &AppType,
+    config: &Value,
+    placeholder: &str,
+) -> Option<Value> {
+    let codex_config_has_proxy_placeholder = matches!(app_type, AppType::Codex)
+        && codex_config_has_proxy_placeholder_in_host(config, placeholder);
+    core_live_backup_snapshot_from_live_config(
+        &AppKind::from(app_type),
+        config,
+        placeholder,
+        codex_config_has_proxy_placeholder,
+    )
+}
+
+fn live_takeover_config_matches_proxy_for_app(
+    app_type: &AppType,
+    config: &Value,
+    proxy_url: &str,
+    codex_proxy_base_url: &str,
+    placeholder: &str,
+) -> bool {
+    let codex_facts = if matches!(app_type, AppType::Codex) {
+        CodexLiveTakeoverMatchFacts {
+            config_has_proxy_placeholder: codex_config_has_proxy_placeholder_in_host(
+                config,
+                placeholder,
+            ),
+            config_base_url_matches_proxy: config
+                .get("config")
+                .and_then(Value::as_str)
+                .is_some_and(|config_text| {
+                    codex_config_has_base_url_matching(config_text, |url| {
+                        proxy_urls_match(url, codex_proxy_base_url)
+                    })
+                }),
+        }
+    } else {
+        CodexLiveTakeoverMatchFacts::default()
+    };
+
+    core_live_takeover_config_matches_proxy_for_app(
+        &AppKind::from(app_type),
+        config,
+        proxy_url,
+        placeholder,
+        codex_facts,
+    )
 }
 
 async fn proxy_app_enabled_option_from_host_db(db: &Database, app: AppType) -> Option<bool> {

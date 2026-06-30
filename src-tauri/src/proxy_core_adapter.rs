@@ -152,7 +152,6 @@ use crate::proxy_core::api::ports::{
     apply_codex_takeover_auth_placeholder_if_present,
     codex_auth_has_oauth_login_material as core_codex_auth_has_oauth_login_material,
     codex_base_url_from_settings as core_codex_base_url_from_settings,
-    codex_config_has_base_url_matching as core_codex_config_has_base_url_matching,
     codex_config_text_from_settings,
     codex_live_settings_parts_from_settings as core_codex_live_settings_parts_from_settings,
     codex_live_snapshot_parts_from_settings as core_codex_live_snapshot_parts_from_settings,
@@ -161,20 +160,15 @@ use crate::proxy_core::api::ports::{
     codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     ensure_codex_takeover_auth_placeholder,
-    live_backup_snapshot_from_live_config as core_live_backup_snapshot_from_live_config,
-    live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
-    live_takeover_config_matches_proxy_for_app as core_live_takeover_config_matches_proxy_for_app,
     provider_default_live_import_category_from_parts as core_provider_default_live_import_category_from_parts,
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
     provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
-    proxy_urls_match as core_proxy_urls_match,
     required_provider_base_url as core_required_provider_base_url, CodexLiveSettingsIssue,
     CodexLiveSettingsParts, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
-    CodexLiveTakeoverMatchFacts, CodexProviderBackfillParts, CodexProviderLiveWriteIssue,
-    CodexProviderLiveWriteParts, CopilotOptimizerConfig, LiveTokenProviderSettingsIssue,
-    OptimizerConfig, ProviderSettingsValidationIssue, ProviderSettingsValidationParts,
-    RectifierConfig,
+    CodexProviderBackfillParts, CodexProviderLiveWriteIssue, CodexProviderLiveWriteParts,
+    CopilotOptimizerConfig, LiveTokenProviderSettingsIssue, OptimizerConfig,
+    ProviderSettingsValidationIssue, ProviderSettingsValidationParts, RectifierConfig,
 };
 pub(crate) fn record_forward_success_status(
     status: &mut ProxyRuntimeStatus,
@@ -4727,36 +4721,6 @@ pub(crate) fn provider_github_copilot_managed_account_id(provider: &Provider) ->
     provider_managed_account_id_for(provider, GITHUB_COPILOT_AUTH_PROVIDER)
 }
 
-pub(crate) fn live_config_has_proxy_placeholder_for_app(
-    app_type: &AppType,
-    config: &Value,
-    placeholder: &str,
-) -> bool {
-    let codex_config_has_proxy_placeholder = matches!(app_type, AppType::Codex)
-        && codex_config_has_proxy_placeholder(config, placeholder);
-    core_live_config_has_proxy_placeholder_for_app(
-        &AppKind::from(app_type),
-        config,
-        placeholder,
-        codex_config_has_proxy_placeholder,
-    )
-}
-
-pub(crate) fn live_backup_snapshot_from_live_config(
-    app_type: &AppType,
-    config: &Value,
-    placeholder: &str,
-) -> Option<Value> {
-    let codex_config_has_proxy_placeholder = matches!(app_type, AppType::Codex)
-        && codex_config_has_proxy_placeholder(config, placeholder);
-    core_live_backup_snapshot_from_live_config(
-        &AppKind::from(app_type),
-        config,
-        placeholder,
-        codex_config_has_proxy_placeholder,
-    )
-}
-
 pub(crate) fn provider_settings_with_live_token_sync(
     app_type: &AppType,
     live_config: &Value,
@@ -4789,15 +4753,6 @@ pub(crate) fn sync_provider_settings_with_live_token(
         }
         None => Ok(false),
     }
-}
-
-fn codex_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
-    config
-        .get("config")
-        .and_then(Value::as_str)
-        .and_then(crate::codex_config::extract_codex_experimental_bearer_token)
-        .as_deref()
-        == Some(placeholder)
 }
 
 pub(crate) fn remove_codex_takeover_config_placeholders_if_present<F>(
@@ -4927,42 +4882,6 @@ pub(crate) fn codex_live_write_projection(
         (None, Some(config_text)) => CodexLiveWriteProjection::WriteConfigOnly { config_text },
         (None, None) => CodexLiveWriteProjection::Noop,
     })
-}
-
-pub(crate) fn live_takeover_config_matches_proxy_for_app(
-    app_type: &AppType,
-    config: &Value,
-    proxy_url: &str,
-    codex_proxy_base_url: &str,
-    placeholder: &str,
-) -> bool {
-    let codex_facts = if matches!(app_type, AppType::Codex) {
-        CodexLiveTakeoverMatchFacts {
-            config_has_proxy_placeholder: codex_config_has_proxy_placeholder(config, placeholder),
-            config_base_url_matches_proxy: config
-                .get("config")
-                .and_then(Value::as_str)
-                .is_some_and(|config_text| {
-                    core_codex_config_has_base_url_matching(config_text, |url| {
-                        proxy_urls_match(url, codex_proxy_base_url)
-                    })
-                }),
-        }
-    } else {
-        CodexLiveTakeoverMatchFacts::default()
-    };
-
-    core_live_takeover_config_matches_proxy_for_app(
-        &AppKind::from(app_type),
-        config,
-        proxy_url,
-        placeholder,
-        codex_facts,
-    )
-}
-
-fn proxy_urls_match(actual: &str, expected: &str) -> bool {
-    core_proxy_urls_match(actual, expected)
 }
 
 pub(crate) fn provider_claude_models_are_claude_safe(provider: &Provider) -> bool {
@@ -11982,74 +11901,6 @@ reasoning = "medium"
     fn proxy_placeholder_adapter_projects_app_specific_live_detection() {
         let placeholder = "PROXY_MANAGED";
 
-        assert!(live_config_has_proxy_placeholder_for_app(
-            &AppType::Claude,
-            &json!({ "env": { "ANTHROPIC_API_KEY": placeholder } }),
-            placeholder
-        ));
-        assert!(live_config_has_proxy_placeholder_for_app(
-            &AppType::Codex,
-            &json!({ "config": "experimental_bearer_token = \"PROXY_MANAGED\"" }),
-            placeholder
-        ));
-        assert!(live_config_has_proxy_placeholder_for_app(
-            &AppType::Gemini,
-            &json!({ "env": { "GEMINI_API_KEY": placeholder } }),
-            placeholder
-        ));
-        assert!(!live_config_has_proxy_placeholder_for_app(
-            &AppType::OpenClaw,
-            &json!({ "env": { "ANTHROPIC_API_KEY": placeholder } }),
-            placeholder
-        ));
-        assert_eq!(
-            live_backup_snapshot_from_live_config(
-                &AppType::Claude,
-                &json!({ "env": { "ANTHROPIC_AUTH_TOKEN": "real-token" } }),
-                placeholder
-            ),
-            Some(json!({ "env": { "ANTHROPIC_AUTH_TOKEN": "real-token" } }))
-        );
-        assert_eq!(
-            live_backup_snapshot_from_live_config(
-                &AppType::Claude,
-                &json!({ "env": { "ANTHROPIC_AUTH_TOKEN": placeholder } }),
-                placeholder
-            ),
-            None
-        );
-        assert_eq!(
-            live_backup_snapshot_from_live_config(
-                &AppType::Codex,
-                &json!({ "config": "experimental_bearer_token = \"PROXY_MANAGED\"" }),
-                placeholder
-            ),
-            None
-        );
-
-        let provider = Provider::with_id(
-            "codex-live-residue".to_string(),
-            "Codex Live Residue".to_string(),
-            json!({ "auth": placeholder }),
-            None,
-        );
-        assert!(!live_config_has_proxy_placeholder_for_app(
-            &AppType::Claude,
-            &provider.settings_config,
-            placeholder
-        ));
-        let claude_provider = Provider::with_id(
-            "claude-live-residue".to_string(),
-            "Claude Live Residue".to_string(),
-            json!({ "env": { "ANTHROPIC_AUTH_TOKEN": placeholder } }),
-            None,
-        );
-        assert!(live_config_has_proxy_placeholder_for_app(
-            &AppType::Claude,
-            &claude_provider.settings_config,
-            placeholder
-        ));
-
         let mut claude_live = json!({
             "env": {
                 "ANTHROPIC_AUTH_TOKEN": placeholder,
@@ -12385,92 +12236,6 @@ base_url = "https://relay.example/v1"
             codex_live_write_projection(&json!({})).expect("noop"),
             CodexLiveWriteProjection::Noop
         );
-    }
-
-    #[test]
-    fn live_takeover_match_adapter_projects_app_specific_proxy_urls() {
-        let placeholder = "PROXY_MANAGED";
-        let proxy_url = "http://127.0.0.1:15721";
-        let codex_proxy_url = "http://127.0.0.1:15721/v1";
-
-        assert!(live_takeover_config_matches_proxy_for_app(
-            &AppType::Claude,
-            &json!({
-                "env": {
-                    "ANTHROPIC_AUTH_TOKEN": placeholder,
-                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721/"
-                }
-            }),
-            proxy_url,
-            codex_proxy_url,
-            placeholder
-        ));
-        assert!(!live_takeover_config_matches_proxy_for_app(
-            &AppType::Claude,
-            &json!({
-                "env": {
-                    "ANTHROPIC_AUTH_TOKEN": placeholder,
-                    "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
-                }
-            }),
-            proxy_url,
-            codex_proxy_url,
-            placeholder
-        ));
-
-        assert!(live_takeover_config_matches_proxy_for_app(
-            &AppType::Codex,
-            &json!({
-                "auth": {"OPENAI_API_KEY": placeholder},
-                "config": r#"model_provider = "cc-switch"
-
-[model_providers.cc-switch]
-base_url = "http://127.0.0.1:15721/v1/"
-"#
-            }),
-            proxy_url,
-            codex_proxy_url,
-            placeholder
-        ));
-        assert!(!live_takeover_config_matches_proxy_for_app(
-            &AppType::Codex,
-            &json!({
-                "auth": {"OPENAI_API_KEY": placeholder},
-                "config": r#"model_provider = "cc-switch"
-
-[model_providers.cc-switch]
-base_url = "https://relay.example/v1"
-"#
-            }),
-            proxy_url,
-            codex_proxy_url,
-            placeholder
-        ));
-
-        assert!(live_takeover_config_matches_proxy_for_app(
-            &AppType::Gemini,
-            &json!({
-                "env": {
-                    "GEMINI_API_KEY": placeholder,
-                    "GOOGLE_GEMINI_BASE_URL": "http://127.0.0.1:15721/"
-                }
-            }),
-            proxy_url,
-            codex_proxy_url,
-            placeholder
-        ));
-        assert!(!live_takeover_config_matches_proxy_for_app(
-            &AppType::Gemini,
-            &json!({
-                "env": {
-                    "GEMINI_API_KEY": "real-key",
-                    "GOOGLE_GEMINI_BASE_URL": "http://127.0.0.1:15721"
-                }
-            }),
-            proxy_url,
-            codex_proxy_url,
-            placeholder
-        ));
     }
 
     #[test]

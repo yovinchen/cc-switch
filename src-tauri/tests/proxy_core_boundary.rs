@@ -8290,9 +8290,8 @@ fn proxy_core_adapter_delegates_codex_config_toml_projection_to_core() {
     assert!(
         production_source.contains("codex_config_text_from_settings")
             && production_source.contains("core_codex_wire_api_from_config_toml")
-            && production_source.contains("core_codex_model_from_config_toml")
-            && production_source.contains("core_codex_config_has_base_url_matching"),
-        "proxy_core_adapter should delegate Codex config text/wire_api/model/base_url projection to core"
+            && production_source.contains("core_codex_model_from_config_toml"),
+        "proxy_core_adapter should delegate Codex config text/wire_api/model projection to core"
     );
 
     let mut violations = Vec::new();
@@ -17020,66 +17019,6 @@ fn proxy_core_adapter_delegates_route_candidate_empty_policy_to_core() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_live_placeholder_app_dispatch_to_core() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let function = function_slice(
-        &source,
-        "pub(crate) fn live_config_has_proxy_placeholder_for_app",
-        "pub(crate) fn live_backup_snapshot_from_live_config",
-    );
-
-    assert!(
-        function.contains("core_live_config_has_proxy_placeholder_for_app("),
-        "proxy_core_adapter must delegate live placeholder app dispatch to proxy-core"
-    );
-    assert!(
-        function.contains("codex_config_has_proxy_placeholder(config, placeholder)"),
-        "proxy_core_adapter should only project the host TOML bearer-token fact for Codex"
-    );
-
-    for marker in [
-        "AppType::Claude =>",
-        "AppType::Codex =>",
-        "AppType::Gemini =>",
-    ] {
-        assert!(
-            !function.contains(marker),
-            "proxy_core_adapter must not keep app-specific placeholder dispatch marker `{marker}`"
-        );
-    }
-}
-
-#[test]
-fn proxy_core_adapter_delegates_live_backup_snapshot_policy_to_core() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let function = function_slice(
-        &source,
-        "pub(crate) fn live_backup_snapshot_from_live_config",
-        "pub(crate) fn provider_settings_with_live_token_sync",
-    );
-
-    assert!(
-        function.contains("core_live_backup_snapshot_from_live_config("),
-        "proxy_core_adapter must delegate live backup snapshot policy to proxy-core"
-    );
-    assert!(
-        function.contains("codex_config_has_proxy_placeholder(config, placeholder)"),
-        "proxy_core_adapter should only project the host TOML placeholder fact for Codex"
-    );
-
-    for marker in ["Some(config.clone())", "return Some", "return None"] {
-        assert!(
-            !function.contains(marker),
-            "proxy_core_adapter must not keep live backup snapshot policy marker `{marker}`"
-        );
-    }
-}
-
-#[test]
 fn production_provider_live_excludes_legacy_snapshot_restore_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/services/provider/live.rs");
@@ -17099,33 +17038,46 @@ fn production_provider_live_excludes_legacy_snapshot_restore_surface() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_live_takeover_match_app_dispatch_to_core() {
+fn production_live_takeover_owns_live_config_projection_helpers() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let function = function_slice(
-        &source,
-        "pub(crate) fn live_takeover_config_matches_proxy_for_app",
-        "fn proxy_urls_match",
-    );
+    let host_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
+            .expect("read host/cc_switch/live_takeover.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
 
-    assert!(
-        function.contains("core_live_takeover_config_matches_proxy_for_app("),
-        "proxy_core_adapter must delegate live takeover proxy-match app dispatch to proxy-core"
-    );
-    assert!(
-        function.contains("CodexLiveTakeoverMatchFacts"),
-        "proxy_core_adapter should project Codex TOML placeholder/base_url facts for proxy-core"
-    );
-    assert!(
-        function.contains("codex_config_has_base_url_matching("),
-        "proxy_core_adapter should keep host TOML base_url parsing as a projected Codex fact"
-    );
-
-    for marker in ["AppType::Claude =>", "AppType::Gemini =>"] {
+    for marker in [
+        "fn live_config_has_proxy_placeholder_for_app(",
+        "core_live_config_has_proxy_placeholder_for_app(",
+        "fn live_backup_snapshot_from_live_config(",
+        "core_live_backup_snapshot_from_live_config(",
+        "fn live_takeover_config_matches_proxy_for_app(",
+        "core_live_takeover_config_matches_proxy_for_app(",
+        "fn codex_config_has_proxy_placeholder_in_host(",
+        "extract_codex_experimental_bearer_token",
+        "CodexLiveTakeoverMatchFacts",
+        "codex_config_has_base_url_matching(",
+        "proxy_urls_match(url, codex_proxy_base_url)",
+    ] {
         assert!(
-            !function.contains(marker),
-            "proxy_core_adapter must not keep app-specific takeover-match dispatch marker `{marker}`"
+            host_source.contains(marker),
+            "live_takeover.rs should own live config projection marker `{marker}`"
+        );
+    }
+
+    for marker in [
+        "pub(crate) fn live_config_has_proxy_placeholder_for_app",
+        "pub(crate) fn live_backup_snapshot_from_live_config",
+        "pub(crate) fn live_takeover_config_matches_proxy_for_app",
+        "core_live_config_has_proxy_placeholder_for_app",
+        "core_live_backup_snapshot_from_live_config",
+        "core_live_takeover_config_matches_proxy_for_app",
+        "core_codex_config_has_base_url_matching",
+        "core_proxy_urls_match",
+    ] {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep live config projection facade marker `{marker}`"
         );
     }
 }
