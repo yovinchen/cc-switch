@@ -149,7 +149,6 @@ fn provider_selection_failure_from_app_error(error: &AppError) -> Option<Provide
 use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};
 
 use crate::proxy_core::api::ports::{
-    app_proxy_config_with_enabled as proxy_app_config_with_enabled,
     apply_codex_takeover_auth_placeholder_if_present,
     codex_auth_has_oauth_login_material as core_codex_auth_has_oauth_login_material,
     codex_base_url_from_settings as core_codex_base_url_from_settings,
@@ -164,7 +163,6 @@ use crate::proxy_core::api::ports::{
     ensure_codex_takeover_auth_placeholder,
     live_backup_snapshot_from_live_config as core_live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
-    live_takeover_app_kinds,
     live_takeover_config_matches_proxy_for_app as core_live_takeover_config_matches_proxy_for_app,
     provider_default_live_import_category_from_parts as core_provider_default_live_import_category_from_parts,
     provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
@@ -852,20 +850,6 @@ pub(crate) async fn update_proxy_config_preserving_live_takeover_active_in_db(
     Ok((previous, new_config))
 }
 
-pub(crate) async fn clear_live_takeover_enabled_flags_in_db(db: &Database) {
-    for app_type in live_takeover_app_types() {
-        let app_type = app_type.as_str();
-        if let Ok(config) = db.get_proxy_config_for_app(app_type).await {
-            if config.enabled {
-                let config = proxy_app_config_with_enabled(config, false);
-                if let Err(e) = db.update_proxy_config_for_app(config).await {
-                    log::warn!("清除 {app_type} enabled 状态失败: {e}");
-                }
-            }
-        }
-    }
-}
-
 pub(crate) async fn clear_legacy_live_takeover_active_flag_in_db(db: &Database) {
     if let Ok(config) = db.get_proxy_config().await {
         let config = proxy_config_with_live_takeover_active(config, false);
@@ -1433,14 +1417,6 @@ fn codex_common_config_snippet_from_settings(
     }
 
     Ok(cleaned.trim().to_string())
-}
-
-fn live_takeover_app_types() -> [AppType; 3] {
-    live_takeover_app_kinds().map(|app| {
-        app.as_str()
-            .parse::<AppType>()
-            .expect("proxy-core live takeover app kind must be supported by cc-switch")
-    })
 }
 
 pub(crate) struct OpenCodeLiveProviderFragment {
@@ -5952,24 +5928,25 @@ mod tests {
     };
     use crate::proxy_core::api::domain::{extract_claude_base_url_from_settings, AppKind};
     use crate::proxy_core::api::ports::{
+        app_proxy_config_with_enabled as proxy_app_config_with_enabled,
         apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
         claude_env_credentials_from_settings, claude_takeover_model_fields_from_settings,
         codex_auth_object_value_from_settings, common_config_snippet_issue_message,
         ensure_codex_takeover_auth_placeholder, gemini_env_map_from_settings,
         gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
         gemini_live_settings_to_write, is_local_proxy_url, json_deep_merge, json_deep_remove,
-        json_remove_array_items, json_value_is_subset, live_token_sync_app_label,
-        normalize_claude_models_in_value, normalize_provider_settings_for_storage,
-        openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
-        opencode_common_config_value_from_settings, opencode_credential_parts_from_settings,
-        provider_additive_live_write_action_for_app, provider_additive_update_route_for_app,
-        provider_app_has_current_provider, provider_credential_issue_spec,
-        provider_default_live_import_settings, provider_delete_is_current_provider,
-        provider_initial_live_config_managed_marker, provider_key_change_policy_issue_for_app,
-        provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
-        provider_live_removal_target_for_app, provider_live_sync_scope_for_app,
-        provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
-        provider_settings_validation_issue_spec,
+        json_remove_array_items, json_value_is_subset, live_takeover_app_kinds,
+        live_token_sync_app_label, normalize_claude_models_in_value,
+        normalize_provider_settings_for_storage, openclaw_common_config_value_from_settings,
+        openclaw_credential_parts_from_settings, opencode_common_config_value_from_settings,
+        opencode_credential_parts_from_settings, provider_additive_live_write_action_for_app,
+        provider_additive_update_route_for_app, provider_app_has_current_provider,
+        provider_credential_issue_spec, provider_default_live_import_settings,
+        provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
+        provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
+        provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
+        provider_live_sync_scope_for_app, provider_omo_switch_pair_for_app_category,
+        provider_omo_variant_for_app_category, provider_settings_validation_issue_spec,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         provider_switch_backfill_source_id, provider_switch_dispatch_for_app,
         provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
@@ -6092,6 +6069,14 @@ mod tests {
     };
     use crate::settings::CustomEndpoint;
     use indexmap::IndexMap;
+
+    fn live_takeover_app_types() -> [AppType; 3] {
+        live_takeover_app_kinds().map(|app| {
+            app.as_str()
+                .parse::<AppType>()
+                .expect("proxy-core live takeover app kind must be supported by cc-switch")
+        })
+    }
 
     fn provider_key_change_policy_issue(
         app_type: &AppType,

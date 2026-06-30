@@ -302,6 +302,8 @@ const FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_ENABLED_CONFIG_MARKERS: &[&str] = &[
     ".enabled =",
     "config.enabled",
 ];
+const FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_ENABLED_CONFIG_ADAPTER_MARKERS: &[&str] =
+    &["pub(crate) async fn clear_live_takeover_enabled_flags_in_db"];
 const FORBIDDEN_PROXY_SERVICE_SIMPLE_RESTORE_BACKUP_SOURCE_MARKERS: &[&str] = &[
     ".get_live_backup(",
     "backup.original_config",
@@ -7308,6 +7310,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) async fn failover_switch_app_enabled_from_db",
         "pub(crate) async fn proxy_app_enabled_from_db",
         "pub(crate) async fn set_proxy_app_enabled_in_db",
+        "pub(crate) async fn clear_live_takeover_enabled_flags_in_db",
         "pub(crate) async fn live_takeover_backup_exists_from_db",
         "pub(crate) async fn delete_live_backup_best_effort_in_db",
         "pub(crate) async fn delete_live_backup_in_db",
@@ -15476,10 +15479,12 @@ fn production_proxy_service_delegates_start_takeover_active_flag_to_adapter() {
 }
 
 #[test]
-fn production_proxy_service_delegates_stop_restore_enabled_config_to_adapter() {
+fn production_proxy_service_owns_stop_restore_enabled_cleanup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
         "pub async fn stop_with_restore",
@@ -15502,9 +15507,29 @@ fn production_proxy_service_delegates_stop_restore_enabled_config_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "ProxyService::stop_with_restore must delegate bulk enabled-state cleanup to proxy_core_adapter:\n{}",
+        "ProxyService::stop_with_restore must route bulk enabled-state cleanup through its host-local helper:\n{}",
         violations.join("\n")
     );
+    assert!(
+        function.contains("clear_live_takeover_enabled_flags_from_host_db(&self.db).await"),
+        "ProxyService::stop_with_restore should clear enabled state through its host-local helper"
+    );
+    assert!(
+        source.contains("async fn clear_live_takeover_enabled_flags_from_host_db(")
+            && source.contains("for app_type in live_takeover_app_types()")
+            && source.contains(".get_proxy_config_for_app(app_type)")
+            && source.contains(".update_proxy_config_for_app(config)")
+            && source.contains("app_proxy_config_with_enabled(config, false)")
+            && source.contains("清除 {app_type} enabled 状态失败: {e}"),
+        "ProxyService should own stop-restore enabled cleanup source and warning projection"
+    );
+
+    for marker in FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_ENABLED_CONFIG_ADAPTER_MARKERS {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep stop-restore enabled cleanup wrapper `{marker}`"
+        );
+    }
 }
 
 #[test]
