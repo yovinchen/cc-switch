@@ -4,6 +4,21 @@ use std::sync::Arc;
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
+use crate::proxy::engine::forward_pipeline::{
+    ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
+    ForwarderAttemptBodyInput, ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
+    ForwarderCodexResponsesToChatInput, ForwarderCopilotDynamicBaseUrlInput,
+    ForwarderCopilotLiveModelInput, ForwarderCopilotRequestOptimization,
+    ForwarderCopilotRequestOptimizationGateInput, ForwarderCopilotRequestOptimizationInput,
+    ForwarderMaybeCopilotRequestOptimization, ForwarderMediaPreventionInput,
+    ForwarderMediaRetryPlan, ForwarderMediaRetryPlanInput, ForwarderPreparedRequest,
+    ForwarderProviderRequestBodyInput, ForwarderProviderTransformInput,
+    ForwarderRequestBodyTransform, ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
+    ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan, ForwarderRequestSource,
+    ForwarderRequestSourceRef, ForwarderThinkingBudgetRectifierInput,
+    ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
+    ForwarderUpstreamRequestLogInput, ForwarderUpstreamRequestParts, ForwarderUpstreamUrlInput,
+};
 use crate::proxy::error::ProxyError;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::managed_account_runtime_source::default_managed_account_runtime_source;
@@ -54,19 +69,6 @@ use crate::proxy_core::api::transport::{
 use crate::proxy_core_adapter::{
     apply_forward_request_model_mapping_from_provider,
     provider_claude_normalize_anthropic_messages, provider_uses_anthropic_rectifiers,
-    ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
-    ForwarderAttemptBodyInput, ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
-    ForwarderCodexResponsesToChatInput, ForwarderCopilotDynamicBaseUrlInput,
-    ForwarderCopilotLiveModelInput, ForwarderCopilotRequestOptimization,
-    ForwarderCopilotRequestOptimizationGateInput, ForwarderCopilotRequestOptimizationInput,
-    ForwarderMaybeCopilotRequestOptimization, ForwarderMediaPreventionInput,
-    ForwarderMediaRetryPlan, ForwarderMediaRetryPlanInput, ForwarderPreparedRequest,
-    ForwarderProviderRequestBodyInput, ForwarderProviderTransformInput,
-    ForwarderRequestBodyTransform, ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
-    ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan, ForwarderRequestSource,
-    ForwarderRequestSourceRef, ForwarderThinkingBudgetRectifierInput,
-    ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
-    ForwarderUpstreamRequestLogInput, ForwarderUpstreamRequestParts, ForwarderUpstreamUrlInput,
 };
 
 pub(crate) struct CcSwitchForwarderRequestSource {

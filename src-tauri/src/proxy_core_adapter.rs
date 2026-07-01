@@ -7,15 +7,25 @@ use crate::error::AppError;
 use crate::provider::{AuthBindingSource, Provider, ProviderMeta};
 use crate::proxy::engine::forward_pipeline::{
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderAuthSourceRef,
-    ForwarderProtocolStateSourceRef, ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef,
-    ForwarderTransportSourceRef,
+    ForwarderProtocolStateSourceRef, ForwarderRequestSourceRef, ForwarderResponseSourceRef,
+    ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
 };
 #[cfg(test)]
 use crate::proxy::engine::forward_pipeline::{
-    ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptRuntimeSource,
-    ForwarderAuthHeadersInput, ForwarderAuthSource, ForwarderCodexChatProtocolEnrichmentInput,
-    ForwarderFailoverSwitchTarget, ForwarderFailureDecision, ForwarderProtocolStateSource,
-    ForwarderRectifierRetryFailureDecision,
+    ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
+    ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptBodyInput,
+    ForwarderAttemptRuntimeSource, ForwarderAuthHeadersInput, ForwarderAuthSource,
+    ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
+    ForwarderCodexChatProtocolEnrichmentInput, ForwarderCodexResponsesToChatInput,
+    ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
+    ForwarderCopilotRequestOptimizationGateInput, ForwarderCopilotRequestOptimizationInput,
+    ForwarderFailoverSwitchTarget, ForwarderFailureDecision, ForwarderMediaRetryPlanInput,
+    ForwarderPreparedRequest, ForwarderProtocolStateSource, ForwarderProviderRequestBodyInput,
+    ForwarderProviderTransformInput, ForwarderRectifierRetryFailureDecision,
+    ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
+    ForwarderRequestPreparationInput, ForwarderRequestSource,
+    ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
+    ForwarderTransformPlanInput, ForwarderUpstreamRequestLogInput, ForwarderUpstreamUrlInput,
 };
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
@@ -38,13 +48,12 @@ use crate::proxy_core::api::routing::{
     ChannelRouteCandidate, LegacyChannelMigrationPlanInput, LegacyChannelModelProjection,
     LegacyChannelProjection, LegacyEndpointInput, LegacyModelRouteInput,
     LegacyProviderChannelMigrationInput, LegacyProviderProjectionInput,
-    ProviderFailoverCircuitLookup, ProviderSelectionFailure, ProviderSelectionInput,
-    ResolvedChannelAttempt, RoutePlan,
+    ProviderFailoverCircuitLookup, ProviderSelectionFailure, ProviderSelectionInput, RoutePlan,
 };
 use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::{AnthropicToolSchemaHints, GeminiShadowStore};
 use bytes::Bytes;
-use futures::{future::BoxFuture, Stream};
+use futures::Stream;
 use http::{HeaderMap, Method};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -405,9 +414,8 @@ use crate::proxy_core::api::transport::{
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
 };
 use crate::proxy_core::api::transport::{
-    ClaudeProviderAuthHeadersInput, CopilotClassification, ForwardFailureKind,
-    ForwardUpstreamUrlPlan, ForwarderProtocolPreparation, ForwarderProtocolPreparationInput,
-    ForwarderRectifierRetryKind, ForwarderTransformPlan, ProxyRequest, ProxyResult,
+    ClaudeProviderAuthHeadersInput, ForwardFailureKind, ForwarderRectifierRetryKind, ProxyRequest,
+    ProxyResult,
 };
 pub(crate) fn codex_provider_live_write_parts<'a>(
     settings: &'a Value,
@@ -710,8 +718,6 @@ fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
         ProviderKind::Gemini
     }
 }
-
-use crate::proxy::host::cc_switch::provider_adapter_context::ForwarderAdapterContext;
 
 pub(crate) fn resolve_forwarder_claude_api_format(
     provider: &Provider,
@@ -1464,297 +1470,6 @@ use crate::proxy::host::cc_switch::forwarder_protocol_state_source::CcSwitchForw
 use crate::proxy::host::cc_switch::forwarder_auth_source::{
     default_forwarder_auth_source, forwarder_auth_source_from_sources,
 };
-
-pub(crate) type ForwarderRequestSourceRef = Arc<dyn ForwarderRequestSource + Send + Sync>;
-
-pub(crate) struct ForwarderRequestPreparationInput<'a> {
-    pub(crate) app: &'a str,
-    pub(crate) provider_id: &'a str,
-    pub(crate) endpoint: &'a str,
-    pub(crate) api_format: Option<&'a str>,
-    pub(crate) body: Value,
-    pub(crate) session_client_provided: bool,
-    pub(crate) transform_plan: &'a ForwarderTransformPlan,
-    pub(crate) initial_outbound_model: Option<String>,
-    pub(crate) headers: &'a HeaderMap,
-}
-
-pub(crate) struct ForwarderPreparedRequest {
-    pub(crate) body: Value,
-    pub(crate) request_is_streaming: bool,
-    pub(crate) force_identity_encoding: bool,
-    pub(crate) body_model_label: String,
-    pub(crate) outbound_model: Option<String>,
-}
-
-pub(crate) struct ForwarderUpstreamRequestLogInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterContext,
-    pub(crate) url: &'a str,
-    pub(crate) prepared_request: &'a ForwarderPreparedRequest,
-}
-
-pub(crate) struct ForwarderCopilotRequestOptimizationInput<'a> {
-    pub(crate) body: Value,
-    pub(crate) headers: &'a HeaderMap,
-    pub(crate) config: &'a CopilotOptimizerConfig,
-}
-
-pub(crate) struct ForwarderCopilotRequestOptimizationGateInput<'a> {
-    pub(crate) body: Value,
-    pub(crate) headers: &'a HeaderMap,
-    pub(crate) config: &'a CopilotOptimizerConfig,
-    pub(crate) is_copilot: bool,
-}
-
-pub(crate) struct ForwarderCopilotLiveModelInput<'a> {
-    pub(crate) provider: &'a Provider,
-    pub(crate) body: &'a mut Value,
-    pub(crate) is_copilot: bool,
-}
-
-pub(crate) struct ForwarderCopilotDynamicBaseUrlInput<'a> {
-    pub(crate) provider: &'a Provider,
-    pub(crate) base_url: &'a mut String,
-    pub(crate) is_copilot: bool,
-    pub(crate) is_full_url: bool,
-}
-
-pub(crate) struct ForwarderClaudeApiFormatInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterContext,
-    pub(crate) provider: &'a Provider,
-    pub(crate) body: &'a Value,
-    pub(crate) is_copilot: bool,
-}
-
-pub(crate) struct ForwarderCopilotRequestOptimization {
-    pub(crate) body: Value,
-    pub(crate) classification: CopilotClassification,
-}
-
-pub(crate) struct ForwarderMaybeCopilotRequestOptimization {
-    pub(crate) body: Value,
-    pub(crate) classification: Option<CopilotClassification>,
-}
-
-pub(crate) struct ForwarderAttemptBodyInput<'a> {
-    pub(crate) body: &'a Value,
-    pub(crate) provider: &'a Provider,
-    pub(crate) config: &'a OptimizerConfig,
-}
-
-pub(crate) struct ForwarderProviderRequestBodyInput<'a> {
-    pub(crate) app_type: &'a AppType,
-    pub(crate) body: Value,
-    pub(crate) provider: &'a Provider,
-    pub(crate) channel: Option<&'a ResolvedChannelAttempt>,
-    pub(crate) is_copilot: bool,
-}
-
-pub(crate) struct ForwarderClaudeBodyPolicyInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterContext,
-    pub(crate) body: &'a mut Value,
-    pub(crate) provider: &'a Provider,
-    pub(crate) api_format: Option<&'a str>,
-    pub(crate) config: &'a RectifierConfig,
-}
-
-pub(crate) struct ForwarderCodexResponsesToChatInput<'a> {
-    pub(crate) body: Value,
-    pub(crate) provider: &'a Provider,
-}
-
-pub(crate) struct ForwarderProviderTransformInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterContext,
-    pub(crate) body: Value,
-    pub(crate) provider: &'a Provider,
-}
-
-pub(crate) struct ForwarderRequestBodyTransformInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterContext,
-    pub(crate) body: Value,
-    pub(crate) provider: &'a Provider,
-    pub(crate) transform_plan: &'a ForwarderTransformPlan,
-    pub(crate) claude_transformed_body: Option<Value>,
-}
-
-pub(crate) struct ForwarderRequestBodyTransform {
-    pub(crate) body: Value,
-    pub(crate) outbound_model: Option<String>,
-}
-
-pub(crate) struct ForwarderTransformPlanInput<'a> {
-    pub(crate) app_type: &'a AppType,
-    pub(crate) adapter: &'a ForwarderAdapterContext,
-    pub(crate) endpoint: &'a str,
-    pub(crate) provider: &'a Provider,
-    pub(crate) resolved_claude_api_format: Option<&'a str>,
-}
-
-pub(crate) struct ForwarderUpstreamUrlInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterContext,
-    pub(crate) base_url: &'a str,
-    pub(crate) endpoint: &'a str,
-    pub(crate) is_full_url: bool,
-    pub(crate) transform_plan: &'a ForwarderTransformPlan,
-    pub(crate) is_copilot: bool,
-    pub(crate) body: &'a Value,
-    pub(crate) channel_param_overrides: Option<&'a Value>,
-}
-
-pub(crate) struct ForwarderMediaPreventionInput<'a> {
-    pub(crate) body: &'a mut Value,
-    pub(crate) provider: &'a Provider,
-    pub(crate) config: &'a RectifierConfig,
-}
-
-pub(crate) struct ForwarderAppMediaPreventionInput<'a> {
-    pub(crate) app_type: &'a AppType,
-    pub(crate) body: &'a mut Value,
-    pub(crate) provider: &'a Provider,
-    pub(crate) config: &'a RectifierConfig,
-}
-
-pub(crate) struct ForwarderMediaRetryPlanInput<'a> {
-    pub(crate) app: &'a str,
-    pub(crate) adapter: &'a ForwarderAdapterContext,
-    pub(crate) provider: &'a Provider,
-    pub(crate) already_retried: bool,
-    pub(crate) provider_body: &'a Value,
-    pub(crate) error: &'a ProxyError,
-    pub(crate) config: &'a RectifierConfig,
-}
-
-pub(crate) struct ForwarderMediaRetryPlan {
-    pub(crate) body: Value,
-}
-
-pub(crate) struct ForwarderThinkingSignatureRectifierInput<'a> {
-    pub(crate) app: &'a str,
-    pub(crate) body: &'a mut Value,
-    pub(crate) error: &'a ProxyError,
-    pub(crate) already_retried: bool,
-    pub(crate) config: &'a RectifierConfig,
-}
-
-pub(crate) struct ForwarderThinkingBudgetRectifierInput<'a> {
-    pub(crate) app: &'a str,
-    pub(crate) body: &'a mut Value,
-    pub(crate) error: &'a ProxyError,
-    pub(crate) already_retried: bool,
-    pub(crate) config: &'a RectifierConfig,
-}
-
-pub(crate) struct ForwarderAnthropicRectifierGateInput<'a> {
-    pub(crate) app_type: &'a AppType,
-    pub(crate) provider: &'a Provider,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ForwarderRequestRectifierPlan {
-    NotTriggered,
-    AlreadyRetried,
-    TriggeredUnchanged,
-    Retry,
-}
-
-pub(crate) struct ForwarderRequestPartsInput<'a> {
-    pub(crate) method: &'a Method,
-    pub(crate) url: &'a str,
-    pub(crate) inbound_headers: &'a HeaderMap,
-    pub(crate) provider: &'a Provider,
-    pub(crate) prepared_request: &'a ForwarderPreparedRequest,
-    pub(crate) auth_headers: &'a [(http::HeaderName, http::HeaderValue)],
-    pub(crate) channel_header_overrides: Option<&'a Value>,
-    pub(crate) is_copilot: bool,
-    pub(crate) adapter: &'a ForwarderAdapterContext,
-    pub(crate) resolved_claude_api_format: Option<&'a str>,
-    pub(crate) codex_oauth_session_headers: &'a [(http::HeaderName, http::HeaderValue)],
-}
-
-pub(crate) struct ForwarderUpstreamRequestParts {
-    pub(crate) ordered_headers: HeaderMap,
-    pub(crate) body: Vec<u8>,
-    pub(crate) preserve_exact_header_case: bool,
-}
-
-pub(crate) trait ForwarderRequestSource {
-    fn adapter_context_for_app(&self, app_type: &AppType) -> ForwarderAdapterContext;
-
-    fn prepare_attempt_body(&self, input: ForwarderAttemptBodyInput<'_>) -> Value;
-
-    fn prepare_provider_request_body(
-        &self,
-        input: ForwarderProviderRequestBodyInput<'_>,
-    ) -> Result<Value, ProxyError>;
-
-    fn apply_claude_body_policies(&self, input: ForwarderClaudeBodyPolicyInput<'_>);
-
-    fn transform_request_body(
-        &self,
-        input: ForwarderRequestBodyTransformInput<'_>,
-    ) -> Result<ForwarderRequestBodyTransform, ProxyError>;
-
-    fn transform_plan(&self, input: ForwarderTransformPlanInput<'_>) -> ForwarderTransformPlan;
-
-    fn protocol_preparation(
-        &self,
-        input: ForwarderProtocolPreparationInput<'_>,
-    ) -> ForwarderProtocolPreparation;
-
-    fn plan_upstream_url(&self, input: ForwarderUpstreamUrlInput<'_>) -> ForwardUpstreamUrlPlan;
-
-    fn prepare_copilot_request_optimization(
-        &self,
-        input: ForwarderCopilotRequestOptimizationGateInput<'_>,
-    ) -> ForwarderMaybeCopilotRequestOptimization;
-
-    fn apply_copilot_live_model_for_adapter<'a>(
-        &'a self,
-        input: ForwarderCopilotLiveModelInput<'a>,
-    ) -> BoxFuture<'a, ()>;
-
-    fn apply_copilot_dynamic_base_url_for_provider<'a>(
-        &'a self,
-        input: ForwarderCopilotDynamicBaseUrlInput<'a>,
-    ) -> BoxFuture<'a, ()>;
-
-    fn resolve_claude_api_format_for_adapter<'a>(
-        &'a self,
-        input: ForwarderClaudeApiFormatInput<'a>,
-    ) -> BoxFuture<'a, Option<String>>;
-
-    fn apply_app_media_prevention(&self, input: ForwarderAppMediaPreventionInput<'_>) -> usize;
-
-    fn media_retry_plan(
-        &self,
-        input: ForwarderMediaRetryPlanInput<'_>,
-    ) -> Option<ForwarderMediaRetryPlan>;
-
-    fn anthropic_rectifiers_enabled(&self, input: ForwarderAnthropicRectifierGateInput<'_>)
-        -> bool;
-
-    fn thinking_signature_rectifier_plan(
-        &self,
-        input: ForwarderThinkingSignatureRectifierInput<'_>,
-    ) -> ForwarderRequestRectifierPlan;
-
-    fn thinking_budget_rectifier_plan(
-        &self,
-        input: ForwarderThinkingBudgetRectifierInput<'_>,
-    ) -> ForwarderRequestRectifierPlan;
-
-    fn prepare_upstream_body(
-        &self,
-        input: ForwarderRequestPreparationInput<'_>,
-    ) -> ForwarderPreparedRequest;
-
-    fn log_upstream_request(&self, input: ForwarderUpstreamRequestLogInput<'_>);
-
-    fn build_upstream_request_parts(
-        &self,
-        input: ForwarderRequestPartsInput<'_>,
-    ) -> Result<ForwarderUpstreamRequestParts, ProxyError>;
-}
 
 #[cfg(test)]
 use crate::proxy::engine::forward_pipeline::{
@@ -2846,7 +2561,8 @@ mod tests {
         build_upstream_request_headers, forward_upstream_url_plan,
         is_official_codex_client_user_agent, is_socks_proxy_url, resolve_upstream_send_policy,
         serialize_upstream_request_body, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
-        ForwardUpstreamUrlPlanInput, ForwarderMediaPreventionFacts,
+        CopilotClassification, ForwardUpstreamUrlPlanInput, ForwarderMediaPreventionFacts,
+        ForwarderProtocolPreparationInput, ForwarderTransformPlan,
         OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization,
         ProxyBody, ProxyCoreResponse, ProxyResponseBody, ProxyTransportResponseBody,
         UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamSseAggregationKind,
@@ -2857,6 +2573,7 @@ mod tests {
         UsageRecordFailureLogContext, UsageRouteContext, UsageSelectedProviderMissingPhase,
     };
     use crate::settings::CustomEndpoint;
+    use futures::future::BoxFuture;
     use indexmap::IndexMap;
 
     struct ProxyEventBusMessage {

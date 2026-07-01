@@ -8360,7 +8360,6 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
         "ProviderSelectionFailure",
         "ProviderSelectionInput",
         "ChannelRouteCandidate",
-        "ResolvedChannelAttempt",
         "RoutePlan",
     ] {
         assert!(
@@ -13324,19 +13323,16 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
     let forward_pipeline_transport_import = function_slice(
         &forward_pipeline_source,
         "use crate::proxy_core::api::transport::{",
-        "};\nuse crate::proxy_core_adapter::{",
+        "};\nuse crate::proxy_core_adapter::ForwarderRuntimeConfig;",
     );
     assert!(
         forward_pipeline_transport_import.contains("ForwarderProviderUrlFacts"),
         "forward pipeline should import provider URL facts directly from proxy_core::api::transport"
     );
-    let forward_pipeline_adapter_import = function_slice(
-        &forward_pipeline_source,
-        "use crate::proxy_core_adapter::{",
-        "};\nuse crate::{app_config",
-    );
     assert!(
-        !forward_pipeline_adapter_import.contains("ForwarderProviderUrlFacts"),
+        forward_pipeline_source.contains("use crate::proxy_core_adapter::ForwarderRuntimeConfig;")
+            && !forward_pipeline_source
+                .contains("use crate::proxy_core_adapter::ForwarderProviderUrlFacts"),
         "forward pipeline should not import provider URL facts through proxy_core_adapter"
     );
 
@@ -13359,18 +13355,13 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
         }
     }
 
-    let adapter_has_private_context_import = adapter_source.contains(
-        "use crate::proxy::host::cc_switch::provider_adapter_context::ForwarderAdapterContext;",
-    ) || adapter_source
-        .contains("use crate::proxy::host::cc_switch::provider_adapter_context::{");
     assert!(
-        adapter_has_private_context_import
-            && !adapter_source
-                .contains("pub(crate) use crate::proxy::host::cc_switch::provider_adapter_context::")
-            && !adapter_source
-                .contains("pub(crate) use crate::proxy::host::cc_switch::provider_adapter_context::{")
-            && adapter_source.contains("ForwarderAdapterContext"),
-        "proxy_core_adapter should only use provider adapter context privately through the host module"
+        !adapter_source
+            .contains("pub(crate) use crate::proxy::host::cc_switch::provider_adapter_context::")
+            && !adapter_source.contains(
+                "pub(crate) use crate::proxy::host::cc_switch::provider_adapter_context::{"
+            ),
+        "proxy_core_adapter should not re-export provider adapter context from the host module"
     );
     assert!(
         !adapter_source.contains("pub(crate) struct ForwarderAdapterContext"),
@@ -18686,15 +18677,12 @@ fn production_forwarder_delegates_claude_body_policy_gate_to_request_source() {
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let forwarder_source =
         fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-
     assert!(
-        adapter_source.contains("api_format: Option<&'a str>"),
+        forwarder_source.contains("api_format: Option<&'a str>"),
         "ForwarderRequestSource must own optional Claude API format gating for body policies"
     );
     let body_policy_input_slice = function_slice(
-        &adapter_source,
+        &forwarder_source,
         "pub(crate) struct ForwarderClaudeBodyPolicyInput",
         "pub(crate) struct ForwarderCodexResponsesToChatInput",
     );
@@ -18738,15 +18726,13 @@ fn production_forwarder_delegates_codex_media_prevention_gate_to_request_source(
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let forwarder_source =
         fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let request_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
     let request_source =
         fs::read_to_string(&request_source_path).expect("read forwarder_request_source.rs");
 
     assert!(
-        adapter_source.contains("apply_app_media_prevention"),
+        forwarder_source.contains("apply_app_media_prevention"),
         "ForwarderRequestSource must expose app-gated media prevention"
     );
     assert!(
@@ -18755,8 +18741,8 @@ fn production_forwarder_delegates_codex_media_prevention_gate_to_request_source(
     );
 
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
-    let adapter_media_prevention_slice = function_slice(
-        &adapter_source,
+    let request_media_prevention_slice = function_slice(
+        &request_source,
         "fn apply_app_media_prevention",
         "fn media_retry_plan",
     );
@@ -18775,12 +18761,12 @@ fn production_forwarder_delegates_codex_media_prevention_gate_to_request_source(
             }
         }
     }
-    for (line_index, line) in production_lines(adapter_media_prevention_slice) {
+    for (line_index, line) in production_lines(request_media_prevention_slice) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in ["matches!(input.app_type, AppType::Codex)"] {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs apply_app_media_prevention:{} contains adapter-local media prevention app gate marker `{}`",
+                    "src/proxy/host/cc_switch/forwarder_request_source.rs apply_app_media_prevention:{} contains host-local media prevention app gate marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -19562,7 +19548,7 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     let forwarder_transport_import_slice = function_slice(
         &source,
         "use crate::proxy_core::api::transport::{",
-        "};\nuse crate::proxy_core_adapter::{",
+        "};\nuse crate::proxy_core_adapter::ForwarderRuntimeConfig;",
     );
     assert!(
         forwarder_transport_import_slice.contains("ForwarderRectifierRetryKind"),
@@ -20722,7 +20708,7 @@ fn production_forwarder_uses_request_source_resource() {
     let forwarder_core_transport_import_slice = function_slice(
         &source,
         "use crate::proxy_core::api::transport::{",
-        "};\nuse crate::proxy_core_adapter::{",
+        "};\nuse crate::proxy_core_adapter::ForwarderRuntimeConfig;",
     );
     let forwarder_adapter_imports = proxy_core_adapter_import_identifiers(&source);
     for marker in [
@@ -20759,15 +20745,15 @@ fn production_forwarder_uses_request_source_resource() {
         "RequestForwarder must receive upstream request assembly as an injected source"
     );
     assert!(
-        adapter_source.contains("body_model_label"),
+        source.contains("body_model_label"),
         "ForwarderPreparedRequest must include finalized body model facts for logging"
     );
     assert!(
-        adapter_source.contains("outbound_model"),
+        source.contains("outbound_model"),
         "ForwarderPreparedRequest must include finalized outbound model attribution"
     );
     let request_preparation_input_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) struct ForwarderRequestPreparationInput",
         "pub(crate) struct ForwarderPreparedRequest",
     );
@@ -20788,6 +20774,23 @@ fn production_forwarder_uses_request_source_resource() {
         source.contains("transform_request_body"),
         "ForwarderRequestSource must own transformed request body selection"
     );
+    for marker in [
+        "pub(crate) type ForwarderRequestSourceRef",
+        "pub(crate) struct ForwarderRequestPreparationInput",
+        "pub(crate) struct ForwarderPreparedRequest",
+        "pub(crate) struct ForwarderRequestPartsInput",
+        "pub(crate) struct ForwarderUpstreamRequestParts",
+        "pub(crate) trait ForwarderRequestSource",
+    ] {
+        assert!(
+            source.contains(marker),
+            "forward_pipeline should own request source contract marker `{marker}`"
+        );
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not own request source contract marker `{marker}`"
+        );
+    }
     assert!(
         !adapter_runtime_source.contains("pub(crate) type ForwarderTransformPlan"),
         "ForwarderTransformPlan DTO must stay owned by proxy-core without a proxy_core_adapter alias"
@@ -20802,7 +20805,7 @@ fn production_forwarder_uses_request_source_resource() {
         "ForwarderTransformPlan must carry the Codex Responses to Chat gate fact"
     );
     let upstream_url_input_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) struct ForwarderUpstreamUrlInput",
         "pub(crate) struct ForwarderMediaPreventionInput",
     );
@@ -20848,7 +20851,7 @@ fn production_forwarder_uses_request_source_resource() {
         (
             "ForwarderUpstreamRequestLogInput",
             function_slice(
-                &adapter_source,
+                &source,
                 "pub(crate) struct ForwarderUpstreamRequestLogInput",
                 "pub(crate) struct ForwarderCopilotRequestOptimizationInput",
             ),
@@ -20856,7 +20859,7 @@ fn production_forwarder_uses_request_source_resource() {
         (
             "ForwarderRequestPartsInput",
             function_slice(
-                &adapter_source,
+                &source,
                 "pub(crate) struct ForwarderRequestPartsInput",
                 "pub(crate) struct ForwarderUpstreamRequestParts",
             ),
@@ -20875,7 +20878,7 @@ fn production_forwarder_uses_request_source_resource() {
         );
     }
     let transform_plan_input_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) struct ForwarderTransformPlanInput",
         "pub(crate) struct ForwarderUpstreamUrlInput",
     );
@@ -20885,7 +20888,7 @@ fn production_forwarder_uses_request_source_resource() {
         "ForwarderTransformPlanInput must use ForwarderAdapterContext instead of detached adapter facts"
     );
     let claude_api_format_input_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) struct ForwarderClaudeApiFormatInput",
         "pub(crate) struct ForwarderCopilotRequestOptimization",
     );
@@ -20895,7 +20898,7 @@ fn production_forwarder_uses_request_source_resource() {
         "ForwarderClaudeApiFormatInput must use ForwarderAdapterContext instead of detached adapter facts"
     );
     let media_retry_plan_input_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) struct ForwarderMediaRetryPlanInput",
         "pub(crate) struct ForwarderThinkingSignatureRectifierInput",
     );
@@ -20909,7 +20912,7 @@ fn production_forwarder_uses_request_source_resource() {
         (
             "ForwarderUpstreamRequestLogInput",
             function_slice(
-                &adapter_source,
+                &source,
                 "pub(crate) struct ForwarderUpstreamRequestLogInput",
                 "pub(crate) struct ForwarderCopilotRequestOptimizationInput",
             ),
@@ -20917,7 +20920,7 @@ fn production_forwarder_uses_request_source_resource() {
         (
             "ForwarderRequestPartsInput",
             function_slice(
-                &adapter_source,
+                &source,
                 "pub(crate) struct ForwarderRequestPartsInput",
                 "pub(crate) struct ForwarderUpstreamRequestParts",
             ),
@@ -20939,7 +20942,7 @@ fn production_forwarder_uses_request_source_resource() {
         (
             "ForwarderClaudeBodyPolicyInput",
             function_slice(
-                &adapter_source,
+                &source,
                 "pub(crate) struct ForwarderClaudeBodyPolicyInput",
                 "pub(crate) struct ForwarderCodexResponsesToChatInput",
             ),
@@ -20947,7 +20950,7 @@ fn production_forwarder_uses_request_source_resource() {
         (
             "ForwarderMediaPreventionInput",
             function_slice(
-                &adapter_source,
+                &source,
                 "pub(crate) struct ForwarderMediaPreventionInput",
                 "pub(crate) struct ForwarderAppMediaPreventionInput",
             ),
@@ -20955,7 +20958,7 @@ fn production_forwarder_uses_request_source_resource() {
         (
             "ForwarderAppMediaPreventionInput",
             function_slice(
-                &adapter_source,
+                &source,
                 "pub(crate) struct ForwarderAppMediaPreventionInput",
                 "pub(crate) struct ForwarderMediaRetryPlanInput",
             ),
@@ -20963,7 +20966,7 @@ fn production_forwarder_uses_request_source_resource() {
         (
             "ForwarderMediaRetryPlanInput",
             function_slice(
-                &adapter_source,
+                &source,
                 "pub(crate) struct ForwarderMediaRetryPlanInput",
                 "pub(crate) struct ForwarderThinkingSignatureRectifierInput",
             ),
@@ -21214,9 +21217,9 @@ fn production_forwarder_uses_request_source_resource() {
         "default ForwarderRequestSource implementation must use ForwarderAdapterContext for upstream URL assembly"
     );
     let request_trait_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) trait ForwarderRequestSource",
-        "#[cfg(test)]\nuse crate::proxy::host::cc_switch::forwarder_request_source::{",
+        "pub(crate) type ForwarderTransportSourceRef",
     );
     assert!(
         !request_trait_slice.contains("request_body_model")

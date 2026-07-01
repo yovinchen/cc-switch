@@ -3,8 +3,8 @@
 use crate::database::Database;
 use crate::proxy::engine::forward_pipeline::{
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderAuthSourceRef,
-    ForwarderProtocolStateSourceRef, ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef,
-    ForwarderTransportSourceRef,
+    ForwarderProtocolStateSourceRef, ForwarderRequestSourceRef, ForwarderResponseSourceRef,
+    ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
 };
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::events::ProxyEventBus;
@@ -15,9 +15,7 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core::api::routing::RoutePlan;
 use crate::proxy_core::api::transport::ProxyResult;
-use crate::proxy_core_adapter::{
-    forward_proxy_request_with_cc_switch_runtime, ForwarderRequestSourceRef,
-};
+use crate::proxy_core_adapter::forward_proxy_request_with_cc_switch_runtime;
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::sync::Arc;
