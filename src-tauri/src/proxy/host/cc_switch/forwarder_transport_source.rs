@@ -1,12 +1,12 @@
 use futures::future::BoxFuture;
 use std::sync::Arc;
 
+use crate::proxy::engine::forward_pipeline::{
+    ForwarderTransportSource, ForwarderTransportSourceRef, ForwarderUpstreamTransportRequest,
+};
 use crate::proxy::error::ProxyError;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::transport::upstream::send_request;
-use crate::proxy_core_adapter::{
-    ForwarderTransportSource, ForwarderTransportSourceRef, ForwarderUpstreamTransportRequest,
-};
 
 struct CcSwitchForwarderTransportSource;
 

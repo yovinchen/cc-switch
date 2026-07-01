@@ -20387,6 +20387,10 @@ fn production_forwarder_uses_transport_source_resource() {
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&adapter_source);
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -20400,7 +20404,7 @@ fn production_forwarder_uses_transport_source_resource() {
     );
 
     let transport_request_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) struct ForwarderUpstreamTransportRequest",
         "pub(crate) trait ForwarderTransportSource",
     );
@@ -20414,6 +20418,16 @@ fn production_forwarder_uses_transport_source_resource() {
             && !transport_request_slice.contains("preserve_exact_header_case: bool"),
         "ForwarderUpstreamTransportRequest must not expose split request parts"
     );
+    for marker in [
+        "pub(crate) type ForwarderTransportSourceRef",
+        "pub(crate) struct ForwarderUpstreamTransportRequest",
+        "pub(crate) trait ForwarderTransportSource",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not own forward transport contract marker `{marker}`"
+        );
+    }
     let forbidden_request_part_splits = [
         "let ordered_headers = request_parts.ordered_headers",
         "let body_bytes = request_parts.body",
@@ -20488,6 +20502,14 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
     );
 
     assert!(
+        transport_source.contains("use crate::proxy::engine::forward_pipeline::{")
+            && transport_source.contains("ForwarderTransportSource")
+            && transport_source.contains("ForwarderTransportSourceRef")
+            && transport_source.contains("ForwarderUpstreamTransportRequest")
+            && !transport_source.contains("use crate::proxy_core_adapter::{"),
+        "default transport source should import the transport contract from the owning forward pipeline module"
+    );
+    assert!(
         impl_slice.contains("send_request(request).await"),
         "default ForwarderTransportSource must delegate upstream transport execution to proxy::transport::upstream"
     );
@@ -20548,6 +20570,15 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
         reqwest_source
             .contains("use crate::proxy_core::api::transport::streaming_header_timeout_message;"),
         "transport/upstream/reqwest_client.rs should import streaming header timeout diagnostics directly from proxy_core::api::transport"
+    );
+    assert!(
+        upstream_source
+            .contains("use crate::proxy::engine::forward_pipeline::ForwarderUpstreamTransportRequest;")
+            && reqwest_source
+                .contains("use crate::proxy::engine::forward_pipeline::ForwarderUpstreamTransportRequest;")
+            && !upstream_source.contains("use crate::proxy_core_adapter::ForwarderUpstreamTransportRequest")
+            && !reqwest_source.contains("use crate::proxy_core_adapter::ForwarderUpstreamTransportRequest"),
+        "upstream transport modules should consume the request contract from forward_pipeline, not proxy_core_adapter"
     );
     for marker in [
         "type UpstreamSendPolicyInput",
@@ -21103,7 +21134,7 @@ fn production_forwarder_uses_request_source_resource() {
     let request_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderRequestSource",
-        "pub(crate) type ForwarderTransportSourceRef",
+        "pub(crate) type ForwarderResponseSourceRef",
     );
     assert!(
         !request_trait_slice.contains("request_body_model")

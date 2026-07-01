@@ -5,6 +5,7 @@ use crate::database::{
 };
 use crate::error::AppError;
 use crate::provider::{AuthBindingSource, Provider, ProviderMeta};
+use crate::proxy::engine::forward_pipeline::ForwarderTransportSourceRef;
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status_kind};
@@ -1982,25 +1983,6 @@ use crate::proxy::host::cc_switch::forwarder_request_source::{
     default_forwarder_request_source, forwarder_rectifier_error_message,
     CcSwitchForwarderRequestSource,
 };
-
-pub(crate) type ForwarderTransportSourceRef = Arc<dyn ForwarderTransportSource + Send + Sync>;
-
-pub(crate) struct ForwarderUpstreamTransportRequest {
-    pub(crate) method: Method,
-    pub(crate) url: String,
-    pub(crate) request_parts: ForwarderUpstreamRequestParts,
-    pub(crate) extensions: http::Extensions,
-    pub(crate) request_is_streaming: bool,
-    pub(crate) non_streaming_timeout: std::time::Duration,
-    pub(crate) streaming_first_byte_timeout: std::time::Duration,
-}
-
-pub(crate) trait ForwarderTransportSource {
-    fn send_upstream_request<'a>(
-        &'a self,
-        request: ForwarderUpstreamTransportRequest,
-    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
-}
 
 pub(crate) type ForwarderResponseSourceRef = Arc<dyn ForwarderResponseSource + Send + Sync>;
 

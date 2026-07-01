@@ -1,13 +1,13 @@
 pub(crate) mod hyper_client;
 mod reqwest_client;
 
+use crate::proxy::engine::forward_pipeline::ForwarderUpstreamTransportRequest;
 use crate::proxy::error::ProxyError;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy_core::api::transport::{
     invalid_upstream_url_error_message, is_socks_proxy_url, resolve_upstream_send_policy,
     UpstreamSendPolicyInput, UpstreamTransportKind,
 };
-use crate::proxy_core_adapter::ForwarderUpstreamTransportRequest;
 
 pub(crate) async fn send_request(
     request: ForwarderUpstreamTransportRequest,

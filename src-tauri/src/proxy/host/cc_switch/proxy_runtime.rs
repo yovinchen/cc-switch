@@ -1,6 +1,7 @@
 //! CC Switch proxy runtime resources.
 
 use crate::database::Database;
+use crate::proxy::engine::forward_pipeline::ForwarderTransportSourceRef;
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy_core::api::domain::ProxyRequest;
@@ -14,7 +15,6 @@ use crate::proxy_core_adapter::{
     forward_proxy_request_with_cc_switch_runtime, FailoverSwitchSchedulerRef,
     ForwarderAttemptRuntimeSourceRef, ForwarderAuthSourceRef, ForwarderProtocolStateSourceRef,
     ForwarderRequestSourceRef, ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef,
-    ForwarderTransportSourceRef,
 };
 use futures::future::BoxFuture;
 use std::collections::HashMap;

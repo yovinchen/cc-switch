@@ -30,12 +30,32 @@ use crate::proxy_core_adapter::{
     ForwarderResponseFinalizationInput, ForwarderResponseSourceRef, ForwarderRuntimeConfig,
     ForwarderRuntimeStateSourceRef, ForwarderThinkingBudgetRectifierInput,
     ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
-    ForwarderTransportSourceRef, ForwarderUpstreamRequestLogInput,
-    ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,
+    ForwarderUpstreamRequestLogInput, ForwarderUpstreamRequestParts, ForwarderUpstreamUrlInput,
 };
 use crate::{app_config::AppType, provider::Provider};
-use http::Extensions;
+use futures::future::BoxFuture;
+use http::{Extensions, Method};
 use serde_json::Value;
+use std::sync::Arc;
+
+pub(crate) type ForwarderTransportSourceRef = Arc<dyn ForwarderTransportSource + Send + Sync>;
+
+pub(crate) struct ForwarderUpstreamTransportRequest {
+    pub(crate) method: Method,
+    pub(crate) url: String,
+    pub(crate) request_parts: ForwarderUpstreamRequestParts,
+    pub(crate) extensions: Extensions,
+    pub(crate) request_is_streaming: bool,
+    pub(crate) non_streaming_timeout: std::time::Duration,
+    pub(crate) streaming_first_byte_timeout: std::time::Duration,
+}
+
+pub(crate) trait ForwarderTransportSource {
+    fn send_upstream_request<'a>(
+        &'a self,
+        request: ForwarderUpstreamTransportRequest,
+    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
+}
 
 pub struct ForwardResult {
     pub response: ProxyResponse,
