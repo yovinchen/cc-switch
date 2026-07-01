@@ -20,13 +20,11 @@ use crate::proxy_core_adapter::{
     ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptBodyInput,
     ForwarderAttemptRuntimeSourceRef, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
-    ForwarderClaudeProtocolTransformInput, ForwarderCodexChatProtocolEnrichmentInput,
     ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
     ForwarderCopilotRequestOptimizationGateInput, ForwarderMediaRetryPlanInput,
-    ForwarderProtocolStateSourceRef, ForwarderProviderRequestBodyInput,
-    ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
-    ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan, ForwarderRequestSourceRef,
-    ForwarderRuntimeConfig, ForwarderThinkingBudgetRectifierInput,
+    ForwarderProviderRequestBodyInput, ForwarderRequestBodyTransformInput,
+    ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan,
+    ForwarderRequestSourceRef, ForwarderRuntimeConfig, ForwarderThinkingBudgetRectifierInput,
     ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
     ForwarderUpstreamRequestLogInput, ForwarderUpstreamRequestParts, ForwarderUpstreamUrlInput,
 };
@@ -211,6 +209,33 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn record_request_started_now<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
+}
+
+pub(crate) type ForwarderProtocolStateSourceRef =
+    Arc<dyn ForwarderProtocolStateSource + Send + Sync>;
+
+pub(crate) struct ForwarderClaudeProtocolTransformInput<'a> {
+    pub(crate) body: Value,
+    pub(crate) provider: &'a Provider,
+    pub(crate) api_format: Option<&'a str>,
+    pub(crate) session_id: &'a str,
+    pub(crate) session_client_provided: bool,
+}
+
+pub(crate) struct ForwarderCodexChatProtocolEnrichmentInput<'a> {
+    pub(crate) body: &'a mut Value,
+    pub(crate) enabled: bool,
+}
+
+pub(crate) trait ForwarderProtocolStateSource {
+    fn enrich_codex_chat_request<'a>(
+        &'a self,
+        input: ForwarderCodexChatProtocolEnrichmentInput<'a>,
+    ) -> BoxFuture<'a, ()>;
+    fn transform_claude_request(
+        &self,
+        input: ForwarderClaudeProtocolTransformInput<'_>,
+    ) -> Result<Value, String>;
 }
 
 pub struct ForwardResult {

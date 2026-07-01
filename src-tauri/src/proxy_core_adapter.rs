@@ -6,12 +6,13 @@ use crate::database::{
 use crate::error::AppError;
 use crate::provider::{AuthBindingSource, Provider, ProviderMeta};
 use crate::proxy::engine::forward_pipeline::{
-    FailoverSwitchSchedulerRef, ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef,
-    ForwarderTransportSourceRef,
+    FailoverSwitchSchedulerRef, ForwarderProtocolStateSourceRef, ForwarderResponseSourceRef,
+    ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
 };
 #[cfg(test)]
 use crate::proxy::engine::forward_pipeline::{
-    ForwarderFailoverSwitchTarget, ForwarderFailureDecision, ForwarderRectifierRetryFailureDecision,
+    ForwarderCodexChatProtocolEnrichmentInput, ForwarderFailoverSwitchTarget,
+    ForwarderFailureDecision, ForwarderProtocolStateSource, ForwarderRectifierRetryFailureDecision,
 };
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
@@ -1454,33 +1455,6 @@ use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
 };
 #[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_runtime_state_source::CcSwitchForwarderRuntimeStateSource;
-
-pub(crate) type ForwarderProtocolStateSourceRef =
-    Arc<dyn ForwarderProtocolStateSource + Send + Sync>;
-
-pub(crate) struct ForwarderClaudeProtocolTransformInput<'a> {
-    pub(crate) body: Value,
-    pub(crate) provider: &'a Provider,
-    pub(crate) api_format: Option<&'a str>,
-    pub(crate) session_id: &'a str,
-    pub(crate) session_client_provided: bool,
-}
-
-pub(crate) struct ForwarderCodexChatProtocolEnrichmentInput<'a> {
-    pub(crate) body: &'a mut Value,
-    pub(crate) enabled: bool,
-}
-
-pub(crate) trait ForwarderProtocolStateSource {
-    fn enrich_codex_chat_request<'a>(
-        &'a self,
-        input: ForwarderCodexChatProtocolEnrichmentInput<'a>,
-    ) -> BoxFuture<'a, ()>;
-    fn transform_claude_request(
-        &self,
-        input: ForwarderClaudeProtocolTransformInput<'_>,
-    ) -> Result<Value, String>;
-}
 
 #[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_protocol_state_source::CcSwitchForwarderProtocolStateSource;

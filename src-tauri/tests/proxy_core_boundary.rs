@@ -20006,6 +20006,21 @@ fn production_forwarder_uses_protocol_state_source_resource() {
         source.contains("ForwarderCodexChatProtocolEnrichmentInput"),
         "ForwarderProtocolStateSource must receive Codex chat enrichment gates as input"
     );
+    for marker in [
+        "pub(crate) type ForwarderProtocolStateSourceRef",
+        "pub(crate) struct ForwarderClaudeProtocolTransformInput",
+        "pub(crate) struct ForwarderCodexChatProtocolEnrichmentInput",
+        "pub(crate) trait ForwarderProtocolStateSource",
+    ] {
+        assert!(
+            source.contains(marker),
+            "forward_pipeline should own protocol state contract marker `{marker}`"
+        );
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not own protocol state contract marker `{marker}`"
+        );
+    }
     assert!(
         protocol_source.contains("struct CcSwitchForwarderProtocolStateSource")
             && protocol_source.contains(
