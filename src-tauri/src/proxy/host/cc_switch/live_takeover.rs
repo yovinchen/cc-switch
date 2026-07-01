@@ -35,6 +35,7 @@ use crate::proxy_core::api::ports::{
     proxy_config_with_live_takeover_active, proxy_urls_match, CodexLiveTakeoverMatchFacts,
 };
 use crate::proxy_core::api::ports::{
+    codex_provider_live_write_parts_from_settings,
     proxy_hot_switch_should_refresh_codex_live_from_backup,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_hot_switch_should_sync_codex_live_while_proxy_active, proxy_live_urls_from_listen_parts,
@@ -46,7 +47,7 @@ use crate::proxy_core::api::ports::{
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
     codex_backup_projection_error_message, codex_live_write_projection,
-    codex_preserved_auth_live_config_text_for_configured_policy, codex_provider_live_write_parts,
+    codex_preserved_auth_live_config_text_for_configured_policy,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     remove_codex_takeover_config_placeholders_if_present, should_block_proxy_switch_to_provider,
@@ -1878,8 +1879,11 @@ impl ProxyService {
                 &provider,
             )
             .map_err(|e| format!("构建 Codex 有效配置失败: {e}"))?;
-            let live_parts = codex_provider_live_write_parts(&effective_settings, &provider)
-                .map_err(|_| "Codex 供应商缺少 auth 配置".to_string())?;
+            let live_parts = codex_provider_live_write_parts_from_settings(
+                &effective_settings,
+                provider.category.as_deref(),
+            )
+            .map_err(|_| "Codex 供应商缺少 auth 配置".to_string())?;
 
             crate::codex_config::write_codex_provider_live_with_catalog(
                 &effective_settings,
@@ -1987,8 +1991,9 @@ impl ProxyService {
             return self.write_codex_live_verbatim(config);
         };
 
-        let live_parts = codex_provider_live_write_parts(config, provider)
-            .map_err(|_| "Codex 配置缺少 auth 字段".to_string())?;
+        let live_parts =
+            codex_provider_live_write_parts_from_settings(config, provider.category.as_deref())
+                .map_err(|_| "Codex 配置缺少 auth 字段".to_string())?;
 
         crate::codex_config::write_codex_provider_live_with_catalog(
             config,

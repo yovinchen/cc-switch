@@ -131,12 +131,10 @@ use crate::proxy_core::api::ports::{
     apply_codex_takeover_auth_placeholder_if_present,
     codex_auth_has_oauth_login_material as core_codex_auth_has_oauth_login_material,
     codex_model_from_config_toml as core_codex_model_from_config_toml,
-    codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     ensure_codex_takeover_auth_placeholder,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
-    CodexProviderLiveWriteIssue, CodexProviderLiveWriteParts, CopilotOptimizerConfig,
-    LiveTokenProviderSettingsIssue, OptimizerConfig, RectifierConfig,
+    CopilotOptimizerConfig, LiveTokenProviderSettingsIssue, OptimizerConfig, RectifierConfig,
 };
 
 pub(crate) async fn allow_forward_attempt_runtime_source(
@@ -352,13 +350,6 @@ use crate::proxy_core::api::transport::forward_failure_message_from_proxy_status
 use crate::proxy_core::api::transport::{
     ClaudeProviderAuthHeadersInput, ForwardFailureKind, ProxyRequest, ProxyResult,
 };
-pub(crate) fn codex_provider_live_write_parts<'a>(
-    settings: &'a Value,
-    provider: &'a Provider,
-) -> Result<CodexProviderLiveWriteParts<'a>, CodexProviderLiveWriteIssue> {
-    core_codex_provider_live_write_parts_from_settings(settings, provider.category.as_deref())
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CodexBackupProjectionIssue {
     InvalidTargetSettings,
@@ -2255,20 +2246,21 @@ mod tests {
         app_proxy_config_with_enabled as proxy_app_config_with_enabled,
         apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
         claude_env_credentials_from_settings, claude_takeover_model_fields_from_settings,
-        codex_auth_object_value_from_settings, ensure_codex_takeover_auth_placeholder,
-        gemini_env_map_from_settings, gemini_live_backup_from_effective_settings,
-        gemini_live_settings_from_env_json_and_config, gemini_live_settings_to_write,
-        is_local_proxy_url, json_deep_merge, json_deep_remove, json_remove_array_items,
-        json_value_is_subset, live_takeover_app_kinds, live_token_sync_app_label,
-        normalize_claude_models_in_value, normalize_provider_settings_for_storage,
-        provider_additive_live_write_action_for_app, provider_additive_update_route_for_app,
-        provider_app_has_current_provider, provider_credential_issue_spec,
-        provider_default_live_import_settings, provider_delete_is_current_provider,
-        provider_initial_live_config_managed_marker, provider_key_change_policy_issue_for_app,
-        provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
-        provider_live_removal_target_for_app, provider_live_sync_scope_for_app,
-        provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
-        provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
+        codex_auth_object_value_from_settings, codex_provider_live_write_parts_from_settings,
+        ensure_codex_takeover_auth_placeholder, gemini_env_map_from_settings,
+        gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
+        gemini_live_settings_to_write, is_local_proxy_url, json_deep_merge, json_deep_remove,
+        json_remove_array_items, json_value_is_subset, live_takeover_app_kinds,
+        live_token_sync_app_label, normalize_claude_models_in_value,
+        normalize_provider_settings_for_storage, provider_additive_live_write_action_for_app,
+        provider_additive_update_route_for_app, provider_app_has_current_provider,
+        provider_credential_issue_spec, provider_default_live_import_settings,
+        provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
+        provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
+        provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
+        provider_live_sync_scope_for_app, provider_omo_switch_pair_for_app_category,
+        provider_omo_variant_for_app_category, provider_settings_validation_issue_spec,
+        provider_settings_validation_parts_from_settings,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         provider_switch_backfill_source_id, provider_switch_dispatch_for_app,
         provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
@@ -2282,8 +2274,8 @@ mod tests {
         should_skip_manual_default_live_import,
         should_skip_provider_legacy_common_config_migration,
         should_skip_startup_default_live_import, AuthInfo, AuthProvider, ClaudeTakeoverAuthPolicy,
-        CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
-        ProviderCredentialIssue, ProviderKeyChangePolicyIssue,
+        CodexProviderLiveWriteIssue, CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction,
+        ProviderAdditiveUpdateRoute, ProviderCredentialIssue, ProviderKeyChangePolicyIssue,
         ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
         ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
         ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
@@ -6234,9 +6226,11 @@ base_url = "https://api.openai.com/v1"
             "auth": {"OPENAI_API_KEY": "sk-write"},
             "config": "model = \"gpt-5\""
         });
-        let write_parts =
-            codex_provider_live_write_parts(&write_settings, &custom_category_provider)
-                .expect("codex provider live write parts");
+        let write_parts = codex_provider_live_write_parts_from_settings(
+            &write_settings,
+            custom_category_provider.category.as_deref(),
+        )
+        .expect("codex provider live write parts");
         assert_eq!(write_parts.category, Some("custom"));
         assert_eq!(
             write_parts
@@ -6247,9 +6241,9 @@ base_url = "https://api.openai.com/v1"
         );
         assert_eq!(write_parts.config_text, Some("model = \"gpt-5\""));
         assert!(matches!(
-            codex_provider_live_write_parts(
+            codex_provider_live_write_parts_from_settings(
                 &json!({"config": "model = \"gpt-5\""}),
-                &custom_category_provider,
+                custom_category_provider.category.as_deref(),
             ),
             Err(CodexProviderLiveWriteIssue::MissingAuth)
         ));

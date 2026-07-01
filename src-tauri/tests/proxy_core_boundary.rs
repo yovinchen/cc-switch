@@ -1238,6 +1238,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn codex_takeover_toml_config_for_provider(",
     "pub(crate) fn apply_codex_unified_session_bucket_for_provider(",
     "pub(crate) fn provider_settings_validation_parts(",
+    "pub(crate) fn codex_provider_live_write_parts(",
     "fn parse_json_proxy_request_body(",
     "fn parse_json_proxy_request_body_or_null(",
     "fn json_proxy_request_from_input(",
@@ -8616,6 +8617,9 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
     let config_service_source = fs::read_to_string(manifest_dir.join("src/services/config.rs"))
         .expect("read services/config.rs");
+    let live_takeover_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
+            .expect("read live_takeover.rs");
     let production_source = production_lines(&source)
         .map(|(_, line)| line)
         .collect::<Vec<_>>()
@@ -8626,15 +8630,19 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
         .map(|tail| tail.split("};").next().unwrap_or_default())
         .collect();
 
-    for marker in [
-        "core_codex_provider_live_write_parts_from_settings(",
-        "core_codex_auth_has_oauth_login_material(",
-    ] {
-        assert!(
-            production_source.contains(marker),
-            "proxy_core_adapter should delegate Codex live/settings shape marker `{marker}` to core"
-        );
-    }
+    assert!(
+        production_source.contains("core_codex_auth_has_oauth_login_material("),
+        "proxy_core_adapter should delegate Codex OAuth auth material checks to core"
+    );
+    assert!(
+        live_takeover_source.contains("codex_provider_live_write_parts_from_settings")
+            && live_takeover_source.contains("provider.category.as_deref()"),
+        "live_takeover should call Codex provider live write parts directly from proxy-core"
+    );
+    assert!(
+        !production_source.contains("pub(crate) fn codex_provider_live_write_parts("),
+        "proxy_core_adapter should not own Codex provider live write parts projection"
+    );
     assert!(
         (config_service_source.contains(
             "use crate::proxy_core::api::ports::{codex_restored_live_settings_parts, CodexLiveSettingsIssue};"
