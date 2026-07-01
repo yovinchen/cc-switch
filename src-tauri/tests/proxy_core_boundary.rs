@@ -1237,6 +1237,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn proxy_channel_record_from_legacy_projection(",
     "pub(crate) fn codex_takeover_toml_config_for_provider(",
     "pub(crate) fn apply_codex_unified_session_bucket_for_provider(",
+    "pub(crate) fn provider_settings_validation_parts(",
     "fn parse_json_proxy_request_body(",
     "fn parse_json_proxy_request_body_or_null(",
     "fn json_proxy_request_from_input(",
@@ -8705,32 +8706,34 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_provider_settings_validation_policy_to_core() {
+fn provider_service_imports_provider_settings_validation_policy_from_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let slice = function_slice(
-        &source,
-        "pub(crate) fn provider_settings_validation_parts",
-        "pub(crate) enum CodexBackupProjectionIssue",
-    );
+    let service_source = fs::read_to_string(manifest_dir.join("src/services/provider/mod.rs"))
+        .expect("read provider service");
 
     assert!(
-        slice.contains("core_provider_settings_validation_parts_from_settings(")
-            && slice.contains("AppKind::from(app_type)"),
-        "proxy_core_adapter should delegate provider settings validation policy to core"
+        service_source.contains("provider_settings_validation_parts_from_settings")
+            && service_source.contains("&AppKind::from(app_type)")
+            && service_source.contains("&provider.settings_config"),
+        "provider service should call provider settings validation policy directly from proxy-core"
     );
 
     let mut violations = Vec::new();
     for marker in FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_SETTINGS_VALIDATION_MARKERS {
-        if slice.contains(marker) {
+        if service_source.contains(marker) {
             violations.push(*marker);
         }
     }
 
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    if adapter_source.contains("pub(crate) fn provider_settings_validation_parts(") {
+        violations.push("pub(crate) fn provider_settings_validation_parts(");
+    }
+
     assert!(
         violations.is_empty(),
-        "proxy_core_adapter must keep provider settings validation dispatch/spec policy in proxy-core:\n{}",
+        "provider settings validation dispatch/spec policy should stay out of proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
@@ -8756,6 +8759,7 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
                 "provider_omo_switch_pair_for_app_category",
                 "provider_omo_variant_for_app_category",
                 "provider_settings_validation_issue_spec",
+                "provider_settings_validation_parts_from_settings",
                 "provider_switch_backfill_source_id",
                 "provider_switch_dispatch_for_app",
                 "provider_switch_requires_takeover_lock",

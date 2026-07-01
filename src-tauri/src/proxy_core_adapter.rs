@@ -134,11 +134,9 @@ use crate::proxy_core::api::ports::{
     codex_provider_live_write_parts_from_settings as core_codex_provider_live_write_parts_from_settings,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
     ensure_codex_takeover_auth_placeholder,
-    provider_settings_validation_parts_from_settings as core_provider_settings_validation_parts_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
     CodexProviderLiveWriteIssue, CodexProviderLiveWriteParts, CopilotOptimizerConfig,
-    LiveTokenProviderSettingsIssue, OptimizerConfig, ProviderSettingsValidationIssue,
-    ProviderSettingsValidationParts, RectifierConfig,
+    LiveTokenProviderSettingsIssue, OptimizerConfig, RectifierConfig,
 };
 
 pub(crate) async fn allow_forward_attempt_runtime_source(
@@ -359,16 +357,6 @@ pub(crate) fn codex_provider_live_write_parts<'a>(
     provider: &'a Provider,
 ) -> Result<CodexProviderLiveWriteParts<'a>, CodexProviderLiveWriteIssue> {
     core_codex_provider_live_write_parts_from_settings(settings, provider.category.as_deref())
-}
-
-pub(crate) fn provider_settings_validation_parts<'a>(
-    app_type: &AppType,
-    provider: &'a Provider,
-) -> Result<ProviderSettingsValidationParts<'a>, ProviderSettingsValidationIssue> {
-    core_provider_settings_validation_parts_from_settings(
-        &AppKind::from(app_type),
-        &provider.settings_config,
-    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2280,7 +2268,7 @@ mod tests {
         provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
         provider_live_removal_target_for_app, provider_live_sync_scope_for_app,
         provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
-        provider_settings_validation_issue_spec,
+        provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         provider_switch_backfill_source_id, provider_switch_dispatch_for_app,
         provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
@@ -2297,8 +2285,8 @@ mod tests {
         CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
         ProviderCredentialIssue, ProviderKeyChangePolicyIssue,
         ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
-        ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSwitchDispatch,
-        ProviderTakeoverLiveSyncTarget,
+        ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
+        ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
     };
     use crate::proxy_core::api::routing::{
         normalize_channel_base_url, normalize_proxy_channel_write_request_fields, stable_channel_id,
@@ -6284,32 +6272,49 @@ base_url = "https://api.openai.com/v1"
             None,
         );
         auth_not_object.category = Some("custom".to_string());
-        let provider_validation_parts =
-            provider_settings_validation_parts(&AppType::Codex, &official_live_provider)
-                .expect("provider validation parts");
+        let provider_validation_parts = provider_settings_validation_parts_from_settings(
+            &AppKind::from(&AppType::Codex),
+            &official_live_provider.settings_config,
+        )
+        .expect("provider validation parts");
         assert_eq!(provider_validation_parts.codex_config_text, Some(""));
         assert!(matches!(
-            provider_settings_validation_parts(&AppType::Codex, &invalid_shape),
+            provider_settings_validation_parts_from_settings(
+                &AppKind::from(&AppType::Codex),
+                &invalid_shape.settings_config,
+            ),
             Err(ProviderSettingsValidationIssue::Codex(
                 CodexProviderValidationIssue::NotObject
             ))
         ));
         assert!(matches!(
-            provider_settings_validation_parts(&AppType::Claude, &invalid_shape),
+            provider_settings_validation_parts_from_settings(
+                &AppKind::from(&AppType::Claude),
+                &invalid_shape.settings_config,
+            ),
             Err(ProviderSettingsValidationIssue::ClaudeSettingsNotObject)
         ));
         assert!(matches!(
-            provider_settings_validation_parts(&AppType::OpenCode, &invalid_shape),
+            provider_settings_validation_parts_from_settings(
+                &AppKind::from(&AppType::OpenCode),
+                &invalid_shape.settings_config,
+            ),
             Err(ProviderSettingsValidationIssue::OpenCodeSettingsNotObject)
         ));
         assert!(matches!(
-            provider_settings_validation_parts(&AppType::Codex, &missing_auth),
+            provider_settings_validation_parts_from_settings(
+                &AppKind::from(&AppType::Codex),
+                &missing_auth.settings_config,
+            ),
             Err(ProviderSettingsValidationIssue::Codex(
                 CodexProviderValidationIssue::MissingAuth
             ))
         ));
         assert!(matches!(
-            provider_settings_validation_parts(&AppType::Codex, &auth_not_object),
+            provider_settings_validation_parts_from_settings(
+                &AppKind::from(&AppType::Codex),
+                &auth_not_object.settings_config,
+            ),
             Err(ProviderSettingsValidationIssue::Codex(
                 CodexProviderValidationIssue::AuthNotObject
             ))
@@ -6321,7 +6326,10 @@ base_url = "https://api.openai.com/v1"
             None,
         );
         assert!(matches!(
-            provider_settings_validation_parts(&AppType::Codex, &invalid_config),
+            provider_settings_validation_parts_from_settings(
+                &AppKind::from(&AppType::Codex),
+                &invalid_config.settings_config,
+            ),
             Err(ProviderSettingsValidationIssue::Codex(
                 CodexProviderValidationIssue::ConfigInvalidType
             ))

@@ -29,7 +29,8 @@ use crate::proxy_core::api::ports::{
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
     provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
     provider_omo_variant_for_app_category as core_provider_omo_variant_for_category,
-    provider_settings_validation_issue_spec, provider_switch_backfill_source_id,
+    provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
+    provider_switch_backfill_source_id,
     provider_switch_dispatch_for_app as core_provider_switch_dispatch,
     provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
@@ -42,9 +43,7 @@ use crate::proxy_core::api::ports::{
     ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
     ProviderTakeoverLiveSyncTarget,
 };
-use crate::proxy_core_adapter::{
-    provider_settings_validation_parts, should_block_proxy_switch_to_provider,
-};
+use crate::proxy_core_adapter::should_block_proxy_switch_to_provider;
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
 use crate::store::AppState;
@@ -2229,10 +2228,13 @@ impl ProviderService {
     }
 
     fn validate_provider_settings(app_type: &AppType, provider: &Provider) -> Result<(), AppError> {
-        let validation_parts =
-            provider_settings_validation_parts(app_type, provider).map_err(|issue| {
-                Self::provider_settings_validation_issue_to_app_error(issue, &provider.id)
-            })?;
+        let validation_parts = provider_settings_validation_parts_from_settings(
+            &AppKind::from(app_type),
+            &provider.settings_config,
+        )
+        .map_err(|issue| {
+            Self::provider_settings_validation_issue_to_app_error(issue, &provider.id)
+        })?;
 
         match app_type {
             AppType::Claude => {}
