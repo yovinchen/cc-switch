@@ -20476,9 +20476,9 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         "pub struct ForwardResult",
     );
     let attempt_failure_runtime_source_slice = function_slice(
-        &adapter_source,
-        "pub(crate) async fn record_forward_attempt_failure_runtime_source",
-        "pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source",
+        &attempt_source,
+        "async fn record_forward_attempt_failure_runtime_source",
+        "async fn release_forward_attempt_permit_neutral_runtime_source",
     );
     assert!(
         !attempt_runtime_trait_slice.contains("should_bypass_circuit_breaker"),
@@ -20493,6 +20493,30 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
             && !attempt_failure_runtime_source_slice.contains("error_message: &str"),
         "attempt failure runtime source helper must consume ProxyError and own message projection"
     );
+    assert!(
+        attempt_source.contains("async fn allow_forward_attempt_runtime_source")
+            && attempt_source.contains("async fn record_forward_attempt_success_runtime_source")
+            && attempt_source.contains("async fn record_forward_attempt_failure_runtime_source")
+            && attempt_source.contains("async fn release_forward_attempt_permit_neutral_runtime_source")
+            && attempt_source.contains(".allow_channel_request(")
+            && attempt_source.contains(".allow_provider_request(")
+            && attempt_source.contains(".record_channel_result(")
+            && attempt_source.contains(".record_result(")
+            && attempt_source.contains(".release_channel_permit_neutral(")
+            && attempt_source.contains(".release_permit_neutral("),
+        "default ForwarderAttemptRuntimeSource should own ProviderRouter permit, health, and neutral release side effects"
+    );
+    for marker in [
+        "pub(crate) async fn allow_forward_attempt_runtime_source",
+        "pub(crate) async fn record_forward_attempt_success_runtime_source",
+        "pub(crate) async fn record_forward_attempt_failure_runtime_source",
+        "pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not expose attempt runtime side-effect helper `{marker}`"
+        );
+    }
 
     let struct_forbidden_markers = ["router: Arc<ProviderRouter>"];
     let impl_forbidden_markers = [
@@ -21852,7 +21876,7 @@ fn production_forwarder_delegates_runtime_events_to_adapter() {
 }
 
 #[test]
-fn production_forwarder_delegates_attempt_runtime_to_adapter() {
+fn production_forwarder_delegates_attempt_runtime_to_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
@@ -21873,7 +21897,7 @@ fn production_forwarder_delegates_attempt_runtime_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "production forwarder must delegate circuit allow, health result, and neutral permit side effects to proxy_core_adapter:\n{}",
+        "production forwarder must delegate circuit allow, health result, and neutral permit side effects to ForwarderAttemptRuntimeSource:\n{}",
         violations.join("\n")
     );
 }

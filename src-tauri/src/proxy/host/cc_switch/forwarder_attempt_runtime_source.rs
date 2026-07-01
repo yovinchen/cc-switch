@@ -9,14 +9,10 @@ use crate::proxy::engine::forward_pipeline::{
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
 use crate::proxy::route_attempt::ForwardAttempt;
+use crate::proxy_core::api::config::AllowResult;
 use crate::proxy_core::api::routing::effective_forward_max_attempts_for_channel;
 use crate::proxy_core::api::transport::{
     forwarder_attempt_runtime_decision, ForwarderAttemptRuntimeDecisionInput,
-};
-use crate::proxy_core_adapter::{
-    allow_forward_attempt_runtime_source, record_forward_attempt_failure_runtime_source,
-    record_forward_attempt_success_runtime_source,
-    release_forward_attempt_permit_neutral_runtime_source,
 };
 
 struct CcSwitchForwarderAttemptRuntimeSource {
@@ -28,6 +24,144 @@ impl CcSwitchForwarderAttemptRuntimeSource {
     fn new(router: Arc<ProviderRouter>, db: Arc<Database>) -> Self {
         Self { router, db }
     }
+}
+
+async fn allow_forward_attempt_runtime_source(
+    router: &ProviderRouter,
+    attempt: &ForwardAttempt,
+    app_type: &str,
+    bypass_circuit_breaker: bool,
+) -> AllowResult {
+    if bypass_circuit_breaker {
+        return AllowResult {
+            allowed: true,
+            used_half_open_permit: false,
+        };
+    }
+
+    if let Some(channel) = attempt.channel() {
+        router
+            .allow_channel_request(&channel.channel_id, app_type)
+            .await
+    } else {
+        router
+            .allow_provider_request(&attempt.provider().id, app_type)
+            .await
+    }
+}
+
+async fn record_forward_attempt_success_runtime_source(
+    router: &Arc<ProviderRouter>,
+    attempt: &ForwardAttempt,
+    app_type: &str,
+    used_half_open_permit: bool,
+) {
+    if let Some(channel) = attempt.channel() {
+        if used_half_open_permit {
+            if let Err(error) = router
+                .record_channel_result(&channel.channel_id, app_type, true, true, None, None)
+                .await
+            {
+                log::warn!(
+                    "[{app_type}] 记录 Channel 成功结果失败: channel_id={}, error={error}",
+                    channel.channel_id
+                );
+            }
+            return;
+        }
+
+        let router = router.clone();
+        let channel_id = channel.channel_id.clone();
+        let app_type = app_type.to_string();
+        tokio::spawn(async move {
+            if let Err(error) = router
+                .record_channel_result(&channel_id, &app_type, false, true, None, None)
+                .await
+            {
+                log::warn!(
+                    "[{app_type}] 异步记录 Channel 成功结果失败: channel_id={channel_id}, error={error}"
+                );
+            }
+        });
+        return;
+    }
+
+    let provider_id = attempt.provider().id.clone();
+    if used_half_open_permit {
+        if let Err(error) = router
+            .record_result(&provider_id, app_type, true, true, None)
+            .await
+        {
+            log::warn!(
+                "[{app_type}] 记录 Provider 成功结果失败: provider_id={provider_id}, error={error}"
+            );
+        }
+        return;
+    }
+
+    let router = router.clone();
+    let app_type = app_type.to_string();
+    tokio::spawn(async move {
+        if let Err(error) = router
+            .record_result(&provider_id, &app_type, false, true, None)
+            .await
+        {
+            log::warn!(
+                "[{app_type}] 异步记录 Provider 成功结果失败: provider_id={provider_id}, error={error}"
+            );
+        }
+    });
+}
+
+async fn record_forward_attempt_failure_runtime_source(
+    router: &ProviderRouter,
+    attempt: &ForwardAttempt,
+    app_type: &str,
+    used_half_open_permit: bool,
+    error: &ProxyError,
+) {
+    let error_message = error.to_string();
+    if let Some(channel) = attempt.channel() {
+        let _ = router
+            .record_channel_result(
+                &channel.channel_id,
+                app_type,
+                used_half_open_permit,
+                false,
+                Some(error_message),
+                None,
+            )
+            .await;
+        return;
+    }
+
+    let _ = router
+        .record_result(
+            &attempt.provider().id,
+            app_type,
+            used_half_open_permit,
+            false,
+            Some(error_message),
+        )
+        .await;
+}
+
+async fn release_forward_attempt_permit_neutral_runtime_source(
+    router: &ProviderRouter,
+    attempt: &ForwardAttempt,
+    app_type: &str,
+    used_half_open_permit: bool,
+) {
+    if let Some(channel) = attempt.channel() {
+        router
+            .release_channel_permit_neutral(&channel.channel_id, app_type, used_half_open_permit)
+            .await;
+        return;
+    }
+
+    router
+        .release_permit_neutral(&attempt.provider().id, app_type, used_half_open_permit)
+        .await;
 }
 
 fn record_selected_channel_key_failure(db: &Database, attempt: &ForwardAttempt, failed_at_ms: i64) {
