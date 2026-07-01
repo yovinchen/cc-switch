@@ -361,16 +361,6 @@ pub(crate) fn codex_provider_live_write_parts<'a>(
     core_codex_provider_live_write_parts_from_settings(settings, provider.category.as_deref())
 }
 
-pub(crate) fn apply_codex_unified_session_bucket_for_provider(
-    provider: &Provider,
-    settings: &mut Value,
-) -> Result<(), AppError> {
-    crate::codex_config::apply_codex_unified_session_bucket_to_settings(
-        provider.category.as_deref(),
-        settings,
-    )
-}
-
 pub(crate) fn provider_settings_validation_parts<'a>(
     app_type: &AppType,
     provider: &'a Provider,

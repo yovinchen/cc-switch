@@ -45,9 +45,9 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
-    apply_codex_unified_session_bucket_for_provider, codex_backup_projection_error_message,
-    codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
-    codex_provider_live_write_parts, preserve_codex_mcp_servers_from_existing_config,
+    codex_backup_projection_error_message, codex_live_write_projection,
+    codex_preserved_auth_live_config_text_for_configured_policy, codex_provider_live_write_parts,
+    preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     remove_codex_takeover_config_placeholders_if_present, should_block_proxy_switch_to_provider,
     sync_provider_settings_with_live_token, CodexLiveWriteProjection, CodexTakeoverAuthPolicy,
@@ -1794,8 +1794,11 @@ impl ProxyService {
 
             // 统一会话开关：备份是接管释放时恢复 live 的来源，官方配置的
             // 共享 custom 路由注入必须落在备份里，否则恢复后开关失效。
-            apply_codex_unified_session_bucket_for_provider(provider, &mut effective_settings)
-                .map_err(|e| format!("注入统一会话路由失败: {e}"))?;
+            crate::codex_config::apply_codex_unified_session_bucket_to_settings(
+                provider.category.as_deref(),
+                &mut effective_settings,
+            )
+            .map_err(|e| format!("注入统一会话路由失败: {e}"))?;
         }
 
         save_provider_live_backup_from_effective_settings_in_host_db(

@@ -1236,6 +1236,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn legacy_provider_projection_input(",
     "pub(crate) fn proxy_channel_record_from_legacy_projection(",
     "pub(crate) fn codex_takeover_toml_config_for_provider(",
+    "pub(crate) fn apply_codex_unified_session_bucket_for_provider(",
     "fn parse_json_proxy_request_body(",
     "fn parse_json_proxy_request_body_or_null(",
     "fn json_proxy_request_from_input(",
