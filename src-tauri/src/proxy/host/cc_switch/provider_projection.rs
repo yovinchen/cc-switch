@@ -201,6 +201,10 @@ pub(crate) fn provider_claude_transform_streaming_decision(
     )
 }
 
+pub(crate) fn provider_uses_anthropic_rectifiers(app_type: &AppType, provider: &Provider) -> bool {
+    provider_kind_from_app_type_and_config(app_type, provider).uses_anthropic_rectifiers()
+}
+
 fn account_ref(provider: &Provider) -> Option<String> {
     provider.meta.as_ref().and_then(|meta| {
         let provider_type = meta.provider_type.as_deref();

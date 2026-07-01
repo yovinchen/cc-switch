@@ -29,7 +29,7 @@ use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status_kind};
 use crate::proxy::host::cc_switch::provider_projection::{
-    provider_claude_auth_key, provider_claude_kind, provider_kind_from_app_type_and_config,
+    provider_claude_auth_key, provider_claude_kind,
 };
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 #[cfg(test)]
@@ -1177,10 +1177,6 @@ fn provider_uses_managed_account_auth(provider: &Provider) -> bool {
     provider_managed_auth_classification(provider).uses_managed_account
 }
 
-pub(crate) fn provider_uses_anthropic_rectifiers(app_type: &AppType, provider: &Provider) -> bool {
-    provider_kind_from_app_type_and_config(app_type, provider).uses_anthropic_rectifiers()
-}
-
 fn provider_claude_models_are_claude_safe(provider: &Provider) -> bool {
     crate::proxy_core::api::auth::claude_desktop_provider_models_are_profile_safe(
         &provider.settings_config,
@@ -1651,8 +1647,9 @@ mod tests {
     use crate::proxy::host::cc_switch::provider_projection::{
         provider_claude_base_url, provider_claude_transform_streaming_decision,
         provider_gemini_kind, provider_github_copilot_managed_account_id,
-        provider_managed_account_binding_context, provider_needs_claude_transform,
-        provider_spec_from_source, provider_specs_from_source, proxy_provider_to_core_spec,
+        provider_kind_from_app_type_and_config, provider_managed_account_binding_context,
+        provider_needs_claude_transform, provider_spec_from_source, provider_specs_from_source,
+        provider_uses_anthropic_rectifiers, proxy_provider_to_core_spec,
     };
     use crate::proxy::provider::ProviderAdapter;
     use crate::proxy::provider::{

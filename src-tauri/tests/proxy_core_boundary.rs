@@ -12210,9 +12210,13 @@ fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let classification_slice = function_slice(
         &source,
         "fn provider_kind_from_provider(",
-        "pub(crate) fn provider_uses_anthropic_rectifiers",
+        "fn provider_claude_models_are_claude_safe",
     );
 
+    assert!(
+        !source.contains("pub(crate) fn provider_uses_anthropic_rectifiers"),
+        "proxy_core_adapter should not keep an Anthropic rectifier provider fact facade"
+    );
     assert!(
         classification_slice.contains("core_classify_provider_managed_auth(")
             && classification_slice.contains("ProviderManagedAuthFacts"),

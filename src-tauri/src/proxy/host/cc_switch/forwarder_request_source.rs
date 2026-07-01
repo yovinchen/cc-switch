@@ -26,6 +26,7 @@ use crate::proxy::host::cc_switch::managed_account_runtime_source::ManagedAccoun
 use crate::proxy::host::cc_switch::provider_adapter_context::{
     forwarder_provider_adapter_context_for_app, ForwarderAdapterContext,
 };
+use crate::proxy::host::cc_switch::provider_projection::provider_uses_anthropic_rectifiers;
 use crate::proxy::provider::{
     claude_provider_api_format, codex_provider_apply_chat_upstream_model,
     codex_provider_chat_reasoning_options, codex_provider_should_convert_responses_to_chat,
@@ -67,8 +68,7 @@ use crate::proxy_core::api::transport::{
     PromptCacheTraceLogInput, UpstreamRequestHeadersInput, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_adapter::{
-    apply_forward_request_model_mapping_from_provider,
-    provider_claude_normalize_anthropic_messages, provider_uses_anthropic_rectifiers,
+    apply_forward_request_model_mapping_from_provider, provider_claude_normalize_anthropic_messages,
 };
 
 pub(crate) struct CcSwitchForwarderRequestSource {
