@@ -87,14 +87,6 @@ pub(crate) fn usage_error(context: &str, error: AppError) -> ProxyCoreError {
     core_internal_error_with_context(context, error)
 }
 
-pub(crate) fn app_error_from_proxy_core_error(error: ProxyCoreError) -> AppError {
-    match error {
-        ProxyCoreError::Config(message) => AppError::Config(message),
-        ProxyCoreError::InvalidRequest(message) => AppError::InvalidInput(message),
-        other => AppError::Message(other.to_string()),
-    }
-}
-
 fn app_error_from_provider_selection_failure(
     app_type: &str,
     error: ProviderSelectionFailure,
@@ -417,7 +409,7 @@ pub(crate) async fn proxy_runtime_config_from_db_source(
     Ok(proxy_runtime_config_from_config(config, false))
 }
 
-use crate::proxy_core::api::ports::{ChannelAttemptResult, ProviderAttemptResult};
+use crate::proxy_core::api::ports::ChannelAttemptResult;
 
 use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
@@ -1120,56 +1112,6 @@ fn provider_should_preserve_reasoning_content_for_openai_chat(
     body: &Value,
 ) -> bool {
     should_preserve_reasoning_content_for_openai_chat(&provider.settings_config, body)
-}
-
-struct ProviderHealthAttemptDbUpdate {
-    provider_id: String,
-    app_type: String,
-    success: bool,
-    error_msg: Option<String>,
-    failure_threshold: u32,
-}
-
-fn provider_health_attempt_db_update(
-    result: ProviderAttemptResult,
-) -> ProviderHealthAttemptDbUpdate {
-    ProviderHealthAttemptDbUpdate {
-        provider_id: result.provider_id,
-        app_type: result.app.as_str().to_string(),
-        success: result.success,
-        error_msg: result.error_message,
-        failure_threshold: result.failure_threshold,
-    }
-}
-
-pub(crate) async fn record_provider_attempt_in_db_source(
-    db: &Database,
-    result: ProviderAttemptResult,
-) -> ProxyCoreResult<()> {
-    let update = provider_health_attempt_db_update(result);
-    db.update_provider_health_with_threshold(
-        &update.provider_id,
-        &update.app_type,
-        update.success,
-        update.error_msg,
-        update.failure_threshold,
-    )
-    .await
-    .map_err(|error| app_error("record provider attempt", error))
-}
-
-pub(crate) fn record_channel_health_attempt_from_router_db(
-    db: &Database,
-    result: ChannelAttemptResult,
-) -> Result<(), AppError> {
-    record_channel_attempt_in_db_source(db, result).map_err(app_error_from_proxy_core_error)
-}
-
-pub(crate) fn reset_channel_health_from_router_db(
-    db: &Database,
-    reset: ChannelHealthReset,
-) -> Result<(), AppError> {
-    db.reset_proxy_channel_health(&reset.channel_id)
 }
 
 pub(crate) fn select_failover_provider_ids_from_router_lookup_availability<I>(
@@ -6981,22 +6923,6 @@ base_url = "https://api.openai.com/v1"
             ),
             AppError::NoProvidersConfigured
         ));
-        assert!(matches!(
-            app_error_from_proxy_core_error(ProxyCoreError::Config("bad config".to_string())),
-            AppError::Config(message) if message == "bad config"
-        ));
-        assert!(matches!(
-            app_error_from_proxy_core_error(ProxyCoreError::InvalidRequest(
-                "bad request".to_string()
-            )),
-            AppError::InvalidInput(message) if message == "bad request"
-        ));
-        assert!(matches!(
-            app_error_from_proxy_core_error(ProxyCoreError::Unavailable(
-                "not available".to_string()
-            )),
-            AppError::Message(message) if message.contains("not available")
-        ));
         assert_eq!(
             current_provider_id_from_sources(Some("settings-provider"), Some("db-provider")),
             "settings-provider"
@@ -12408,23 +12334,6 @@ command = "latest-command"
 
         assert_eq!(override_update.failure_threshold, 7);
         assert_eq!(override_update.response_time_ms, None);
-    }
-
-    #[test]
-    fn provider_health_adapter_projects_attempt_db_update() {
-        let update = provider_health_attempt_db_update(ProviderAttemptResult {
-            provider_id: "provider-a".to_string(),
-            app: AppKind::Claude,
-            success: false,
-            failure_threshold: 3,
-            error_message: Some("timeout".to_string()),
-        });
-
-        assert_eq!(update.provider_id, "provider-a");
-        assert_eq!(update.app_type, "claude");
-        assert!(!update.success);
-        assert_eq!(update.error_msg.as_deref(), Some("timeout"));
-        assert_eq!(update.failure_threshold, 3);
     }
 
     #[test]

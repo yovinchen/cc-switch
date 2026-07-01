@@ -971,8 +971,6 @@ const FORBIDDEN_PROVIDER_ROUTER_HEALTH_STORE_ADAPTER_MARKERS: &[&str] = &[
     "record_provider_health_result_from_router_db(",
     "record_provider_health_attempt_from_router_db(",
     "record_channel_health_result_from_router_db(",
-    ".update_provider_health_with_threshold(",
-    ".update_proxy_channel_health_with_threshold(",
 ];
 const FORBIDDEN_PROVIDER_ROUTER_PROVIDER_RECORD_MARKERS: &[&str] = &[
     "use crate::provider::Provider",
@@ -24981,7 +24979,7 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
     let source = fs::read_to_string(&source_path).expect("read provider_router_health_store.rs");
     let direct_core_imports = [
         "use crate::proxy_core::api::domain::AppKind;",
-        "use crate::proxy_core::api::errors::ProxyCoreResult;",
+        "use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};",
         "use crate::proxy_core::api::ports::{",
     ];
     let adapter_import = function_slice(&source, "use crate::proxy_core_adapter::{", "};");
@@ -25008,6 +25006,9 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
         "ProviderAttemptResult",
         "ProviderHealthStore",
         "ProxyCoreResult",
+        "record_provider_attempt_in_db_source",
+        "record_channel_health_attempt_from_router_db",
+        "reset_channel_health_from_router_db",
     ] {
         assert!(
             !adapter_import.contains(adapter_type),
@@ -25034,6 +25035,18 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
                 .contains("impl ProviderRouterHealthStore for CcSwitchProviderRouterHealthStore"),
         "proxy_core_adapter should not own the ProviderRouter health store"
     );
+    for adapter_marker in [
+        "struct ProviderHealthAttemptDbUpdate",
+        "fn provider_health_attempt_db_update",
+        "pub(crate) async fn record_provider_attempt_in_db_source",
+        "pub(crate) fn record_channel_health_attempt_from_router_db",
+        "pub(crate) fn reset_channel_health_from_router_db",
+    ] {
+        assert!(
+            !adapter_source.contains(adapter_marker),
+            "proxy_core_adapter should not retain ProviderRouter health store helper `{adapter_marker}`"
+        );
+    }
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&adapter_source) {
