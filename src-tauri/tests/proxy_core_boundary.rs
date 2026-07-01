@@ -1239,6 +1239,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn apply_codex_unified_session_bucket_for_provider(",
     "pub(crate) fn provider_settings_validation_parts(",
     "pub(crate) fn codex_provider_live_write_parts(",
+    "pub(crate) fn extract_proxy_session_id(",
     "fn parse_json_proxy_request_body(",
     "fn parse_json_proxy_request_body_or_null(",
     "fn json_proxy_request_from_input(",

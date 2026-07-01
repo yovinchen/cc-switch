@@ -2189,7 +2189,7 @@ pub(crate) fn apply_claude_takeover_fields_for_provider(
     );
 }
 
-pub(crate) fn extract_proxy_session_id(
+fn extract_proxy_session_id(
     headers: &HeaderMap,
     body: &Value,
     client_format: &str,
