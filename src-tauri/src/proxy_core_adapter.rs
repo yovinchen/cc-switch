@@ -1068,7 +1068,7 @@ fn app_type_option_from_proxy_core_app(app: &AppKind) -> Option<AppType> {
     app.as_str().parse::<AppType>().ok()
 }
 
-pub(crate) fn app_type_from_proxy_core_app(app: &AppKind) -> ProxyCoreResult<AppType> {
+fn app_type_from_proxy_core_app(app: &AppKind) -> ProxyCoreResult<AppType> {
     app.as_str()
         .parse::<AppType>()
         .map_err(unsupported_app_kind_config_error)

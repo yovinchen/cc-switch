@@ -25065,7 +25065,10 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
     assert!(
         source.contains(
             "use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource;"
-        ) && source.contains("use crate::proxy_core::api::domain::{AppKind, ProviderSpec};")
+        ) && source.contains("use crate::proxy_core::api::domain::{")
+            && source.contains("unsupported_app_kind_config_error")
+            && source.contains("AppKind")
+            && source.contains("ProviderSpec")
             && source.contains("ProxyCoreResult")
             && source.contains("use crate::proxy_core::api::ports::{ProviderSource, RoutePolicySource};")
             && source.contains("use crate::proxy_core::api::routing::{")
@@ -25081,6 +25084,7 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
         "ProviderSpec",
         "ProxyCoreAppKind",
         "ProxyCoreResult",
+        "app_type_from_proxy_core_app",
         "failover_provider_ids_from_route_policy_source",
         "provider_failover_sources_from_router_provider_source",
         "select_current_provider_ids_from_router_provider_source",

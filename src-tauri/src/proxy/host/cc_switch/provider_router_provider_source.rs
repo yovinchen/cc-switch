@@ -5,7 +5,7 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::proxy::engine::routing::{ProviderFailoverRouterSources, ProviderRouterProviderSource};
 use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource;
-use crate::proxy_core::api::domain::{AppKind, ProviderSpec};
+use crate::proxy_core::api::domain::{unsupported_app_kind_config_error, AppKind, ProviderSpec};
 use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};
 use crate::proxy_core::api::ports::{ProviderSource, RoutePolicySource};
 use crate::proxy_core::api::routing::{
@@ -16,9 +16,7 @@ use crate::proxy_core::api::routing::{
 use crate::proxy_core::api::transport::{
     forwarder_all_providers_circuit_open_log_line, forwarder_no_providers_configured_log_line,
 };
-use crate::proxy_core_adapter::{
-    app_type_from_proxy_core_app, provider_spec_from_db_source, provider_specs_from_db_source,
-};
+use crate::proxy_core_adapter::{provider_spec_from_db_source, provider_specs_from_db_source};
 use futures::future::BoxFuture;
 use std::sync::Arc;
 
@@ -160,6 +158,12 @@ fn provider_router_provider_source_app_error(error: ProxyCoreError) -> AppError 
     }
 }
 
+fn app_type_from_provider_source_app(app: &AppKind) -> ProxyCoreResult<AppType> {
+    app.as_str()
+        .parse::<AppType>()
+        .map_err(unsupported_app_kind_config_error)
+}
+
 impl ProviderSource for CcSwitchProviderRouterProviderSource {
     fn list_providers<'a>(
         &'a self,
@@ -181,7 +185,7 @@ impl ProviderSource for CcSwitchProviderRouterProviderSource {
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<String>>> {
         Box::pin(async move {
-            let app_type = app_type_from_proxy_core_app(app)?;
+            let app_type = app_type_from_provider_source_app(app)?;
             Ok(current_provider_id_from_router_sources(
                 app_type.as_str(),
                 |app_enum| {
