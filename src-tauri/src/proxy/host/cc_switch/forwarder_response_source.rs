@@ -1,16 +1,16 @@
 use futures::{future::BoxFuture, StreamExt};
 use std::sync::Arc;
 
+use crate::proxy::engine::forward_pipeline::{
+    ForwarderChannelResponseStatusInput, ForwarderResponseFinalizationInput,
+    ForwarderResponseSource, ForwarderResponseSourceRef,
+};
 use crate::proxy::error::ProxyError;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy_core::api::transport::{
     apply_channel_response_header_overrides, non_streaming_body_timeout_message,
     resolve_channel_response_status_mapping, streaming_body_ended_before_first_chunk_message,
     streaming_body_first_chunk_read_error_message, streaming_body_first_chunk_timeout_message,
-};
-use crate::proxy_core_adapter::{
-    ForwarderChannelResponseStatusInput, ForwarderResponseFinalizationInput,
-    ForwarderResponseSource, ForwarderResponseSourceRef,
 };
 
 pub(crate) struct CcSwitchForwarderResponseSource;

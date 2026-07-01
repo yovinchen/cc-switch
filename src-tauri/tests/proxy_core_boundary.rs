@@ -21134,7 +21134,7 @@ fn production_forwarder_uses_request_source_resource() {
     let request_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderRequestSource",
-        "pub(crate) type ForwarderResponseSourceRef",
+        "#[cfg(test)]\nuse crate::proxy::host::cc_switch::forwarder_request_source::{",
     );
     assert!(
         !request_trait_slice.contains("request_body_model")
@@ -21332,11 +21332,11 @@ fn production_forwarder_uses_response_source_resource() {
         "RequestForwarder must receive upstream response readiness/body reads as an injected source"
     );
     assert!(
-        adapter_source.contains("pub(crate) struct ForwarderChannelResponseStatusInput"),
+        source.contains("pub(crate) struct ForwarderChannelResponseStatusInput"),
         "ForwarderResponseSource must receive channel status mapping facts through an input DTO"
     );
     assert!(
-        adapter_source.contains("channel: Option<&'a ResolvedChannelAttempt>"),
+        source.contains("channel: Option<&'a ResolvedChannelAttempt>"),
         "ForwarderChannelResponseStatusInput must carry the selected channel facts"
     );
     assert!(
@@ -21348,6 +21348,15 @@ fn production_forwarder_uses_response_source_resource() {
         &response_source,
         "impl ForwarderResponseSource for CcSwitchForwarderResponseSource",
         "async fn prime_streaming_forward_response",
+    );
+    assert!(
+        response_source.contains("use crate::proxy::engine::forward_pipeline::{")
+            && response_source.contains("ForwarderChannelResponseStatusInput")
+            && response_source.contains("ForwarderResponseFinalizationInput")
+            && response_source.contains("ForwarderResponseSource")
+            && response_source.contains("ForwarderResponseSourceRef")
+            && !response_source.contains("use crate::proxy_core_adapter::{"),
+        "default response source should import the response contract from the owning forward pipeline module"
     );
     assert!(
         !response_source.contains("fn upstream_error_body")
@@ -21370,9 +21379,9 @@ fn production_forwarder_uses_response_source_resource() {
         "host proxy_state should use the default forwarder response source without routing it through proxy_core_adapter"
     );
     let response_trait_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) trait ForwarderResponseSource",
-        "use crate::proxy::host::cc_switch::forward_pipeline::forward_result_to_proxy_result;",
+        "pub struct ForwardResult",
     );
     assert!(
         !response_trait_slice.contains("upstream_error_body")
@@ -21381,17 +21390,17 @@ fn production_forwarder_uses_response_source_resource() {
         "ForwarderResponseSource trait must not expose internal response readiness or upstream error projection helpers"
     );
     assert!(
-        adapter_source.contains("finalize_upstream_response"),
+        source.contains("finalize_upstream_response"),
         "ForwarderResponseSource must expose upstream response success/error finalization"
     );
     assert!(
-        adapter_source.contains("pub(crate) struct ForwarderResponseFinalizationInput"),
+        source.contains("pub(crate) struct ForwarderResponseFinalizationInput"),
         "ForwarderResponseSource must receive response finalization facts through an input DTO"
     );
     let response_core_transport_import_slice = function_slice(
         &response_source,
         "use crate::proxy_core::api::transport::{",
-        "};\nuse crate::proxy_core_adapter::{",
+        "};\n\npub(crate) struct CcSwitchForwarderResponseSource",
     );
     for marker in [
         "apply_channel_response_header_overrides",
@@ -21411,12 +21420,23 @@ fn production_forwarder_uses_response_source_resource() {
         );
     }
     assert!(
-        adapter_source.contains("response: ProxyResponse")
-            && adapter_source.contains("request_is_streaming: bool")
-            && adapter_source.contains("non_streaming_timeout: std::time::Duration")
-            && adapter_source.contains("streaming_first_byte_timeout: std::time::Duration"),
+        source.contains("response: ProxyResponse")
+            && source.contains("request_is_streaming: bool")
+            && source.contains("non_streaming_timeout: std::time::Duration")
+            && source.contains("streaming_first_byte_timeout: std::time::Duration"),
         "ForwarderResponseFinalizationInput must carry response, streaming mode, and timeout facts"
     );
+    for marker in [
+        "pub(crate) type ForwarderResponseSourceRef",
+        "pub(crate) struct ForwarderChannelResponseStatusInput",
+        "pub(crate) struct ForwarderResponseFinalizationInput",
+        "pub(crate) trait ForwarderResponseSource",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not own forward response contract marker `{marker}`"
+        );
+    }
     assert!(
         impl_slice.contains("finalize_upstream_response(ForwarderResponseFinalizationInput {"),
         "RequestForwarder must pass response finalization facts as a response-source input DTO"

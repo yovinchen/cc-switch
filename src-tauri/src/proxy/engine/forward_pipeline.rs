@@ -19,16 +19,15 @@ use crate::proxy_core_adapter::{
     ActiveConnectionGuard, FailoverSwitchSchedulerRef, ForwarderAnthropicRectifierGateInput,
     ForwarderAppMediaPreventionInput, ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput,
     ForwarderAttemptBodyInput, ForwarderAttemptRuntimeSourceRef, ForwarderAuthHeadersInput,
-    ForwarderAuthSourceRef, ForwarderChannelResponseStatusInput, ForwarderClaudeApiFormatInput,
-    ForwarderClaudeBodyPolicyInput, ForwarderClaudeProtocolTransformInput,
-    ForwarderCodexChatProtocolEnrichmentInput, ForwarderCopilotDynamicBaseUrlInput,
-    ForwarderCopilotLiveModelInput, ForwarderCopilotRequestOptimizationGateInput,
-    ForwarderFailureDecision, ForwarderMediaRetryPlanInput, ForwarderProtocolStateSourceRef,
+    ForwarderAuthSourceRef, ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
+    ForwarderClaudeProtocolTransformInput, ForwarderCodexChatProtocolEnrichmentInput,
+    ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
+    ForwarderCopilotRequestOptimizationGateInput, ForwarderFailureDecision,
+    ForwarderMediaRetryPlanInput, ForwarderProtocolStateSourceRef,
     ForwarderProviderRequestBodyInput, ForwarderRectifierRetryFailureDecision,
     ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
     ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan, ForwarderRequestSourceRef,
-    ForwarderResponseFinalizationInput, ForwarderResponseSourceRef, ForwarderRuntimeConfig,
-    ForwarderRuntimeStateSourceRef, ForwarderThinkingBudgetRectifierInput,
+    ForwarderRuntimeConfig, ForwarderRuntimeStateSourceRef, ForwarderThinkingBudgetRectifierInput,
     ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
     ForwarderUpstreamRequestLogInput, ForwarderUpstreamRequestParts, ForwarderUpstreamUrlInput,
 };
@@ -54,6 +53,32 @@ pub(crate) trait ForwarderTransportSource {
     fn send_upstream_request<'a>(
         &'a self,
         request: ForwarderUpstreamTransportRequest,
+    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
+}
+
+pub(crate) type ForwarderResponseSourceRef = Arc<dyn ForwarderResponseSource + Send + Sync>;
+
+pub(crate) struct ForwarderChannelResponseStatusInput<'a> {
+    pub(crate) response: ProxyResponse,
+    pub(crate) channel: Option<&'a ResolvedChannelAttempt>,
+}
+
+pub(crate) struct ForwarderResponseFinalizationInput {
+    pub(crate) response: ProxyResponse,
+    pub(crate) request_is_streaming: bool,
+    pub(crate) non_streaming_timeout: std::time::Duration,
+    pub(crate) streaming_first_byte_timeout: std::time::Duration,
+}
+
+pub(crate) trait ForwarderResponseSource {
+    fn apply_channel_response_status_mapping(
+        &self,
+        input: ForwarderChannelResponseStatusInput<'_>,
+    ) -> Result<ProxyResponse, ProxyError>;
+
+    fn finalize_upstream_response<'a>(
+        &'a self,
+        input: ForwarderResponseFinalizationInput,
     ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
 }
 

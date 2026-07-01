@@ -5,7 +5,9 @@ use crate::database::{
 };
 use crate::error::AppError;
 use crate::provider::{AuthBindingSource, Provider, ProviderMeta};
-use crate::proxy::engine::forward_pipeline::ForwarderTransportSourceRef;
+use crate::proxy::engine::forward_pipeline::{
+    ForwarderResponseSourceRef, ForwarderTransportSourceRef,
+};
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status_kind};
@@ -13,6 +15,7 @@ use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy::provider::codex_provider_upstream_model;
 use crate::proxy::route_attempt::ForwardAttempt;
+#[cfg(test)]
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::api::config::{
@@ -1979,36 +1982,14 @@ pub(crate) trait ForwarderRequestSource {
 }
 
 #[cfg(test)]
+use crate::proxy::engine::forward_pipeline::{
+    ForwarderResponseFinalizationInput, ForwarderResponseSource,
+};
+#[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_request_source::{
     default_forwarder_request_source, forwarder_rectifier_error_message,
     CcSwitchForwarderRequestSource,
 };
-
-pub(crate) type ForwarderResponseSourceRef = Arc<dyn ForwarderResponseSource + Send + Sync>;
-
-pub(crate) struct ForwarderChannelResponseStatusInput<'a> {
-    pub(crate) response: ProxyResponse,
-    pub(crate) channel: Option<&'a ResolvedChannelAttempt>,
-}
-
-pub(crate) struct ForwarderResponseFinalizationInput {
-    pub(crate) response: ProxyResponse,
-    pub(crate) request_is_streaming: bool,
-    pub(crate) non_streaming_timeout: std::time::Duration,
-    pub(crate) streaming_first_byte_timeout: std::time::Duration,
-}
-
-pub(crate) trait ForwarderResponseSource {
-    fn apply_channel_response_status_mapping(
-        &self,
-        input: ForwarderChannelResponseStatusInput<'_>,
-    ) -> Result<ProxyResponse, ProxyError>;
-
-    fn finalize_upstream_response<'a>(
-        &'a self,
-        input: ForwarderResponseFinalizationInput,
-    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
-}
 
 use crate::proxy::host::cc_switch::forward_pipeline::forward_result_to_proxy_result;
 
