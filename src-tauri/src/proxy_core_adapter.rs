@@ -506,7 +506,7 @@ pub(crate) fn preserve_codex_oauth_auth_in_backup_for_configured_policy(
     preserve_codex_oauth_auth_in_backup_if_present(target_settings, existing_backup)
 }
 
-pub(crate) fn codex_takeover_toml_config_for_provider(
+fn codex_takeover_toml_config_for_provider(
     toml_str: &str,
     proxy_url: &str,
     provider: Option<&Provider>,

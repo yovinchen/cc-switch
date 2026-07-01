@@ -2239,7 +2239,6 @@ impl ProxyService {
 mod tests {
     use super::*;
     use crate::provider::ProviderMeta;
-    use crate::proxy_core_adapter::codex_takeover_toml_config_for_provider;
     use serial_test::serial;
     use std::env;
     use tempfile::TempDir;
@@ -2269,6 +2268,26 @@ mod tests {
                 original_test_home,
             }
         }
+    }
+
+    fn codex_takeover_config_text_for_test(
+        input: &str,
+        proxy_url: &str,
+        provider: Option<&Provider>,
+    ) -> String {
+        let mut config = json!({ "config": input });
+        apply_codex_takeover_fields_for_provider(
+            &mut config,
+            proxy_url,
+            PROXY_TOKEN_PLACEHOLDER,
+            provider,
+            CodexTakeoverAuthPolicy::ExistingAuthOnly,
+        );
+        config
+            .get("config")
+            .and_then(Value::as_str)
+            .expect("takeover config text")
+            .to_string()
     }
 
     impl Drop for TempHome {
@@ -3762,7 +3781,7 @@ wire_api = "chat"
 "#;
 
         let proxy_url = "http://127.0.0.1:5000/v1";
-        let output = codex_takeover_toml_config_for_provider(input, proxy_url, None);
+        let output = codex_takeover_config_text_for_test(input, proxy_url, None);
         let parsed: toml::Value =
             toml::from_str(&output).expect("updated config should be valid TOML");
 
@@ -3806,7 +3825,7 @@ wire_api = "responses"
         });
 
         let proxy_url = "http://127.0.0.1:5000/v1";
-        let output = codex_takeover_toml_config_for_provider(input, proxy_url, Some(&provider));
+        let output = codex_takeover_config_text_for_test(input, proxy_url, Some(&provider));
         let parsed: toml::Value =
             toml::from_str(&output).expect("updated config should be valid TOML");
 
@@ -3848,11 +3867,8 @@ wire_api = "responses"
             ..Default::default()
         });
 
-        let output = codex_takeover_toml_config_for_provider(
-            input,
-            "http://127.0.0.1:5000/v1",
-            Some(&provider),
-        );
+        let output =
+            codex_takeover_config_text_for_test(input, "http://127.0.0.1:5000/v1", Some(&provider));
         let parsed: toml::Value =
             toml::from_str(&output).expect("updated config should be valid TOML");
 
@@ -3893,11 +3909,8 @@ wire_api = "responses"
             ..Default::default()
         });
 
-        let output = codex_takeover_toml_config_for_provider(
-            input,
-            "http://127.0.0.1:5000/v1",
-            Some(&provider),
-        );
+        let output =
+            codex_takeover_config_text_for_test(input, "http://127.0.0.1:5000/v1", Some(&provider));
         let parsed: toml::Value =
             toml::from_str(&output).expect("updated config should be valid TOML");
 
