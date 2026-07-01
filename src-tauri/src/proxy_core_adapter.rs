@@ -1212,7 +1212,7 @@ pub(crate) async fn route_candidate_provider_ids_from_router_source(
     )
 }
 
-pub(crate) fn claude_desktop_model_routes_to_core_inputs(
+fn claude_desktop_model_routes_to_core_inputs(
     routes: impl IntoIterator<Item = ClaudeDesktopResolvedProxyRoute>,
 ) -> Vec<ClaudeDesktopModelRouteInput> {
     routes

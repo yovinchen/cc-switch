@@ -22578,12 +22578,21 @@ fn proxy_core_adapter_model_routes_source_uses_adapter_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let runtime_source = source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&source);
     let source_slice = function_slice(
         &source,
         "pub(crate) async fn claude_desktop_model_routes_from_router_source(",
         "pub(crate) fn client_model_catalog_from_app_source(",
     );
 
+    assert!(
+        runtime_source.contains("\nfn claude_desktop_model_routes_to_core_inputs(")
+            && !runtime_source.contains("pub(crate) fn claude_desktop_model_routes_to_core_inputs("),
+        "proxy_core_adapter should keep Claude Desktop route input conversion private to the model catalog source"
+    );
     assert!(
         source_slice.contains("provider_claude_desktop_proxy_model_routes(")
             && source_slice.contains("claude_desktop_model_routes_to_core_inputs("),

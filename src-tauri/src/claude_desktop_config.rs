@@ -692,6 +692,9 @@ mod tests {
     use super::*;
     use crate::database::Database;
     use crate::provider::{ClaudeDesktopModelRoute, ProviderMeta};
+    use crate::proxy_core::api::auth::{
+        ClaudeDesktopModelRouteInput, ClaudeDesktopResolvedProxyRoute,
+    };
     use crate::proxy_core::api::ports::ProxyConfig;
     use serde_json::json;
     use tempfile::TempDir;
@@ -717,6 +720,15 @@ mod tests {
             ..ProxyConfig::default()
         };
         futures::executor::block_on(db.update_proxy_config(config)).expect("update proxy config");
+    }
+
+    fn model_routes_to_core_inputs(
+        routes: impl IntoIterator<Item = ClaudeDesktopResolvedProxyRoute>,
+    ) -> Vec<ClaudeDesktopModelRouteInput> {
+        routes
+            .into_iter()
+            .map(|route| ClaudeDesktopModelRouteInput::new(route.route_id, route.supports_1m))
+            .collect()
     }
 
     fn direct_provider(id: &str) -> Provider {
@@ -990,7 +1002,7 @@ mod tests {
 
         let models = serde_json::to_value(
             crate::proxy::response_adapter::ClaudeDesktopModelListResponse::from_routes(
-                crate::proxy_core_adapter::claude_desktop_model_routes_to_core_inputs(
+                model_routes_to_core_inputs(
                     crate::proxy_core_adapter::provider_claude_desktop_proxy_model_routes(
                         &provider,
                     )
