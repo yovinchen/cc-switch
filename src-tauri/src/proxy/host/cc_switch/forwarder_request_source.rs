@@ -20,6 +20,10 @@ use crate::proxy::engine::forward_pipeline::{
     ForwarderUpstreamRequestLogInput, ForwarderUpstreamRequestParts, ForwarderUpstreamUrlInput,
 };
 use crate::proxy::error::ProxyError;
+use crate::proxy::host::cc_switch::claude_desktop_provider::{
+    provider_claude_desktop_proxy_request_body, ClaudeDesktopProviderProxyRequestBodyIssue,
+    ClaudeDesktopProviderProxyRouteIssue,
+};
 #[cfg(test)]
 use crate::proxy::host::cc_switch::managed_account_runtime_source::default_managed_account_runtime_source;
 use crate::proxy::host::cc_switch::managed_account_runtime_source::ManagedAccountRuntimeSourceRef;
@@ -71,10 +75,6 @@ use crate::proxy_core::api::transport::{
     ForwarderProtocolPreparation, ForwarderProtocolPreparationInput, ForwarderRectifierErrorInput,
     ForwarderRequestBodyTransformAction, ForwarderTransformPlan, ForwarderTransformPlanFacts,
     PromptCacheTraceLogInput, UpstreamRequestHeadersInput, UNSUPPORTED_IMAGE_MARKER,
-};
-use crate::proxy_core_adapter::{
-    provider_claude_desktop_proxy_request_body, ClaudeDesktopProviderProxyRequestBodyIssue,
-    ClaudeDesktopProviderProxyRouteIssue,
 };
 
 pub(crate) struct CcSwitchForwarderRequestSource {

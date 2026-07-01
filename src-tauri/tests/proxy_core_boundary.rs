@@ -2261,12 +2261,14 @@ fn is_allowed_misc_launch_env_core_import(relative: &str, code: &str) -> bool {
 }
 
 fn is_allowed_claude_desktop_provider_issue_core_import(relative: &str, code: &str) -> bool {
-    relative == "src/claude_desktop_config.rs"
-        && matches!(
-            code.trim(),
-            "use crate::proxy_core::api::auth::{"
-                | "use crate::proxy_core::api::auth::ClaudeDesktopProxyRequestBodyIssue;"
-        )
+    matches!(
+        relative,
+        "src/claude_desktop_config.rs" | "src/proxy/host/cc_switch/claude_desktop_provider.rs"
+    ) && matches!(
+        code.trim(),
+        "use crate::proxy_core::api::auth::{"
+            | "use crate::proxy_core::api::auth::ClaudeDesktopProxyRequestBodyIssue;"
+    )
 }
 
 fn is_allowed_claude_desktop_live_url_core_import(relative: &str, code: &str) -> bool {
@@ -10673,81 +10675,78 @@ fn error_mapper_delegates_response_transform_failure_context_policy_to_core() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
+fn host_claude_desktop_provider_owns_provider_projection_and_adapter_has_no_facade() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let source = fs::read_to_string(
+        manifest_dir.join("src/proxy/host/cc_switch/claude_desktop_provider.rs"),
+    )
+    .expect("read claude_desktop_provider.rs");
     let claude_desktop_source =
         fs::read_to_string(manifest_dir.join("src/claude_desktop_config.rs"))
             .expect("read claude_desktop_config.rs");
 
     assert!(
-        source.contains("ClaudeDesktopProviderValidationInput"),
-        "proxy_core_adapter should project Provider facts into the core Claude Desktop validation input"
-    );
-    assert!(
-        !source.contains("pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key"),
-        "proxy_core_adapter should not expose Claude Desktop proxy credential shape checks as a crate-visible facade"
-    );
-    for marker in [
-        "pub(crate) fn provider_claude_desktop_direct_validation_issue",
-        "pub(crate) fn provider_claude_desktop_proxy_config_validation_issue",
-    ] {
-        assert!(
-            !source.contains(marker),
-            "proxy_core_adapter should not expose Claude Desktop provider validation issue helpers as crate-visible facades"
-        );
-    }
-    assert!(
-        source.contains("claude_desktop_proxy_has_base_url_and_key(")
+        source.contains("ClaudeDesktopProviderValidationInput")
+            && source.contains("claude_desktop_proxy_has_base_url_and_key(")
             && source.contains("claude_desktop_provider_models_are_profile_safe(")
             && source.contains("claude_desktop_direct_provider_validation_issue(")
             && source.contains("claude_desktop_proxy_provider_config_validation_issue(")
             && source.contains("claude_desktop_suggested_proxy_routes("),
-        "proxy_core_adapter should delegate Claude Desktop provider validation policy to core"
+        "host Claude Desktop provider module should project Provider facts and delegate policy to core"
     );
     assert!(
-        !source.contains(
+        claude_desktop_source
+            .contains("use crate::proxy::host::cc_switch::claude_desktop_provider::{")
+            && !claude_desktop_source.contains(
+                "crate::proxy_core_adapter::provider_claude_desktop"
+            ),
+        "claude_desktop_config should import provider projection from the host owner, not proxy_core_adapter"
+    );
+
+    for marker in [
+        "pub(crate) fn provider_claude_desktop_suggested_proxy_routes",
+        "pub(crate) enum ClaudeDesktopProviderImportDecision",
+        "pub(crate) fn provider_claude_desktop_import_decision",
+        "pub(crate) enum ClaudeDesktopProviderDirectValidationIssue",
+        "pub(crate) fn provider_claude_desktop_direct_provider_validation",
+        "pub(crate) enum ClaudeDesktopProviderDirectGatewayProfileIssue",
+        "pub(crate) fn provider_claude_desktop_direct_gateway_profile",
+        "pub(crate) enum ClaudeDesktopProviderProxyRouteIssue",
+        "pub(crate) enum ClaudeDesktopProviderProxyValidationIssue",
+        "pub(crate) enum ClaudeDesktopProviderValidationIssue",
+        "pub(crate) fn provider_claude_desktop_proxy_model_routes",
+        "pub(crate) fn provider_claude_desktop_provider_validation",
+        "pub(crate) fn provider_claude_desktop_proxy_gateway_profile_model_specs",
+        "pub(crate) enum ClaudeDesktopProviderProxyRequestBodyIssue",
+        "pub(crate) fn provider_claude_desktop_proxy_request_body",
+        "pub(crate) struct ClaudeDesktopProviderStatusFacts",
+        "pub(crate) fn provider_claude_desktop_status_facts",
+        "pub(crate) fn provider_claude_desktop_mode",
+    ] {
+        assert!(
+            source.contains(marker),
+            "host Claude Desktop provider module should own `{marker}`"
+        );
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not expose `{marker}` after host ownership migration"
+        );
+    }
+    assert!(
+        !adapter_source.contains("ClaudeDesktopProviderValidationInput")
+            && !adapter_source.contains("ClaudeDesktopProvider"),
+        "proxy_core_adapter should not retain Claude Desktop provider projection code"
+    );
+    assert!(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy_core::api::auth::{\n    claude_desktop_gateway_token_error"
-        ) && !source.contains(
+        ) && !adapter_source.contains(
             "pub(crate) use crate::proxy_core::api::auth::claude_desktop_gateway_token_error"
         ),
         "proxy_core_adapter should not re-export Claude Desktop gateway token error helper"
     );
-    assert!(
-        !source.contains("enum ClaudeDesktopDirectProviderValidationIssue")
-            && !source.contains("enum ClaudeDesktopProxyProviderConfigValidationIssue"),
-        "proxy_core_adapter should not own Claude Desktop validation issue enums"
-    );
-    assert!(
-        !source.contains(
-            "pub(crate) use crate::proxy_core::api::auth::{\n    ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,\n};"
-        ),
-        "proxy_core_adapter should not re-export Claude Desktop validation issue types"
-    );
-    let claude_desktop_core_auth_import = function_slice(
-        &claude_desktop_source,
-        "use crate::proxy_core::api::auth::{",
-        "};\nuse crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;",
-    );
-    let claude_desktop_adapter_import = function_slice(
-        &claude_desktop_source,
-        "use crate::proxy_core_adapter::{",
-        "};",
-    );
-    for marker in [
-        "ClaudeDesktopDirectProviderValidationIssue",
-        "ClaudeDesktopProxyProviderConfigValidationIssue",
-    ] {
-        assert!(
-            claude_desktop_core_auth_import.contains(marker),
-            "claude_desktop_config should import `{marker}` directly from proxy_core auth"
-        );
-        assert!(
-            !claude_desktop_adapter_import.contains(marker),
-            "claude_desktop_config should not import `{marker}` through proxy_core_adapter"
-        );
-    }
 
     let policy_slices = [
         function_slice(
@@ -10758,7 +10757,7 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
         function_slice(
             &source,
             "pub(crate) fn provider_claude_desktop_suggested_proxy_routes",
-            "fn provider_claude_desktop_proxy_has_base_url_and_key",
+            "fn provider_claude_desktop_direct_importable",
         ),
         function_slice(
             &source,
@@ -10768,11 +10767,6 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
         function_slice(
             &source,
             "fn provider_claude_desktop_direct_validation_issue",
-            "fn provider_claude_desktop_proxy_config_validation_issue",
-        ),
-        function_slice(
-            &source,
-            "fn provider_claude_desktop_proxy_config_validation_issue",
             "fn claude_desktop_provider_validation_input",
         ),
     ];
@@ -10803,7 +10797,7 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
             for marker in forbidden_markers {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy_core_adapter.rs:{} contains Claude Desktop provider policy marker `{}`",
+                        "src/proxy/host/cc_switch/claude_desktop_provider.rs:{} contains Claude Desktop provider policy marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -10814,13 +10808,13 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
 
     assert!(
         violations.is_empty(),
-        "proxy_core_adapter must keep Claude Desktop provider key/api_format/provider_type policy in proxy-core:\n{}",
+        "host Claude Desktop provider must keep key/api_format/provider_type policy in proxy-core:\n{}",
         violations.join("\n")
     );
 }
 
 #[test]
-fn provider_command_delegates_claude_desktop_route_suggestions_to_adapter() {
+fn provider_command_delegates_claude_desktop_route_suggestions_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/commands/provider.rs");
     let source = fs::read_to_string(&path).expect("read commands/provider.rs");
@@ -10832,7 +10826,7 @@ fn provider_command_delegates_claude_desktop_route_suggestions_to_adapter() {
 
     assert!(
         suggestion_slice.contains("provider_claude_desktop_suggested_proxy_routes("),
-        "commands/provider should delegate Claude Desktop route suggestion policy through proxy_core_adapter"
+        "commands/provider should delegate Claude Desktop route suggestion policy through host Claude Desktop provider"
     );
 
     let forbidden_markers = [
@@ -10870,7 +10864,7 @@ fn provider_command_delegates_claude_desktop_route_suggestions_to_adapter() {
 }
 
 #[test]
-fn provider_command_delegates_claude_desktop_import_decision_to_adapter() {
+fn provider_command_delegates_claude_desktop_import_decision_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/commands/provider.rs");
     let source = fs::read_to_string(&path).expect("read commands/provider.rs");
@@ -10885,7 +10879,7 @@ fn provider_command_delegates_claude_desktop_import_decision_to_adapter() {
             && import_slice.contains("ClaudeDesktopProviderImportDecision::Direct")
             && import_slice.contains("ClaudeDesktopProviderImportDecision::Proxy")
             && import_slice.contains("ClaudeDesktopProviderImportDecision::Skip"),
-        "commands/provider should delegate Claude Desktop import mode/route decision to proxy_core_adapter"
+        "commands/provider should delegate Claude Desktop import mode/route decision to host Claude Desktop provider"
     );
 
     let forbidden_markers = [
@@ -10912,531 +10906,7 @@ fn provider_command_delegates_claude_desktop_import_decision_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "commands/provider must keep Claude Desktop import decision policy in proxy_core_adapter/core:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn proxy_core_adapter_owns_claude_desktop_import_decision_policy() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let import_slice = function_slice(
-        &source,
-        "pub(crate) fn provider_claude_desktop_import_decision(",
-        "fn provider_claude_desktop_proxy_has_base_url_and_key(",
-    );
-
-    assert!(
-        import_slice.contains("provider_claude_desktop_direct_importable(")
-            && import_slice.contains("provider_claude_desktop_suggested_proxy_routes(")
-            && import_slice.contains("ClaudeDesktopProviderImportDecision::Direct")
-            && import_slice.contains("ClaudeDesktopProviderImportDecision::Proxy")
-            && import_slice.contains("ClaudeDesktopProviderImportDecision::Skip"),
-        "proxy_core_adapter should own Claude Desktop import direct/proxy/skip projection"
-    );
-
-    let forbidden_markers = [
-        "validate_direct_provider(",
-        "is_compatible_direct_provider(",
-        "crate::claude_desktop_config",
-        "state.db",
-        "save_provider(",
-    ];
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(import_slice) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in forbidden_markers {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy_core_adapter.rs provider_claude_desktop_import_decision:{} contains host-owned import marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "proxy_core_adapter must keep Claude Desktop import policy free of command/db/file side effects:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn proxy_core_adapter_owns_claude_desktop_status_provider_facts() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let status_slice = function_slice(
-        &source,
-        "pub(crate) fn provider_claude_desktop_status_facts(",
-        "fn provider_claude_desktop_proxy_has_base_url_and_key(",
-    );
-
-    assert!(
-        status_slice.contains("provider_claude_desktop_mode(")
-            && status_slice.contains("claude_desktop_direct_gateway_credentials(")
-            && status_slice.contains("provider_claude_desktop_proxy_routes_missing("),
-        "proxy_core_adapter should own Claude Desktop status provider-derived facts"
-    );
-
-    let forbidden_markers = [
-        "proxy_gateway_base_url_from_db",
-        "crate::claude_desktop_config",
-        "state.db",
-        "get_effective_current_provider",
-    ];
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(status_slice) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in forbidden_markers {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy_core_adapter.rs provider_claude_desktop_status_facts:{} contains host-owned status marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "proxy_core_adapter must keep Claude Desktop status provider facts free of host side effects:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn proxy_core_adapter_owns_claude_desktop_provider_mode_policy() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let mode_slice = function_slice(
-        &source,
-        "pub(crate) fn provider_claude_desktop_mode(",
-        "fn provider_claude_desktop_proxy_routes_missing(",
-    );
-
-    assert!(
-        mode_slice.contains("claude_desktop_mode.clone()")
-            && mode_slice.contains("ClaudeDesktopMode::Direct"),
-        "proxy_core_adapter should own Claude Desktop provider mode defaulting policy"
-    );
-
-    let forbidden_markers = [
-        "crate::claude_desktop_config",
-        "state.db",
-        "get_effective_current_provider",
-        "proxy_gateway_base_url_from_db",
-    ];
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(mode_slice) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in forbidden_markers {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy_core_adapter.rs provider_claude_desktop_mode:{} contains host-owned mode marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "proxy_core_adapter must keep Claude Desktop provider mode policy free of host side effects:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn proxy_core_adapter_owns_claude_desktop_direct_model_specs_provider_projection() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let direct_specs_slice = function_slice(
-        &source,
-        "fn provider_claude_desktop_direct_inference_model_specs(",
-        "#[derive(Debug, Clone, PartialEq, Eq)]",
-    );
-
-    assert!(
-        direct_specs_slice.contains("claude_desktop_direct_inference_model_specs(")
-            && direct_specs_slice.contains("ClaudeDesktopProxyRouteInput")
-            && direct_specs_slice.contains("ClaudeDesktopGatewayProfileModelSpec::from"),
-        "proxy_core_adapter should own Claude Desktop direct model route projection from Provider"
-    );
-
-    let forbidden_markers = [
-        "crate::claude_desktop_config",
-        "state.db",
-        "get_effective_current_provider",
-        "proxy_gateway_base_url_from_db",
-    ];
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(direct_specs_slice) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in forbidden_markers {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy_core_adapter.rs provider_claude_desktop_direct_inference_model_specs:{} contains host-owned direct specs marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "proxy_core_adapter must keep Claude Desktop direct model specs projection free of host side effects:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn proxy_core_adapter_owns_claude_desktop_direct_gateway_profile() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let direct_profile_slice = function_slice(
-        &source,
-        "pub(crate) fn provider_claude_desktop_direct_gateway_profile(",
-        "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
-    );
-
-    assert!(
-        direct_profile_slice.contains("claude_desktop_direct_gateway_credentials(")
-            && direct_profile_slice
-                .contains("provider_claude_desktop_direct_inference_model_specs(")
-            && direct_profile_slice.contains("claude_desktop_gateway_profile(")
-            && direct_profile_slice
-                .contains("ClaudeDesktopProviderDirectGatewayProfileIssue::Credentials")
-            && direct_profile_slice
-                .contains("ClaudeDesktopProviderDirectGatewayProfileIssue::ModelRoute"),
-        "proxy_core_adapter should own Claude Desktop Direct provider profile assembly"
-    );
-
-    let forbidden_markers = [
-        "crate::claude_desktop_config",
-        "state.db",
-        "get_effective_current_provider",
-        "proxy_gateway_base_url_from_db",
-        "get_or_create_gateway_token",
-    ];
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(direct_profile_slice) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in forbidden_markers {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy_core_adapter.rs provider_claude_desktop_direct_gateway_profile:{} contains host-owned direct profile marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "proxy_core_adapter must keep Claude Desktop Direct profile assembly free of host side effects:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn proxy_core_adapter_owns_claude_desktop_direct_provider_validation() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let direct_validation_slice = function_slice(
-        &source,
-        "pub(crate) fn provider_claude_desktop_direct_provider_validation(",
-        "fn provider_claude_desktop_direct_inference_model_specs(",
-    );
-
-    assert!(
-        direct_validation_slice.contains("provider_claude_desktop_direct_validation_issue(")
-            && direct_validation_slice
-                .contains("provider_claude_desktop_direct_inference_model_specs(")
-            && direct_validation_slice.contains("claude_desktop_direct_gateway_credentials(")
-            && direct_validation_slice
-                .contains("ClaudeDesktopProviderDirectValidationIssue::Provider")
-            && direct_validation_slice
-                .contains("ClaudeDesktopProviderDirectValidationIssue::ModelRoute")
-            && direct_validation_slice
-                .contains("ClaudeDesktopProviderDirectValidationIssue::Credentials"),
-        "proxy_core_adapter should own Claude Desktop Direct provider validation assembly"
-    );
-
-    let forbidden_markers = [
-        "crate::claude_desktop_config",
-        "state.db",
-        "get_effective_current_provider",
-        "proxy_gateway_base_url_from_db",
-        "get_or_create_gateway_token",
-    ];
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(direct_validation_slice) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in forbidden_markers {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy_core_adapter.rs provider_claude_desktop_direct_provider_validation:{} contains host-owned direct validation marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "proxy_core_adapter must keep Claude Desktop Direct validation assembly free of host side effects:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn proxy_core_adapter_owns_claude_desktop_proxy_provider_validation() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let proxy_validation_slice = function_slice(
-        &source,
-        "fn provider_claude_desktop_proxy_provider_validation(",
-        "pub(crate) fn provider_claude_desktop_proxy_gateway_profile_model_specs(",
-    );
-
-    assert!(
-        proxy_validation_slice.contains("provider_claude_desktop_proxy_config_validation_issue(")
-            && proxy_validation_slice.contains("provider_claude_desktop_proxy_model_routes(")
-            && proxy_validation_slice
-                .contains("provider_claude_desktop_proxy_has_base_url_and_key(")
-            && proxy_validation_slice.contains("ClaudeDesktopProviderProxyValidationIssue::Config")
-            && proxy_validation_slice
-                .contains("ClaudeDesktopProviderProxyValidationIssue::ModelRoutes")
-            && proxy_validation_slice
-                .contains("ClaudeDesktopProviderProxyValidationIssue::CredentialsMissing"),
-        "proxy_core_adapter should own Claude Desktop Proxy provider validation assembly"
-    );
-
-    let forbidden_markers = [
-        "crate::claude_desktop_config",
-        "state.db",
-        "get_effective_current_provider",
-        "proxy_gateway_base_url_from_db",
-        "get_or_create_gateway_token",
-    ];
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(proxy_validation_slice) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in forbidden_markers {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy_core_adapter.rs provider_claude_desktop_proxy_provider_validation:{} contains host-owned proxy validation marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "proxy_core_adapter must keep Claude Desktop Proxy validation assembly free of host side effects:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn proxy_core_adapter_owns_claude_desktop_provider_validation_dispatch() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let validation_slice = function_slice(
-        &source,
-        "pub(crate) fn provider_claude_desktop_provider_validation(",
-        "pub(crate) fn provider_claude_desktop_proxy_gateway_profile_model_specs(",
-    );
-
-    assert!(
-        validation_slice.contains("provider_claude_desktop_mode(provider)")
-            && validation_slice.contains("provider_claude_desktop_direct_provider_validation(")
-            && validation_slice.contains("provider_claude_desktop_proxy_provider_validation(")
-            && validation_slice.contains("ClaudeDesktopProviderValidationIssue::Direct")
-            && validation_slice.contains("ClaudeDesktopProviderValidationIssue::Proxy"),
-        "proxy_core_adapter should own Claude Desktop provider validation mode dispatch"
-    );
-
-    let forbidden_markers = [
-        "crate::claude_desktop_config",
-        "state.db",
-        "get_effective_current_provider",
-        "proxy_gateway_base_url_from_db",
-        "get_or_create_gateway_token",
-    ];
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(validation_slice) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in forbidden_markers {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy_core_adapter.rs provider_claude_desktop_provider_validation:{} contains host-owned validation dispatch marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "proxy_core_adapter must keep Claude Desktop provider validation dispatch free of host side effects:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn proxy_core_adapter_owns_claude_desktop_proxy_model_routes_provider_projection() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let proxy_routes_slice = function_slice(
-        &source,
-        "pub(crate) fn provider_claude_desktop_proxy_model_routes(",
-        "#[derive(Debug, Clone, PartialEq, Eq)]",
-    );
-
-    assert!(
-        proxy_routes_slice.contains("claude_desktop_proxy_model_routes(")
-            && proxy_routes_slice.contains("ClaudeDesktopProxyRouteInput")
-            && proxy_routes_slice.contains("ClaudeDesktopProviderProxyRouteIssue::Missing")
-            && proxy_routes_slice.contains("ClaudeDesktopProviderProxyRouteIssue::Empty"),
-        "proxy_core_adapter should own Claude Desktop proxy route projection from Provider"
-    );
-
-    let forbidden_markers = [
-        "crate::claude_desktop_config",
-        "state.db",
-        "get_effective_current_provider",
-        "proxy_gateway_base_url_from_db",
-    ];
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(proxy_routes_slice) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in forbidden_markers {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy_core_adapter.rs provider_claude_desktop_proxy_model_routes:{} contains host-owned proxy route marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "proxy_core_adapter must keep Claude Desktop proxy route projection free of host side effects:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn proxy_core_adapter_owns_claude_desktop_proxy_gateway_profile_model_specs() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let profile_specs_slice = function_slice(
-        &source,
-        "pub(crate) fn provider_claude_desktop_proxy_gateway_profile_model_specs(",
-        "#[derive(Debug, Clone, PartialEq, Eq)]",
-    );
-
-    assert!(
-        profile_specs_slice.contains("provider_claude_desktop_proxy_model_routes(")
-            && profile_specs_slice.contains("ClaudeDesktopGatewayProfileModelSpec")
-            && profile_specs_slice.contains("name: route.route_id"),
-        "proxy_core_adapter should own proxy route to gateway profile model spec projection"
-    );
-
-    let forbidden_markers = [
-        "crate::claude_desktop_config",
-        "state.db",
-        "get_effective_current_provider",
-        "proxy_gateway_base_url_from_db",
-    ];
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(profile_specs_slice) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in forbidden_markers {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy_core_adapter.rs provider_claude_desktop_proxy_gateway_profile_model_specs:{} contains host-owned profile spec marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "proxy_core_adapter must keep Claude Desktop proxy profile spec projection free of host side effects:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn proxy_core_adapter_owns_claude_desktop_proxy_request_body_provider_projection() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let request_body_slice = function_slice(
-        &source,
-        "pub(crate) fn provider_claude_desktop_proxy_request_body(",
-        "pub(crate) struct ClaudeDesktopProviderStatusFacts",
-    );
-
-    assert!(
-        request_body_slice.contains("provider_claude_desktop_proxy_model_routes(")
-            && request_body_slice
-                .contains("claude_desktop_proxy_request_body_with_upstream_model(")
-            && request_body_slice.contains("ClaudeDesktopProviderProxyRequestBodyIssue::Routes")
-            && request_body_slice.contains("ClaudeDesktopProviderProxyRequestBodyIssue::Body"),
-        "proxy_core_adapter should own Claude Desktop proxy request-body Provider projection"
-    );
-
-    let forbidden_markers = [
-        "crate::claude_desktop_config",
-        "state.db",
-        "get_effective_current_provider",
-        "proxy_gateway_base_url_from_db",
-    ];
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(request_body_slice) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in forbidden_markers {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy_core_adapter.rs provider_claude_desktop_proxy_request_body:{} contains host-owned request body marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "proxy_core_adapter must keep Claude Desktop proxy request-body projection free of host side effects:\n{}",
+        "commands/provider must keep Claude Desktop import decision policy in host Claude Desktop provider/core:\n{}",
         violations.join("\n")
     );
 }
@@ -12296,7 +11766,7 @@ fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let classification_slice = function_slice(
         &source,
         "fn provider_kind_from_provider(",
-        "fn provider_claude_models_are_claude_safe",
+        "fn extract_proxy_session_id",
     );
 
     assert!(
@@ -21396,7 +20866,7 @@ fn production_forwarder_uses_request_source_resource() {
     let request_transport_import_slice = function_slice(
         &request_source,
         "use crate::proxy_core::api::transport::{",
-        "};\nuse crate::proxy_core_adapter::{",
+        "};\n\npub(crate) struct CcSwitchForwarderRequestSource",
     );
     for marker in [
         "anthropic_beta_header_value",
@@ -22852,9 +22322,7 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
             && source.contains("async fn claude_desktop_model_routes_from_router_source(")
             && source.contains("fn claude_desktop_provider_from_selection_result(")
             && source.contains("fn claude_desktop_model_routes_to_core_inputs(")
-            && source.contains(
-                "crate::proxy_core_adapter::provider_claude_desktop_proxy_model_routes(&provider)"
-            ),
+            && source.contains("provider_claude_desktop_proxy_model_routes(&provider)"),
         "CC Switch model catalog provider should own provider/client/Claude Desktop model catalog source projection and error mapping"
     );
     assert!(
@@ -22909,7 +22377,7 @@ fn model_catalog_provider_owns_claude_desktop_model_route_source() {
             && source_slice.contains("claude_desktop_model_routes_to_core_inputs(")
             && source_slice.contains(".select_provider_ids(")
             && source_slice.contains(".get_provider_by_id("),
-        "host model catalog provider should own Claude Desktop model route source wiring and reuse adapter route projection"
+        "host model catalog provider should own Claude Desktop model route source wiring and reuse host provider route projection"
     );
 
     let forbidden_markers = [

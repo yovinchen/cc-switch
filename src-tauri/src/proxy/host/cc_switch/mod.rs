@@ -4,6 +4,7 @@ pub(crate) mod channel_health_store;
 pub(crate) mod channel_key_runtime_source;
 pub(crate) mod channel_reachability_probe;
 pub(crate) mod claude_desktop_gateway_auth_source;
+pub(crate) mod claude_desktop_provider;
 pub(crate) mod config_source;
 pub(crate) mod database_channel_source;
 pub(crate) mod database_usage_sink;

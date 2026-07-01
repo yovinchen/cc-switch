@@ -4,6 +4,7 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::engine::routing::ProviderRouter;
+use crate::proxy::host::cc_switch::claude_desktop_provider::provider_claude_desktop_proxy_model_routes;
 use crate::proxy_core::api::auth::{
     claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
     ClaudeDesktopModelRouteInput, ClaudeDesktopResolvedProxyRoute,
@@ -87,8 +88,7 @@ async fn claude_desktop_model_routes_from_router_source(
     let provider = claude_desktop_provider_from_selection_result(provider_ids, |provider_id| {
         db.get_provider_by_id(provider_id, app.as_str())
     })?;
-    let routes = crate::proxy_core_adapter::provider_claude_desktop_proxy_model_routes(&provider)
-        .map_err(|issue| {
+    let routes = provider_claude_desktop_proxy_model_routes(&provider).map_err(|issue| {
         model_catalog_app_error(
             "load claude desktop model routes",
             AppError::Config(format!(

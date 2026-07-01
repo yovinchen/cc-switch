@@ -14,6 +14,19 @@ use crate::proxy::host::cc_switch::claude_desktop_gateway_auth_source::{
     claude_desktop_gateway_token_configured_from_db_source,
     get_or_create_claude_desktop_gateway_token_from_db_source,
 };
+use crate::proxy::host::cc_switch::claude_desktop_provider::{
+    provider_claude_desktop_direct_gateway_profile, provider_claude_desktop_mode,
+    provider_claude_desktop_provider_validation,
+    provider_claude_desktop_proxy_gateway_profile_model_specs,
+    provider_claude_desktop_status_facts, ClaudeDesktopProviderDirectGatewayProfileIssue,
+    ClaudeDesktopProviderDirectValidationIssue, ClaudeDesktopProviderProxyRouteIssue,
+    ClaudeDesktopProviderProxyValidationIssue, ClaudeDesktopProviderValidationIssue,
+};
+#[cfg(test)]
+use crate::proxy::host::cc_switch::claude_desktop_provider::{
+    provider_claude_desktop_direct_provider_validation, provider_claude_desktop_proxy_model_routes,
+    provider_claude_desktop_proxy_request_body, ClaudeDesktopProviderProxyRequestBodyIssue,
+};
 #[cfg(test)]
 use crate::proxy_core::api::auth::ClaudeDesktopProxyRequestBodyIssue;
 use crate::proxy_core::api::auth::{
@@ -27,13 +40,6 @@ use crate::proxy_core::api::auth::{
     ClaudeDesktopProxyProviderConfigValidationIssue,
 };
 use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;
-#[cfg(test)]
-use crate::proxy_core_adapter::ClaudeDesktopProviderProxyRequestBodyIssue;
-use crate::proxy_core_adapter::{
-    ClaudeDesktopProviderDirectGatewayProfileIssue, ClaudeDesktopProviderDirectValidationIssue,
-    ClaudeDesktopProviderProxyRouteIssue, ClaudeDesktopProviderProxyValidationIssue,
-    ClaudeDesktopProviderValidationIssue,
-};
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
 pub const PROFILE_NAME: &str = "CC Switch";
@@ -126,9 +132,7 @@ pub fn get_status(db: &Database, proxy_running: bool) -> Result<ClaudeDesktopSta
     .flatten()
     .and_then(|id| db.get_provider_by_id(&id, "claude-desktop").ok().flatten());
     let provider_status = current_provider.as_ref().map(|provider| {
-        crate::proxy_core_adapter::provider_claude_desktop_status_facts(provider, || {
-            proxy_gateway_base_url_from_db(db).ok()
-        })
+        provider_claude_desktop_status_facts(provider, || proxy_gateway_base_url_from_db(db).ok())
     });
     let mode = provider_status.as_ref().map(|status| status.mode.clone());
     let expected_base_url = provider_status
@@ -171,7 +175,7 @@ pub fn default_proxy_routes() -> Vec<ClaudeDesktopDefaultRoute> {
 
 #[cfg(test)]
 pub fn is_compatible_direct_provider(provider: &Provider) -> bool {
-    crate::proxy_core_adapter::provider_claude_desktop_direct_provider_validation(provider).is_ok()
+    provider_claude_desktop_direct_provider_validation(provider).is_ok()
 }
 
 pub fn is_official_provider(provider: &Provider) -> bool {
@@ -179,7 +183,7 @@ pub fn is_official_provider(provider: &Provider) -> bool {
 }
 
 pub fn provider_mode(provider: &Provider) -> ClaudeDesktopMode {
-    crate::proxy_core_adapter::provider_claude_desktop_mode(provider)
+    provider_claude_desktop_mode(provider)
 }
 
 fn direct_gateway_credential_issue_to_error(
@@ -337,7 +341,7 @@ pub fn validate_provider(provider: &Provider) -> Result<(), AppError> {
         return Ok(());
     }
 
-    crate::proxy_core_adapter::provider_claude_desktop_provider_validation(provider)
+    provider_claude_desktop_provider_validation(provider)
         .map_err(provider_validation_issue_to_error)
 }
 
@@ -358,16 +362,14 @@ fn proxy_route_issue_to_error(issue: ClaudeDesktopProviderProxyRouteIssue) -> Ap
 
 #[cfg(test)]
 pub fn map_proxy_request_model(body: Value, provider: &Provider) -> Result<Value, AppError> {
-    crate::proxy_core_adapter::provider_claude_desktop_proxy_request_body(body, provider).map_err(
-        |issue| match issue {
-            ClaudeDesktopProviderProxyRequestBodyIssue::Routes(route_issue) => {
-                proxy_route_issue_to_error(route_issue)
-            }
-            ClaudeDesktopProviderProxyRequestBodyIssue::Body(body_issue) => {
-                proxy_request_body_issue_to_error(body_issue)
-            }
-        },
-    )
+    provider_claude_desktop_proxy_request_body(body, provider).map_err(|issue| match issue {
+        ClaudeDesktopProviderProxyRequestBodyIssue::Routes(route_issue) => {
+            proxy_route_issue_to_error(route_issue)
+        }
+        ClaudeDesktopProviderProxyRequestBodyIssue::Body(body_issue) => {
+            proxy_request_body_issue_to_error(body_issue)
+        }
+    })
 }
 
 #[cfg(test)]
@@ -448,17 +450,12 @@ fn apply_provider_to_paths_inner(
     paths: &ClaudeDesktopPaths,
 ) -> Result<(), AppError> {
     let profile = match provider_mode(provider) {
-        ClaudeDesktopMode::Direct => {
-            crate::proxy_core_adapter::provider_claude_desktop_direct_gateway_profile(provider)
-                .map_err(direct_gateway_profile_issue_to_error)?
-        }
+        ClaudeDesktopMode::Direct => provider_claude_desktop_direct_gateway_profile(provider)
+            .map_err(direct_gateway_profile_issue_to_error)?,
         ClaudeDesktopMode::Proxy => {
             let base_url = proxy_gateway_base_url_from_db(db)?;
             let api_key = get_or_create_claude_desktop_gateway_token_from_db_source(db)?;
-            let model_specs =
-                crate::proxy_core_adapter::provider_claude_desktop_proxy_gateway_profile_model_specs(
-                    provider,
-                )
+            let model_specs = provider_claude_desktop_proxy_gateway_profile_model_specs(provider)
                 .map_err(proxy_route_issue_to_error)?;
             claude_desktop_gateway_profile(&base_url, &api_key, Some(model_specs.as_slice()))
         }
@@ -1003,10 +1000,7 @@ mod tests {
         let models = serde_json::to_value(
             crate::proxy::response_adapter::ClaudeDesktopModelListResponse::from_routes(
                 model_routes_to_core_inputs(
-                    crate::proxy_core_adapter::provider_claude_desktop_proxy_model_routes(
-                        &provider,
-                    )
-                    .expect("model routes"),
+                    provider_claude_desktop_proxy_model_routes(&provider).expect("model routes"),
                 ),
             ),
         )
@@ -1372,9 +1366,7 @@ mod tests {
             ..Default::default()
         });
 
-        let routes =
-            crate::proxy_core_adapter::provider_claude_desktop_proxy_model_routes(&provider)
-                .expect("routes");
+        let routes = provider_claude_desktop_proxy_model_routes(&provider).expect("routes");
         assert_eq!(routes.len(), 3);
         let repaired = routes
             .iter()

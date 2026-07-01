@@ -5,12 +5,12 @@ use crate::app_config::AppType;
 use crate::commands::copilot::CopilotAuthState;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
-use crate::proxy::host::cc_switch::provider_projection::provider_github_copilot_managed_account_id;
 #[cfg(test)]
-use crate::proxy_core_adapter::provider_claude_desktop_suggested_proxy_routes;
-use crate::proxy_core_adapter::{
+use crate::proxy::host::cc_switch::claude_desktop_provider::provider_claude_desktop_suggested_proxy_routes;
+use crate::proxy::host::cc_switch::claude_desktop_provider::{
     provider_claude_desktop_import_decision, ClaudeDesktopProviderImportDecision,
 };
+use crate::proxy::host::cc_switch::provider_projection::provider_github_copilot_managed_account_id;
 use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, SpeedtestService, SwitchResult,
 };
