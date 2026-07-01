@@ -49,8 +49,6 @@ use crate::proxy_core::api::usage::{
     TransformedResponseUsageFormat, UsageParserConfig, UsageRecord, UsageRecordFailureLogContext,
     UsageRouteContext, UsageSelectedProviderMissingPhase,
 };
-#[cfg(test)]
-use crate::proxy_core_adapter::success_usage_record_from_app_type_with_request_id_fallback;
 use crate::proxy_core_adapter::{
     provider_claude_transform_response_for_api_format, provider_claude_transform_sse_for_api_format,
 };
@@ -1593,10 +1591,10 @@ async fn log_usage_internal(
     status_code: u16,
     session_id: Option<String>,
 ) {
-    let record = success_usage_record_from_app_type_with_request_id_fallback(
+    let record = crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback(
         provider_id,
         provider_kind,
-        app_type,
+        AppKind::from(app_type),
         model,
         request_model,
         outbound_model,

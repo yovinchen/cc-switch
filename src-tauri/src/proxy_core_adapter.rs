@@ -2260,40 +2260,6 @@ fn claude_desktop_provider_validation_input(
     }
 }
 
-#[cfg(test)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn success_usage_record_from_app_type_with_request_id_fallback(
-    provider_id: &str,
-    provider_kind: Option<ProviderKind>,
-    app_type: &str,
-    model: &str,
-    request_model: &str,
-    outbound_model: &str,
-    usage: crate::proxy_core::api::usage::TokenUsage,
-    latency_ms: u64,
-    first_token_ms: Option<u64>,
-    is_streaming: bool,
-    status_code: u16,
-    session_id: Option<String>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> crate::proxy_core::api::usage::UsageRecord {
-    crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback(
-        provider_id,
-        provider_kind,
-        AppKind::from(app_type),
-        model,
-        request_model,
-        outbound_model,
-        usage,
-        latency_ms,
-        first_token_ms,
-        is_streaming,
-        status_code,
-        session_id,
-        request_id_fallback,
-    )
-}
-
 use crate::proxy_core::api::ports::{
     apply_claude_takeover_fields_for_provider_facts as core_apply_claude_takeover_fields_for_provider_facts,
     ClaudeTakeoverProviderFacts,
