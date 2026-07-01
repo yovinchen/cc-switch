@@ -16,10 +16,10 @@ use crate::proxy_core::api::transport::{
     OptionalCopilotAuthOptimizationPreparationInput,
 };
 use crate::proxy_core_adapter::{
-    ActiveConnectionGuard, FailoverSwitchSchedulerRef, ForwarderAnthropicRectifierGateInput,
-    ForwarderAppMediaPreventionInput, ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput,
-    ForwarderAttemptBodyInput, ForwarderAttemptRuntimeSourceRef, ForwarderAuthHeadersInput,
-    ForwarderAuthSourceRef, ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
+    ActiveConnectionGuard, ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
+    ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptBodyInput,
+    ForwarderAttemptRuntimeSourceRef, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
+    ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
     ForwarderClaudeProtocolTransformInput, ForwarderCodexChatProtocolEnrichmentInput,
     ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
     ForwarderCopilotRequestOptimizationGateInput, ForwarderFailureDecision,
@@ -80,6 +80,18 @@ pub(crate) trait ForwarderResponseSource {
         &'a self,
         input: ForwarderResponseFinalizationInput,
     ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
+}
+
+pub(crate) type FailoverSwitchSchedulerRef = Arc<dyn FailoverSwitchScheduler + Send + Sync>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ForwarderFailoverSwitchTarget {
+    pub(crate) provider_id: String,
+    pub(crate) provider_name: String,
+}
+
+pub(crate) trait FailoverSwitchScheduler {
+    fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget);
 }
 
 pub struct ForwardResult {

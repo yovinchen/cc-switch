@@ -6,7 +6,8 @@ use crate::database::{
 use crate::error::AppError;
 use crate::provider::{AuthBindingSource, Provider, ProviderMeta};
 use crate::proxy::engine::forward_pipeline::{
-    ForwarderResponseSourceRef, ForwarderTransportSourceRef,
+    FailoverSwitchSchedulerRef, ForwarderFailoverSwitchTarget, ForwarderResponseSourceRef,
+    ForwarderTransportSourceRef,
 };
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
@@ -1455,12 +1456,6 @@ use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
     apply_channel_auth_profile_providers_from_source, forward_attempts_from_plan,
     required_forward_attempts_from_plan,
 };
-pub(crate) type FailoverSwitchSchedulerRef = Arc<dyn FailoverSwitchScheduler + Send + Sync>;
-
-pub(crate) trait FailoverSwitchScheduler {
-    fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget);
-}
-
 pub(crate) type ForwarderRuntimeStateSourceRef = Arc<dyn ForwarderRuntimeStateSource + Send + Sync>;
 
 /// 活跃连接 RAII guard
@@ -1501,12 +1496,6 @@ impl Drop for ActiveConnectionGuard {
         }
         // 没有 runtime 时静默丢失计数（仅 UI 展示用，可接受最终一致性）
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ForwarderFailoverSwitchTarget {
-    pub(crate) provider_id: String,
-    pub(crate) provider_name: String,
 }
 
 pub(crate) trait ForwarderRuntimeStateSource {

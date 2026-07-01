@@ -18501,11 +18501,28 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
         "RequestForwarder must receive failover switch scheduling as an injected runtime source"
     );
     assert!(
+        source.contains("pub(crate) type FailoverSwitchSchedulerRef")
+            && source.contains("pub(crate) struct ForwarderFailoverSwitchTarget")
+            && source.contains("pub(crate) trait FailoverSwitchScheduler")
+            && source.contains(
+                "fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget);"
+            ),
+        "forward pipeline should own the failover scheduler contract and switch target DTO"
+    );
+    assert!(
         failover_source.contains("struct CcSwitchFailoverSwitchScheduler")
             && failover_source
                 .contains("impl FailoverSwitchScheduler for CcSwitchFailoverSwitchScheduler")
             && failover_source.contains("fn noop_failover_switch_scheduler()"),
         "default failover switch scheduler implementation should live in the CC Switch host module"
+    );
+    assert!(
+        failover_source.contains("use crate::proxy::engine::forward_pipeline::{")
+            && failover_source.contains("FailoverSwitchScheduler")
+            && failover_source.contains("FailoverSwitchSchedulerRef")
+            && failover_source.contains("ForwarderFailoverSwitchTarget")
+            && !failover_source.contains("use crate::proxy_core_adapter::{"),
+        "default failover switch scheduler should import its contract from the owning forward pipeline module"
     );
     assert!(
         failover_source.contains("use crate::proxy_core::api::routing::{")
@@ -18524,6 +18541,16 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
             && !adapter_runtime_source.contains("noop_failover_switch_scheduler"),
         "host proxy_state should use the default failover switch scheduler without routing it through proxy_core_adapter"
     );
+    for marker in [
+        "pub(crate) type FailoverSwitchSchedulerRef",
+        "pub(crate) trait FailoverSwitchScheduler",
+        "pub(crate) struct ForwarderFailoverSwitchTarget",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not own failover scheduler contract marker `{marker}`"
+        );
+    }
 
     let forbidden_markers = [
         "failover_switch::FailoverSwitchManager",
