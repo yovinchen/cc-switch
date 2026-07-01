@@ -2,6 +2,10 @@ use futures::future::BoxFuture;
 use std::sync::Arc;
 
 use crate::database::Database;
+use crate::proxy::engine::forward_pipeline::{
+    ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptRuntimeSource,
+    ForwarderAttemptRuntimeSourceRef,
+};
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
 use crate::proxy::route_attempt::ForwardAttempt;
@@ -12,8 +16,7 @@ use crate::proxy_core::api::transport::{
 use crate::proxy_core_adapter::{
     allow_forward_attempt_runtime_source, record_forward_attempt_failure_runtime_source,
     record_forward_attempt_success_runtime_source,
-    release_forward_attempt_permit_neutral_runtime_source, ForwarderAttemptAllowDecision,
-    ForwarderAttemptAllowInput, ForwarderAttemptRuntimeSource, ForwarderAttemptRuntimeSourceRef,
+    release_forward_attempt_permit_neutral_runtime_source,
 };
 
 struct CcSwitchForwarderAttemptRuntimeSource {

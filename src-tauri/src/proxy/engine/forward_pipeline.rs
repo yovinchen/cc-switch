@@ -17,8 +17,7 @@ use crate::proxy_core::api::transport::{
 };
 use crate::proxy_core_adapter::{
     ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
-    ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptBodyInput,
-    ForwarderAttemptRuntimeSourceRef, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
+    ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
     ForwarderCopilotRequestOptimizationGateInput, ForwarderMediaRetryPlanInput,
@@ -236,6 +235,52 @@ pub(crate) trait ForwarderProtocolStateSource {
         &self,
         input: ForwarderClaudeProtocolTransformInput<'_>,
     ) -> Result<Value, String>;
+}
+
+pub(crate) type ForwarderAttemptRuntimeSourceRef =
+    Arc<dyn ForwarderAttemptRuntimeSource + Send + Sync>;
+
+pub(crate) struct ForwarderAttemptAllowInput<'a> {
+    pub(crate) attempt: &'a ForwardAttempt,
+    pub(crate) app_type: &'a str,
+    pub(crate) attempts: &'a [ForwardAttempt],
+    pub(crate) attempted_providers: usize,
+    pub(crate) max_attempts: usize,
+}
+
+pub(crate) enum ForwarderAttemptAllowDecision {
+    Stop,
+    Skipped,
+    Allowed { used_half_open_permit: bool },
+}
+
+pub(crate) trait ForwarderAttemptRuntimeSource {
+    fn allow<'a>(
+        &'a self,
+        input: ForwarderAttemptAllowInput<'a>,
+    ) -> BoxFuture<'a, ForwarderAttemptAllowDecision>;
+
+    fn record_success<'a>(
+        &'a self,
+        attempt: &'a ForwardAttempt,
+        app_type: &'a str,
+        used_half_open_permit: bool,
+    ) -> BoxFuture<'a, ()>;
+
+    fn record_failure<'a>(
+        &'a self,
+        attempt: &'a ForwardAttempt,
+        app_type: &'a str,
+        used_half_open_permit: bool,
+        error: &'a ProxyError,
+    ) -> BoxFuture<'a, ()>;
+
+    fn release_attempt_permit_neutral<'a>(
+        &'a self,
+        attempt: &'a ForwardAttempt,
+        app_type: &'a str,
+        used_half_open_permit: bool,
+    ) -> BoxFuture<'a, ()>;
 }
 
 pub struct ForwardResult {

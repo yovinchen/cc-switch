@@ -20115,26 +20115,40 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         "RequestForwarder must receive attempt runtime as one injected source"
     );
     assert!(
-        adapter_source.contains("pub(crate) struct ForwarderAttemptAllowInput"),
+        source.contains("pub(crate) struct ForwarderAttemptAllowInput"),
         "ForwarderAttemptRuntimeSource must receive allow facts through an input DTO"
     );
     assert!(
-        adapter_source.contains("pub(crate) enum ForwarderAttemptAllowDecision"),
+        source.contains("pub(crate) enum ForwarderAttemptAllowDecision"),
         "ForwarderAttemptRuntimeSource must return a structured allow decision"
     );
     assert!(
-        adapter_source.contains("    Stop,"),
+        source.contains("    Stop,"),
         "ForwarderAttemptAllowDecision::Stop must not carry formatted log-line payloads"
     );
     assert!(
-        adapter_source.contains("attempts: &'a [ForwardAttempt]"),
+        source.contains("attempts: &'a [ForwardAttempt]"),
         "ForwarderAttemptAllowInput must carry all route attempts for default runtime compatibility decisions"
     );
     assert!(
-        adapter_source.contains("attempted_providers: usize")
-            && adapter_source.contains("max_attempts: usize"),
+        source.contains("attempted_providers: usize") && source.contains("max_attempts: usize"),
         "ForwarderAttemptAllowInput must carry max-attempt policy facts"
     );
+    for marker in [
+        "pub(crate) type ForwarderAttemptRuntimeSourceRef",
+        "pub(crate) struct ForwarderAttemptAllowInput",
+        "pub(crate) enum ForwarderAttemptAllowDecision",
+        "pub(crate) trait ForwarderAttemptRuntimeSource",
+    ] {
+        assert!(
+            source.contains(marker),
+            "forward_pipeline should own attempt runtime contract marker `{marker}`"
+        );
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not own attempt runtime contract marker `{marker}`"
+        );
+    }
     assert!(
         impl_slice.contains("allow(ForwarderAttemptAllowInput {")
             && impl_slice.contains("attempts: &attempts,")
@@ -20208,9 +20222,9 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         "RequestForwarder must not consume formatted max-attempt log-line payloads from attempt allow decisions"
     );
     let attempt_runtime_trait_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) trait ForwarderAttemptRuntimeSource",
-        "pub(crate) type ForwarderAuthSourceRef",
+        "pub struct ForwardResult",
     );
     let attempt_failure_runtime_source_slice = function_slice(
         &adapter_source,
