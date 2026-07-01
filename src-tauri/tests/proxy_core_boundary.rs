@@ -1857,12 +1857,7 @@ const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_REQUEST_TRANSFORM_MARKERS: &[&str] = &[
     "anthropic_to_openai_responses_request(",
     "anthropic_to_openai_chat_request(",
     "anthropic_request_to_gemini_request_with_shadow(",
-    "provider_claude_responses_prompt_cache_key(",
-    "provider_codex_fast_mode_enabled(",
-    "provider_should_preserve_reasoning_content_for_openai_chat(",
-    "provider_claude_prompt_cache_key(",
     "inject_openai_stream_include_usage(",
-    "provider_is_codex_oauth(",
     "match api_format",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_COMPAT_FACADE_MARKERS: &[&str] = &[
@@ -2204,8 +2199,11 @@ fn is_allowed_provider_upstream_url_core_import(relative: &str, code: &str) -> b
 
 fn is_allowed_claude_provider_api_format_core_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/provider/claude.rs"
-        && code.trim()
-            == "use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;"
+                | "use crate::proxy_core::api::transforms::{"
+        )
 }
 
 fn is_allowed_codex_provider_chat_policy_core_import(relative: &str, code: &str) -> bool {
@@ -9497,14 +9495,21 @@ fn production_claude_provider_adapter_excludes_compat_facades() {
 }
 
 #[test]
-fn production_claude_provider_adapter_delegates_request_transforms_to_adapter() {
+fn production_claude_provider_adapter_owns_request_transform_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
     let transform_request_helper = function_slice(
         &source,
-        "fn transform_claude_request_for_api_format(",
+        "pub(crate) fn transform_claude_request_for_api_format(",
         "/// Claude 适配器",
+    );
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+
+    assert!(
+        !adapter_source.contains("pub(crate) fn provider_claude_transform_request_for_api_format("),
+        "proxy_core_adapter should not reintroduce the Claude request transform facade"
     );
 
     let mut violations = Vec::new();
@@ -9523,7 +9528,7 @@ fn production_claude_provider_adapter_delegates_request_transforms_to_adapter() 
 
     assert!(
         violations.is_empty(),
-        "Claude provider adapter must delegate request transform dispatch to proxy_core_adapter helpers:\n{}",
+        "Claude provider adapter must delegate request transform dispatch to proxy-core while owning provider fact projection:\n{}",
         violations.join("\n")
     );
 }
@@ -12897,27 +12902,33 @@ fn production_forwarder_delegates_upstream_url_planning_to_adapter() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_claude_request_format_dispatch_to_core() {
+fn claude_provider_owns_request_format_dispatch() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let path = manifest_dir.join("src/proxy/provider/claude.rs");
+    let source = fs::read_to_string(&path).expect("read claude provider source");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
     let request_slice = function_slice(
         &source,
-        "pub(crate) fn provider_claude_transform_request_for_api_format",
-        "pub(crate) fn provider_claude_transform_response_for_api_format",
+        "pub(crate) fn transform_claude_request_for_api_format",
+        "fn required_claude_provider_base_url",
     );
 
     assert!(
         request_slice.contains("claude_request_transform_for_api_format("),
-        "Claude request api_format dispatch must be delegated to proxy-core"
+        "Claude request api_format dispatch must be delegated to proxy-core from the provider owning module"
     );
     let adapter_transform_import_window = function_slice(
-        &source,
+        &adapter_source,
         "use crate::proxy_core::api::transforms::{",
         "use crate::proxy_core::api::transport::{",
     );
     assert!(
-        !source.contains(
+        !adapter_source.contains("pub(crate) fn provider_claude_transform_request_for_api_format"),
+        "proxy_core_adapter should not expose the Claude request transform facade"
+    );
+    assert!(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy_core::api::transforms::resolve_claude_forward_api_format"
         ),
         "proxy_core_adapter should not re-export Claude forward api_format resolver"
@@ -12948,7 +12959,7 @@ fn proxy_core_adapter_delegates_claude_request_format_dispatch_to_core() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs Claude request api_format dispatch:{} contains host-local marker `{}`",
+                    "src/proxy/provider/claude.rs Claude request api_format dispatch:{} contains host-local marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -12958,7 +12969,7 @@ fn proxy_core_adapter_delegates_claude_request_format_dispatch_to_core() {
 
     assert!(
         violations.is_empty(),
-        "proxy_core_adapter must keep Claude request api_format dispatch in proxy-core:\n{}",
+        "Claude provider must keep request api_format dispatch in proxy-core:\n{}",
         violations.join("\n")
     );
 }
@@ -13261,7 +13272,7 @@ fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
     let stream_slice = function_slice(
         &source,
         "pub(crate) fn provider_claude_transform_sse_for_api_format",
-        "fn provider_should_preserve_reasoning_content_for_openai_chat",
+        "use crate::proxy_core::api::routing::{",
     );
 
     assert!(

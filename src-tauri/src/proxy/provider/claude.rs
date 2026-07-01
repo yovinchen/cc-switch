@@ -32,34 +32,55 @@ use crate::proxy_core::api::auth::{
 };
 use crate::proxy_core::api::domain::{extract_claude_base_url_from_settings, ProviderKind};
 use crate::proxy_core::api::ports::required_provider_base_url;
-use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;
 use crate::proxy_core::api::transforms::GeminiShadowStore;
+use crate::proxy_core::api::transforms::{
+    claude_request_transform_for_api_format, is_copilot_prompt_cache_provider,
+    resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
+    should_preserve_reasoning_content_for_openai_chat, ClaudeApiFormatRequestTransformContext,
+    ClaudePromptCacheKeyResolution,
+};
 use crate::proxy_core::api::transport::build_claude_upstream_url;
 use crate::proxy_core::api::transport::{
     build_claude_provider_auth_headers, ClaudeProviderAuthHeadersInput,
 };
-use crate::proxy_core_adapter::provider_claude_transform_request_for_api_format;
 #[cfg(test)]
 use crate::proxy_core_adapter::provider_claude_transform_response_for_api_format;
+use serde_json::Value;
 use uuid::Uuid;
 
 const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
 
-fn transform_claude_request_for_api_format(
-    body: serde_json::Value,
+pub(crate) fn transform_claude_request_for_api_format(
+    body: Value,
     provider: &Provider,
     api_format: &str,
     session_id: Option<&str>,
     shadow_store: Option<&GeminiShadowStore>,
-) -> Result<serde_json::Value, ProxyError> {
-    provider_claude_transform_request_for_api_format(
+) -> Result<Value, String> {
+    let is_codex_oauth = provider_claude_kind(provider) == ProviderKind::CodexOAuth;
+    let cache_key_resolution =
+        provider_claude_responses_prompt_cache_key(provider, &body, session_id);
+    let preserve_reasoning_content =
+        provider_should_preserve_reasoning_content_for_openai_chat(provider, &body);
+    let output = claude_request_transform_for_api_format(
         body,
-        provider,
         api_format,
-        session_id,
-        shadow_store,
-    )
-    .map_err(ProxyError::TransformError)
+        ClaudeApiFormatRequestTransformContext {
+            provider_id: &provider.id,
+            responses_prompt_cache_key: cache_key_resolution.key.as_deref(),
+            responses_prompt_cache_key_source: cache_key_resolution.source,
+            chat_prompt_cache_key: provider_claude_prompt_cache_key(provider),
+            is_codex_oauth,
+            codex_fast_mode_enabled: provider.codex_fast_mode_enabled(),
+            preserve_reasoning_content,
+            shadow_store,
+            session_id,
+        },
+    )?;
+    if let Some(cache_log) = output.responses_prompt_cache_log {
+        log::debug!("{}", cache_log.message());
+    }
+    Ok(output.request)
 }
 
 fn required_claude_provider_base_url(provider: &Provider) -> Result<String, String> {
@@ -149,6 +170,43 @@ fn provider_claude_auth_headers(
     .map_err(|error| error.to_string())
 }
 
+fn provider_is_copilot_prompt_cache_provider(provider: &Provider) -> bool {
+    is_copilot_prompt_cache_provider(
+        provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.provider_type.as_deref()),
+        &provider.settings_config,
+    )
+}
+
+fn provider_claude_prompt_cache_key(provider: &Provider) -> Option<&str> {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.prompt_cache_key.as_deref())
+}
+
+fn provider_claude_responses_prompt_cache_key(
+    provider: &Provider,
+    body: &Value,
+    session_id: Option<&str>,
+) -> ClaudePromptCacheKeyResolution {
+    resolve_claude_responses_prompt_cache_key(
+        body,
+        provider_claude_prompt_cache_key(provider),
+        session_id,
+        provider_is_copilot_prompt_cache_provider(provider),
+    )
+}
+
+fn provider_should_preserve_reasoning_content_for_openai_chat(
+    provider: &Provider,
+    body: &Value,
+) -> bool {
+    should_preserve_reasoning_content_for_openai_chat(&provider.settings_config, body)
+}
+
 pub(crate) fn claude_provider_api_format(provider: &Provider) -> &'static str {
     let meta = provider.meta.as_ref();
     resolve_claude_api_format_from_settings(
@@ -223,6 +281,7 @@ impl ProviderAdapter for ClaudeAdapter {
             None,
             None,
         )
+        .map_err(ProxyError::TransformError)
     }
 }
 

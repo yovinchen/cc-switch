@@ -7,8 +7,8 @@ use crate::proxy::engine::forward_pipeline::{
     ForwarderClaudeProtocolTransformInput, ForwarderCodexChatProtocolEnrichmentInput,
     ForwarderProtocolStateSource, ForwarderProtocolStateSourceRef,
 };
+use crate::proxy::provider::transform_claude_request_for_api_format;
 use crate::proxy_core::api::transforms::GeminiShadowStore;
-use crate::proxy_core_adapter::provider_claude_transform_request_for_api_format;
 
 pub(crate) struct CcSwitchForwarderProtocolStateSource {
     gemini_shadow: Arc<GeminiShadowStore>,
@@ -53,7 +53,7 @@ impl ForwarderProtocolStateSource for CcSwitchForwarderProtocolStateSource {
         let api_format = input.api_format.unwrap_or("anthropic");
         let session_id = input.session_client_provided.then_some(input.session_id);
 
-        provider_claude_transform_request_for_api_format(
+        transform_claude_request_for_api_format(
             input.body,
             input.provider,
             api_format,

@@ -267,12 +267,9 @@ use crate::proxy_core::api::auth::{
     ClaudeDesktopProxyRouteInput, ClaudeDesktopResolvedProxyRoute,
 };
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
-use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 use crate::proxy_core::api::transforms::{
-    claude_request_transform_for_api_format, claude_response_to_anthropic_message_for_api_format,
-    create_claude_to_anthropic_sse_stream_for_api_format,
-    should_preserve_reasoning_content_for_openai_chat, ClaudeApiFormatRequestTransformContext,
-    ClaudeApiFormatSseTransformContext,
+    claude_response_to_anthropic_message_for_api_format,
+    create_claude_to_anthropic_sse_stream_for_api_format, ClaudeApiFormatSseTransformContext,
 };
 use crate::proxy_core::api::transport::{ProxyRequest, ProxyResult};
 fn codex_takeover_toml_config_for_provider(
@@ -393,77 +390,6 @@ async fn forwarder_runtime_config_from_db_sources(
     ))
 }
 
-use crate::proxy_core::api::transforms::is_copilot_prompt_cache_provider;
-
-fn provider_is_copilot_prompt_cache_provider(provider: &Provider) -> bool {
-    is_copilot_prompt_cache_provider(
-        provider
-            .meta
-            .as_ref()
-            .and_then(|meta| meta.provider_type.as_deref()),
-        &provider.settings_config,
-    )
-}
-
-fn provider_claude_prompt_cache_key(provider: &Provider) -> Option<&str> {
-    provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.prompt_cache_key.as_deref())
-}
-
-use crate::proxy_core::api::transforms::resolve_claude_responses_prompt_cache_key;
-
-fn provider_claude_responses_prompt_cache_key(
-    provider: &Provider,
-    body: &Value,
-    session_id: Option<&str>,
-) -> ClaudePromptCacheKeyResolution {
-    resolve_claude_responses_prompt_cache_key(
-        body,
-        provider_claude_prompt_cache_key(provider),
-        session_id,
-        provider_is_copilot_prompt_cache_provider(provider),
-    )
-}
-
-fn provider_codex_fast_mode_enabled(provider: &Provider) -> bool {
-    provider.codex_fast_mode_enabled()
-}
-
-pub(crate) fn provider_claude_transform_request_for_api_format(
-    body: Value,
-    provider: &Provider,
-    api_format: &str,
-    session_id: Option<&str>,
-    shadow_store: Option<&GeminiShadowStore>,
-) -> Result<Value, String> {
-    let is_codex_oauth = provider_is_codex_oauth(provider);
-    let cache_key_resolution =
-        provider_claude_responses_prompt_cache_key(provider, &body, session_id);
-    let preserve_reasoning_content =
-        provider_should_preserve_reasoning_content_for_openai_chat(provider, &body);
-    let output = claude_request_transform_for_api_format(
-        body,
-        api_format,
-        ClaudeApiFormatRequestTransformContext {
-            provider_id: &provider.id,
-            responses_prompt_cache_key: cache_key_resolution.key.as_deref(),
-            responses_prompt_cache_key_source: cache_key_resolution.source,
-            chat_prompt_cache_key: provider_claude_prompt_cache_key(provider),
-            is_codex_oauth,
-            codex_fast_mode_enabled: provider_codex_fast_mode_enabled(provider),
-            preserve_reasoning_content,
-            shadow_store,
-            session_id,
-        },
-    )?;
-    if let Some(cache_log) = output.responses_prompt_cache_log {
-        log::debug!("{}", cache_log.message());
-    }
-    Ok(output.request)
-}
-
 pub(crate) fn provider_claude_transform_response_for_api_format(
     body: &Value,
     api_format: &str,
@@ -507,13 +433,6 @@ pub(crate) fn provider_claude_transform_sse_for_api_format(
             on_rectified_tool_name: log_rectified_gemini_tool_args,
         },
     )
-}
-
-fn provider_should_preserve_reasoning_content_for_openai_chat(
-    provider: &Provider,
-    body: &Value,
-) -> bool {
-    should_preserve_reasoning_content_for_openai_chat(&provider.settings_config, body)
 }
 
 use crate::proxy_core::api::routing::{
@@ -949,6 +868,7 @@ fn provider_managed_auth_classification(provider: &Provider) -> ProviderManagedA
     })
 }
 
+#[cfg(test)]
 fn provider_is_codex_oauth(provider: &Provider) -> bool {
     provider_managed_auth_classification(provider).is_codex_oauth
 }
@@ -1393,6 +1313,7 @@ mod tests {
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
         normalize_codex_chat_reasoning_profile, resolve_claude_api_format_from_settings,
         resolve_claude_responses_prompt_cache_key,
+        should_preserve_reasoning_content_for_openai_chat,
     };
     use crate::proxy_core::api::transport::{
         apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
@@ -6090,131 +6011,10 @@ base_url = "https://api.openai.com/v1"
         );
         assert_eq!(cache_key.key.as_deref(), Some("session-1"));
         assert_eq!(cache_key.source.as_str(), "session");
-        let mut copilot_cache_provider = Provider::with_id(
-            "copilot-cache".to_string(),
-            "Copilot Cache".to_string(),
-            json!({}),
-            None,
-        );
-        copilot_cache_provider.meta = Some(ProviderMeta {
-            provider_type: Some("github_copilot".to_string()),
-            ..Default::default()
-        });
-        let provider_cache_key = provider_claude_responses_prompt_cache_key(
-            &copilot_cache_provider,
-            &json!({"metadata": {"session_id": "session-2"}}),
-            Some("fallback-session"),
-        );
-        assert_eq!(provider_cache_key.key.as_deref(), Some("session-2"));
-        let mut explicit_cache_provider = Provider::with_id(
-            "explicit-cache".to_string(),
-            "Explicit Cache".to_string(),
-            json!({}),
-            None,
-        );
-        explicit_cache_provider.meta = Some(ProviderMeta {
-            prompt_cache_key: Some("cache-explicit".to_string()),
-            codex_fast_mode: Some(true),
-            ..Default::default()
-        });
-        assert_eq!(
-            provider_claude_prompt_cache_key(&explicit_cache_provider),
-            Some("cache-explicit")
-        );
-        assert!(provider_codex_fast_mode_enabled(&explicit_cache_provider));
     }
 
     #[test]
-    fn claude_transform_adapter_projects_request_and_response_facades() {
-        let anthropic_body = json!({
-            "model": "claude-sonnet",
-            "max_tokens": 128,
-            "messages": [{"role": "user", "content": "Hello"}]
-        });
-        let chat_request = crate::proxy_core::api::transforms::anthropic_to_openai_chat_request(
-            &anthropic_body,
-            false,
-        );
-        assert_eq!(chat_request["model"], "claude-sonnet");
-        assert_eq!(chat_request["messages"][0]["role"], "user");
-        let mut request_provider = Provider::with_id(
-            "claude-request".to_string(),
-            "Claude Request".to_string(),
-            json!({}),
-            None,
-        );
-        request_provider.meta = Some(ProviderMeta {
-            prompt_cache_key: Some("cache-request".to_string()),
-            ..Default::default()
-        });
-        let mut streaming_anthropic_body = anthropic_body.clone();
-        streaming_anthropic_body["stream"] = json!(true);
-        let delegated_chat_request = provider_claude_transform_request_for_api_format(
-            streaming_anthropic_body,
-            &request_provider,
-            "openai_chat",
-            None,
-            None,
-        )
-        .expect("delegated chat request");
-        assert_eq!(delegated_chat_request["model"], "claude-sonnet");
-        assert_eq!(delegated_chat_request["prompt_cache_key"], "cache-request");
-        assert_eq!(
-            delegated_chat_request["stream_options"]["include_usage"],
-            true
-        );
-
-        let responses_request =
-            crate::proxy_core::api::transforms::anthropic_to_openai_responses_request(
-                &anthropic_body,
-                Some("cache-1"),
-                false,
-                false,
-            );
-        assert_eq!(responses_request["model"], "claude-sonnet");
-        assert_eq!(responses_request["prompt_cache_key"], "cache-1");
-        let delegated_responses_request = provider_claude_transform_request_for_api_format(
-            anthropic_body.clone(),
-            &request_provider,
-            "openai_responses",
-            Some("session-request"),
-            None,
-        )
-        .expect("delegated responses request");
-        assert_eq!(delegated_responses_request["model"], "claude-sonnet");
-        assert_eq!(
-            delegated_responses_request["prompt_cache_key"],
-            "cache-request"
-        );
-
-        let gemini_request =
-            crate::proxy_core::api::transforms::anthropic_request_to_gemini_request_with_shadow(
-                &anthropic_body,
-                None,
-                Some("provider-a"),
-                Some("session-a"),
-            )
-            .expect("gemini request");
-        assert_eq!(gemini_request["contents"][0]["role"], "user");
-        let delegated_gemini_request = provider_claude_transform_request_for_api_format(
-            anthropic_body.clone(),
-            &request_provider,
-            "gemini_native",
-            Some("session-request"),
-            None,
-        )
-        .expect("delegated gemini request");
-        assert_eq!(delegated_gemini_request["contents"][0]["role"], "user");
-        let delegated_passthrough_request = provider_claude_transform_request_for_api_format(
-            anthropic_body.clone(),
-            &request_provider,
-            "anthropic",
-            None,
-            None,
-        )
-        .expect("delegated passthrough request");
-        assert_eq!(delegated_passthrough_request, anthropic_body);
-
+    fn claude_transform_adapter_projects_response_facades() {
         let chat_response =
             crate::proxy_core::api::transforms::openai_chat_to_anthropic_message(&json!({
             "id": "chatcmpl_1",
@@ -6373,8 +6173,8 @@ base_url = "https://api.openai.com/v1"
             json!({}),
             None,
         );
-        assert!(provider_should_preserve_reasoning_content_for_openai_chat(
-            &reasoning_provider,
+        assert!(should_preserve_reasoning_content_for_openai_chat(
+            &reasoning_provider.settings_config,
             &json!({"model": "deepseek-v4-pro"})
         ));
 
@@ -8491,7 +8291,7 @@ base_url = "https://api.openai.com/v1"
         );
         let passthrough_body = json!({"model": "claude-3-5-sonnet"});
         assert_eq!(
-            provider_claude_transform_request_for_api_format(
+            crate::proxy::provider::transform_claude_request_for_api_format(
                 passthrough_body.clone(),
                 &provider,
                 "anthropic",
