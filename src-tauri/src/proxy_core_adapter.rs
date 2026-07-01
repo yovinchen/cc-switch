@@ -1,8 +1,5 @@
 use crate::app_config::AppType;
-use crate::database::{
-    Database, ProxyChannelMigrationPreview, ProxyChannelModelRecord, ProxyChannelRecord,
-    ProxyChannelSourceKind,
-};
+use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::engine::forward_pipeline::{
@@ -37,11 +34,7 @@ use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::api::config::{AppProxyConfig, ResponseRuntimePolicy};
 use crate::proxy_core::api::domain::{AppKind, ProviderKind};
-use crate::proxy_core::api::routing::{
-    LegacyChannelMigrationPlanInput, LegacyChannelModelProjection, LegacyChannelProjection,
-    LegacyEndpointInput, LegacyModelRouteInput, LegacyProviderChannelMigrationInput,
-    LegacyProviderProjectionInput, RoutePlan,
-};
+use crate::proxy_core::api::routing::RoutePlan;
 use crate::proxy_core::api::session::SessionIdResult;
 use http::{HeaderMap, Method};
 use serde_json::{json, Value};
@@ -62,11 +55,8 @@ use crate::proxy_core::api::auth::{
     claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
 };
 use crate::proxy_core::api::ports::{
-    apply_codex_takeover_auth_placeholder_if_present,
-    codex_model_from_config_toml as core_codex_model_from_config_toml,
-    codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
-    ensure_codex_takeover_auth_placeholder, CopilotOptimizerConfig, OptimizerConfig,
-    RectifierConfig,
+    apply_codex_takeover_auth_placeholder_if_present, ensure_codex_takeover_auth_placeholder,
+    CopilotOptimizerConfig, OptimizerConfig, RectifierConfig,
 };
 
 fn current_provider_id_from_settings_for_app(app: &AppKind) -> Option<String> {
@@ -235,164 +225,7 @@ async fn forwarder_runtime_config_from_db_sources(
 
 use crate::proxy_core::api::routing::{
     current_provider_db_fallback_required, current_provider_id_from_sources,
-    legacy_provider_codex_catalog_models_from_settings, legacy_provider_config_text_from_settings,
-    legacy_provider_env_from_settings,
 };
-
-fn legacy_provider_projection_input(provider: &Provider) -> LegacyProviderProjectionInput {
-    let config_text = legacy_provider_config_text_from_settings(&provider.settings_config);
-    let env = legacy_provider_env_from_settings(&provider.settings_config);
-    let codex_catalog_models =
-        legacy_provider_codex_catalog_models_from_settings(&provider.settings_config);
-    let (api_format, claude_desktop_model_routes) = provider
-        .meta
-        .as_ref()
-        .map(|meta| {
-            let routes = meta
-                .claude_desktop_model_routes
-                .iter()
-                .map(|(public_model, route)| LegacyModelRouteInput {
-                    public_model: public_model.clone(),
-                    upstream_model: route.model.clone(),
-                })
-                .collect::<Vec<_>>();
-            (meta.api_format.clone(), routes)
-        })
-        .unwrap_or_default();
-
-    LegacyProviderProjectionInput {
-        api_format,
-        codex_wire_api: config_text.and_then(core_codex_wire_api_from_config_toml),
-        codex_model: config_text.and_then(core_codex_model_from_config_toml),
-        codex_catalog_models,
-        env,
-        claude_desktop_model_routes,
-    }
-}
-
-pub(crate) fn legacy_channel_migration_preview_from_providers<'a>(
-    app_type: &str,
-    app: Option<&AppType>,
-    current_provider_id: Option<&str>,
-    providers: impl IntoIterator<Item = &'a Provider>,
-) -> ProxyChannelMigrationPreview {
-    let provider_inputs = providers
-        .into_iter()
-        .map(|provider| {
-            let primary_base_url = app
-                .map(|app| provider.resolve_usage_credentials(app).0)
-                .unwrap_or_default();
-            let endpoints = provider
-                .meta
-                .as_ref()
-                .map(|meta| {
-                    meta.custom_endpoints
-                        .values()
-                        .map(|endpoint| LegacyEndpointInput {
-                            url: endpoint.url.clone(),
-                            added_at: endpoint.added_at,
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-
-            LegacyProviderChannelMigrationInput {
-                provider_id: provider.id.clone(),
-                provider_name: provider.name.clone(),
-                provider_sort_index: provider.sort_index,
-                provider_in_failover_queue: provider.in_failover_queue,
-                primary_base_url,
-                endpoints,
-                provider_projection: legacy_provider_projection_input(provider),
-            }
-        })
-        .collect::<Vec<_>>();
-
-    let plan = crate::proxy_core::api::routing::build_legacy_channel_migration_plan(
-        LegacyChannelMigrationPlanInput {
-            app_type: app_type.to_string(),
-            app: app.map(|app| AppKind::from(app.as_str())),
-            current_provider_id: current_provider_id.map(ToString::to_string),
-            providers: provider_inputs,
-        },
-    );
-    let channels = plan
-        .channels
-        .into_iter()
-        .map(|projection| {
-            let source_kind = proxy_channel_source_kind_from_legacy(&projection.source_kind);
-            proxy_channel_record_from_legacy_projection(projection, source_kind)
-        })
-        .collect();
-
-    ProxyChannelMigrationPreview {
-        app_type: plan.app_type,
-        channels,
-        duplicate_count: plan.duplicate_count,
-        needs_review_count: plan.needs_review_count,
-    }
-}
-
-fn proxy_channel_source_kind_from_legacy(source_kind: &str) -> ProxyChannelSourceKind {
-    match source_kind {
-        crate::proxy_core::api::routing::LEGACY_PRIMARY_SOURCE => {
-            ProxyChannelSourceKind::LegacyPrimary
-        }
-        crate::proxy_core::api::routing::LEGACY_ENDPOINT_SOURCE => {
-            ProxyChannelSourceKind::LegacyEndpoint
-        }
-        _ => ProxyChannelSourceKind::Manual,
-    }
-}
-
-fn proxy_channel_record_from_legacy_projection(
-    projection: LegacyChannelProjection,
-    source_kind: ProxyChannelSourceKind,
-) -> ProxyChannelRecord {
-    ProxyChannelRecord {
-        id: projection.id,
-        provider_id: projection.provider_id,
-        app_type: projection.app_type,
-        name: projection.name,
-        status: projection.status,
-        base_url: projection.base_url,
-        interface_kind: projection.interface_kind,
-        auth_profile_ref: projection.auth_profile_ref,
-        groups: projection.groups,
-        priority: projection.priority,
-        weight: projection.weight,
-        retry_policy: projection.retry_policy,
-        health_policy: projection.health_policy,
-        header_overrides: projection.header_overrides,
-        param_overrides: projection.param_overrides,
-        status_code_mapping: projection.status_code_mapping,
-        tags: projection.tags,
-        metadata: projection.metadata,
-        source_kind,
-        source_endpoint_url: projection.source_endpoint_url,
-        models: projection
-            .models
-            .into_iter()
-            .map(proxy_channel_model_record_from_legacy)
-            .collect(),
-        needs_review: projection.needs_review,
-        review_reasons: projection.review_reasons,
-    }
-}
-
-fn proxy_channel_model_record_from_legacy(
-    route: LegacyChannelModelProjection,
-) -> ProxyChannelModelRecord {
-    ProxyChannelModelRecord {
-        channel_id: route.channel_id,
-        public_model: route.public_model,
-        upstream_model: route.upstream_model,
-        capabilities: route.capabilities,
-        pricing_model: route.pricing_model,
-        request_overrides: route.request_overrides,
-        response_overrides: route.response_overrides,
-    }
-}
 
 impl From<&AppType> for AppKind {
     fn from(value: &AppType) -> Self {
@@ -1107,9 +940,6 @@ mod tests {
         ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
         ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
     };
-    use crate::proxy_core::api::routing::{
-        normalize_channel_base_url, normalize_proxy_channel_write_request_fields, stable_channel_id,
-    };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
         normalize_codex_chat_reasoning_profile, resolve_claude_api_format_from_settings,
@@ -1122,7 +952,10 @@ mod tests {
     };
 
     use super::*;
-    use crate::database::ProxyChannelSourceKind;
+    use crate::database::{
+        ProxyChannelMigrationPreview, ProxyChannelModelRecord, ProxyChannelRecord,
+        ProxyChannelSourceKind,
+    };
     use crate::provider::{
         AuthBinding, AuthBindingSource, ClaudeDesktopMode, ClaudeDesktopModelRoute, ProviderMeta,
         ProviderTestConfig, UsageScript,
@@ -1198,8 +1031,7 @@ mod tests {
     };
     use crate::proxy_core::api::management::{
         ChannelKeyRuntimeCandidate, ChannelRouteSource, ChannelTestProbeRequest,
-        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, RouteResolveRequest,
-        StreamCheckResult,
+        RouteResolveRequest, StreamCheckResult,
     };
     use crate::proxy_core::api::model_catalog::{CopilotModel, DEFAULT_CODEX_MODEL_CONTEXT_WINDOW};
     use crate::proxy_core::api::ports::{
@@ -1211,9 +1043,9 @@ mod tests {
     use crate::proxy_core::api::routing::{
         apply_route_candidate_circuit_availability, resolve_channel_route,
         route_candidate_channel_circuit_keys, select_provider_ids, ChannelRouteCandidate,
-        ChannelSpec, ChannelStatus, InterfaceKind, LegacyChannelProjectionInput,
-        ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput,
-        RouteResolveChannelInput, RouteResolveModelInput, RouteSelection,
+        ChannelSpec, ChannelStatus, InterfaceKind, ProviderSelectionCandidate,
+        ProviderSelectionFailure, ProviderSelectionInput, RouteResolveChannelInput,
+        RouteResolveModelInput, RouteSelection,
     };
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{
@@ -7070,165 +6902,6 @@ base_url = "https://api.openai.com/v1"
                     "unsupported_wire".to_string()
                 )
             )
-        );
-    }
-
-    #[test]
-    fn proxy_channel_dao_adapter_projects_validation_and_legacy_projection() {
-        assert_eq!(
-            normalize_channel_base_url(" https://api.example.com/v1/ "),
-            "https://api.example.com/v1"
-        );
-        assert_eq!(
-            stable_channel_id(
-                "Claude",
-                "Provider A",
-                "legacy_primary",
-                "https://api.example.com"
-            ),
-            "legacy-claude-provider-a-legacy-primary-fcc8db014bbc"
-        );
-
-        let request = ProxyChannelWriteRequest {
-            provider_id: "provider-a".to_string(),
-            app_type: "claude".to_string(),
-            name: "Provider A primary".to_string(),
-            base_url: "https://api.example.com/v1".to_string(),
-            interface_kind: "anthropic_messages".to_string(),
-            models: vec![ProxyChannelModelWriteRequest {
-                public_model: "claude-sonnet-4-6".to_string(),
-                upstream_model: "anthropic/claude-sonnet-4-6".to_string(),
-                ..ProxyChannelModelWriteRequest::default()
-            }],
-            ..ProxyChannelWriteRequest::default()
-        };
-        let normalized =
-            normalize_proxy_channel_write_request_fields(request).expect("valid channel request");
-        assert_eq!(normalized.base_url, "https://api.example.com/v1");
-
-        let provider_projection = LegacyProviderProjectionInput {
-            env: std::collections::BTreeMap::from([(
-                "ANTHROPIC_MODEL".to_string(),
-                "claude-sonnet-4-6".to_string(),
-            )]),
-            ..LegacyProviderProjectionInput::default()
-        };
-        let interface = crate::proxy_core::api::routing::infer_legacy_channel_interface(
-            Some(&AppKind::Claude),
-            &provider_projection,
-        );
-        assert_eq!(interface, InterfaceKind::AnthropicMessages);
-
-        let projection = crate::proxy_core::api::routing::build_legacy_channel_projection(
-            LegacyChannelProjectionInput {
-                app_type: "claude".to_string(),
-                app: Some(AppKind::Claude),
-                provider_id: "provider-a".to_string(),
-                provider_name: "Provider A".to_string(),
-                provider_sort_index: Some(1),
-                provider_in_failover_queue: false,
-                base_url: "https://api.example.com/v1".to_string(),
-                interface_kind: interface,
-                priority: crate::proxy_core::api::routing::legacy_channel_priority(
-                    "provider-a",
-                    false,
-                    Some("provider-a"),
-                ),
-                source_kind: "legacy_primary".to_string(),
-                source_endpoint_url: None,
-                provider_projection,
-            },
-        );
-
-        assert_eq!(projection.priority, 100);
-        assert_eq!(projection.interface_kind, "anthropic_messages");
-        assert_eq!(projection.models.len(), 1);
-        assert!(!projection.needs_review);
-
-        let record = proxy_channel_record_from_legacy_projection(
-            projection,
-            ProxyChannelSourceKind::LegacyPrimary,
-        );
-        assert_eq!(record.provider_id, "provider-a");
-        assert_eq!(record.source_kind, ProxyChannelSourceKind::LegacyPrimary);
-        assert_eq!(record.models.len(), 1);
-        assert_eq!(record.models[0].channel_id, record.id);
-        assert_eq!(record.models[0].public_model, "claude-sonnet-4-6");
-    }
-
-    #[test]
-    fn legacy_provider_projection_input_projects_provider_settings() {
-        let mut routes = std::collections::HashMap::new();
-        routes.insert(
-            "sonnet-safe".to_string(),
-            ClaudeDesktopModelRoute {
-                model: "claude-sonnet-4".to_string(),
-                label_override: Some("Sonnet".to_string()),
-                supports_1m: None,
-            },
-        );
-        let mut provider = Provider::with_id(
-            "codex-relay".to_string(),
-            "Codex Relay".to_string(),
-            json!({
-                "config": "model_provider = \"custom\"\nmodel = \"gpt-5.4\"\n\n[model_providers.custom]\nwire_api = \"chat\"\n",
-                "env": {
-                    "ANTHROPIC_MODEL": "claude-sonnet-4",
-                    "IGNORED_NON_STRING": 123
-                },
-                "modelCatalog": {
-                    "models": [
-                        { "model": "gpt-5.4" },
-                        { "model": "gpt-5.4-mini" },
-                        { "notModel": "skip" }
-                    ]
-                }
-            }),
-            None,
-        );
-        provider.meta = Some(ProviderMeta {
-            api_format: Some("openai_responses".to_string()),
-            claude_desktop_model_routes: routes,
-            ..ProviderMeta::default()
-        });
-
-        assert!(
-            legacy_provider_config_text_from_settings(&provider.settings_config)
-                .is_some_and(|config| config.contains("wire_api = \"chat\""))
-        );
-        assert_eq!(
-            legacy_provider_env_from_settings(&provider.settings_config)
-                .get("ANTHROPIC_MODEL")
-                .map(String::as_str),
-            Some("claude-sonnet-4")
-        );
-        assert_eq!(
-            legacy_provider_codex_catalog_models_from_settings(&provider.settings_config),
-            vec!["gpt-5.4".to_string(), "gpt-5.4-mini".to_string()]
-        );
-
-        let projection = legacy_provider_projection_input(&provider);
-
-        assert_eq!(projection.api_format.as_deref(), Some("openai_responses"));
-        assert_eq!(projection.codex_wire_api.as_deref(), Some("chat"));
-        assert_eq!(projection.codex_model.as_deref(), Some("gpt-5.4"));
-        assert_eq!(
-            projection.codex_catalog_models,
-            vec!["gpt-5.4".to_string(), "gpt-5.4-mini".to_string()]
-        );
-        assert_eq!(
-            projection.env.get("ANTHROPIC_MODEL").map(String::as_str),
-            Some("claude-sonnet-4")
-        );
-        assert!(!projection.env.contains_key("IGNORED_NON_STRING"));
-        assert_eq!(projection.claude_desktop_model_routes.len(), 1);
-        assert_eq!(
-            projection.claude_desktop_model_routes[0].public_model,
-            "sonnet-safe"
-        );
-        assert_eq!(
-            projection.claude_desktop_model_routes[0].upstream_model,
-            "claude-sonnet-4"
         );
     }
 

@@ -2329,7 +2329,9 @@ fn is_allowed_channel_write_dao_core_import(relative: &str, code: &str) -> bool 
     relative == "src/database/dao/proxy_channels.rs"
         && matches!(
             code.trim(),
-            "use crate::proxy_core::api::management::{"
+            "use crate::proxy_core::api::domain::AppKind;"
+                | "use crate::proxy_core::api::management::{"
+                | "use crate::proxy_core::api::ports::{"
                 | "use crate::proxy_core::api::routing::{"
                 | "use crate::proxy_core::api::routing::ChannelRequestValidationError;"
         )
@@ -5720,7 +5722,6 @@ fn proxy_core_adapter_does_not_export_provider_kind_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
-
     assert!(
         !adapter_source.contains("pub(crate) type ProviderKind ="),
         "proxy_core_adapter should not expose ProviderKind as a type alias; callers and adapter internals should use proxy_core::api::domain::ProviderKind"
@@ -8473,7 +8474,7 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
         .split("\n#[cfg(test)]\nmod tests")
         .next()
         .unwrap_or(&adapter_source);
-    let adapter_routing_import = function_slice(
+    let adapter_routing_import = optional_function_slice(
         adapter_runtime_source,
         "use crate::proxy_core::api::routing::{",
         "};",
@@ -8505,7 +8506,8 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
     }
     for marker in ["RoutePlan"] {
         assert!(
-            adapter_routing_import.contains(marker),
+            adapter_routing_import.contains(marker)
+                || adapter_runtime_source.contains("use crate::proxy_core::api::routing::RoutePlan;"),
             "proxy_core_adapter internals should import routing DTO `{marker}` directly from proxy_core::api::routing"
         );
     }
@@ -8526,6 +8528,8 @@ fn proxy_core_adapter_does_not_export_legacy_channel_projection_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let dao_source = fs::read_to_string(manifest_dir.join("src/database/dao/proxy_channels.rs"))
+        .expect("read proxy_channels DAO source");
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -8535,7 +8539,7 @@ fn proxy_core_adapter_does_not_export_legacy_channel_projection_aliases() {
         "use crate::proxy_core::api::management::{",
         "};",
     );
-    let adapter_routing_import = function_slice(
+    let adapter_routing_import = optional_function_slice(
         adapter_runtime_source,
         "use crate::proxy_core::api::routing::{",
         "};",
@@ -8575,8 +8579,26 @@ fn proxy_core_adapter_does_not_export_legacy_channel_projection_aliases() {
         "LegacyProviderProjectionInput",
     ] {
         assert!(
-            adapter_routing_import.contains(marker),
-            "proxy_core_adapter internals should import legacy routing DTO `{marker}` directly from proxy_core::api::routing"
+            !adapter_routing_import.contains(marker),
+            "proxy_core_adapter should not retain legacy channel migration routing DTO `{marker}` after DAO owns migration projection"
+        );
+        assert!(
+            dao_source.contains(marker),
+            "proxy channel DAO should import/use legacy routing DTO `{marker}` directly from proxy_core::api::routing"
+        );
+    }
+    for marker in [
+        "legacy_channel_migration_preview_from_providers",
+        "legacy_provider_projection_input",
+        "proxy_channel_record_from_legacy_projection",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not retain legacy channel migration helper `{marker}`"
+        );
+        assert!(
+            dao_source.contains(marker),
+            "proxy channel DAO should own legacy channel migration helper `{marker}`"
         );
     }
 }
@@ -8669,17 +8691,18 @@ fn proxy_core_adapter_delegates_codex_config_toml_projection_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let production_source = production_lines(&source)
-        .map(|(_, line)| line)
-        .collect::<Vec<_>>()
-        .join("\n");
+    let dao_source = fs::read_to_string(manifest_dir.join("src/database/dao/proxy_channels.rs"))
+        .expect("read proxy_channels DAO source");
+    let dao_production = dao_source
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(&dao_source);
 
     assert!(
-        (production_source.contains("codex_config_text_from_settings")
-            || production_source.contains("legacy_provider_config_text_from_settings"))
-            && production_source.contains("core_codex_wire_api_from_config_toml")
-            && production_source.contains("core_codex_model_from_config_toml"),
-        "proxy_core_adapter should delegate Codex config text/wire_api/model projection to core"
+        dao_production.contains("legacy_provider_config_text_from_settings")
+            && dao_production.contains("core_codex_wire_api_from_config_toml")
+            && dao_production.contains("core_codex_model_from_config_toml"),
+        "proxy channel DAO should delegate Codex config text/wire_api/model projection to core"
     );
 
     let mut violations = Vec::new();
@@ -25909,13 +25932,10 @@ fn proxy_channel_health_auto_disable_policy_stays_core_owned() {
         );
     }
     assert!(
-        dao_production.contains(
-            "use crate::proxy_core::api::management::{\n    channel_health_update_from_input"
-        ) && dao_production.contains("ChannelHealthUpdateInput")
+        dao_production.contains("channel_health_update_from_input")
+            && dao_production.contains("ChannelHealthUpdateInput")
             && dao_production.contains("CHANNEL_HEALTH_UNKNOWN_STATUS")
-            && dao_production.contains(
-                "use crate::proxy_core::api::routing::{\n    channel_status_after_health_attempt"
-            )
+            && dao_production.contains("channel_status_after_health_attempt")
             && dao_production.contains("channel_status_after_health_reset"),
         "proxy channel DAO should import channel health state rules directly from core"
     );

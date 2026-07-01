@@ -37,9 +37,11 @@ pub(crate) use dao::proxy::{
     validate_cost_multiplier, validate_pricing_source, PRICING_SOURCE_REQUEST,
     PRICING_SOURCE_RESPONSE,
 };
+#[cfg(test)]
+pub(crate) use dao::proxy_channels::ProxyChannelSourceKind;
 pub(crate) use dao::proxy_channels::{
     ProxyChannelKeyRecord, ProxyChannelMaterializeResult, ProxyChannelMigrationPreview,
-    ProxyChannelModelRecord, ProxyChannelRecord, ProxyChannelSourceKind,
+    ProxyChannelModelRecord, ProxyChannelRecord,
 };
 pub use dao::FailoverQueueItem;
 
