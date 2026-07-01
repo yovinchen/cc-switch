@@ -8,7 +8,6 @@ use crate::provider::{AuthBindingSource, Provider, ProviderMeta};
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status_kind};
-use crate::proxy::host::cc_switch::database_usage_sink::RequestLog;
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy::provider::codex_provider_upstream_model;
@@ -34,7 +33,6 @@ use crate::proxy_core::api::transforms::{AnthropicToolSchemaHints, GeminiShadowS
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream};
 use http::{HeaderMap, Method};
-use rust_decimal::Decimal;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -63,17 +61,10 @@ use crate::proxy_core::api::auth::{
     ProviderAuthInfo,
 };
 
-use crate::proxy_core::api::errors::{
-    config_error_with_context as core_config_error_with_context,
-    internal_error_with_context as core_internal_error_with_context,
-};
+use crate::proxy_core::api::errors::config_error_with_context as core_config_error_with_context;
 use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};
 pub(crate) fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     core_config_error_with_context(context, error)
-}
-
-pub(crate) fn usage_error(context: &str, error: AppError) -> ProxyCoreError {
-    core_internal_error_with_context(context, error)
 }
 
 fn app_error_from_provider_selection_failure(
@@ -415,8 +406,6 @@ use crate::proxy_core::api::transport::{
     OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization, ProxyRequest,
     ProxyResult,
 };
-use crate::proxy_core::api::usage::{ModelPricing, UsageRecord};
-
 pub(crate) fn codex_provider_live_write_parts<'a>(
     settings: &'a Value,
     provider: &'a Provider,
@@ -2285,11 +2274,6 @@ fn claude_desktop_proxy_request_body_issue_message(
     }
 }
 
-pub(crate) struct UsageRequestLogProjection {
-    pub(crate) log: RequestLog,
-    pub(crate) missing_pricing_warning_message: Option<String>,
-}
-
 fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
     provider
         .meta
@@ -2887,7 +2871,7 @@ pub(crate) fn success_usage_record_from_app_type_with_request_id_fallback(
     status_code: u16,
     session_id: Option<String>,
     request_id_fallback: impl FnOnce() -> String,
-) -> UsageRecord {
+) -> crate::proxy_core::api::usage::UsageRecord {
     crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback(
         provider_id,
         provider_kind,
@@ -2903,53 +2887,6 @@ pub(crate) fn success_usage_record_from_app_type_with_request_id_fallback(
         session_id,
         request_id_fallback,
     )
-}
-
-pub(crate) fn usage_record_to_request_log(
-    record: &UsageRecord,
-    pricing_model_source: &str,
-    pricing: Option<&ModelPricing>,
-    multiplier: Decimal,
-    fallback_request_id: impl FnOnce() -> String,
-) -> UsageRequestLogProjection {
-    let projection = crate::proxy_core::api::usage::usage_request_log_projection(
-        record,
-        pricing_model_source,
-        pricing,
-        multiplier,
-        fallback_request_id,
-    );
-    let fields = projection.fields;
-    UsageRequestLogProjection {
-        log: RequestLog {
-            request_id: fields.request_id,
-            provider_id: fields.provider_id,
-            app_type: fields.app_type,
-            model: fields.model,
-            request_model: fields.request_model,
-            pricing_model: fields.pricing_model,
-            usage: fields.usage,
-            cost: fields.cost,
-            latency_ms: fields.latency_ms,
-            first_token_ms: fields.first_token_ms,
-            status_code: fields.status_code,
-            error_message: fields.error_message,
-            session_id: fields.session_id,
-            provider_type: fields.provider_type,
-            channel_id: fields.channel_id,
-            channel_name: fields.channel_name,
-            route_group: fields.route_group,
-            is_streaming: fields.is_streaming,
-            cost_multiplier: fields.cost_multiplier,
-        },
-        missing_pricing_warning_message: projection.missing_pricing_warning_message,
-    }
-}
-
-pub(crate) fn log_usage_request_projection_warnings(projection: &UsageRequestLogProjection) {
-    if let Some(message) = projection.missing_pricing_warning_message.as_ref() {
-        log::warn!("{message}");
-    }
 }
 
 use crate::proxy_core::api::ports::{
@@ -10215,7 +10152,10 @@ command = "latest-command"
                 if message == "load config: disk failed"
         ));
         assert!(matches!(
-            usage_error("record usage", AppError::Message("db failed".to_string())),
+            crate::proxy_core::api::errors::internal_error_with_context(
+                "record usage",
+                AppError::Message("db failed".to_string())
+            ),
             ProxyCoreError::Internal(message)
                 if message == "record usage: db failed"
         ));
@@ -11009,39 +10949,6 @@ command = "latest-command"
             is_streaming: true,
             metadata: json!({}),
         };
-        let pricing = ModelPricing::from_strings("3.0", "15.0", "0.3", "3.75").expect("pricing");
-        let projection = usage_record_to_request_log(
-            &record,
-            "response",
-            Some(&pricing),
-            Decimal::new(2, 0),
-            || "fallback".to_string(),
-        );
-
-        assert_eq!(projection.log.request_id, "req-usage-1");
-        assert_eq!(projection.log.provider_id, "provider-a");
-        assert_eq!(projection.log.app_type, "claude");
-        assert_eq!(projection.log.model, "upstream-sonnet");
-        assert_eq!(projection.log.request_model, "public-sonnet");
-        assert_eq!(projection.log.pricing_model, "upstream-sonnet");
-        assert_eq!(projection.log.usage.input_tokens, 1_000);
-        assert!(projection.log.cost.is_some());
-        assert_eq!(projection.log.provider_type.as_deref(), Some("claude"));
-        assert_eq!(projection.log.channel_id.as_deref(), Some("channel-a"));
-        assert_eq!(projection.log.channel_name.as_deref(), Some("Channel A"));
-        assert_eq!(projection.log.route_group.as_deref(), Some("default"));
-        assert!(projection.log.is_streaming);
-        assert_eq!(projection.log.cost_multiplier, "2");
-
-        let missing_pricing =
-            usage_record_to_request_log(&record, "response", None, Decimal::new(1, 0), || {
-                "fallback".to_string()
-            });
-        assert_eq!(
-            missing_pricing.missing_pricing_warning_message.as_deref(),
-            Some("[USG-002] 模型定价未找到，成本将记录为 0: upstream-sonnet")
-        );
-        assert!(missing_pricing.log.cost.is_none());
         assert_eq!(
             usage_selected_provider_missing_log_message(
                 "Claude",

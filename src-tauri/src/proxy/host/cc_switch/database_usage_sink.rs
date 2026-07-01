@@ -2,13 +2,13 @@
 
 use crate::database::{Database, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
 use crate::error::AppError;
-use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::errors::{
+    internal_error_with_context, ProxyCoreError, ProxyCoreResult,
+};
 use crate::proxy_core::api::ports::UsageSink;
 use crate::proxy_core::api::usage::{
-    resolve_usage_record_pricing_models, CostBreakdown, ModelPricing, TokenUsage, UsageRecord,
-};
-use crate::proxy_core_adapter::{
-    log_usage_request_projection_warnings, usage_error, usage_record_to_request_log,
+    resolve_usage_record_pricing_models, usage_request_log_projection, CostBreakdown, ModelPricing,
+    TokenUsage, UsageRecord,
 };
 use crate::services::usage_stats::find_model_pricing_row;
 use futures::future::BoxFuture;
@@ -46,6 +46,62 @@ pub struct RequestLog {
     pub is_streaming: bool,
     /// 成本倍数
     pub cost_multiplier: String,
+}
+
+pub(crate) struct UsageRequestLogProjection {
+    pub(crate) log: RequestLog,
+    pub(crate) missing_pricing_warning_message: Option<String>,
+}
+
+fn usage_sink_error(context: &str, error: AppError) -> ProxyCoreError {
+    internal_error_with_context(context, error)
+}
+
+pub(crate) fn usage_record_to_request_log(
+    record: &UsageRecord,
+    pricing_model_source: &str,
+    pricing: Option<&ModelPricing>,
+    multiplier: Decimal,
+    fallback_request_id: impl FnOnce() -> String,
+) -> UsageRequestLogProjection {
+    let projection = usage_request_log_projection(
+        record,
+        pricing_model_source,
+        pricing,
+        multiplier,
+        fallback_request_id,
+    );
+    let fields = projection.fields;
+    UsageRequestLogProjection {
+        log: RequestLog {
+            request_id: fields.request_id,
+            provider_id: fields.provider_id,
+            app_type: fields.app_type,
+            model: fields.model,
+            request_model: fields.request_model,
+            pricing_model: fields.pricing_model,
+            usage: fields.usage,
+            cost: fields.cost,
+            latency_ms: fields.latency_ms,
+            first_token_ms: fields.first_token_ms,
+            status_code: fields.status_code,
+            error_message: fields.error_message,
+            session_id: fields.session_id,
+            provider_type: fields.provider_type,
+            channel_id: fields.channel_id,
+            channel_name: fields.channel_name,
+            route_group: fields.route_group,
+            is_streaming: fields.is_streaming,
+            cost_multiplier: fields.cost_multiplier,
+        },
+        missing_pricing_warning_message: projection.missing_pricing_warning_message,
+    }
+}
+
+fn log_usage_request_projection_warnings(projection: &UsageRequestLogProjection) {
+    if let Some(message) = projection.missing_pricing_warning_message.as_ref() {
+        log::warn!("{message}");
+    }
 }
 
 struct UsagePricingConfigLookup {
@@ -267,7 +323,7 @@ pub(crate) async fn record_usage_in_db_source(
     let pricing_model = usage_record_pricing_model(&record, &pricing_model_source);
     let pricing = logger
         .get_model_pricing(&pricing_model)
-        .map_err(|error| usage_error("load model pricing", error))?;
+        .map_err(|error| usage_sink_error("load model pricing", error))?;
     let projection = usage_record_to_request_log(
         &record,
         &pricing_model_source,
@@ -280,7 +336,7 @@ pub(crate) async fn record_usage_in_db_source(
 
     logger
         .log_request(&projection.log)
-        .map_err(|error| usage_error("record usage", error))
+        .map_err(|error| usage_sink_error("record usage", error))
 }
 
 #[derive(Clone)]
@@ -417,5 +473,72 @@ mod tests {
             usage_record_pricing_model(&record, PRICING_SOURCE_REQUEST),
             "upstream-sonnet"
         );
+    }
+
+    #[test]
+    fn usage_record_projection_builds_request_log_and_missing_pricing_signal() {
+        let record = UsageRecord {
+            request_id: Some("req-usage-1".to_string()),
+            message_id: Some("msg-usage-1".to_string()),
+            app: AppKind::Claude,
+            provider_id: "provider-a".to_string(),
+            provider_kind: Some(ProviderKind::Claude),
+            channel_id: Some("channel-a".to_string()),
+            channel_name: Some("Channel A".to_string()),
+            route_group: Some("default".to_string()),
+            request_model: "public-sonnet".to_string(),
+            outbound_model: "upstream-sonnet".to_string(),
+            response_model: Some("upstream-sonnet".to_string()),
+            pricing_model: None,
+            tokens: crate::proxy_core::api::usage::UsageTokens {
+                input_tokens: 1_000,
+                output_tokens: 500,
+                cache_read_tokens: 0,
+                cache_creation_tokens: 0,
+            },
+            latency_ms: 42,
+            first_token_ms: Some(7),
+            status_code: 200,
+            error_message: None,
+            session_id: Some("session-a".to_string()),
+            is_streaming: true,
+            metadata: serde_json::json!({}),
+        };
+        let pricing = ModelPricing::from_strings("3.0", "15.0", "0.3", "3.75").expect("pricing");
+        let projection = usage_record_to_request_log(
+            &record,
+            PRICING_SOURCE_RESPONSE,
+            Some(&pricing),
+            Decimal::new(2, 0),
+            || "fallback".to_string(),
+        );
+
+        assert_eq!(projection.log.request_id, "req-usage-1");
+        assert_eq!(projection.log.provider_id, "provider-a");
+        assert_eq!(projection.log.app_type, "claude");
+        assert_eq!(projection.log.model, "upstream-sonnet");
+        assert_eq!(projection.log.request_model, "public-sonnet");
+        assert_eq!(projection.log.pricing_model, "upstream-sonnet");
+        assert_eq!(projection.log.usage.input_tokens, 1_000);
+        assert!(projection.log.cost.is_some());
+        assert_eq!(projection.log.provider_type.as_deref(), Some("claude"));
+        assert_eq!(projection.log.channel_id.as_deref(), Some("channel-a"));
+        assert_eq!(projection.log.channel_name.as_deref(), Some("Channel A"));
+        assert_eq!(projection.log.route_group.as_deref(), Some("default"));
+        assert!(projection.log.is_streaming);
+        assert_eq!(projection.log.cost_multiplier, "2");
+
+        let missing_pricing = usage_record_to_request_log(
+            &record,
+            PRICING_SOURCE_RESPONSE,
+            None,
+            Decimal::new(1, 0),
+            || "fallback".to_string(),
+        );
+        assert_eq!(
+            missing_pricing.missing_pricing_warning_message.as_deref(),
+            Some("[USG-002] 模型定价未找到，成本将记录为 0: upstream-sonnet")
+        );
+        assert!(missing_pricing.log.cost.is_none());
     }
 }

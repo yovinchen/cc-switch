@@ -22449,6 +22449,8 @@ fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
         usage_sink_source.contains("pub(crate) struct CcSwitchUsageSink")
             && usage_sink_source.contains("impl UsageSink for CcSwitchUsageSink")
             && usage_sink_source.contains("record_usage_in_db_source(")
+            && usage_sink_source.contains("pub(crate) fn usage_record_to_request_log(")
+            && usage_sink_source.contains("fn log_usage_request_projection_warnings(")
             && usage_sink_source.contains("fn usage_pricing_config_lookup_from_record(")
             && usage_sink_source.contains("fn usage_record_pricing_model(")
             && usage_sink_source.contains("UsageLogger::new("),
@@ -22460,15 +22462,23 @@ fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
         ) && !adapter_source.contains("pub(crate) struct CcSwitchUsageSink")
             && !adapter_source.contains("impl UsageSink for CcSwitchUsageSink")
             && !adapter_source.contains("pub(crate) async fn record_usage_in_db_source(")
+            && !adapter_source.contains("pub(crate) fn usage_record_to_request_log(")
+            && !adapter_source.contains("pub(crate) fn log_usage_request_projection_warnings(")
+            && !adapter_source.contains("pub(crate) struct UsageRequestLogProjection")
+            && !adapter_source.contains("pub(crate) fn usage_error(")
             && !adapter_source.contains("fn usage_pricing_config_lookup_from_record(")
             && !adapter_source.contains("fn usage_record_pricing_model("),
-        "proxy_core_adapter should not re-export or own the CC Switch usage sink source or pricing lookup facade"
+        "proxy_core_adapter should not re-export or own the CC Switch usage sink source, request-log projection, or pricing lookup facade"
     );
     assert!(
-        usage_sink_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+        usage_sink_source.contains("use crate::proxy_core::api::errors::{")
+            && usage_sink_source.contains("internal_error_with_context")
+            && usage_sink_source.contains("ProxyCoreError")
+            && usage_sink_source.contains("ProxyCoreResult")
             && usage_sink_source.contains("use crate::proxy_core::api::ports::UsageSink;")
             && usage_sink_source.contains("use crate::proxy_core::api::usage::{")
             && usage_sink_source.contains("resolve_usage_record_pricing_models")
+            && usage_sink_source.contains("usage_request_log_projection")
             && usage_sink_source.contains("CostBreakdown")
             && usage_sink_source.contains("ModelPricing")
             && usage_sink_source.contains("TokenUsage")
