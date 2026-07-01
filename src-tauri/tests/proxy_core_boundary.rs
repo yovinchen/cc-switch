@@ -1203,9 +1203,19 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_DTO_TRAIT_FACADE_MARKERS: &[&str] = &[
     "trait ToProxyCoreChannelRecord",
 ];
 const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
+    "pub(crate) struct ForwardRuntimeRequest",
+    "pub(crate) struct ForwarderRuntimeHostResources",
     "struct JsonProxyRequestInput",
     "struct ParsedJsonProxyBody",
     "struct CodexResponsesProxyRequest",
+    "pub(crate) fn response_runtime_policy_from_app_proxy_config(",
+    "pub(crate) fn forwarder_runtime_options_from_app_proxy_config(",
+    "pub(crate) fn forwarder_runtime_config_from_sources(",
+    "pub(crate) async fn forwarder_runtime_config_from_db_sources(",
+    "pub(crate) fn forward_runtime_request_from_proxy_request(",
+    "pub(crate) fn forwarder_runtime_host_resources_from_runtime(",
+    "pub(crate) async fn forward_with_preplanned_host_runtime(",
+    "pub(crate) async fn forward_proxy_request_with_host_runtime(",
     "fn parse_json_proxy_request_body(",
     "fn parse_json_proxy_request_body_or_null(",
     "fn json_proxy_request_from_input(",
@@ -17863,7 +17873,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let optional_runtime_function = pipeline_source.as_str();
     let host_forward_function = function_slice(
         &source,
-        "pub(crate) async fn forward_proxy_request_with_host_runtime",
+        "async fn forward_proxy_request_with_host_runtime",
         "pub(crate) fn forward_failure_kind_from_proxy_error",
     );
     let adapter_core_ports_import = optional_function_slice(
@@ -23282,8 +23292,8 @@ fn production_forwarder_runtime_config_reaches_forwarder_as_single_input() {
 
     let bridge_slice = function_slice(
         &adapter_source,
-        "pub(crate) async fn forward_with_preplanned_host_runtime",
-        "pub(crate) async fn forward_proxy_request_with_host_runtime",
+        "async fn forward_with_preplanned_host_runtime",
+        "async fn forward_proxy_request_with_host_runtime",
     );
     let constructor_slice = function_slice(
         &forwarder_source,

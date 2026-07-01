@@ -571,9 +571,7 @@ pub(crate) fn apply_codex_takeover_fields_for_provider(
 
 use crate::proxy_core::api::transport::resolve_response_runtime_policy;
 
-pub(crate) fn response_runtime_policy_from_app_proxy_config(
-    config: &AppProxyConfig,
-) -> ResponseRuntimePolicy {
+fn response_runtime_policy_from_app_proxy_config(config: &AppProxyConfig) -> ResponseRuntimePolicy {
     resolve_response_runtime_policy(
         config.auto_failover_enabled,
         config.max_retries,
@@ -583,7 +581,7 @@ pub(crate) fn response_runtime_policy_from_app_proxy_config(
     )
 }
 
-pub(crate) fn forwarder_runtime_options_from_app_proxy_config(
+fn forwarder_runtime_options_from_app_proxy_config(
     config: &AppProxyConfig,
 ) -> ForwarderRuntimeOptions {
     let policy = response_runtime_policy_from_app_proxy_config(config);
@@ -595,7 +593,7 @@ pub(crate) fn forwarder_runtime_options_from_app_proxy_config(
     }
 }
 
-pub(crate) fn forwarder_runtime_config_from_sources(
+fn forwarder_runtime_config_from_sources(
     app_config: &AppProxyConfig,
     rectifier: RectifierConfig,
     optimizer: OptimizerConfig,
@@ -609,7 +607,7 @@ pub(crate) fn forwarder_runtime_config_from_sources(
     }
 }
 
-pub(crate) async fn forwarder_runtime_config_from_db_sources(
+async fn forwarder_runtime_config_from_db_sources(
     db: &Database,
     app_type: &AppType,
 ) -> ProxyCoreResult<ForwarderRuntimeConfig> {
@@ -1109,17 +1107,17 @@ pub(crate) fn app_type_from_proxy_core_app(app: &AppKind) -> ProxyCoreResult<App
         .map_err(unsupported_app_kind_config_error)
 }
 
-pub(crate) struct ForwardRuntimeRequest {
-    pub(crate) app_type: AppType,
-    pub(crate) method: Method,
-    pub(crate) endpoint: String,
-    pub(crate) headers: HeaderMap,
-    pub(crate) extensions: http::Extensions,
-    pub(crate) body: Value,
-    pub(crate) session_result: SessionIdResult,
+struct ForwardRuntimeRequest {
+    app_type: AppType,
+    method: Method,
+    endpoint: String,
+    headers: HeaderMap,
+    extensions: http::Extensions,
+    body: Value,
+    session_result: SessionIdResult,
 }
 
-pub(crate) fn forward_runtime_request_from_proxy_request(
+fn forward_runtime_request_from_proxy_request(
     request: ProxyRequest,
 ) -> ProxyCoreResult<ForwardRuntimeRequest> {
     let ProxyRequest {
@@ -1380,18 +1378,18 @@ use crate::proxy::host::cc_switch::forward_pipeline::forward_result_to_proxy_res
 use crate::proxy::host::cc_switch::forwarder_response_source::CcSwitchForwarderResponseSource;
 
 #[derive(Clone)]
-pub(crate) struct ForwarderRuntimeHostResources {
-    pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
-    pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
-    pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
-    pub(crate) auth_source: ForwarderAuthSourceRef,
-    pub(crate) request_source: ForwarderRequestSourceRef,
-    pub(crate) transport_source: ForwarderTransportSourceRef,
-    pub(crate) response_source: ForwarderResponseSourceRef,
-    pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
+struct ForwarderRuntimeHostResources {
+    attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
+    protocol_state_source: ForwarderProtocolStateSourceRef,
+    runtime_state_source: ForwarderRuntimeStateSourceRef,
+    auth_source: ForwarderAuthSourceRef,
+    request_source: ForwarderRequestSourceRef,
+    transport_source: ForwarderTransportSourceRef,
+    response_source: ForwarderResponseSourceRef,
+    failover_switch_scheduler: FailoverSwitchSchedulerRef,
 }
 
-pub(crate) fn forwarder_runtime_host_resources_from_runtime(
+fn forwarder_runtime_host_resources_from_runtime(
     runtime: &CcSwitchProxyRuntime,
 ) -> ForwarderRuntimeHostResources {
     ForwarderRuntimeHostResources {
@@ -1422,7 +1420,7 @@ pub(crate) async fn forward_proxy_request_with_cc_switch_runtime(
     .await
 }
 
-pub(crate) async fn forward_with_preplanned_host_runtime(
+async fn forward_with_preplanned_host_runtime(
     resources: ForwarderRuntimeHostResources,
     request: ForwardRuntimeRequest,
     plan: RoutePlan,
@@ -1473,7 +1471,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
     Ok(forward_result_to_proxy_result(result, plan))
 }
 
-pub(crate) async fn forward_proxy_request_with_host_runtime(
+async fn forward_proxy_request_with_host_runtime(
     db: &Database,
     resources: ForwarderRuntimeHostResources,
     channel_key_runtime_source: &(dyn ChannelKeyRuntimeSource + Send + Sync),
