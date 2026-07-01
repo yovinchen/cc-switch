@@ -6239,8 +6239,8 @@ fn proxy_core_adapter_does_not_reexport_channel_not_found_error_helper() {
         "proxy_core_adapter should not re-export channel_not_found_error through grouped management imports"
     );
     assert!(
-        adapter_source.contains("use crate::proxy_core::api::management::channel_not_found_error;"),
-        "proxy_core_adapter internals should import channel_not_found_error privately from proxy_core management"
+        !adapter_source.contains("use crate::proxy_core::api::management::channel_not_found_error;"),
+        "proxy_core_adapter should not retain channel_not_found_error after channel health lookup moved to the host store"
     );
 }
 
@@ -17826,7 +17826,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let host_forward_function = function_slice(
         &source,
         "pub(crate) async fn forward_proxy_request_with_host_runtime",
-        "#[derive(Debug)]\npub(crate) struct ChannelHealthResetPlan",
+        "pub(crate) fn forward_failure_kind_from_proxy_error",
     );
     let adapter_core_ports_import = optional_function_slice(
         &source,
@@ -22175,6 +22175,20 @@ fn proxy_core_adapter_delegates_channel_health_store_to_host_module() {
             && !adapter_source.contains("impl ChannelHealthStore for CcSwitchChannelHealthStore"),
         "proxy_core_adapter should not re-export or own the CC Switch channel health store"
     );
+    for adapter_marker in [
+        "pub(crate) struct ChannelHealthResetPlan",
+        "pub(crate) fn channel_health_reset_plan_from_lookup",
+        "pub(crate) struct ChannelHealthAttemptDbUpdate",
+        "pub(crate) fn channel_health_attempt_db_update",
+        "pub(crate) fn record_channel_attempt_in_db_source",
+        "pub(crate) async fn reset_channel_health_with_router_source",
+        "pub(crate) async fn channel_breaker_stats_with_router_source",
+    ] {
+        assert!(
+            !adapter_source.contains(adapter_marker),
+            "proxy_core_adapter should not retain ChannelHealthStore helper `{adapter_marker}`"
+        );
+    }
 }
 
 #[test]
@@ -24982,7 +24996,10 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
         "use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};",
         "use crate::proxy_core::api::ports::{",
     ];
-    let adapter_import = function_slice(&source, "use crate::proxy_core_adapter::{", "};");
+    let adapter_imports: Vec<&str> = source
+        .lines()
+        .filter(|line| line.contains("proxy_core_adapter"))
+        .collect();
 
     assert!(
         source.contains("impl ProviderHealthStore for CcSwitchProviderRouterHealthStore")
@@ -25011,10 +25028,17 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
         "reset_channel_health_from_router_db",
     ] {
         assert!(
-            !adapter_import.contains(adapter_type),
+            !adapter_imports
+                .iter()
+                .any(|line| line.contains(adapter_type)),
             "ProviderRouter health store must not import {adapter_type} through proxy_core_adapter"
         );
     }
+    assert_eq!(
+        adapter_imports,
+        vec!["use crate::proxy_core_adapter::app_error;"],
+        "ProviderRouter health store should only retain the generic AppError-to-core adapter"
+    );
     assert!(
         source.contains("fn record_channel_health<'a>(")
             && source.contains("result: ChannelAttemptResult")
@@ -25151,36 +25175,30 @@ fn production_channel_health_store_reads_channel_breaker_stats_through_core_port
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let adapter_slice = function_slice(
-        &adapter_source,
-        "pub(crate) async fn channel_breaker_stats_with_router_source",
-        "pub(crate) fn forward_failure_kind_from_proxy_error",
-    );
-
-    assert!(
-        adapter_slice.contains(".get_proxy_channel_app_type(channel_id)")
-            && adapter_slice.contains(".get_channel_circuit_breaker_stats(channel_id, &app_type)")
-            && adapter_slice.contains("channel_breaker_stats_from_parts("),
-        "ChannelHealthStore adapter helper must expose channel breaker stats through a core stats fact"
-    );
-
     let store_path = manifest_dir.join("src/proxy/host/cc_switch/channel_health_store.rs");
     let store_source = fs::read_to_string(&store_path).expect("read channel_health_store.rs");
-    let store_adapter_import =
-        function_slice(&store_source, "use crate::proxy_core_adapter::{", "};");
     assert!(
         store_source.contains("fn channel_breaker_stats<'a>(")
-            && store_source
-                .contains("channel_breaker_stats_with_router_source(&self.db, &self.router, channel_id).await"),
-        "ChannelHealthStore host source must route breaker stats through the adapter helper"
+            && store_source.contains(".get_proxy_channel_app_type(channel_id)")
+            && store_source.contains(".get_channel_circuit_breaker_stats(channel_id, &app_type)")
+            && store_source.contains("channel_breaker_stats_from_parts("),
+        "ChannelHealthStore host source must own breaker stats lookup and project it through a core stats fact"
     );
     assert!(
         store_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && store_source.contains(
+                "use crate::proxy_core::api::management::channel_not_found_error;"
+            )
             && store_source.contains("use crate::proxy_core::api::ports::{")
             && store_source.contains(
-                "ChannelAttemptResult, ChannelBreakerStats, ChannelHealthReset, ChannelHealthStore,"
+                "channel_breaker_stats_from_parts, channel_health_reset_from_parts, ChannelAttemptResult,"
             ),
         "ChannelHealthStore host source must import channel health facts and ports directly from proxy_core"
+    );
+    assert!(
+        store_source.contains("use crate::proxy_core_adapter::app_error;")
+            && !store_source.contains("use crate::proxy_core_adapter::{"),
+        "ChannelHealthStore host source should only retain the generic AppError-to-core adapter"
     );
     for adapter_type in [
         "ChannelAttemptResult",
@@ -25190,8 +25208,24 @@ fn production_channel_health_store_reads_channel_breaker_stats_through_core_port
         "ProxyCoreResult",
     ] {
         assert!(
-            !store_adapter_import.contains(adapter_type),
+            !store_source
+                .lines()
+                .any(|line| line.contains("proxy_core_adapter") && line.contains(adapter_type)),
             "ChannelHealthStore host source must not import {adapter_type} through proxy_core_adapter"
+        );
+    }
+    for adapter_marker in [
+        "ChannelHealthResetPlan",
+        "ChannelHealthAttemptDbUpdate",
+        "channel_health_reset_plan_from_lookup",
+        "channel_health_attempt_db_update",
+        "record_channel_attempt_in_db_source",
+        "reset_channel_health_with_router_source",
+        "channel_breaker_stats_with_router_source",
+    ] {
+        assert!(
+            !adapter_source.contains(adapter_marker),
+            "proxy_core_adapter should not retain ChannelHealthStore helper `{adapter_marker}`"
         );
     }
 

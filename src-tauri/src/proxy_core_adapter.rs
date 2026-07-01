@@ -409,8 +409,6 @@ pub(crate) async fn proxy_runtime_config_from_db_source(
     Ok(proxy_runtime_config_from_config(config, false))
 }
 
-use crate::proxy_core::api::ports::ChannelAttemptResult;
-
 use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
 
@@ -494,14 +492,10 @@ use crate::proxy_core::api::auth::{
     extract_claude_auth_key_from_settings, is_gemini_oauth_key_shape,
     parse_gemini_oauth_credentials,
 };
-use crate::proxy_core::api::management::channel_not_found_error;
 use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogSource,
 };
-use crate::proxy_core::api::ports::{
-    channel_breaker_stats_from_parts, channel_health_reset_from_parts, AppSummaryConfig,
-    AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelKeyRuntimeSource,
-};
+use crate::proxy_core::api::ports::{AppSummaryConfig, AuthProvider, ChannelKeyRuntimeSource};
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 use crate::proxy_core::api::transforms::{
@@ -2286,99 +2280,6 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
         attempts,
     )
     .await
-}
-
-#[derive(Debug)]
-pub(crate) struct ChannelHealthResetPlan {
-    pub(crate) channel_id: String,
-    pub(crate) app_type: String,
-}
-
-pub(crate) fn channel_health_reset_plan_from_lookup(
-    channel_id: &str,
-    app_type: Option<String>,
-) -> ProxyCoreResult<ChannelHealthResetPlan> {
-    let app_type = app_type.ok_or_else(|| channel_not_found_error(channel_id))?;
-    Ok(ChannelHealthResetPlan {
-        channel_id: channel_id.to_string(),
-        app_type,
-    })
-}
-
-pub(crate) struct ChannelHealthAttemptDbUpdate {
-    pub(crate) channel_id: String,
-    pub(crate) success: bool,
-    pub(crate) error_code: Option<String>,
-    pub(crate) failure_threshold: u32,
-    pub(crate) response_time_ms: Option<i64>,
-}
-
-pub(crate) fn channel_health_attempt_db_update(
-    result: ChannelAttemptResult,
-) -> ChannelHealthAttemptDbUpdate {
-    ChannelHealthAttemptDbUpdate {
-        channel_id: result.channel_id,
-        success: result.success,
-        error_code: result.error_code,
-        failure_threshold: result
-            .failure_threshold
-            .unwrap_or(crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD),
-        response_time_ms: result.latency_ms.map(|latency| latency as i64),
-    }
-}
-
-pub(crate) fn record_channel_attempt_in_db_source(
-    db: &Database,
-    result: ChannelAttemptResult,
-) -> ProxyCoreResult<()> {
-    let update = channel_health_attempt_db_update(result);
-    db.update_proxy_channel_health_with_threshold(
-        &update.channel_id,
-        update.success,
-        update.error_code,
-        update.failure_threshold,
-        update.response_time_ms,
-    )
-    .map_err(|error| app_error("record channel attempt", error))
-}
-
-pub(crate) async fn reset_channel_health_with_router_source(
-    db: &Database,
-    router: &ProviderRouter,
-    channel_id: &str,
-) -> ProxyCoreResult<ChannelHealthReset> {
-    let app_type = db
-        .get_proxy_channel_app_type(channel_id)
-        .map_err(|error| app_error("lookup channel app", error))?;
-    let reset_plan = channel_health_reset_plan_from_lookup(channel_id, app_type)?;
-    router
-        .reset_channel_breaker(&reset_plan.channel_id, &reset_plan.app_type)
-        .await
-        .map_err(|error| app_error("reset channel health", error))?;
-    Ok(channel_health_reset_from_parts(
-        reset_plan.channel_id,
-        reset_plan.app_type.as_str(),
-    ))
-}
-
-pub(crate) async fn channel_breaker_stats_with_router_source(
-    db: &Database,
-    router: &ProviderRouter,
-    channel_id: &str,
-) -> ProxyCoreResult<ChannelBreakerStats> {
-    let app_type = db
-        .get_proxy_channel_app_type(channel_id)
-        .map_err(|error| app_error("lookup channel app", error))?
-        .ok_or_else(|| channel_not_found_error(channel_id))?;
-    let stats = router
-        .get_channel_circuit_breaker_stats(channel_id, &app_type)
-        .await;
-
-    Ok(channel_breaker_stats_from_parts(
-        channel_id,
-        app_type.as_str(),
-        stats,
-    ))
 }
 
 pub(crate) fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> ForwardFailureKind {
@@ -12288,52 +12189,6 @@ command = "latest-command"
             &AppKind::from(&AppType::Claude),
             None
         ));
-    }
-
-    #[test]
-    fn channel_health_adapter_projects_attempt_db_update() {
-        let reset_plan =
-            channel_health_reset_plan_from_lookup("channel-a", Some("claude".to_string()))
-                .expect("reset plan");
-        assert_eq!(reset_plan.channel_id, "channel-a");
-        assert_eq!(reset_plan.app_type, "claude");
-        let reset =
-            channel_health_reset_from_parts(reset_plan.channel_id, reset_plan.app_type.as_str());
-        assert_eq!(reset.channel_id, "channel-a");
-        assert_eq!(reset.app, AppKind::Claude);
-        let missing = channel_health_reset_plan_from_lookup("missing-channel", None)
-            .expect_err("missing channel should fail");
-        assert!(missing.to_string().contains("missing-channel"));
-
-        let update = channel_health_attempt_db_update(ChannelAttemptResult {
-            channel_id: "channel-a".to_string(),
-            success: false,
-            status_code: Some(429),
-            latency_ms: Some(123),
-            failure_threshold: None,
-            error_code: Some("rate_limited".to_string()),
-        });
-
-        assert_eq!(update.channel_id, "channel-a");
-        assert!(!update.success);
-        assert_eq!(update.error_code.as_deref(), Some("rate_limited"));
-        assert_eq!(
-            update.failure_threshold,
-            crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD
-        );
-        assert_eq!(update.response_time_ms, Some(123));
-
-        let override_update = channel_health_attempt_db_update(ChannelAttemptResult {
-            channel_id: "channel-a".to_string(),
-            success: false,
-            status_code: None,
-            latency_ms: None,
-            failure_threshold: Some(7),
-            error_code: Some("timeout".to_string()),
-        });
-
-        assert_eq!(override_update.failure_threshold, 7);
-        assert_eq!(override_update.response_time_ms, None);
     }
 
     #[test]
