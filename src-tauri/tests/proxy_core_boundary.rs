@@ -1218,6 +1218,13 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn forwarder_runtime_host_resources_from_runtime(",
     "pub(crate) async fn forward_with_preplanned_host_runtime(",
     "pub(crate) async fn forward_proxy_request_with_host_runtime(",
+    "pub(crate) fn app_type_option_from_proxy_core_app(",
+    "pub(crate) fn proxy_providers_to_core_specs(",
+    "pub(crate) fn provider_specs_from_source(",
+    "pub(crate) fn provider_spec_from_source(",
+    "pub(crate) fn route_candidate_provider_ids_from_selection_result(",
+    "pub(crate) fn claude_desktop_provider_from_selection_result(",
+    "pub(crate) fn codex_client_model_catalog_raw_from_active_config(",
     "fn parse_json_proxy_request_body(",
     "fn parse_json_proxy_request_body_or_null(",
     "fn json_proxy_request_from_input(",
@@ -10617,7 +10624,7 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
         ),
         function_slice(
             &source,
-            "pub(crate) fn claude_desktop_provider_from_selection_result",
+            "fn claude_desktop_provider_from_selection_result",
             "pub(crate) async fn claude_desktop_model_routes_from_router_source",
         ),
     ];
@@ -17351,7 +17358,7 @@ fn proxy_core_adapter_delegates_client_model_catalog_source_selection_to_core() 
     let function = function_slice(
         &source,
         "pub(crate) fn client_model_catalog_from_app_source",
-        "pub(crate) fn codex_client_model_catalog_raw_from_active_config",
+        "fn codex_client_model_catalog_raw_from_active_config",
     );
 
     assert!(
@@ -17395,7 +17402,7 @@ fn proxy_core_adapter_delegates_route_candidate_empty_policy_to_core() {
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
-        "pub(crate) fn route_candidate_provider_ids_from_selection_result",
+        "fn route_candidate_provider_ids_from_selection_result",
         "pub(crate) async fn route_candidate_provider_ids_from_router_source",
     );
 

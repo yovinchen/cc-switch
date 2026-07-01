@@ -1097,7 +1097,7 @@ impl From<&AppType> for AppKind {
     }
 }
 
-pub(crate) fn app_type_option_from_proxy_core_app(app: &AppKind) -> Option<AppType> {
+fn app_type_option_from_proxy_core_app(app: &AppKind) -> Option<AppType> {
     app.as_str().parse::<AppType>().ok()
 }
 
@@ -1156,7 +1156,7 @@ pub(crate) fn proxy_provider_to_core_spec(provider: &Provider, app_type: &AppTyp
     }
 }
 
-pub(crate) fn proxy_providers_to_core_specs(
+fn proxy_providers_to_core_specs(
     providers: impl IntoIterator<Item = Provider>,
     app_type: &AppType,
 ) -> Vec<ProviderSpec> {
@@ -1166,7 +1166,7 @@ pub(crate) fn proxy_providers_to_core_specs(
         .collect()
 }
 
-pub(crate) fn provider_specs_from_source(
+fn provider_specs_from_source(
     app: &AppKind,
     providers: impl IntoIterator<Item = Provider>,
 ) -> ProxyCoreResult<Vec<ProviderSpec>> {
@@ -1184,7 +1184,7 @@ pub(crate) fn provider_specs_from_db_source(
     provider_specs_from_source(app, providers.into_values())
 }
 
-pub(crate) fn provider_spec_from_source(
+fn provider_spec_from_source(
     app: &AppKind,
     provider: Option<Provider>,
 ) -> ProxyCoreResult<Option<ProviderSpec>> {
@@ -1219,7 +1219,7 @@ pub(crate) async fn active_route_target_from_runtime_source(
     Ok(current_providers.get(app.as_str()).cloned())
 }
 
-pub(crate) fn route_candidate_provider_ids_from_selection_result(
+fn route_candidate_provider_ids_from_selection_result(
     result: Result<Vec<String>, AppError>,
 ) -> ProxyCoreResult<Vec<String>> {
     let selection_result = match result {
@@ -1273,7 +1273,7 @@ pub(crate) fn provider_model_catalog_from_db_source(
     ))
 }
 
-pub(crate) fn claude_desktop_provider_from_selection_result(
+fn claude_desktop_provider_from_selection_result(
     result: Result<Vec<String>, AppError>,
     load_provider: impl FnOnce(&str) -> Result<Option<Provider>, AppError>,
 ) -> ProxyCoreResult<Provider> {
@@ -1323,7 +1323,7 @@ pub(crate) fn client_model_catalog_from_app_source(app: &AppKind) -> ProxyCoreRe
     )
 }
 
-pub(crate) fn codex_client_model_catalog_raw_from_active_config() -> Value {
+fn codex_client_model_catalog_raw_from_active_config() -> Value {
     let generated_path = crate::codex_config::get_codex_model_catalog_path();
     let active_catalog_path = match crate::codex_config::read_codex_config_text() {
         Ok(config_text) => {
