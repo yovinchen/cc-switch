@@ -1566,7 +1566,7 @@ pub(crate) fn provider_claude_normalize_anthropic_messages(
     )
 }
 
-pub(crate) fn apply_provider_model_mapping_from_provider(
+fn apply_provider_model_mapping_from_provider(
     body: Value,
     provider: &Provider,
 ) -> ModelMappingProjection {
@@ -1859,7 +1859,7 @@ pub(crate) fn codex_live_write_projection(
     })
 }
 
-pub(crate) fn provider_claude_models_are_claude_safe(provider: &Provider) -> bool {
+fn provider_claude_models_are_claude_safe(provider: &Provider) -> bool {
     crate::proxy_core::api::auth::claude_desktop_provider_models_are_profile_safe(
         &provider.settings_config,
     )
@@ -1942,7 +1942,7 @@ pub(crate) fn provider_claude_desktop_direct_provider_validation(
     Ok(())
 }
 
-pub(crate) fn provider_claude_desktop_direct_inference_model_specs(
+fn provider_claude_desktop_direct_inference_model_specs(
     provider: &Provider,
 ) -> Result<Vec<ClaudeDesktopGatewayProfileModelSpec>, ClaudeDesktopDirectModelRouteIssue> {
     let route_inputs = provider
@@ -2030,7 +2030,7 @@ pub(crate) fn provider_claude_desktop_proxy_model_routes(
     Ok(result)
 }
 
-pub(crate) fn provider_claude_desktop_proxy_provider_validation(
+fn provider_claude_desktop_proxy_provider_validation(
     provider: &Provider,
 ) -> Result<(), ClaudeDesktopProviderProxyValidationIssue> {
     if let Some(issue) = provider_claude_desktop_proxy_config_validation_issue(provider) {

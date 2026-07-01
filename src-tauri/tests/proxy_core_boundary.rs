@@ -1229,6 +1229,10 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn provider_settings_with_live_token_sync(",
     "pub(crate) fn codex_preserved_auth_live_config_text_if_proxy_placeholder(",
     "pub(crate) fn codex_preserved_auth_live_config_text_for_policy(",
+    "pub(crate) fn apply_provider_model_mapping_from_provider(",
+    "pub(crate) fn provider_claude_models_are_claude_safe(",
+    "pub(crate) fn provider_claude_desktop_direct_inference_model_specs(",
+    "pub(crate) fn provider_claude_desktop_proxy_provider_validation(",
     "fn parse_json_proxy_request_body(",
     "fn parse_json_proxy_request_body_or_null(",
     "fn json_proxy_request_from_input(",
@@ -10603,7 +10607,7 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
     let policy_slices = [
         function_slice(
             &source,
-            "pub(crate) fn provider_claude_models_are_claude_safe",
+            "fn provider_claude_models_are_claude_safe",
             "pub(crate) fn provider_claude_desktop_suggested_proxy_routes",
         ),
         function_slice(
@@ -10917,7 +10921,7 @@ fn proxy_core_adapter_owns_claude_desktop_direct_model_specs_provider_projection
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
     let direct_specs_slice = function_slice(
         &source,
-        "pub(crate) fn provider_claude_desktop_direct_inference_model_specs(",
+        "fn provider_claude_desktop_direct_inference_model_specs(",
         "#[derive(Debug, Clone, PartialEq, Eq)]",
     );
 
@@ -11014,7 +11018,7 @@ fn proxy_core_adapter_owns_claude_desktop_direct_provider_validation() {
     let direct_validation_slice = function_slice(
         &source,
         "pub(crate) fn provider_claude_desktop_direct_provider_validation(",
-        "pub(crate) fn provider_claude_desktop_direct_inference_model_specs(",
+        "fn provider_claude_desktop_direct_inference_model_specs(",
     );
 
     assert!(
@@ -11066,7 +11070,7 @@ fn proxy_core_adapter_owns_claude_desktop_proxy_provider_validation() {
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
     let proxy_validation_slice = function_slice(
         &source,
-        "pub(crate) fn provider_claude_desktop_proxy_provider_validation(",
+        "fn provider_claude_desktop_proxy_provider_validation(",
         "pub(crate) fn provider_claude_desktop_proxy_gateway_profile_model_specs(",
     );
 
@@ -13019,7 +13023,7 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
     let normalize_slice = function_slice(
         &source,
         "pub(crate) fn provider_claude_normalize_anthropic_messages",
-        "pub(crate) fn apply_provider_model_mapping_from_provider",
+        "fn apply_provider_model_mapping_from_provider",
     );
 
     assert!(
@@ -13083,7 +13087,7 @@ fn proxy_core_adapter_keeps_provider_model_mapping_facade_host_shaped() {
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
     let mapping_slice = function_slice(
         &source,
-        "pub(crate) fn apply_provider_model_mapping_from_provider",
+        "fn apply_provider_model_mapping_from_provider",
         "fn claude_desktop_proxy_request_body_issue_message",
     );
 
