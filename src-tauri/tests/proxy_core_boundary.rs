@@ -1230,6 +1230,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn proxy_providers_to_core_specs(",
     "pub(crate) fn provider_specs_from_source(",
     "pub(crate) fn provider_spec_from_source(",
+    "pub(crate) fn provider_model_catalog_from_db_source(",
     "pub(crate) fn route_candidate_provider_ids_from_selection_result(",
     "pub(crate) fn claude_desktop_provider_from_selection_result(",
     "pub(crate) fn client_model_catalog_from_app_source(",
@@ -5729,7 +5730,7 @@ fn proxy_core_adapter_does_not_export_domain_or_model_catalog_aliases() {
         adapter_runtime_source.contains(
             "use crate::proxy_core::api::domain::{\n    AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,\n};"
         ) && adapter_runtime_source
-            .contains("use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};"),
+            .contains("use crate::proxy_core::api::model_catalog::ModelMappingProjection;"),
         "proxy_core_adapter internals should import domain/model catalog DTOs directly from proxy_core"
     );
 }
@@ -13142,9 +13143,7 @@ fn proxy_core_adapter_keeps_provider_model_mapping_facade_host_shaped() {
         "adapter should not expose ModelMappingProjection as a model catalog DTO alias"
     );
     assert!(
-        source.contains(
-            "use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};"
-        ),
+        source.contains("use crate::proxy_core::api::model_catalog::ModelMappingProjection;"),
         "adapter internals should import ModelMappingProjection directly from proxy_core::api::model_catalog"
     );
     assert!(
@@ -22558,7 +22557,8 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
     assert!(
         source.contains("use crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;")
             && source.contains("use crate::proxy_core::api::domain::AppKind;")
-            && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && source.contains("use crate::proxy_core::api::errors::{")
+            && source.contains("ProxyCoreResult")
             && source.contains("use crate::proxy_core::api::model_catalog::{")
             && source.contains("ModelCatalog")
             && source.contains("use crate::proxy_core::api::ports::ModelCatalogProvider;"),
@@ -22568,11 +22568,9 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
         !adapter_runtime_source.contains("pub(crate) type ClaudeDesktopModelRouteInput"),
         "proxy_core_adapter should not expose ClaudeDesktopModelRouteInput as a type alias; adapter internals and model catalog providers should import it from proxy_core::api::auth"
     );
-    let adapter_import = function_slice(
-        &source,
-        "use crate::proxy_core_adapter::{",
-        "};\nuse futures::future::BoxFuture;",
-    );
+    let adapter_import_lines: Vec<&str> = production_lines(&source)
+        .filter_map(|(_, line)| line.contains("proxy_core_adapter").then_some(line))
+        .collect();
     for adapter_type in [
         "ClaudeDesktopModelRouteInput",
         "ModelCatalog",
@@ -22581,14 +22579,22 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
         "ProxyCoreResult",
     ] {
         assert!(
-            !adapter_import.contains(adapter_type),
+            !adapter_import_lines
+                .iter()
+                .any(|line| line.contains(adapter_type)),
             "CC Switch model catalog provider must not import {adapter_type} through proxy_core_adapter"
         );
     }
     assert!(
+        source.contains("provider_model_catalog_from_settings")
+            && source.contains("internal_error_with_context"),
+        "CC Switch model catalog provider should own provider catalog DB source projection and error mapping"
+    );
+    assert!(
         !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::model_catalog_provider::CcSwitchModelCatalogProvider"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchModelCatalogProvider")
+            && !adapter_source.contains("pub(crate) fn provider_model_catalog_from_db_source(")
             && !adapter_source
                 .contains("impl ModelCatalogProvider for CcSwitchModelCatalogProvider"),
         "proxy_core_adapter should not re-export or own the CC Switch model catalog provider"

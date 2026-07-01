@@ -4,16 +4,14 @@ use crate::database::Database;
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
 use crate::proxy_core::api::domain::AppKind;
-use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::errors::{internal_error_with_context, ProxyCoreResult};
 use crate::proxy_core::api::model_catalog::{
     client_model_catalog_from_optional_raw, client_model_catalog_raw_from_text,
-    client_model_catalog_source_for_app, empty_client_model_catalog_raw, ClientModelCatalogSource,
-    ModelCatalog,
+    client_model_catalog_source_for_app, empty_client_model_catalog_raw,
+    provider_model_catalog_from_settings, ClientModelCatalogSource, ModelCatalog,
 };
 use crate::proxy_core::api::ports::ModelCatalogProvider;
-use crate::proxy_core_adapter::{
-    claude_desktop_model_routes_from_router_source, provider_model_catalog_from_db_source,
-};
+use crate::proxy_core_adapter::claude_desktop_model_routes_from_router_source;
 use futures::future::BoxFuture;
 use serde_json::Value;
 use std::sync::Arc;
@@ -54,6 +52,20 @@ impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
             claude_desktop_model_routes_from_router_source(&self.db, &self.router, app).await
         })
     }
+}
+
+fn provider_model_catalog_from_db_source(
+    db: &Database,
+    app: &AppKind,
+    provider_id: &str,
+) -> ProxyCoreResult<ModelCatalog> {
+    let provider = db
+        .get_provider_by_id(provider_id, app.as_str())
+        .map_err(|error| internal_error_with_context("load model catalog", error))?;
+    Ok(provider_model_catalog_from_settings(
+        provider_id,
+        provider.as_ref().map(|provider| &provider.settings_config),
+    ))
 }
 
 fn client_model_catalog_from_app_source(app: &AppKind) -> ProxyCoreResult<ModelCatalog> {

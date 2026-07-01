@@ -122,7 +122,7 @@ fn provider_selection_failure_from_app_error(error: &AppError) -> Option<Provide
     }
 }
 
-use crate::proxy_core::api::model_catalog::{ModelCatalog, ModelMappingProjection};
+use crate::proxy_core::api::model_catalog::ModelMappingProjection;
 
 use crate::proxy_core::api::auth::{
     claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
@@ -1079,22 +1079,6 @@ fn claude_desktop_model_routes_to_core_inputs(
         .into_iter()
         .map(|route| ClaudeDesktopModelRouteInput::new(route.route_id, route.supports_1m))
         .collect()
-}
-
-use crate::proxy_core::api::model_catalog::provider_model_catalog_from_settings;
-
-pub(crate) fn provider_model_catalog_from_db_source(
-    db: &Database,
-    app: &AppKind,
-    provider_id: &str,
-) -> ProxyCoreResult<ModelCatalog> {
-    let provider = db
-        .get_provider_by_id(provider_id, app.as_str())
-        .map_err(|error| app_error("load model catalog", error))?;
-    Ok(provider_model_catalog_from_settings(
-        provider_id,
-        provider.as_ref().map(|provider| &provider.settings_config),
-    ))
 }
 
 fn claude_desktop_provider_from_selection_result(
@@ -8362,7 +8346,11 @@ base_url = "https://api.openai.com/v1"
             }
         });
 
-        let provider_catalog = provider_model_catalog_from_settings("provider-a", Some(&settings));
+        let provider_catalog =
+            crate::proxy_core::api::model_catalog::provider_model_catalog_from_settings(
+                "provider-a",
+                Some(&settings),
+            );
         assert_eq!(provider_catalog.provider_id, "provider-a");
         assert_eq!(
             provider_catalog.models,
@@ -8380,8 +8368,11 @@ base_url = "https://api.openai.com/v1"
             None,
         );
         assert_eq!(
-            provider_model_catalog_from_settings("provider-a", Some(&provider.settings_config),)
-                .models,
+            crate::proxy_core::api::model_catalog::provider_model_catalog_from_settings(
+                "provider-a",
+                Some(&provider.settings_config),
+            )
+            .models,
             provider_catalog.models
         );
         assert_eq!(
