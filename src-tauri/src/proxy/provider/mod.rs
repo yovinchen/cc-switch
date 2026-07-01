@@ -20,7 +20,10 @@ use crate::proxy_core::api::domain::{
 
 pub use adapter::ProviderAdapter;
 pub use claude::ClaudeAdapter;
-pub(crate) use claude::{claude_provider_api_format, transform_claude_request_for_api_format};
+pub(crate) use claude::{
+    claude_provider_api_format, transform_claude_request_for_api_format,
+    transform_claude_response_for_api_format, transform_claude_sse_for_api_format,
+};
 pub use codex::CodexAdapter;
 pub(crate) use codex::{
     codex_provider_apply_chat_upstream_model, codex_provider_chat_reasoning_options,

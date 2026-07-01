@@ -34,18 +34,23 @@ use crate::proxy_core::api::domain::{extract_claude_base_url_from_settings, Prov
 use crate::proxy_core::api::ports::required_provider_base_url;
 use crate::proxy_core::api::transforms::GeminiShadowStore;
 use crate::proxy_core::api::transforms::{
-    claude_request_transform_for_api_format, is_copilot_prompt_cache_provider,
+    claude_request_transform_for_api_format, claude_response_to_anthropic_message_for_api_format,
+    create_claude_to_anthropic_sse_stream_for_api_format, is_copilot_prompt_cache_provider,
     resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
     should_preserve_reasoning_content_for_openai_chat, ClaudeApiFormatRequestTransformContext,
-    ClaudePromptCacheKeyResolution,
+    ClaudeApiFormatSseTransformContext, ClaudePromptCacheKeyResolution,
+};
+use crate::proxy_core::api::transforms::{
+    synthesize_gemini_tool_call_id, AnthropicToolSchemaHints,
 };
 use crate::proxy_core::api::transport::build_claude_upstream_url;
 use crate::proxy_core::api::transport::{
     build_claude_provider_auth_headers, ClaudeProviderAuthHeadersInput,
 };
-#[cfg(test)]
-use crate::proxy_core_adapter::provider_claude_transform_response_for_api_format;
+use bytes::Bytes;
+use futures::Stream;
 use serde_json::Value;
+use std::sync::Arc;
 use uuid::Uuid;
 
 const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
@@ -81,6 +86,59 @@ pub(crate) fn transform_claude_request_for_api_format(
         log::debug!("{}", cache_log.message());
     }
     Ok(output.request)
+}
+
+fn synthesize_gemini_tool_call_id_with_uuid() -> String {
+    synthesize_gemini_tool_call_id(Uuid::new_v4().simple().to_string())
+}
+
+fn log_rectified_gemini_tool_args(name: &str) {
+    log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
+}
+
+pub(crate) fn transform_claude_response_for_api_format(
+    body: &Value,
+    api_format: &str,
+    shadow_store: Option<&GeminiShadowStore>,
+    provider_id: Option<&str>,
+    session_id: Option<&str>,
+    tool_schema_hints: Option<&AnthropicToolSchemaHints>,
+) -> Result<Value, String> {
+    let output = claude_response_to_anthropic_message_for_api_format(
+        body,
+        api_format,
+        shadow_store,
+        provider_id,
+        session_id,
+        tool_schema_hints,
+        synthesize_gemini_tool_call_id_with_uuid,
+    )?;
+    for name in &output.rectified_tool_names {
+        log_rectified_gemini_tool_args(name);
+    }
+    Ok(output.response)
+}
+
+pub(crate) fn transform_claude_sse_for_api_format(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    api_format: &str,
+    shadow_store: Option<Arc<GeminiShadowStore>>,
+    provider_id: Option<String>,
+    session_id: Option<String>,
+    tool_schema_hints: Option<AnthropicToolSchemaHints>,
+) -> Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send + Unpin> {
+    create_claude_to_anthropic_sse_stream_for_api_format(
+        stream,
+        api_format,
+        ClaudeApiFormatSseTransformContext {
+            shadow_store,
+            provider_id,
+            session_id,
+            tool_schema_hints,
+            synthesize_gemini_tool_call_id: synthesize_gemini_tool_call_id_with_uuid,
+            on_rectified_tool_name: log_rectified_gemini_tool_args,
+        },
+    )
 }
 
 fn required_claude_provider_base_url(provider: &Provider) -> Result<String, String> {
@@ -953,7 +1011,7 @@ mod tests {
 
     #[test]
     fn test_transform_response_uses_adapter_contract() {
-        let transformed = provider_claude_transform_response_for_api_format(
+        let transformed = transform_claude_response_for_api_format(
             &json!({
             "id": "chatcmpl_1",
             "model": "chat-model",

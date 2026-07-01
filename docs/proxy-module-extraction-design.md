@@ -233,7 +233,7 @@
 222. `proxy::handler_context::extract_gemini_model_from_path` host wrapper 已删除；Gemini handler/context 直接引用 `proxy-core::extract_gemini_model_from_path`，路径解析测试保留在 core。
 223. forwarder 内部的 `request_model_for_forward` / `interface_kind_for_forward` host wrapper 已删除；attempt 规划直接把 `AppType` 投影为 `proxy-core::AppKind` 后调用 core request-url helper。
 224. `OptimizerConfig` 到 thinking optimizer/cache injector core config 的字段投影已收敛到 host 配置类型本身；`thinking_optimizer`/`cache_injector` host facade 已删除，forwarder 直接调用 core mutation 与 core report log helper。
-225. Claude/Codex response 转换已收敛到 host/core helper：Claude transform gate 与 streaming decision 由 host-owned `provider_projection` 投影 provider 事实后调用 core policy，Claude response/SSE api_format 转换仍由 `proxy_core_adapter::{provider_claude_transform_response_for_api_format,provider_claude_transform_sse_for_api_format}` 注入 Gemini shadow/UUID/log 回调；Codex Chat->Responses 的流式/错标 SSE 聚合决策由 `proxy::response_adapter` 直接调用 `proxy-core::codex_chat_transform_streaming_decision`，非流/流式转换与 history 记录由 `proxy::codex_chat_history::{transform_codex_chat_response_with_history,transform_codex_chat_sse_with_history}` owning module 承接；host handler 只保留 usage 与 transport 编排，转换失败日志与 `ProxyError::TransformError` 包装由 `error_mapper` 协议专用 helper 承接。
+225. Claude/Codex response 转换已收敛到 host/core helper：Claude transform gate 与 streaming decision 由 host-owned `provider_projection` 投影 provider 事实后调用 core policy，Claude response/SSE api_format host-shaped wrapper 已迁回 `proxy::provider::{transform_claude_response_for_api_format,transform_claude_sse_for_api_format}`，由 Claude provider owning module 注入 Gemini shadow/UUID/log 回调；Codex Chat->Responses 的流式/错标 SSE 聚合决策由 `proxy::response_adapter` 直接调用 `proxy-core::codex_chat_transform_streaming_decision`，非流/流式转换与 history 记录由 `proxy::codex_chat_history::{transform_codex_chat_response_with_history,transform_codex_chat_sse_with_history}` owning module 承接；host handler 只保留 usage 与 transport 编排，转换失败日志与 `ProxyError::TransformError` 包装由 `error_mapper` 协议专用 helper 承接。
 226. `providers::adapter::auth_header_value` host facade 已删除；Claude/Gemini/Codex adapter 直接调用 `proxy-core::auth_header_value` 并在本地映射认证错误。
 227. Claude provider adapter 的非流式 OpenAI/Responses 响应转换已直接调用 `proxy-core::{openai_chat_to_anthropic_message,openai_responses_to_anthropic_message}`；provider 响应转换 wrapper 仅保留测试路径。
 228. Claude provider adapter 的 Anthropic->OpenAI Chat/Responses 请求转换已直接调用 `proxy-core::{anthropic_to_openai_chat_request,anthropic_to_openai_responses_request}`；OpenAI Chat/Responses provider transform wrappers 均已删除。
@@ -507,7 +507,7 @@
 493. reqwest 发送错误到 `ProxyError` 的宿主适配已从 `forwarder` 迁入 `proxy::error_mapper::reqwest_send_error_to_proxy_error`；forwarder 只负责 transport 调用，不再内联错误分类规则。
 494. Bedrock pre-send thinking/cache 优化串联规则已迁入 `proxy-core::apply_bedrock_pre_send_optimizers`，core 返回结构化报告，host forwarder 只负责 provider gate、clone 隔离与日志输出。
 495. `ProxyBody` 到 JSON 请求体的解释规则已迁入 `proxy-core::ProxyBody::into_json`；host forward pipeline 不再维护本地 body parse helper。
-496. Gemini tool-call ID 的随机 UUID 宿主适配已集中到 `proxy_core_adapter::synthesize_gemini_tool_call_id_with_uuid`；handlers 与 Claude provider 不再各自维护重复 wrapper，core 仍只保留确定性 suffix 生成规则。
+496. Gemini tool-call ID 的随机 UUID 宿主适配已迁回 Claude provider response/SSE wrapper；handlers 与 `proxy_core_adapter` 不再维护该 wrapper，core 仍只保留确定性 suffix 生成规则。
 497. channel provider override plan 的 settings JSON 应用规则已迁入 `proxy-core::apply_channel_provider_settings_overrides`；host route attempt 只负责把 core plan 应用到宿主 `Provider` 并保留 `ProviderMeta` 更新。
 498. `ChannelQuery` 对 `ChannelSpec` 的 provider/model/group/status 过滤规则已迁入 `proxy-core::channel_matches_query`；adapter-owned channel source 不再维护本地筛选 helper。
 499. `AppProxyConfig` 管理 API raw envelope 的 `currentProviderId` 注入规则已迁入 `proxy-core::app_proxy_config_raw`；host-owned config source 负责读取当前 provider 事实并传入 adapter/core helper。
@@ -1135,7 +1135,7 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续删除 `ForwardError` 中未被 core error bridge 使用的 host `Provider` payload，并移除 `RequestForwarder` 预规划生产入口上的过时 dead-code allowance；forwarder 错误 surface 只保留 neutral `ProxyError` 分类事实。
 本轮继续把 `CcSwitchProxyServices::new` / `with_event_bus`、`DefaultRuntimeStatusSource` 与 `CcSwitchForwardPipeline::without_runtime` 收成 test-only；生产服务容器只暴露 runtime-backed `with_runtime` 构造路径。
 本轮继续删除 `proxy/error_mapper.rs` 中 `map_proxy_error_to_status` 与 `get_error_message` 两个纯策略 facade；错误状态码和展示文案测试覆盖 `error_mapper` 拥有的 host 投影，并继续验证其委托 core contract。
-本轮继续删除 provider trait 上的 `transform_response` surface 和 Claude adapter 的对应实现；Claude 响应转换测试直接调用 test-only `proxy_core_adapter::provider_claude_transform_response`，响应转换分发不再挂在 provider adapter trait 上。
+本轮继续删除 provider trait 上的 `transform_response` surface 和 Claude adapter 的对应实现；Claude 响应转换测试直接调用 Claude provider owning helper 或 core transform，响应转换分发不再挂在 provider adapter trait 上，也不再通过 `proxy_core_adapter` 的 test-only facade 绕行。
 本轮继续删除 `proxy/http_client.rs` 中未被调用的 `update_proxy` 与 `is_proxy_enabled` legacy facade；全局代理命令只保留 validate/apply/current-url 三个实际生命周期入口，避免迁移中继续复制重复热更新 surface。
 本轮继续删除 `proxy/error.rs` 中未被调用的 `ErrorCategory` 与 `categorize_error` reqwest 分类 helper；forward retry/non-retry 判定继续由 adapter/core runtime policy 维护，host error 类型只保留实际响应映射职责。
 本轮继续删除 Copilot token 响应 DTO 中未使用的 `refresh_in` 字段；serde 继续忽略上游额外字段，managed-auth host 只保留实际消费的 `token` / `expires_at` contract。
@@ -1255,8 +1255,8 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续把 Claude/Codex 非流式上游响应解析失败文案、`UpstreamResponseParseFailureLogContext` 和 `UnlabeledSseFallbackLogContext` 选择收敛到 `error_mapper` 协议专用 helper，`handlers` 不再直接维护 parse/fallback context。
 本轮继续把转换后 JSON/SSE 的 core response builder 调用、构造失败映射和 Axum bridge 收敛到 `response_adapter` helper，Claude/Codex transform handler 不再直接调用 `rebuilt_json_proxy_response` 或 `transformed_sse_proxy_response`。
 本轮继续把 Claude/Codex transform 正常响应的 JSON/SSE build context 选择收敛到 `response_adapter` 协议专用 helper，handler 不再直接引用 `CoreResponseBuildFailureContext::{ClaudeJson,CodexResponses}` 或对应 `AxumResponseBuildErrorContext`。
-本轮继续把 Claude 非流式响应转换的 api_format 分发收敛到 `proxy_core_adapter::provider_claude_transform_response_for_api_format`，handler 不再直接调用 OpenAI/Gemini 响应转换函数或维护 Gemini rectifier 日志循环。
-本轮继续把 Claude 流式响应转换的 api_format 分发收敛到 `proxy_core_adapter::provider_claude_transform_sse_for_api_format`，handler 不再直接选择 OpenAI Chat/Responses/Gemini stream converter 或维护 Gemini rectifier 日志回调。
+本轮继续把 Claude 非流式响应转换的 api_format wrapper 迁回 `proxy::provider::transform_claude_response_for_api_format`，handler 与 response pipeline 不再通过 `proxy_core_adapter` 调用，也不直接调用 OpenAI/Gemini 响应转换函数或维护 Gemini rectifier 日志循环。
+本轮继续把 Claude 流式响应转换的 api_format wrapper 迁回 `proxy::provider::transform_claude_sse_for_api_format`，handler 与 response pipeline 不再通过 `proxy_core_adapter` 调用，也不直接选择 OpenAI Chat/Responses/Gemini stream converter 或维护 Gemini rectifier 日志回调。
 本轮继续把 Claude transform 的 streaming/聚合决策收敛到 `proxy-core::response_transform::claude_transform_streaming_decision`，host adapter 只投影 Codex OAuth 等 provider 事实，handler 不再直接判断上游 SSE header、Responses 聚合例外或 api_format -> 错标 SSE 聚合策略。
 本轮继续把 Codex Chat 非流式 Chat->Responses 转换与 history 记录收敛到 `proxy::codex_chat_history::transform_codex_chat_response_with_history`，response pipeline 不再通过 `proxy_core_adapter` 兼容 façade 调用 `chat_completion_to_response_with_context` 或非流 history record helper。
 本轮继续把 Codex Chat 流式 Chat->Responses SSE 转换与 history 记录收敛到 `proxy::codex_chat_history::transform_codex_chat_sse_with_history`，response pipeline 不再通过 `proxy_core_adapter` 兼容 façade 串联 Chat SSE 转换 helper 和流式 history record helper。
@@ -1286,10 +1286,10 @@ forwarder provider adapter transform gate/request 的一跳 wrapper `forwarder_p
 本轮继续把 RoutePolicy raw 中 `failoverProviderIds` 的读取 contract 收敛到 domain/routing helper，`ProxyEngine` 不再直接读取 raw JSON 字段。
 本轮继续把 forward runtime 的 auth profile DB key 注入 helper 收敛到 adapter，`proxy_core_host` 不再维护本地 wrapper 或直接查询 channel-key。
 本轮继续把 forward runtime 的 current-provider settings/DB fallback 读取入口收敛到 adapter，`proxy_core_host` 只消费最终 provider id 字符串。
-本轮继续把 Claude 非流式响应转换的 OpenAI Chat/OpenAI Responses/Gemini Native 分支识别与转换调度收敛到 adapter，Claude provider 只保留 trait 边界和错误映射。
-本轮继续把 Claude 请求转换的 api_format 分支、prompt cache 选择、stream usage 注入和 Gemini request wrapper 调度收敛到 adapter，provider 公开函数只保留兼容入口和错误映射。
-本轮继续把 Claude Anthropic 消息规范化策略收敛到 adapter，provider 公开函数不再直接判断 api_format、tool-thinking history gate 或 DeepSeek thinking-disabled effort 清理。
-本轮继续把 forwarder 对 Claude api_format、消息规范化和请求转换的调用改为直接消费 adapter helper，不再经由 provider 兼容函数绕回代理模块。
+本轮继续把 Claude 非流式响应转换的 OpenAI Chat/OpenAI Responses/Gemini Native 分支识别与转换调度收敛到 core dispatch，host-shaped wrapper 由 Claude provider owning module 持有，Claude adapter trait 不再暴露响应转换 surface。
+本轮继续把 Claude 请求转换的 api_format 分支、prompt cache 选择、stream usage 注入和 Gemini request wrapper 调度迁回 Claude provider owning module，provider 公开 helper 只负责装配 host 事实并调用 core dispatch。
+本轮继续把 Claude Anthropic 消息规范化策略迁到 host request source/provider helper 边界，provider owning module 不再通过 `proxy_core_adapter` 判断 api_format、tool-thinking history gate 或 DeepSeek thinking-disabled effort 清理。
+本轮继续把 forwarder 对 Claude api_format、消息规范化和请求转换的调用改为直接消费 owning module/source helper，不再经由宽 adapter helper 绕回代理模块。
 本轮继续删除 provider 模块对 Claude api_format、消息规范化和请求转换兼容函数的 re-export，Claude provider 对外只保留 `ClaudeAdapter`。
 本轮继续把 forwarder 对 Codex Responses->Chat 判定、上游模型覆写和 reasoning options 的调用改为直接消费 adapter helper，并删除 provider 模块对应 re-export。
 forwarder 的 Codex app gate 与 Responses->Chat provider predicate 一跳 wrapper `forwarder_should_convert_codex_responses_to_chat` 已删除；request source transform plan 直接组合 app gate 与 provider predicate。
@@ -1405,7 +1405,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 本轮继续移除 `proxy_core_adapter` 对 Claude base URL extraction helper 的 re-export：`provider_claude_base_url` 与 `required_claude_provider_base_url` 继续作为 host `Provider` 包装入口，`extract_claude_base_url_from_settings` 只在 adapter 内私有引用并由测试作用域直接从 core 导入验证。
 本轮继续移除 `proxy_core_adapter` 对 Codex Chat upstream model policy helper 的 re-export：`provider_apply_codex_chat_upstream_model` 与 `provider_codex_catalog_model_ids` 继续作为 host `Provider` 包装入口，底层 `apply_codex_chat_upstream_model_policy` 与 `codex_provider_catalog_model_ids_from_settings` 只在 adapter 内私有引用。
 本轮继续收窄 `proxy_core_adapter` 的 forward runtime facade：`ForwardRuntimeRequest`、`ForwarderRuntimeHostResources`、`forward_runtime_request_from_proxy_request`、`response_runtime_policy_from_app_proxy_config`、`forward_with_preplanned_host_runtime`、`forward_proxy_request_with_host_runtime` 和 forwarder runtime config/resource projection helper 都改为 adapter 私有，`proxy_runtime`/`proxy_core_host` 仍只通过 `forward_proxy_request_with_cc_switch_runtime` 触发转发，不再把这些桥接 DTO/helper 暴露为 crate-wide API。
-本轮继续收窄 `proxy_core_adapter` 的 adapter-local helper：`app_error` 与 `synthesize_gemini_tool_call_id_with_uuid` 已改为 adapter 私有；宿主模块不再通过 adapter 获取通用错误包装或 Gemini UUID 注入 helper，Claude/Gemini 转换入口仍在 adapter 内部注入随机 tool-call id。
+本轮继续收窄 `proxy_core_adapter` 的 adapter-local helper：`app_error` 已改为 adapter 私有，`synthesize_gemini_tool_call_id_with_uuid` 已从 adapter 移除并由 Claude provider response/SSE wrapper 私有持有；宿主模块不再通过 adapter 获取通用错误包装或 Gemini UUID 注入 helper。
 本轮继续收窄 `proxy_core_adapter` 的 provider/model projection facade：`app_type_option_from_proxy_core_app`、source-less provider list/single projection helper、route-candidate result wrapper、Claude Desktop provider selection wrapper 和 Codex active-catalog raw loader 都改为 adapter 私有；host-owned provider/model catalog source 仍只消费 DB-backed 或 app-facing adapter 入口。
 本轮继续收窄 `proxy_core_adapter` 的 Claude Desktop model route input projection facade：`claude_desktop_model_routes_to_core_inputs` 改为 adapter 私有，`CcSwitchModelCatalogProvider` 仍只通过 `claude_desktop_model_routes_from_router_source` 取得 core route input，Claude Desktop 单测改为在测试作用域直接构造 core route input 断言模型列表响应。
 本轮继续收窄 `proxy_core_adapter` 的 app-kind 转 host app-type facade：`app_type_from_proxy_core_app` 改为 adapter 私有，`CcSwitchProviderRouterProviderSource` 在 host source 内直接解析 `AppKind` 并复用 core `unsupported_app_kind_config_error`，不再为 provider-router current-provider lookup 暴露通用转换出口。
@@ -1953,7 +1953,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1367. Usage pricing lookup bridge 已从 `proxy_core_adapter` 移到 `proxy/host/cc_switch/database_usage_sink.rs`：usage sink 本地拥有 provider/app lookup 和 `resolve_usage_record_pricing_models` 调用，adapter 不再暴露 `usage_pricing_config_lookup_from_record` 或 `usage_record_pricing_model`。
 1368. Provider custom User-Agent bridge 已从 `proxy_core_adapter` 移到 owning modules：`forwarder_request_source.rs` 与 `stream_check.rs` 本地读取 `ProviderMeta.custom_user_agent` raw 值并调用 core `provider_custom_user_agent_header`，adapter 不再暴露 `provider_custom_user_agent_header`。
 1369. Stream-check provider `testConfig` override bridge 已从 `proxy_core_adapter` 移到 `services/stream_check.rs`：service 本地读取 `Provider::enabled_test_config()` 并构造 core `StreamCheckConfigOverride`，adapter 不再暴露 `provider_stream_check_config_override`。
-1370. Claude 非流式响应转换测试不再通过 `proxy_core_adapter::provider_claude_transform_response` 这种结构化自动探测 facade；adapter 与 provider 测试改为显式调用 `provider_claude_transform_response_for_api_format` 或 core transform，生产边界只保留 api_format 明确分发入口。
+1370. Claude 非流式响应转换测试不再通过 `proxy_core_adapter::provider_claude_transform_response` 这种结构化自动探测 facade；adapter 与 provider 测试改为显式调用 `proxy::provider::transform_claude_response_for_api_format` 或 core transform，生产边界只保留 provider owning module 的 api_format 明确分发入口。
 1371. response pipeline 的 usage provider facts 现在本地拥有 `Provider -> ProviderKind` 投影；`proxy_core_adapter::provider_kind_from_provider` 已收窄为 adapter 私有 helper，避免 response usage 归因继续通过宽 adapter 读取普通 Provider meta。
 1372. Codex OAuth/managed-account Provider 分类的外部调用点已改为使用 `Provider::{is_codex_oauth,uses_managed_account_auth}`；`proxy_core_adapter::{provider_is_codex_oauth,provider_uses_managed_account_auth}` 收窄为 adapter 私有组合 helper，避免普通 Provider 分类继续作为宽 adapter facade 暴露。
 1373. Codex provider auth/base URL 投影已移回 `proxy/provider/codex.rs`，Claude required base URL 投影已移回 `proxy/provider/claude.rs`；两个 provider adapter 直接消费 `proxy-core` 的 auth/header/base-url helper，`proxy_core_adapter` 不再暴露 `provider_codex_auth_*` 或 `required_*_provider_base_url` 这类 provider-local façade。
@@ -1975,7 +1975,8 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1389. Forward request body 的 provider model mapping 与 Claude Desktop route model projection 已迁入 `proxy/host/cc_switch/forwarder_request_source.rs` owning module：request source 直接调用 core `apply_provider_model_mapping` 并在 Claude Desktop 分支复用 adapter 的专用 desktop projection，`proxy_core_adapter` 不再暴露 `apply_forward_request_model_mapping_from_provider` façade。
 1390. Claude Anthropic message normalization 的 host-shaped wrapper 已迁入 `proxy/host/cc_switch/forwarder_request_source.rs` 本地调用：request source 直接传入 provider settings 调用 core `normalize_claude_anthropic_messages`，Claude provider 测试通过 request source test helper 覆盖同一 host-shaped 行为，`proxy_core_adapter` 不再暴露 `provider_claude_normalize_anthropic_messages` façade。
 1391. Claude provider auth info/header projection 已迁回 `proxy/provider/claude.rs` owning module：`provider_claude_auth_info`、`provider_claude_auth_headers`、Copilot request-id header 输入和 Gemini CLI OAuth warning 日志由 Claude provider adapter 本地持有，`proxy_core_adapter` 不再暴露 Claude provider auth façade，边界测试防止这两个 helper 回流到 adapter。
-1392. Claude request api_format transform wrapper 已迁回 `proxy/provider/claude.rs` owning module：prompt-cache key、Codex OAuth、Codex fast-mode、reasoning-content preserve、Gemini shadow 和 cache trace log 输入由 Claude provider helper 本地装配，`ForwarderProtocolStateSource` 直接调用 provider helper，`proxy_core_adapter` 仅保留 response/SSE transform wrapper。
+1392. Claude request api_format transform wrapper 已迁回 `proxy/provider/claude.rs` owning module：prompt-cache key、Codex OAuth、Codex fast-mode、reasoning-content preserve、Gemini shadow 和 cache trace log 输入由 Claude provider helper 本地装配，`ForwarderProtocolStateSource` 直接调用 provider helper。
+1393. Claude response/SSE api_format transform wrapper 已迁回 `proxy/provider/claude.rs` owning module：Gemini shadow、provider/session id、tool schema hints、随机 tool-call id 和 rectifier 日志回调由 Claude provider helper 本地装配，`response_pipeline` 直接调用 provider helper，`proxy_core_adapter` 不再暴露 `provider_claude_transform_response_for_api_format` / `provider_claude_transform_sse_for_api_format` 或 Gemini UUID wrapper。
 
 ## 背景
 
@@ -2891,6 +2892,8 @@ ProxyRequest
 更新：上段中提到的 `proxy_core_adapter::transform_codex_chat_response_with_history` 与 `proxy_core_adapter::transform_codex_chat_sse_with_history` 已过期；Codex Chat 非流/流式转换与 history 记录现在由 `proxy::codex_chat_history` owning module 承接，response pipeline 直接导入，adapter 不再保留这组 façade。
 
 更新：上段中提到的 `proxy_core_adapter::provider_claude_transform_streaming_decision` 已过期；Claude transform gate 与 streaming decision 的 provider fact 投影现在由 host-owned `provider_projection` 承接，response adapter 直接导入，adapter 不再保留这组 façade。
+
+更新：上段中提到的 `proxy_core_adapter::provider_claude_transform_response_for_api_format` 与 `proxy_core_adapter::provider_claude_transform_sse_for_api_format` 已过期；Claude response/SSE api_format wrapper 现在由 `proxy::provider::{transform_claude_response_for_api_format,transform_claude_sse_for_api_format}` 承接，response pipeline 直接导入，adapter 不再保留这组 façade 或 Gemini UUID 注入 helper。
 
 同一 provider 下多个 channel 的行为必须互相隔离：
 

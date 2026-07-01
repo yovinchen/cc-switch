@@ -11,6 +11,9 @@ use crate::proxy::engine::forward_pipeline::ActiveConnectionGuard;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
+use crate::proxy::provider::{
+    transform_claude_response_for_api_format, transform_claude_sse_for_api_format,
+};
 use crate::proxy::{
     error::ProxyError,
     error_mapper::{
@@ -48,9 +51,6 @@ use crate::proxy_core::api::usage::{
     StreamUsageEventFilter, StreamingResponseUsageRecord, TokenUsage,
     TransformedResponseUsageFormat, UsageParserConfig, UsageRecord, UsageRecordFailureLogContext,
     UsageRouteContext, UsageSelectedProviderMissingPhase,
-};
-use crate::proxy_core_adapter::{
-    provider_claude_transform_response_for_api_format, provider_claude_transform_sse_for_api_format,
 };
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
@@ -1370,7 +1370,7 @@ where
     G: Send + 'static,
 {
     let tool_schema_hints = claude_transform_tool_schema_hints(context.original_body);
-    let sse_stream = provider_claude_transform_sse_for_api_format(
+    let sse_stream = transform_claude_sse_for_api_format(
         stream,
         context.api_format,
         Some(context.state.gemini_shadow.clone()),
@@ -1486,7 +1486,7 @@ pub(crate) fn claude_transformed_json_response_from_context(
     context: ClaudeTransformedJsonResponseContext<'_>,
 ) -> Result<Value, String> {
     let tool_schema_hints = claude_transform_tool_schema_hints(context.original_body);
-    let anthropic_response = provider_claude_transform_response_for_api_format(
+    let anthropic_response = transform_claude_response_for_api_format(
         upstream_response,
         context.api_format,
         Some(context.state.gemini_shadow.as_ref()),

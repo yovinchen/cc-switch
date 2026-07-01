@@ -2061,6 +2061,8 @@ const FORBIDDEN_HANDLER_CLAUDE_RESPONSE_TRANSFORM_DISPATCH_MARKERS: &[&str] = &[
     "create_gemini_to_anthropic_sse_stream_with_callbacks(",
     "provider_claude_transform_response_for_api_format(",
     "provider_claude_transform_sse_for_api_format(",
+    "transform_claude_response_for_api_format(",
+    "transform_claude_sse_for_api_format(",
     "Rectified tool args",
     "rectified_tool_names",
 ];
@@ -10035,7 +10037,7 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
             && function.contains("pub(crate) fn claude_transformed_sse_stream_from_context")
             && function.contains("pub(crate) struct CodexAutoTransformedSseStreamContext")
             && function.contains("pub(crate) fn codex_auto_transformed_sse_stream_from_context")
-            && function.contains("provider_claude_transform_sse_for_api_format(")
+            && function.contains("transform_claude_sse_for_api_format(")
             && function.contains("transform_codex_chat_sse_with_history(")
             && function.contains("create_claude_transformed_logged_stream(")
             && function.contains("create_codex_auto_transformed_logged_stream("),
@@ -10055,6 +10057,11 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
         source.contains("use crate::proxy::codex_chat_history::{")
             && source.contains("transform_codex_chat_sse_with_history"),
         "response pipeline should import Codex chat history SSE wrappers from the owning module"
+    );
+    assert!(
+        source.contains("use crate::proxy::provider::{")
+            && source.contains("transform_claude_sse_for_api_format"),
+        "response pipeline should import Claude response SSE wrappers from the owning provider module"
     );
     assert!(
         !adapter_source.contains("ClaudeTransformedSseStreamContext")
@@ -10109,7 +10116,7 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
             && function.contains("state.proxy_core_services.clone()")
             && function.contains("pub(crate) struct ClaudeTransformedJsonResponseContext")
             && function.contains("pub(crate) fn claude_transformed_json_response_from_context")
-            && function.contains("provider_claude_transform_response_for_api_format(")
+            && function.contains("transform_claude_response_for_api_format(")
             && function.contains("TransformedResponseUsageFormat::Claude")
             && function.contains("pub(crate) struct CodexAutoTransformedJsonResponseContext")
             && function.contains("pub(crate) async fn codex_auto_transformed_json_response_from_context")
@@ -10130,6 +10137,11 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
         source.contains("use crate::proxy::codex_chat_history::{")
             && source.contains("transform_codex_chat_response_with_history"),
         "response pipeline should import Codex chat history JSON wrappers from the owning module"
+    );
+    assert!(
+        source.contains("use crate::proxy::provider::{")
+            && source.contains("transform_claude_response_for_api_format"),
+        "response pipeline should import Claude response JSON wrappers from the owning provider module"
     );
     assert!(
         !adapter_source.contains("ClaudeTransformedJsonResponseContext")
@@ -12511,7 +12523,7 @@ fn handlers_delegate_transformed_response_build_context_to_response_adapter() {
 }
 
 #[test]
-fn handlers_delegate_claude_response_transform_dispatch_to_adapter() {
+fn handlers_delegate_claude_response_transform_dispatch_to_response_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
@@ -12532,7 +12544,7 @@ fn handlers_delegate_claude_response_transform_dispatch_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "protocol handlers must delegate Claude response transform dispatch to proxy_core_adapter:\n{}",
+        "protocol handlers must delegate Claude response transform dispatch to response adapter/pipeline:\n{}",
         violations.join("\n")
     );
 }
@@ -13260,52 +13272,60 @@ fn forwarder_request_source_owns_provider_model_mapping_projection() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
+fn claude_provider_delegates_response_format_dispatch_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let provider_path = manifest_dir.join("src/proxy/provider/claude.rs");
+    let source = fs::read_to_string(&provider_path).expect("read proxy/provider/claude.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let response_slice = function_slice(
         &source,
-        "pub(crate) fn provider_claude_transform_response_for_api_format",
-        "pub(crate) fn provider_claude_transform_sse_for_api_format",
+        "pub(crate) fn transform_claude_response_for_api_format",
+        "pub(crate) fn transform_claude_sse_for_api_format",
     );
     let stream_slice = function_slice(
         &source,
-        "pub(crate) fn provider_claude_transform_sse_for_api_format",
-        "use crate::proxy_core::api::routing::{",
+        "pub(crate) fn transform_claude_sse_for_api_format",
+        "fn required_claude_provider_base_url",
     );
 
     assert!(
         response_slice.contains("claude_response_to_anthropic_message_for_api_format("),
-        "Claude non-streaming response api_format dispatch must be delegated to proxy-core"
-    );
-    assert!(
-        !source.contains("pub(crate) fn provider_claude_transform_response("),
-        "proxy_core_adapter should not keep a test-only Claude response format auto-detection facade"
+        "Claude provider non-streaming response api_format wrapper must delegate to proxy-core"
     );
     assert!(
         stream_slice.contains("create_claude_to_anthropic_sse_stream_for_api_format("),
-        "Claude SSE response api_format dispatch must be delegated to proxy-core"
-    );
-    let adapter_transform_import_window = function_slice(
-        &source,
-        "use crate::proxy_core::api::transforms::{",
-        "use crate::proxy_core::api::transport::{",
+        "Claude provider SSE response api_format wrapper must delegate to proxy-core"
     );
     assert!(
-        !source.contains(
+        !adapter_source.contains("pub(crate) fn provider_claude_transform_response_for_api_format")
+            && !adapter_source
+                .contains("pub(crate) fn provider_claude_transform_sse_for_api_format")
+            && !adapter_source.contains("fn synthesize_gemini_tool_call_id_with_uuid"),
+        "proxy_core_adapter should not keep Claude response/SSE provider transform facades"
+    );
+    assert!(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY"
         ),
         "proxy_core_adapter should not re-export Claude api_format metadata key"
+    );
+    let adapter_transform_import_window = optional_function_slice(
+        &adapter_source,
+        "use crate::proxy_core::api::transforms::{",
+        "use crate::proxy_core::api::transport::{",
     );
     for marker in [
         "openai_responses_to_anthropic_message",
         "openai_chat_to_anthropic_message",
         "gemini_response_to_anthropic_message",
+        "claude_response_to_anthropic_message_for_api_format",
+        "create_claude_to_anthropic_sse_stream_for_api_format",
+        "ClaudeApiFormatSseTransformContext",
     ] {
         assert!(
             !adapter_transform_import_window.contains(marker),
-            "proxy_core_adapter should not re-export pure Claude response transform helper `{marker}`"
+            "proxy_core_adapter should not import Claude response transform helper `{marker}`"
         );
     }
 
@@ -13326,7 +13346,7 @@ fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
             for marker in forbidden_markers {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy_core_adapter.rs Claude response api_format dispatch:{} contains host-local marker `{}`",
+                        "src/proxy/provider/claude.rs Claude response api_format wrapper:{} contains host-local marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -13337,7 +13357,7 @@ fn proxy_core_adapter_delegates_claude_response_format_dispatch_to_core() {
 
     assert!(
         violations.is_empty(),
-        "proxy_core_adapter must keep Claude response api_format dispatch in proxy-core:\n{}",
+        "Claude provider must keep response api_format dispatch in proxy-core:\n{}",
         violations.join("\n")
     );
 }

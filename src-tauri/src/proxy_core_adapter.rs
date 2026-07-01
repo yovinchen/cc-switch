@@ -44,23 +44,10 @@ use crate::proxy_core::api::routing::{
     LegacyProviderProjectionInput, RoutePlan,
 };
 use crate::proxy_core::api::session::SessionIdResult;
-use crate::proxy_core::api::transforms::{AnthropicToolSchemaHints, GeminiShadowStore};
-use bytes::Bytes;
-use futures::Stream;
 use http::{HeaderMap, Method};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use uuid::Uuid;
-
-fn synthesize_gemini_tool_call_id_with_uuid() -> String {
-    crate::proxy_core::api::transforms::synthesize_gemini_tool_call_id(
-        Uuid::new_v4().simple().to_string(),
-    )
-}
-
-fn log_rectified_gemini_tool_args(name: &str) {
-    log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
-}
 
 use crate::proxy_core::api::auth::{
     ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopModelRouteInput,
@@ -267,10 +254,6 @@ use crate::proxy_core::api::auth::{
     ClaudeDesktopProxyRouteInput, ClaudeDesktopResolvedProxyRoute,
 };
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
-use crate::proxy_core::api::transforms::{
-    claude_response_to_anthropic_message_for_api_format,
-    create_claude_to_anthropic_sse_stream_for_api_format, ClaudeApiFormatSseTransformContext,
-};
 use crate::proxy_core::api::transport::{ProxyRequest, ProxyResult};
 fn codex_takeover_toml_config_for_provider(
     toml_str: &str,
@@ -388,51 +371,6 @@ async fn forwarder_runtime_config_from_db_sources(
         db.get_optimizer_config().unwrap_or_default(),
         db.get_copilot_optimizer_config().unwrap_or_default(),
     ))
-}
-
-pub(crate) fn provider_claude_transform_response_for_api_format(
-    body: &Value,
-    api_format: &str,
-    shadow_store: Option<&GeminiShadowStore>,
-    provider_id: Option<&str>,
-    session_id: Option<&str>,
-    tool_schema_hints: Option<&AnthropicToolSchemaHints>,
-) -> Result<Value, String> {
-    let output = claude_response_to_anthropic_message_for_api_format(
-        body,
-        api_format,
-        shadow_store,
-        provider_id,
-        session_id,
-        tool_schema_hints,
-        synthesize_gemini_tool_call_id_with_uuid,
-    )?;
-    for name in &output.rectified_tool_names {
-        log_rectified_gemini_tool_args(name);
-    }
-    Ok(output.response)
-}
-
-pub(crate) fn provider_claude_transform_sse_for_api_format(
-    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-    api_format: &str,
-    shadow_store: Option<Arc<GeminiShadowStore>>,
-    provider_id: Option<String>,
-    session_id: Option<String>,
-    tool_schema_hints: Option<AnthropicToolSchemaHints>,
-) -> Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send + Unpin> {
-    create_claude_to_anthropic_sse_stream_for_api_format(
-        stream,
-        api_format,
-        ClaudeApiFormatSseTransformContext {
-            shadow_store,
-            provider_id,
-            session_id,
-            tool_schema_hints,
-            synthesize_gemini_tool_call_id: synthesize_gemini_tool_call_id_with_uuid,
-            on_rectified_tool_name: log_rectified_gemini_tool_args,
-        },
-    )
 }
 
 use crate::proxy_core::api::routing::{
@@ -1262,6 +1200,9 @@ mod tests {
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source;
     use crate::proxy::host::cc_switch::provider_adapter_context::forwarder_provider_adapter_context_for_app;
+    use crate::proxy::provider::{
+        transform_claude_response_for_api_format, transform_claude_sse_for_api_format,
+    };
     use crate::proxy_core::api::config::{
         app_type_from_circuit_key, channel_circuit_key, circuit_breaker_config_from_app_config,
         circuit_failure_threshold_from_app_config, provider_circuit_key, CircuitBreakerConfig,
@@ -1313,7 +1254,7 @@ mod tests {
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
         normalize_codex_chat_reasoning_profile, resolve_claude_api_format_from_settings,
         resolve_claude_responses_prompt_cache_key,
-        should_preserve_reasoning_content_for_openai_chat,
+        should_preserve_reasoning_content_for_openai_chat, GeminiShadowStore,
     };
     use crate::proxy_core::api::transport::{
         apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
@@ -1420,7 +1361,7 @@ mod tests {
         should_normalize_anthropic_tool_thinking_history,
         should_normalize_mimo_anthropic_thinking_history, CodexProxyErrorContext,
         CodexProxyErrorKind, MimoAnthropicThinkingNormalizationInput,
-        ANTHROPIC_TOOL_THINKING_PLACEHOLDER, GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
+        ANTHROPIC_TOOL_THINKING_PLACEHOLDER,
     };
     use crate::proxy_core::api::transforms::{
         CodexChatReasoningOptions, CodexChatReasoningProfile,
@@ -1445,6 +1386,7 @@ mod tests {
         UsageSelectedProviderMissingPhase,
     };
     use crate::settings::CustomEndpoint;
+    use bytes::Bytes;
     use futures::future::BoxFuture;
     use indexmap::IndexMap;
     use std::collections::HashMap;
@@ -6014,7 +5956,7 @@ base_url = "https://api.openai.com/v1"
     }
 
     #[test]
-    fn claude_transform_adapter_projects_response_facades() {
+    fn claude_provider_projects_response_facades() {
         let chat_response =
             crate::proxy_core::api::transforms::openai_chat_to_anthropic_message(&json!({
             "id": "chatcmpl_1",
@@ -6027,7 +5969,7 @@ base_url = "https://api.openai.com/v1"
             }))
             .expect("chat response");
         assert_eq!(chat_response["content"][0]["text"], "Hi");
-        let delegated_chat_response = provider_claude_transform_response_for_api_format(
+        let delegated_chat_response = transform_claude_response_for_api_format(
             &json!({
             "id": "chatcmpl_1",
             "model": "chat-model",
@@ -6059,7 +6001,7 @@ base_url = "https://api.openai.com/v1"
             }))
             .expect("responses response");
         assert_eq!(responses_response["content"][0]["text"], "Done");
-        let delegated_responses_response = provider_claude_transform_response_for_api_format(
+        let delegated_responses_response = transform_claude_response_for_api_format(
             &json!({
             "id": "resp_1",
             "model": "responses-model",
@@ -6079,7 +6021,7 @@ base_url = "https://api.openai.com/v1"
         .expect("delegated responses response");
         assert_eq!(delegated_responses_response["content"][0]["text"], "Done");
 
-        let explicit_chat_response = provider_claude_transform_response_for_api_format(
+        let explicit_chat_response = transform_claude_response_for_api_format(
             &json!({
                 "id": "chatcmpl_2",
                 "model": "chat-model",
@@ -6101,7 +6043,7 @@ base_url = "https://api.openai.com/v1"
             "Explicit chat"
         );
 
-        let explicit_responses_response = provider_claude_transform_response_for_api_format(
+        let explicit_responses_response = transform_claude_response_for_api_format(
             &json!({
                 "id": "resp_2",
                 "model": "responses-model",
@@ -6142,7 +6084,7 @@ base_url = "https://api.openai.com/v1"
             )
             .expect("gemini response");
         assert_eq!(gemini_output.response["content"][0]["text"], "Gemini hi");
-        let delegated_gemini_response = provider_claude_transform_response_for_api_format(
+        let delegated_gemini_response = transform_claude_response_for_api_format(
             &json!({
             "responseId": "gemini_1",
             "candidates": [{
@@ -6213,7 +6155,7 @@ base_url = "https://api.openai.com/v1"
     }
 
     #[tokio::test]
-    async fn claude_stream_transform_adapter_dispatches_api_formats() {
+    async fn claude_stream_transform_provider_dispatches_api_formats() {
         use futures::StreamExt as _;
 
         let chat_stream = futures::stream::iter(vec![
@@ -6225,19 +6167,15 @@ base_url = "https://api.openai.com/v1"
             )),
             Ok(Bytes::from_static(b"data: [DONE]\n\n")),
         ]);
-        let chat_output = provider_claude_transform_sse_for_api_format(
-            chat_stream,
-            "openai_chat",
-            None,
-            None,
-            None,
-            None,
-        )
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .map(|item| String::from_utf8(item.expect("chat chunk").to_vec()).expect("chat utf8"))
-        .collect::<String>();
+        let chat_output =
+            transform_claude_sse_for_api_format(chat_stream, "openai_chat", None, None, None, None)
+                .collect::<Vec<_>>()
+                .await
+                .into_iter()
+                .map(|item| {
+                    String::from_utf8(item.expect("chat chunk").to_vec()).expect("chat utf8")
+                })
+                .collect::<String>();
         assert!(chat_output.contains("event: message_start"));
         assert!(chat_output.contains("Hi"));
 
@@ -6246,7 +6184,7 @@ base_url = "https://api.openai.com/v1"
                 b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"model\":\"gpt-4o\",\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\nevent: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"part\":{\"type\":\"output_text\",\"text\":\"\"},\"output_index\":0,\"content_index\":0}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"Done\",\"output_index\":0,\"content_index\":0}\n\nevent: response.content_part.done\ndata: {\"type\":\"response.content_part.done\",\"output_index\":0,\"content_index\":0}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n",
             ),
         )]);
-        let responses_output = provider_claude_transform_sse_for_api_format(
+        let responses_output = transform_claude_sse_for_api_format(
             responses_stream,
             "openai_responses",
             None,
@@ -6269,7 +6207,7 @@ base_url = "https://api.openai.com/v1"
                 b"data: {\"responseId\":\"gemini_1\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"Gemini hi\"}]}}],\"usageMetadata\":{\"promptTokenCount\":1,\"candidatesTokenCount\":1,\"totalTokenCount\":2}}\n\n",
             ),
         )]);
-        let gemini_output = provider_claude_transform_sse_for_api_format(
+        let gemini_output = transform_claude_sse_for_api_format(
             gemini_stream,
             "gemini_native",
             Some(Arc::new(GeminiShadowStore::default())),
@@ -8757,14 +8695,6 @@ base_url = "https://api.openai.com/v1"
         uuid::Uuid::parse_str(&result.session_id).expect("generated session id should be a UUID");
         assert_eq!(result.source, SessionIdSource::Generated);
         assert!(!result.client_provided);
-    }
-
-    #[test]
-    fn gemini_tool_call_id_adapter_uses_core_prefix_contract() {
-        let id = synthesize_gemini_tool_call_id_with_uuid();
-
-        assert!(id.starts_with(GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX));
-        assert!(id.len() > GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX.len());
     }
 
     #[test]
