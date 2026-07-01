@@ -11,6 +11,7 @@ use crate::proxy::engine::forward_pipeline::{
     ForwarderRuntimeStateSourceRef,
 };
 use crate::proxy::error::ProxyError;
+use crate::proxy::error_mapper::forward_failure_kind_from_proxy_error;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy_core::api::events::{
@@ -35,7 +36,6 @@ use crate::proxy_core::api::transport::{
     forwarder_terminal_failure_status_message, should_failover_after_rectifier_retry_failure,
     ForwardFailureCategory, ForwarderRectifierRetryKind,
 };
-use crate::proxy_core_adapter::forward_failure_kind_from_proxy_error;
 
 pub(crate) struct CcSwitchForwarderRuntimeStateSource {
     status: Arc<RwLock<ProxyRuntimeStatus>>,

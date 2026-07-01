@@ -17,8 +17,11 @@ use crate::proxy_core::api::transforms::{
 #[cfg(test)]
 use crate::proxy_core::api::transport::ProxyResponseBody;
 use crate::proxy_core::api::transport::{
+    forward_failure_kind_from_proxy_status, forward_failure_message_from_proxy_status,
+};
+use crate::proxy_core::api::transport::{
     parse_upstream_json_or_unlabeled_sse, upstream_response_parse_failure_log_message,
-    upstream_send_error_projection, ProxyCoreResponse,
+    upstream_send_error_projection, ForwardFailureKind, ProxyCoreResponse,
     ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext,
     UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel, UpstreamJsonBodySource,
     UpstreamResponseParseFailureLogContext, UpstreamSendErrorInput, UpstreamSseAggregationKind,
@@ -74,6 +77,35 @@ pub(crate) fn proxy_error_display_message(error: &ProxyError) -> String {
         proxy_error_status_kind(error),
         raw_message,
         upstream_body,
+        &display_message,
+    )
+}
+
+pub(crate) fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> ForwardFailureKind {
+    let upstream_body = match error {
+        ProxyError::UpstreamError { body, .. } => body.clone(),
+        _ => None,
+    };
+    forward_failure_kind_from_proxy_status(
+        proxy_error_status_kind(error),
+        forward_failure_message_from_proxy_error(error),
+        upstream_body,
+    )
+}
+
+fn forward_failure_message_from_proxy_error(error: &ProxyError) -> String {
+    let raw_message = match error {
+        ProxyError::Timeout(message)
+        | ProxyError::ForwardFailed(message)
+        | ProxyError::TransformError(message)
+        | ProxyError::ConfigError(message)
+        | ProxyError::AuthError(message) => message.as_str(),
+        _ => "",
+    };
+    let display_message = error.to_string();
+    forward_failure_message_from_proxy_status(
+        proxy_error_status_kind(error),
+        raw_message,
         &display_message,
     )
 }

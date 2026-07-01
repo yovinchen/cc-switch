@@ -89,11 +89,6 @@ const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_PRESELECT_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_COMPAT_MARKERS: &[&str] =
     &["providers::", "get_claude_api_format("];
-const FORBIDDEN_PROXY_ERROR_MAPPER_FORWARD_FAILURE_PROJECTION_MARKERS: &[&str] = &[
-    "ForwardFailureKind",
-    "forward_failure_kind_from_proxy_status(",
-    "forward_failure_message(",
-];
 const FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS: &[&str] = &[
     "rewrite_codex_responses_endpoint_to_chat(",
     "rewrite_claude_transform_endpoint(",
@@ -3013,29 +3008,24 @@ fn proxy_core_adapter_excludes_codex_error_projection_reexports() {
 }
 
 #[test]
-fn proxy_error_mapper_delegates_forward_failure_projection_to_adapter() {
+fn proxy_error_mapper_owns_forward_failure_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/error_mapper.rs");
     let source = fs::read_to_string(&path).expect("read error_mapper.rs");
-
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(&source) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_PROXY_ERROR_MAPPER_FORWARD_FAILURE_PROJECTION_MARKERS {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy/error_mapper.rs:{} contains forward failure projection marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
 
     assert!(
-        violations.is_empty(),
-        "Proxy error mapper must delegate forward failure projection to proxy_core_adapter:\n{}",
-        violations.join("\n")
+        source.contains("pub(crate) fn forward_failure_kind_from_proxy_error")
+            && source.contains("fn forward_failure_message_from_proxy_error")
+            && source.contains("forward_failure_kind_from_proxy_status(")
+            && source.contains("forward_failure_message_from_proxy_status("),
+        "Proxy error mapper must own ProxyError to ForwardFailureKind projection through proxy-core"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) fn forward_failure_kind_from_proxy_error")
+            && !adapter_source.contains("fn forward_failure_message_from_proxy_error"),
+        "proxy_core_adapter must not keep forward failure projection facades"
     );
 }
 
@@ -3065,35 +3055,42 @@ fn proxy_error_mapper_excludes_legacy_status_and_display_facades() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_forward_failure_message_policy_to_core() {
+fn proxy_error_mapper_delegates_forward_failure_message_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let path = manifest_dir.join("src/proxy/error_mapper.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/error_mapper.rs");
     let function = function_slice(
         &source,
         "fn forward_failure_message_from_proxy_error",
-        "pub(crate) fn apply_channel_provider_overrides",
+        "pub(crate) fn proxy_core_error_to_proxy_error",
     );
 
     assert!(
-        function.contains("core_forward_failure_message_from_proxy_status("),
-        "adapter must delegate forward failure message selection to proxy-core"
+        !adapter_source.contains("pub(crate) fn forward_failure_kind_from_proxy_error")
+            && !adapter_source.contains("fn forward_failure_message_from_proxy_error"),
+        "proxy_core_adapter should not own ProxyError to ForwardFailureKind projection"
+    );
+    assert!(
+        function.contains("forward_failure_message_from_proxy_status("),
+        "error_mapper must delegate forward failure message selection to proxy-core"
     );
     assert!(
         !source.contains(
             "pub(crate) use crate::proxy_core::api::transport::forward_failure_kind_from_proxy_status"
         ) && source.contains(
-            "crate::proxy_core::api::transport::forward_failure_kind_from_proxy_status("
+            "forward_failure_kind_from_proxy_status("
         ),
-        "adapter should call the forward failure kind core helper internally without re-exporting it"
+        "error_mapper should call the forward failure kind core helper internally without re-exporting it"
     );
     assert!(
         function.contains("proxy_error_status_kind(error)"),
-        "adapter should pass ProxyError status kind into the core forward failure message policy"
+        "error_mapper should pass ProxyError status kind into the core forward failure message policy"
     );
     assert!(
         !function.contains("=> message.clone()") && !function.contains("_ => error.to_string()"),
-        "adapter must not directly choose between raw host messages and display messages"
+        "error_mapper must not directly choose between raw host messages and display messages"
     );
 }
 
@@ -3160,14 +3157,13 @@ fn proxy_error_status_projection_lives_in_error_mapper() {
         "error_mapper should own host ProxyError to core status-kind projection"
     );
     assert!(
-        adapter_source.contains("use crate::proxy::error_mapper::{")
-            && adapter_source.contains("proxy_error_status_kind")
+        !adapter_source.contains("proxy_error_status_kind")
             && !adapter_source.contains("proxy_error_display_message")
             && !adapter_source.contains("proxy_error_status_code")
             && !adapter_source.contains("pub(crate) fn proxy_error_status_kind")
             && !adapter_source.contains("pub(crate) fn proxy_error_status_code")
             && !adapter_source.contains("pub(crate) fn proxy_error_display_message"),
-        "proxy_core_adapter should only retain the local status-kind dependency it still needs"
+        "proxy_core_adapter should not import or own status/display projection helpers"
     );
     assert!(
         !proxy_error_source.contains("fn proxy_error_status_kind("),
@@ -6015,7 +6011,7 @@ fn proxy_core_adapter_does_not_export_forward_failure_kind_alias() {
 
     assert!(
         !adapter_source.contains("pub(crate) type ForwardFailureKind ="),
-        "proxy_core_adapter should not expose ForwardFailureKind as a type alias; adapter internals should use proxy_core::api::transport directly"
+        "proxy_core_adapter should not expose ForwardFailureKind as a type alias; error_mapper and runtime sources should use proxy_core::api::transport directly"
     );
 }
 
@@ -17978,7 +17974,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let host_forward_function = function_slice(
         &source,
         "async fn forward_proxy_request_with_host_runtime",
-        "pub(crate) fn forward_failure_kind_from_proxy_error",
+        "pub(crate) fn apply_channel_provider_overrides",
     );
     let adapter_core_ports_import = optional_function_slice(
         &source,

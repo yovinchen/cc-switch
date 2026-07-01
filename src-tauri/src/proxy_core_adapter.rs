@@ -27,7 +27,7 @@ use crate::proxy::engine::forward_pipeline::{
 };
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
-use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status_kind};
+use crate::proxy::error_mapper::forward_error_to_core_error;
 use crate::proxy::host::cc_switch::provider_projection::{
     provider_claude_auth_key, provider_claude_kind,
 };
@@ -292,9 +292,8 @@ use crate::proxy_core::api::transforms::{
     ClaudeApiFormatSseTransformContext,
 };
 use crate::proxy_core::api::transport::build_claude_provider_auth_headers;
-use crate::proxy_core::api::transport::forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status;
 use crate::proxy_core::api::transport::{
-    ClaudeProviderAuthHeadersInput, ForwardFailureKind, ProxyRequest, ProxyResult,
+    ClaudeProviderAuthHeadersInput, ProxyRequest, ProxyResult,
 };
 fn codex_takeover_toml_config_for_provider(
     toml_str: &str,
@@ -1031,35 +1030,6 @@ async fn forward_proxy_request_with_host_runtime(
     .await
 }
 
-pub(crate) fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> ForwardFailureKind {
-    let upstream_body = match error {
-        ProxyError::UpstreamError { body, .. } => body.clone(),
-        _ => None,
-    };
-    crate::proxy_core::api::transport::forward_failure_kind_from_proxy_status(
-        proxy_error_status_kind(error),
-        forward_failure_message_from_proxy_error(error),
-        upstream_body,
-    )
-}
-
-fn forward_failure_message_from_proxy_error(error: &ProxyError) -> String {
-    let raw_message = match error {
-        ProxyError::Timeout(message)
-        | ProxyError::ForwardFailed(message)
-        | ProxyError::TransformError(message)
-        | ProxyError::ConfigError(message)
-        | ProxyError::AuthError(message) => message.as_str(),
-        _ => "",
-    };
-    let display_message = error.to_string();
-    core_forward_failure_message_from_proxy_status(
-        proxy_error_status_kind(error),
-        raw_message,
-        &display_message,
-    )
-}
-
 pub(crate) fn apply_channel_provider_overrides(
     app_type: &AppType,
     provider: &mut Provider,
@@ -1634,6 +1604,7 @@ mod tests {
         ForwardErrorUsageContext, NonStreamingResponseUsageContext, StreamingResponseUsageContext,
         TransformedResponseUsageContext, TransformedStreamingResponseUsageContext,
     };
+    use crate::proxy::error_mapper::forward_failure_kind_from_proxy_error;
     use crate::proxy::events::ProxyEventBus;
     use crate::proxy::host::cc_switch::database_channel_source::{
         channel_route_records_from_sources, channel_spec_from_source,
@@ -1724,8 +1695,8 @@ mod tests {
         build_upstream_request_headers, forward_upstream_url_plan,
         is_official_codex_client_user_agent, is_socks_proxy_url, resolve_upstream_send_policy,
         serialize_upstream_request_body, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
-        CopilotClassification, ForwardUpstreamUrlPlanInput, ForwarderMediaPreventionFacts,
-        ForwarderProtocolPreparationInput, ForwarderTransformPlan,
+        CopilotClassification, ForwardFailureKind, ForwardUpstreamUrlPlanInput,
+        ForwarderMediaPreventionFacts, ForwarderProtocolPreparationInput, ForwarderTransformPlan,
         OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization,
         ProxyBody, ProxyCoreResponse, ProxyResponseBody, ProxyTransportResponseBody,
         UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamSseAggregationKind,
