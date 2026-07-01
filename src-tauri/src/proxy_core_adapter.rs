@@ -32,7 +32,7 @@ use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::api::config::{AppProxyConfig, ResponseRuntimePolicy};
-use crate::proxy_core::api::domain::{AppKind, ProviderKind};
+use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::routing::RoutePlan;
 use crate::proxy_core::api::session::SessionIdResult;
 use http::{HeaderMap, Method};
@@ -86,10 +86,6 @@ fn forward_current_provider_id_from_db_sources(db: &Database, app_type: &AppType
 
 use crate::proxy_core::api::domain::unsupported_app_kind_config_error;
 
-use crate::proxy_core::api::auth::{
-    classify_provider_managed_auth as core_classify_provider_managed_auth,
-    ProviderManagedAuthClassification, ProviderManagedAuthFacts,
-};
 use crate::proxy_core::api::auth::{
     claude_desktop_direct_gateway_credentials, claude_desktop_direct_inference_model_specs,
     claude_desktop_gateway_profile, claude_desktop_proxy_model_routes,
@@ -432,23 +428,31 @@ async fn forward_proxy_request_with_host_runtime(
     .await
 }
 
-fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
+#[cfg(test)]
+fn provider_kind_from_provider(
+    provider: &Provider,
+) -> Option<crate::proxy_core::api::domain::ProviderKind> {
     provider
         .meta
         .as_ref()
         .and_then(|meta| meta.provider_type.as_deref())
-        .map(ProviderKind::from)
+        .map(crate::proxy_core::api::domain::ProviderKind::from)
 }
 
-fn provider_managed_auth_classification(provider: &Provider) -> ProviderManagedAuthClassification {
+#[cfg(test)]
+fn provider_managed_auth_classification(
+    provider: &Provider,
+) -> crate::proxy_core::api::auth::ProviderManagedAuthClassification {
     let provider_kind = provider_kind_from_provider(provider);
-    core_classify_provider_managed_auth(ProviderManagedAuthFacts {
-        provider_kind: provider_kind.as_ref(),
-        anthropic_base_url: provider
-            .settings_config
-            .pointer("/env/ANTHROPIC_BASE_URL")
-            .and_then(Value::as_str),
-    })
+    crate::proxy_core::api::auth::classify_provider_managed_auth(
+        crate::proxy_core::api::auth::ProviderManagedAuthFacts {
+            provider_kind: provider_kind.as_ref(),
+            anthropic_base_url: provider
+                .settings_config
+                .pointer("/env/ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str),
+        },
+    )
 }
 
 #[cfg(test)]
@@ -456,10 +460,12 @@ fn provider_is_codex_oauth(provider: &Provider) -> bool {
     provider_managed_auth_classification(provider).is_codex_oauth
 }
 
+#[cfg(test)]
 fn provider_is_github_copilot(provider: &Provider) -> bool {
     provider_managed_auth_classification(provider).is_github_copilot
 }
 
+#[cfg(test)]
 fn provider_uses_managed_account_auth(provider: &Provider) -> bool {
     provider_managed_auth_classification(provider).uses_managed_account
 }
@@ -804,29 +810,6 @@ fn claude_desktop_provider_validation_input(
     }
 }
 
-use crate::proxy_core::api::ports::{
-    apply_claude_takeover_fields_for_provider_facts as core_apply_claude_takeover_fields_for_provider_facts,
-    ClaudeTakeoverProviderFacts,
-};
-
-pub(crate) fn apply_claude_takeover_fields_for_provider(
-    config: &mut Value,
-    proxy_url: &str,
-    placeholder: &str,
-    provider: &Provider,
-) {
-    core_apply_claude_takeover_fields_for_provider_facts(
-        config,
-        proxy_url,
-        placeholder,
-        ClaudeTakeoverProviderFacts {
-            provider_settings_config: &provider.settings_config,
-            uses_managed_account: provider_uses_managed_account_auth(provider),
-            is_github_copilot: provider_is_github_copilot(provider),
-        },
-    );
-}
-
 fn extract_proxy_session_id(
     headers: &HeaderMap,
     body: &Value,
@@ -853,7 +836,9 @@ mod tests {
         circuit_failure_threshold_from_app_config, provider_circuit_key, AllowResult,
         CircuitBreakerConfig, CircuitBreakerStats, CircuitState,
     };
-    use crate::proxy_core::api::domain::{extract_claude_base_url_from_settings, AppKind};
+    use crate::proxy_core::api::domain::{
+        extract_claude_base_url_from_settings, AppKind, ProviderKind,
+    };
     use crate::proxy_core::api::ports::{
         app_proxy_config_with_enabled as proxy_app_config_with_enabled,
         apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,

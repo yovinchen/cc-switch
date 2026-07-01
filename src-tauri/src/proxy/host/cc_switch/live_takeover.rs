@@ -24,8 +24,9 @@ use crate::proxy_core::api::ports::{
     should_emit_proxy_official_warning_for_provider_category, LiveTokenProviderSettingsIssue,
 };
 use crate::proxy_core::api::ports::{
-    apply_claude_takeover_fields_with_policy, gemini_live_backup_from_effective_settings,
-    ClaudeTakeoverAuthPolicy,
+    apply_claude_takeover_fields_for_provider_facts, apply_claude_takeover_fields_with_policy,
+    gemini_live_backup_from_effective_settings, ClaudeTakeoverAuthPolicy,
+    ClaudeTakeoverProviderFacts,
 };
 use crate::proxy_core::api::ports::{
     codex_config_has_base_url_matching,
@@ -48,8 +49,7 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core::api::routing::should_block_proxy_switch_to_provider_category;
 use crate::proxy_core_adapter::{
-    apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
-    CodexTakeoverAuthPolicy,
+    apply_codex_takeover_fields_for_provider, CodexTakeoverAuthPolicy,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, ProviderEffectiveSettingsWarning,
@@ -64,6 +64,24 @@ use tokio::sync::RwLock;
 
 /// 用于接管 Live 配置时的占位符（避免客户端提示缺少 key，同时不泄露真实 Token）
 const PROXY_TOKEN_PLACEHOLDER: &str = "PROXY_MANAGED";
+
+fn apply_claude_takeover_fields_for_provider(
+    config: &mut Value,
+    proxy_url: &str,
+    placeholder: &str,
+    provider: &Provider,
+) {
+    apply_claude_takeover_fields_for_provider_facts(
+        config,
+        proxy_url,
+        placeholder,
+        ClaudeTakeoverProviderFacts {
+            provider_settings_config: &provider.settings_config,
+            uses_managed_account: provider.uses_managed_account_auth(),
+            is_github_copilot: provider.is_github_copilot(),
+        },
+    );
+}
 
 struct ProxyEventMessage {
     event_name: String,

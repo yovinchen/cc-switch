@@ -5750,10 +5750,9 @@ fn proxy_core_adapter_does_not_export_domain_or_model_catalog_aliases() {
         );
     }
     assert!(
-        adapter_runtime_source.contains(
-            "use crate::proxy_core::api::domain::{AppKind, ProviderKind};"
-        ) && !adapter_runtime_source.contains("ModelMappingProjection"),
-        "proxy_core_adapter internals should import domain DTOs directly and should not retain model mapping DTOs"
+        adapter_runtime_source.contains("use crate::proxy_core::api::domain::AppKind;")
+            && !adapter_runtime_source.contains("ModelMappingProjection"),
+        "proxy_core_adapter runtime internals should import only needed domain DTOs directly and should not retain model mapping DTOs"
     );
 }
 
@@ -12303,8 +12302,10 @@ fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
         "proxy_core_adapter should not keep an Anthropic rectifier provider fact facade"
     );
     assert!(
-        classification_slice.contains("core_classify_provider_managed_auth(")
-            && classification_slice.contains("ProviderManagedAuthFacts"),
+        classification_slice
+            .contains("crate::proxy_core::api::auth::classify_provider_managed_auth(")
+            && classification_slice
+                .contains("crate::proxy_core::api::auth::ProviderManagedAuthFacts"),
         "proxy_core_adapter must delegate managed-provider classification to proxy-core"
     );
     for marker in [
@@ -17723,7 +17724,7 @@ fn proxy_core_adapter_excludes_hot_switch_takeover_policy_facades() {
 }
 
 #[test]
-fn proxy_core_adapter_keeps_claude_takeover_model_helpers_in_core() {
+fn live_takeover_owns_claude_takeover_provider_facts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
@@ -17732,13 +17733,18 @@ fn proxy_core_adapter_keeps_claude_takeover_model_helpers_in_core() {
             .expect("read live_takeover.rs");
 
     assert!(
-        source.contains("pub(crate) fn apply_claude_takeover_fields_for_provider("),
-        "proxy_core_adapter should retain host Provider facts projection for Claude takeover"
+        !source.contains("pub(crate) fn apply_claude_takeover_fields_for_provider("),
+        "proxy_core_adapter should not retain host Provider facts projection for Claude takeover"
     );
     assert!(
         live_takeover_source.contains("apply_claude_takeover_fields_with_policy")
-            && live_takeover_source.contains("ClaudeTakeoverAuthPolicy"),
-        "live takeover should consume pure Claude takeover policy directly from proxy-core"
+            && live_takeover_source.contains("ClaudeTakeoverAuthPolicy")
+            && live_takeover_source.contains("fn apply_claude_takeover_fields_for_provider(")
+            && live_takeover_source.contains("apply_claude_takeover_fields_for_provider_facts")
+            && live_takeover_source.contains("ClaudeTakeoverProviderFacts")
+            && live_takeover_source.contains("provider.uses_managed_account_auth()")
+            && live_takeover_source.contains("provider.is_github_copilot()"),
+        "live takeover should consume pure Claude takeover policy and own host Provider facts projection directly"
     );
     for marker in [
         "apply_claude_takeover_fields_with_policy",
