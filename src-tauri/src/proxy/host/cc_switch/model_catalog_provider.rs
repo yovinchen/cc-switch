@@ -1,17 +1,23 @@
 //! CC Switch model catalog provider.
 
 use crate::database::Database;
+use crate::error::AppError;
+use crate::provider::Provider;
 use crate::proxy::engine::routing::ProviderRouter;
-use crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
+use crate::proxy_core::api::auth::{
+    claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
+    ClaudeDesktopModelRouteInput, ClaudeDesktopResolvedProxyRoute,
+};
 use crate::proxy_core::api::domain::AppKind;
-use crate::proxy_core::api::errors::{internal_error_with_context, ProxyCoreResult};
+use crate::proxy_core::api::errors::{
+    config_error_with_context, internal_error_with_context, ProxyCoreError, ProxyCoreResult,
+};
 use crate::proxy_core::api::model_catalog::{
     client_model_catalog_from_optional_raw, client_model_catalog_raw_from_text,
     client_model_catalog_source_for_app, empty_client_model_catalog_raw,
     provider_model_catalog_from_settings, ClientModelCatalogSource, ModelCatalog,
 };
 use crate::proxy_core::api::ports::ModelCatalogProvider;
-use crate::proxy_core_adapter::claude_desktop_model_routes_from_router_source;
 use futures::future::BoxFuture;
 use serde_json::Value;
 use std::sync::Arc;
@@ -54,6 +60,10 @@ impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
     }
 }
 
+fn model_catalog_app_error(context: &str, error: AppError) -> ProxyCoreError {
+    config_error_with_context(context, error)
+}
+
 fn provider_model_catalog_from_db_source(
     db: &Database,
     app: &AppKind,
@@ -66,6 +76,50 @@ fn provider_model_catalog_from_db_source(
         provider_id,
         provider.as_ref().map(|provider| &provider.settings_config),
     ))
+}
+
+async fn claude_desktop_model_routes_from_router_source(
+    db: &Database,
+    router: &ProviderRouter,
+    app: &AppKind,
+) -> ProxyCoreResult<Vec<ClaudeDesktopModelRouteInput>> {
+    let provider_ids = router.select_provider_ids(app.as_str()).await;
+    let provider = claude_desktop_provider_from_selection_result(provider_ids, |provider_id| {
+        db.get_provider_by_id(provider_id, app.as_str())
+    })?;
+    let routes = crate::proxy_core_adapter::provider_claude_desktop_proxy_model_routes(&provider)
+        .map_err(|issue| {
+        model_catalog_app_error(
+            "load claude desktop model routes",
+            AppError::Config(format!(
+                "Claude Desktop proxy model routes unavailable: {issue:?}"
+            )),
+        )
+    })?;
+    Ok(claude_desktop_model_routes_to_core_inputs(routes))
+}
+
+fn claude_desktop_provider_from_selection_result(
+    result: Result<Vec<String>, AppError>,
+    load_provider: impl FnOnce(&str) -> Result<Option<Provider>, AppError>,
+) -> ProxyCoreResult<Provider> {
+    let provider_ids = result.map_err(claude_desktop_provider_selection_error)?;
+    let provider_id = provider_ids
+        .into_iter()
+        .next()
+        .ok_or_else(claude_desktop_provider_unavailable_error)?;
+    load_provider(&provider_id)
+        .map_err(|error| model_catalog_app_error("load claude desktop provider", error))?
+        .ok_or_else(claude_desktop_provider_unavailable_error)
+}
+
+fn claude_desktop_model_routes_to_core_inputs(
+    routes: impl IntoIterator<Item = ClaudeDesktopResolvedProxyRoute>,
+) -> Vec<ClaudeDesktopModelRouteInput> {
+    routes
+        .into_iter()
+        .map(|route| ClaudeDesktopModelRouteInput::new(route.route_id, route.supports_1m))
+        .collect()
 }
 
 fn client_model_catalog_from_app_source(app: &AppKind) -> ProxyCoreResult<ModelCatalog> {
@@ -98,5 +152,109 @@ fn codex_client_model_catalog_raw_from_active_config() -> Value {
             );
         }
         empty_client_model_catalog_raw()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
+    use serde_json::json;
+
+    #[test]
+    fn claude_desktop_model_routes_to_core_inputs_preserve_route_contract() {
+        let inputs =
+            claude_desktop_model_routes_to_core_inputs([ClaudeDesktopResolvedProxyRoute {
+                route_id: "claude-sonnet-4-6".to_string(),
+                upstream_model: "anthropic/claude-sonnet-4-6".to_string(),
+                label_override: None,
+                supports_1m: true,
+            }]);
+        let response = ClaudeDesktopModelListResponse::from_routes(inputs.clone());
+
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0].route_id, "claude-sonnet-4-6");
+        assert!(inputs[0].supports_1m);
+        assert_eq!(response.data.len(), 1);
+        assert_eq!(response.data[0].id, "claude-sonnet-4-6");
+        assert!(response.data[0].supports_1m);
+        assert_eq!(response.first_id.as_deref(), Some("claude-sonnet-4-6"));
+        assert_eq!(response.last_id.as_deref(), Some("claude-sonnet-4-6"));
+    }
+
+    #[test]
+    fn model_catalog_provider_projects_provider_settings_client_raw_and_selection_errors() {
+        let settings = json!({
+            "model": " claude-sonnet-4 ",
+            "env": {
+                "ANTHROPIC_MODEL": "claude-opus-4"
+            },
+            "modelCatalog": {
+                "models": [
+                    {"model": "deepseek-v4"},
+                    {"id": "kimi-k2"}
+                ]
+            }
+        });
+
+        let provider_catalog = provider_model_catalog_from_settings("provider-a", Some(&settings));
+        assert_eq!(provider_catalog.provider_id, "provider-a");
+        assert_eq!(
+            provider_catalog.models,
+            vec![
+                "claude-opus-4".to_string(),
+                "claude-sonnet-4".to_string(),
+                "deepseek-v4".to_string(),
+                "kimi-k2".to_string()
+            ]
+        );
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            settings.clone(),
+            None,
+        );
+        assert_eq!(
+            provider_model_catalog_from_settings("provider-a", Some(&provider.settings_config))
+                .models,
+            provider_catalog.models
+        );
+        assert_eq!(
+            claude_desktop_provider_from_selection_result(
+                Ok(vec!["provider-a".to_string()]),
+                |_| Ok(Some(provider.clone()))
+            )
+            .expect("selected provider")
+            .id,
+            "provider-a"
+        );
+        assert!(matches!(
+            claude_desktop_provider_from_selection_result(Ok(Vec::new()), |_| Ok(None)),
+            Err(ProxyCoreError::Unavailable(message))
+                if message == "no available claude desktop provider"
+        ));
+        assert!(matches!(
+            claude_desktop_provider_from_selection_result(
+                Err(AppError::Message("router failed".to_string())),
+                |_| Ok(None)
+            ),
+            Err(ProxyCoreError::Internal(message))
+                if message == "select claude desktop provider: router failed"
+        ));
+        let client_catalog = client_model_catalog_from_optional_raw(
+            AppKind::Codex.as_str(),
+            Some(json!({
+                "models": [
+                    {"id": " gpt-5 "},
+                    {"model": "o4-mini"},
+                    {"id": "gpt-5"}
+                ]
+            })),
+        );
+        assert_eq!(client_catalog.provider_id, "codex");
+        assert_eq!(
+            client_catalog.models,
+            vec!["gpt-5".to_string(), "o4-mini".to_string()]
+        );
     }
 }

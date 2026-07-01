@@ -22,7 +22,6 @@ use crate::proxy::engine::forward_pipeline::{
     ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
     ForwarderUpstreamUrlInput,
 };
-use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error_mapper::forward_error_to_core_error;
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 #[cfg(test)]
@@ -41,8 +40,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::proxy_core::api::auth::{
-    ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopModelRouteInput,
-    ClaudeDesktopProxyProviderConfigValidationIssue,
+    ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
 };
 
 use crate::proxy_core::api::errors::config_error_with_context as core_config_error_with_context;
@@ -51,9 +49,6 @@ fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     core_config_error_with_context(context, error)
 }
 
-use crate::proxy_core::api::auth::{
-    claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
-};
 use crate::proxy_core::api::ports::{
     apply_codex_takeover_auth_placeholder_if_present, ensure_codex_takeover_auth_placeholder,
     CopilotOptimizerConfig, OptimizerConfig, RectifierConfig,
@@ -277,49 +272,6 @@ fn forward_runtime_request_from_proxy_request(
         body,
         session_result,
     })
-}
-
-fn claude_desktop_model_routes_to_core_inputs(
-    routes: impl IntoIterator<Item = ClaudeDesktopResolvedProxyRoute>,
-) -> Vec<ClaudeDesktopModelRouteInput> {
-    routes
-        .into_iter()
-        .map(|route| ClaudeDesktopModelRouteInput::new(route.route_id, route.supports_1m))
-        .collect()
-}
-
-fn claude_desktop_provider_from_selection_result(
-    result: Result<Vec<String>, AppError>,
-    load_provider: impl FnOnce(&str) -> Result<Option<Provider>, AppError>,
-) -> ProxyCoreResult<Provider> {
-    let provider_ids = result.map_err(claude_desktop_provider_selection_error)?;
-    let provider_id = provider_ids
-        .into_iter()
-        .next()
-        .ok_or_else(claude_desktop_provider_unavailable_error)?;
-    load_provider(&provider_id)
-        .map_err(|error| app_error("load claude desktop provider", error))?
-        .ok_or_else(claude_desktop_provider_unavailable_error)
-}
-
-pub(crate) async fn claude_desktop_model_routes_from_router_source(
-    db: &Database,
-    router: &ProviderRouter,
-    app: &AppKind,
-) -> ProxyCoreResult<Vec<ClaudeDesktopModelRouteInput>> {
-    let provider_ids = router.select_provider_ids(app.as_str()).await;
-    let provider = claude_desktop_provider_from_selection_result(provider_ids, |provider_id| {
-        db.get_provider_by_id(provider_id, app.as_str())
-    })?;
-    let routes = provider_claude_desktop_proxy_model_routes(&provider).map_err(|issue| {
-        app_error(
-            "load claude desktop model routes",
-            AppError::Config(format!(
-                "Claude Desktop proxy model routes unavailable: {issue:?}"
-            )),
-        )
-    })?;
-    Ok(claude_desktop_model_routes_to_core_inputs(routes))
 }
 
 use crate::proxy::host::cc_switch::channel_auth_profile_attempts::required_forward_attempts_from_sources;
@@ -6994,29 +6946,6 @@ base_url = "https://api.openai.com/v1"
     }
 
     #[test]
-    fn claude_desktop_model_routes_to_core_inputs_preserve_route_contract() {
-        let inputs =
-            claude_desktop_model_routes_to_core_inputs([ClaudeDesktopResolvedProxyRoute {
-                route_id: "claude-sonnet-4-6".to_string(),
-                upstream_model: "anthropic/claude-sonnet-4-6".to_string(),
-                label_override: None,
-                supports_1m: true,
-            }]);
-        let response = crate::proxy_core::api::auth::ClaudeDesktopModelListResponse::from_routes(
-            inputs.clone(),
-        );
-
-        assert_eq!(inputs.len(), 1);
-        assert_eq!(inputs[0].route_id, "claude-sonnet-4-6");
-        assert!(inputs[0].supports_1m);
-        assert_eq!(response.data.len(), 1);
-        assert_eq!(response.data[0].id, "claude-sonnet-4-6");
-        assert!(response.data[0].supports_1m);
-        assert_eq!(response.first_id.as_deref(), Some("claude-sonnet-4-6"));
-        assert_eq!(response.last_id.as_deref(), Some("claude-sonnet-4-6"));
-    }
-
-    #[test]
     fn codex_catalog_adapter_builds_and_simplifies_model_catalog() {
         use crate::proxy_core::api::model_catalog::{
             build_codex_model_catalog_from_settings, has_codex_model_catalog_specs,
@@ -7117,28 +7046,6 @@ base_url = "https://api.openai.com/v1"
             .models,
             provider_catalog.models
         );
-        assert_eq!(
-            claude_desktop_provider_from_selection_result(
-                Ok(vec!["provider-a".to_string()]),
-                |_| Ok(Some(provider.clone()))
-            )
-            .expect("selected provider")
-            .id,
-            "provider-a"
-        );
-        assert!(matches!(
-            claude_desktop_provider_from_selection_result(Ok(Vec::new()), |_| Ok(None)),
-            Err(ProxyCoreError::Unavailable(message))
-                if message == "no available claude desktop provider"
-        ));
-        assert!(matches!(
-            claude_desktop_provider_from_selection_result(
-                Err(AppError::Message("router failed".to_string())),
-                |_| Ok(None)
-            ),
-            Err(ProxyCoreError::Internal(message))
-                if message == "select claude desktop provider: router failed"
-        ));
         let client_catalog =
             crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw(
                 AppKind::Codex.as_str(),

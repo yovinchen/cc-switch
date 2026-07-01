@@ -10702,9 +10702,7 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
             && source.contains("claude_desktop_provider_models_are_profile_safe(")
             && source.contains("claude_desktop_direct_provider_validation_issue(")
             && source.contains("claude_desktop_proxy_provider_config_validation_issue(")
-            && source.contains("claude_desktop_suggested_proxy_routes(")
-            && source.contains("claude_desktop_provider_selection_error")
-            && source.contains("claude_desktop_provider_unavailable_error"),
+            && source.contains("claude_desktop_suggested_proxy_routes("),
         "proxy_core_adapter should delegate Claude Desktop provider validation policy to core"
     );
     assert!(
@@ -10775,11 +10773,6 @@ fn proxy_core_adapter_delegates_claude_desktop_provider_policy_to_core() {
             &source,
             "fn provider_claude_desktop_proxy_config_validation_issue",
             "fn claude_desktop_provider_validation_input",
-        ),
-        function_slice(
-            &source,
-            "fn claude_desktop_provider_from_selection_result",
-            "pub(crate) async fn claude_desktop_model_routes_from_router_source",
         ),
     ];
     let forbidden_markers = [
@@ -22731,7 +22724,7 @@ fn production_proxy_core_host_delegates_reachability_probe_source_to_adapter() {
 }
 
 #[test]
-fn production_proxy_core_host_delegates_model_catalog_source_to_adapter() {
+fn production_proxy_core_host_delegates_model_catalog_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
@@ -22752,7 +22745,7 @@ fn production_proxy_core_host_delegates_model_catalog_source_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "production proxy_core_host must delegate model catalog DB/router/projection wiring to proxy_core_adapter:\n{}",
+        "production proxy_core_host must delegate model catalog DB/router/projection wiring out to the host model catalog module:\n{}",
         violations.join("\n")
     );
 }
@@ -22775,12 +22768,13 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
             && source.contains("provider_model_catalog_from_db_source(&self.db, app, provider_id)")
             && source.contains("client_model_catalog_from_app_source(app)")
             && source.contains(
-                "claude_desktop_model_routes_from_router_source(&self.db, &self.router, app).await"
+                "claude_desktop_model_routes_from_router_source(&self.db, &self.router, app)"
             ),
         "CC Switch model catalog provider should live in host/cc_switch/model_catalog_provider.rs"
     );
     assert!(
-        source.contains("use crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;")
+        source.contains("ClaudeDesktopModelRouteInput")
+            && source.contains("ClaudeDesktopResolvedProxyRoute")
             && source.contains("use crate::proxy_core::api::domain::AppKind;")
             && source.contains("use crate::proxy_core::api::errors::{")
             && source.contains("ProxyCoreResult")
@@ -22812,8 +22806,16 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
     }
     assert!(
         source.contains("provider_model_catalog_from_settings")
-            && source.contains("internal_error_with_context"),
-        "CC Switch model catalog provider should own provider catalog DB source projection and error mapping"
+            && source.contains("internal_error_with_context")
+            && source.contains("claude_desktop_provider_selection_error")
+            && source.contains("claude_desktop_provider_unavailable_error")
+            && source.contains("async fn claude_desktop_model_routes_from_router_source(")
+            && source.contains("fn claude_desktop_provider_from_selection_result(")
+            && source.contains("fn claude_desktop_model_routes_to_core_inputs(")
+            && source.contains(
+                "crate::proxy_core_adapter::provider_claude_desktop_proxy_model_routes(&provider)"
+            ),
+        "CC Switch model catalog provider should own provider/client/Claude Desktop model catalog source projection and error mapping"
     );
     assert!(
         !adapter_source.contains(
@@ -22821,8 +22823,12 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
         ) && !adapter_source.contains("pub(crate) struct CcSwitchModelCatalogProvider")
             && !adapter_source.contains("pub(crate) fn provider_model_catalog_from_db_source(")
             && !adapter_source
-                .contains("impl ModelCatalogProvider for CcSwitchModelCatalogProvider"),
-        "proxy_core_adapter should not re-export or own the CC Switch model catalog provider"
+                .contains("impl ModelCatalogProvider for CcSwitchModelCatalogProvider")
+            && !adapter_runtime_source
+                .contains("pub(crate) async fn claude_desktop_model_routes_from_router_source(")
+            && !adapter_runtime_source.contains("fn claude_desktop_provider_from_selection_result(")
+            && !adapter_runtime_source.contains("fn claude_desktop_model_routes_to_core_inputs("),
+        "proxy_core_adapter should not re-export or own the CC Switch model catalog provider/source helpers"
     );
     let adapter_core_ports_import = optional_function_slice(
         &adapter_source,
@@ -22836,29 +22842,34 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
 }
 
 #[test]
-fn proxy_core_adapter_model_routes_source_uses_adapter_projection() {
+fn model_catalog_provider_owns_claude_desktop_model_route_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let runtime_source = source
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
-        .unwrap_or(&source);
+        .unwrap_or(&adapter_source);
+    let source_path = manifest_dir.join("src/proxy/host/cc_switch/model_catalog_provider.rs");
+    let source = fs::read_to_string(&source_path).expect("read model_catalog_provider.rs");
     let source_slice = function_slice(
         &source,
-        "pub(crate) async fn claude_desktop_model_routes_from_router_source(",
-        "use crate::proxy::host::cc_switch::channel_auth_profile_attempts",
+        "async fn claude_desktop_model_routes_from_router_source(",
+        "fn claude_desktop_provider_from_selection_result",
     );
 
     assert!(
-        runtime_source.contains("\nfn claude_desktop_model_routes_to_core_inputs(")
-            && !runtime_source.contains("pub(crate) fn claude_desktop_model_routes_to_core_inputs("),
-        "proxy_core_adapter should keep Claude Desktop route input conversion private to the model catalog source"
+        !adapter_runtime_source.contains("claude_desktop_model_routes_from_router_source(")
+            && !adapter_runtime_source.contains("claude_desktop_model_routes_to_core_inputs(")
+            && !adapter_runtime_source.contains("claude_desktop_provider_from_selection_result("),
+        "proxy_core_adapter should not own Claude Desktop model catalog source helpers"
     );
     assert!(
         source_slice.contains("provider_claude_desktop_proxy_model_routes(")
-            && source_slice.contains("claude_desktop_model_routes_to_core_inputs("),
-        "proxy_core_adapter should project Claude Desktop model routes without calling host config"
+            && source_slice.contains("claude_desktop_model_routes_to_core_inputs(")
+            && source_slice.contains(".select_provider_ids(")
+            && source_slice.contains(".get_provider_by_id("),
+        "host model catalog provider should own Claude Desktop model route source wiring and reuse adapter route projection"
     );
 
     let forbidden_markers = [
@@ -22871,17 +22882,17 @@ fn proxy_core_adapter_model_routes_source_uses_adapter_projection() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs claude_desktop_model_routes_from_router_source:{} contains host route projection marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
+                        "src/proxy/host/cc_switch/model_catalog_provider.rs claude_desktop_model_routes_from_router_source:{} contains host config route projection marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
             }
         }
     }
 
     assert!(
         violations.is_empty(),
-        "proxy_core_adapter must not route Claude Desktop model route source through host config:\n{}",
+        "model catalog provider must not route Claude Desktop model route source through host config:\n{}",
         violations.join("\n")
     );
 }
