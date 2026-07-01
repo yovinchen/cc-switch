@@ -3,13 +3,15 @@
 use crate::database::Database;
 use crate::error::AppError;
 use crate::proxy::engine::routing::ProviderRouter;
+use crate::proxy::host::cc_switch::provider_projection::{
+    provider_spec_from_db_source, provider_specs_from_db_source,
+};
 use crate::proxy_core::api::domain::{AppKind, ProviderSpec};
 use crate::proxy_core::api::errors::{
     config_error_with_context as core_config_error_with_context, ProxyCoreError, ProxyCoreResult,
 };
 use crate::proxy_core::api::ports::{CurrentRouteTarget, ProviderSource};
 use crate::proxy_core::api::routing::ProviderSelectionFailure;
-use crate::proxy_core_adapter::{provider_spec_from_db_source, provider_specs_from_db_source};
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::sync::Arc;

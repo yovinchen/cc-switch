@@ -28,6 +28,9 @@ use crate::proxy::engine::forward_pipeline::{
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::{forward_error_to_core_error, proxy_error_status_kind};
+use crate::proxy::host::cc_switch::provider_projection::{
+    provider_claude_auth_key, provider_claude_kind, provider_kind_from_app_type_and_config,
+};
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy::provider::codex_provider_upstream_model;
@@ -36,9 +39,7 @@ use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::api::config::{AllowResult, AppProxyConfig, ResponseRuntimePolicy};
-use crate::proxy_core::api::domain::{
-    AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,
-};
+use crate::proxy_core::api::domain::{AppKind, ProviderKind};
 use crate::proxy_core::api::routing::{
     ChannelRouteCandidate, LegacyChannelMigrationPlanInput, LegacyChannelModelProjection,
     LegacyChannelProjection, LegacyEndpointInput, LegacyModelRouteInput,
@@ -265,10 +266,9 @@ fn forward_current_provider_id_from_db_sources(db: &Database, app_type: &AppType
 use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
 
-use crate::proxy_core::api::domain::{
-    provider_account_ref, provider_metadata_from_input, unsupported_app_kind_config_error,
-};
+use crate::proxy_core::api::domain::unsupported_app_kind_config_error;
 
+use crate::proxy_core::api::auth::parse_gemini_oauth_credentials;
 use crate::proxy_core::api::auth::{
     classify_provider_managed_auth as core_classify_provider_managed_auth,
     managed_account_id_for_auth_provider as core_managed_account_id_for_auth_provider,
@@ -283,10 +283,6 @@ use crate::proxy_core::api::auth::{
     ClaudeDesktopDirectGatewayCredentialIssue, ClaudeDesktopDirectModelRouteIssue,
     ClaudeDesktopGatewayProfileModelSpec, ClaudeDesktopProxyRequestBodyIssue,
     ClaudeDesktopProxyRouteInput, ClaudeDesktopResolvedProxyRoute,
-};
-use crate::proxy_core::api::auth::{
-    extract_claude_auth_key_from_settings, is_gemini_oauth_key_shape,
-    parse_gemini_oauth_credentials,
 };
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
@@ -422,20 +418,6 @@ async fn forwarder_runtime_config_from_db_sources(
     ))
 }
 
-use crate::proxy_core::api::auth::extract_gemini_api_key_from_settings;
-
-fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
-    if extract_gemini_api_key_from_settings(&provider.settings_config)
-        .as_deref()
-        .map(is_gemini_oauth_key_shape)
-        .unwrap_or(false)
-    {
-        ProviderKind::GeminiCli
-    } else {
-        ProviderKind::Gemini
-    }
-}
-
 pub(crate) fn resolve_forwarder_claude_api_format(
     provider: &Provider,
     is_copilot: bool,
@@ -467,37 +449,6 @@ pub(crate) fn provider_claude_transform_streaming_decision(
         api_format,
         provider_is_codex_oauth(provider),
     )
-}
-
-use crate::proxy_core::api::domain::infer_claude_provider_kind;
-
-fn provider_claude_kind(provider: &Provider) -> ProviderKind {
-    let api_format = claude_provider_api_format(provider);
-    let uses_google_oauth = provider_claude_auth_key(provider)
-        .map(|auth_key| is_gemini_oauth_key_shape(&auth_key.key))
-        .unwrap_or(false);
-    let meta_provider_type = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.provider_type.as_deref());
-    let base_url = provider_claude_base_url(provider);
-
-    infer_claude_provider_kind(
-        api_format,
-        uses_google_oauth,
-        meta_provider_type,
-        base_url.as_deref(),
-        &provider.settings_config,
-    )
-}
-
-fn provider_kind_from_app_type_and_config(app_type: &AppType, provider: &Provider) -> ProviderKind {
-    match app_type {
-        AppType::Claude | AppType::ClaudeDesktop => provider_claude_kind(provider),
-        AppType::Codex => ProviderKind::Codex,
-        AppType::Gemini => provider_gemini_kind(provider),
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => ProviderKind::Codex,
-    }
 }
 
 use crate::proxy_core::api::transforms::is_copilot_prompt_cache_provider;
@@ -536,10 +487,6 @@ fn provider_claude_responses_prompt_cache_key(
 
 fn provider_codex_fast_mode_enabled(provider: &Provider) -> bool {
     provider.codex_fast_mode_enabled()
-}
-
-fn provider_claude_auth_key(provider: &Provider) -> Option<ClaudeAuthKey> {
-    extract_claude_auth_key_from_settings(&provider.settings_config)
 }
 
 fn log_claude_auth_key_source(auth_key: Option<&ClaudeAuthKey>) {
@@ -604,15 +551,6 @@ pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderA
             auth_key.source,
         )),
     }
-}
-
-use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;
-
-fn provider_claude_base_url(provider: &Provider) -> Option<String> {
-    extract_claude_base_url_from_settings(
-        provider_is_codex_oauth(provider),
-        &provider.settings_config,
-    )
 }
 
 pub(crate) fn provider_claude_auth_headers(
@@ -927,66 +865,6 @@ fn forward_runtime_request_from_proxy_request(
         body,
         session_result,
     })
-}
-
-pub(crate) fn proxy_provider_to_core_spec(provider: &Provider, app_type: &AppType) -> ProviderSpec {
-    let kind = provider_kind_from_app_type_and_config(app_type, provider);
-    let metadata = provider_metadata_without_secrets(provider);
-
-    ProviderSpec {
-        id: provider.id.clone(),
-        name: provider.name.clone(),
-        kind,
-        account_ref: account_ref(provider),
-        metadata,
-    }
-}
-
-fn proxy_providers_to_core_specs(
-    providers: impl IntoIterator<Item = Provider>,
-    app_type: &AppType,
-) -> Vec<ProviderSpec> {
-    providers
-        .into_iter()
-        .map(|provider| proxy_provider_to_core_spec(&provider, app_type))
-        .collect()
-}
-
-fn provider_specs_from_source(
-    app: &AppKind,
-    providers: impl IntoIterator<Item = Provider>,
-) -> ProxyCoreResult<Vec<ProviderSpec>> {
-    let app_type = app_type_from_proxy_core_app(app)?;
-    Ok(proxy_providers_to_core_specs(providers, &app_type))
-}
-
-pub(crate) fn provider_specs_from_db_source(
-    db: &Database,
-    app: &AppKind,
-) -> ProxyCoreResult<Vec<ProviderSpec>> {
-    let providers = db
-        .get_all_providers(app.as_str())
-        .map_err(|error| app_error("list providers", error))?;
-    provider_specs_from_source(app, providers.into_values())
-}
-
-fn provider_spec_from_source(
-    app: &AppKind,
-    provider: Option<Provider>,
-) -> ProxyCoreResult<Option<ProviderSpec>> {
-    let app_type = app_type_from_proxy_core_app(app)?;
-    Ok(provider.map(|provider| proxy_provider_to_core_spec(&provider, &app_type)))
-}
-
-pub(crate) fn provider_spec_from_db_source(
-    db: &Database,
-    app: &AppKind,
-    provider_id: &str,
-) -> ProxyCoreResult<Option<ProviderSpec>> {
-    let provider = db
-        .get_provider_by_id(provider_id, app.as_str())
-        .map_err(|error| app_error("get provider", error))?;
-    provider_spec_from_source(app, provider)
 }
 
 fn claude_desktop_model_routes_to_core_inputs(
@@ -1759,35 +1637,6 @@ fn extract_proxy_session_id(
     )
 }
 
-fn provider_metadata_without_secrets(provider: &Provider) -> ProviderMetadata {
-    let meta = provider.meta.as_ref();
-    provider_metadata_from_input(ProviderMetadataInput {
-        website_url: provider.website_url.clone(),
-        category: provider.category.clone(),
-        sort_index: provider.sort_index,
-        notes: provider.notes.clone(),
-        icon: provider.icon.clone(),
-        icon_color: provider.icon_color.clone(),
-        in_failover_queue: provider.in_failover_queue,
-        provider_type: meta.and_then(|meta| meta.provider_type.clone()),
-        api_format: meta.and_then(|meta| meta.api_format.clone()),
-        auth_binding: meta
-            .and_then(|meta| meta.auth_binding.as_ref())
-            .map(|binding| json!(binding)),
-        endpoint_auto_select: meta.and_then(|meta| meta.endpoint_auto_select),
-        custom_endpoint_count: meta.map(|meta| meta.custom_endpoints.len()).unwrap_or(0),
-    })
-}
-
-fn account_ref(provider: &Provider) -> Option<String> {
-    provider.meta.as_ref().and_then(|meta| {
-        let provider_type = meta.provider_type.as_deref();
-        let account_id = provider_type
-            .and_then(|provider_type| provider_managed_account_id_for(provider, provider_type));
-        provider_account_ref(provider_type, account_id.as_deref())
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
@@ -1879,6 +1728,10 @@ mod tests {
         copilot_model_vendor_from_app_handle, default_managed_account_runtime_source,
         resolve_managed_account_auth_from_runtime_source, ManagedAccountRuntimeSource,
     };
+    use crate::proxy::host::cc_switch::provider_projection::{
+        provider_claude_base_url, provider_gemini_kind, provider_spec_from_source,
+        provider_specs_from_source, proxy_provider_to_core_spec,
+    };
     use crate::proxy::provider::ProviderAdapter;
     use crate::proxy::provider::{
         codex_provider_apply_chat_upstream_model, codex_provider_chat_reasoning_options,
@@ -1892,11 +1745,16 @@ mod tests {
         ManagedAccountAuthRuntime, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
         ManagementAuthError, ProviderAuthStrategy,
     };
+    use crate::proxy_core::api::auth::{
+        extract_claude_auth_key_from_settings, extract_gemini_api_key_from_settings,
+        is_gemini_oauth_key_shape,
+    };
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
         channel_auth_profile_action, channel_auth_profile_missing_provider_warning,
-        channel_spec_from_input, ChannelAuthProfileAction, ChannelHealthPolicy, ChannelOverrides,
-        ChannelSpecInput, ModelCapabilities, ModelRoute, RetryPolicy, UpstreamEndpoint,
+        channel_spec_from_input, infer_claude_provider_kind, ChannelAuthProfileAction,
+        ChannelHealthPolicy, ChannelOverrides, ChannelSpecInput, ModelCapabilities, ModelRoute,
+        ProviderMetadata, ProviderSpec, RetryPolicy, UpstreamEndpoint,
     };
     use crate::proxy_core::api::errors::{
         proxy_error_http_status_code, proxy_error_response_body,
@@ -10538,8 +10396,9 @@ base_url = "https://api.openai.com/v1"
             legacy_context.legacy_github_copilot_account_id,
             Some("legacy-acct")
         );
+        let legacy_spec = proxy_provider_to_core_spec(&legacy_provider, &AppType::Claude);
         assert_eq!(
-            account_ref(&legacy_provider).as_deref(),
+            legacy_spec.account_ref.as_deref(),
             Some("github_copilot:legacy-acct")
         );
 
@@ -10573,7 +10432,8 @@ base_url = "https://api.openai.com/v1"
             default_context.legacy_github_copilot_account_id,
             Some("legacy-acct")
         );
-        assert_eq!(account_ref(&default_account_provider), None);
+        let default_spec = proxy_provider_to_core_spec(&default_account_provider, &AppType::Claude);
+        assert_eq!(default_spec.account_ref, None);
     }
 
     #[test]

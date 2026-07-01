@@ -42,6 +42,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/provider_router_channel_source.rs",
     "src/proxy/host/cc_switch/provider_router_config_source.rs",
     "src/proxy/host/cc_switch/provider_router_provider_source.rs",
+    "src/proxy/host/cc_switch/provider_projection.rs",
     "src/proxy/host/cc_switch/provider_source.rs",
     "src/proxy/host/cc_switch/proxy_runtime.rs",
     "src/proxy/host/cc_switch/proxy_services.rs",
@@ -1227,9 +1228,12 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) async fn forward_with_preplanned_host_runtime(",
     "pub(crate) async fn forward_proxy_request_with_host_runtime(",
     "pub(crate) fn app_type_option_from_proxy_core_app(",
+    "pub(crate) fn proxy_provider_to_core_spec(",
     "pub(crate) fn proxy_providers_to_core_specs(",
     "pub(crate) fn provider_specs_from_source(",
     "pub(crate) fn provider_spec_from_source(",
+    "pub(crate) fn provider_specs_from_db_source(",
+    "pub(crate) fn provider_spec_from_db_source(",
     "pub(crate) fn provider_model_catalog_from_db_source(",
     "pub(crate) fn current_provider_id_from_db_source(",
     "pub(crate) async fn active_route_target_from_runtime_source(",
@@ -5732,7 +5736,7 @@ fn proxy_core_adapter_does_not_export_domain_or_model_catalog_aliases() {
     }
     assert!(
         adapter_runtime_source.contains(
-            "use crate::proxy_core::api::domain::{\n    AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,\n};"
+            "use crate::proxy_core::api::domain::{AppKind, ProviderKind};"
         ) && adapter_runtime_source
             .contains("use crate::proxy_core::api::model_catalog::ModelMappingProjection;"),
         "proxy_core_adapter internals should import domain/model catalog DTOs directly from proxy_core"
@@ -12666,7 +12670,7 @@ fn proxy_core_adapter_delegates_claude_transform_streaming_decision_to_core() {
     let claude_decision = function_slice(
         &source,
         "pub(crate) fn provider_claude_transform_streaming_decision",
-        "fn provider_claude_kind",
+        "fn provider_is_copilot_prompt_cache_provider",
     );
 
     assert!(
@@ -19368,7 +19372,13 @@ fn production_forwarder_uses_auth_source_resource() {
     let auth_core_transport_import_slice = function_slice(
         &auth_source,
         "use crate::proxy_core::api::transport::{",
-        "};\nuse crate::proxy_core_adapter::proxy_provider_to_core_spec;",
+        "};",
+    );
+    assert!(
+        auth_source.contains(
+            "use crate::proxy::host::cc_switch::provider_projection::proxy_provider_to_core_spec;"
+        ),
+        "default ForwarderAuthSource should import provider projection from host provider_projection"
     );
     for marker in [
         "pub(crate) type ForwarderAuthSourceRef",
@@ -21952,6 +21962,8 @@ fn proxy_core_adapter_delegates_provider_source_to_host_module() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_source.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_source.rs");
+    let projection_path = manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
+    let projection = fs::read_to_string(&projection_path).expect("read provider_projection.rs");
     let adapter_core_ports_import = optional_function_slice(
         &adapter_source,
         "pub(crate) use crate::proxy_core::api::ports::{",
@@ -21975,6 +21987,20 @@ fn proxy_core_adapter_delegates_provider_source_to_host_module() {
                 "route_candidate_provider_ids_from_router_source(&self.router, app).await"
             ),
         "CC Switch provider source should live in host/cc_switch/provider_source.rs"
+    );
+    assert!(
+        source.contains(
+            "use crate::proxy::host::cc_switch::provider_projection::{\n    provider_spec_from_db_source, provider_specs_from_db_source,"
+        ),
+        "CC Switch provider source should import provider list/get projection from host provider_projection"
+    );
+    assert!(
+        projection.contains("pub(crate) fn proxy_provider_to_core_spec(")
+            && projection.contains("pub(crate) fn provider_specs_from_db_source(")
+            && projection.contains("pub(crate) fn provider_spec_from_db_source(")
+            && projection.contains(".get_all_providers(")
+            && projection.contains(".get_provider_by_id("),
+        "provider_projection.rs should own Provider -> ProviderSpec and DB-backed provider list/get projection"
     );
     assert!(
         !adapter_source.contains(
@@ -25079,7 +25105,7 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
         "pub(crate) use crate::proxy_core::api::ports::{",
         "};",
     );
-    let source_adapter_import = function_slice(
+    let source_adapter_import = optional_function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
         "};\nuse futures::future::BoxFuture;",
@@ -25111,6 +25137,8 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
     assert!(
         source.contains(
             "use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource;"
+        ) && source.contains(
+            "use crate::proxy::host::cc_switch::provider_projection::{\n    provider_spec_from_db_source, provider_specs_from_db_source,"
         ) && source.contains("use crate::proxy_core::api::domain::{")
             && source.contains("unsupported_app_kind_config_error")
             && source.contains("AppKind")

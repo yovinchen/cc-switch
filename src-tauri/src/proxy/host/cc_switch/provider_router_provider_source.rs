@@ -4,6 +4,9 @@ use crate::app_config::AppType;
 use crate::database::Database;
 use crate::error::AppError;
 use crate::proxy::engine::routing::{ProviderFailoverRouterSources, ProviderRouterProviderSource};
+use crate::proxy::host::cc_switch::provider_projection::{
+    provider_spec_from_db_source, provider_specs_from_db_source,
+};
 use crate::proxy::host::cc_switch::route_policy_source::CcSwitchRoutePolicySource;
 use crate::proxy_core::api::domain::{unsupported_app_kind_config_error, AppKind, ProviderSpec};
 use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};
@@ -16,7 +19,6 @@ use crate::proxy_core::api::routing::{
 use crate::proxy_core::api::transport::{
     forwarder_all_providers_circuit_open_log_line, forwarder_no_providers_configured_log_line,
 };
-use crate::proxy_core_adapter::{provider_spec_from_db_source, provider_specs_from_db_source};
 use futures::future::BoxFuture;
 use std::sync::Arc;
 
