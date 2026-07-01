@@ -5,7 +5,11 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::provider::Provider;
-use crate::proxy::engine::forward_pipeline::ForwarderFailoverSwitchTarget;
+use crate::proxy::engine::forward_pipeline::{
+    ForwarderFailoverSwitchTarget, ForwarderFailureDecision,
+    ForwarderRectifierRetryFailureDecision, ForwarderRuntimeStateSource,
+    ForwarderRuntimeStateSourceRef,
+};
 use crate::proxy::error::ProxyError;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::route_attempt::ForwardAttempt;
@@ -32,9 +36,7 @@ use crate::proxy_core::api::transport::{
 use crate::proxy_core_adapter::{
     forward_failure_kind_from_proxy_error, forwarder_rectifier_retry_failure_log_line,
     forwarder_rectifier_retry_success_log_line, retryable_forward_failure_log_line,
-    terminal_forward_failure_log_line_for_error, ForwarderFailureDecision,
-    ForwarderRectifierRetryFailureDecision, ForwarderRuntimeStateSource,
-    ForwarderRuntimeStateSourceRef,
+    terminal_forward_failure_log_line_for_error,
 };
 
 pub(crate) struct CcSwitchForwarderRuntimeStateSource {

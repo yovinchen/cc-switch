@@ -19466,9 +19466,9 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs"))
             .expect("read proxy_state.rs");
     let runtime_trait_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) trait ForwarderRuntimeStateSource",
-        "pub(crate) type ForwarderProtocolStateSourceRef",
+        "pub struct ForwardResult",
     );
     let runtime_source_slice = function_slice(
         &runtime_source,
@@ -19481,14 +19481,14 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource",
     );
     let failure_decision_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) enum ForwarderFailureDecision",
         "pub(crate) enum ForwarderRectifierRetryFailureDecision",
     );
     let rectifier_retry_failure_decision_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) enum ForwarderRectifierRetryFailureDecision",
-        "pub(crate) fn terminal_forward_failure_log_line_for_error",
+        "pub(crate) type ForwarderRuntimeStateSourceRef",
     );
     let provider_failure_runtime_source_slice = function_slice(
         &runtime_source,
@@ -19582,6 +19582,18 @@ fn production_forwarder_uses_runtime_state_source_resource() {
             && !adapter_runtime_source.contains("struct CcSwitchForwarderRuntimeStateSource"),
         "host proxy_state should use the default forwarder runtime state source without routing it through proxy_core_adapter"
     );
+    for marker in [
+        "pub(crate) type ForwarderRuntimeStateSourceRef",
+        "pub(crate) struct ActiveConnectionGuard",
+        "pub(crate) trait ForwarderRuntimeStateSource",
+        "pub(crate) enum ForwarderFailureDecision",
+        "pub(crate) enum ForwarderRectifierRetryFailureDecision",
+    ] {
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not own forward runtime state contract marker `{marker}`"
+        );
+    }
     assert!(
         !runtime_trait_slice.contains("fn status(") && !runtime_trait_slice.contains("fn events("),
         "ForwarderRuntimeStateSource trait must not expose runtime status or event bus read handles"
@@ -19760,8 +19772,8 @@ fn proxy_core_adapter_delegates_rectifier_error_message_policy_to_core() {
 #[test]
 fn production_forwarder_active_connection_guard_uses_runtime_state_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
+    let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
     let guard_slice = function_slice(
         &source,
         "pub(crate) struct ActiveConnectionGuard",
@@ -19786,7 +19798,7 @@ fn production_forwarder_active_connection_guard_uses_runtime_state_source() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs ActiveConnectionGuard:{} contains direct active-connection runtime marker `{}`",
+                    "src/proxy/engine/forward_pipeline.rs ActiveConnectionGuard:{} contains direct active-connection runtime marker `{}`",
                     line_index + 1,
                     marker
                 ));

@@ -16,18 +16,17 @@ use crate::proxy_core::api::transport::{
     OptionalCopilotAuthOptimizationPreparationInput,
 };
 use crate::proxy_core_adapter::{
-    ActiveConnectionGuard, ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
+    ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
     ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptBodyInput,
     ForwarderAttemptRuntimeSourceRef, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
     ForwarderClaudeProtocolTransformInput, ForwarderCodexChatProtocolEnrichmentInput,
     ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
-    ForwarderCopilotRequestOptimizationGateInput, ForwarderFailureDecision,
-    ForwarderMediaRetryPlanInput, ForwarderProtocolStateSourceRef,
-    ForwarderProviderRequestBodyInput, ForwarderRectifierRetryFailureDecision,
+    ForwarderCopilotRequestOptimizationGateInput, ForwarderMediaRetryPlanInput,
+    ForwarderProtocolStateSourceRef, ForwarderProviderRequestBodyInput,
     ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
     ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan, ForwarderRequestSourceRef,
-    ForwarderRuntimeConfig, ForwarderRuntimeStateSourceRef, ForwarderThinkingBudgetRectifierInput,
+    ForwarderRuntimeConfig, ForwarderThinkingBudgetRectifierInput,
     ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
     ForwarderUpstreamRequestLogInput, ForwarderUpstreamRequestParts, ForwarderUpstreamUrlInput,
 };
@@ -92,6 +91,126 @@ pub(crate) struct ForwarderFailoverSwitchTarget {
 
 pub(crate) trait FailoverSwitchScheduler {
     fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget);
+}
+
+pub(crate) enum ForwarderFailureDecision {
+    Retryable,
+    NonRetryable,
+}
+
+pub(crate) enum ForwarderRectifierRetryFailureDecision {
+    ProviderFailure,
+    ClientFailure,
+}
+
+pub(crate) type ForwarderRuntimeStateSourceRef = Arc<dyn ForwarderRuntimeStateSource + Send + Sync>;
+
+/// 活跃连接 RAII guard
+///
+/// 构造时把 `ProxyRuntimeStatus.active_connections` +1；Drop 时在 tokio runtime 上调度
+/// 一个异步任务执行 -1，从而支持把 guard move 进流式 body future（stream 自然结束
+/// 时 guard 与 future 一起 drop）。
+///
+/// 设计动机：之前在请求 wrapper 出口处同步 -1，但流式响应的 body 实际
+/// 在 `create_logged_passthrough_stream` 内还会继续 yield 字节流，导致 UI 的
+/// `active_connections` 计数过早归零。RAII guard 让"减量"由 Rust 类型系统驱动，
+/// 不需要每条出口路径都手动调用。
+pub(crate) struct ActiveConnectionGuard {
+    runtime_state_source: ForwarderRuntimeStateSourceRef,
+}
+
+impl ActiveConnectionGuard {
+    pub(crate) async fn acquire(runtime_state_source: ForwarderRuntimeStateSourceRef) -> Self {
+        runtime_state_source
+            .record_active_connection_acquired()
+            .await;
+        Self {
+            runtime_state_source,
+        }
+    }
+}
+
+impl Drop for ActiveConnectionGuard {
+    fn drop(&mut self) {
+        let runtime_state_source = self.runtime_state_source.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                runtime_state_source
+                    .record_active_connection_released()
+                    .await;
+            });
+        }
+    }
+}
+
+pub(crate) trait ForwarderRuntimeStateSource {
+    fn next_request_id(&self) -> String;
+    fn emit_request_started(&self, request_id: &str, app_type: &str);
+    fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
+    fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
+    fn emit_attempt_failed_for_error(
+        &self,
+        request_id: &str,
+        app_type: &str,
+        attempt: &ForwardAttempt,
+        error: &ProxyError,
+    );
+    fn record_active_route_target<'a>(
+        &'a self,
+        request_id: &'a str,
+        app_type: &'a str,
+        attempt: &'a ForwardAttempt,
+    ) -> BoxFuture<'a, ()>;
+    fn record_success_status<'a>(
+        &'a self,
+        current_provider_id_at_start: &'a str,
+        provider: &'a Provider,
+    ) -> BoxFuture<'a, Option<ForwarderFailoverSwitchTarget>>;
+    fn record_current_provider<'a>(&'a self, provider: &'a Provider) -> BoxFuture<'a, ()>;
+    fn record_provider_failure<'a>(
+        &'a self,
+        provider: &'a Provider,
+        error: &'a ProxyError,
+    ) -> BoxFuture<'a, ()>;
+    fn record_provider_rectifier_retry_failure<'a>(
+        &'a self,
+        provider: &'a Provider,
+        kind: ForwarderRectifierRetryKind,
+        error: &'a ProxyError,
+    ) -> BoxFuture<'a, ()>;
+    fn forward_failure_decision(&self, error: &ProxyError) -> ForwarderFailureDecision;
+    fn log_retryable_forward_failure(
+        &self,
+        app_type: &str,
+        error: &ProxyError,
+        provider: &Provider,
+        attempted_providers: usize,
+        total_providers: usize,
+    );
+    fn log_terminal_forward_failure(
+        &self,
+        app_type: &str,
+        attempted_providers: usize,
+        total_providers: usize,
+        last_error: Option<&ProxyError>,
+    );
+    fn rectifier_retry_failure_decision(
+        &self,
+        error: &ProxyError,
+    ) -> ForwarderRectifierRetryFailureDecision;
+    fn log_rectifier_retry_success(&self, app_type: &str, kind: ForwarderRectifierRetryKind);
+    fn log_rectifier_retry_failure(
+        &self,
+        app_type: &str,
+        kind: ForwarderRectifierRetryKind,
+        error: &ProxyError,
+    );
+    fn record_forward_error_status<'a>(&'a self, error: &'a ProxyError) -> BoxFuture<'a, ()>;
+    fn record_no_available_provider_status<'a>(&'a self) -> BoxFuture<'a, ()>;
+    fn record_terminal_failure_status<'a>(&'a self) -> BoxFuture<'a, ()>;
+    fn record_request_started_now<'a>(&'a self) -> BoxFuture<'a, ()>;
+    fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
+    fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
 }
 
 pub struct ForwardResult {
