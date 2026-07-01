@@ -61,8 +61,8 @@
 50. 管理 API 鉴权策略已迁入 `proxy-core::management_auth`；token-source 决策已由 `proxy_core_adapter::management_auth_decision_from_proxy_config` 统一读取 `ProxyConfig` 与 `CC_SWITCH_PROXY_MANAGEMENT_TOKEN` fallback，host middleware 只负责把 headers 交给 `proxy::auth_adapter::validate_proxy_management_auth` 并继续 Axum middleware 链路，engine/auth adapter 负责校验 header 并把 core 鉴权错误映射为现有 `ProxyError::AuthError`。
 51. `/proxy/v1/apps/{app}/providers` 的 provider summary 打标和 response 组装已迁入 `proxy-core::{ProviderSummaryInput, ProviderListResponse::from_provider_inputs}`；host 只负责查询 provider/current/failover/routeCandidate 输入集合。
 52. legacy/manual channel 的幂等 ID 生成规则已迁入 `proxy-core::channel_identity::stable_channel_id`；DB DAO 只负责调用 core 函数并写入 schema。
-53. legacy channel 投影的 priority、interface kind、模型路由推断、endpoint 排序和 normalized base URL 去重规则已迁入 `proxy-core::legacy_projection`；host adapter 负责把宿主 `Provider`/TOML/env/meta 字段适配成 core migration input。
-54. legacy channel 投影的默认字段、review 标记、metadata、auth profile 引用和 model channel id 绑定已迁入 `proxy-core::LegacyChannelProjection`；host adapter 负责映射回当前 `ProxyChannelRecord` 形状，DB DAO 只负责读取 legacy facts 和物化落库。
+53. legacy channel 投影的 priority、interface kind、模型路由推断、endpoint 排序和 normalized base URL 去重规则已迁入 `proxy-core::legacy_projection`；DB DAO 负责把宿主 `Provider`/TOML/env/meta 字段适配成 core migration input。
+54. legacy channel 投影的默认字段、review 标记、metadata、auth profile 引用和 model channel id 绑定已迁入 `proxy-core::LegacyChannelProjection`；DB DAO 负责映射回当前 `ProxyChannelRecord`/model row 形状并物化落库。
 55. `/proxy/v1/channels` 写请求的字段校验、base URL 归一化、group 去重排序、可选 auth ref 裁剪和 JSON object/array 默认值规则已迁入 `proxy-core::channel_request`；host DB DAO 只保留 AppType/provider 校验、错误映射和持久化。
 56. 托管账号上游的 `PROXY_MANAGED` 占位符泄漏保护已迁入 `proxy-core::managed_account_auth`；host forwarder 只负责把 core guard 错误映射为现有 `ProxyError::AuthError`。
 57. 请求头大小写保真策略已迁入 `proxy-core::request_headers::should_preserve_exact_request_header_case`；host forwarder 只提供 adapter/provider 事实并据此选择 raw hyper 或 pooled reqwest transport。
@@ -569,7 +569,7 @@
 554. host `ProxyError` 到 HTTP status/display 的 `ProxyErrorStatusKind`、状态码和展示文案投影入口已迁入 `proxy::error_mapper`；host error 模块直接经 `proxy_core::api::errors` 消费 HTTP status/body helper，`proxy_core_adapter` 不再作为这些 pure error response contract 的中转 re-export。
 555. settings command/DAO 与 forward pipeline 使用的 `RectifierConfig`、`OptimizerConfig`、`CopilotOptimizerConfig` DTO 入口已从 `proxy_core_adapter` 二次出口改为直接引用 `proxy_core::api::ports`；host settings DAO 继续负责 settings key、JSON 持久化与 `AppError` 映射，boundary 测试只允许这些精确 config DTO direct-core 行。
 556. proxy management command/service/DAO 使用的 proxy config、runtime status、server info、takeover status 与 circuit breaker DTO 入口仍由 `proxy_core_adapter` 承接；其中 global proxy command/DAO 的 `GlobalProxyConfig`、provider health command/DAO 的 `ProviderHealth`、DAO 状态推进用 `ProviderHealthUpdateInput` 纯 DTO 与 `provider_health_update_from_input` helper 入口已改为直接引用 `proxy_core::api::{ports,management}`，host 继续负责代理服务生命周期、DB 行映射和运行时热更新。
-557. proxy channel DAO 使用的 legacy channel projection、channel identity、request validation、normalization helper 与 channel write DTO 入口已迁入 `proxy_core_adapter`；host DAO 继续负责 SQLite row mapping、source kind 与 `AppError` 映射。
+557. proxy channel DAO 使用的 legacy channel projection、channel identity、request validation、normalization helper 与 channel write DTO 入口已改为直接引用 `proxy_core::api::{domain,management,ports,routing}`；host DAO 继续负责 SQLite row mapping、source kind、legacy preview 组装与 `AppError` 映射，不再经 `proxy_core_adapter` 中转。
 558. model fetch transport 使用的 OpenAI-compatible/Codex OAuth request plan、transport trait、HTTP response 与 core planning/response parsing wrapper 已迁入 `proxy_core_adapter`；host transport 继续只负责 shared reqwest client 执行与 response body 读取。
 559. provider router/circuit breaker 使用的熔断 DTO、熔断 key helper、provider selection、route resolve 与 unavailable-channel filter 入口已迁入 `proxy_core_adapter`；routing 实现已迁到 `proxy/engine/routing.rs`，旧 `proxy/provider_router.rs` 已删除，调用方直接面向 `proxy::engine::routing`/`proxy/mod.rs` 的精确出口；host routing 继续只负责 provider/channel/config/health source facts、熔断器实例生命周期和健康状态写回。
 560. proxy event bus 使用的 event envelope、connected/lagged event 常量与 payload builder 已改为直接经 `proxy_core::api::events` 引用；response SSE bridge 仍由 `proxy::response_adapter` 承接，host event bus 继续只负责 broadcast runtime state、sequence 与 timestamp 分配。
@@ -632,7 +632,7 @@
 617. `build_claude_provider_auth_headers`、`build_codex_provider_auth_headers` 与 `build_gemini_provider_auth_headers` 已从 `proxy_core_adapter` re-export 降为 adapter 私有 import；provider adapter 仍通过 `provider_*_auth_headers` wrapper 获取 host `ProxyError` 兼容文案与 Claude/Copilot header 上下文。
 618. `proxy_core_adapter` 的 `proxy_core::api::transport` 分组 re-export 已整体移除；仍需的 transport helper 均为 adapter 私有 import，生产调用方要么直接引用 `proxy_core::api::transport`，要么通过 adapter 的 host bridge wrapper 消费。
 619. `proxy_core_adapter` 的 `proxy_core::api::transforms` 分组 re-export 已整体移除；Claude/Codex transform dispatch helper 仍由 adapter 包装 host provider facts，但底层 transform contract 均作为 adapter 私有 import 或调用方 direct-core import 使用。
-620. proxy channel DAO 的写入、patch、model/key 规范化 helper 与 stable channel id 生成已由 `database/dao/proxy_channels.rs` 直接引用 `proxy_core::api::routing`；`proxy_core_adapter` 不再 re-export 这些纯 channel write normalization helper，仅保留 legacy channel migration preview 的宿主投影入口。
+620. proxy channel DAO 的写入、patch、model/key 规范化 helper、stable channel id 生成、legacy provider facts 装配、Codex TOML/env/model catalog 提取和 legacy projection 到 `ProxyChannelRecord` 映射已由 `database/dao/proxy_channels.rs` 直接引用 core API；`proxy_core_adapter` 不再 re-export channel write normalization helper，也不再保留 legacy channel migration preview 的宿主投影入口。
 621. managed-auth 命令层、Codex OAuth 与 Copilot OAuth 的请求/状态/账号排序/helper 契约已改为直接引用 `proxy_core::api::auth`；`proxy_core_adapter` 不再 re-export managed-auth 命令 DTO/helper 或 OAuth helper，仅私有引用 provider binding 投影所需的 core auth facts。
 622. Claude Desktop config 的 profile/gateway/local-config/meta JSON helper 已改为直接引用 `proxy_core::api::auth`；`proxy_core_adapter` 的 `proxy_core::api::auth` 分组 re-export 已整体移除，Claude Desktop provider wrapper 仍在 adapter 内私有调用 core auth contract 并投影 host provider 形态。
 623. host failover switch 的 pending-key helper 已改为直接引用 `proxy_core::api::routing`；`proxy_core_adapter` 的 `proxy_core::api::routing` 分组 re-export 已整体移除，剩余 routing helper 仅作为 adapter 内部 host/source bridge 私有 import 使用。
@@ -3037,7 +3037,7 @@ node_modules/.bin/tsc --noEmit
 2. 新增 `proxy_channel_models`：`channel_id`、`public_model`、`upstream_model`、`capabilities_json`、`pricing_model`、`request_overrides_json`、`response_overrides_json`。
 3. 新增 `proxy_channel_keys`：`channel_id`、`key_ref` 或加密后的 key、`status`、`priority`、`weight`、`last_failure`；第一阶段可以只预留，不马上迁移现有账号 token。
 4. 新增 `proxy_channel_health`：`channel_id`、`status`、`last_success_at`、`last_failure_at`、`consecutive_failures`、`response_time_ms`、`disabled_reason`。
-5. 保留旧 `providers`、`provider_endpoints`、provider health 和 failover queue；host adapter 先把旧数据投影成 channel，等 UI 和迁移脚本稳定后再写入新表。
+5. 保留旧 `providers`、`provider_endpoints`、provider health 和 failover queue；DAO 先把旧数据投影成 channel，等 UI 和迁移脚本稳定后再写入新表。
 
 迁移规则：
 
