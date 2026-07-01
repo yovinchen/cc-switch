@@ -17,12 +17,27 @@ use crate::proxy_core::api::transport::{
     ForwarderRectifierRetryKind, ForwarderTransformPlan,
     OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization,
 };
-use crate::proxy_core_adapter::ForwarderRuntimeConfig;
 use crate::{app_config::AppType, provider::Provider};
 use futures::future::BoxFuture;
 use http::{Extensions, HeaderMap, Method};
 use serde_json::Value;
 use std::sync::Arc;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ForwarderRuntimeOptions {
+    pub(crate) non_streaming_timeout: u64,
+    pub(crate) streaming_first_byte_timeout: u64,
+    pub(crate) streaming_idle_timeout: u64,
+    pub(crate) max_retries: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ForwarderRuntimeConfig {
+    pub(crate) options: ForwarderRuntimeOptions,
+    pub(crate) rectifier: RectifierConfig,
+    pub(crate) optimizer: OptimizerConfig,
+    pub(crate) copilot_optimizer: CopilotOptimizerConfig,
+}
 
 pub(crate) type ForwarderRequestSourceRef = Arc<dyn ForwarderRequestSource + Send + Sync>;
 

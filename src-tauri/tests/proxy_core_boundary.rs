@@ -13323,16 +13323,15 @@ fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
     let forward_pipeline_transport_import = function_slice(
         &forward_pipeline_source,
         "use crate::proxy_core::api::transport::{",
-        "};\nuse crate::proxy_core_adapter::ForwarderRuntimeConfig;",
+        "};\nuse crate::{app_config::AppType, provider::Provider};",
     );
     assert!(
         forward_pipeline_transport_import.contains("ForwarderProviderUrlFacts"),
         "forward pipeline should import provider URL facts directly from proxy_core::api::transport"
     );
     assert!(
-        forward_pipeline_source.contains("use crate::proxy_core_adapter::ForwarderRuntimeConfig;")
-            && !forward_pipeline_source
-                .contains("use crate::proxy_core_adapter::ForwarderProviderUrlFacts"),
+        !forward_pipeline_source
+            .contains("use crate::proxy_core_adapter::ForwarderProviderUrlFacts"),
         "forward pipeline should not import provider URL facts through proxy_core_adapter"
     );
 
@@ -19548,7 +19547,7 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     let forwarder_transport_import_slice = function_slice(
         &source,
         "use crate::proxy_core::api::transport::{",
-        "};\nuse crate::proxy_core_adapter::ForwarderRuntimeConfig;",
+        "};\nuse crate::{app_config::AppType, provider::Provider};",
     );
     assert!(
         forwarder_transport_import_slice.contains("ForwarderRectifierRetryKind"),
@@ -20708,7 +20707,7 @@ fn production_forwarder_uses_request_source_resource() {
     let forwarder_core_transport_import_slice = function_slice(
         &source,
         "use crate::proxy_core::api::transport::{",
-        "};\nuse crate::proxy_core_adapter::ForwarderRuntimeConfig;",
+        "};\nuse crate::{app_config::AppType, provider::Provider};",
     );
     let forwarder_adapter_imports = proxy_core_adapter_import_identifiers(&source);
     for marker in [
@@ -23278,6 +23277,20 @@ fn production_forwarder_runtime_config_reaches_forwarder_as_single_input() {
     assert!(
         constructor_slice.contains("let ForwarderRuntimeConfig {"),
         "RequestForwarder constructor must own runtime config destructuring"
+    );
+    assert!(
+        forwarder_source.contains("pub(crate) struct ForwarderRuntimeConfig")
+            && forwarder_source.contains("pub(crate) struct ForwarderRuntimeOptions"),
+        "forward_pipeline should own the forwarder runtime config contract"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) struct ForwarderRuntimeConfig")
+            && !adapter_source.contains("pub(crate) struct ForwarderRuntimeOptions"),
+        "proxy_core_adapter should not define forwarder runtime config DTOs"
+    );
+    assert!(
+        !forwarder_source.contains("use crate::proxy_core_adapter::ForwarderRuntimeConfig;"),
+        "forward_pipeline should not import its runtime config contract through proxy_core_adapter"
     );
 
     let bridge_forbidden_markers = [

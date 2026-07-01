@@ -8,7 +8,8 @@ use crate::provider::{AuthBindingSource, Provider, ProviderMeta};
 use crate::proxy::engine::forward_pipeline::{
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderAuthSourceRef,
     ForwarderProtocolStateSourceRef, ForwarderRequestSourceRef, ForwarderResponseSourceRef,
-    ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
+    ForwarderRuntimeConfig, ForwarderRuntimeOptions, ForwarderRuntimeStateSourceRef,
+    ForwarderTransportSourceRef,
 };
 #[cfg(test)]
 use crate::proxy::engine::forward_pipeline::{
@@ -630,22 +631,6 @@ pub(crate) fn apply_codex_takeover_fields_for_provider(
             root.insert("modelCatalog".to_string(), model_catalog);
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ForwarderRuntimeOptions {
-    pub(crate) non_streaming_timeout: u64,
-    pub(crate) streaming_first_byte_timeout: u64,
-    pub(crate) streaming_idle_timeout: u64,
-    pub(crate) max_retries: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ForwarderRuntimeConfig {
-    pub(crate) options: ForwarderRuntimeOptions,
-    pub(crate) rectifier: RectifierConfig,
-    pub(crate) optimizer: OptimizerConfig,
-    pub(crate) copilot_optimizer: CopilotOptimizerConfig,
 }
 
 use crate::proxy_core::api::transport::resolve_response_runtime_policy;

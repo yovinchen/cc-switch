@@ -478,6 +478,7 @@
 467. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 468. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 469. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
+470. `ForwarderRuntimeConfig` 与 `ForwarderRuntimeOptions` 已从 `proxy_core_adapter` 迁入 `proxy/engine/forward_pipeline.rs`；adapter 只负责从 app config/DB 组装运行配置，forwarder 自身拥有构造器消费的 runtime config contract。
 470. `LiveBackup` 已从 `proxy::types` 移到 `database::LiveBackup`；Live 接管备份记录归属数据库持久化边界，proxy host types 只保留运行态 status。
 471. host `ProxyStatus` 已收敛为 `proxy-core::ProxyRuntimeStatus`，并删除 host status 到 core status 的字段拷贝适配器；运行态 status 结构只在 core 维护。
 472. `proxy::types` 兼容壳模块已删除；调用点不再依赖代理 host 本地 DTO 模块。
