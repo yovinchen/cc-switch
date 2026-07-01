@@ -2133,11 +2133,20 @@ fn is_allowed_provider_auth_core_import(relative: &str, code: &str) -> bool {
     }
 
     matches!(
-        code.trim(),
-        "use crate::proxy_core::api::auth::ProviderAuthInfo;"
-            | "use crate::proxy_core::api::auth::ProviderAuthStrategy;"
-            | "use crate::proxy_core::api::auth::codex_auth_info_from_api_key;"
-            | "use crate::proxy_core::api::transport::build_codex_provider_auth_headers;"
+        (relative, code.trim()),
+        (
+            "src/proxy/provider/claude.rs",
+            "use crate::proxy_core::api::auth::{"
+        ) | (_, "use crate::proxy_core::api::auth::ProviderAuthInfo;")
+            | (_, "use crate::proxy_core::api::auth::ProviderAuthStrategy;")
+            | (
+                _,
+                "use crate::proxy_core::api::auth::codex_auth_info_from_api_key;"
+            )
+            | (
+                _,
+                "use crate::proxy_core::api::transport::build_codex_provider_auth_headers;"
+            )
     )
 }
 
@@ -2147,6 +2156,9 @@ fn is_allowed_provider_base_url_core_import(relative: &str, code: &str) -> bool 
         (
             "src/proxy/provider/claude.rs",
             "use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;"
+        ) | (
+            "src/proxy/provider/claude.rs",
+            "use crate::proxy_core::api::domain::{extract_claude_base_url_from_settings, ProviderKind};"
         ) | (
             "src/proxy/provider/claude.rs",
             "use crate::proxy_core::api::ports::required_provider_base_url;"
@@ -2177,6 +2189,9 @@ fn is_allowed_provider_upstream_url_core_import(relative: &str, code: &str) -> b
         (
             "src/proxy/provider/claude.rs",
             "use crate::proxy_core::api::transport::build_claude_upstream_url;"
+        ) | (
+            "src/proxy/provider/claude.rs",
+            "use crate::proxy_core::api::transport::{"
         ) | (
             "src/proxy/provider/codex.rs",
             "use crate::proxy_core::api::transport::build_codex_upstream_url;"
@@ -6031,6 +6046,16 @@ fn proxy_core_adapter_does_not_export_claude_auth_helper_aliases() {
             "proxy_core_adapter should not expose Claude auth/helper contract alias `{alias}`; adapter internals should use proxy_core APIs directly"
         );
     }
+
+    for facade in [
+        "pub(crate) fn provider_claude_auth_info(",
+        "pub(crate) fn provider_claude_auth_headers(",
+    ] {
+        assert!(
+            !adapter_source.contains(facade),
+            "proxy_core_adapter should not expose Claude auth/helper facade `{facade}`; ClaudeProvider owns provider auth projection"
+        );
+    }
 }
 
 #[test]
@@ -7086,14 +7111,29 @@ fn production_codex_provider_adapter_delegates_auth_info_to_adapter() {
 }
 
 #[test]
-fn production_claude_provider_adapter_delegates_auth_info_to_adapter() {
+fn production_claude_provider_adapter_owns_auth_info_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
     let extract_auth = function_slice(
         &source,
         "    fn extract_auth(&self, provider: &Provider)",
         "    fn build_url(&self, base_url: &str, endpoint: &str) -> String",
+    );
+
+    assert!(
+        source.contains("fn provider_claude_auth_info("),
+        "Claude provider adapter should own its provider auth info projection helper"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) fn provider_claude_auth_info("),
+        "proxy_core_adapter should not reintroduce the Claude auth info facade"
+    );
+    assert!(
+        extract_auth.contains("provider_claude_auth_info(provider)"),
+        "ClaudeProvider::extract_auth should stay as a thin call into the local provider auth helper"
     );
 
     let mut violations = Vec::new();
@@ -7112,7 +7152,7 @@ fn production_claude_provider_adapter_delegates_auth_info_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "Claude provider adapter must delegate auth info construction to proxy_core_adapter helpers:\n{}",
+        "ClaudeProvider::extract_auth must delegate auth info construction to its local owning helper:\n{}",
         violations.join("\n")
     );
 }
@@ -7168,7 +7208,7 @@ fn production_simple_provider_adapters_delegate_auth_headers_to_adapter() {
 }
 
 #[test]
-fn production_claude_provider_adapter_delegates_auth_headers_to_adapter() {
+fn production_claude_provider_adapter_owns_auth_headers_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
@@ -7183,6 +7223,19 @@ fn production_claude_provider_adapter_delegates_auth_headers_to_adapter() {
         &source,
         "    fn get_auth_headers(",
         "    fn needs_transform(&self, provider: &Provider) -> bool",
+    );
+
+    assert!(
+        source.contains("fn provider_claude_auth_headers("),
+        "Claude provider adapter should own its provider auth header projection helper"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) fn provider_claude_auth_headers("),
+        "proxy_core_adapter should not reintroduce the Claude auth headers facade"
+    );
+    assert!(
+        get_auth_headers.contains("provider_claude_auth_headers(auth)"),
+        "ClaudeProvider::get_auth_headers should stay as a thin call into the local provider auth header helper"
     );
 
     let mut violations = Vec::new();
@@ -7207,7 +7260,7 @@ fn production_claude_provider_adapter_delegates_auth_headers_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "Claude provider adapter must delegate auth header construction and error text to proxy_core_adapter helpers:\n{}",
+        "ClaudeProvider::get_auth_headers must delegate auth header construction and error text to its local owning helper:\n{}",
         violations.join("\n")
     );
 }

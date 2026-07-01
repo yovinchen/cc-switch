@@ -16,26 +16,34 @@
 
 use super::ProviderAdapter;
 use crate::provider::Provider;
-#[cfg(test)]
 use crate::proxy::copilot_auth::{
     COPILOT_API_VERSION, COPILOT_EDITOR_VERSION, COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
 };
 use crate::proxy::error::ProxyError;
-use crate::proxy::host::cc_switch::provider_projection::provider_needs_claude_transform;
-use crate::proxy_core::api::auth::ProviderAuthInfo;
+use crate::proxy::host::cc_switch::provider_projection::{
+    provider_claude_auth_key, provider_claude_kind, provider_needs_claude_transform,
+};
 #[cfg(test)]
 use crate::proxy_core::api::auth::ProviderAuthStrategy;
-use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;
+use crate::proxy_core::api::auth::{
+    claude_gemini_cli_auth_info_from_api_key, claude_static_auth_info_from_key,
+    managed_provider_auth_info_for_provider_kind, parse_gemini_oauth_credentials, ClaudeAuthKey,
+    ClaudeAuthKeySource, ProviderAuthInfo,
+};
+use crate::proxy_core::api::domain::{extract_claude_base_url_from_settings, ProviderKind};
 use crate::proxy_core::api::ports::required_provider_base_url;
 use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;
 use crate::proxy_core::api::transforms::GeminiShadowStore;
 use crate::proxy_core::api::transport::build_claude_upstream_url;
+use crate::proxy_core::api::transport::{
+    build_claude_provider_auth_headers, ClaudeProviderAuthHeadersInput,
+};
+use crate::proxy_core_adapter::provider_claude_transform_request_for_api_format;
 #[cfg(test)]
 use crate::proxy_core_adapter::provider_claude_transform_response_for_api_format;
-use crate::proxy_core_adapter::{
-    provider_claude_auth_headers, provider_claude_auth_info,
-    provider_claude_transform_request_for_api_format,
-};
+use uuid::Uuid;
+
+const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
 
 fn transform_claude_request_for_api_format(
     body: serde_json::Value,
@@ -59,6 +67,86 @@ fn required_claude_provider_base_url(provider: &Provider) -> Result<String, Stri
         "Claude",
         extract_claude_base_url_from_settings(provider.is_codex_oauth(), &provider.settings_config),
     )
+}
+
+fn log_claude_auth_key_source(auth_key: Option<&ClaudeAuthKey>) {
+    match auth_key.map(|auth_key| auth_key.source) {
+        Some(ClaudeAuthKeySource::AnthropicAuthToken) => {
+            log::debug!("[Claude] 使用 ANTHROPIC_AUTH_TOKEN");
+        }
+        Some(ClaudeAuthKeySource::AnthropicApiKey) => {
+            log::debug!("[Claude] 使用 ANTHROPIC_API_KEY");
+        }
+        Some(ClaudeAuthKeySource::OpenRouterApiKey) => {
+            log::debug!("[Claude] 使用 OPENROUTER_API_KEY");
+        }
+        Some(ClaudeAuthKeySource::OpenAiApiKey) => {
+            log::debug!("[Claude] 使用 OPENAI_API_KEY");
+        }
+        Some(ClaudeAuthKeySource::GeminiApiKey) => {
+            log::debug!("[Claude] 使用 GEMINI_API_KEY");
+        }
+        Some(ClaudeAuthKeySource::DirectApiKey) => {
+            log::debug!("[Claude] 使用 apiKey/api_key");
+        }
+        None => {
+            log::warn!("[Claude] 未找到有效的 API Key");
+        }
+    }
+}
+
+fn claude_gemini_cli_auth_info(provider: &Provider, key: String) -> ProviderAuthInfo {
+    let credentials = parse_gemini_oauth_credentials(&key);
+    let (auth, warning) = claude_gemini_cli_auth_info_from_api_key(key, credentials.as_ref());
+
+    if warning.is_some() {
+        log::warn!(
+            "[Gemini OAuth] access_token missing or empty for provider `{}`; \
+             bearer auth will likely fail with 401. Refresh \
+             ~/.gemini/oauth_creds.json via the gemini CLI to obtain a new token.",
+            provider.id
+        );
+    }
+
+    auth
+}
+
+fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
+    let provider_type = provider_claude_kind(provider);
+
+    if let Some(auth) = managed_provider_auth_info_for_provider_kind(&provider_type) {
+        return Some(auth);
+    }
+
+    let auth_key = provider_claude_auth_key(provider);
+    log_claude_auth_key_source(auth_key.as_ref());
+    let auth_key = auth_key?;
+    let key = auth_key.key;
+
+    match provider_type {
+        ProviderKind::GeminiCli => Some(claude_gemini_cli_auth_info(provider, key)),
+        _ => Some(claude_static_auth_info_from_key(
+            key,
+            &provider_type,
+            auth_key.source,
+        )),
+    }
+}
+
+fn provider_claude_auth_headers(
+    auth: &ProviderAuthInfo,
+) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {
+    let request_id = Uuid::new_v4().to_string();
+    build_claude_provider_auth_headers(ClaudeProviderAuthHeadersInput {
+        auth,
+        copilot_request_id: &request_id,
+        copilot_editor_version: COPILOT_EDITOR_VERSION,
+        copilot_editor_plugin_version: COPILOT_PLUGIN_VERSION,
+        copilot_integration_id: COPILOT_INTEGRATION_ID,
+        copilot_user_agent: COPILOT_USER_AGENT,
+        copilot_github_api_version: COPILOT_API_VERSION,
+    })
+    .map_err(|error| error.to_string())
 }
 
 pub(crate) fn claude_provider_api_format(provider: &Provider) -> &'static str {

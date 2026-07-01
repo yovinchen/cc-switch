@@ -28,9 +28,6 @@ use crate::proxy::engine::forward_pipeline::{
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::forward_error_to_core_error;
-use crate::proxy::host::cc_switch::provider_projection::{
-    provider_claude_auth_key, provider_claude_kind,
-};
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 #[cfg(test)]
 use crate::proxy::provider::claude_provider_api_format;
@@ -55,12 +52,6 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::proxy::copilot_auth::{
-    COPILOT_API_VERSION, COPILOT_EDITOR_VERSION, COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
-};
-
-const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
-
 fn synthesize_gemini_tool_call_id_with_uuid() -> String {
     crate::proxy_core::api::transforms::synthesize_gemini_tool_call_id(
         Uuid::new_v4().simple().to_string(),
@@ -72,9 +63,8 @@ fn log_rectified_gemini_tool_args(name: &str) {
 }
 
 use crate::proxy_core::api::auth::{
-    ClaudeAuthKey, ClaudeAuthKeySource, ClaudeDesktopDirectProviderValidationIssue,
-    ClaudeDesktopModelRouteInput, ClaudeDesktopProxyProviderConfigValidationIssue,
-    ProviderAuthInfo,
+    ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopModelRouteInput,
+    ClaudeDesktopProxyProviderConfigValidationIssue,
 };
 
 use crate::proxy_core::api::errors::config_error_with_context as core_config_error_with_context;
@@ -262,15 +252,10 @@ fn forward_current_provider_id_from_db_sources(db: &Database, app_type: &AppType
     })
 }
 
-use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
-use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
-
 use crate::proxy_core::api::domain::unsupported_app_kind_config_error;
 
-use crate::proxy_core::api::auth::parse_gemini_oauth_credentials;
 use crate::proxy_core::api::auth::{
     classify_provider_managed_auth as core_classify_provider_managed_auth,
-    managed_provider_auth_info_for_provider_kind as core_managed_provider_auth_info_for_provider_kind,
     ProviderManagedAuthClassification, ProviderManagedAuthFacts,
 };
 use crate::proxy_core::api::auth::{
@@ -289,10 +274,7 @@ use crate::proxy_core::api::transforms::{
     should_preserve_reasoning_content_for_openai_chat, ClaudeApiFormatRequestTransformContext,
     ClaudeApiFormatSseTransformContext,
 };
-use crate::proxy_core::api::transport::build_claude_provider_auth_headers;
-use crate::proxy_core::api::transport::{
-    ClaudeProviderAuthHeadersInput, ProxyRequest, ProxyResult,
-};
+use crate::proxy_core::api::transport::{ProxyRequest, ProxyResult};
 fn codex_takeover_toml_config_for_provider(
     toml_str: &str,
     proxy_url: &str,
@@ -447,86 +429,6 @@ fn provider_claude_responses_prompt_cache_key(
 
 fn provider_codex_fast_mode_enabled(provider: &Provider) -> bool {
     provider.codex_fast_mode_enabled()
-}
-
-fn log_claude_auth_key_source(auth_key: Option<&ClaudeAuthKey>) {
-    match auth_key.map(|auth_key| auth_key.source) {
-        Some(ClaudeAuthKeySource::AnthropicAuthToken) => {
-            log::debug!("[Claude] 使用 ANTHROPIC_AUTH_TOKEN");
-        }
-        Some(ClaudeAuthKeySource::AnthropicApiKey) => {
-            log::debug!("[Claude] 使用 ANTHROPIC_API_KEY");
-        }
-        Some(ClaudeAuthKeySource::OpenRouterApiKey) => {
-            log::debug!("[Claude] 使用 OPENROUTER_API_KEY");
-        }
-        Some(ClaudeAuthKeySource::OpenAiApiKey) => {
-            log::debug!("[Claude] 使用 OPENAI_API_KEY");
-        }
-        Some(ClaudeAuthKeySource::GeminiApiKey) => {
-            log::debug!("[Claude] 使用 GEMINI_API_KEY");
-        }
-        Some(ClaudeAuthKeySource::DirectApiKey) => {
-            log::debug!("[Claude] 使用 apiKey/api_key");
-        }
-        None => {
-            log::warn!("[Claude] 未找到有效的 API Key");
-        }
-    }
-}
-
-fn claude_gemini_cli_auth_info(provider: &Provider, key: String) -> ProviderAuthInfo {
-    let credentials = parse_gemini_oauth_credentials(&key);
-    let (auth, warning) = core_claude_gemini_cli_auth_info_from_api_key(key, credentials.as_ref());
-
-    if warning.is_some() {
-        log::warn!(
-            "[Gemini OAuth] access_token missing or empty for provider `{}`; \
-             bearer auth will likely fail with 401. Refresh \
-             ~/.gemini/oauth_creds.json via the gemini CLI to obtain a new token.",
-            provider.id
-        );
-    }
-
-    auth
-}
-
-pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
-    let provider_type = provider_claude_kind(provider);
-
-    if let Some(auth) = core_managed_provider_auth_info_for_provider_kind(&provider_type) {
-        return Some(auth);
-    }
-
-    let auth_key = provider_claude_auth_key(provider);
-    log_claude_auth_key_source(auth_key.as_ref());
-    let auth_key = auth_key?;
-    let key = auth_key.key;
-
-    match provider_type {
-        ProviderKind::GeminiCli => Some(claude_gemini_cli_auth_info(provider, key)),
-        _ => Some(core_claude_static_auth_info_from_key(
-            key,
-            &provider_type,
-            auth_key.source,
-        )),
-    }
-}
-
-pub(crate) fn provider_claude_auth_headers(
-    auth: &ProviderAuthInfo,
-) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {
-    let request_id = Uuid::new_v4().to_string();
-    build_claude_provider_auth_headers(ClaudeProviderAuthHeadersInput {
-        auth,
-        copilot_request_id: &request_id,
-        copilot_editor_version: COPILOT_EDITOR_VERSION,
-        copilot_editor_plugin_version: COPILOT_PLUGIN_VERSION,
-        copilot_integration_id: COPILOT_INTEGRATION_ID,
-        copilot_user_agent: COPILOT_USER_AGENT,
-        copilot_github_api_version: COPILOT_API_VERSION,
-    })
-    .map_err(|error| error.to_string())
 }
 
 pub(crate) fn provider_claude_transform_request_for_api_format(
@@ -1528,11 +1430,12 @@ mod tests {
         resolve_managed_account_auth_from_runtime_source, ManagedAccountRuntimeSource,
     };
     use crate::proxy::host::cc_switch::provider_projection::{
-        provider_claude_base_url, provider_claude_transform_streaming_decision,
-        provider_gemini_kind, provider_github_copilot_managed_account_id,
-        provider_kind_from_app_type_and_config, provider_managed_account_binding_context,
-        provider_needs_claude_transform, provider_spec_from_source, provider_specs_from_source,
-        provider_uses_anthropic_rectifiers, proxy_provider_to_core_spec,
+        provider_claude_auth_key, provider_claude_base_url, provider_claude_kind,
+        provider_claude_transform_streaming_decision, provider_gemini_kind,
+        provider_github_copilot_managed_account_id, provider_kind_from_app_type_and_config,
+        provider_managed_account_binding_context, provider_needs_claude_transform,
+        provider_spec_from_source, provider_specs_from_source, provider_uses_anthropic_rectifiers,
+        proxy_provider_to_core_spec,
     };
     use crate::proxy::provider::ProviderAdapter;
     use crate::proxy::provider::{
@@ -1543,9 +1446,10 @@ mod tests {
     use crate::proxy_core::api::auth::channel_auth_profile_missing_key_error;
     use crate::proxy_core::api::auth::{
         claude_desktop_model_id_is_profile_safe, extract_gemini_base_url_from_settings,
-        validate_claude_desktop_gateway_bearer_header, ClaudeDesktopGatewayAuthError,
-        ManagedAccountAuthRuntime, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
-        ManagementAuthError, ProviderAuthStrategy,
+        validate_claude_desktop_gateway_bearer_header, ClaudeAuthKeySource,
+        ClaudeDesktopGatewayAuthError, ManagedAccountAuthRuntime,
+        ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagementAuthError,
+        ProviderAuthInfo, ProviderAuthStrategy,
     };
     use crate::proxy_core::api::auth::{
         extract_claude_auth_key_from_settings, extract_gemini_api_key_from_settings,
@@ -6044,8 +5948,9 @@ base_url = "https://api.openai.com/v1"
             Some(json!({"ui": {"theme": "dark"}}))
         );
 
-        let creds = parse_gemini_oauth_credentials("ya29.access-token")
-            .expect("direct oauth token should parse");
+        let creds =
+            crate::proxy_core::api::auth::parse_gemini_oauth_credentials("ya29.access-token")
+                .expect("direct oauth token should parse");
         assert_eq!(creds.access_token, "ya29.access-token");
         assert!(!creds.needs_refresh());
         assert_eq!(
@@ -6122,24 +6027,10 @@ base_url = "https://api.openai.com/v1"
         assert!(!provider_needs_claude_transform(&no_transform_provider));
         let provider_auth_key = provider_claude_auth_key(&provider).expect("provider auth token");
         assert_eq!(provider_auth_key.key, "claude-token");
-        let provider_auth = provider_claude_auth_info(&provider).expect("provider auth info");
-        assert_eq!(provider_auth.api_key, "claude-token");
-        assert_eq!(provider_auth.access_token, None);
-        assert_eq!(provider_auth.strategy, ProviderAuthStrategy::ClaudeAuth);
         assert_eq!(
             provider_claude_base_url(&provider).as_deref(),
             Some("https://api.anthropic.com/v1")
         );
-        let direct_key_provider = Provider::with_id(
-            "claude-direct-key".to_string(),
-            "Claude Direct Key".to_string(),
-            json!({"apiKey": "sk-direct"}),
-            None,
-        );
-        let direct_key_auth =
-            provider_claude_auth_info(&direct_key_provider).expect("direct auth info");
-        assert_eq!(direct_key_auth.api_key, "sk-direct");
-        assert_eq!(direct_key_auth.strategy, ProviderAuthStrategy::Anthropic);
         let mut gemini_cli_provider = Provider::with_id(
             "claude-gemini-cli".to_string(),
             "Claude Gemini CLI".to_string(),
@@ -6153,17 +6044,10 @@ base_url = "https://api.openai.com/v1"
             api_format: Some("gemini_native".to_string()),
             ..Default::default()
         });
-        let gemini_cli_auth =
-            provider_claude_auth_info(&gemini_cli_provider).expect("gemini cli auth info");
-        assert_eq!(gemini_cli_auth.access_token.as_deref(), Some("ya29.valid"));
-        assert_eq!(gemini_cli_auth.strategy, ProviderAuthStrategy::GoogleOAuth);
-        let missing_claude_auth = Provider::with_id(
-            "claude-missing-auth".to_string(),
-            "Claude Missing Auth".to_string(),
-            json!({}),
-            None,
+        assert_eq!(
+            provider_claude_kind(&gemini_cli_provider),
+            ProviderKind::GeminiCli
         );
-        assert!(provider_claude_auth_info(&missing_claude_auth).is_none());
         assert_eq!(
             crate::proxy_core::api::transport::build_claude_upstream_url(
                 "https://api.anthropic.com/v1",
@@ -6180,16 +6064,6 @@ base_url = "https://api.openai.com/v1"
             bearer_headers[0].1,
             http::HeaderValue::from_static("Bearer claude-token")
         );
-        let provider_bearer_headers = provider_claude_auth_headers(&ProviderAuthInfo::new(
-            "claude-provider-token".to_string(),
-            ProviderAuthStrategy::ClaudeAuth,
-        ))
-        .expect("provider claude bearer headers");
-        assert_eq!(provider_bearer_headers[0].0.as_str(), "authorization");
-        assert_eq!(
-            provider_bearer_headers[0].1,
-            http::HeaderValue::from_static("Bearer claude-provider-token")
-        );
         let copilot_headers = build_copilot_auth_headers(CopilotAuthHeadersInput {
             api_key: "copilot-token",
             request_id: "request-1",
@@ -6203,17 +6077,6 @@ base_url = "https://api.openai.com/v1"
         assert!(copilot_headers
             .iter()
             .any(|(name, value)| name.as_str() == "x-request-id" && value == "request-1"));
-        let provider_copilot_headers = provider_claude_auth_headers(&ProviderAuthInfo::new(
-            "copilot-provider-token".to_string(),
-            ProviderAuthStrategy::GitHubCopilot,
-        ))
-        .expect("provider claude copilot headers");
-        assert!(provider_copilot_headers.iter().any(|(name, value)| {
-            name.as_str() == "authorization" && value == "Bearer copilot-provider-token"
-        }));
-        assert!(provider_copilot_headers
-            .iter()
-            .any(|(name, _)| name.as_str() == "x-request-id"));
 
         assert!(is_copilot_prompt_cache_provider(
             Some("github_copilot"),
