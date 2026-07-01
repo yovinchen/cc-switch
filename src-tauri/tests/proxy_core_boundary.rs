@@ -9871,7 +9871,7 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
     let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
     let response_adapter_source =
         fs::read_to_string(&response_adapter_path).expect("read proxy/response_adapter.rs");
-    let adapter_import = function_slice(
+    let adapter_import = optional_function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
         "};\nuse axum::response",
@@ -9947,7 +9947,7 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
     assert!(
         response_adapter_source.contains("engine::response_pipeline::{")
             && response_adapter_source.contains("record_forward_core_error_usage")
-            && !function_slice(
+            && !optional_function_slice(
                 &response_adapter_source,
                 "use crate::proxy_core_adapter::{",
                 "};\nuse axum::",
@@ -10020,7 +10020,7 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
             && response_adapter_source.contains("claude_transformed_sse_stream_from_context")
             && response_adapter_source.contains("CodexAutoTransformedSseStreamContext")
             && response_adapter_source.contains("codex_auto_transformed_sse_stream_from_context")
-            && !function_slice(
+            && !optional_function_slice(
                 &response_adapter_source,
                 "use crate::proxy_core_adapter::{",
                 "};\nuse axum::",
@@ -10099,7 +10099,7 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
             && response_adapter_source.contains("CodexAutoTransformedJsonResponseContext")
             && response_adapter_source
                 .contains("codex_auto_transformed_json_response_from_context")
-            && !function_slice(
+            && !optional_function_slice(
                 &response_adapter_source,
                 "use crate::proxy_core_adapter::{",
                 "};\nuse axum::",
@@ -10200,7 +10200,7 @@ fn response_pipeline_owns_core_usage_transport_imports() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let adapter_import = function_slice(
+    let adapter_import = optional_function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
         "};\nuse axum::response",
@@ -12666,18 +12666,25 @@ fn handlers_delegate_passthrough_response_processing_to_response_adapter() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_claude_transform_streaming_decision_to_core() {
+fn provider_projection_delegates_claude_transform_streaming_decision_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let projection_path = manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
+    let projection =
+        fs::read_to_string(&projection_path).expect("read host provider_projection.rs");
     let claude_decision = function_slice(
-        &source,
+        &projection,
         "pub(crate) fn provider_claude_transform_streaming_decision",
-        "fn provider_is_copilot_prompt_cache_provider",
+        "fn account_ref",
     );
 
     assert!(
-        claude_decision.contains("core_claude_transform_streaming_decision("),
+        !source.contains("pub(crate) fn provider_claude_transform_streaming_decision"),
+        "proxy_core_adapter should not keep a Claude transform streaming decision facade"
+    );
+    assert!(
+        claude_decision.contains("claude_transform_streaming_decision("),
         "Claude transform streaming decision must be delegated to proxy-core"
     );
     assert!(
@@ -12698,7 +12705,7 @@ fn proxy_core_adapter_delegates_claude_transform_streaming_decision_to_core() {
     for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CLAUDE_STREAMING_DECISION_MARKERS {
         assert!(
             !claude_decision.contains(marker),
-            "proxy_core_adapter must not locally compose Claude streaming decision marker `{marker}`"
+            "provider_projection must not locally compose Claude streaming decision marker `{marker}`"
         );
     }
 }
@@ -12722,6 +12729,9 @@ fn response_pipeline_uses_core_sse_header_decision() {
         .expect("read response_adapter.rs");
     let adapter = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let provider_projection =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs"))
+            .expect("read provider_projection.rs");
 
     assert!(
         !hyper_client.contains("fn is_sse("),
@@ -12732,12 +12742,13 @@ fn response_pipeline_uses_core_sse_header_decision() {
         "response_processor should delegate SSE detection to proxy-core"
     );
     assert!(
-        adapter.contains("core_claude_transform_streaming_decision(")
+        !adapter.contains("pub(crate) fn provider_claude_transform_streaming_decision")
+            && provider_projection.contains("claude_transform_streaming_decision(")
             && !adapter.contains("core_codex_chat_transform_streaming_decision(")
             && response_adapter.contains(
                 "codex_chat_transform_streaming_decision(requested_streaming, response_headers)"
             ),
-        "provider-aware Claude decision stays in proxy_core_adapter; pure Codex Chat decision should be called from response_adapter/core"
+        "provider-aware Claude decision should live in provider_projection; pure Codex Chat decision should be called from response_adapter/core"
     );
 }
 
@@ -12897,18 +12908,25 @@ fn proxy_core_adapter_delegates_claude_request_format_dispatch_to_core() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_claude_transform_gate_to_core() {
+fn provider_projection_delegates_claude_transform_gate_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let projection_path = manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
+    let projection =
+        fs::read_to_string(&projection_path).expect("read host provider_projection.rs");
     let gate_slice = function_slice(
-        &source,
+        &projection,
         "pub(crate) fn provider_needs_claude_transform",
         "pub(crate) fn provider_claude_transform_streaming_decision",
     );
 
     assert!(
-        gate_slice.contains("core_claude_provider_transform_required("),
+        !source.contains("pub(crate) fn provider_needs_claude_transform"),
+        "proxy_core_adapter should not keep a Claude transform gate facade"
+    );
+    assert!(
+        gate_slice.contains("claude_provider_transform_required("),
         "Claude transform gate must delegate provider-kind/api-format policy to proxy-core"
     );
     assert!(
@@ -26078,7 +26096,7 @@ fn proxy_response_adapter_owns_core_transport_imports() {
     let source = fs::read_to_string(&path).expect("read proxy/response_adapter.rs");
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
-    let adapter_import = function_slice(
+    let adapter_import = optional_function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
         "};\nuse axum::",

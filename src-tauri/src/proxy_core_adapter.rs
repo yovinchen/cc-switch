@@ -32,6 +32,7 @@ use crate::proxy::host::cc_switch::provider_projection::{
     provider_claude_auth_key, provider_claude_kind, provider_kind_from_app_type_and_config,
 };
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
+#[cfg(test)]
 use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy::provider::codex_provider_upstream_model;
 use crate::proxy::route_attempt::ForwardAttempt;
@@ -285,12 +286,10 @@ use crate::proxy_core::api::auth::{
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 use crate::proxy_core::api::transforms::{
-    claude_provider_transform_required as core_claude_provider_transform_required,
     claude_request_transform_for_api_format, claude_response_to_anthropic_message_for_api_format,
-    claude_transform_streaming_decision as core_claude_transform_streaming_decision,
     create_claude_to_anthropic_sse_stream_for_api_format,
     should_preserve_reasoning_content_for_openai_chat, ClaudeApiFormatRequestTransformContext,
-    ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
+    ClaudeApiFormatSseTransformContext,
 };
 use crate::proxy_core::api::transport::build_claude_provider_auth_headers;
 use crate::proxy_core::api::transport::forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status;
@@ -413,27 +412,6 @@ async fn forwarder_runtime_config_from_db_sources(
         db.get_optimizer_config().unwrap_or_default(),
         db.get_copilot_optimizer_config().unwrap_or_default(),
     ))
-}
-
-pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
-    core_claude_provider_transform_required(
-        provider_claude_kind(provider).needs_transform(),
-        claude_provider_api_format(provider),
-    )
-}
-
-pub(crate) fn provider_claude_transform_streaming_decision(
-    provider: &Provider,
-    requested_streaming: bool,
-    response_headers: &HeaderMap,
-    api_format: &str,
-) -> ClaudeTransformStreamingDecision {
-    core_claude_transform_streaming_decision(
-        requested_streaming,
-        response_headers,
-        api_format,
-        provider_is_codex_oauth(provider),
-    )
 }
 
 use crate::proxy_core::api::transforms::is_copilot_prompt_cache_provider;
@@ -1671,9 +1649,10 @@ mod tests {
         resolve_managed_account_auth_from_runtime_source, ManagedAccountRuntimeSource,
     };
     use crate::proxy::host::cc_switch::provider_projection::{
-        provider_claude_base_url, provider_gemini_kind, provider_github_copilot_managed_account_id,
-        provider_managed_account_binding_context, provider_spec_from_source,
-        provider_specs_from_source, proxy_provider_to_core_spec,
+        provider_claude_base_url, provider_claude_transform_streaming_decision,
+        provider_gemini_kind, provider_github_copilot_managed_account_id,
+        provider_managed_account_binding_context, provider_needs_claude_transform,
+        provider_spec_from_source, provider_specs_from_source, proxy_provider_to_core_spec,
     };
     use crate::proxy::provider::ProviderAdapter;
     use crate::proxy::provider::{

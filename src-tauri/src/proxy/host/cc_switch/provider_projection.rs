@@ -19,6 +19,11 @@ use crate::proxy_core::api::domain::{
 use crate::proxy_core::api::errors::{
     config_error_with_context as core_config_error_with_context, ProxyCoreError, ProxyCoreResult,
 };
+use crate::proxy_core::api::transforms::{
+    claude_provider_transform_required, claude_transform_streaming_decision,
+    ClaudeTransformStreamingDecision,
+};
+use http::HeaderMap;
 use serde_json::json;
 
 fn provider_projection_error(context: &str, error: AppError) -> ProxyCoreError {
@@ -173,6 +178,27 @@ fn managed_account_id_for_provider(provider: &Provider, auth_provider: &str) -> 
 
 pub(crate) fn provider_github_copilot_managed_account_id(provider: &Provider) -> Option<String> {
     managed_account_id_for_provider(provider, GITHUB_COPILOT_AUTH_PROVIDER)
+}
+
+pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
+    claude_provider_transform_required(
+        provider_claude_kind(provider).needs_transform(),
+        claude_provider_api_format(provider),
+    )
+}
+
+pub(crate) fn provider_claude_transform_streaming_decision(
+    provider: &Provider,
+    requested_streaming: bool,
+    response_headers: &HeaderMap,
+    api_format: &str,
+) -> ClaudeTransformStreamingDecision {
+    claude_transform_streaming_decision(
+        requested_streaming,
+        response_headers,
+        api_format,
+        provider_is_codex_oauth(provider),
+    )
 }
 
 fn account_ref(provider: &Provider) -> Option<String> {
