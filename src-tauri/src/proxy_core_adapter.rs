@@ -63,7 +63,7 @@ pub(crate) const COPILOT_USER_AGENT: &str = "GitHubCopilotChat/0.38.2";
 pub(crate) const COPILOT_API_VERSION: &str = "2025-10-01";
 pub(crate) const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
 
-pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
+fn synthesize_gemini_tool_call_id_with_uuid() -> String {
     crate::proxy_core::api::transforms::synthesize_gemini_tool_call_id(
         Uuid::new_v4().simple().to_string(),
     )
@@ -81,7 +81,7 @@ use crate::proxy_core::api::auth::{
 
 use crate::proxy_core::api::errors::config_error_with_context as core_config_error_with_context;
 use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};
-pub(crate) fn app_error(context: &str, error: AppError) -> ProxyCoreError {
+fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     core_config_error_with_context(context, error)
 }
 
