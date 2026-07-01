@@ -1961,6 +1961,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1375. `ProviderRouter` 的 failover lookup availability 到 provider id selection 投影已迁入 `proxy/engine/routing.rs`：router 直接消费 `proxy-core::provider_selection_candidate_from_failover_lookup` / `select_provider_ids` 和 core forwarder warning 文案，`proxy_core_adapter` 不再持有 `select_failover_provider_ids_from_router_lookup_availability` 一跳 facade。
 1376. forward runtime 的 retryable/terminal failure warning 与 rectifier retry success/failure log-line 投影已迁入 host-owned `proxy/host/cc_switch/forwarder_runtime_state_source.rs`：默认 runtime state source 本地消费 core forward failure log builders 与 rectifier message helpers，`proxy_core_adapter` 只保留 `ProxyError -> ForwardFailureKind` 宿主事实投影。
 1377. forward current-provider settings/DB fallback helper 已从 `proxy_core_adapter` 的 crate-visible API 收窄为 adapter 私有实现细节：旧 forward bridge 仍复用同一 fallback 规则，但外部模块不能再把 `forward_current_provider_id_from_source` / `forward_current_provider_id_from_db_sources` 当作 adapter 合约。
+1378. 代理接管期间禁止切换到官方供应商的策略包装已从 `proxy_core_adapter` 删除；provider service 与 hot-switch target-state helper 直接把 host `Provider.category` 投影给 `proxy-core::should_block_proxy_switch_to_provider_category`，adapter 不再暴露 `Provider` 形状的一跳 facade。
 
 ## 背景
 

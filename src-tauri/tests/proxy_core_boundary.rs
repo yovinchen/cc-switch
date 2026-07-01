@@ -1244,6 +1244,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn codex_preserved_auth_live_config_text_for_configured_policy(",
     "pub(crate) fn provider_settings_with_live_token_sync(",
     "pub(crate) fn sync_provider_settings_with_live_token(",
+    "pub(crate) fn should_block_proxy_switch_to_provider(",
     "pub(crate) fn codex_preserved_auth_live_config_text_if_proxy_placeholder(",
     "pub(crate) fn codex_preserved_auth_live_config_text_for_policy(",
     "pub(crate) fn apply_provider_model_mapping_from_provider(",
@@ -2408,6 +2409,14 @@ fn is_allowed_provider_live_policy_app_kind_import(relative: &str, code: &str) -
     )
 }
 
+fn is_allowed_provider_switch_policy_core_import(relative: &str, code: &str) -> bool {
+    matches!(
+        relative,
+        "src/services/provider/mod.rs" | "src/proxy/host/cc_switch/live_takeover.rs"
+    ) && code.trim()
+        == "use crate::proxy_core::api::routing::should_block_proxy_switch_to_provider_category;"
+}
+
 fn is_allowed_provider_common_config_issue_core_import(relative: &str, code: &str) -> bool {
     (matches!(
         relative,
@@ -2520,6 +2529,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_provider_router_circuit_runtime_core_import(&relative, code)
                     && !is_allowed_live_takeover_runtime_core_import(&relative, code)
                     && !is_allowed_provider_live_policy_app_kind_import(&relative, code)
+                    && !is_allowed_provider_switch_policy_core_import(&relative, code)
                     && !is_allowed_provider_common_config_issue_core_import(&relative, code)
                     && !is_allowed_provider_custom_user_agent_core_import(&relative, code)
                     && !is_allowed_circuit_breaker_config_core_import(&relative, code)
@@ -11616,7 +11626,7 @@ fn claude_desktop_config_delegates_proxy_gateway_origin_to_core() {
     let live_takeover_core_ports_import = function_slice(
         &live_takeover_source,
         "use crate::proxy_core::api::ports::{",
-        "};\nuse crate::proxy_core_adapter::{",
+        "};\nuse crate::proxy_core::api::routing::",
     );
     let live_takeover_adapter_import = function_slice(
         &live_takeover_source,
@@ -16694,7 +16704,7 @@ fn production_proxy_service_owns_hot_switch_target_state_and_persistence() {
         "struct HotSwitchTargetState",
         "async fn proxy_hot_switch_target_state_from_host_db(",
         ".get_provider_by_id(provider_id, app_type_str)",
-        "should_block_proxy_switch_to_provider(true, &provider)",
+        "should_block_proxy_switch_to_provider_category(true, provider.category.as_deref())",
         "crate::settings::get_effective_current_provider(db, app_type)",
         ".get_live_backup(app_type_str)",
         "读取供应商失败",

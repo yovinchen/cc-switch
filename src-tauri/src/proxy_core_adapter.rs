@@ -760,20 +760,10 @@ fn provider_should_preserve_reasoning_content_for_openai_chat(
     should_preserve_reasoning_content_for_openai_chat(&provider.settings_config, body)
 }
 
-pub(crate) fn should_block_proxy_switch_to_provider(
-    proxy_takeover_active: bool,
-    provider: &Provider,
-) -> bool {
-    should_block_proxy_switch_to_provider_category(
-        proxy_takeover_active,
-        provider.category.as_deref(),
-    )
-}
-
 use crate::proxy_core::api::routing::{
     current_provider_db_fallback_required, current_provider_id_from_sources,
     legacy_provider_codex_catalog_models_from_settings, legacy_provider_config_text_from_settings,
-    legacy_provider_env_from_settings, should_block_proxy_switch_to_provider_category,
+    legacy_provider_env_from_settings,
 };
 
 fn legacy_provider_projection_input(provider: &Provider) -> LegacyProviderProjectionInput {
@@ -7210,33 +7200,7 @@ base_url = "https://api.openai.com/v1"
     }
 
     #[test]
-    fn proxy_switch_policy_adapter_blocks_official_only_during_takeover() {
-        assert!(should_block_proxy_switch_to_provider_category(
-            true,
-            Some("official")
-        ));
-        assert!(!should_block_proxy_switch_to_provider_category(
-            false,
-            Some("official")
-        ));
-        assert!(!should_block_proxy_switch_to_provider_category(
-            true,
-            Some("custom")
-        ));
-        assert!(!should_block_proxy_switch_to_provider_category(true, None));
-
-        let mut provider = Provider::with_id(
-            "official-codex".to_string(),
-            "Official Codex".to_string(),
-            json!({}),
-            None,
-        );
-        provider.category = Some("official".to_string());
-        assert!(should_block_proxy_switch_to_provider(true, &provider));
-        assert!(!should_block_proxy_switch_to_provider(false, &provider));
-        provider.category = Some("custom".to_string());
-        assert!(!should_block_proxy_switch_to_provider(true, &provider));
-
+    fn proxy_switch_policy_adapter_preserves_takeover_state_rules() {
         assert!(!proxy_live_config_owned_by_takeover(false, false));
         assert!(proxy_live_config_owned_by_takeover(true, false));
         assert!(proxy_live_config_owned_by_takeover(false, true));

@@ -46,9 +46,10 @@ use crate::proxy_core::api::ports::{
     proxy_takeover_status_from_enabled_options, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
     ProxyTakeoverStatus,
 };
+use crate::proxy_core::api::routing::should_block_proxy_switch_to_provider_category;
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
-    should_block_proxy_switch_to_provider, CodexTakeoverAuthPolicy,
+    CodexTakeoverAuthPolicy,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, ProviderEffectiveSettingsWarning,
@@ -831,7 +832,7 @@ async fn proxy_hot_switch_target_state_from_host_db(
         .map_err(|e| format!("读取供应商失败: {e}"))?
         .ok_or_else(|| format!("供应商不存在: {provider_id}"))?;
 
-    if should_block_proxy_switch_to_provider(true, &provider) {
+    if should_block_proxy_switch_to_provider_category(true, provider.category.as_deref()) {
         return Err(
             "代理接管模式下不能切换到官方供应商 (Cannot switch to official provider during proxy takeover)"
                 .to_string(),
