@@ -13099,15 +13099,9 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let normalize_slice = function_slice(
-        &source,
-        "pub(crate) fn provider_claude_normalize_anthropic_messages",
-        "fn provider_kind_from_provider",
-    );
-
     assert!(
-        normalize_slice.contains("normalize_claude_anthropic_messages("),
-        "Claude message normalization composition must be delegated to proxy-core"
+        !source.contains("pub(crate) fn provider_claude_normalize_anthropic_messages("),
+        "proxy_core_adapter should not expose Claude message normalization after request source and tests consume proxy-core directly"
     );
     assert!(
         !source.contains(
@@ -13139,12 +13133,12 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
         "normalize_deepseek_thinking_disabled_strip_effort(",
     ];
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(normalize_slice) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs Claude message normalization:{} contains host-local marker `{}`",
+                    "src/proxy_core_adapter.rs:{} contains Claude message normalization marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -17987,7 +17981,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let host_forward_function = function_slice(
         &source,
         "async fn forward_proxy_request_with_host_runtime",
-        "pub(crate) fn provider_claude_normalize_anthropic_messages",
+        "fn provider_kind_from_provider",
     );
     let adapter_core_ports_import = optional_function_slice(
         &source,
@@ -21298,10 +21292,10 @@ fn production_forwarder_uses_request_source_resource() {
         "proxy_core_adapter should not re-export ForwardUpstreamUrlPlan once request source imports it directly from proxy_core::api::transport"
     );
     assert!(
-        request_source.contains(
-            "use crate::proxy_core::api::transforms::responses_to_chat_completions_with_options;"
-        ),
-        "default ForwarderRequestSource should import Codex Responses-to-Chat conversion directly from proxy_core::api::transforms"
+        request_source.contains("use crate::proxy_core::api::transforms::{")
+            && request_source.contains("responses_to_chat_completions_with_options")
+            && request_source.contains("normalize_claude_anthropic_messages"),
+        "default ForwarderRequestSource should import transforms directly from proxy_core::api::transforms"
     );
     let adapter_runtime_lines: Vec<&str> = adapter_runtime_source.lines().collect();
     for marker in [

@@ -1028,18 +1028,6 @@ async fn forward_proxy_request_with_host_runtime(
     .await
 }
 
-pub(crate) fn provider_claude_normalize_anthropic_messages(
-    body: &mut Value,
-    provider: &Provider,
-    api_format: &str,
-) -> bool {
-    crate::proxy_core::api::transforms::normalize_claude_anthropic_messages(
-        body,
-        &provider.settings_config,
-        api_format,
-    )
-}
-
 fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
     provider
         .meta
@@ -1602,7 +1590,7 @@ mod tests {
     };
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{
-        normalize_anthropic_tool_thinking_history,
+        normalize_anthropic_tool_thinking_history, normalize_claude_anthropic_messages,
         normalize_deepseek_thinking_disabled_strip_effort,
         should_normalize_anthropic_tool_thinking_history,
         should_normalize_mimo_anthropic_thinking_history, CodexProxyErrorContext,
@@ -6547,16 +6535,16 @@ base_url = "https://api.openai.com/v1"
             "output_config": { "effort": "max" },
             "messages": [{ "role": "user", "content": "hello" }]
         });
-        assert!(provider_claude_normalize_anthropic_messages(
+        assert!(normalize_claude_anthropic_messages(
             &mut normalize_body,
-            &normalize_provider,
+            &normalize_provider.settings_config,
             "anthropic"
         ));
         assert!(normalize_body.get("output_config").is_none());
         let mut non_anthropic_body = normalize_body.clone();
-        assert!(!provider_claude_normalize_anthropic_messages(
+        assert!(!normalize_claude_anthropic_messages(
             &mut non_anthropic_body,
-            &normalize_provider,
+            &normalize_provider.settings_config,
             "openai_chat"
         ));
     }

@@ -45,7 +45,9 @@ use crate::proxy_core::api::model_catalog::{
     strip_one_m_suffix_for_upstream, strip_one_m_suffix_for_upstream_from_body,
     ModelMappingProjection,
 };
-use crate::proxy_core::api::transforms::responses_to_chat_completions_with_options;
+use crate::proxy_core::api::transforms::{
+    normalize_claude_anthropic_messages, responses_to_chat_completions_with_options,
+};
 use crate::proxy_core::api::transport::{
     anthropic_beta_header_value, apply_bedrock_pre_send_optimizers,
     apply_copilot_warmup_model_override, apply_forwarder_media_prevention_from_facts,
@@ -71,8 +73,8 @@ use crate::proxy_core::api::transport::{
     PromptCacheTraceLogInput, UpstreamRequestHeadersInput, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_adapter::{
-    provider_claude_desktop_proxy_request_body, provider_claude_normalize_anthropic_messages,
-    ClaudeDesktopProviderProxyRequestBodyIssue, ClaudeDesktopProviderProxyRouteIssue,
+    provider_claude_desktop_proxy_request_body, ClaudeDesktopProviderProxyRequestBodyIssue,
+    ClaudeDesktopProviderProxyRouteIssue,
 };
 
 pub(crate) struct CcSwitchForwarderRequestSource {
@@ -211,6 +213,23 @@ fn claude_desktop_proxy_request_body_issue_message(
     }
 }
 
+fn normalize_claude_anthropic_messages_for_provider(
+    body: &mut Value,
+    provider: &Provider,
+    api_format: &str,
+) -> bool {
+    normalize_claude_anthropic_messages(body, &provider.settings_config, api_format)
+}
+
+#[cfg(test)]
+pub(crate) fn test_normalize_claude_anthropic_messages_for_provider(
+    body: &mut Value,
+    provider: &Provider,
+    api_format: &str,
+) -> bool {
+    normalize_claude_anthropic_messages_for_provider(body, provider, api_format)
+}
+
 fn apply_forwarder_media_prevention_with_log(input: ForwarderMediaPreventionInput<'_>) -> usize {
     let replaced_images =
         apply_forwarder_media_prevention_from_facts(ForwarderMediaPreventionFacts {
@@ -336,7 +355,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             return;
         };
 
-        provider_claude_normalize_anthropic_messages(input.body, input.provider, api_format);
+        normalize_claude_anthropic_messages_for_provider(input.body, input.provider, api_format);
         apply_forwarder_media_prevention_with_log(ForwarderMediaPreventionInput {
             body: input.body,
             provider: input.provider,

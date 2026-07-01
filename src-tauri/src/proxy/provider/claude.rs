@@ -142,7 +142,7 @@ impl ProviderAdapter for ClaudeAdapter {
 mod tests {
     use super::*;
     use crate::provider::ProviderMeta;
-    use crate::proxy_core_adapter::provider_claude_normalize_anthropic_messages;
+    use crate::proxy::host::cc_switch::forwarder_request_source::test_normalize_claude_anthropic_messages_for_provider;
     use serde_json::{json, Value};
 
     const EXPECTED_TOOL_THINKING_PLACEHOLDER: &str = "tool call";
@@ -1321,7 +1321,7 @@ mod tests {
         provider: &Provider,
         api_format: &str,
     ) -> bool {
-        provider_claude_normalize_anthropic_messages(body, provider, api_format)
+        test_normalize_claude_anthropic_messages_for_provider(body, provider, api_format)
     }
 
     #[test]
@@ -1381,8 +1381,11 @@ mod tests {
             ]
         });
 
-        let changed =
-            provider_claude_normalize_anthropic_messages(&mut body, &provider, "anthropic");
+        let changed = test_normalize_claude_anthropic_messages_for_provider(
+            &mut body,
+            &provider,
+            "anthropic",
+        );
 
         assert!(!changed);
         let messages = body["messages"].as_array().unwrap();
@@ -1409,8 +1412,11 @@ mod tests {
             ]
         });
 
-        let changed =
-            provider_claude_normalize_anthropic_messages(&mut body, &provider, "openai_chat");
+        let changed = test_normalize_claude_anthropic_messages_for_provider(
+            &mut body,
+            &provider,
+            "openai_chat",
+        );
 
         assert!(!changed);
         assert!(body.get("system").is_none());
@@ -1559,7 +1565,7 @@ mod tests {
         body: &mut Value,
         provider: &Provider,
     ) -> bool {
-        provider_claude_normalize_anthropic_messages(body, provider, "anthropic")
+        test_normalize_claude_anthropic_messages_for_provider(body, provider, "anthropic")
     }
 
     #[test]
@@ -1781,7 +1787,7 @@ mod tests {
             "messages": [{ "role": "user", "content": "hello" }]
         });
 
-        let changed = provider_claude_normalize_anthropic_messages(
+        let changed = test_normalize_claude_anthropic_messages_for_provider(
             &mut body,
             &deepseek_official_provider(),
             "anthropic",
