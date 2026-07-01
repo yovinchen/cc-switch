@@ -19496,11 +19496,6 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "struct CcSwitchForwarderRuntimeStateSource",
         "impl CcSwitchForwarderRuntimeStateSource",
     );
-    let runtime_inherent_impl_slice = function_slice(
-        &runtime_source,
-        "impl CcSwitchForwarderRuntimeStateSource",
-        "impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource",
-    );
     let failure_decision_slice = function_slice(
         &source,
         "pub(crate) enum ForwarderFailureDecision",
@@ -19542,8 +19537,13 @@ fn production_forwarder_uses_runtime_state_source_resource() {
             && runtime_source.contains("ProxyRuntimeStatus")
             && runtime_source.contains("ForwardSuccessStatusInput")
             && runtime_source.contains("use crate::proxy_core::api::transport::{")
+            && runtime_source.contains("build_retryable_forward_failure_log")
+            && runtime_source.contains("build_terminal_forward_failure_log")
             && runtime_source.contains("categorize_forward_failure")
+            && runtime_source.contains("forwarder_failure_log_line")
             && runtime_source.contains("forwarder_no_available_provider_status_message")
+            && runtime_source.contains("forwarder_rectifier_retry_failure_message")
+            && runtime_source.contains("forwarder_rectifier_retry_success_message")
             && runtime_source.contains("forwarder_terminal_failure_status_message")
             && runtime_source.contains("should_failover_after_rectifier_retry_failure")
             && runtime_source.contains("ForwardFailureCategory")
@@ -19620,30 +19620,35 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "ForwarderRuntimeStateSource trait must not expose runtime status or event bus read handles"
     );
     assert!(
-        adapter_source.contains("fn forwarder_rectifier_retry_success_log_line")
-            && adapter_source.contains("fn forwarder_rectifier_retry_failure_log_line"),
-        "adapter must retain rectifier retry log-line projection helpers"
+        runtime_source.contains("fn forwarder_rectifier_retry_success_log_line")
+            && runtime_source.contains("fn forwarder_rectifier_retry_failure_log_line"),
+        "default ForwarderRuntimeStateSource module must own rectifier retry log-line projection helpers"
     );
     assert!(
-        adapter_source.contains("fn terminal_forward_failure_log_line_for_error"),
-        "adapter must retain terminal failure log-line projection helper"
+        runtime_source.contains("fn terminal_forward_failure_log_line_for_error"),
+        "default ForwarderRuntimeStateSource module must own terminal failure log-line projection helper"
     );
     assert!(
-        adapter_source.contains("fn retryable_forward_failure_log_line"),
-        "adapter must retain retryable failure log-line projection helper"
+        runtime_source.contains("fn retryable_forward_failure_log_line"),
+        "default ForwarderRuntimeStateSource module must own retryable failure log-line projection helper"
     );
+    for marker in [
+        "fn forwarder_rectifier_retry_success_log_line",
+        "fn forwarder_rectifier_retry_failure_log_line",
+        "fn terminal_forward_failure_log_line_for_error",
+        "fn retryable_forward_failure_log_line",
+    ] {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not retain forward runtime log-line helper `{marker}`"
+        );
+    }
     assert!(
-        !runtime_inherent_impl_slice.contains("fn rectifier_retry_success_log_line")
-            && !runtime_inherent_impl_slice.contains("fn rectifier_retry_failure_log_line"),
-        "default ForwarderRuntimeStateSource implementation must not retain private rectifier log-line helpers"
-    );
-    assert!(
-        !runtime_inherent_impl_slice.contains("fn terminal_forward_failure_log_line_for_error"),
-        "default ForwarderRuntimeStateSource implementation must not retain private terminal failure log-line helper"
-    );
-    assert!(
-        !runtime_inherent_impl_slice.contains("fn retryable_forward_failure_log_line"),
-        "default ForwarderRuntimeStateSource implementation must not retain private retryable failure log-line helper"
+        runtime_source.contains("log_terminal_forward_failure")
+            && runtime_source.contains("terminal_forward_failure_log_line_for_error(")
+            && runtime_source.contains("log_retryable_forward_failure")
+            && runtime_source.contains("retryable_forward_failure_log_line("),
+        "default ForwarderRuntimeStateSource should consume its local log-line helpers through semantic logging methods"
     );
     assert!(
         !runtime_trait_slice.contains("rectifier_retry_success_log_line")

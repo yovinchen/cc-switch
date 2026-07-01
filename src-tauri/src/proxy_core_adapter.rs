@@ -17,8 +17,8 @@ use crate::proxy::engine::forward_pipeline::{
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCodexChatProtocolEnrichmentInput, ForwarderCodexResponsesToChatInput,
     ForwarderCopilotRequestOptimizationGateInput, ForwarderCopilotRequestOptimizationInput,
-    ForwarderFailoverSwitchTarget, ForwarderFailureDecision, ForwarderMediaRetryPlanInput,
-    ForwarderPreparedRequest, ForwarderProtocolStateSource, ForwarderProviderRequestBodyInput,
+    ForwarderFailoverSwitchTarget, ForwarderMediaRetryPlanInput, ForwarderPreparedRequest,
+    ForwarderProtocolStateSource, ForwarderProviderRequestBodyInput,
     ForwarderProviderTransformInput, ForwarderRectifierRetryFailureDecision,
     ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
     ForwarderRequestPreparationInput, ForwarderThinkingBudgetRectifierInput,
@@ -319,55 +319,6 @@ use crate::proxy_core::api::domain::{
     provider_account_ref, provider_metadata_from_input, unsupported_app_kind_config_error,
 };
 
-pub(crate) fn terminal_forward_failure_log_line_for_error(
-    app_type: &str,
-    attempted_providers: usize,
-    total_providers: usize,
-    last_error: Option<&ProxyError>,
-) -> Option<String> {
-    let last_failure = last_error.map(forward_failure_kind_from_proxy_error);
-    build_terminal_forward_failure_log(attempted_providers, total_providers, last_failure.as_ref())
-        .map(|log| forwarder_failure_log_line(app_type, &log))
-}
-
-pub(crate) fn retryable_forward_failure_log_line(
-    app_type: &str,
-    error: &ProxyError,
-    provider: &Provider,
-    attempted_providers: usize,
-    total_providers: usize,
-) -> String {
-    let failure = forward_failure_kind_from_proxy_error(error);
-    let log = build_retryable_forward_failure_log(
-        provider.name.as_str(),
-        attempted_providers,
-        total_providers,
-        &failure,
-    );
-    forwarder_failure_log_line(app_type, &log)
-}
-
-pub(crate) fn forwarder_rectifier_retry_success_log_line(
-    app_type: &str,
-    kind: ForwarderRectifierRetryKind,
-) -> String {
-    format!(
-        "[{app_type}] {}",
-        core_forwarder_rectifier_retry_success_message(kind)
-    )
-}
-
-pub(crate) fn forwarder_rectifier_retry_failure_log_line(
-    app_type: &str,
-    kind: ForwarderRectifierRetryKind,
-    error: &ProxyError,
-) -> String {
-    format!(
-        "[{app_type}] {}",
-        core_forwarder_rectifier_retry_failure_message(kind, &error.to_string())
-    )
-}
-
 use crate::proxy_core::api::auth::{
     classify_provider_managed_auth as core_classify_provider_managed_auth,
     managed_account_id_for_auth_provider as core_managed_account_id_for_auth_provider,
@@ -402,16 +353,9 @@ use crate::proxy_core::api::transforms::{
     ClaudeApiFormatSseTransformContext, ClaudeTransformStreamingDecision,
 };
 use crate::proxy_core::api::transport::build_claude_provider_auth_headers;
+use crate::proxy_core::api::transport::forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status;
 use crate::proxy_core::api::transport::{
-    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
-    forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
-    forwarder_failure_log_line,
-    forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
-    forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
-};
-use crate::proxy_core::api::transport::{
-    ClaudeProviderAuthHeadersInput, ForwardFailureKind, ForwarderRectifierRetryKind, ProxyRequest,
-    ProxyResult,
+    ClaudeProviderAuthHeadersInput, ForwardFailureKind, ProxyRequest, ProxyResult,
 };
 pub(crate) fn codex_provider_live_write_parts<'a>(
     settings: &'a Value,
@@ -2383,7 +2327,7 @@ mod tests {
     };
     use crate::proxy_core::api::transport::{
         apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
-        forwarder_rectifier_retry_failure_label, resolve_codex_provider_upstream_model,
+        resolve_codex_provider_upstream_model, ForwarderRectifierRetryKind,
     };
 
     use super::*;
@@ -4877,46 +4821,6 @@ base_url = "https://api.openai.com/v1"
         }
     }
 
-    #[test]
-    fn forwarder_runtime_state_source_projects_rectifier_retry_logs() {
-        let timeout = ProxyError::Timeout("upstream timed out".to_string());
-
-        assert_eq!(
-            forwarder_rectifier_retry_success_log_line(
-                "claude",
-                ForwarderRectifierRetryKind::MediaFallback,
-            ),
-            "[claude] [Media] Unsupported-image retry succeeded"
-        );
-        assert_eq!(
-            forwarder_rectifier_retry_failure_log_line(
-                "claude",
-                ForwarderRectifierRetryKind::ThinkingSignature,
-                &timeout,
-            ),
-            "[claude] [RECT-003] 整流重试仍失败: 超时: upstream timed out"
-        );
-        assert_eq!(
-            forwarder_rectifier_retry_success_log_line(
-                "claude",
-                ForwarderRectifierRetryKind::ThinkingBudget,
-            ),
-            "[claude] [RECT-011] budget 整流重试成功"
-        );
-        assert_eq!(
-            forwarder_rectifier_retry_failure_label(ForwarderRectifierRetryKind::MediaFallback),
-            "media 降级"
-        );
-        assert_eq!(
-            forwarder_rectifier_retry_failure_label(ForwarderRectifierRetryKind::ThinkingSignature),
-            "整流"
-        );
-        assert_eq!(
-            forwarder_rectifier_retry_failure_label(ForwarderRectifierRetryKind::ThinkingBudget),
-            "budget 整流"
-        );
-    }
-
     #[tokio::test]
     async fn forwarder_runtime_state_source_records_terminal_statuses() {
         let source = CcSwitchForwarderRuntimeStateSource::new(
@@ -4991,53 +4895,6 @@ base_url = "https://api.openai.com/v1"
             status.last_error.as_deref(),
             Some("超时: upstream timed out")
         );
-    }
-
-    #[test]
-    fn forwarder_runtime_state_source_projects_forward_failure_policy() {
-        let source = CcSwitchForwarderRuntimeStateSource::new(
-            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            Arc::new(RwLock::new(HashMap::new())),
-            Arc::new(ProxyEventBus::default()),
-        );
-        let provider = Provider::with_id("relay".to_string(), "Relay".to_string(), json!({}), None);
-        let retryable =
-            source.forward_failure_decision(&ProxyError::Timeout("upstream timed out".to_string()));
-        let non_retryable_error = ProxyError::UpstreamError {
-            status: 400,
-            body: Some(r#"{"error":{"message":"bad request"}}"#.to_string()),
-        };
-        let non_retryable = source.forward_failure_decision(&non_retryable_error);
-
-        match retryable {
-            ForwarderFailureDecision::Retryable => {}
-            ForwarderFailureDecision::NonRetryable => {
-                panic!("timeout should be retryable")
-            }
-        }
-        assert_eq!(
-            retryable_forward_failure_log_line(
-                "claude",
-                &ProxyError::Timeout("upstream timed out".to_string()),
-                &provider,
-                1,
-                2,
-            ),
-            "[claude] [FWD-001] Provider Relay 失败，继续尝试下一个 (1/2): 请求超时: upstream timed out"
-        );
-
-        match non_retryable {
-            ForwarderFailureDecision::Retryable => {
-                panic!("client 400 should be non-retryable")
-            }
-            ForwarderFailureDecision::NonRetryable => {}
-        }
-
-        let terminal_log_line =
-            terminal_forward_failure_log_line_for_error("claude", 2, 2, Some(&non_retryable_error))
-                .expect("terminal failure log for multi-provider attempts");
-        assert!(terminal_log_line.starts_with("[claude] [FWD-002] "));
-        assert!(terminal_log_line.contains("上游 HTTP 400"));
     }
 
     #[tokio::test]
