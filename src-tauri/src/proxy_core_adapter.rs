@@ -4,7 +4,7 @@ use crate::database::{
     ProxyChannelSourceKind,
 };
 use crate::error::AppError;
-use crate::provider::{AuthBindingSource, Provider, ProviderMeta};
+use crate::provider::{Provider, ProviderMeta};
 use crate::proxy::engine::forward_pipeline::{
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderAuthSourceRef,
     ForwarderProtocolStateSourceRef, ForwarderRequestSourceRef, ForwarderResponseSourceRef,
@@ -271,10 +271,8 @@ use crate::proxy_core::api::domain::unsupported_app_kind_config_error;
 use crate::proxy_core::api::auth::parse_gemini_oauth_credentials;
 use crate::proxy_core::api::auth::{
     classify_provider_managed_auth as core_classify_provider_managed_auth,
-    managed_account_id_for_auth_provider as core_managed_account_id_for_auth_provider,
     managed_provider_auth_info_for_provider_kind as core_managed_provider_auth_info_for_provider_kind,
-    ManagedAccountBindingInput, ManagedAccountBindingSource, ProviderManagedAuthClassification,
-    ProviderManagedAuthFacts, GITHUB_COPILOT_AUTH_PROVIDER,
+    ProviderManagedAuthClassification, ProviderManagedAuthFacts,
 };
 use crate::proxy_core::api::auth::{
     claude_desktop_direct_gateway_credentials, claude_desktop_direct_inference_model_specs,
@@ -1218,49 +1216,6 @@ pub(crate) fn provider_uses_anthropic_rectifiers(app_type: &AppType, provider: &
     provider_kind_from_app_type_and_config(app_type, provider).uses_anthropic_rectifiers()
 }
 
-fn provider_managed_account_binding_input(
-    meta: &ProviderMeta,
-) -> Option<ManagedAccountBindingInput<'_>> {
-    let binding = meta.auth_binding.as_ref()?;
-    Some(ManagedAccountBindingInput {
-        source: match binding.source {
-            AuthBindingSource::ProviderConfig => ManagedAccountBindingSource::ProviderConfig,
-            AuthBindingSource::ManagedAccount => ManagedAccountBindingSource::ManagedAccount,
-        },
-        auth_provider: binding.auth_provider.as_deref(),
-        account_id: binding.account_id.as_deref(),
-    })
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ProviderManagedAccountBindingContext<'a> {
-    pub binding: Option<ManagedAccountBindingInput<'a>>,
-    pub legacy_github_copilot_account_id: Option<&'a str>,
-}
-
-pub(crate) fn provider_managed_account_binding_context(
-    provider: &Provider,
-) -> ProviderManagedAccountBindingContext<'_> {
-    let meta = provider.meta.as_ref();
-    ProviderManagedAccountBindingContext {
-        binding: meta.and_then(provider_managed_account_binding_input),
-        legacy_github_copilot_account_id: meta.and_then(|meta| meta.github_account_id.as_deref()),
-    }
-}
-
-fn provider_managed_account_id_for(provider: &Provider, auth_provider: &str) -> Option<String> {
-    let context = provider_managed_account_binding_context(provider);
-    core_managed_account_id_for_auth_provider(
-        auth_provider,
-        context.binding,
-        context.legacy_github_copilot_account_id,
-    )
-}
-
-pub(crate) fn provider_github_copilot_managed_account_id(provider: &Provider) -> Option<String> {
-    provider_managed_account_id_for(provider, GITHUB_COPILOT_AUTH_PROVIDER)
-}
-
 fn provider_claude_models_are_claude_safe(provider: &Provider) -> bool {
     crate::proxy_core::api::auth::claude_desktop_provider_models_are_profile_safe(
         &provider.settings_config,
@@ -1729,7 +1684,8 @@ mod tests {
         resolve_managed_account_auth_from_runtime_source, ManagedAccountRuntimeSource,
     };
     use crate::proxy::host::cc_switch::provider_projection::{
-        provider_claude_base_url, provider_gemini_kind, provider_spec_from_source,
+        provider_claude_base_url, provider_gemini_kind, provider_github_copilot_managed_account_id,
+        provider_managed_account_binding_context, provider_spec_from_source,
         provider_specs_from_source, proxy_provider_to_core_spec,
     };
     use crate::proxy::provider::ProviderAdapter;
@@ -1747,7 +1703,7 @@ mod tests {
     };
     use crate::proxy_core::api::auth::{
         extract_claude_auth_key_from_settings, extract_gemini_api_key_from_settings,
-        is_gemini_oauth_key_shape,
+        is_gemini_oauth_key_shape, ManagedAccountBindingSource,
     };
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
@@ -10353,10 +10309,16 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(stream_check_timeout_secs, Some(20));
         assert!(usage_provider_is_full_url);
         assert!(provider_is_codex_oauth(&codex_provider));
+        let codex_context = provider_managed_account_binding_context(&codex_provider);
+        let codex_binding = codex_context
+            .binding
+            .expect("codex managed account binding");
         assert_eq!(
-            provider_managed_account_id_for(&codex_provider, "codex_oauth").as_deref(),
-            Some("codex-acct-1")
+            codex_binding.source,
+            ManagedAccountBindingSource::ManagedAccount
         );
+        assert_eq!(codex_binding.auth_provider, Some("codex_oauth"));
+        assert_eq!(codex_binding.account_id, Some("codex-acct-1"));
         assert!(provider_uses_anthropic_rectifiers(
             &AppType::Claude,
             &claude_auth_provider

@@ -7,6 +7,7 @@ use tauri::Manager;
 use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
+use crate::proxy::host::cc_switch::provider_projection::provider_managed_account_binding_context;
 use crate::proxy_core::api::auth::{
     managed_account_app_handle_unavailable_error_message,
     managed_account_app_handle_unavailable_log_message,
@@ -20,9 +21,7 @@ use crate::proxy_core::api::auth::{
     ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ProviderAuthInfo,
 };
 use crate::proxy_core::api::model_catalog::CopilotModel;
-use crate::proxy_core_adapter::{
-    provider_managed_account_binding_context, resolve_forwarder_claude_api_format,
-};
+use crate::proxy_core_adapter::resolve_forwarder_claude_api_format;
 
 pub(crate) type ManagedAccountRuntimeSourceRef = Arc<dyn ManagedAccountRuntimeSource + Send + Sync>;
 

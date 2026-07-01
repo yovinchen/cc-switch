@@ -7,11 +7,11 @@ use crate::app_config::AppType;
 use crate::commands::copilot::CopilotAuthState;
 use crate::error::AppError;
 use crate::provider::Provider;
+use crate::proxy::host::cc_switch::provider_projection::provider_github_copilot_managed_account_id;
 use crate::proxy_core::api::management::{
     stream_check_failed_result, stream_check_proxy_target_ids_from_sources,
 };
 use crate::proxy_core::api::transport::is_github_copilot_upstream as core_is_github_copilot_upstream;
-use crate::proxy_core_adapter::provider_github_copilot_managed_account_id;
 use crate::services::stream_check::{StreamCheckConfig, StreamCheckResult, StreamCheckService};
 use crate::store::AppState;
 use tauri::State;

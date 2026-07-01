@@ -1234,6 +1234,9 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn provider_spec_from_source(",
     "pub(crate) fn provider_specs_from_db_source(",
     "pub(crate) fn provider_spec_from_db_source(",
+    "pub(crate) struct ProviderManagedAccountBindingContext",
+    "pub(crate) fn provider_managed_account_binding_context(",
+    "pub(crate) fn provider_github_copilot_managed_account_id(",
     "pub(crate) fn provider_model_catalog_from_db_source(",
     "pub(crate) fn current_provider_id_from_db_source(",
     "pub(crate) async fn active_route_target_from_runtime_source(",
@@ -18392,6 +18395,12 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
     let source = fs::read_to_string(&path).expect("read managed_account_runtime_source.rs");
+    assert!(
+        source.contains(
+            "use crate::proxy::host::cc_switch::provider_projection::provider_managed_account_binding_context;"
+        ),
+        "managed account runtime source should import ProviderMeta binding projection from host provider_projection"
+    );
     let method = function_slice(
         &source,
         "fn resolve_auth_for_provider<'a>",

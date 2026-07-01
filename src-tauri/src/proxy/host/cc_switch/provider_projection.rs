@@ -9,7 +9,7 @@ use crate::proxy_core::api::auth::{
     classify_provider_managed_auth, extract_claude_auth_key_from_settings,
     extract_gemini_api_key_from_settings, is_gemini_oauth_key_shape,
     managed_account_id_for_auth_provider, ManagedAccountBindingInput, ManagedAccountBindingSource,
-    ProviderManagedAuthFacts,
+    ProviderManagedAuthFacts, GITHUB_COPILOT_AUTH_PROVIDER,
 };
 use crate::proxy_core::api::domain::{
     extract_claude_base_url_from_settings, infer_claude_provider_kind, provider_account_ref,
@@ -146,13 +146,33 @@ fn provider_managed_account_binding_input(
     })
 }
 
-fn managed_account_id_for_provider(provider: &Provider, auth_provider: &str) -> Option<String> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProviderManagedAccountBindingContext<'a> {
+    pub binding: Option<ManagedAccountBindingInput<'a>>,
+    pub legacy_github_copilot_account_id: Option<&'a str>,
+}
+
+pub(crate) fn provider_managed_account_binding_context(
+    provider: &Provider,
+) -> ProviderManagedAccountBindingContext<'_> {
     let meta = provider.meta.as_ref();
+    ProviderManagedAccountBindingContext {
+        binding: meta.and_then(provider_managed_account_binding_input),
+        legacy_github_copilot_account_id: meta.and_then(|meta| meta.github_account_id.as_deref()),
+    }
+}
+
+fn managed_account_id_for_provider(provider: &Provider, auth_provider: &str) -> Option<String> {
+    let context = provider_managed_account_binding_context(provider);
     managed_account_id_for_auth_provider(
         auth_provider,
-        meta.and_then(provider_managed_account_binding_input),
-        meta.and_then(|meta| meta.github_account_id.as_deref()),
+        context.binding,
+        context.legacy_github_copilot_account_id,
     )
+}
+
+pub(crate) fn provider_github_copilot_managed_account_id(provider: &Provider) -> Option<String> {
+    managed_account_id_for_provider(provider, GITHUB_COPILOT_AUTH_PROVIDER)
 }
 
 fn account_ref(provider: &Provider) -> Option<String> {
