@@ -1232,6 +1232,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn provider_spec_from_source(",
     "pub(crate) fn route_candidate_provider_ids_from_selection_result(",
     "pub(crate) fn claude_desktop_provider_from_selection_result(",
+    "pub(crate) fn client_model_catalog_from_app_source(",
     "pub(crate) fn codex_client_model_catalog_raw_from_active_config(",
     "pub(crate) enum CodexBackupProjectionIssue",
     "pub(crate) fn codex_backup_projection_error_message(",
@@ -17404,13 +17405,15 @@ fn production_proxy_service_delegates_live_write_provider_facade_to_adapter() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_client_model_catalog_source_selection_to_core() {
+fn model_catalog_provider_owns_client_model_catalog_source_selection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/model_catalog_provider.rs");
+    let source = fs::read_to_string(&path).expect("read model_catalog_provider.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
     let function = function_slice(
         &source,
-        "pub(crate) fn client_model_catalog_from_app_source",
+        "fn client_model_catalog_from_app_source",
         "fn codex_client_model_catalog_raw_from_active_config",
     );
 
@@ -17422,8 +17425,15 @@ fn proxy_core_adapter_delegates_client_model_catalog_source_selection_to_core() 
         source.contains("use crate::proxy_core::api::model_catalog::{")
             && source.contains("client_model_catalog_source_for_app")
             && source.contains("ClientModelCatalogSource")
-            && !source.contains("pub(crate) use crate::proxy_core::api::model_catalog::{\n    client_model_catalog_source_for_app, ClientModelCatalogSource,\n};"),
-        "proxy_core_adapter should import client model catalog source selection privately instead of re-exporting it"
+            && source.contains("client_model_catalog_from_optional_raw")
+            && source.contains("client_model_catalog_raw_from_text")
+            && source.contains("empty_client_model_catalog_raw"),
+        "model catalog provider should import client catalog planning/parsing contracts directly from proxy_core"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) fn client_model_catalog_from_app_source(")
+            && !adapter_source.contains("fn codex_client_model_catalog_raw_from_active_config("),
+        "proxy_core_adapter should not keep client model catalog source-selection helpers"
     );
 
     let forbidden_markers = ["match app", "AppKind::Codex"];
@@ -17433,7 +17443,7 @@ fn proxy_core_adapter_delegates_client_model_catalog_source_selection_to_core() 
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs client_model_catalog_from_app_source:{} contains source selection marker `{}`",
+                    "src/proxy/host/cc_switch/model_catalog_provider.rs client_model_catalog_from_app_source:{} contains source selection marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -22549,7 +22559,8 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
         source.contains("use crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;")
             && source.contains("use crate::proxy_core::api::domain::AppKind;")
             && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
-            && source.contains("use crate::proxy_core::api::model_catalog::ModelCatalog;")
+            && source.contains("use crate::proxy_core::api::model_catalog::{")
+            && source.contains("ModelCatalog")
             && source.contains("use crate::proxy_core::api::ports::ModelCatalogProvider;"),
         "CC Switch model catalog provider should import model catalog contracts directly from proxy_core"
     );
@@ -22605,7 +22616,7 @@ fn proxy_core_adapter_model_routes_source_uses_adapter_projection() {
     let source_slice = function_slice(
         &source,
         "pub(crate) async fn claude_desktop_model_routes_from_router_source(",
-        "pub(crate) fn client_model_catalog_from_app_source(",
+        "use crate::proxy::host::cc_switch::channel_auth_profile_attempts",
     );
 
     assert!(

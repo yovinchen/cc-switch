@@ -329,9 +329,6 @@ use crate::proxy_core::api::auth::{
     extract_claude_auth_key_from_settings, is_gemini_oauth_key_shape,
     parse_gemini_oauth_credentials,
 };
-use crate::proxy_core::api::model_catalog::{
-    client_model_catalog_source_for_app, ClientModelCatalogSource,
-};
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
@@ -1084,10 +1081,7 @@ fn claude_desktop_model_routes_to_core_inputs(
         .collect()
 }
 
-use crate::proxy_core::api::model_catalog::{
-    client_model_catalog_raw_from_text, empty_client_model_catalog_raw,
-    provider_model_catalog_from_settings,
-};
+use crate::proxy_core::api::model_catalog::provider_model_catalog_from_settings;
 
 pub(crate) fn provider_model_catalog_from_db_source(
     db: &Database,
@@ -1135,44 +1129,6 @@ pub(crate) async fn claude_desktop_model_routes_from_router_source(
         )
     })?;
     Ok(claude_desktop_model_routes_to_core_inputs(routes))
-}
-
-pub(crate) fn client_model_catalog_from_app_source(app: &AppKind) -> ProxyCoreResult<ModelCatalog> {
-    let source = client_model_catalog_source_for_app(app.as_str());
-    let raw = match source {
-        ClientModelCatalogSource::CodexActiveConfig => {
-            Some(codex_client_model_catalog_raw_from_active_config())
-        }
-        ClientModelCatalogSource::Empty => None,
-    };
-    Ok(
-        crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw(
-            app.as_str(),
-            raw,
-        ),
-    )
-}
-
-fn codex_client_model_catalog_raw_from_active_config() -> Value {
-    let generated_path = crate::codex_config::get_codex_model_catalog_path();
-    let active_catalog_path = match crate::codex_config::read_codex_config_text() {
-        Ok(config_text) => {
-            crate::codex_config::resolve_cc_switch_catalog_path(&config_text, &generated_path)
-        }
-        Err(_) => None,
-    };
-
-    if let Some(catalog_path) = active_catalog_path.as_ref().filter(|path| path.exists()) {
-        let text = std::fs::read_to_string(catalog_path).unwrap_or_default();
-        client_model_catalog_raw_from_text(&text)
-    } else {
-        if active_catalog_path.is_none() {
-            log::debug!(
-                "[models] stale guard: catalog not served (model_catalog_json not set to cc-switch catalog)"
-            );
-        }
-        empty_client_model_catalog_raw()
-    }
 }
 
 use crate::proxy::host::cc_switch::channel_auth_profile_attempts::required_forward_attempts_from_sources;
@@ -8466,20 +8422,6 @@ base_url = "https://api.openai.com/v1"
             client_catalog.models,
             vec!["gpt-5".to_string(), "o4-mini".to_string()]
         );
-        let empty_client_catalog =
-            client_model_catalog_from_app_source(&AppKind::Gemini).expect("client catalog");
-        assert_eq!(empty_client_catalog.provider_id, "gemini");
-        assert_eq!(empty_client_catalog.models, Vec::<String>::new());
-        assert_eq!(empty_client_catalog.raw, json!({"models": []}));
-        assert_eq!(
-            client_model_catalog_raw_from_text(r#"{"models":[{"id":"gpt-5"}]}"#),
-            json!({"models":[{"id":"gpt-5"}]})
-        );
-        assert_eq!(
-            client_model_catalog_raw_from_text("not json"),
-            json!({"models": []})
-        );
-        assert_eq!(empty_client_model_catalog_raw(), json!({"models": []}));
     }
 
     #[test]
