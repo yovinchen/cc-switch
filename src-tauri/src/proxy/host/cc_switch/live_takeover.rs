@@ -15,8 +15,9 @@ use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::events::proxy_official_warning_event;
 use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled, apply_gemini_takeover_env_fields,
-    common_config_settings_mutation_issue_message, is_local_proxy_url, live_takeover_app_kinds,
-    live_token_sync_app_label, proxy_live_config_owned_by_takeover, proxy_runtime_status_stopped,
+    codex_auth_has_oauth_login_material, common_config_settings_mutation_issue_message,
+    is_local_proxy_url, live_takeover_app_kinds, live_token_sync_app_label,
+    proxy_live_config_owned_by_takeover, proxy_runtime_status_stopped,
     remove_claude_takeover_env_fields_if_present,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present, sanitize_claude_settings_for_live,
@@ -46,10 +47,7 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
-    codex_backup_projection_error_message, codex_live_write_projection,
-    codex_preserved_auth_live_config_text_for_configured_policy,
-    preserve_codex_mcp_servers_from_existing_config,
-    preserve_codex_oauth_auth_in_backup_for_configured_policy,
+    codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
     remove_codex_takeover_config_placeholders_if_present, should_block_proxy_switch_to_provider,
     sync_provider_settings_with_live_token, CodexLiveWriteProjection, CodexTakeoverAuthPolicy,
 };
@@ -86,6 +84,131 @@ fn codex_config_has_proxy_placeholder_in_host(config: &Value, placeholder: &str)
         .and_then(crate::codex_config::extract_codex_experimental_bearer_token)
         .as_deref()
         == Some(placeholder)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CodexBackupProjectionIssue {
+    InvalidTargetSettings,
+    ParseTargetConfig(String),
+    ParseExistingConfig(String),
+    PrepareLiveConfig(String),
+}
+
+fn codex_backup_projection_error_message(issue: CodexBackupProjectionIssue) -> String {
+    match issue {
+        CodexBackupProjectionIssue::InvalidTargetSettings => {
+            "Codex 备份必须是 JSON 对象".to_string()
+        }
+        CodexBackupProjectionIssue::ParseTargetConfig(message) => {
+            format!("解析新的 Codex config.toml 失败: {message}")
+        }
+        CodexBackupProjectionIssue::ParseExistingConfig(message) => {
+            format!("解析现有 Codex 备份失败: {message}")
+        }
+        CodexBackupProjectionIssue::PrepareLiveConfig(message) => {
+            format!("更新 Codex 备份配置失败: {message}")
+        }
+    }
+}
+
+fn preserve_codex_mcp_servers_from_existing_config(
+    target_settings: &mut Value,
+    existing_config: &Value,
+) -> Result<(), CodexBackupProjectionIssue> {
+    let target_obj = target_settings
+        .as_object_mut()
+        .ok_or(CodexBackupProjectionIssue::InvalidTargetSettings)?;
+
+    let target_config = target_obj
+        .get("config")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let mut target_doc = if target_config.trim().is_empty() {
+        toml_edit::DocumentMut::new()
+    } else {
+        target_config
+            .parse::<toml_edit::DocumentMut>()
+            .map_err(|e| CodexBackupProjectionIssue::ParseTargetConfig(e.to_string()))?
+    };
+
+    let existing_config = existing_config
+        .get("config")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if existing_config.trim().is_empty() {
+        target_obj.insert("config".to_string(), json!(target_doc.to_string()));
+        return Ok(());
+    }
+
+    let existing_doc = existing_config
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| CodexBackupProjectionIssue::ParseExistingConfig(e.to_string()))?;
+
+    if let Some(existing_mcp_servers) = existing_doc.get("mcp_servers") {
+        match target_doc.get_mut("mcp_servers") {
+            Some(target_mcp_servers) => {
+                if let (Some(target_table), Some(existing_table)) = (
+                    target_mcp_servers.as_table_like_mut(),
+                    existing_mcp_servers.as_table_like(),
+                ) {
+                    for (server_id, server_item) in existing_table.iter() {
+                        if target_table.get(server_id).is_none() {
+                            target_table.insert(server_id, server_item.clone());
+                        }
+                    }
+                } else {
+                    log::warn!(
+                        "Codex config contains a non-table mcp_servers section; skipping MCP merge"
+                    );
+                }
+            }
+            None => {
+                target_doc["mcp_servers"] = existing_mcp_servers.clone();
+            }
+        }
+    }
+
+    target_obj.insert("config".to_string(), json!(target_doc.to_string()));
+    Ok(())
+}
+
+fn preserve_codex_oauth_auth_in_backup_if_present(
+    target_settings: &mut Value,
+    existing_backup: &Value,
+) -> Result<(), CodexBackupProjectionIssue> {
+    let Some(existing_auth) = existing_backup
+        .get("auth")
+        .filter(|auth| codex_auth_has_oauth_login_material(auth))
+        .cloned()
+    else {
+        return Ok(());
+    };
+
+    let Some(target_obj) = target_settings.as_object_mut() else {
+        return Ok(());
+    };
+
+    let provider_auth = target_obj.get("auth").cloned().unwrap_or_else(|| json!({}));
+    if let Some(config_text) = target_obj.get("config").and_then(Value::as_str) {
+        let live_config =
+            crate::codex_config::prepare_codex_provider_live_config(&provider_auth, config_text)
+                .map_err(|e| CodexBackupProjectionIssue::PrepareLiveConfig(e.to_string()))?;
+        target_obj.insert("config".to_string(), json!(live_config));
+    }
+    target_obj.insert("auth".to_string(), existing_auth);
+
+    Ok(())
+}
+
+fn preserve_codex_oauth_auth_in_backup_for_configured_policy(
+    target_settings: &mut Value,
+    existing_backup: &Value,
+) -> Result<(), CodexBackupProjectionIssue> {
+    if !crate::settings::preserve_codex_official_auth_on_switch() {
+        return Ok(());
+    }
+
+    preserve_codex_oauth_auth_in_backup_if_present(target_settings, existing_backup)
 }
 
 fn live_config_has_proxy_placeholder_for_app(
@@ -2468,6 +2591,108 @@ mod tests {
         );
         assert_env_str(env, "ANTHROPIC_API_KEY", Some(PROXY_TOKEN_PLACEHOLDER));
         assert_env_str(env, "ANTHROPIC_AUTH_TOKEN", None);
+    }
+
+    #[test]
+    fn codex_backup_projection_preserves_mcp_and_oauth_auth() {
+        assert_eq!(
+            codex_backup_projection_error_message(
+                CodexBackupProjectionIssue::InvalidTargetSettings
+            ),
+            "Codex 备份必须是 JSON 对象"
+        );
+        assert_eq!(
+            codex_backup_projection_error_message(CodexBackupProjectionIssue::ParseTargetConfig(
+                "bad target".to_string()
+            )),
+            "解析新的 Codex config.toml 失败: bad target"
+        );
+        assert_eq!(
+            codex_backup_projection_error_message(CodexBackupProjectionIssue::ParseExistingConfig(
+                "bad existing".to_string()
+            )),
+            "解析现有 Codex 备份失败: bad existing"
+        );
+        assert_eq!(
+            codex_backup_projection_error_message(CodexBackupProjectionIssue::PrepareLiveConfig(
+                "bad live".to_string()
+            )),
+            "更新 Codex 备份配置失败: bad live"
+        );
+
+        let oauth_auth = json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "access_token": "oauth-access"
+            }
+        });
+        let existing_backup = json!({
+            "auth": oauth_auth,
+            "config": r#"[mcp_servers.shared]
+command = "old-command"
+
+[mcp_servers.legacy]
+command = "legacy-command"
+"#
+        });
+        let mut target_settings = json!({
+            "auth": {
+                "OPENAI_API_KEY": "provider-key"
+            },
+            "config": r#"model_provider = "custom"
+model = "gpt-5"
+
+[model_providers.custom]
+base_url = "https://new.example/v1"
+wire_api = "responses"
+
+[mcp_servers.shared]
+command = "new-command"
+
+[mcp_servers.latest]
+command = "latest-command"
+"#
+        });
+
+        preserve_codex_mcp_servers_from_existing_config(&mut target_settings, &existing_backup)
+            .expect("mcp merge");
+        preserve_codex_oauth_auth_in_backup_if_present(&mut target_settings, &existing_backup)
+            .expect("oauth auth preserve");
+
+        assert_eq!(target_settings.get("auth"), Some(&oauth_auth));
+
+        let config = target_settings
+            .get("config")
+            .and_then(Value::as_str)
+            .expect("config text");
+        assert_eq!(
+            crate::codex_config::extract_codex_experimental_bearer_token(config).as_deref(),
+            Some("provider-key")
+        );
+
+        let parsed: toml::Value = toml::from_str(config).expect("parse projected config");
+        let mcp_servers = parsed.get("mcp_servers").expect("mcp_servers");
+        assert_eq!(
+            mcp_servers
+                .get("shared")
+                .and_then(|server| server.get("command"))
+                .and_then(toml::Value::as_str),
+            Some("new-command")
+        );
+        assert_eq!(
+            mcp_servers
+                .get("legacy")
+                .and_then(|server| server.get("command"))
+                .and_then(toml::Value::as_str),
+            Some("legacy-command")
+        );
+        assert_eq!(
+            mcp_servers
+                .get("latest")
+                .and_then(|server| server.get("command"))
+                .and_then(toml::Value::as_str),
+            Some("latest-command")
+        );
     }
 
     #[test]

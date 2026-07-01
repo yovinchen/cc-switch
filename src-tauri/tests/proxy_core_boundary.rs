@@ -1233,7 +1233,11 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn route_candidate_provider_ids_from_selection_result(",
     "pub(crate) fn claude_desktop_provider_from_selection_result(",
     "pub(crate) fn codex_client_model_catalog_raw_from_active_config(",
+    "pub(crate) enum CodexBackupProjectionIssue",
+    "pub(crate) fn codex_backup_projection_error_message(",
+    "pub(crate) fn preserve_codex_mcp_servers_from_existing_config(",
     "pub(crate) fn preserve_codex_oauth_auth_in_backup_if_present(",
+    "pub(crate) fn preserve_codex_oauth_auth_in_backup_for_configured_policy(",
     "pub(crate) fn provider_settings_with_live_token_sync(",
     "pub(crate) fn codex_preserved_auth_live_config_text_if_proxy_placeholder(",
     "pub(crate) fn codex_preserved_auth_live_config_text_for_policy(",
@@ -8640,8 +8644,9 @@ fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
         .collect();
 
     assert!(
-        production_source.contains("core_codex_auth_has_oauth_login_material("),
-        "proxy_core_adapter should delegate Codex OAuth auth material checks to core"
+        !production_source.contains("core_codex_auth_has_oauth_login_material(")
+            && live_takeover_source.contains("codex_auth_has_oauth_login_material("),
+        "live_takeover should delegate Codex OAuth auth material checks to core without proxy_core_adapter"
     );
     assert!(
         live_takeover_source.contains("codex_provider_live_write_parts_from_settings")
