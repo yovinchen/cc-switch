@@ -131,9 +131,8 @@ use crate::proxy_core::api::ports::{
     apply_codex_takeover_auth_placeholder_if_present,
     codex_model_from_config_toml as core_codex_model_from_config_toml,
     codex_wire_api_from_config_toml as core_codex_wire_api_from_config_toml,
-    ensure_codex_takeover_auth_placeholder,
-    provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
-    CopilotOptimizerConfig, LiveTokenProviderSettingsIssue, OptimizerConfig, RectifierConfig,
+    ensure_codex_takeover_auth_placeholder, CopilotOptimizerConfig, OptimizerConfig,
+    RectifierConfig,
 };
 
 pub(crate) async fn allow_forward_attempt_runtime_source(
@@ -1535,40 +1534,6 @@ fn provider_managed_account_id_for(provider: &Provider, auth_provider: &str) -> 
 
 pub(crate) fn provider_github_copilot_managed_account_id(provider: &Provider) -> Option<String> {
     provider_managed_account_id_for(provider, GITHUB_COPILOT_AUTH_PROVIDER)
-}
-
-fn provider_settings_with_live_token_sync(
-    app_type: &AppType,
-    live_config: &Value,
-    provider_settings: &Value,
-    placeholder: &str,
-) -> Result<Option<Value>, LiveTokenProviderSettingsIssue> {
-    core_provider_settings_with_live_token_sync(
-        &AppKind::from(app_type),
-        live_config,
-        provider_settings,
-        placeholder,
-    )
-}
-
-pub(crate) fn sync_provider_settings_with_live_token(
-    app_type: &AppType,
-    live_config: &Value,
-    provider: &mut Provider,
-    placeholder: &str,
-) -> Result<bool, LiveTokenProviderSettingsIssue> {
-    match provider_settings_with_live_token_sync(
-        app_type,
-        live_config,
-        &provider.settings_config,
-        placeholder,
-    )? {
-        Some(settings_config) => {
-            provider.settings_config = settings_config;
-            Ok(true)
-        }
-        None => Ok(false),
-    }
 }
 
 fn provider_claude_models_are_claude_safe(provider: &Provider) -> bool {
@@ -7838,97 +7803,6 @@ base_url = "https://api.openai.com/v1"
                 .and_then(|env| env.get("GEMINI_API_KEY"))
                 .and_then(Value::as_str),
             Some(placeholder)
-        );
-    }
-
-    #[test]
-    fn live_token_sync_adapter_projects_app_specific_settings_updates() {
-        let placeholder = "PROXY_MANAGED";
-
-        let claude_settings = provider_settings_with_live_token_sync(
-            &AppType::Claude,
-            &json!({ "env": { "ANTHROPIC_AUTH_TOKEN": " fresh-claude " } }),
-            &json!({
-                "env": {
-                    "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
-                    "ANTHROPIC_API_KEY": "stale"
-                }
-            }),
-            placeholder,
-        )
-        .expect("claude token sync should be valid")
-        .expect("claude token should sync");
-        assert_eq!(
-            claude_settings
-                .get("env")
-                .and_then(|env| env.get("ANTHROPIC_API_KEY"))
-                .and_then(Value::as_str),
-            Some("fresh-claude")
-        );
-        assert!(
-            claude_settings
-                .get("env")
-                .and_then(|env| env.get("ANTHROPIC_AUTH_TOKEN"))
-                .is_none(),
-            "Claude auth token should update existing API key field instead of adding a new one"
-        );
-
-        let codex_settings = provider_settings_with_live_token_sync(
-            &AppType::Codex,
-            &json!({ "auth": { "OPENAI_API_KEY": " fresh-codex " } }),
-            &Value::Null,
-            placeholder,
-        )
-        .expect("codex token sync should be valid")
-        .expect("codex token should sync");
-        assert_eq!(
-            codex_settings
-                .get("auth")
-                .and_then(|auth| auth.get("OPENAI_API_KEY"))
-                .and_then(Value::as_str),
-            Some("fresh-codex")
-        );
-
-        let mut gemini_provider = Provider::with_id(
-            "gemini-provider".to_string(),
-            "Gemini Provider".to_string(),
-            json!({ "env": { "GEMINI_API_KEY": "stale-gemini" } }),
-            None,
-        );
-        assert!(sync_provider_settings_with_live_token(
-            &AppType::Gemini,
-            &json!({ "env": { "GEMINI_API_KEY": "fresh-gemini" } }),
-            &mut gemini_provider,
-            placeholder,
-        )
-        .expect("provider token sync should be valid"));
-        assert_eq!(
-            gemini_provider
-                .settings_config
-                .get("env")
-                .and_then(|env| env.get("GEMINI_API_KEY"))
-                .and_then(Value::as_str),
-            Some("fresh-gemini")
-        );
-
-        assert_eq!(
-            provider_settings_with_live_token_sync(
-                &AppType::Gemini,
-                &json!({ "env": { "GEMINI_API_KEY": "fresh-gemini" } }),
-                &json!("invalid-settings"),
-                placeholder,
-            ),
-            Err(LiveTokenProviderSettingsIssue::InvalidProviderSettings)
-        );
-        assert_eq!(
-            provider_settings_with_live_token_sync(
-                &AppType::Gemini,
-                &json!({ "env": { "GEMINI_API_KEY": placeholder } }),
-                &Value::Null,
-                placeholder,
-            )
-            .expect("placeholder should be a valid no-op"),
-            None
         );
     }
 

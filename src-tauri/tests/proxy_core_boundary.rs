@@ -1243,6 +1243,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn remove_codex_takeover_config_placeholders_if_present(",
     "pub(crate) fn codex_preserved_auth_live_config_text_for_configured_policy(",
     "pub(crate) fn provider_settings_with_live_token_sync(",
+    "pub(crate) fn sync_provider_settings_with_live_token(",
     "pub(crate) fn codex_preserved_auth_live_config_text_if_proxy_placeholder(",
     "pub(crate) fn codex_preserved_auth_live_config_text_for_policy(",
     "pub(crate) fn apply_provider_model_mapping_from_provider(",
