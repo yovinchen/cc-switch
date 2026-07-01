@@ -66,20 +66,10 @@ use crate::proxy_core::api::auth::{
 use crate::proxy_core::api::errors::{
     config_error_with_context as core_config_error_with_context,
     internal_error_with_context as core_internal_error_with_context,
-    invalid_request_error as core_invalid_request_error,
 };
 use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};
 pub(crate) fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     core_config_error_with_context(context, error)
-}
-
-pub(crate) fn app_write_error(context: &str, error: AppError) -> ProxyCoreError {
-    match error {
-        AppError::InvalidInput(message) => {
-            core_invalid_request_error(AppError::InvalidInput(message))
-        }
-        other => app_error(context, other),
-    }
 }
 
 pub(crate) fn usage_error(context: &str, error: AppError) -> ProxyCoreError {

@@ -21717,7 +21717,7 @@ fn proxy_core_adapter_delegates_provider_source_to_host_module() {
         "pub(crate) use crate::proxy_core::api::ports::{",
         "};",
     );
-    let source_adapter_import = function_slice(
+    let source_adapter_import = optional_function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
         "};\nuse futures::future::BoxFuture;",
@@ -24942,7 +24942,7 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/database_channel_source.rs");
     let source =
         fs::read_to_string(&source_path).expect("read host/cc_switch/database_channel_source.rs");
-    let source_adapter_import = function_slice(
+    let source_adapter_import = optional_function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
         "};\nuse futures::future::BoxFuture;",
@@ -25001,7 +25001,11 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
         source.contains("use crate::proxy_core::api::domain::{")
             && source.contains("channel_matches_query")
             && source.contains("channel_spec_from_input")
-            && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && source.contains("use crate::proxy_core::api::errors::{")
+            && source.contains("config_error_with_context")
+            && source.contains("invalid_request_error")
+            && source.contains("ProxyCoreError")
+            && source.contains("ProxyCoreResult")
             && source.contains("use crate::proxy_core::api::management::{")
             && source.contains("channel_record_from_input")
             && source.contains("ChannelMigrationMaterializeInput")
@@ -25023,12 +25027,18 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
         "ModelRouteInput",
         "ProxyChannelWriteRequest",
         "ProxyCoreResult",
+        "app_error",
+        "app_write_error",
     ] {
         assert!(
             !source_adapter_import.contains(adapter_type),
             "database channel source should not import {adapter_type} through proxy_core_adapter"
         );
     }
+    assert!(
+        !source.contains("use crate::proxy_core_adapter::"),
+        "database channel source should own DB error mapping without proxy_core_adapter"
+    );
 }
 
 #[test]

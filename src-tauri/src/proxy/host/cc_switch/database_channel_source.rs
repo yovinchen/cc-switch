@@ -6,7 +6,9 @@ use crate::error::AppError;
 use crate::proxy_core::api::domain::{
     channel_matches_query, channel_spec_from_input, AppKind, ChannelSpecInput, ModelRouteInput,
 };
-use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::errors::{
+    config_error_with_context, invalid_request_error, ProxyCoreError, ProxyCoreResult,
+};
 use crate::proxy_core::api::management::{
     channel_key_record_from_input, channel_model_record_from_input, channel_record_from_input,
     channel_route_source_for_materialized_count, ChannelKeyRecord, ChannelKeyRecordInput,
@@ -17,9 +19,19 @@ use crate::proxy_core::api::management::{
 };
 use crate::proxy_core::api::ports::ChannelSource;
 use crate::proxy_core::api::routing::{ChannelQuery, ChannelSpec};
-use crate::proxy_core_adapter::{app_error, app_write_error};
 use futures::future::BoxFuture;
 use std::sync::Arc;
+
+fn channel_source_error(context: &str, error: AppError) -> ProxyCoreError {
+    config_error_with_context(context, error)
+}
+
+fn channel_source_write_error(context: &str, error: AppError) -> ProxyCoreError {
+    match error {
+        AppError::InvalidInput(message) => invalid_request_error(AppError::InvalidInput(message)),
+        other => channel_source_error(context, other),
+    }
+}
 
 fn proxy_channel_model_record_to_model_route_input(
     model: &ProxyChannelModelRecord,
@@ -91,7 +103,7 @@ pub(crate) fn channel_specs_from_source_lookup(
         channel_route_records_from_db_source(db, query.app.as_str())?.0
     } else {
         db.list_proxy_channels_for_app(query.app.as_str())
-            .map_err(|error| app_error("list materialized channels", error))?
+            .map_err(|error| channel_source_error("list materialized channels", error))?
     };
     Ok(channel_specs_from_source(channels, &query))
 }
@@ -106,7 +118,7 @@ pub(crate) fn channel_spec_from_source_lookup(
 ) -> ProxyCoreResult<Option<ChannelSpec>> {
     let channel = db
         .get_proxy_channel(channel_id)
-        .map_err(|error| app_error("get channel", error))?;
+        .map_err(|error| channel_source_error("get channel", error))?;
     Ok(channel_spec_from_source(channel))
 }
 
@@ -129,11 +141,11 @@ pub(crate) fn channel_route_records_from_db_source(
 ) -> ProxyCoreResult<(Vec<ProxyChannelRecord>, ChannelRouteSource)> {
     let channels = db
         .list_proxy_channels_for_app(app_type)
-        .map_err(|error| app_error("list channel route records", error))?;
+        .map_err(|error| channel_source_error("list channel route records", error))?;
     channel_route_records_from_sources(channels, || {
         db.preview_legacy_proxy_channel_migration(app_type)
     })
-    .map_err(|error| app_error("load channel route records", error))
+    .map_err(|error| channel_source_error("load channel route records", error))
 }
 
 fn proxy_channel_model_record_to_core_input(
@@ -169,7 +181,7 @@ pub(crate) fn channel_model_records_from_db_source(
 ) -> ProxyCoreResult<Option<Vec<ChannelModelRecord>>> {
     let channel_exists = db
         .get_proxy_channel(channel_id)
-        .map_err(|error| app_error("get channel for model records", error))?
+        .map_err(|error| channel_source_error("get channel for model records", error))?
         .is_some();
 
     if !channel_exists {
@@ -178,7 +190,7 @@ pub(crate) fn channel_model_records_from_db_source(
 
     let models = db
         .list_proxy_channel_models(channel_id)
-        .map_err(|error| app_error("list channel model records", error))?;
+        .map_err(|error| channel_source_error("list channel model records", error))?;
     Ok(Some(proxy_channel_model_records_to_core(models)))
 }
 
@@ -189,7 +201,7 @@ pub(crate) fn replace_channel_model_records_from_db_source(
 ) -> ProxyCoreResult<Option<Vec<ChannelModelRecord>>> {
     let models = db
         .replace_proxy_channel_models(channel_id, request)
-        .map_err(|error| app_write_error("replace channel model records", error))?;
+        .map_err(|error| channel_source_write_error("replace channel model records", error))?;
     Ok(models.map(proxy_channel_model_records_to_core))
 }
 
@@ -231,7 +243,7 @@ pub(crate) fn create_channel_record_from_db_source(
 ) -> ProxyCoreResult<ChannelRecord> {
     let channel = db
         .create_proxy_channel(request)
-        .map_err(|error| app_write_error("create channel record", error))?;
+        .map_err(|error| channel_source_write_error("create channel record", error))?;
     Ok(proxy_channel_record_to_core(channel))
 }
 
@@ -241,7 +253,7 @@ pub(crate) fn channel_record_from_db_source(
 ) -> ProxyCoreResult<Option<ChannelRecord>> {
     let channel = db
         .get_proxy_channel(channel_id)
-        .map_err(|error| app_error("get channel record", error))?;
+        .map_err(|error| channel_source_error("get channel record", error))?;
     Ok(channel.map(proxy_channel_record_to_core))
 }
 
@@ -252,7 +264,7 @@ pub(crate) fn update_channel_record_from_db_source(
 ) -> ProxyCoreResult<Option<ChannelRecord>> {
     let channel = db
         .update_proxy_channel(channel_id, patch)
-        .map_err(|error| app_write_error("update channel record", error))?;
+        .map_err(|error| channel_source_write_error("update channel record", error))?;
     Ok(channel.map(proxy_channel_record_to_core))
 }
 
@@ -261,7 +273,7 @@ pub(crate) fn delete_channel_record_from_db_source(
     channel_id: &str,
 ) -> ProxyCoreResult<bool> {
     db.delete_proxy_channel(channel_id)
-        .map_err(|error| app_error("delete channel record", error))
+        .map_err(|error| channel_source_error("delete channel record", error))
 }
 
 pub(crate) fn proxy_channel_records_to_core(
@@ -288,10 +300,10 @@ pub(crate) fn materialized_channel_records_from_db_source(
     let channels = match app {
         Some(app) => db
             .list_proxy_channels_for_app(app.as_str())
-            .map_err(|error| app_error("list materialized channel records", error))?,
+            .map_err(|error| channel_source_error("list materialized channel records", error))?,
         None => db
             .list_all_proxy_channels()
-            .map_err(|error| app_error("list materialized channel records", error))?,
+            .map_err(|error| channel_source_error("list materialized channel records", error))?,
     };
     Ok(proxy_channel_records_to_core(channels))
 }
@@ -321,7 +333,7 @@ pub(crate) fn channel_key_records_from_db_source(
 ) -> ProxyCoreResult<Option<Vec<ChannelKeyRecord>>> {
     let keys = db
         .list_proxy_channel_keys(channel_id)
-        .map_err(|error| app_error("list channel key records", error))?;
+        .map_err(|error| channel_source_error("list channel key records", error))?;
     Ok(keys.map(proxy_channel_key_records_to_core))
 }
 
@@ -333,7 +345,7 @@ pub(crate) fn upsert_channel_key_record_from_db_source(
 ) -> ProxyCoreResult<Option<ChannelKeyRecord>> {
     let key = db
         .upsert_proxy_channel_key(channel_id, key_ref, request)
-        .map_err(|error| app_write_error("upsert channel key record", error))?;
+        .map_err(|error| channel_source_write_error("upsert channel key record", error))?;
     Ok(Some(proxy_channel_key_record_to_core(key)))
 }
 
@@ -345,7 +357,7 @@ pub(crate) fn update_channel_key_record_from_db_source(
 ) -> ProxyCoreResult<Option<ChannelKeyRecord>> {
     let key = db
         .update_proxy_channel_key(channel_id, key_ref, patch)
-        .map_err(|error| app_write_error("update channel key record", error))?;
+        .map_err(|error| channel_source_write_error("update channel key record", error))?;
     Ok(key.map(proxy_channel_key_record_to_core))
 }
 
@@ -355,7 +367,7 @@ pub(crate) fn delete_channel_key_record_from_db_source(
     key_ref: &str,
 ) -> ProxyCoreResult<bool> {
     db.delete_proxy_channel_key(channel_id, key_ref)
-        .map_err(|error| app_error("delete channel key record", error))
+        .map_err(|error| channel_source_error("delete channel key record", error))
 }
 
 pub(crate) fn channel_migration_preview_input_from_result(
@@ -375,7 +387,7 @@ pub(crate) fn channel_migration_preview_from_db_source(
 ) -> ProxyCoreResult<ChannelMigrationPreviewInput<ChannelRecord>> {
     let preview = db
         .preview_legacy_proxy_channel_migration(app.as_str())
-        .map_err(|error| app_error("preview legacy channel migration", error))?;
+        .map_err(|error| channel_source_error("preview legacy channel migration", error))?;
     Ok(channel_migration_preview_input_from_result(preview))
 }
 
@@ -399,7 +411,7 @@ pub(crate) fn channel_migration_materialize_from_db_source(
 ) -> ProxyCoreResult<ChannelMigrationMaterializeInput> {
     let result = db
         .materialize_legacy_proxy_channels(app.as_str())
-        .map_err(|error| app_error("materialize legacy channel migration", error))?;
+        .map_err(|error| channel_source_error("materialize legacy channel migration", error))?;
     Ok(channel_migration_materialize_input_from_result(result))
 }
 
