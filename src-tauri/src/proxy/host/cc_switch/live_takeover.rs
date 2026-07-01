@@ -47,9 +47,8 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_codex_takeover_fields_for_provider,
-    codex_preserved_auth_live_config_text_for_configured_policy,
-    remove_codex_takeover_config_placeholders_if_present, should_block_proxy_switch_to_provider,
-    sync_provider_settings_with_live_token, CodexTakeoverAuthPolicy,
+    should_block_proxy_switch_to_provider, sync_provider_settings_with_live_token,
+    CodexTakeoverAuthPolicy,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, ProviderEffectiveSettingsWarning,
@@ -249,6 +248,93 @@ fn codex_live_write_projection(config: &Value) -> Result<CodexLiveWriteProjectio
         (None, Some(config_text)) => CodexLiveWriteProjection::WriteConfigOnly { config_text },
         (None, None) => CodexLiveWriteProjection::Noop,
     })
+}
+
+fn remove_codex_takeover_config_placeholders_if_present<F>(
+    config: &mut Value,
+    placeholder: &str,
+    is_local_proxy_url: F,
+) -> Result<(), String>
+where
+    F: Fn(&str) -> bool,
+{
+    let Some(config_text) = config.get("config").and_then(Value::as_str) else {
+        return Ok(());
+    };
+
+    let updated =
+        crate::codex_config::remove_codex_toml_base_url_if(config_text, is_local_proxy_url);
+    let updated =
+        crate::codex_config::remove_codex_experimental_bearer_token_if(&updated, |token| {
+            token == placeholder
+        })
+        .map_err(|e| e.to_string())?;
+    config["config"] = json!(updated);
+
+    Ok(())
+}
+
+fn codex_auth_value_has_proxy_placeholder(auth: &Value, placeholder: &str) -> bool {
+    auth.get("OPENAI_API_KEY").and_then(Value::as_str) == Some(placeholder)
+}
+
+fn codex_preserved_auth_live_config_text_if_proxy_placeholder(
+    config: &Value,
+    placeholder: &str,
+    include_optional_catalog: bool,
+) -> Result<Option<String>, String> {
+    let Some(auth) = config
+        .get("auth")
+        .filter(|auth| codex_auth_value_has_proxy_placeholder(auth, placeholder))
+    else {
+        return Ok(None);
+    };
+    let Some(config_str) = config.get("config").and_then(Value::as_str) else {
+        return Ok(None);
+    };
+
+    let prepared_config = if include_optional_catalog {
+        crate::codex_config::prepare_codex_live_config_text_with_optional_catalog(
+            config, config_str,
+        )
+        .map_err(|e| e.to_string())?
+    } else {
+        config_str.to_string()
+    };
+
+    crate::codex_config::prepare_codex_provider_live_config(auth, &prepared_config)
+        .map(Some)
+        .map_err(|e| e.to_string())
+}
+
+fn codex_preserved_auth_live_config_text_for_policy(
+    config: &Value,
+    placeholder: &str,
+    preserve_auth: bool,
+    include_optional_catalog: bool,
+) -> Result<Option<String>, String> {
+    if !preserve_auth {
+        return Ok(None);
+    }
+
+    codex_preserved_auth_live_config_text_if_proxy_placeholder(
+        config,
+        placeholder,
+        include_optional_catalog,
+    )
+}
+
+fn codex_preserved_auth_live_config_text_for_configured_policy(
+    config: &Value,
+    placeholder: &str,
+    include_optional_catalog: bool,
+) -> Result<Option<String>, String> {
+    codex_preserved_auth_live_config_text_for_policy(
+        config,
+        placeholder,
+        crate::settings::preserve_codex_official_auth_on_switch(),
+        include_optional_catalog,
+    )
 }
 
 fn live_config_has_proxy_placeholder_for_app(
@@ -2787,6 +2873,83 @@ command = "latest-command"
         assert_eq!(
             codex_live_write_projection(&json!({})).expect("noop"),
             CodexLiveWriteProjection::Noop
+        );
+    }
+
+    #[test]
+    fn codex_takeover_config_cleanup_and_auth_preservation_stay_with_live_takeover() {
+        let placeholder = PROXY_TOKEN_PLACEHOLDER;
+        let mut codex_takeover_config = json!({
+            "config": r#"model_provider = "custom"
+
+[model_providers.custom]
+base_url = "http://127.0.0.1:15721/v1"
+experimental_bearer_token = "PROXY_MANAGED"
+wire_api = "responses"
+"#
+        });
+        remove_codex_takeover_config_placeholders_if_present(
+            &mut codex_takeover_config,
+            placeholder,
+            |url| url.starts_with("http://127.0.0.1"),
+        )
+        .expect("cleanup codex config placeholders");
+        let cleaned_config = codex_takeover_config
+            .get("config")
+            .and_then(Value::as_str)
+            .expect("cleaned config");
+        assert!(!cleaned_config.contains("base_url"));
+        assert!(!cleaned_config.contains("experimental_bearer_token"));
+        assert!(cleaned_config.contains("wire_api"));
+
+        let codex_config_only = json!({
+            "auth": {"OPENAI_API_KEY": placeholder},
+            "config": r#"model_provider = "custom"
+
+[model_providers.custom]
+base_url = "https://relay.example/v1"
+"#
+        });
+        let config_only_live = codex_preserved_auth_live_config_text_if_proxy_placeholder(
+            &codex_config_only,
+            placeholder,
+            true,
+        )
+        .expect("config-only projection")
+        .expect("placeholder auth should project config-only live text");
+        assert_eq!(
+            crate::codex_config::extract_codex_experimental_bearer_token(&config_only_live)
+                .as_deref(),
+            Some(placeholder)
+        );
+        assert_eq!(
+            codex_preserved_auth_live_config_text_for_policy(
+                &codex_config_only,
+                placeholder,
+                false,
+                true,
+            )
+            .expect("disabled preservation should be a valid no-op"),
+            None
+        );
+        assert!(codex_preserved_auth_live_config_text_for_policy(
+            &codex_config_only,
+            placeholder,
+            true,
+            true,
+        )
+        .expect("enabled preservation should be valid")
+        .is_some());
+
+        let codex_live_with_real_auth = json!({"auth": {"OPENAI_API_KEY": "real-key"}});
+        assert_eq!(
+            codex_preserved_auth_live_config_text_if_proxy_placeholder(
+                &codex_live_with_real_auth,
+                placeholder,
+                true,
+            )
+            .expect("real auth projection should be valid"),
+            None
         );
     }
 

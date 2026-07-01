@@ -1240,6 +1240,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn preserve_codex_oauth_auth_in_backup_for_configured_policy(",
     "pub(crate) enum CodexLiveWriteProjection",
     "pub(crate) fn codex_live_write_projection(",
+    "pub(crate) fn remove_codex_takeover_config_placeholders_if_present(",
+    "pub(crate) fn codex_preserved_auth_live_config_text_for_configured_policy(",
     "pub(crate) fn provider_settings_with_live_token_sync(",
     "pub(crate) fn codex_preserved_auth_live_config_text_if_proxy_placeholder(",
     "pub(crate) fn codex_preserved_auth_live_config_text_for_policy(",
