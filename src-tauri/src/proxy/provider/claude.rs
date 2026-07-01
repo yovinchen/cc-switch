@@ -16,6 +16,10 @@
 
 use super::ProviderAdapter;
 use crate::provider::Provider;
+#[cfg(test)]
+use crate::proxy::copilot_auth::{
+    COPILOT_API_VERSION, COPILOT_EDITOR_VERSION, COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
+};
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::api::auth::ProviderAuthInfo;
 #[cfg(test)]
@@ -25,14 +29,11 @@ use crate::proxy_core::api::ports::required_provider_base_url;
 use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;
 use crate::proxy_core::api::transforms::GeminiShadowStore;
 use crate::proxy_core::api::transport::build_claude_upstream_url;
+#[cfg(test)]
+use crate::proxy_core_adapter::provider_claude_transform_response_for_api_format;
 use crate::proxy_core_adapter::{
     provider_claude_auth_headers, provider_claude_auth_info,
     provider_claude_transform_request_for_api_format, provider_needs_claude_transform,
-};
-#[cfg(test)]
-use crate::proxy_core_adapter::{
-    provider_claude_transform_response_for_api_format, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION,
-    COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
 };
 
 fn transform_claude_request_for_api_format(

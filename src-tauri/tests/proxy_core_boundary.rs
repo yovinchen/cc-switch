@@ -537,8 +537,11 @@ const FORBIDDEN_FORWARDER_ATTEMPT_RUNTIME_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROXY_CORE_HOST_ERROR_MARKERS: &[&str] = &["ProxyCoreError::"];
 const FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_COPILOT_MARKERS: &[&str] = &[
-    "providers::copilot_auth::COPILOT_",
-    "copilot_auth::COPILOT_",
+    "pub(crate) const COPILOT_EDITOR_VERSION",
+    "pub(crate) const COPILOT_PLUGIN_VERSION",
+    "pub(crate) const COPILOT_USER_AGENT",
+    "pub(crate) const COPILOT_API_VERSION",
+    "pub(crate) const COPILOT_INTEGRATION_ID",
 ];
 const FORBIDDEN_PROXY_CORE_ADAPTER_MODEL_FETCH_FACADE_MARKERS: &[&str] = &[
     "CodexOAuthModelsRequest",
@@ -1208,6 +1211,10 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "struct JsonProxyRequestInput",
     "struct ParsedJsonProxyBody",
     "struct CodexResponsesProxyRequest",
+    "pub(crate) const COPILOT_EDITOR_VERSION",
+    "pub(crate) const COPILOT_PLUGIN_VERSION",
+    "pub(crate) const COPILOT_USER_AGENT",
+    "pub(crate) const COPILOT_API_VERSION",
     "pub(crate) const COPILOT_INTEGRATION_ID",
     "pub(crate) fn synthesize_gemini_tool_call_id_with_uuid(",
     "pub(crate) fn app_error(",
@@ -18943,12 +18950,7 @@ fn production_copilot_auth_imports_model_catalog_helpers_directly() {
     let core_import = function_slice(
         &source,
         "use crate::proxy_core::api::model_catalog::{",
-        "};\nuse crate::proxy_core_adapter::{",
-    );
-    let adapter_import = function_slice(
-        &source,
-        "use crate::proxy_core_adapter::{",
-        "};\n\nconst DEFAULT_GITHUB_DOMAIN",
+        "};\nconst DEFAULT_GITHUB_DOMAIN",
     );
 
     for marker in [
@@ -18972,11 +18974,11 @@ fn production_copilot_auth_imports_model_catalog_helpers_directly() {
             core_import.contains(marker),
             "copilot_auth.rs should import `{marker}` directly from proxy_core model_catalog"
         );
-        assert!(
-            !adapter_import.contains(marker),
-            "copilot_auth.rs should not import `{marker}` through proxy_core_adapter"
-        );
     }
+    assert!(
+        !source.contains("proxy_core_adapter"),
+        "copilot_auth.rs should not import Copilot model catalog or fingerprint constants through proxy_core_adapter"
+    );
 
     assert!(
         source.contains(
@@ -26249,7 +26251,7 @@ fn proxy_events_owns_core_event_stream_imports() {
 }
 
 #[test]
-fn proxy_core_adapter_owns_copilot_header_constants() {
+fn proxy_core_adapter_does_not_export_copilot_header_constants() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
@@ -26270,7 +26272,7 @@ fn proxy_core_adapter_owns_copilot_header_constants() {
 
     assert!(
         violations.is_empty(),
-        "proxy_core_adapter must own Copilot header constants instead of reading provider module constants:\n{}",
+        "proxy_core_adapter must not export Copilot header constants:\n{}",
         violations.join("\n")
     );
 }

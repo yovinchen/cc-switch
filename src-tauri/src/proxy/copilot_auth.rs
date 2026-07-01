@@ -38,11 +38,11 @@ use crate::proxy_core::api::model_catalog::{
     is_copilot_ghes_domain, normalize_github_domain, parse_copilot_models_response_bytes,
     parse_copilot_usage_response_bytes, COPILOT_PUBLIC_GITHUB_DOMAIN,
 };
-use crate::proxy_core_adapter::{
-    COPILOT_API_VERSION, COPILOT_EDITOR_VERSION, COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
-};
-
 const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;
+pub(crate) const COPILOT_EDITOR_VERSION: &str = "vscode/1.110.1";
+pub(crate) const COPILOT_PLUGIN_VERSION: &str = "copilot-chat/0.38.2";
+pub(crate) const COPILOT_USER_AGENT: &str = "GitHubCopilotChat/0.38.2";
+pub(crate) const COPILOT_API_VERSION: &str = "2025-10-01";
 
 pub use crate::proxy_core::api::auth::{
     CopilotAuthStatus, GitHubAccount, GitHubDeviceCodeResponse,
