@@ -934,9 +934,7 @@ use crate::proxy_core::api::routing::{
     legacy_provider_env_from_settings, should_block_proxy_switch_to_provider_category,
 };
 
-pub(crate) fn legacy_provider_projection_input(
-    provider: &Provider,
-) -> LegacyProviderProjectionInput {
+fn legacy_provider_projection_input(provider: &Provider) -> LegacyProviderProjectionInput {
     let config_text = legacy_provider_config_text_from_settings(&provider.settings_config);
     let env = legacy_provider_env_from_settings(&provider.settings_config);
     let codex_catalog_models =
@@ -1042,7 +1040,7 @@ fn proxy_channel_source_kind_from_legacy(source_kind: &str) -> ProxyChannelSourc
     }
 }
 
-pub(crate) fn proxy_channel_record_from_legacy_projection(
+fn proxy_channel_record_from_legacy_projection(
     projection: LegacyChannelProjection,
     source_kind: ProxyChannelSourceKind,
 ) -> ProxyChannelRecord {

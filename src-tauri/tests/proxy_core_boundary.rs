@@ -1233,6 +1233,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn provider_claude_models_are_claude_safe(",
     "pub(crate) fn provider_claude_desktop_direct_inference_model_specs(",
     "pub(crate) fn provider_claude_desktop_proxy_provider_validation(",
+    "pub(crate) fn legacy_provider_projection_input(",
+    "pub(crate) fn proxy_channel_record_from_legacy_projection(",
     "fn parse_json_proxy_request_body(",
     "fn parse_json_proxy_request_body_or_null(",
     "fn json_proxy_request_from_input(",
