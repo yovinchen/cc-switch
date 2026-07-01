@@ -1208,6 +1208,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "struct JsonProxyRequestInput",
     "struct ParsedJsonProxyBody",
     "struct CodexResponsesProxyRequest",
+    "pub(crate) const COPILOT_INTEGRATION_ID",
     "pub(crate) fn synthesize_gemini_tool_call_id_with_uuid(",
     "pub(crate) fn app_error(",
     "pub(crate) fn response_runtime_policy_from_app_proxy_config(",

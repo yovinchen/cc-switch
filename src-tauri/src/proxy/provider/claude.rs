@@ -32,7 +32,7 @@ use crate::proxy_core_adapter::{
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     provider_claude_transform_response_for_api_format, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION,
-    COPILOT_INTEGRATION_ID, COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
+    COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
 };
 
 fn transform_claude_request_for_api_format(
@@ -347,7 +347,7 @@ mod tests {
         assert_eq!(pairs[0], ("authorization", "Bearer copilot-token"));
         assert_eq!(pairs[1], ("editor-version", COPILOT_EDITOR_VERSION));
         assert_eq!(pairs[2], ("editor-plugin-version", COPILOT_PLUGIN_VERSION));
-        assert_eq!(pairs[3], ("copilot-integration-id", COPILOT_INTEGRATION_ID));
+        assert_eq!(pairs[3], ("copilot-integration-id", "vscode-chat"));
         assert_eq!(pairs[4], ("user-agent", COPILOT_USER_AGENT));
         assert_eq!(pairs[5], ("x-github-api-version", COPILOT_API_VERSION));
         assert_eq!(pairs[6], ("openai-intent", "conversation-agent"));
