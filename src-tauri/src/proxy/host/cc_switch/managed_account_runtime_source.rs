@@ -8,6 +8,7 @@ use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy::host::cc_switch::provider_projection::provider_managed_account_binding_context;
+use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy_core::api::auth::{
     managed_account_app_handle_unavailable_error_message,
     managed_account_app_handle_unavailable_log_message,
@@ -21,7 +22,7 @@ use crate::proxy_core::api::auth::{
     ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ProviderAuthInfo,
 };
 use crate::proxy_core::api::model_catalog::CopilotModel;
-use crate::proxy_core_adapter::resolve_forwarder_claude_api_format;
+use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 
 pub(crate) type ManagedAccountRuntimeSourceRef = Arc<dyn ManagedAccountRuntimeSource + Send + Sync>;
 
@@ -44,6 +45,18 @@ pub(crate) fn managed_account_runtime_source_from_app_handle(
 #[cfg(test)]
 pub(crate) fn default_managed_account_runtime_source() -> ManagedAccountRuntimeSourceRef {
     managed_account_runtime_source_from_app_handle(None)
+}
+
+fn forwarder_claude_api_format_for_provider(
+    provider: &Provider,
+    is_copilot: bool,
+    copilot_model_vendor: Option<&str>,
+) -> String {
+    resolve_claude_forward_api_format(
+        claude_provider_api_format(provider),
+        is_copilot,
+        copilot_model_vendor,
+    )
 }
 
 pub(crate) trait ManagedAccountRuntimeSource:
@@ -199,7 +212,7 @@ pub(crate) trait ManagedAccountRuntimeSource:
                 None
             };
 
-            resolve_forwarder_claude_api_format(
+            forwarder_claude_api_format_for_provider(
                 auth_provider,
                 is_copilot,
                 copilot_model_vendor.as_deref(),

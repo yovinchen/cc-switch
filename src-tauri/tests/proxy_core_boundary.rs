@@ -12690,6 +12690,10 @@ fn proxy_core_adapter_delegates_claude_transform_streaming_decision_to_core() {
             .contains("pub(crate) use crate::proxy_core::api::domain::infer_claude_provider_kind"),
         "proxy_core_adapter should not re-export Claude provider kind inference helper"
     );
+    assert!(
+        !source.contains("pub(crate) fn resolve_forwarder_claude_api_format"),
+        "proxy_core_adapter should not keep a Claude forward api_format one-hop facade"
+    );
 
     for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CLAUDE_STREAMING_DECISION_MARKERS {
         assert!(
@@ -18758,6 +18762,19 @@ fn production_forwarder_delegates_claude_api_format_to_runtime_source() {
     assert!(
         runtime_source.contains("resolve_core_copilot_model_vendor_for_binding_with_runtime_source("),
         "ManagedAccountRuntimeSource must delegate Copilot model vendor runtime gating to proxy-core"
+    );
+    assert!(
+        runtime_source.contains("resolve_claude_forward_api_format("),
+        "ManagedAccountRuntimeSource must own Claude forward api_format projection through proxy-core"
+    );
+    assert!(
+        !runtime_source
+            .contains("use crate::proxy_core_adapter::resolve_forwarder_claude_api_format"),
+        "ManagedAccountRuntimeSource must not import Claude forward api_format projection from proxy_core_adapter"
+    );
+    assert!(
+        !runtime_source.contains("resolve_forwarder_claude_api_format("),
+        "ManagedAccountRuntimeSource must not call a proxy_core_adapter Claude api_format wrapper"
     );
 
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");

@@ -283,7 +283,6 @@ use crate::proxy_core::api::auth::{
     ClaudeDesktopProxyRouteInput, ClaudeDesktopResolvedProxyRoute,
 };
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
-use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 use crate::proxy_core::api::transforms::{
     claude_provider_transform_required as core_claude_provider_transform_required,
@@ -414,18 +413,6 @@ async fn forwarder_runtime_config_from_db_sources(
         db.get_optimizer_config().unwrap_or_default(),
         db.get_copilot_optimizer_config().unwrap_or_default(),
     ))
-}
-
-pub(crate) fn resolve_forwarder_claude_api_format(
-    provider: &Provider,
-    is_copilot: bool,
-    copilot_model_vendor: Option<&str>,
-) -> String {
-    resolve_claude_forward_api_format(
-        claude_provider_api_format(provider),
-        is_copilot,
-        copilot_model_vendor,
-    )
 }
 
 pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
@@ -8844,7 +8831,11 @@ base_url = "https://api.openai.com/v1"
         ));
         assert_eq!(claude_provider_api_format(&provider), "openai_chat");
         assert_eq!(
-            resolve_forwarder_claude_api_format(&provider, true, Some("OpenAI")),
+            crate::proxy_core::api::transforms::resolve_claude_forward_api_format(
+                claude_provider_api_format(&provider),
+                true,
+                Some("OpenAI")
+            ),
             "openai_responses"
         );
         assert!(claude_adapter.needs_transform(&provider));
