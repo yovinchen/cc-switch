@@ -8,14 +8,16 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::host::cc_switch::proxy_server::proxy_server_from_runtime_config;
+use crate::proxy::provider::codex_provider_upstream_model;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::events::proxy_official_warning_event;
 use crate::proxy_core::api::ports::{
-    app_proxy_config_with_enabled, apply_gemini_takeover_env_fields,
-    codex_auth_has_oauth_login_material, common_config_settings_mutation_issue_message,
+    app_proxy_config_with_enabled, apply_codex_takeover_auth_placeholder_if_present,
+    apply_gemini_takeover_env_fields, codex_auth_has_oauth_login_material,
+    common_config_settings_mutation_issue_message, ensure_codex_takeover_auth_placeholder,
     is_local_proxy_url, live_takeover_app_kinds, live_token_sync_app_label,
     proxy_live_config_owned_by_takeover, proxy_runtime_status_stopped,
     remove_claude_takeover_env_fields_if_present,
@@ -29,7 +31,7 @@ use crate::proxy_core::api::ports::{
     ClaudeTakeoverProviderFacts,
 };
 use crate::proxy_core::api::ports::{
-    codex_config_has_base_url_matching,
+    codex_config_has_base_url_matching, codex_takeover_toml_config_patch,
     live_backup_snapshot_from_live_config as core_live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
     live_takeover_config_matches_proxy_for_app as core_live_takeover_config_matches_proxy_for_app,
@@ -48,9 +50,6 @@ use crate::proxy_core::api::ports::{
     ProxyTakeoverStatus,
 };
 use crate::proxy_core::api::routing::should_block_proxy_switch_to_provider_category;
-use crate::proxy_core_adapter::{
-    apply_codex_takeover_fields_for_provider, CodexTakeoverAuthPolicy,
-};
 use crate::services::provider::{
     build_effective_settings_with_common_config, ProviderEffectiveSettingsWarning,
 };
@@ -64,6 +63,66 @@ use tokio::sync::RwLock;
 
 /// 用于接管 Live 配置时的占位符（避免客户端提示缺少 key，同时不泄露真实 Token）
 const PROXY_TOKEN_PLACEHOLDER: &str = "PROXY_MANAGED";
+
+fn codex_takeover_toml_config_for_provider(
+    toml_str: &str,
+    proxy_url: &str,
+    provider: Option<&Provider>,
+) -> String {
+    let upstream_model = provider.and_then(codex_provider_upstream_model);
+    let patch = codex_takeover_toml_config_patch(proxy_url, upstream_model.as_deref());
+
+    let updated =
+        crate::codex_config::update_codex_toml_field(toml_str, "base_url", patch.base_url)
+            .unwrap_or_else(|_| toml_str.to_string());
+    let mut updated =
+        crate::codex_config::update_codex_toml_field(&updated, "wire_api", patch.wire_api)
+            .unwrap_or(updated);
+
+    if let Some(upstream_model) = patch.model {
+        updated = crate::codex_config::update_codex_toml_field(&updated, "model", upstream_model)
+            .unwrap_or(updated);
+    }
+
+    updated
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CodexTakeoverAuthPolicy {
+    ExistingAuthOnly,
+    EnsureAuth,
+}
+
+fn apply_codex_takeover_fields_for_provider(
+    config: &mut Value,
+    proxy_url: &str,
+    placeholder: &str,
+    provider: Option<&Provider>,
+    auth_policy: CodexTakeoverAuthPolicy,
+) {
+    match auth_policy {
+        CodexTakeoverAuthPolicy::ExistingAuthOnly => {
+            apply_codex_takeover_auth_placeholder_if_present(config, placeholder);
+        }
+        CodexTakeoverAuthPolicy::EnsureAuth => {
+            ensure_codex_takeover_auth_placeholder(config, placeholder);
+        }
+    }
+
+    let config_str = config.get("config").and_then(Value::as_str).unwrap_or("");
+    let updated_config = codex_takeover_toml_config_for_provider(config_str, proxy_url, provider);
+    config["config"] = json!(updated_config);
+    if let Some(provider) = provider {
+        let model_catalog = provider
+            .settings_config
+            .get("modelCatalog")
+            .cloned()
+            .unwrap_or_else(|| json!({ "models": [] }));
+        if let Some(root) = config.as_object_mut() {
+            root.insert("modelCatalog".to_string(), model_catalog);
+        }
+    }
+}
 
 fn apply_claude_takeover_fields_for_provider(
     config: &mut Value,
@@ -4552,6 +4611,86 @@ wire_api = "responses"
         assert_eq!(
             parsed.get("model").and_then(|v| v.as_str()),
             Some("upstream-responses-model")
+        );
+    }
+
+    #[test]
+    fn codex_takeover_fields_apply_auth_policy_and_model_catalog() {
+        let mut provider = Provider::with_id(
+            "openai".to_string(),
+            "OpenAI".to_string(),
+            json!({
+                "config": r#"model_provider = "openai"
+model = "upstream-model"
+
+[model_providers.openai]
+base_url = "https://api.openai.com/v1"
+wire_api = "chat"
+"#,
+                "modelCatalog": {
+                    "models": [{"id": "gpt-5"}]
+                }
+            }),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            api_format: Some("openai_chat".to_string()),
+            ..Default::default()
+        });
+
+        let mut existing_auth_only_live = json!({
+            "config": r#"model_provider = "openai"
+model = "client-model"
+
+[model_providers.openai]
+base_url = "https://api.openai.com/v1"
+"#
+        });
+        apply_codex_takeover_fields_for_provider(
+            &mut existing_auth_only_live,
+            "http://127.0.0.1:15721/v1",
+            "PROXY_MANAGED",
+            Some(&provider),
+            CodexTakeoverAuthPolicy::ExistingAuthOnly,
+        );
+        assert!(existing_auth_only_live.get("auth").is_none());
+        assert_eq!(
+            crate::codex_config::extract_codex_base_url(
+                existing_auth_only_live
+                    .get("config")
+                    .and_then(Value::as_str)
+                    .expect("takeover config")
+            )
+            .as_deref(),
+            Some("http://127.0.0.1:15721/v1")
+        );
+        assert_eq!(
+            existing_auth_only_live
+                .pointer("/modelCatalog/models/0/id")
+                .and_then(Value::as_str),
+            Some("gpt-5")
+        );
+
+        let mut ensure_auth_live = json!({"config": ""});
+        apply_codex_takeover_fields_for_provider(
+            &mut ensure_auth_live,
+            "http://127.0.0.1:15721/v1",
+            "PROXY_MANAGED",
+            Some(&provider),
+            CodexTakeoverAuthPolicy::EnsureAuth,
+        );
+        assert_eq!(
+            ensure_auth_live
+                .get("auth")
+                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+                .and_then(Value::as_str),
+            Some("PROXY_MANAGED")
+        );
+        assert_eq!(
+            ensure_auth_live
+                .pointer("/modelCatalog/models/0/id")
+                .and_then(Value::as_str),
+            Some("gpt-5")
         );
     }
 

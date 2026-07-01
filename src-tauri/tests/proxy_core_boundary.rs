@@ -1262,6 +1262,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn legacy_provider_projection_input(",
     "pub(crate) fn proxy_channel_record_from_legacy_projection(",
     "pub(crate) fn codex_takeover_toml_config_for_provider(",
+    "pub(crate) enum CodexTakeoverAuthPolicy",
+    "pub(crate) fn apply_codex_takeover_fields_for_provider(",
     "pub(crate) fn apply_codex_unified_session_bucket_for_provider(",
     "pub(crate) fn provider_settings_validation_parts(",
     "pub(crate) fn codex_provider_live_write_parts(",
@@ -11721,10 +11723,10 @@ fn claude_desktop_config_delegates_proxy_gateway_origin_to_core() {
         "use crate::proxy_core::api::ports::{",
         "};\nuse crate::proxy_core::api::routing::",
     );
-    let live_takeover_adapter_import = function_slice(
+    let live_takeover_adapter_import = optional_function_slice(
         &live_takeover_source,
         "use crate::proxy_core_adapter::{",
-        "};\n#[cfg(test)]",
+        "};",
     );
 
     assert!(
@@ -17768,6 +17770,38 @@ fn live_takeover_owns_claude_takeover_provider_facts() {
             "pub(crate) use crate::proxy_core::api::ports::apply_claude_takeover_fields_with_policy_and_models"
         ),
         "proxy_core_adapter should not keep grouped test-only Claude takeover helper re-exports"
+    );
+}
+
+#[test]
+fn live_takeover_owns_codex_takeover_fields() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let live_takeover_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
+            .expect("read live_takeover.rs");
+
+    for marker in [
+        "pub(crate) enum CodexTakeoverAuthPolicy",
+        "pub(crate) fn apply_codex_takeover_fields_for_provider(",
+        "fn codex_takeover_toml_config_for_provider(",
+    ] {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not keep Codex takeover field helper marker `{marker}`"
+        );
+    }
+    assert!(
+        live_takeover_source.contains("enum CodexTakeoverAuthPolicy")
+            && live_takeover_source.contains("fn apply_codex_takeover_fields_for_provider(")
+            && live_takeover_source.contains("fn codex_takeover_toml_config_for_provider(")
+            && live_takeover_source.contains("codex_takeover_toml_config_patch(")
+            && live_takeover_source.contains("codex_provider_upstream_model")
+            && live_takeover_source.contains("apply_codex_takeover_auth_placeholder_if_present")
+            && live_takeover_source.contains("ensure_codex_takeover_auth_placeholder")
+            && live_takeover_source.contains("\"modelCatalog\".to_string()"),
+        "live takeover should own Codex takeover TOML/auth/modelCatalog field projection"
     );
 }
 

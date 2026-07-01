@@ -26,7 +26,6 @@ use crate::proxy::error_mapper::forward_error_to_core_error;
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 #[cfg(test)]
 use crate::proxy::provider::claude_provider_api_format;
-use crate::proxy::provider::codex_provider_upstream_model;
 use crate::proxy::route_attempt::ForwardAttempt;
 #[cfg(test)]
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
@@ -36,7 +35,7 @@ use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::routing::RoutePlan;
 use crate::proxy_core::api::session::SessionIdResult;
 use http::{HeaderMap, Method};
-use serde_json::{json, Value};
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::proxy_core::api::auth::{
@@ -49,10 +48,7 @@ fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     core_config_error_with_context(context, error)
 }
 
-use crate::proxy_core::api::ports::{
-    apply_codex_takeover_auth_placeholder_if_present, ensure_codex_takeover_auth_placeholder,
-    CopilotOptimizerConfig, OptimizerConfig, RectifierConfig,
-};
+use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 
 fn current_provider_id_from_settings_for_app(app: &AppKind) -> Option<String> {
     app_type_option_from_proxy_core_app(app)
@@ -96,68 +92,6 @@ use crate::proxy_core::api::auth::{
 };
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
 use crate::proxy_core::api::transport::{ProxyRequest, ProxyResult};
-fn codex_takeover_toml_config_for_provider(
-    toml_str: &str,
-    proxy_url: &str,
-    provider: Option<&Provider>,
-) -> String {
-    let upstream_model = provider.and_then(codex_provider_upstream_model);
-    let patch = crate::proxy_core::api::ports::codex_takeover_toml_config_patch(
-        proxy_url,
-        upstream_model.as_deref(),
-    );
-
-    let updated =
-        crate::codex_config::update_codex_toml_field(toml_str, "base_url", patch.base_url)
-            .unwrap_or_else(|_| toml_str.to_string());
-    let mut updated =
-        crate::codex_config::update_codex_toml_field(&updated, "wire_api", patch.wire_api)
-            .unwrap_or(updated);
-
-    if let Some(upstream_model) = patch.model {
-        updated = crate::codex_config::update_codex_toml_field(&updated, "model", upstream_model)
-            .unwrap_or(updated);
-    }
-
-    updated
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CodexTakeoverAuthPolicy {
-    ExistingAuthOnly,
-    EnsureAuth,
-}
-
-pub(crate) fn apply_codex_takeover_fields_for_provider(
-    config: &mut Value,
-    proxy_url: &str,
-    placeholder: &str,
-    provider: Option<&Provider>,
-    auth_policy: CodexTakeoverAuthPolicy,
-) {
-    match auth_policy {
-        CodexTakeoverAuthPolicy::ExistingAuthOnly => {
-            apply_codex_takeover_auth_placeholder_if_present(config, placeholder);
-        }
-        CodexTakeoverAuthPolicy::EnsureAuth => {
-            ensure_codex_takeover_auth_placeholder(config, placeholder);
-        }
-    }
-
-    let config_str = config.get("config").and_then(Value::as_str).unwrap_or("");
-    let updated_config = codex_takeover_toml_config_for_provider(config_str, proxy_url, provider);
-    config["config"] = json!(updated_config);
-    if let Some(provider) = provider {
-        let model_catalog = provider
-            .settings_config
-            .get("modelCatalog")
-            .cloned()
-            .unwrap_or_else(|| json!({ "models": [] }));
-        if let Some(root) = config.as_object_mut() {
-            root.insert("modelCatalog".to_string(), model_catalog);
-        }
-    }
-}
 
 use crate::proxy_core::api::transport::resolve_response_runtime_policy;
 
@@ -887,6 +821,7 @@ mod tests {
         apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
         resolve_codex_provider_upstream_model, ForwarderRectifierRetryKind,
     };
+    use serde_json::json;
 
     use super::*;
     use crate::database::{
@@ -5121,82 +5056,6 @@ wire_api = "chat"
         assert_eq!(profile.supports_thinking, Some(true));
         let options = CodexChatReasoningOptions::from_profile(&profile);
         assert_eq!(options.supports_effort, Some(true));
-        let takeover_config = codex_takeover_toml_config_for_provider(
-            r#"model_provider = "openai"
-model = "client-model"
-
-[model_providers.openai]
-base_url = "https://api.openai.com/v1"
-wire_api = "chat"
-"#,
-            "http://127.0.0.1:15721/v1",
-            Some(&chat_provider),
-        );
-        let parsed_takeover: toml::Value =
-            toml::from_str(&takeover_config).expect("takeover config should be valid TOML");
-        assert_eq!(
-            parsed_takeover
-                .get("model_providers")
-                .and_then(|providers| providers.get("openai"))
-                .and_then(|provider| provider.get("base_url"))
-                .and_then(toml::Value::as_str),
-            Some("http://127.0.0.1:15721/v1")
-        );
-        assert_eq!(
-            parsed_takeover
-                .get("model_providers")
-                .and_then(|providers| providers.get("openai"))
-                .and_then(|provider| provider.get("wire_api"))
-                .and_then(toml::Value::as_str),
-            Some("responses")
-        );
-        assert_eq!(
-            parsed_takeover.get("model").and_then(toml::Value::as_str),
-            Some("upstream-model")
-        );
-        let mut existing_auth_only_live = json!({
-            "config": r#"model_provider = "openai"
-model = "client-model"
-
-[model_providers.openai]
-base_url = "https://api.openai.com/v1"
-"#
-        });
-        apply_codex_takeover_fields_for_provider(
-            &mut existing_auth_only_live,
-            "http://127.0.0.1:15721/v1",
-            "PROXY_MANAGED",
-            Some(&chat_provider),
-            CodexTakeoverAuthPolicy::ExistingAuthOnly,
-        );
-        assert!(existing_auth_only_live.get("auth").is_none());
-        assert_eq!(
-            crate::codex_config::extract_codex_base_url(
-                existing_auth_only_live
-                    .get("config")
-                    .and_then(Value::as_str)
-                    .expect("takeover config")
-            )
-            .as_deref(),
-            Some("http://127.0.0.1:15721/v1")
-        );
-        assert!(existing_auth_only_live.get("modelCatalog").is_some());
-
-        let mut ensure_auth_live = json!({"config": ""});
-        apply_codex_takeover_fields_for_provider(
-            &mut ensure_auth_live,
-            "http://127.0.0.1:15721/v1",
-            "PROXY_MANAGED",
-            Some(&chat_provider),
-            CodexTakeoverAuthPolicy::EnsureAuth,
-        );
-        assert_eq!(
-            ensure_auth_live
-                .get("auth")
-                .and_then(|auth| auth.get("OPENAI_API_KEY"))
-                .and_then(Value::as_str),
-            Some("PROXY_MANAGED")
-        );
         assert_eq!(
             infer_codex_chat_reasoning_profile(
                 "DeepSeek Relay",
