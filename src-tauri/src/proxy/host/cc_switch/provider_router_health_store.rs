@@ -5,11 +5,10 @@ use crate::error::AppError;
 use crate::proxy::engine::routing::ProviderRouterHealthStore;
 use crate::proxy::host::cc_switch::channel_health_store::record_channel_attempt_in_db_source;
 use crate::proxy_core::api::domain::AppKind;
-use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};
+use crate::proxy_core::api::errors::{config_error_with_context, ProxyCoreError, ProxyCoreResult};
 use crate::proxy_core::api::ports::{
     ChannelAttemptResult, ChannelHealthReset, ProviderAttemptResult, ProviderHealthStore,
 };
-use crate::proxy_core_adapter::app_error;
 use futures::future::BoxFuture;
 use std::sync::Arc;
 
@@ -56,7 +55,7 @@ async fn record_provider_attempt_in_db_source(
         update.failure_threshold,
     )
     .await
-    .map_err(|error| app_error("record provider attempt", error))
+    .map_err(|error| config_error_with_context("record provider attempt", error))
 }
 
 fn record_channel_health_attempt_from_router_db(

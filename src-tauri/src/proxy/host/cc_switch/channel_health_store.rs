@@ -2,14 +2,13 @@
 
 use crate::database::Database;
 use crate::proxy::engine::routing::ProviderRouter;
-use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::errors::{config_error_with_context, ProxyCoreResult};
 use crate::proxy_core::api::management::channel_not_found_error;
 use crate::proxy_core::api::ports::{
     channel_breaker_stats_from_parts, channel_health_reset_from_parts, ChannelAttemptResult,
     ChannelBreakerStats, ChannelHealthReset, ChannelHealthStore,
     DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
 };
-use crate::proxy_core_adapter::app_error;
 use futures::future::BoxFuture;
 use std::sync::Arc;
 
@@ -74,7 +73,7 @@ pub(super) fn record_channel_attempt_in_db_source(
         update.failure_threshold,
         update.response_time_ms,
     )
-    .map_err(|error| app_error("record channel attempt", error))
+    .map_err(|error| config_error_with_context("record channel attempt", error))
 }
 
 async fn reset_channel_health_with_router_source(
@@ -84,12 +83,12 @@ async fn reset_channel_health_with_router_source(
 ) -> ProxyCoreResult<ChannelHealthReset> {
     let app_type = db
         .get_proxy_channel_app_type(channel_id)
-        .map_err(|error| app_error("lookup channel app", error))?;
+        .map_err(|error| config_error_with_context("lookup channel app", error))?;
     let reset_plan = channel_health_reset_plan_from_lookup(channel_id, app_type)?;
     router
         .reset_channel_breaker(&reset_plan.channel_id, &reset_plan.app_type)
         .await
-        .map_err(|error| app_error("reset channel health", error))?;
+        .map_err(|error| config_error_with_context("reset channel health", error))?;
     Ok(channel_health_reset_from_parts(
         reset_plan.channel_id,
         reset_plan.app_type.as_str(),
@@ -103,7 +102,7 @@ async fn channel_breaker_stats_with_router_source(
 ) -> ProxyCoreResult<ChannelBreakerStats> {
     let app_type = db
         .get_proxy_channel_app_type(channel_id)
-        .map_err(|error| app_error("lookup channel app", error))?
+        .map_err(|error| config_error_with_context("lookup channel app", error))?
         .ok_or_else(|| channel_not_found_error(channel_id))?;
     let stats = router
         .get_channel_circuit_breaker_stats(channel_id, &app_type)

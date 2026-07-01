@@ -2285,6 +2285,7 @@ fn is_allowed_channel_reachability_probe_core_import(relative: &str, code: &str)
         && matches!(
             code.trim(),
             "use crate::proxy_core::api::errors::ProxyCoreResult;"
+                | "use crate::proxy_core::api::errors::{config_error_with_context, ProxyCoreResult};"
                 | "use crate::proxy_core::api::management::{"
                 | "use crate::proxy_core::api::ports::ChannelReachabilityProbe;"
         )
@@ -3902,7 +3903,10 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
         "channel key runtime source must load runtime DB key records and channel policy, delegate key-ref/enabled selection to core, and return the selected runtime candidate"
     );
     assert!(
-        runtime_source.contains("use crate::proxy_core::api::management::{")
+        runtime_source.contains("use crate::proxy_core::api::errors::{")
+            && runtime_source.contains("config_error_with_context")
+            && runtime_source.contains("ProxyCoreResult")
+            && runtime_source.contains("use crate::proxy_core::api::management::{")
             && runtime_source.contains(
                 "use crate::proxy_core::api::routing::effective_channel_key_failure_cooldown_ms;"
             )
@@ -3933,6 +3937,10 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
             "proxy_core_adapter should not re-export pure channel-key candidate helper/type `{marker}` once runtime source owns the call site"
         );
     }
+    assert!(
+        !runtime_source.contains("use crate::proxy_core_adapter::"),
+        "channel key runtime source should not import DB error mapping through proxy_core_adapter"
+    );
     assert!(
         !function.contains(".get_proxy_channel_key("),
         "channel key runtime source must not perform exact-key DB lookup before core candidate selection"
@@ -4077,7 +4085,9 @@ fn proxy_core_adapter_uses_host_reachability_probe_source() {
         "host reachability module should implement the proxy-core reachability probe port"
     );
     assert!(
-        probe_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+        probe_source.contains("use crate::proxy_core::api::errors::{")
+            && probe_source.contains("config_error_with_context")
+            && probe_source.contains("ProxyCoreResult")
             && probe_source.contains("use crate::proxy_core::api::management::{")
             && probe_source.contains(
                 "channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability"
@@ -4093,6 +4103,7 @@ fn proxy_core_adapter_uses_host_reachability_probe_source() {
         "ChannelReachabilityResult",
         "ChannelTestProbeRequest",
         "ProxyCoreResult",
+        "config_error_with_context",
     ] {
         assert!(
             !probe_source.lines().any(|line| {
@@ -4101,6 +4112,10 @@ fn proxy_core_adapter_uses_host_reachability_probe_source() {
             "host reachability module should not import core contract {adapter_type} through proxy_core_adapter"
         );
     }
+    assert!(
+        !probe_source.contains("use crate::proxy_core_adapter::"),
+        "host reachability module should not import DB error mapping through proxy_core_adapter"
+    );
     assert!(
         probe_source.contains(".get_provider_by_id(")
             && probe_source.contains(".get_stream_check_config(")
@@ -17730,7 +17745,9 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "proxy_core_adapter should not re-export channel-key runtime candidate DTOs as adapter aliases"
     );
     assert!(
-        runtime_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+        runtime_source.contains("use crate::proxy_core::api::errors::{")
+            && runtime_source.contains("config_error_with_context")
+            && runtime_source.contains("ProxyCoreResult")
             && runtime_source
                 .contains("use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;")
             && attempt_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
@@ -21943,7 +21960,9 @@ fn proxy_core_adapter_delegates_route_policy_source_to_host_module() {
     );
     assert!(
         source.contains("use crate::proxy_core::api::domain::AppKind;")
-            && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && source.contains("use crate::proxy_core::api::errors::{")
+            && source.contains("config_error_with_context")
+            && source.contains("ProxyCoreResult")
             && source.contains("use crate::proxy_core::api::ports::RoutePolicySource;")
             && source.contains("use crate::proxy_core::api::routing::{")
             && source.contains("route_policy_from_failover_provider_ids")
@@ -21952,8 +21971,9 @@ fn proxy_core_adapter_delegates_route_policy_source_to_host_module() {
     );
     assert!(
         !source.contains("use crate::proxy_core_adapter::route_policy_from_db_source;")
-            && !source.contains("route_policy_from_db_source(&self.db, app)"),
-        "route policy source should not delegate DB route policy loading through proxy_core_adapter"
+            && !source.contains("route_policy_from_db_source(&self.db, app)")
+            && !source.contains("use crate::proxy_core_adapter::"),
+        "route policy source should not delegate DB route policy loading or error mapping through proxy_core_adapter"
     );
     assert!(
         !adapter_core_ports_import.contains("RoutePolicySource"),
@@ -25020,7 +25040,7 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
     let source = fs::read_to_string(&source_path).expect("read provider_router_health_store.rs");
     let direct_core_imports = [
         "use crate::proxy_core::api::domain::AppKind;",
-        "use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};",
+        "use crate::proxy_core::api::errors::{config_error_with_context, ProxyCoreError, ProxyCoreResult};",
         "use crate::proxy_core::api::ports::{",
     ];
     let adapter_imports: Vec<&str> = source
@@ -25061,10 +25081,9 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
             "ProviderRouter health store must not import {adapter_type} through proxy_core_adapter"
         );
     }
-    assert_eq!(
-        adapter_imports,
-        vec!["use crate::proxy_core_adapter::app_error;"],
-        "ProviderRouter health store should only retain the generic AppError-to-core adapter"
+    assert!(
+        adapter_imports.is_empty(),
+        "ProviderRouter health store should not import DB error mapping through proxy_core_adapter"
     );
     assert!(
         source.contains("fn record_channel_health<'a>(")
@@ -25212,7 +25231,9 @@ fn production_channel_health_store_reads_channel_breaker_stats_through_core_port
         "ChannelHealthStore host source must own breaker stats lookup and project it through a core stats fact"
     );
     assert!(
-        store_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+        store_source.contains("use crate::proxy_core::api::errors::{")
+            && store_source.contains("config_error_with_context")
+            && store_source.contains("ProxyCoreResult")
             && store_source.contains(
                 "use crate::proxy_core::api::management::channel_not_found_error;"
             )
@@ -25223,9 +25244,8 @@ fn production_channel_health_store_reads_channel_breaker_stats_through_core_port
         "ChannelHealthStore host source must import channel health facts and ports directly from proxy_core"
     );
     assert!(
-        store_source.contains("use crate::proxy_core_adapter::app_error;")
-            && !store_source.contains("use crate::proxy_core_adapter::{"),
-        "ChannelHealthStore host source should only retain the generic AppError-to-core adapter"
+        !store_source.contains("use crate::proxy_core_adapter::"),
+        "ChannelHealthStore host source should own DB error mapping without proxy_core_adapter"
     );
     for adapter_type in [
         "ChannelAttemptResult",

@@ -1,6 +1,6 @@
 use crate::app_config::AppType;
 use crate::database::Database;
-use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::errors::{config_error_with_context, ProxyCoreResult};
 use crate::proxy_core::api::management::{
     channel_reachability_probe_error,
     channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
@@ -8,7 +8,6 @@ use crate::proxy_core::api::management::{
     ChannelTestProbeRequest,
 };
 use crate::proxy_core::api::ports::ChannelReachabilityProbe;
-use crate::proxy_core_adapter::app_error;
 use crate::services::stream_check::StreamCheckService;
 use futures::future::BoxFuture;
 use std::sync::Arc;
@@ -23,11 +22,11 @@ pub(crate) async fn probe_channel_reachability_from_db_source(
         .map_err(channel_test_app_type_error)?;
     let provider = db
         .get_provider_by_id(&request.provider_id, &request.app_type)
-        .map_err(|error| app_error("get channel test provider", error))?;
+        .map_err(|error| config_error_with_context("get channel test provider", error))?;
     let provider = provider.ok_or_else(|| channel_test_provider_not_found_error(&request))?;
     let config = db
         .get_stream_check_config()
-        .map_err(|error| app_error("get stream check config", error))?;
+        .map_err(|error| config_error_with_context("get stream check config", error))?;
     let result =
         StreamCheckService::check_with_retry(&app_type, &provider, &config, Some(request.base_url))
             .await

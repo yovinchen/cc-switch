@@ -1,5 +1,5 @@
 use crate::database::{Database, ProxyChannelKeyRecord};
-use crate::proxy_core::api::errors::ProxyCoreResult;
+use crate::proxy_core::api::errors::{config_error_with_context, ProxyCoreResult};
 use crate::proxy_core::api::management::{
     channel_key_runtime_candidate_from_input, select_channel_key_runtime_candidate_with_policy,
     ChannelKeyRuntimeCandidate, ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeSelectionInput,
@@ -7,7 +7,6 @@ use crate::proxy_core::api::management::{
 };
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
 use crate::proxy_core::api::routing::effective_channel_key_failure_cooldown_ms;
-use crate::proxy_core_adapter::app_error;
 use std::sync::Arc;
 
 pub(crate) fn proxy_channel_key_record_to_runtime_candidate(
@@ -64,7 +63,7 @@ fn load_channel_key_candidate_from_database(
 ) -> ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>> {
     let keys = db
         .list_proxy_channel_key_runtime_candidates(channel_id)
-        .map_err(|error| app_error("load channel auth key", error))?;
+        .map_err(|error| config_error_with_context("load channel auth key", error))?;
     let failure_cooldown_ms = channel_key_failure_cooldown_ms_from_database(db, channel_id)?;
     let (now_ms, weighted_roll) = channel_key_runtime_selection_clock();
     Ok(keys.and_then(|keys| {
@@ -84,7 +83,7 @@ fn channel_key_failure_cooldown_ms_from_database(
 ) -> ProxyCoreResult<i64> {
     let channel = db
         .get_proxy_channel(channel_id)
-        .map_err(|error| app_error("load channel key health policy", error))?;
+        .map_err(|error| config_error_with_context("load channel key health policy", error))?;
 
     Ok(channel
         .map(|channel| {
