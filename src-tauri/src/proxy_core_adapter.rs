@@ -285,7 +285,7 @@ fn current_provider_id_from_settings_for_app(app: &AppKind) -> Option<String> {
         .and_then(crate::settings::get_current_provider)
 }
 
-pub(crate) fn forward_current_provider_id_from_source(
+fn forward_current_provider_id_from_source(
     settings_current_provider_id: Option<&str>,
     load_db_current_provider_id: impl FnOnce() -> Option<String>,
 ) -> String {
@@ -301,10 +301,7 @@ pub(crate) fn forward_current_provider_id_from_source(
     )
 }
 
-pub(crate) fn forward_current_provider_id_from_db_sources(
-    db: &Database,
-    app_type: &AppType,
-) -> String {
+fn forward_current_provider_id_from_db_sources(db: &Database, app_type: &AppType) -> String {
     let app = AppKind::from(app_type);
     let settings_current_provider_id = current_provider_id_from_settings_for_app(&app);
     forward_current_provider_id_from_source(settings_current_provider_id.as_deref(), || {

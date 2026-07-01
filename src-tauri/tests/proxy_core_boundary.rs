@@ -7577,6 +7577,8 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn persist_hot_switch_current_provider_sources",
         "pub(crate) struct ProxyHotSwitchTargetState",
         "pub(crate) async fn proxy_hot_switch_target_state_from_db",
+        "pub(crate) fn forward_current_provider_id_from_source",
+        "pub(crate) fn forward_current_provider_id_from_db_sources",
         "pub(crate) fn ssot_live_restore_provider_from_db",
         "pub(crate) fn write_ssot_live_restore_provider_with_common_config",
         "pub(crate) fn select_current_provider_ids_from_router_provider_id_source",

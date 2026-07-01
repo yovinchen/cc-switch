@@ -1942,6 +1942,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1374. forward runtime status 与 current-route target 的低层 mutation/projection helper 已进一步下沉到 host-owned `proxy/host/cc_switch/forwarder_runtime_state_source.rs`；server lifecycle status/info helper 已进一步下沉到 host `proxy_server.rs`；外部模块继续只调用语义化 runtime-source API，避免把 `record_forward_*_status`、`record_proxy_server_started_status` 和 `current_route_target_from_*` 这类内部组合 helper 当作 adapter 合约。
 1375. `ProviderRouter` 的 failover lookup availability 到 provider id selection 投影已迁入 `proxy/engine/routing.rs`：router 直接消费 `proxy-core::provider_selection_candidate_from_failover_lookup` / `select_provider_ids` 和 core forwarder warning 文案，`proxy_core_adapter` 不再持有 `select_failover_provider_ids_from_router_lookup_availability` 一跳 facade。
 1376. forward runtime 的 retryable/terminal failure warning 与 rectifier retry success/failure log-line 投影已迁入 host-owned `proxy/host/cc_switch/forwarder_runtime_state_source.rs`：默认 runtime state source 本地消费 core forward failure log builders 与 rectifier message helpers，`proxy_core_adapter` 只保留 `ProxyError -> ForwardFailureKind` 宿主事实投影。
+1377. forward current-provider settings/DB fallback helper 已从 `proxy_core_adapter` 的 crate-visible API 收窄为 adapter 私有实现细节：旧 forward bridge 仍复用同一 fallback 规则，但外部模块不能再把 `forward_current_provider_id_from_source` / `forward_current_provider_id_from_db_sources` 当作 adapter 合约。
 
 ## 背景
 
