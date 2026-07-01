@@ -39,12 +39,10 @@ use crate::proxy_core::api::config::{AllowResult, AppProxyConfig, ResponseRuntim
 use crate::proxy_core::api::domain::{
     AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,
 };
-use crate::proxy_core::api::ports::CurrentRouteTarget;
 use crate::proxy_core::api::routing::{
     ChannelRouteCandidate, LegacyChannelMigrationPlanInput, LegacyChannelModelProjection,
     LegacyChannelProjection, LegacyEndpointInput, LegacyModelRouteInput,
-    LegacyProviderChannelMigrationInput, LegacyProviderProjectionInput, ProviderSelectionFailure,
-    RoutePlan,
+    LegacyProviderChannelMigrationInput, LegacyProviderProjectionInput, RoutePlan,
 };
 use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::{AnthropicToolSchemaHints, GeminiShadowStore};
@@ -52,9 +50,7 @@ use bytes::Bytes;
 use futures::Stream;
 use http::{HeaderMap, Method};
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::proxy::copilot_auth::{
@@ -83,43 +79,6 @@ use crate::proxy_core::api::errors::config_error_with_context as core_config_err
 use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};
 fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     core_config_error_with_context(context, error)
-}
-
-#[cfg(test)]
-fn app_error_from_provider_selection_failure(
-    app_type: &str,
-    error: ProviderSelectionFailure,
-) -> AppError {
-    match error {
-        ProviderSelectionFailure::AllProvidersCircuitOpen => {
-            log::warn!(
-                "{}",
-                crate::proxy_core::api::transport::forwarder_all_providers_circuit_open_log_line(
-                    app_type,
-                )
-            );
-            AppError::AllProvidersCircuitOpen
-        }
-        ProviderSelectionFailure::NoProvidersConfigured => {
-            log::warn!(
-                "{}",
-                crate::proxy_core::api::transport::forwarder_no_providers_configured_log_line(
-                    app_type,
-                )
-            );
-            AppError::NoProvidersConfigured
-        }
-    }
-}
-
-fn provider_selection_failure_from_app_error(error: &AppError) -> Option<ProviderSelectionFailure> {
-    match error {
-        AppError::AllProvidersCircuitOpen => {
-            Some(ProviderSelectionFailure::AllProvidersCircuitOpen)
-        }
-        AppError::NoProvidersConfigured => Some(ProviderSelectionFailure::NoProvidersConfigured),
-        _ => None,
-    }
 }
 
 use crate::proxy_core::api::model_catalog::ModelMappingProjection;
@@ -1028,48 +987,6 @@ pub(crate) fn provider_spec_from_db_source(
         .get_provider_by_id(provider_id, app.as_str())
         .map_err(|error| app_error("get provider", error))?;
     provider_spec_from_source(app, provider)
-}
-
-pub(crate) fn current_provider_id_from_db_source(
-    db: &Database,
-    app: &AppKind,
-) -> ProxyCoreResult<Option<String>> {
-    db.get_current_provider(app.as_str())
-        .map_err(|error| app_error("get current provider", error))
-}
-
-pub(crate) async fn active_route_target_from_runtime_source(
-    current_providers: &RwLock<HashMap<String, CurrentRouteTarget>>,
-    app: &AppKind,
-) -> ProxyCoreResult<Option<CurrentRouteTarget>> {
-    let current_providers = current_providers.read().await;
-    Ok(current_providers.get(app.as_str()).cloned())
-}
-
-fn route_candidate_provider_ids_from_selection_result(
-    result: Result<Vec<String>, AppError>,
-) -> ProxyCoreResult<Vec<String>> {
-    let selection_result = match result {
-        Ok(provider_ids) => Ok(provider_ids),
-        Err(error) => match provider_selection_failure_from_app_error(&error) {
-            Some(failure) => Err(failure),
-            None => return Err(app_error("select route candidate providers", error)),
-        },
-    };
-    Ok(
-        crate::proxy_core::api::routing::route_candidate_provider_ids_from_selection_result(
-            selection_result,
-        ),
-    )
-}
-
-pub(crate) async fn route_candidate_provider_ids_from_router_source(
-    router: &ProviderRouter,
-    app: &AppKind,
-) -> ProxyCoreResult<Vec<String>> {
-    route_candidate_provider_ids_from_selection_result(
-        router.select_provider_ids(app.as_str()).await,
-    )
 }
 
 fn claude_desktop_model_routes_to_core_inputs(
@@ -2008,7 +1925,8 @@ mod tests {
         apply_route_candidate_circuit_availability, resolve_channel_route,
         route_candidate_channel_circuit_keys, select_provider_ids, ChannelSpec, ChannelStatus,
         InterfaceKind, LegacyChannelProjectionInput, ProviderSelectionCandidate,
-        ProviderSelectionInput, RouteResolveChannelInput, RouteResolveModelInput, RouteSelection,
+        ProviderSelectionFailure, ProviderSelectionInput, RouteResolveChannelInput,
+        RouteResolveModelInput, RouteSelection,
     };
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{
@@ -2044,6 +1962,34 @@ mod tests {
     use crate::settings::CustomEndpoint;
     use futures::future::BoxFuture;
     use indexmap::IndexMap;
+    use std::collections::HashMap;
+    use tokio::sync::RwLock;
+
+    fn app_error_from_provider_selection_failure(
+        app_type: &str,
+        error: ProviderSelectionFailure,
+    ) -> AppError {
+        match error {
+            ProviderSelectionFailure::AllProvidersCircuitOpen => {
+                log::warn!(
+                    "{}",
+                    crate::proxy_core::api::transport::forwarder_all_providers_circuit_open_log_line(
+                        app_type,
+                    )
+                );
+                AppError::AllProvidersCircuitOpen
+            }
+            ProviderSelectionFailure::NoProvidersConfigured => {
+                log::warn!(
+                    "{}",
+                    crate::proxy_core::api::transport::forwarder_no_providers_configured_log_line(
+                        app_type,
+                    )
+                );
+                AppError::NoProvidersConfigured
+            }
+        }
+    }
 
     struct ProxyEventBusMessage {
         event_name: String,
@@ -8485,35 +8431,6 @@ base_url = "https://api.openai.com/v1"
             crate::proxy_core::api::routing::route_plan_provider_ids(&plan),
             vec!["provider-a".to_string(), "provider-b".to_string()]
         );
-        assert_eq!(
-            route_candidate_provider_ids_from_selection_result(Ok(vec![
-                "provider-a".to_string(),
-                "provider-b".to_string(),
-            ]))
-            .expect("candidate ids"),
-            vec!["provider-a".to_string(), "provider-b".to_string()]
-        );
-        assert_eq!(
-            route_candidate_provider_ids_from_selection_result(Err(
-                AppError::NoProvidersConfigured
-            ))
-            .expect("empty no providers"),
-            Vec::<String>::new()
-        );
-        assert_eq!(
-            route_candidate_provider_ids_from_selection_result(Err(
-                AppError::AllProvidersCircuitOpen
-            ))
-            .expect("empty circuit open"),
-            Vec::<String>::new()
-        );
-        assert!(matches!(
-            route_candidate_provider_ids_from_selection_result(Err(AppError::Message(
-                "router failed".to_string()
-            ))),
-            Err(ProxyCoreError::Config(message))
-                if message == "select route candidate providers: router failed"
-        ));
         assert_eq!(
             crate::proxy_core::api::routing::select_route_for_forward_result(
                 &plan,

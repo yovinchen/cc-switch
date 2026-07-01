@@ -1231,6 +1231,10 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "pub(crate) fn provider_specs_from_source(",
     "pub(crate) fn provider_spec_from_source(",
     "pub(crate) fn provider_model_catalog_from_db_source(",
+    "pub(crate) fn current_provider_id_from_db_source(",
+    "pub(crate) async fn active_route_target_from_runtime_source(",
+    "pub(crate) async fn route_candidate_provider_ids_from_router_source(",
+    "fn route_candidate_provider_ids_from_selection_result(",
     "pub(crate) fn route_candidate_provider_ids_from_selection_result(",
     "pub(crate) fn claude_desktop_provider_from_selection_result(",
     "pub(crate) fn client_model_catalog_from_app_source(",
@@ -8444,11 +8448,7 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
             "proxy_core_adapter should not expose routing/route-resolve DTO `{marker}` as a type alias"
         );
     }
-    for marker in [
-        "ProviderSelectionFailure",
-        "ChannelRouteCandidate",
-        "RoutePlan",
-    ] {
+    for marker in ["ChannelRouteCandidate", "RoutePlan"] {
         assert!(
             adapter_routing_import.contains(marker),
             "proxy_core_adapter internals should import routing DTO `{marker}` directly from proxy_core::api::routing"
@@ -17458,14 +17458,14 @@ fn model_catalog_provider_owns_client_model_catalog_source_selection() {
 }
 
 #[test]
-fn proxy_core_adapter_delegates_route_candidate_empty_policy_to_core() {
+fn cc_switch_provider_source_delegates_route_candidate_empty_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let path = manifest_dir.join("src/proxy/host/cc_switch/provider_source.rs");
+    let source = fs::read_to_string(&path).expect("read provider_source.rs");
     let function = function_slice(
         &source,
-        "fn route_candidate_provider_ids_from_selection_result",
-        "pub(crate) async fn route_candidate_provider_ids_from_router_source",
+        "fn route_candidate_provider_ids_from_router_result",
+        "async fn route_candidate_provider_ids_from_router_source",
     );
 
     assert!(
@@ -17486,7 +17486,7 @@ fn proxy_core_adapter_delegates_route_candidate_empty_policy_to_core() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs route_candidate_provider_ids_from_selection_result:{} contains local empty-policy marker `{}`",
+                    "src/proxy/host/cc_switch/provider_source.rs route_candidate_provider_ids_from_router_result:{} contains local empty-policy marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -21985,11 +21985,20 @@ fn proxy_core_adapter_delegates_provider_source_to_host_module() {
     );
     assert!(
         source.contains("use crate::proxy_core::api::domain::{AppKind, ProviderSpec};")
-            && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
+            && source.contains(
+                "config_error_with_context as core_config_error_with_context, ProxyCoreError, ProxyCoreResult,"
+            )
             && source.contains(
                 "use crate::proxy_core::api::ports::{CurrentRouteTarget, ProviderSource};"
+            )
+            && source.contains("use crate::proxy_core::api::routing::ProviderSelectionFailure;")
+            && source.contains(".get_current_provider(")
+            && source.contains("current_providers.read().await")
+            && source.contains(".select_provider_ids(")
+            && source.contains(
+                "crate::proxy_core::api::routing::route_candidate_provider_ids_from_selection_result"
             ),
-        "CC Switch provider source should import core provider/source contracts directly"
+        "CC Switch provider source should own DB/runtime/router source helpers and import core provider/source contracts directly"
     );
     for adapter_type in [
         "CurrentRouteTarget",
