@@ -83,8 +83,6 @@ fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     core_config_error_with_context(context, error)
 }
 
-use crate::proxy_core::api::model_catalog::ModelMappingProjection;
-
 use crate::proxy_core::api::auth::{
     claude_desktop_provider_selection_error, claude_desktop_provider_unavailable_error,
 };
@@ -1040,58 +1038,6 @@ pub(crate) fn provider_claude_normalize_anthropic_messages(
         &provider.settings_config,
         api_format,
     )
-}
-
-fn apply_provider_model_mapping_from_provider(
-    body: Value,
-    provider: &Provider,
-) -> ModelMappingProjection {
-    crate::proxy_core::api::model_catalog::apply_provider_model_mapping(
-        body,
-        &provider.settings_config,
-    )
-}
-
-pub(crate) fn apply_forward_request_model_mapping_from_provider(
-    app_type: &AppType,
-    body: Value,
-    provider: &Provider,
-) -> Result<ModelMappingProjection, ProxyError> {
-    if matches!(app_type, AppType::ClaudeDesktop) {
-        return provider_claude_desktop_proxy_request_body(body, provider)
-            .map(|body| ModelMappingProjection {
-                body,
-                log_message: None,
-            })
-            .map_err(|issue| {
-                ProxyError::InvalidRequest(claude_desktop_proxy_request_body_issue_message(issue))
-            });
-    }
-
-    Ok(apply_provider_model_mapping_from_provider(body, provider))
-}
-
-fn claude_desktop_proxy_request_body_issue_message(
-    issue: ClaudeDesktopProviderProxyRequestBodyIssue,
-) -> String {
-    match issue {
-        ClaudeDesktopProviderProxyRequestBodyIssue::Routes(route_issue) => match route_issue {
-            ClaudeDesktopProviderProxyRouteIssue::Missing => {
-                "Claude Desktop proxy mode is missing model route mappings".to_string()
-            }
-            ClaudeDesktopProviderProxyRouteIssue::Empty => {
-                "Claude Desktop proxy mode requires at least one model route mapping".to_string()
-            }
-        },
-        ClaudeDesktopProviderProxyRequestBodyIssue::Body(body_issue) => match body_issue {
-            ClaudeDesktopProxyRequestBodyIssue::MissingModel => {
-                "Claude Desktop request is missing the model field".to_string()
-            }
-            ClaudeDesktopProxyRequestBodyIssue::UnknownRoute { requested_model } => {
-                format!("Claude Desktop model route is not configured: {requested_model}")
-            }
-        },
-    }
 }
 
 fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
@@ -8522,87 +8468,7 @@ base_url = "https://api.openai.com/v1"
     }
 
     #[test]
-    fn model_mapping_adapter_projects_body_and_log_message() {
-        let provider = Provider::with_id(
-            "provider-a".to_string(),
-            "Provider A".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "sonnet-mapped"
-                }
-            }),
-            None,
-        );
-
-        let projection = apply_provider_model_mapping_from_provider(
-            json!({"model": "claude-sonnet", "messages": []}),
-            &provider,
-        );
-
-        assert_eq!(
-            projection.body.get("model").and_then(Value::as_str),
-            Some("sonnet-mapped")
-        );
-        assert_eq!(
-            projection.log_message.as_deref(),
-            Some("[ModelMapper] 模型映射: claude-sonnet \u{2192} sonnet-mapped")
-        );
-
-        let unchanged = apply_provider_model_mapping_from_provider(
-            json!({"model": "unknown"}),
-            &Provider::with_id(
-                "provider-b".to_string(),
-                "Provider B".to_string(),
-                json!({}),
-                None,
-            ),
-        );
-        assert_eq!(
-            unchanged.body.get("model").and_then(Value::as_str),
-            Some("unknown")
-        );
-        assert!(unchanged.log_message.is_none());
-
-        let mut desktop_provider = Provider::with_id(
-            "desktop-proxy".to_string(),
-            "Desktop Proxy".to_string(),
-            json!({}),
-            None,
-        );
-        desktop_provider.meta = Some(ProviderMeta {
-            claude_desktop_mode: Some(ClaudeDesktopMode::Proxy),
-            claude_desktop_model_routes: HashMap::from([(
-                "claude-sonnet-4-6".to_string(),
-                ClaudeDesktopModelRoute {
-                    model: "upstream-sonnet".to_string(),
-                    label_override: None,
-                    supports_1m: Some(true),
-                },
-            )]),
-            ..ProviderMeta::default()
-        });
-        let desktop_projection = apply_forward_request_model_mapping_from_provider(
-            &AppType::ClaudeDesktop,
-            json!({"model": "claude-sonnet-4-6", "messages": []}),
-            &desktop_provider,
-        )
-        .expect("desktop model mapping");
-        assert_eq!(
-            desktop_projection.body.get("model").and_then(Value::as_str),
-            Some("upstream-sonnet")
-        );
-        assert!(desktop_projection.log_message.is_none());
-        let desktop_error = apply_forward_request_model_mapping_from_provider(
-            &AppType::ClaudeDesktop,
-            json!({"model": "unknown-route", "messages": []}),
-            &desktop_provider,
-        )
-        .expect_err("unknown desktop route");
-        assert!(matches!(
-            desktop_error,
-            ProxyError::InvalidRequest(message) if message.contains("unknown-route")
-        ));
-
+    fn media_prevention_adapter_projects_core_policy() {
         let mut image_body = json!({
             "model": "text-model",
             "messages": [{

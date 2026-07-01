@@ -5736,9 +5736,8 @@ fn proxy_core_adapter_does_not_export_domain_or_model_catalog_aliases() {
     assert!(
         adapter_runtime_source.contains(
             "use crate::proxy_core::api::domain::{AppKind, ProviderKind};"
-        ) && adapter_runtime_source
-            .contains("use crate::proxy_core::api::model_catalog::ModelMappingProjection;"),
-        "proxy_core_adapter internals should import domain/model catalog DTOs directly from proxy_core"
+        ) && !adapter_runtime_source.contains("ModelMappingProjection"),
+        "proxy_core_adapter internals should import domain DTOs directly and should not retain model mapping DTOs"
     );
 }
 
@@ -13103,7 +13102,7 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
     let normalize_slice = function_slice(
         &source,
         "pub(crate) fn provider_claude_normalize_anthropic_messages",
-        "fn apply_provider_model_mapping_from_provider",
+        "fn provider_kind_from_provider",
     );
 
     assert!(
@@ -13161,10 +13160,14 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
 }
 
 #[test]
-fn proxy_core_adapter_keeps_provider_model_mapping_facade_host_shaped() {
+fn forwarder_request_source_owns_provider_model_mapping_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let source = fs::read_to_string(
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs"),
+    )
+    .expect("read forwarder_request_source.rs");
     let mapping_slice = function_slice(
         &source,
         "fn apply_provider_model_mapping_from_provider",
@@ -13172,23 +13175,29 @@ fn proxy_core_adapter_keeps_provider_model_mapping_facade_host_shaped() {
     );
 
     assert!(
-        !source.contains("pub(crate) type ModelMappingProjection"),
+        !adapter_source.contains("pub(crate) type ModelMappingProjection"),
         "adapter should not expose ModelMappingProjection as a model catalog DTO alias"
     );
     assert!(
-        source.contains("use crate::proxy_core::api::model_catalog::ModelMappingProjection;"),
-        "adapter internals should import ModelMappingProjection directly from proxy_core::api::model_catalog"
+        !adapter_source.contains("fn apply_provider_model_mapping_from_provider")
+            && !adapter_source
+                .contains("pub(crate) fn apply_forward_request_model_mapping_from_provider"),
+        "proxy_core_adapter should not retain provider model mapping request-source facades"
     );
     assert!(
-        !source.contains(
+        source.contains("ModelMappingProjection")
+            && source.contains("apply_provider_model_mapping"),
+        "forwarder request source should import provider model mapping contracts directly from proxy_core"
+    );
+    assert!(
+        !adapter_source.contains(
             "pub(crate) use crate::proxy_core::api::model_catalog::apply_provider_model_mapping"
         ),
         "adapter should not re-export the pure provider model mapping helper"
     );
     assert!(
-        mapping_slice
-            .contains("crate::proxy_core::api::model_catalog::apply_provider_model_mapping("),
-        "adapter provider-shaped mapping wrapper should delegate to proxy-core internally"
+        mapping_slice.contains("apply_provider_model_mapping(body, &provider.settings_config)"),
+        "forwarder request source provider-shaped mapping wrapper should delegate to proxy-core internally"
     );
 }
 
@@ -21508,20 +21517,28 @@ fn production_forwarder_uses_request_source_resource() {
 }
 
 #[test]
-fn proxy_core_adapter_forward_model_mapping_uses_adapter_claude_desktop_projection() {
+fn forwarder_request_source_model_mapping_uses_adapter_claude_desktop_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let source = fs::read_to_string(
+        manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs"),
+    )
+    .expect("read forwarder_request_source.rs");
     let mapping_slice = function_slice(
         &source,
-        "pub(crate) fn apply_forward_request_model_mapping_from_provider(",
-        "#[cfg(test)]",
+        "fn apply_forward_request_model_mapping_from_provider(",
+        "fn claude_desktop_proxy_request_body_issue_message",
     );
 
     assert!(
         mapping_slice.contains("provider_claude_desktop_proxy_request_body(")
             && mapping_slice.contains("ModelMappingProjection"),
-        "proxy_core_adapter should map Claude Desktop forward request bodies through adapter projection"
+        "forwarder request source should map Claude Desktop forward request bodies through adapter projection"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) fn apply_forward_request_model_mapping_from_provider("),
+        "proxy_core_adapter should not expose forward request model mapping after request source owns it"
     );
 
     let forbidden_markers = [
@@ -21534,7 +21551,7 @@ fn proxy_core_adapter_forward_model_mapping_uses_adapter_claude_desktop_projecti
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs apply_forward_request_model_mapping_from_provider:{} contains host request body projection marker `{}`",
+                    "src/proxy/host/cc_switch/forwarder_request_source.rs apply_forward_request_model_mapping_from_provider:{} contains host request body projection marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -21544,7 +21561,7 @@ fn proxy_core_adapter_forward_model_mapping_uses_adapter_claude_desktop_projecti
 
     assert!(
         violations.is_empty(),
-        "proxy_core_adapter must not map Claude Desktop forward request bodies through host config:\n{}",
+        "forwarder request source must not map Claude Desktop forward request bodies through host config:\n{}",
         violations.join("\n")
     );
 }

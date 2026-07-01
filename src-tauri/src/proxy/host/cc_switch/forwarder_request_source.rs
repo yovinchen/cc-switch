@@ -31,7 +31,9 @@ use crate::proxy::provider::{
     claude_provider_api_format, codex_provider_apply_chat_upstream_model,
     codex_provider_chat_reasoning_options, codex_provider_should_convert_responses_to_chat,
 };
-use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
+use crate::proxy_core::api::auth::{
+    validate_managed_account_upstream_auth, ClaudeDesktopProxyRequestBodyIssue,
+};
 use crate::proxy_core::api::config::{
     cache_injection_log_message, normalize_thinking_type, rectify_anthropic_request,
     rectify_thinking_budget, should_rectify_thinking_budget, should_rectify_thinking_signature,
@@ -39,8 +41,9 @@ use crate::proxy_core::api::config::{
 };
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::model_catalog::{
-    apply_copilot_model_normalization, strip_one_m_suffix_for_upstream,
-    strip_one_m_suffix_for_upstream_from_body,
+    apply_copilot_model_normalization, apply_provider_model_mapping,
+    strip_one_m_suffix_for_upstream, strip_one_m_suffix_for_upstream_from_body,
+    ModelMappingProjection,
 };
 use crate::proxy_core::api::transforms::responses_to_chat_completions_with_options;
 use crate::proxy_core::api::transport::{
@@ -68,7 +71,8 @@ use crate::proxy_core::api::transport::{
     PromptCacheTraceLogInput, UpstreamRequestHeadersInput, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_adapter::{
-    apply_forward_request_model_mapping_from_provider, provider_claude_normalize_anthropic_messages,
+    provider_claude_desktop_proxy_request_body, provider_claude_normalize_anthropic_messages,
+    ClaudeDesktopProviderProxyRequestBodyIssue, ClaudeDesktopProviderProxyRouteIssue,
 };
 
 pub(crate) struct CcSwitchForwarderRequestSource {
@@ -155,6 +159,55 @@ impl CcSwitchForwarderRequestSource {
             body: warmup_override.body,
             classification,
         }
+    }
+}
+
+fn apply_provider_model_mapping_from_provider(
+    body: Value,
+    provider: &Provider,
+) -> ModelMappingProjection {
+    apply_provider_model_mapping(body, &provider.settings_config)
+}
+
+fn apply_forward_request_model_mapping_from_provider(
+    app_type: &AppType,
+    body: Value,
+    provider: &Provider,
+) -> Result<ModelMappingProjection, ProxyError> {
+    if matches!(app_type, AppType::ClaudeDesktop) {
+        return provider_claude_desktop_proxy_request_body(body, provider)
+            .map(|body| ModelMappingProjection {
+                body,
+                log_message: None,
+            })
+            .map_err(|issue| {
+                ProxyError::InvalidRequest(claude_desktop_proxy_request_body_issue_message(issue))
+            });
+    }
+
+    Ok(apply_provider_model_mapping_from_provider(body, provider))
+}
+
+fn claude_desktop_proxy_request_body_issue_message(
+    issue: ClaudeDesktopProviderProxyRequestBodyIssue,
+) -> String {
+    match issue {
+        ClaudeDesktopProviderProxyRequestBodyIssue::Routes(route_issue) => match route_issue {
+            ClaudeDesktopProviderProxyRouteIssue::Missing => {
+                "Claude Desktop proxy mode is missing model route mappings".to_string()
+            }
+            ClaudeDesktopProviderProxyRouteIssue::Empty => {
+                "Claude Desktop proxy mode requires at least one model route mapping".to_string()
+            }
+        },
+        ClaudeDesktopProviderProxyRequestBodyIssue::Body(body_issue) => match body_issue {
+            ClaudeDesktopProxyRequestBodyIssue::MissingModel => {
+                "Claude Desktop request is missing the model field".to_string()
+            }
+            ClaudeDesktopProxyRequestBodyIssue::UnknownRoute { requested_model } => {
+                format!("Claude Desktop model route is not configured: {requested_model}")
+            }
+        },
     }
 }
 
@@ -734,9 +787,10 @@ pub(crate) fn default_forwarder_request_source() -> ForwarderRequestSourceRef {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::{Provider, ProviderMeta};
+    use crate::provider::{ClaudeDesktopMode, ClaudeDesktopModelRoute, Provider, ProviderMeta};
     use crate::proxy_core::api::routing::ResolvedChannelAttempt;
     use serde_json::json;
+    use std::collections::HashMap;
 
     #[test]
     fn custom_user_agent_header_uses_core_policy_and_suppresses_copilot() {
@@ -804,5 +858,88 @@ mod tests {
         assert_eq!(body["model"], "upstream-sonnet");
         assert_eq!(body["stream"], json!(false));
         assert_eq!(body["temperature"], json!(0.2));
+    }
+
+    #[test]
+    fn provider_request_body_projects_model_mapping_and_desktop_routes() {
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "sonnet-mapped"
+                }
+            }),
+            None,
+        );
+
+        let projection = apply_provider_model_mapping_from_provider(
+            json!({"model": "claude-sonnet", "messages": []}),
+            &provider,
+        );
+
+        assert_eq!(
+            projection.body.get("model").and_then(Value::as_str),
+            Some("sonnet-mapped")
+        );
+        assert_eq!(
+            projection.log_message.as_deref(),
+            Some("[ModelMapper] 模型映射: claude-sonnet \u{2192} sonnet-mapped")
+        );
+
+        let unchanged = apply_provider_model_mapping_from_provider(
+            json!({"model": "unknown"}),
+            &Provider::with_id(
+                "provider-b".to_string(),
+                "Provider B".to_string(),
+                json!({}),
+                None,
+            ),
+        );
+        assert_eq!(
+            unchanged.body.get("model").and_then(Value::as_str),
+            Some("unknown")
+        );
+        assert!(unchanged.log_message.is_none());
+
+        let mut desktop_provider = Provider::with_id(
+            "desktop-proxy".to_string(),
+            "Desktop Proxy".to_string(),
+            json!({}),
+            None,
+        );
+        desktop_provider.meta = Some(ProviderMeta {
+            claude_desktop_mode: Some(ClaudeDesktopMode::Proxy),
+            claude_desktop_model_routes: HashMap::from([(
+                "claude-sonnet-4-6".to_string(),
+                ClaudeDesktopModelRoute {
+                    model: "upstream-sonnet".to_string(),
+                    label_override: None,
+                    supports_1m: Some(true),
+                },
+            )]),
+            ..ProviderMeta::default()
+        });
+        let desktop_projection = apply_forward_request_model_mapping_from_provider(
+            &AppType::ClaudeDesktop,
+            json!({"model": "claude-sonnet-4-6", "messages": []}),
+            &desktop_provider,
+        )
+        .expect("desktop model mapping");
+        assert_eq!(
+            desktop_projection.body.get("model").and_then(Value::as_str),
+            Some("upstream-sonnet")
+        );
+        assert!(desktop_projection.log_message.is_none());
+        let desktop_error = apply_forward_request_model_mapping_from_provider(
+            &AppType::ClaudeDesktop,
+            json!({"model": "unknown-route", "messages": []}),
+            &desktop_provider,
+        )
+        .expect_err("unknown desktop route");
+        assert!(matches!(
+            desktop_error,
+            ProxyError::InvalidRequest(message) if message.contains("unknown-route")
+        ));
     }
 }
