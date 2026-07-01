@@ -467,7 +467,7 @@ pub(crate) fn preserve_codex_mcp_servers_from_existing_config(
     Ok(())
 }
 
-pub(crate) fn preserve_codex_oauth_auth_in_backup_if_present(
+fn preserve_codex_oauth_auth_in_backup_if_present(
     target_settings: &mut Value,
     existing_backup: &Value,
 ) -> Result<(), CodexBackupProjectionIssue> {
@@ -1696,7 +1696,7 @@ pub(crate) fn provider_github_copilot_managed_account_id(provider: &Provider) ->
     provider_managed_account_id_for(provider, GITHUB_COPILOT_AUTH_PROVIDER)
 }
 
-pub(crate) fn provider_settings_with_live_token_sync(
+fn provider_settings_with_live_token_sync(
     app_type: &AppType,
     live_config: &Value,
     provider_settings: &Value,
@@ -1754,7 +1754,7 @@ where
     Ok(())
 }
 
-pub(crate) fn codex_preserved_auth_live_config_text_if_proxy_placeholder(
+fn codex_preserved_auth_live_config_text_if_proxy_placeholder(
     config: &Value,
     placeholder: &str,
     include_optional_catalog: bool,
@@ -1783,7 +1783,7 @@ pub(crate) fn codex_preserved_auth_live_config_text_if_proxy_placeholder(
         .map_err(|e| e.to_string())
 }
 
-pub(crate) fn codex_preserved_auth_live_config_text_for_policy(
+fn codex_preserved_auth_live_config_text_for_policy(
     config: &Value,
     placeholder: &str,
     preserve_auth: bool,
