@@ -4,7 +4,7 @@ use crate::database::{
     ProxyChannelSourceKind,
 };
 use crate::error::AppError;
-use crate::provider::{Provider, ProviderMeta};
+use crate::provider::Provider;
 use crate::proxy::engine::forward_pipeline::{
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderAuthSourceRef,
     ForwarderProtocolStateSourceRef, ForwarderRequestSourceRef, ForwarderResponseSourceRef,
@@ -42,9 +42,9 @@ use crate::proxy::RequestForwarder;
 use crate::proxy_core::api::config::{AllowResult, AppProxyConfig, ResponseRuntimePolicy};
 use crate::proxy_core::api::domain::{AppKind, ProviderKind};
 use crate::proxy_core::api::routing::{
-    ChannelRouteCandidate, LegacyChannelMigrationPlanInput, LegacyChannelModelProjection,
-    LegacyChannelProjection, LegacyEndpointInput, LegacyModelRouteInput,
-    LegacyProviderChannelMigrationInput, LegacyProviderProjectionInput, RoutePlan,
+    LegacyChannelMigrationPlanInput, LegacyChannelModelProjection, LegacyChannelProjection,
+    LegacyEndpointInput, LegacyModelRouteInput, LegacyProviderChannelMigrationInput,
+    LegacyProviderProjectionInput, RoutePlan,
 };
 use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::{AnthropicToolSchemaHints, GeminiShadowStore};
@@ -1030,28 +1030,6 @@ async fn forward_proxy_request_with_host_runtime(
     .await
 }
 
-pub(crate) fn apply_channel_provider_overrides(
-    app_type: &AppType,
-    provider: &mut Provider,
-    candidate: &ChannelRouteCandidate,
-) {
-    let plan = crate::proxy_core::api::routing::channel_provider_override_plan(
-        &AppKind::from(app_type),
-        candidate,
-    );
-    crate::proxy_core::api::routing::apply_channel_provider_settings_overrides(
-        &mut provider.settings_config,
-        &plan,
-    );
-
-    if let Some(api_format) = plan.api_format {
-        provider
-            .meta
-            .get_or_insert_with(ProviderMeta::default)
-            .api_format = Some(api_format);
-    }
-}
-
 pub(crate) fn provider_claude_normalize_anthropic_messages(
     body: &mut Value,
     provider: &Provider,
@@ -1671,10 +1649,10 @@ mod tests {
     };
     use crate::proxy_core::api::routing::{
         apply_route_candidate_circuit_availability, resolve_channel_route,
-        route_candidate_channel_circuit_keys, select_provider_ids, ChannelSpec, ChannelStatus,
-        InterfaceKind, LegacyChannelProjectionInput, ProviderSelectionCandidate,
-        ProviderSelectionFailure, ProviderSelectionInput, RouteResolveChannelInput,
-        RouteResolveModelInput, RouteSelection,
+        route_candidate_channel_circuit_keys, select_provider_ids, ChannelRouteCandidate,
+        ChannelSpec, ChannelStatus, InterfaceKind, LegacyChannelProjectionInput,
+        ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput,
+        RouteResolveChannelInput, RouteResolveModelInput, RouteSelection,
     };
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{

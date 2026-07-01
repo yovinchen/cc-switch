@@ -8451,12 +8451,16 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
             "proxy_core_adapter should not expose routing/route-resolve DTO `{marker}` as a type alias"
         );
     }
-    for marker in ["ChannelRouteCandidate", "RoutePlan"] {
+    for marker in ["RoutePlan"] {
         assert!(
             adapter_routing_import.contains(marker),
             "proxy_core_adapter internals should import routing DTO `{marker}` directly from proxy_core::api::routing"
         );
     }
+    assert!(
+        !adapter_routing_import.contains("ChannelRouteCandidate"),
+        "proxy_core_adapter should not import ChannelRouteCandidate after route_attempt owns channel attempts"
+    );
     for marker in ["RouteResolveRequest", "RouteResolveResponse"] {
         assert!(
             !adapter_management_import.contains(marker),
@@ -17974,7 +17978,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let host_forward_function = function_slice(
         &source,
         "async fn forward_proxy_request_with_host_runtime",
-        "pub(crate) fn apply_channel_provider_overrides",
+        "pub(crate) fn provider_claude_normalize_anthropic_messages",
     );
     let adapter_core_ports_import = optional_function_slice(
         &source,

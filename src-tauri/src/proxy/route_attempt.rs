@@ -4,21 +4,37 @@
 //! materialized channels to become the live routing unit.
 
 use crate::app_config::AppType;
-use crate::provider::Provider;
-use crate::proxy_core::api::routing::{
-    default_route_candidate_from_selection, resolved_channel_attempt_from_selection,
-    route_plan_selections, ResolvedChannelAttempt, RoutePlan, RouteSelection,
-};
+use crate::provider::{Provider, ProviderMeta};
+use crate::proxy_core::api::domain::AppKind;
 #[cfg(test)]
+use crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate;
 use crate::proxy_core::api::routing::{
-    resolved_channel_attempt_from_candidate, ChannelRouteCandidate,
+    apply_channel_provider_settings_overrides, channel_provider_override_plan,
+    default_route_candidate_from_selection, resolved_channel_attempt_from_selection,
+    route_plan_selections, ChannelRouteCandidate, ResolvedChannelAttempt, RoutePlan,
+    RouteSelection,
 };
 #[cfg(test)]
 use crate::proxy_core::api::transport::apply_resolved_channel_model_override;
-use crate::proxy_core_adapter::apply_channel_provider_overrides;
 #[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
+
+fn apply_channel_provider_overrides(
+    app_type: &AppType,
+    provider: &mut Provider,
+    candidate: &ChannelRouteCandidate,
+) {
+    let plan = channel_provider_override_plan(&AppKind::from(app_type), candidate);
+    apply_channel_provider_settings_overrides(&mut provider.settings_config, &plan);
+
+    if let Some(api_format) = plan.api_format {
+        provider
+            .meta
+            .get_or_insert_with(ProviderMeta::default)
+            .api_format = Some(api_format);
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct ForwardAttempt {
