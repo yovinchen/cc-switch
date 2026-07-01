@@ -14,19 +14,16 @@ use crate::proxy::engine::forward_pipeline::{
 #[cfg(test)]
 use crate::proxy::engine::forward_pipeline::{
     ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
-    ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptBodyInput,
-    ForwarderAttemptRuntimeSource, ForwarderAuthHeadersInput, ForwarderAuthSource,
-    ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
+    ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCodexChatProtocolEnrichmentInput, ForwarderCodexResponsesToChatInput,
-    ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
     ForwarderCopilotRequestOptimizationGateInput, ForwarderCopilotRequestOptimizationInput,
     ForwarderFailoverSwitchTarget, ForwarderFailureDecision, ForwarderMediaRetryPlanInput,
     ForwarderPreparedRequest, ForwarderProtocolStateSource, ForwarderProviderRequestBodyInput,
     ForwarderProviderTransformInput, ForwarderRectifierRetryFailureDecision,
     ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
-    ForwarderRequestPreparationInput, ForwarderRequestSource,
-    ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
-    ForwarderTransformPlanInput, ForwarderUpstreamRequestLogInput, ForwarderUpstreamUrlInput,
+    ForwarderRequestPreparationInput, ForwarderThinkingBudgetRectifierInput,
+    ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
+    ForwarderUpstreamUrlInput,
 };
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
@@ -38,9 +35,7 @@ use crate::proxy::route_attempt::ForwardAttempt;
 #[cfg(test)]
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
-use crate::proxy_core::api::config::{
-    AllowResult, AppProxyConfig, ProxyAppConfig, ResponseRuntimePolicy,
-};
+use crate::proxy_core::api::config::{AllowResult, AppProxyConfig, ResponseRuntimePolicy};
 use crate::proxy_core::api::domain::{
     AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,
 };
@@ -307,13 +302,6 @@ pub(crate) fn forward_current_provider_id_from_db_sources(
     forward_current_provider_id_from_source(settings_current_provider_id.as_deref(), || {
         db.get_current_provider(app_type.as_str()).ok().flatten()
     })
-}
-
-pub(crate) fn app_proxy_config_from_proxy_app_config(
-    config: &ProxyAppConfig,
-) -> Result<AppProxyConfig, String> {
-    serde_json::from_value(config.raw.clone())
-        .map_err(|error| format!("invalid app proxy config: {error}"))
 }
 
 use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
@@ -2459,6 +2447,9 @@ mod tests {
         AuthBinding, AuthBindingSource, ClaudeDesktopMode, ClaudeDesktopModelRoute, ProviderMeta,
         ProviderTestConfig, UsageScript,
     };
+    use crate::proxy::engine::forward_pipeline::{
+        ForwarderRequestRectifierPlan, ForwarderRuntimeStateSource,
+    };
     use crate::proxy::engine::response_pipeline::{
         forward_error_usage_record_from_response_context,
         non_streaming_response_usage_record_from_response_context, response_usage_provider_facts,
@@ -2555,7 +2546,8 @@ mod tests {
     };
     use crate::proxy_core::api::usage::{
         usage_selected_provider_missing_log_message, TokenUsage, TransformedResponseUsageFormat,
-        UsageRecordFailureLogContext, UsageRouteContext, UsageSelectedProviderMissingPhase,
+        UsageRecord, UsageRecordFailureLogContext, UsageRouteContext,
+        UsageSelectedProviderMissingPhase,
     };
     use crate::settings::CustomEndpoint;
     use futures::future::BoxFuture;
@@ -5818,37 +5810,12 @@ base_url = "https://api.openai.com/v1"
         assert!(forwarder_config.optimizer.enabled);
         assert_eq!(forwarder_config.optimizer.cache_ttl, "2h");
         assert_eq!(forwarder_config.copilot_optimizer.warmup_model, "gpt-5");
-        let projected_app = crate::proxy_core::api::config::proxy_app_config_from_parts(
-            AppKind::Claude,
-            app_config.clone(),
-            Some("anthropic-main".to_string()),
-            RectifierConfig::default(),
-            OptimizerConfig::default(),
-            CopilotOptimizerConfig::default(),
-        );
-        assert_eq!(projected_app.app, Some(AppKind::Claude));
-        assert_eq!(
-            projected_app.raw["currentProviderId"],
-            json!("anthropic-main")
-        );
         let app_summary = crate::proxy_core::api::ports::AppSummaryConfig::new(
             app_config.enabled,
             app_config.auto_failover_enabled,
         );
         assert!(app_summary.enabled);
         assert!(app_summary.auto_failover_enabled);
-        assert_eq!(
-            app_proxy_config_from_proxy_app_config(&projected_app)
-                .expect("project host app config from core raw"),
-            app_config
-        );
-        let invalid_projected_app = ProxyAppConfig {
-            raw: json!({ "enabled": true }),
-            ..projected_app.clone()
-        };
-        let error = app_proxy_config_from_proxy_app_config(&invalid_projected_app)
-            .expect_err("invalid raw app config");
-        assert!(error.starts_with("invalid app proxy config:"));
 
         let mut disabled_app_config = app_config.clone();
         disabled_app_config.auto_failover_enabled = false;

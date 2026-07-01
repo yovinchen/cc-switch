@@ -2810,6 +2810,8 @@ fn request_context_owns_core_context_imports() {
 
     assert!(
         source.contains("use crate::proxy_core::api::config::{")
+            && source.contains("AppProxyConfig")
+            && source.contains("ProxyAppConfig")
             && source.contains("ResponseRuntimePolicy")
             && source.contains("use crate::proxy_core::api::domain::AppKind;")
             && source.contains("use crate::proxy_core::api::errors::{")
@@ -2874,6 +2876,14 @@ fn request_context_owns_core_context_imports() {
         violations.is_empty(),
         "RequestContext should not route pure core context contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        !source.contains("use crate::proxy_core_adapter::"),
+        "RequestContext should not import proxy_core_adapter for app config or core request context contracts"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) fn app_proxy_config_from_proxy_app_config"),
+        "proxy_core_adapter should not own RequestContext app config raw projection"
     );
     assert!(
         !adapter_source.contains(
@@ -6634,8 +6644,8 @@ fn proxy_core_adapter_does_not_export_proxy_config_contract_aliases() {
         );
     }
     assert!(
-        adapter_config_import.contains("ProxyAppConfig"),
-        "proxy_core_adapter internals should import the remaining ProxyAppConfig use directly from proxy_core config"
+        !adapter_config_import.contains("ProxyAppConfig"),
+        "proxy_core_adapter should not import ProxyAppConfig after RequestContext owns app config raw projection"
     );
     assert!(
         !adapter_config_import.contains("ProxyGlobalConfig")

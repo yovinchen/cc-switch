@@ -9,7 +9,8 @@ use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy_core::api::config::{
-    ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
+    AppProxyConfig, ProxyAppConfig, ResponseRuntimePolicy, ResponseTimeoutConfig,
+    StreamingTimeoutConfig,
 };
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::errors::{
@@ -23,9 +24,15 @@ use crate::proxy_core::api::transport::{
     request_model_for_forward, resolve_response_runtime_policy, ProxyResult,
 };
 use crate::proxy_core::api::usage::{usage_route_context_from_selection, UsageRouteContext};
-use crate::proxy_core_adapter::app_proxy_config_from_proxy_app_config;
 use axum::http::HeaderMap;
 use std::time::Instant;
+
+fn app_proxy_config_from_proxy_app_config(
+    config: &ProxyAppConfig,
+) -> Result<AppProxyConfig, String> {
+    serde_json::from_value(config.raw.clone())
+        .map_err(|error| format!("invalid app proxy config: {error}"))
+}
 
 #[derive(Debug, Clone)]
 struct RequestContextRouteUpdate {
@@ -351,6 +358,46 @@ mod tests {
         );
         assert_eq!(ctx.provider_name_for_error(), "Provider A");
         assert_eq!(ctx.fallback_provider_id(), "unselected:codex");
+    }
+
+    #[test]
+    fn app_proxy_config_projection_reads_core_raw_config() {
+        let mut app_config = crate::proxy_core::api::config::app_proxy_config_defaults_for_app(
+            AppType::Claude.as_str(),
+        );
+        app_config.enabled = true;
+        app_config.auto_failover_enabled = true;
+        app_config.max_retries = 3;
+        app_config.non_streaming_timeout = 600;
+        app_config.streaming_first_byte_timeout = 60;
+        app_config.streaming_idle_timeout = 120;
+        let projected_app = crate::proxy_core::api::config::proxy_app_config_from_parts(
+            AppKind::Claude,
+            app_config.clone(),
+            Some("anthropic-main".to_string()),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        );
+
+        assert_eq!(projected_app.app, Some(AppKind::Claude));
+        assert_eq!(
+            projected_app.raw["currentProviderId"],
+            json!("anthropic-main")
+        );
+        assert_eq!(
+            app_proxy_config_from_proxy_app_config(&projected_app)
+                .expect("project host app config from core raw"),
+            app_config
+        );
+
+        let invalid_projected_app = ProxyAppConfig {
+            raw: json!({ "enabled": true }),
+            ..projected_app
+        };
+        let error = app_proxy_config_from_proxy_app_config(&invalid_projected_app)
+            .expect_err("invalid raw app config");
+        assert!(error.starts_with("invalid app proxy config:"));
     }
 
     fn selection(
