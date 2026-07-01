@@ -16,8 +16,7 @@ use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::api::config::{
-    AllowResult, AppProxyConfig, ProxyAppConfig, ProxyGlobalConfig, ProxyRuntimeConfig,
-    ResponseRuntimePolicy,
+    AllowResult, AppProxyConfig, ProxyAppConfig, ResponseRuntimePolicy,
 };
 use crate::proxy_core::api::domain::{
     AppKind, ProviderKind, ProviderMetadata, ProviderMetadataInput, ProviderSpec,
@@ -273,74 +272,10 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
         .await;
 }
 
-use crate::proxy_core::api::config::{
-    proxy_app_config_from_parts as proxy_app_config_from_config_parts,
-    proxy_global_config_from_global_config as proxy_global_config_from_config,
-};
-
 fn current_provider_id_from_settings_for_app(app: &AppKind) -> Option<String> {
     app_type_option_from_proxy_core_app(app)
         .as_ref()
         .and_then(crate::settings::get_current_provider)
-}
-
-pub(crate) fn proxy_app_config_from_config_source(
-    app: AppKind,
-    config: AppProxyConfig,
-    rectifier: RectifierConfig,
-    optimizer: OptimizerConfig,
-    copilot_optimizer: CopilotOptimizerConfig,
-) -> ProxyAppConfig {
-    let settings_current_provider_id = current_provider_id_from_settings_for_app(&app);
-    proxy_app_config_from_config_source_parts(
-        app,
-        config,
-        settings_current_provider_id.as_deref(),
-        rectifier,
-        optimizer,
-        copilot_optimizer,
-    )
-}
-
-pub(crate) async fn proxy_global_config_from_db_source(
-    db: &Database,
-) -> ProxyCoreResult<ProxyGlobalConfig> {
-    let config = db
-        .get_global_proxy_config()
-        .await
-        .map_err(|error| app_error("load global proxy config", error))?;
-    Ok(proxy_global_config_from_config(config))
-}
-
-pub(crate) async fn proxy_app_config_from_db_source(
-    db: &Database,
-    app: &AppKind,
-) -> ProxyCoreResult<ProxyAppConfig> {
-    let config = db
-        .get_proxy_config_for_app(app.as_str())
-        .await
-        .map_err(|error| app_error("load app proxy config", error))?;
-    Ok(proxy_app_config_from_config_source(
-        app.clone(),
-        config,
-        db.get_rectifier_config().unwrap_or_default(),
-        db.get_optimizer_config().unwrap_or_default(),
-        db.get_copilot_optimizer_config().unwrap_or_default(),
-    ))
-}
-
-pub(crate) async fn app_summary_config_from_db_source(
-    db: &Database,
-    app: &AppKind,
-) -> ProxyCoreResult<AppSummaryConfig> {
-    let config = db
-        .get_proxy_config_for_app(app.as_str())
-        .await
-        .map_err(|error| app_error("load app summary config", error))?;
-    Ok(AppSummaryConfig::new(
-        config.enabled,
-        config.auto_failover_enabled,
-    ))
 }
 
 pub(crate) fn forward_current_provider_id_from_source(
@@ -370,43 +305,11 @@ pub(crate) fn forward_current_provider_id_from_db_sources(
     })
 }
 
-fn proxy_app_config_from_config_source_parts(
-    app: AppKind,
-    config: AppProxyConfig,
-    settings_current_provider_id: Option<&str>,
-    rectifier: RectifierConfig,
-    optimizer: OptimizerConfig,
-    copilot_optimizer: CopilotOptimizerConfig,
-) -> ProxyAppConfig {
-    let current_provider_id =
-        current_provider_id_option_from_sources(settings_current_provider_id, None);
-    proxy_app_config_from_config_parts(
-        app,
-        config,
-        current_provider_id,
-        rectifier,
-        optimizer,
-        copilot_optimizer,
-    )
-}
-
 pub(crate) fn app_proxy_config_from_proxy_app_config(
     config: &ProxyAppConfig,
 ) -> Result<AppProxyConfig, String> {
     serde_json::from_value(config.raw.clone())
         .map_err(|error| format!("invalid app proxy config: {error}"))
-}
-
-use crate::proxy_core::api::config::proxy_runtime_config_from_proxy_config as proxy_runtime_config_from_config;
-
-pub(crate) async fn proxy_runtime_config_from_db_source(
-    db: &Database,
-) -> ProxyCoreResult<ProxyRuntimeConfig> {
-    let config = db
-        .get_proxy_config()
-        .await
-        .map_err(|error| app_error("load runtime proxy config", error))?;
-    Ok(proxy_runtime_config_from_config(config, false))
 }
 
 use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
@@ -495,7 +398,7 @@ use crate::proxy_core::api::auth::{
 use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogSource,
 };
-use crate::proxy_core::api::ports::{AppSummaryConfig, AuthProvider, ChannelKeyRuntimeSource};
+use crate::proxy_core::api::ports::{AuthProvider, ChannelKeyRuntimeSource};
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 use crate::proxy_core::api::transforms::{
@@ -1147,10 +1050,9 @@ pub(crate) fn should_block_proxy_switch_to_provider(
 
 use crate::proxy_core::api::routing::{
     current_provider_db_fallback_required, current_provider_id_from_sources,
-    current_provider_id_option_from_sources, legacy_provider_codex_catalog_models_from_settings,
-    legacy_provider_config_text_from_settings, legacy_provider_env_from_settings,
-    provider_selection_candidate_from_failover_lookup, select_provider_ids,
-    should_block_proxy_switch_to_provider_category,
+    legacy_provider_codex_catalog_models_from_settings, legacy_provider_config_text_from_settings,
+    legacy_provider_env_from_settings, provider_selection_candidate_from_failover_lookup,
+    select_provider_ids, should_block_proxy_switch_to_provider_category,
 };
 
 pub(crate) fn legacy_provider_projection_input(
@@ -1314,10 +1216,6 @@ impl From<&AppType> for AppKind {
     fn from(value: &AppType) -> Self {
         Self::from(value.as_str())
     }
-}
-
-pub(crate) fn cc_switch_app_kinds() -> Vec<AppKind> {
-    AppType::all().map(|app| AppKind::from(&app)).collect()
 }
 
 pub(crate) fn app_type_option_from_proxy_core_app(app: &AppKind) -> Option<AppType> {
@@ -3536,13 +3434,6 @@ mod tests {
             AppKind::from(&AppType::OpenClaw),
             AppKind::Custom("openclaw".to_string())
         );
-        let catalog = cc_switch_app_kinds();
-        let expected_catalog = AppType::all()
-            .map(|app| AppKind::from(&app))
-            .collect::<Vec<_>>();
-        assert_eq!(catalog, expected_catalog);
-        assert!(catalog.contains(&AppKind::Claude));
-        assert!(catalog.contains(&AppKind::Custom("opencode".to_string())));
         assert_eq!(
             app_type_from_proxy_core_app(&AppKind::Claude).expect("claude app"),
             AppType::Claude
@@ -6559,10 +6450,10 @@ base_url = "https://api.openai.com/v1"
         assert!(forwarder_config.optimizer.enabled);
         assert_eq!(forwarder_config.optimizer.cache_ttl, "2h");
         assert_eq!(forwarder_config.copilot_optimizer.warmup_model, "gpt-5");
-        let projected_app = proxy_app_config_from_config_source_parts(
+        let projected_app = crate::proxy_core::api::config::proxy_app_config_from_parts(
             AppKind::Claude,
             app_config.clone(),
-            Some("anthropic-main"),
+            Some("anthropic-main".to_string()),
             RectifierConfig::default(),
             OptimizerConfig::default(),
             CopilotOptimizerConfig::default(),
@@ -6572,8 +6463,10 @@ base_url = "https://api.openai.com/v1"
             projected_app.raw["currentProviderId"],
             json!("anthropic-main")
         );
-        let app_summary =
-            AppSummaryConfig::new(app_config.enabled, app_config.auto_failover_enabled);
+        let app_summary = crate::proxy_core::api::ports::AppSummaryConfig::new(
+            app_config.enabled,
+            app_config.auto_failover_enabled,
+        );
         assert!(app_summary.enabled);
         assert!(app_summary.auto_failover_enabled);
         assert_eq!(
@@ -6618,7 +6511,11 @@ base_url = "https://api.openai.com/v1"
             Some(true)
         );
         assert!(
-            !proxy_runtime_config_from_config(ProxyConfig::default(), false).privacy_filter_enabled
+            !crate::proxy_core::api::config::proxy_runtime_config_from_proxy_config(
+                ProxyConfig::default(),
+                false
+            )
+            .privacy_filter_enabled
         );
     }
 

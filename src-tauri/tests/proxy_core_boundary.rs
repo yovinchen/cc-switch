@@ -6602,6 +6602,11 @@ fn proxy_core_adapter_does_not_export_proxy_config_contract_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let adapter_config_import = optional_function_slice(
+        &adapter_source,
+        "use crate::proxy_core::api::config::{",
+        "};",
+    );
 
     for alias in [
         "pub(crate) type ProxyRuntimeConfig = crate::proxy_core::api::config::ProxyRuntimeConfig;",
@@ -6613,13 +6618,15 @@ fn proxy_core_adapter_does_not_export_proxy_config_contract_aliases() {
             "proxy_core_adapter should not expose config contract alias `{alias}`"
         );
     }
-    for core_config_type in ["ProxyAppConfig", "ProxyGlobalConfig", "ProxyRuntimeConfig"] {
-        assert!(
-            adapter_source.contains(core_config_type)
-                && adapter_source.contains("use crate::proxy_core::api::config::{"),
-            "proxy_core_adapter internals should import {core_config_type} directly from proxy_core config"
-        );
-    }
+    assert!(
+        adapter_config_import.contains("ProxyAppConfig"),
+        "proxy_core_adapter internals should import the remaining ProxyAppConfig use directly from proxy_core config"
+    );
+    assert!(
+        !adapter_config_import.contains("ProxyGlobalConfig")
+            && !adapter_config_import.contains("ProxyRuntimeConfig"),
+        "proxy_core_adapter should not import config contracts it no longer owns"
+    );
 }
 
 #[test]
@@ -21581,7 +21588,7 @@ fn proxy_core_adapter_delegates_config_source_to_host_module() {
         "pub(crate) use crate::proxy_core::api::ports::{",
         "};",
     );
-    let source_adapter_import = function_slice(
+    let source_adapter_import = optional_function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
         "};\nuse futures::future::BoxFuture;",
@@ -21591,26 +21598,46 @@ fn proxy_core_adapter_delegates_config_source_to_host_module() {
         source.contains("pub(crate) struct CcSwitchConfigSource")
             && source.contains("impl ProxyConfigSource for CcSwitchConfigSource")
             && source.contains("cc_switch_app_kinds()")
-            && source.contains("proxy_global_config_from_db_source(&self.db).await")
-            && source.contains("proxy_app_config_from_db_source(&self.db, app).await")
-            && source.contains("app_summary_config_from_db_source(&self.db, app).await")
-            && source.contains("proxy_runtime_config_from_db_source(&self.db).await"),
-        "CC Switch config source should live in host/cc_switch/config_source.rs"
+            && source.contains("AppType::all()")
+            && source.contains(".get_global_proxy_config()")
+            && source.contains("proxy_global_config_from_global_config(config)")
+            && source.contains(".get_proxy_config_for_app(app.as_str())")
+            && source.contains(".get_rectifier_config().unwrap_or_default()")
+            && source.contains(".get_optimizer_config().unwrap_or_default()")
+            && source.contains(".get_copilot_optimizer_config().unwrap_or_default()")
+            && source.contains("AppSummaryConfig::new(")
+            && source.contains(".get_proxy_config()")
+            && source.contains("proxy_runtime_config_from_proxy_config(config, false)"),
+        "CC Switch config source should own DB-backed config reads in host/cc_switch/config_source.rs"
     );
     assert!(
         !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::config_source::CcSwitchConfigSource"
         ) && !adapter_source.contains("pub(crate) struct CcSwitchConfigSource")
-            && !adapter_source.contains("impl ProxyConfigSource for CcSwitchConfigSource"),
-        "proxy_core_adapter should not own or re-export the CC Switch config source"
+            && !adapter_source.contains("impl ProxyConfigSource for CcSwitchConfigSource")
+            && !adapter_source.contains("pub(crate) fn cc_switch_app_kinds")
+            && !adapter_source.contains("pub(crate) fn proxy_app_config_from_config_source(")
+            && !adapter_source.contains("pub(crate) async fn proxy_global_config_from_db_source")
+            && !adapter_source.contains("pub(crate) async fn proxy_app_config_from_db_source")
+            && !adapter_source.contains("pub(crate) async fn app_summary_config_from_db_source")
+            && !adapter_source.contains("pub(crate) async fn proxy_runtime_config_from_db_source"),
+        "proxy_core_adapter should not own, re-export, or publish CC Switch config source helpers"
     );
     assert!(
-        source.contains(
-            "use crate::proxy_core::api::config::{ProxyAppConfig, ProxyGlobalConfig, ProxyRuntimeConfig};"
-        ) && source.contains("use crate::proxy_core::api::domain::AppKind;")
-            && source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
-            && source
-                .contains("use crate::proxy_core::api::ports::{AppSummaryConfig, ProxyConfigSource};"),
+        source.contains("use crate::proxy_core::api::config::{")
+            && source.contains("proxy_app_config_from_parts")
+            && source.contains("proxy_global_config_from_global_config")
+            && source.contains("proxy_runtime_config_from_proxy_config")
+            && source.contains("ProxyAppConfig")
+            && source.contains("ProxyGlobalConfig")
+            && source.contains("ProxyRuntimeConfig")
+            && source.contains("use crate::proxy_core::api::domain::AppKind;")
+            && source.contains("use crate::proxy_core::api::errors::{")
+            && source.contains("ProxyCoreResult")
+            && source.contains("config_error_with_context")
+            && source.contains("use crate::proxy_core::api::ports::{")
+            && source.contains("AppSummaryConfig")
+            && source.contains("ProxyConfigSource"),
         "CC Switch config source should import core config/source contracts directly"
     );
     for adapter_type in [
