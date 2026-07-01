@@ -43,8 +43,8 @@ use crate::proxy_core::api::ports::CurrentRouteTarget;
 use crate::proxy_core::api::routing::{
     ChannelRouteCandidate, LegacyChannelMigrationPlanInput, LegacyChannelModelProjection,
     LegacyChannelProjection, LegacyEndpointInput, LegacyModelRouteInput,
-    LegacyProviderChannelMigrationInput, LegacyProviderProjectionInput,
-    ProviderFailoverCircuitLookup, ProviderSelectionFailure, ProviderSelectionInput, RoutePlan,
+    LegacyProviderChannelMigrationInput, LegacyProviderProjectionInput, ProviderSelectionFailure,
+    RoutePlan,
 };
 use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::{AnthropicToolSchemaHints, GeminiShadowStore};
@@ -85,6 +85,7 @@ pub(crate) fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     core_config_error_with_context(context, error)
 }
 
+#[cfg(test)]
 fn app_error_from_provider_selection_failure(
     app_type: &str,
     error: ProviderSelectionFailure,
@@ -93,12 +94,19 @@ fn app_error_from_provider_selection_failure(
         ProviderSelectionFailure::AllProvidersCircuitOpen => {
             log::warn!(
                 "{}",
-                forwarder_all_providers_circuit_open_log_line(app_type)
+                crate::proxy_core::api::transport::forwarder_all_providers_circuit_open_log_line(
+                    app_type,
+                )
             );
             AppError::AllProvidersCircuitOpen
         }
         ProviderSelectionFailure::NoProvidersConfigured => {
-            log::warn!("{}", forwarder_no_providers_configured_log_line(app_type));
+            log::warn!(
+                "{}",
+                crate::proxy_core::api::transport::forwarder_no_providers_configured_log_line(
+                    app_type,
+                )
+            );
             AppError::NoProvidersConfigured
         }
     }
@@ -397,8 +405,7 @@ use crate::proxy_core::api::transport::build_claude_provider_auth_headers;
 use crate::proxy_core::api::transport::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     forward_failure_message_from_proxy_status as core_forward_failure_message_from_proxy_status,
-    forwarder_all_providers_circuit_open_log_line, forwarder_failure_log_line,
-    forwarder_no_providers_configured_log_line,
+    forwarder_failure_log_line,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
     forwarder_rectifier_retry_success_message as core_forwarder_rectifier_retry_success_message,
 };
@@ -972,33 +979,6 @@ fn provider_should_preserve_reasoning_content_for_openai_chat(
     should_preserve_reasoning_content_for_openai_chat(&provider.settings_config, body)
 }
 
-pub(crate) fn select_failover_provider_ids_from_router_lookup_availability<I>(
-    app_type: &str,
-    provider_ids: &[String],
-    lookup_availability: I,
-) -> Result<Vec<String>, AppError>
-where
-    I: IntoIterator<Item = (ProviderFailoverCircuitLookup, bool)>,
-{
-    let candidates = lookup_availability
-        .into_iter()
-        .map(|(lookup, available)| {
-            provider_selection_candidate_from_failover_lookup(lookup, available)
-        })
-        .collect();
-    let selected_ids = select_provider_ids(ProviderSelectionInput::failover(candidates))
-        .map_err(|error| app_error_from_provider_selection_failure(app_type, error))?;
-
-    Ok(selected_ids
-        .into_iter()
-        .filter(|provider_id| {
-            provider_ids
-                .iter()
-                .any(|configured_provider_id| configured_provider_id == provider_id)
-        })
-        .collect())
-}
-
 pub(crate) fn should_block_proxy_switch_to_provider(
     proxy_takeover_active: bool,
     provider: &Provider,
@@ -1012,8 +992,7 @@ pub(crate) fn should_block_proxy_switch_to_provider(
 use crate::proxy_core::api::routing::{
     current_provider_db_fallback_required, current_provider_id_from_sources,
     legacy_provider_codex_catalog_models_from_settings, legacy_provider_config_text_from_settings,
-    legacy_provider_env_from_settings, provider_selection_candidate_from_failover_lookup,
-    select_provider_ids, should_block_proxy_switch_to_provider_category,
+    legacy_provider_env_from_settings, should_block_proxy_switch_to_provider_category,
 };
 
 pub(crate) fn legacy_provider_projection_input(
@@ -2514,9 +2493,9 @@ mod tests {
     };
     use crate::proxy_core::api::routing::{
         apply_route_candidate_circuit_availability, resolve_channel_route,
-        route_candidate_channel_circuit_keys, ChannelSpec, ChannelStatus, InterfaceKind,
-        LegacyChannelProjectionInput, ProviderSelectionCandidate, RouteResolveChannelInput,
-        RouteResolveModelInput, RouteSelection,
+        route_candidate_channel_circuit_keys, select_provider_ids, ChannelSpec, ChannelStatus,
+        InterfaceKind, LegacyChannelProjectionInput, ProviderSelectionCandidate,
+        ProviderSelectionInput, RouteResolveChannelInput, RouteResolveModelInput, RouteSelection,
     };
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{
@@ -6024,16 +6003,6 @@ base_url = "https://api.openai.com/v1"
             failover_lookups[1].circuit_key.as_deref(),
             Some("claude:provider-b")
         );
-        let selected_failover = select_failover_provider_ids_from_router_lookup_availability(
-            "claude",
-            &failover_providers.keys().cloned().collect::<Vec<_>>(),
-            failover_lookups.into_iter().map(|lookup| {
-                let available = lookup.provider_id == "provider-b";
-                (lookup, available)
-            }),
-        )
-        .expect("selected failover provider ids");
-        assert_eq!(selected_failover, vec!["provider-b"]);
         assert_eq!(
             crate::proxy_core::api::management::channel_route_source_for_materialized_count(1),
             ChannelRouteSource::MaterializedChannels

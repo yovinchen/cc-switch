@@ -898,9 +898,6 @@ const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_ROUTE_SOURCE_MARKERS: &[&str] = &[
     ".preview_legacy_proxy_channel_migration(",
 ];
 const FORBIDDEN_PROVIDER_ROUTER_SELECTION_MARKERS: &[&str] = &[
-    "ProviderSelectionInput::",
-    "provider_selection_candidate_from_failover_lookup(",
-    "provider_failover_circuit_lookups(",
     "current_provider_id_from_router_sources(",
     "crate::settings::get_effective_current_provider(",
     ".get_current_provider(",
@@ -8283,8 +8280,15 @@ fn production_engine_routing_imports_route_contracts_directly() {
         "routing::{",
         "effective_channel_health_failure_threshold",
         "ProviderFailoverCircuitLookup",
+        "ProviderSelectionFailure",
+        "ProviderSelectionInput",
         "RouteCandidateCircuitKey",
         "RouteResolveChannelInput",
+        "provider_selection_candidate_from_failover_lookup",
+        "select_provider_ids",
+        "transport::{",
+        "forwarder_all_providers_circuit_open_log_line",
+        "forwarder_no_providers_configured_log_line",
     ];
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
     let mut violations = Vec::new();
@@ -8306,8 +8310,14 @@ fn production_engine_routing_imports_route_contracts_directly() {
         "CircuitBreakerConfig",
         "CircuitBreakerStats",
         "ProviderFailoverCircuitLookup",
+        "ProviderSelectionFailure",
+        "ProviderSelectionInput",
         "RouteCandidateCircuitKey",
         "RouteResolveChannelInput",
+        "provider_selection_candidate_from_failover_lookup",
+        "select_provider_ids",
+        "forwarder_all_providers_circuit_open_log_line",
+        "forwarder_no_providers_configured_log_line",
     ] {
         if adapter_import_identifiers
             .iter()
@@ -8323,6 +8333,10 @@ fn production_engine_routing_imports_route_contracts_directly() {
         violations.is_empty(),
         "production engine/routing should not route pure routing contracts through proxy_core_adapter:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        !import_slice.contains("use crate::proxy_core_adapter::"),
+        "production engine/routing should not import provider selection projection through proxy_core_adapter"
     );
 }
 
@@ -8366,9 +8380,7 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
         );
     }
     for marker in [
-        "ProviderFailoverCircuitLookup",
         "ProviderSelectionFailure",
-        "ProviderSelectionInput",
         "ChannelRouteCandidate",
         "RoutePlan",
     ] {
@@ -24468,10 +24480,35 @@ fn production_provider_router_delegates_channel_route_source_to_adapter() {
 }
 
 #[test]
-fn production_provider_router_delegates_provider_selection_to_adapter() {
+fn production_provider_router_owns_failover_provider_selection_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/routing.rs");
     let source = fs::read_to_string(&path).expect("read engine/routing.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(adapter_path).expect("read proxy_core_adapter.rs");
+    let projection = function_slice(
+        &source,
+        "fn select_failover_provider_ids_from_router_lookup_availability",
+        "pub(crate) trait ProviderRouterConfigSource",
+    );
+
+    assert!(
+        projection.contains("provider_selection_candidate_from_failover_lookup(lookup, available)")
+            && projection
+                .contains("select_provider_ids(ProviderSelectionInput::failover(candidates))")
+            && projection.contains(
+                "provider_router_app_error_from_provider_selection_failure(app_type, error)"
+            )
+            && projection.contains(".filter(|provider_id|"),
+        "ProviderRouter should own the failover lookup availability to provider-id projection"
+    );
+    assert!(
+        !source.contains("use crate::proxy_core_adapter::select_failover_provider_ids_from_router_lookup_availability")
+            && !adapter_source.contains(
+                "fn select_failover_provider_ids_from_router_lookup_availability("
+            ),
+        "proxy_core_adapter should not retain the ProviderRouter failover selection projection"
+    );
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -24489,7 +24526,7 @@ fn production_provider_router_delegates_provider_selection_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "provider router must delegate provider selection to proxy_core_adapter helpers:\n{}",
+        "ProviderRouter provider-selection facts must come from sources instead of direct DB/settings access:\n{}",
         violations.join("\n")
     );
 }
@@ -25362,7 +25399,7 @@ fn production_provider_router_resets_channel_health_with_core_reset_fact() {
             && router_slice.contains(".reset_channel_health(channel_health_reset_from_parts"),
         "ProviderRouter channel reset must pass the app-scoped core ChannelHealthReset fact to its health store"
     );
-    let adapter_import = function_slice(
+    let adapter_import = optional_function_slice(
         &source,
         "use crate::proxy_core_adapter::",
         ";\nuse futures::",

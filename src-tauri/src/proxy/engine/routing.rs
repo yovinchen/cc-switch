@@ -13,11 +13,15 @@ use crate::proxy_core::api::{
     management::ChannelRouteSource,
     ports::{channel_health_reset_from_parts, ChannelAttemptResult, ChannelHealthReset},
     routing::{
-        effective_channel_health_failure_threshold, ProviderFailoverCircuitLookup,
+        effective_channel_health_failure_threshold,
+        provider_selection_candidate_from_failover_lookup, select_provider_ids,
+        ProviderFailoverCircuitLookup, ProviderSelectionFailure, ProviderSelectionInput,
         RouteCandidateCircuitKey, RouteResolveChannelInput,
     },
+    transport::{
+        forwarder_all_providers_circuit_open_log_line, forwarder_no_providers_configured_log_line,
+    },
 };
-use crate::proxy_core_adapter::select_failover_provider_ids_from_router_lookup_availability;
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -26,6 +30,54 @@ use tokio::sync::RwLock;
 pub(crate) struct ProviderFailoverRouterSources {
     pub(crate) provider_ids: Vec<String>,
     pub(crate) lookups: Vec<ProviderFailoverCircuitLookup>,
+}
+
+fn provider_router_app_error_from_provider_selection_failure(
+    app_type: &str,
+    error: ProviderSelectionFailure,
+) -> AppError {
+    match error {
+        ProviderSelectionFailure::AllProvidersCircuitOpen => {
+            log::warn!(
+                "{}",
+                forwarder_all_providers_circuit_open_log_line(app_type)
+            );
+            AppError::AllProvidersCircuitOpen
+        }
+        ProviderSelectionFailure::NoProvidersConfigured => {
+            log::warn!("{}", forwarder_no_providers_configured_log_line(app_type));
+            AppError::NoProvidersConfigured
+        }
+    }
+}
+
+fn select_failover_provider_ids_from_router_lookup_availability<I>(
+    app_type: &str,
+    provider_ids: &[String],
+    lookup_availability: I,
+) -> Result<Vec<String>, AppError>
+where
+    I: IntoIterator<Item = (ProviderFailoverCircuitLookup, bool)>,
+{
+    let candidates = lookup_availability
+        .into_iter()
+        .map(|(lookup, available)| {
+            provider_selection_candidate_from_failover_lookup(lookup, available)
+        })
+        .collect();
+    let selected_ids =
+        select_provider_ids(ProviderSelectionInput::failover(candidates)).map_err(|error| {
+            provider_router_app_error_from_provider_selection_failure(app_type, error)
+        })?;
+
+    Ok(selected_ids
+        .into_iter()
+        .filter(|provider_id| {
+            provider_ids
+                .iter()
+                .any(|configured_provider_id| configured_provider_id == provider_id)
+        })
+        .collect())
 }
 
 pub(crate) trait ProviderRouterConfigSource: Send + Sync {
@@ -635,6 +687,34 @@ mod tests {
                 .await
                 .allowed
         );
+    }
+
+    #[test]
+    fn failover_provider_selection_filters_to_configured_available_ids() {
+        let lookups = vec![
+            ProviderFailoverCircuitLookup::new("missing", None, false),
+            ProviderFailoverCircuitLookup::new(
+                "provider-b",
+                Some("claude:provider-b".to_string()),
+                true,
+            ),
+            ProviderFailoverCircuitLookup::new(
+                "provider-a",
+                Some("claude:provider-a".to_string()),
+                true,
+            ),
+        ];
+        let selected = select_failover_provider_ids_from_router_lookup_availability(
+            "claude",
+            &["provider-a".to_string(), "provider-b".to_string()],
+            lookups.into_iter().map(|lookup| {
+                let available = lookup.provider_id == "provider-b";
+                (lookup, available)
+            }),
+        )
+        .expect("selected failover provider ids");
+
+        assert_eq!(selected, vec!["provider-b"]);
     }
 
     #[tokio::test]
