@@ -12,13 +12,13 @@ use crate::proxy::{
 use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 use crate::proxy_core::api::routing::ResolvedChannelAttempt;
 use crate::proxy_core::api::transport::{
-    ForwarderProtocolPreparationInput, ForwarderProviderUrlFacts, ForwarderRectifierRetryKind,
-    OptionalCopilotAuthOptimizationPreparationInput,
+    ForwarderAuthHeaders, ForwarderProtocolPreparationInput, ForwarderProviderUrlFacts,
+    ForwarderRectifierRetryKind, OptionalCopilotAuthOptimizationPreparationInput,
+    PreparedCopilotAuthOptimization,
 };
 use crate::proxy_core_adapter::{
     ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
-    ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
-    ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
+    ForwarderAttemptBodyInput, ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
     ForwarderCopilotRequestOptimizationGateInput, ForwarderMediaRetryPlanInput,
     ForwarderProviderRequestBodyInput, ForwarderRequestBodyTransformInput,
@@ -29,7 +29,7 @@ use crate::proxy_core_adapter::{
 };
 use crate::{app_config::AppType, provider::Provider};
 use futures::future::BoxFuture;
-use http::{Extensions, Method};
+use http::{Extensions, HeaderMap, Method};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -281,6 +281,33 @@ pub(crate) trait ForwarderAttemptRuntimeSource {
         app_type: &'a str,
         used_half_open_permit: bool,
     ) -> BoxFuture<'a, ()>;
+}
+
+pub(crate) type ForwarderAuthSourceRef = Arc<dyn ForwarderAuthSource + Send + Sync>;
+
+pub(crate) struct ForwarderAuthHeadersInput<'a> {
+    pub(crate) adapter: &'a ForwarderAdapterContext,
+    pub(crate) app_type: &'a AppType,
+    pub(crate) method: &'a Method,
+    pub(crate) endpoint: &'a str,
+    pub(crate) request_body: &'a Value,
+    pub(crate) request_headers: &'a HeaderMap,
+    pub(crate) attempt: &'a ForwardAttempt,
+    pub(crate) session_id: &'a str,
+    pub(crate) session_client_provided: bool,
+    pub(crate) copilot_optimization: Option<PreparedCopilotAuthOptimization>,
+}
+
+pub(crate) trait ForwarderAuthSource {
+    fn prepare_optional_copilot_auth_optimization(
+        &self,
+        input: OptionalCopilotAuthOptimizationPreparationInput<'_>,
+    ) -> Option<PreparedCopilotAuthOptimization>;
+
+    fn resolve_upstream_auth_headers<'a>(
+        &'a self,
+        input: ForwarderAuthHeadersInput<'a>,
+    ) -> BoxFuture<'a, Result<ForwarderAuthHeaders, ProxyError>>;
 }
 
 pub struct ForwardResult {

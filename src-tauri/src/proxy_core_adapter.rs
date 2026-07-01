@@ -6,14 +6,16 @@ use crate::database::{
 use crate::error::AppError;
 use crate::provider::{AuthBindingSource, Provider, ProviderMeta};
 use crate::proxy::engine::forward_pipeline::{
-    FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
-    ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
+    FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderAuthSourceRef,
+    ForwarderProtocolStateSourceRef, ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef,
+    ForwarderTransportSourceRef,
 };
 #[cfg(test)]
 use crate::proxy::engine::forward_pipeline::{
     ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptRuntimeSource,
-    ForwarderCodexChatProtocolEnrichmentInput, ForwarderFailoverSwitchTarget,
-    ForwarderFailureDecision, ForwarderProtocolStateSource, ForwarderRectifierRetryFailureDecision,
+    ForwarderAuthHeadersInput, ForwarderAuthSource, ForwarderCodexChatProtocolEnrichmentInput,
+    ForwarderFailoverSwitchTarget, ForwarderFailureDecision, ForwarderProtocolStateSource,
+    ForwarderRectifierRetryFailureDecision,
 };
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
@@ -382,7 +384,7 @@ use crate::proxy_core::api::auth::{
 use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogSource,
 };
-use crate::proxy_core::api::ports::{AuthProvider, ChannelKeyRuntimeSource};
+use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 use crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 use crate::proxy_core::api::transforms::{
@@ -404,10 +406,8 @@ use crate::proxy_core::api::transport::{
 };
 use crate::proxy_core::api::transport::{
     ClaudeProviderAuthHeadersInput, CopilotClassification, ForwardFailureKind,
-    ForwardUpstreamUrlPlan, ForwarderAuthHeaders, ForwarderProtocolPreparation,
-    ForwarderProtocolPreparationInput, ForwarderRectifierRetryKind, ForwarderTransformPlan,
-    OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization, ProxyRequest,
-    ProxyResult,
+    ForwardUpstreamUrlPlan, ForwarderProtocolPreparation, ForwarderProtocolPreparationInput,
+    ForwarderRectifierRetryKind, ForwarderTransformPlan, ProxyRequest, ProxyResult,
 };
 pub(crate) fn codex_provider_live_write_parts<'a>(
     settings: &'a Value,
@@ -1460,33 +1460,6 @@ use crate::proxy::host::cc_switch::forwarder_runtime_state_source::CcSwitchForwa
 #[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_protocol_state_source::CcSwitchForwarderProtocolStateSource;
 
-pub(crate) type ForwarderAuthSourceRef = Arc<dyn ForwarderAuthSource + Send + Sync>;
-pub(crate) type AuthProviderRef = Arc<dyn AuthProvider + Send + Sync>;
-
-pub(crate) struct ForwarderAuthHeadersInput<'a> {
-    pub(crate) adapter: &'a ForwarderAdapterContext,
-    pub(crate) app_type: &'a AppType,
-    pub(crate) method: &'a Method,
-    pub(crate) endpoint: &'a str,
-    pub(crate) request_body: &'a Value,
-    pub(crate) request_headers: &'a HeaderMap,
-    pub(crate) attempt: &'a ForwardAttempt,
-    pub(crate) session_id: &'a str,
-    pub(crate) session_client_provided: bool,
-    pub(crate) copilot_optimization: Option<PreparedCopilotAuthOptimization>,
-}
-
-pub(crate) trait ForwarderAuthSource {
-    fn prepare_optional_copilot_auth_optimization(
-        &self,
-        input: OptionalCopilotAuthOptimizationPreparationInput<'_>,
-    ) -> Option<PreparedCopilotAuthOptimization>;
-
-    fn resolve_upstream_auth_headers<'a>(
-        &'a self,
-        input: ForwarderAuthHeadersInput<'a>,
-    ) -> BoxFuture<'a, Result<ForwarderAuthHeaders, ProxyError>>;
-}
 #[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_auth_source::{
     default_forwarder_auth_source, forwarder_auth_source_from_sources,
@@ -2760,7 +2733,7 @@ mod tests {
         remove_gemini_takeover_env_fields_if_present, sanitize_claude_settings_for_live,
         should_skip_manual_default_live_import,
         should_skip_provider_legacy_common_config_migration,
-        should_skip_startup_default_live_import, AuthInfo, ClaudeTakeoverAuthPolicy,
+        should_skip_startup_default_live_import, AuthInfo, AuthProvider, ClaudeTakeoverAuthPolicy,
         CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
         ProviderCredentialIssue, ProviderKeyChangePolicyIssue,
         ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
@@ -2873,10 +2846,11 @@ mod tests {
         build_upstream_request_headers, forward_upstream_url_plan,
         is_official_codex_client_user_agent, is_socks_proxy_url, resolve_upstream_send_policy,
         serialize_upstream_request_body, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
-        ForwardUpstreamUrlPlanInput, ForwarderMediaPreventionFacts, ProxyBody, ProxyCoreResponse,
-        ProxyResponseBody, ProxyTransportResponseBody, UpstreamRequestHeadersInput,
-        UpstreamSendPolicyInput, UpstreamSseAggregationKind, UpstreamTransportKind,
-        UNSUPPORTED_IMAGE_MARKER,
+        ForwardUpstreamUrlPlanInput, ForwarderMediaPreventionFacts,
+        OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization,
+        ProxyBody, ProxyCoreResponse, ProxyResponseBody, ProxyTransportResponseBody,
+        UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamSseAggregationKind,
+        UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
     };
     use crate::proxy_core::api::usage::{
         usage_selected_provider_missing_log_message, TokenUsage, TransformedResponseUsageFormat,

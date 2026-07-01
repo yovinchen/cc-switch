@@ -19261,7 +19261,7 @@ fn production_forwarder_uses_auth_source_resource() {
         );
     }
     let auth_input_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) struct ForwarderAuthHeadersInput",
         "pub(crate) trait ForwarderAuthSource",
     );
@@ -19271,9 +19271,9 @@ fn production_forwarder_uses_auth_source_resource() {
         "impl ForwarderAuthSource for CcSwitchForwarderAuthSource",
     );
     let auth_trait_slice = function_slice(
-        &adapter_source,
+        &source,
         "pub(crate) trait ForwarderAuthSource",
-        "pub(crate) type ForwarderRequestSourceRef",
+        "pub struct ForwardResult",
     );
     let auth_impl_slice = function_slice(
         &auth_source,
@@ -19283,8 +19283,22 @@ fn production_forwarder_uses_auth_source_resource() {
     let auth_core_transport_import_slice = function_slice(
         &auth_source,
         "use crate::proxy_core::api::transport::{",
-        "};\nuse crate::proxy_core_adapter::{",
+        "};\nuse crate::proxy_core_adapter::proxy_provider_to_core_spec;",
     );
+    for marker in [
+        "pub(crate) type ForwarderAuthSourceRef",
+        "pub(crate) struct ForwarderAuthHeadersInput",
+        "pub(crate) trait ForwarderAuthSource",
+    ] {
+        assert!(
+            source.contains(marker),
+            "forward_pipeline should own auth source contract marker `{marker}`"
+        );
+        assert!(
+            !adapter_runtime_source.contains(marker),
+            "proxy_core_adapter should not own auth source contract marker `{marker}`"
+        );
+    }
     for marker in [
         "ForwarderAuthHeaders",
         "OptionalCopilotAuthOptimizationPreparationInput",
