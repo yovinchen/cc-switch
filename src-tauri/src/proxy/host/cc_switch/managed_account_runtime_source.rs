@@ -16,7 +16,6 @@ use crate::proxy::host::cc_switch::provider_projection::provider_managed_account
 use crate::proxy_core::api::auth::{
     managed_account_app_handle_unavailable_error_message,
     managed_account_app_handle_unavailable_log_message, managed_account_token_request_log_message,
-    managed_account_token_success_log_message,
     resolve_copilot_dynamic_base_url_for_binding_with_runtime_source as resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source,
     resolve_copilot_live_model_for_binding_with_runtime_source as resolve_core_copilot_live_model_for_binding_with_runtime_source,
     resolve_copilot_model_vendor_for_binding_with_runtime_source as resolve_core_copilot_model_vendor_for_binding_with_runtime_source,
@@ -24,7 +23,8 @@ use crate::proxy_core::api::auth::{
     ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ManagedAccountBindingInput,
     ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagedAccountTokenCacheKey,
     ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenRefreshFailureResolution,
-    ManagedAccountTokenSnapshot, ManagedAccountTokenSnapshotStore, ProviderAuthInfo,
+    ManagedAccountTokenRefreshSuccess, ManagedAccountTokenSnapshot,
+    ManagedAccountTokenSnapshotStore, ProviderAuthInfo,
 };
 use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
@@ -112,19 +112,21 @@ impl CcSwitchManagedAccountRuntimeSource {
         }
     }
 
-    async fn record_token_snapshot(
+    async fn record_token_refresh_success(
         &self,
         key: ManagedAccountTokenCacheKey,
-        auth: ProviderAuthInfo,
+        token: String,
         codex_oauth_account_id: Option<String>,
-    ) {
+        success_account_label: Option<&str>,
+    ) -> ManagedAccountTokenRefreshSuccess {
         let mut snapshots = self.token_snapshots.lock().await;
-        snapshots.record_token_snapshot(
+        snapshots.record_refresh_success(
             key,
-            auth,
+            token,
             codex_oauth_account_id,
+            success_account_label,
             chrono::Utc::now().timestamp_millis(),
-        );
+        )
     }
 
     async fn resolve_token_refresh_failure(
@@ -532,14 +534,11 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
             let cache_key = ManagedAccountTokenCacheKey::new(runtime, account_id);
             match copilot_token_from_app_handle(app_handle, account_id).await {
                 Ok(token) => {
-                    let auth = runtime.provider_auth_info(token);
-                    self.record_token_snapshot(cache_key, auth.clone(), None)
+                    let success = self
+                        .record_token_refresh_success(cache_key, token, None, account_id)
                         .await;
-                    log::debug!(
-                        "{}",
-                        managed_account_token_success_log_message(runtime, account_id)
-                    );
-                    Ok(auth)
+                    log::debug!("{}", success.log_message);
+                    Ok(success.auth)
                 }
                 Err(error) => {
                     let failure_kind = copilot_token_failure_kind(&error);
@@ -576,21 +575,17 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
             let cache_key = ManagedAccountTokenCacheKey::new(runtime, account_id.as_deref());
             match codex_oauth_token_from_app_handle(app_handle, account_id.as_deref()).await {
                 Ok((token, resolved_account_id)) => {
-                    let auth = runtime.provider_auth_info(token);
-                    self.record_token_snapshot(
-                        cache_key,
-                        auth.clone(),
-                        resolved_account_id.clone(),
-                    )
-                    .await;
-                    log::debug!(
-                        "{}",
-                        managed_account_token_success_log_message(
-                            runtime,
-                            resolved_account_id.as_deref()
+                    let success_account_label = resolved_account_id.clone();
+                    let success = self
+                        .record_token_refresh_success(
+                            cache_key,
+                            token,
+                            resolved_account_id,
+                            success_account_label.as_deref(),
                         )
-                    );
-                    Ok((auth, resolved_account_id))
+                        .await;
+                    log::debug!("{}", success.log_message);
+                    Ok((success.auth, success.codex_oauth_account_id))
                 }
                 Err(error) => {
                     let failure_kind = codex_oauth_token_failure_kind(&error);
@@ -722,11 +717,7 @@ mod tests {
             Some("acct"),
         );
         source
-            .record_token_snapshot(
-                key.clone(),
-                ManagedAccountAuthRuntime::GitHubCopilot.provider_auth_info("cached".to_string()),
-                None,
-            )
+            .record_token_refresh_success(key.clone(), "cached".to_string(), None, Some("acct"))
             .await;
 
         let snapshot = source
@@ -760,11 +751,11 @@ mod tests {
         );
 
         source
-            .record_token_snapshot(
+            .record_token_refresh_success(
                 copilot_account.clone(),
-                ManagedAccountAuthRuntime::GitHubCopilot
-                    .provider_auth_info("copilot-a".to_string()),
+                "copilot-a".to_string(),
                 None,
+                Some("acct-a"),
             )
             .await;
 
@@ -823,10 +814,11 @@ mod tests {
             .is_err());
 
         source
-            .record_token_snapshot(
+            .record_token_refresh_success(
                 key.clone(),
-                ManagedAccountAuthRuntime::CodexOAuth.provider_auth_info("fresh".to_string()),
+                "fresh".to_string(),
                 Some("acct".to_string()),
+                Some("acct"),
             )
             .await;
 

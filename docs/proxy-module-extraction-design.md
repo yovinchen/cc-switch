@@ -2009,6 +2009,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1415. test-only `proxy_core_adapter` 中 provider credential values 的私有 helper 已删除；兼容测试直接调用 `proxy-core::ports::{provider_codex_credential_values_from_parts,provider_non_codex_credential_values_from_settings}` 和 owning `codex_config::extract_codex_api_key`，边界测试防止 provider credential façade 回流 adapter。
 1416. managed-account token snapshot 的 runtime/account 隔离存储已下沉到 `proxy-core::managed_account_auth::ManagedAccountTokenSnapshotStore`：CC Switch host runtime source 只持有 core store、注入当前时间并负责 Tauri token 获取与日志，fallback 查找、TTL/terminal 判定和 key 隔离由 core store 统一维护，边界测试防止 host 重新维护 token snapshot HashMap。
 1417. managed-account token refresh 失败后的最终 fallback/reject 决策已下沉到 `ManagedAccountTokenSnapshotStore::resolve_refresh_failure`：core 统一根据 runtime/account key、refresh failure kind、缓存年龄和错误文本返回“使用最近成功 token 快照”或“直出认证失败”的日志/错误 contract；CC Switch host runtime source 只负责 Tauri OAuth token 获取、具体错误枚举到 retryable/terminal 的分类，以及把 core 决策映射为 `ProxyError::AuthError` 或 cached snapshot，避免外部中转宿主复制 CC Switch 的 token refresh 失败文案和 fallback 分支。
+1418. managed-account token refresh 成功后的 auth 创建、快照写入和成功日志 contract 已下沉到 `ManagedAccountTokenSnapshotStore::record_refresh_success`：core 统一由 runtime 生成 `ProviderAuthInfo`、写入 runtime/account 隔离快照并返回稳定成功日志；CC Switch host runtime source 成功路径只传入 OAuth manager 返回的 token、Codex resolved account id 和日志账号 label，再把 core result 映射到 Copilot/Codex OAuth 运行时返回值。
 
 ## 背景
 

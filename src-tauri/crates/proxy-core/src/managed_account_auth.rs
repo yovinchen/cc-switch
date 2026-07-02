@@ -579,6 +579,13 @@ impl ManagedAccountTokenSnapshotFallback {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedAccountTokenRefreshSuccess {
+    pub auth: ProviderAuthInfo,
+    pub codex_oauth_account_id: Option<String>,
+    pub log_message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManagedAccountTokenRefreshFailureResolution {
     UseCachedToken {
         snapshot: ManagedAccountTokenSnapshot,
@@ -619,6 +626,31 @@ impl ManagedAccountTokenSnapshotStore {
             key,
             ManagedAccountTokenSnapshot::new(auth, codex_oauth_account_id, cached_at_ms),
         );
+    }
+
+    pub fn record_refresh_success(
+        &mut self,
+        key: ManagedAccountTokenCacheKey,
+        token: String,
+        codex_oauth_account_id: Option<String>,
+        success_account_label: Option<&str>,
+        cached_at_ms: i64,
+    ) -> ManagedAccountTokenRefreshSuccess {
+        let auth = key.runtime().provider_auth_info(token);
+        let log_message =
+            managed_account_token_success_log_message(key.runtime(), success_account_label);
+        self.record_token_snapshot(
+            key,
+            auth.clone(),
+            codex_oauth_account_id.clone(),
+            cached_at_ms,
+        );
+
+        ManagedAccountTokenRefreshSuccess {
+            auth,
+            codex_oauth_account_id,
+            log_message,
+        }
     }
 
     pub fn snapshot(&self, key: &ManagedAccountTokenCacheKey) -> Option<&ManagedAccountTokenSnapshot> {
@@ -1338,8 +1370,9 @@ mod tests {
         ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAccountRuntimeSource,
         ManagedAccountTokenCacheKey, ManagedAccountTokenFailureFallbackDecision,
         ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenRefreshFailureResolution,
-        ManagedAccountTokenSnapshot, ManagedAccountTokenSnapshotStore, ProviderManagedAuthFacts,
-        CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER,
+        ManagedAccountTokenRefreshSuccess, ManagedAccountTokenSnapshot,
+        ManagedAccountTokenSnapshotStore, ProviderManagedAuthFacts, CODEX_OAUTH_AUTH_PLACEHOLDER,
+        CODEX_OAUTH_AUTH_PROVIDER,
         GITHUB_COPILOT_AUTH_PLACEHOLDER, GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
     };
     use futures::{executor::block_on, future::BoxFuture};
@@ -2356,6 +2389,43 @@ mod tests {
                 ManagedAccountTokenRefreshFailureKind::Terminal,
             )
             .is_none());
+    }
+
+    #[test]
+    fn managed_account_token_snapshot_store_records_refresh_success() {
+        let now = 1_771_000_000_000;
+        let mut store = ManagedAccountTokenSnapshotStore::new();
+        let key =
+            ManagedAccountTokenCacheKey::new(ManagedAccountAuthRuntime::CodexOAuth, Some("acct"));
+
+        assert_eq!(
+            store.record_refresh_success(
+                key.clone(),
+                "access-token".to_string(),
+                Some("resolved-acct".to_string()),
+                Some("resolved-acct"),
+                now,
+            ),
+            ManagedAccountTokenRefreshSuccess {
+                auth: ManagedAccountAuthRuntime::CodexOAuth
+                    .provider_auth_info("access-token".to_string()),
+                codex_oauth_account_id: Some("resolved-acct".to_string()),
+                log_message: "[CodexOAuth] 成功获取 access_token (account=resolved-acct)"
+                    .to_string(),
+            }
+        );
+
+        let snapshot = store.snapshot(&key).expect("success should cache token");
+        assert_eq!(snapshot.auth.api_key, "access-token");
+        assert_eq!(
+            snapshot.auth.strategy,
+            ManagedAccountAuthRuntime::CodexOAuth.provider_auth_strategy()
+        );
+        assert_eq!(
+            snapshot.codex_oauth_account_id.as_deref(),
+            Some("resolved-acct")
+        );
+        assert_eq!(snapshot.cached_at_ms, now);
     }
 
     #[test]

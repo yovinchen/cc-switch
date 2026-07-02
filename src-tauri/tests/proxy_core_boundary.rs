@@ -18204,7 +18204,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "managed_account_app_handle_unavailable_log_message(",
         "managed_account_app_handle_unavailable_error_message(",
         "managed_account_token_request_log_message(",
-        "managed_account_token_success_log_message(",
+        "record_token_refresh_success(",
         "copilot_token_failure_kind(",
         "codex_oauth_token_failure_kind(",
         "copilot_token_from_app_handle(",
@@ -18231,6 +18231,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && host_source.contains("ManagedAccountTokenCacheKey")
             && host_source.contains("ManagedAccountTokenRefreshFailureKind")
             && host_source.contains("ManagedAccountTokenRefreshFailureResolution")
+            && host_source.contains("ManagedAccountTokenRefreshSuccess")
             && host_source.contains("ManagedAccountTokenSnapshot")
             && host_source.contains("ManagedAccountTokenSnapshotStore")
             && host_source.contains("ProviderAuthInfo")
@@ -18245,6 +18246,18 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         host_source.contains("token_snapshots: Arc<Mutex<ManagedAccountTokenSnapshotStore>>")
             && !host_source.contains("HashMap<ManagedAccountTokenCacheKey"),
         "managed account token snapshot storage should use the core snapshot store instead of a host-owned HashMap"
+    );
+    let refresh_success_slice = function_slice(
+        &host_source,
+        "async fn record_token_refresh_success",
+        "async fn resolve_token_refresh_failure",
+    );
+    assert!(
+        refresh_success_slice.contains(".record_refresh_success(")
+            && !refresh_success_slice.contains("record_token_snapshot(")
+            && !refresh_success_slice.contains("managed_account_token_success_log_message(")
+            && !refresh_success_slice.contains("runtime.provider_auth_info("),
+        "host runtime source should delegate token auth creation, snapshot write, and success log contract to core"
     );
     let refresh_failure_slice = function_slice(
         &host_source,
@@ -18280,6 +18293,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "ManagedAccountTokenCacheKey",
         "ManagedAccountTokenRefreshFailureKind",
         "ManagedAccountTokenRefreshFailureResolution",
+        "ManagedAccountTokenRefreshSuccess",
         "ManagedAccountTokenSnapshot",
         "ManagedAccountTokenSnapshotStore",
         "CoreManagedAccountRuntimeSource",
