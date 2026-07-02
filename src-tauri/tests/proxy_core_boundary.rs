@@ -9108,6 +9108,16 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
             "proxy_core_adapter should not re-export live/provider policy contract `{symbol}`"
         );
     }
+
+    for facade in [
+        "fn provider_additive_live_write_action(",
+        "fn provider_key_change_policy_issue(",
+    ] {
+        assert!(
+            !adapter_source.contains(facade),
+            "proxy_core_adapter tests should call live/provider policy helpers directly instead of keeping private facade `{facade}`"
+        );
+    }
 }
 
 #[test]

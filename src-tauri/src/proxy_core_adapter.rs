@@ -312,28 +312,6 @@ mod tests {
         })
     }
 
-    fn provider_key_change_policy_issue(
-        app_type: &AppType,
-        existing_provider: Option<&Provider>,
-    ) -> Option<ProviderKeyChangePolicyIssue> {
-        provider_key_change_policy_issue_for_app(
-            &AppKind::from(app_type),
-            existing_provider.and_then(|provider| provider.category.as_deref()),
-        )
-    }
-
-    fn provider_additive_live_write_action(
-        app_type: &AppType,
-        provider: &Provider,
-        add_to_live: bool,
-    ) -> ProviderAdditiveLiveWriteAction {
-        provider_additive_live_write_action_for_app(
-            &AppKind::from(app_type),
-            provider.category.as_deref(),
-            add_to_live,
-        )
-    }
-
     fn provider_credential_values_with_issue(
         provider: &Provider,
         app_type: &AppType,
@@ -7515,7 +7493,7 @@ wire_api = "chat"
     #[test]
     fn provider_key_change_policy_blocks_non_additive_and_omo_providers() {
         assert_eq!(
-            provider_key_change_policy_issue(&AppType::Claude, None),
+            provider_key_change_policy_issue_for_app(&AppKind::from(&AppType::Claude), None),
             Some(ProviderKeyChangePolicyIssue::UnsupportedAppMode)
         );
 
@@ -7527,7 +7505,10 @@ wire_api = "chat"
         );
         omo_provider.category = Some("omo".to_string());
         assert_eq!(
-            provider_key_change_policy_issue(&AppType::OpenCode, Some(&omo_provider)),
+            provider_key_change_policy_issue_for_app(
+                &AppKind::from(&AppType::OpenCode),
+                omo_provider.category.as_deref(),
+            ),
             Some(ProviderKeyChangePolicyIssue::ExclusiveCurrentStateProvider)
         );
 
@@ -7539,11 +7520,14 @@ wire_api = "chat"
         );
         custom_provider.category = Some("custom".to_string());
         assert_eq!(
-            provider_key_change_policy_issue(&AppType::OpenCode, Some(&custom_provider)),
+            provider_key_change_policy_issue_for_app(
+                &AppKind::from(&AppType::OpenCode),
+                custom_provider.category.as_deref(),
+            ),
             None
         );
         assert_eq!(
-            provider_key_change_policy_issue(&AppType::OpenClaw, None),
+            provider_key_change_policy_issue_for_app(&AppKind::from(&AppType::OpenClaw), None),
             None
         );
         assert_eq!(
@@ -7564,7 +7548,11 @@ wire_api = "chat"
         );
         omo_provider.category = Some("omo-slim".to_string());
         assert_eq!(
-            provider_additive_live_write_action(&AppType::OpenCode, &omo_provider, true),
+            provider_additive_live_write_action_for_app(
+                &AppKind::from(&AppType::OpenCode),
+                omo_provider.category.as_deref(),
+                true,
+            ),
             ProviderAdditiveLiveWriteAction::SkipExclusiveCurrentStateProvider
         );
 
@@ -7575,11 +7563,19 @@ wire_api = "chat"
             None,
         );
         assert_eq!(
-            provider_additive_live_write_action(&AppType::OpenCode, &custom_provider, false),
+            provider_additive_live_write_action_for_app(
+                &AppKind::from(&AppType::OpenCode),
+                custom_provider.category.as_deref(),
+                false,
+            ),
             ProviderAdditiveLiveWriteAction::SkipNotRequested
         );
         assert_eq!(
-            provider_additive_live_write_action(&AppType::OpenClaw, &custom_provider, true),
+            provider_additive_live_write_action_for_app(
+                &AppKind::from(&AppType::OpenClaw),
+                custom_provider.category.as_deref(),
+                true,
+            ),
             ProviderAdditiveLiveWriteAction::Write
         );
     }

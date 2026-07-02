@@ -2004,6 +2004,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1410. managed-account token refresh 失败分类已补 host runtime source 回归测试：Copilot/Codex 的网络、解析、IO 和 token 拉取失败才映射为 `Retryable` 并允许进入 core 30 秒 token 快照回退；授权拒绝、账号缺失、过期/失效等 terminal 错误继续直出，防止最近成功 token 快照掩盖真实认证状态。
 1411. test-only `proxy_core_adapter` 中 Codex API key 提取的一跳 helper 已删除；兼容测试直接调用 owning `codex_config::extract_codex_api_key`，边界测试防止该私有 wrapper 回流，避免测试壳继续塑造成生产可用的 adapter façade。
 1412. test-only `proxy_core_adapter` 中 current-provider id selection 的一跳 helper 已删除；兼容测试直接调用 `proxy-core::select_provider_ids(ProviderSelectionInput::current(...))` 并在断言处显式使用 host `provider_router_app_error_from_provider_selection_failure` 映射，边界测试防止 ProviderRouter selection projection 回流 adapter。
+1413. test-only `proxy_core_adapter` 中 provider key-change 与 additive live-write 的一跳 helper 已删除；兼容测试直接把 `AppType` 投影为 `AppKind` 并调用 `proxy-core::ports::{provider_key_change_policy_issue_for_app,provider_additive_live_write_action_for_app}`，边界测试防止 live/provider policy private façade 回流 adapter。
 
 ## 背景
 
