@@ -445,7 +445,12 @@ pub(crate) trait ForwarderRuntimeStateSource {
         app_type: &'a str,
     ) -> BoxFuture<'a, ()>;
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
-    fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
+    fn record_successful_attempt<'a>(
+        &'a self,
+        request_id: &'a str,
+        app_type: &'a str,
+        attempt: &'a ForwardAttempt,
+    ) -> BoxFuture<'a, ()>;
     fn emit_attempt_failed_for_error(
         &self,
         request_id: &str,
@@ -453,12 +458,6 @@ pub(crate) trait ForwarderRuntimeStateSource {
         attempt: &ForwardAttempt,
         error: &ProxyError,
     );
-    fn record_active_route_target<'a>(
-        &'a self,
-        request_id: &'a str,
-        app_type: &'a str,
-        attempt: &'a ForwardAttempt,
-    ) -> BoxFuture<'a, ()>;
     fn record_success_status<'a>(
         &'a self,
         current_provider_id_at_start: &'a str,
@@ -728,7 +727,8 @@ impl RequestForwarder {
             .record_success(attempt, app_type, used_half_open_permit)
             .await;
         self.runtime_state_source
-            .emit_attempt_succeeded(request_id, app_type, attempt);
+            .record_successful_attempt(request_id, app_type, attempt)
+            .await;
     }
 
     async fn record_success_status_and_maybe_switch(&self, app_type: &str, provider: &Provider) {
@@ -751,9 +751,6 @@ impl RequestForwarder {
         success: ForwarderUpstreamSuccess,
     ) -> ForwardResult {
         self.record_success_result(request_id, attempt, app_type, used_half_open_permit)
-            .await;
-        self.runtime_state_source
-            .record_active_route_target(request_id, app_type, attempt)
             .await;
         self.record_success_status_and_maybe_switch(app_type, attempt.provider())
             .await;

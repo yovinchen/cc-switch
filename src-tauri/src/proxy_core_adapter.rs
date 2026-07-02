@@ -2815,12 +2815,16 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(started.payload["pricingModel"], "sonnet-price");
         assert!(started.payload.get("error").is_none());
 
-        source.emit_attempt_succeeded("req-1", "claude", &attempt);
+        source
+            .record_successful_attempt("req-1", "claude", &attempt)
+            .await;
         let succeeded = subscriber.recv().await.expect("succeeded event");
         assert_eq!(succeeded.event, "channel_succeeded");
         assert_eq!(succeeded.payload["channelId"], "channel-a");
         assert_eq!(succeeded.payload["pricingModel"], "sonnet-price");
         assert!(succeeded.payload.get("error").is_none());
+        let route_selected = subscriber.recv().await.expect("route selected event");
+        assert_eq!(route_selected.event, "route_selected");
 
         source.emit_attempt_failed_for_error(
             "req-1",
@@ -2850,7 +2854,7 @@ base_url = "https://api.openai.com/v1"
         );
 
         source
-            .record_active_route_target("req-route", "claude", &attempt)
+            .record_successful_attempt("req-route", "claude", &attempt)
             .await;
 
         let current_providers = current_providers.read().await;
@@ -2862,6 +2866,10 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(target.interface_kind.as_deref(), Some("openai_responses"));
         assert_eq!(target.upstream_model.as_deref(), Some("upstream-sonnet"));
         assert_eq!(target.pricing_model.as_deref(), Some("sonnet-price"));
+
+        let succeeded = subscriber.recv().await.expect("succeeded event");
+        assert_eq!(succeeded.event, "channel_succeeded");
+        assert_eq!(succeeded.payload["channelId"], "channel-a");
 
         let route_event = subscriber.recv().await.expect("route selected event");
         assert_eq!(route_event.event, "route_selected");

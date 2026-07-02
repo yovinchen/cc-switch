@@ -19658,6 +19658,12 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "ForwarderRuntimeStateSource must expose request-start lifecycle as one behavior, not split event/status helpers"
     );
     assert!(
+        runtime_trait_slice.contains("fn record_successful_attempt<'a>(")
+            && !runtime_trait_slice.contains("fn emit_attempt_succeeded(")
+            && !runtime_trait_slice.contains("fn record_active_route_target("),
+        "ForwarderRuntimeStateSource must expose successful-attempt event and active-route target update as one behavior"
+    );
+    assert!(
         provider_failure_runtime_source_slice.contains("provider: &Provider")
             && provider_failure_runtime_source_slice.contains("error: &ProxyError")
             && !provider_failure_runtime_source_slice.contains("provider_name: &str")
@@ -19910,6 +19916,12 @@ fn production_forwarder_active_route_target_uses_runtime_state_source() {
         violations.is_empty(),
         "active route target writes and route-selected events must use runtime state source methods:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        impl_slice.contains(".record_successful_attempt(request_id, app_type, attempt)")
+            && !impl_slice.contains(".emit_attempt_succeeded(")
+            && !impl_slice.contains(".record_active_route_target("),
+        "RequestForwarder must record successful attempt route state through one runtime state source method"
     );
 }
 

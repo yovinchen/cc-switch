@@ -362,15 +362,30 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         );
     }
 
-    fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
-        emit_attempt_event_source(
-            self.events.as_ref(),
-            request_id,
-            app_type,
-            attempt,
-            AttemptEventPhase::Succeeded,
-            None,
-        );
+    fn record_successful_attempt<'a>(
+        &'a self,
+        request_id: &'a str,
+        app_type: &'a str,
+        attempt: &'a ForwardAttempt,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            emit_attempt_event_source(
+                self.events.as_ref(),
+                request_id,
+                app_type,
+                attempt,
+                AttemptEventPhase::Succeeded,
+                None,
+            );
+            record_forward_active_route_target_runtime_source(
+                self.current_providers.as_ref(),
+                self.events.as_ref(),
+                request_id,
+                app_type,
+                attempt,
+            )
+            .await;
+        })
     }
 
     fn emit_attempt_failed_for_error(
@@ -389,24 +404,6 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
             AttemptEventPhase::Failed,
             Some(&error_message),
         );
-    }
-
-    fn record_active_route_target<'a>(
-        &'a self,
-        request_id: &'a str,
-        app_type: &'a str,
-        attempt: &'a ForwardAttempt,
-    ) -> BoxFuture<'a, ()> {
-        Box::pin(async move {
-            record_forward_active_route_target_runtime_source(
-                self.current_providers.as_ref(),
-                self.events.as_ref(),
-                request_id,
-                app_type,
-                attempt,
-            )
-            .await;
-        })
     }
 
     fn record_success_status<'a>(
