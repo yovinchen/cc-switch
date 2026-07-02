@@ -12567,10 +12567,23 @@ fn provider_projection_delegates_claude_transform_gate_to_core() {
     let projection_path = manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
     let projection =
         fs::read_to_string(&projection_path).expect("read host provider_projection.rs");
+    let claude_provider_path = manifest_dir.join("src/proxy/provider/claude.rs");
+    let claude_provider =
+        fs::read_to_string(&claude_provider_path).expect("read proxy/provider/claude.rs");
+    let api_format_slice = function_slice(
+        &projection,
+        "pub(crate) fn provider_claude_api_format",
+        "pub(crate) fn provider_gemini_kind",
+    );
     let gate_slice = function_slice(
         &projection,
         "pub(crate) fn provider_needs_claude_transform",
         "pub(crate) fn provider_claude_transform_streaming_decision",
+    );
+    let provider_api_format_slice = function_slice(
+        &claude_provider,
+        "pub(crate) fn claude_provider_api_format",
+        "/// Claude 适配器",
     );
 
     assert!(
@@ -12578,8 +12591,24 @@ fn provider_projection_delegates_claude_transform_gate_to_core() {
         "proxy_core_adapter should not keep a Claude transform gate facade"
     );
     assert!(
+        !projection.contains("use crate::proxy::provider::claude_provider_api_format;"),
+        "provider_projection must not depend on the Claude provider adapter for api_format facts"
+    );
+    assert!(
+        api_format_slice.contains("resolve_claude_api_format_from_settings("),
+        "provider_projection should own Provider -> Claude api_format projection and delegate policy to proxy-core"
+    );
+    assert!(
+        provider_api_format_slice.contains("host_provider_claude_api_format(provider)"),
+        "Claude provider adapter should keep its api_format helper as a thin compatibility delegate to provider_projection"
+    );
+    assert!(
         gate_slice.contains("claude_provider_transform_required("),
         "Claude transform gate must delegate provider-kind/api-format policy to proxy-core"
+    );
+    assert!(
+        gate_slice.contains("provider_claude_api_format(provider)"),
+        "Claude transform gate should consume api_format facts from provider_projection"
     );
     assert!(
         !source.contains(

@@ -21,7 +21,8 @@ use crate::proxy::copilot_auth::{
 };
 use crate::proxy::error::ProxyError;
 use crate::proxy::host::cc_switch::provider_projection::{
-    provider_claude_auth_key, provider_claude_kind, provider_needs_claude_transform,
+    provider_claude_api_format as host_provider_claude_api_format, provider_claude_auth_key,
+    provider_claude_kind, provider_needs_claude_transform,
 };
 #[cfg(test)]
 use crate::proxy_core::api::auth::ProviderAuthStrategy;
@@ -36,9 +37,9 @@ use crate::proxy_core::api::transforms::GeminiShadowStore;
 use crate::proxy_core::api::transforms::{
     claude_request_transform_for_api_format, claude_response_to_anthropic_message_for_api_format,
     create_claude_to_anthropic_sse_stream_for_api_format, is_copilot_prompt_cache_provider,
-    resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
-    should_preserve_reasoning_content_for_openai_chat, ClaudeApiFormatRequestTransformContext,
-    ClaudeApiFormatSseTransformContext, ClaudePromptCacheKeyResolution,
+    resolve_claude_responses_prompt_cache_key, should_preserve_reasoning_content_for_openai_chat,
+    ClaudeApiFormatRequestTransformContext, ClaudeApiFormatSseTransformContext,
+    ClaudePromptCacheKeyResolution,
 };
 use crate::proxy_core::api::transforms::{
     synthesize_gemini_tool_call_id, AnthropicToolSchemaHints,
@@ -266,12 +267,7 @@ fn provider_should_preserve_reasoning_content_for_openai_chat(
 }
 
 pub(crate) fn claude_provider_api_format(provider: &Provider) -> &'static str {
-    let meta = provider.meta.as_ref();
-    resolve_claude_api_format_from_settings(
-        meta.and_then(|meta| meta.provider_type.as_deref()),
-        meta.and_then(|meta| meta.api_format.as_deref()),
-        &provider.settings_config,
-    )
+    host_provider_claude_api_format(provider)
 }
 
 /// Claude 适配器

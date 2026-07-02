@@ -4,7 +4,6 @@ use crate::app_config::AppType;
 use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::{AuthBindingSource as ProviderAuthBindingSource, Provider, ProviderMeta};
-use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy_core::api::auth::{
     classify_provider_managed_auth, extract_claude_auth_key_from_settings,
     extract_gemini_api_key_from_settings, is_gemini_oauth_key_shape,
@@ -24,7 +23,7 @@ use crate::proxy_core::api::ports::{
 };
 use crate::proxy_core::api::transforms::{
     claude_provider_transform_required, claude_transform_streaming_decision,
-    ClaudeTransformStreamingDecision,
+    resolve_claude_api_format_from_settings, ClaudeTransformStreamingDecision,
 };
 use crate::proxy_core::api::transport::{
     codex_responses_to_chat_conversion_required, CodexProviderChatCompletionsFacts,
@@ -132,6 +131,15 @@ pub(crate) fn provider_claude_base_url(provider: &Provider) -> Option<String> {
     )
 }
 
+pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
+    let meta = provider.meta.as_ref();
+    resolve_claude_api_format_from_settings(
+        meta.and_then(|meta| meta.provider_type.as_deref()),
+        meta.and_then(|meta| meta.api_format.as_deref()),
+        &provider.settings_config,
+    )
+}
+
 pub(crate) fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
     if extract_gemini_api_key_from_settings(&provider.settings_config)
         .as_deref()
@@ -145,7 +153,7 @@ pub(crate) fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
 }
 
 pub(crate) fn provider_claude_kind(provider: &Provider) -> ProviderKind {
-    let api_format = claude_provider_api_format(provider);
+    let api_format = provider_claude_api_format(provider);
     let uses_google_oauth = provider_claude_auth_key(provider)
         .map(|auth_key| is_gemini_oauth_key_shape(&auth_key.key))
         .unwrap_or(false);
@@ -246,7 +254,7 @@ pub(crate) fn provider_github_copilot_managed_account_id(provider: &Provider) ->
 pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
     claude_provider_transform_required(
         provider_claude_kind(provider).needs_transform(),
-        claude_provider_api_format(provider),
+        provider_claude_api_format(provider),
     )
 }
 
