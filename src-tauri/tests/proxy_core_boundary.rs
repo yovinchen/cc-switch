@@ -8190,17 +8190,21 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
         !source.contains("pub(crate) type ProviderCredentialValues"),
         "proxy_core_adapter should not re-export provider credential DTOs as adapter aliases"
     );
+    assert!(
+        !source.contains("fn provider_credential_values_with_issue("),
+        "proxy_core_adapter tests should call credential extraction contracts directly instead of keeping a private provider credential facade"
+    );
 
     let slice = function_slice(
         &source,
-        "fn provider_credential_values_with_issue",
-        "    #[tokio::test]\n    async fn non_managed_auth_passes_through_without_app_handle",
+        "fn provider_credentials_adapter_extracts_app_specific_values",
+        "    #[test]\n    fn claude_model_normalization_adapter_backfills_default_model_keys",
     );
     assert!(
-        slice
-            .contains("crate::proxy_core::api::ports::provider_codex_credential_values_from_parts")
-            && slice.contains("crate::proxy_core::api::ports::CodexCredentialParts"),
-        "proxy_core_adapter should delegate Codex credential value policy to core"
+        slice.contains("provider_codex_credential_values_from_parts(CodexCredentialParts")
+            && slice.contains("provider_non_codex_credential_values_from_settings(")
+            && slice.contains("crate::codex_config::extract_codex_api_key("),
+        "proxy_core_adapter credential tests should call core credential value contracts and the owning Codex API-key extractor directly"
     );
 
     let mut violations = Vec::new();

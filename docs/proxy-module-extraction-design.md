@@ -2006,6 +2006,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1412. test-only `proxy_core_adapter` 中 current-provider id selection 的一跳 helper 已删除；兼容测试直接调用 `proxy-core::select_provider_ids(ProviderSelectionInput::current(...))` 并在断言处显式使用 host `provider_router_app_error_from_provider_selection_failure` 映射，边界测试防止 ProviderRouter selection projection 回流 adapter。
 1413. test-only `proxy_core_adapter` 中 provider key-change 与 additive live-write 的一跳 helper 已删除；兼容测试直接把 `AppType` 投影为 `AppKind` 并调用 `proxy-core::ports::{provider_key_change_policy_issue_for_app,provider_additive_live_write_action_for_app}`，边界测试防止 live/provider policy private façade 回流 adapter。
 1414. test-only `proxy_core_adapter` 中 attempt event payload 与 live takeover app-type list 的私有 helper 已删除；兼容测试直接构造 `proxy-core::events::AttemptEventPayloadInput` 并直接消费 `live_takeover_app_kinds()`，边界测试防止事件 payload / live app-kind helper 重新沉回 adapter 测试壳。
+1415. test-only `proxy_core_adapter` 中 provider credential values 的私有 helper 已删除；兼容测试直接调用 `proxy-core::ports::{provider_codex_credential_values_from_parts,provider_non_codex_credential_values_from_settings}` 和 owning `codex_config::extract_codex_api_key`，边界测试防止 provider credential façade 回流 adapter。
 
 ## 背景
 
