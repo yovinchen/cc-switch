@@ -1992,6 +1992,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1402. 非成功上游响应的 status/body 投影已迁入 `proxy-core::request_transport::upstream_error_response_projection`：host-owned `CcSwitchForwarderResponseSource` 仍负责读取 body 和构造 host `ProxyError::UpstreamError`，但 UTF-8 body 保留/丢弃规则由 core 维护。
 1403. 成功上游响应的 finalization 分支选择已迁入 `proxy-core::response_timeout::upstream_success_response_finalization_plan`：host-owned `CcSwitchForwarderResponseSource` 仍负责实际 body timeout 读取、stream 首包预读和 `ProxyResponse` 构造，但 streaming/non-streaming/zero-timeout 的 readiness 策略由 core 维护。
 1404. `/proxy/v1/events` SSE keep-alive interval/text contract 已迁入 `proxy-core::event_payload::proxy_events_sse_keep_alive_spec`：host-owned `response_adapter` 仍负责 Axum `KeepAlive` 构造和 broadcast stream 桥接，但对外事件流心跳语义由 core 维护。
+1405. HTTP URI path/query 到 `ProxyRequest.endpoint` 的桥接规则已迁入 `proxy-core::request_url::endpoint_from_path_and_query`：host-owned `response_adapter` 仍负责从 Axum/HTTP `Uri` 取出 path/query，但 endpoint 字符串拼接语义由 core 维护。
 
 ## 背景
 

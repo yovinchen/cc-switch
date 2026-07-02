@@ -26006,6 +26006,7 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         source.contains("crate::proxy_core::api::auth::ClaudeDesktopModelListResponse")
             && source.contains("crate::proxy_core::api::domain::AppKind")
             && source.contains("crate::proxy_core::api::transport::{")
+            && source.contains("endpoint_from_path_and_query")
             && source.contains("extract_gemini_model_from_path")
             && source.contains("parse_json_request_body")
             && source.contains("parse_json_request_body_or_null")
@@ -26021,12 +26022,16 @@ fn proxy_response_adapter_owns_core_transport_imports() {
             && source.contains("crate::proxy_core::api::usage::{"),
         "response_adapter should import core auth/domain/transport/event/management/model_catalog/ports/routing/transforms/usage contracts directly"
     );
+    assert!(
+        !source.contains("append_query_to_endpoint_path"),
+        "response_adapter should use the core endpoint_from_path_and_query bridge instead of the lower-level query append helper"
+    );
 
     let mut violations = Vec::new();
     for marker in [
         "AppKind",
         "InterfaceKind",
-        "append_query_to_endpoint_path",
+        "endpoint_from_path_and_query",
         "extract_gemini_model_from_path",
         "parse_json_request_body",
         "parse_json_request_body_or_null",

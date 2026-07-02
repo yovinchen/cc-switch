@@ -247,6 +247,10 @@ pub fn append_query_to_endpoint_path(endpoint: &str, query: Option<&str>) -> Str
     }
 }
 
+pub fn endpoint_from_path_and_query(path: &str, query: Option<&str>) -> String {
+    append_query_to_endpoint_path(path, query)
+}
+
 pub fn strip_endpoint_prefix<'a>(endpoint: &'a str, prefix: Option<&str>) -> &'a str {
     prefix
         .and_then(|prefix| endpoint.strip_prefix(prefix))
@@ -602,8 +606,8 @@ mod tests {
         apply_channel_param_overrides_to_url, build_claude_upstream_url, build_codex_upstream_url,
         claude_transform_endpoint_rewrite_input_from_body, codex_provider_uses_chat_completions,
         codex_responses_to_chat_conversion_required, extract_gemini_model_from_path,
-        forward_upstream_url_plan, forwarder_provider_url_facts, interface_kind_for_forward,
-        invalid_upstream_url_error_message, is_codex_chat_completions_url,
+        endpoint_from_path_and_query, forward_upstream_url_plan, forwarder_provider_url_facts,
+        interface_kind_for_forward, invalid_upstream_url_error_message, is_codex_chat_completions_url,
         is_codex_chat_full_endpoint_base, is_codex_chat_wire_api, is_codex_responses_endpoint,
         is_github_copilot_upstream, is_origin_only_url, merge_query_params,
         request_model_for_forward, resolve_codex_provider_uses_chat_completions,
@@ -716,6 +720,22 @@ mod tests {
         assert_eq!(
             append_query_to_endpoint_path("/responses", Some("")),
             "/responses?"
+        );
+    }
+
+    #[test]
+    fn endpoint_from_path_and_query_preserves_http_uri_shape() {
+        assert_eq!(
+            endpoint_from_path_and_query("/responses", Some("stream=false&x-id=1")),
+            "/responses?stream=false&x-id=1"
+        );
+        assert_eq!(
+            endpoint_from_path_and_query("/responses/compact", None),
+            "/responses/compact"
+        );
+        assert_eq!(
+            endpoint_from_path_and_query("/responses?existing=true", Some("x-id=1")),
+            "/responses?existing=true&x-id=1"
         );
     }
 

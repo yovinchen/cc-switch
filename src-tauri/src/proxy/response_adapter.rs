@@ -56,7 +56,7 @@ use crate::proxy_core::api::transforms::{
     CodexChatTransformStreamingDecision, CodexToolContext,
 };
 use crate::proxy_core::api::transport::{
-    append_query_to_endpoint_path, extract_gemini_model_from_path, parse_json_request_body,
+    endpoint_from_path_and_query, extract_gemini_model_from_path, parse_json_request_body,
     parse_json_request_body_or_null, rebuilt_json_proxy_response, request_body_read_error_message,
     request_body_stream_flag, strip_endpoint_prefix, transformed_sse_proxy_response, ProxyBody,
     ProxyCoreResponse, ProxyRequest,
@@ -142,7 +142,7 @@ impl ParsedAxumJsonProxyRequest {
     }
 
     pub(crate) fn endpoint_for_path(&self, path: &str) -> String {
-        append_query_to_endpoint_path(path, self.uri.query())
+        endpoint_from_path_and_query(path, self.uri.query())
     }
 
     fn into_json_proxy_request(
@@ -219,7 +219,7 @@ impl ParsedAxumJsonProxyRequest {
 }
 
 pub(crate) fn endpoint_from_uri(uri: &Uri) -> String {
-    append_query_to_endpoint_path(uri.path(), uri.query())
+    endpoint_from_path_and_query(uri.path(), uri.query())
 }
 
 async fn collect_axum_request_body(body: axum::body::Body) -> Result<Bytes, ProxyError> {
