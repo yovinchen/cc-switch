@@ -82,6 +82,19 @@ async fn run() -> ProxyCoreResult<()> {
         .models
         .first()
         .ok_or_else(|| ProxyCoreError::Unavailable("missing custom model".to_string()))?;
+    if auth_header_sets == 0 {
+        return Err(ProxyCoreError::Unavailable(
+            "missing auth header resolution".to_string(),
+        ));
+    }
+    if usage_count == 0 {
+        return Err(ProxyCoreError::Unavailable(
+            "missing usage record".to_string(),
+        ));
+    }
+    if event_count == 0 {
+        return Err(ProxyCoreError::Unavailable("missing event".to_string()));
+    }
 
     println!(
         "relay host ready: running={} route={} channel_base={} upstream={} custom_app={} custom_model={} auth_header_sets={} usage_records={} events={}",
@@ -97,6 +110,16 @@ async fn run() -> ProxyCoreResult<()> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn external_relay_host_runtime_smoke_runs() {
+        futures::executor::block_on(run()).expect("external relay host runtime smoke");
+    }
 }
 
 fn opencode_app() -> AppKind {
