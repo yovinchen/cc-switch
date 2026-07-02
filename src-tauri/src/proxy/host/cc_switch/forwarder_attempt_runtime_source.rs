@@ -4,7 +4,8 @@ use std::sync::Arc;
 use crate::database::Database;
 use crate::proxy::engine::forward_pipeline::{
     ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptFailureInput,
-    ForwarderAttemptRuntimeSource, ForwarderAttemptRuntimeSourceRef, ForwarderAttemptSuccessInput,
+    ForwarderAttemptNeutralReleaseInput, ForwarderAttemptRuntimeSource,
+    ForwarderAttemptRuntimeSourceRef, ForwarderAttemptSuccessInput,
 };
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
@@ -264,16 +265,14 @@ impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
 
     fn release_attempt_permit_neutral<'a>(
         &'a self,
-        attempt: &'a ForwardAttempt,
-        app_type: &'a str,
-        used_half_open_permit: bool,
+        input: ForwarderAttemptNeutralReleaseInput<'a>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             release_forward_attempt_permit_neutral_runtime_source(
                 self.router.as_ref(),
-                attempt,
-                app_type,
-                used_half_open_permit,
+                input.attempt,
+                input.app_type,
+                input.used_half_open_permit,
             )
             .await;
         })

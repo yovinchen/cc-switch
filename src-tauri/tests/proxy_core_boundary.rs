@@ -20152,8 +20152,9 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     );
     assert!(
         source.contains("pub(crate) struct ForwarderAttemptSuccessInput")
-            && source.contains("pub(crate) struct ForwarderAttemptFailureInput"),
-        "ForwarderAttemptRuntimeSource must receive success/failure outcome facts through input DTOs"
+            && source.contains("pub(crate) struct ForwarderAttemptFailureInput")
+            && source.contains("pub(crate) struct ForwarderAttemptNeutralReleaseInput"),
+        "ForwarderAttemptRuntimeSource must receive success/failure/neutral-release outcome facts through input DTOs"
     );
     assert!(
         source.contains("pub(crate) enum ForwarderAttemptAllowDecision"),
@@ -20183,11 +20184,19 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
             && source.contains("error: &'a ProxyError"),
         "ForwarderAttemptFailureInput must carry structured failure runtime facts including ProxyError"
     );
+    assert!(
+        source.contains("pub(crate) struct ForwarderAttemptNeutralReleaseInput")
+            && source.contains("attempt: &'a ForwardAttempt")
+            && source.contains("app_type: &'a str")
+            && source.contains("used_half_open_permit: bool"),
+        "ForwarderAttemptNeutralReleaseInput must carry structured neutral permit release facts"
+    );
     for marker in [
         "pub(crate) type ForwarderAttemptRuntimeSourceRef",
         "pub(crate) struct ForwarderAttemptAllowInput",
         "pub(crate) struct ForwarderAttemptSuccessInput",
         "pub(crate) struct ForwarderAttemptFailureInput",
+        "pub(crate) struct ForwarderAttemptNeutralReleaseInput",
         "pub(crate) enum ForwarderAttemptAllowDecision",
         "pub(crate) trait ForwarderAttemptRuntimeSource",
     ] {
@@ -20214,6 +20223,13 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
             && !impl_slice
                 .contains(".record_failure(attempt, app_type, used_half_open_permit, error)"),
         "RequestForwarder must pass attempt success/failure facts as input DTOs"
+    );
+    assert!(
+        impl_slice.contains("release_attempt_permit_neutral(ForwarderAttemptNeutralReleaseInput {")
+            && !impl_slice.contains(
+                ".release_attempt_permit_neutral(attempt, app_type, used_half_open_permit)"
+            ),
+        "RequestForwarder must pass neutral permit release facts as an input DTO"
     );
     let attempt_runtime_impl_slice = function_slice(
         &attempt_source,

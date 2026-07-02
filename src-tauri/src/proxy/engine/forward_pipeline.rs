@@ -566,6 +566,12 @@ pub(crate) struct ForwarderAttemptFailureInput<'a> {
     pub(crate) error: &'a ProxyError,
 }
 
+pub(crate) struct ForwarderAttemptNeutralReleaseInput<'a> {
+    pub(crate) attempt: &'a ForwardAttempt,
+    pub(crate) app_type: &'a str,
+    pub(crate) used_half_open_permit: bool,
+}
+
 pub(crate) trait ForwarderAttemptRuntimeSource {
     fn allow<'a>(
         &'a self,
@@ -578,9 +584,7 @@ pub(crate) trait ForwarderAttemptRuntimeSource {
 
     fn release_attempt_permit_neutral<'a>(
         &'a self,
-        attempt: &'a ForwardAttempt,
-        app_type: &'a str,
-        used_half_open_permit: bool,
+        input: ForwarderAttemptNeutralReleaseInput<'a>,
     ) -> BoxFuture<'a, ()>;
 }
 
@@ -791,14 +795,9 @@ impl RequestForwarder {
             .record_failed_attempt(request_id, app_type, attempt, error);
     }
 
-    async fn release_attempt_permit_neutral(
-        &self,
-        attempt: &ForwardAttempt,
-        app_type: &str,
-        used_half_open_permit: bool,
-    ) {
+    async fn release_attempt_permit_neutral(&self, input: ForwarderAttemptNeutralReleaseInput<'_>) {
         self.attempt_runtime_source
-            .release_attempt_permit_neutral(attempt, app_type, used_half_open_permit)
+            .release_attempt_permit_neutral(input)
             .await;
     }
 
@@ -840,8 +839,12 @@ impl RequestForwarder {
                 None
             }
             ForwarderRectifierRetryFailureDecision::ClientFailure => {
-                self.release_attempt_permit_neutral(attempt, app_type_str, used_half_open_permit)
-                    .await;
+                self.release_attempt_permit_neutral(ForwarderAttemptNeutralReleaseInput {
+                    attempt,
+                    app_type: app_type_str,
+                    used_half_open_permit,
+                })
+                .await;
                 self.runtime_state_source
                     .record_forward_error_status(&retry_err)
                     .await;
@@ -1078,9 +1081,11 @@ impl RequestForwarder {
                             ForwarderRequestRectifierPlan::NotTriggered => {}
                             ForwarderRequestRectifierPlan::AlreadyRetried => {
                                 self.release_attempt_permit_neutral(
-                                    attempt,
-                                    app_type_str,
-                                    used_half_open_permit,
+                                    ForwarderAttemptNeutralReleaseInput {
+                                        attempt,
+                                        app_type: app_type_str,
+                                        used_half_open_permit,
+                                    },
                                 )
                                 .await;
                                 self.runtime_state_source
@@ -1163,9 +1168,11 @@ impl RequestForwarder {
                             ForwarderRequestRectifierPlan::AlreadyRetried
                             | ForwarderRequestRectifierPlan::TriggeredUnchanged => {
                                 self.release_attempt_permit_neutral(
-                                    attempt,
-                                    app_type_str,
-                                    used_half_open_permit,
+                                    ForwarderAttemptNeutralReleaseInput {
+                                        attempt,
+                                        app_type: app_type_str,
+                                        used_half_open_permit,
+                                    },
                                 )
                                 .await;
                                 self.runtime_state_source
@@ -1231,11 +1238,11 @@ impl RequestForwarder {
                     }
 
                     if signature_rectifier_non_retryable_client_error {
-                        self.release_attempt_permit_neutral(
+                        self.release_attempt_permit_neutral(ForwarderAttemptNeutralReleaseInput {
                             attempt,
-                            app_type_str,
+                            app_type: app_type_str,
                             used_half_open_permit,
-                        )
+                        })
                         .await;
                         self.runtime_state_source
                             .record_forward_error_status(&e)
@@ -1279,9 +1286,11 @@ impl RequestForwarder {
                         ForwarderFailureDecision::NonRetryable => {
                             // 不可重试：客户端层错误或客户端断连 → 不污染健康度，仅释放 HalfOpen permit
                             self.release_attempt_permit_neutral(
-                                attempt,
-                                app_type_str,
-                                used_half_open_permit,
+                                ForwarderAttemptNeutralReleaseInput {
+                                    attempt,
+                                    app_type: app_type_str,
+                                    used_half_open_permit,
+                                },
                             )
                             .await;
                             self.runtime_state_source
