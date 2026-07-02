@@ -439,7 +439,11 @@ impl Drop for ActiveConnectionGuard {
 
 pub(crate) trait ForwarderRuntimeStateSource {
     fn next_request_id(&self) -> String;
-    fn emit_request_started(&self, request_id: &str, app_type: &str);
+    fn record_request_started<'a>(
+        &'a self,
+        request_id: &'a str,
+        app_type: &'a str,
+    ) -> BoxFuture<'a, ()>;
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
     fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
     fn emit_attempt_failed_for_error(
@@ -502,7 +506,6 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn record_forward_error_status<'a>(&'a self, error: &'a ProxyError) -> BoxFuture<'a, ()>;
     fn record_no_available_provider_status<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_terminal_failure_status<'a>(&'a self) -> BoxFuture<'a, ()>;
-    fn record_request_started_now<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
 }
@@ -856,9 +859,9 @@ impl RequestForwarder {
     ) -> Result<ForwardResult, ForwardError> {
         let request_id = self.runtime_state_source.next_request_id();
         self.runtime_state_source
-            .emit_request_started(&request_id, app_type.as_str());
+            .record_request_started(&request_id, app_type.as_str())
+            .await;
         let guard = ActiveConnectionGuard::acquire(self.runtime_state_source.clone()).await;
-        self.runtime_state_source.record_request_started_now().await;
         let result = self
             .forward_preplanned_attempts_inner(
                 &request_id,

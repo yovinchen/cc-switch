@@ -19652,6 +19652,12 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "ForwarderRuntimeStateSource must own attempt-failed error message projection"
     );
     assert!(
+        runtime_trait_slice.contains("fn record_request_started<'a>(")
+            && !runtime_trait_slice.contains("fn emit_request_started(")
+            && !runtime_trait_slice.contains("fn record_request_started_now"),
+        "ForwarderRuntimeStateSource must expose request-start lifecycle as one behavior, not split event/status helpers"
+    );
+    assert!(
         provider_failure_runtime_source_slice.contains("provider: &Provider")
             && provider_failure_runtime_source_slice.contains("error: &ProxyError")
             && !provider_failure_runtime_source_slice.contains("provider_name: &str")
@@ -19838,6 +19844,12 @@ fn production_forwarder_request_lifecycle_uses_runtime_state_source() {
         violations.is_empty(),
         "request lifecycle event/status updates must use runtime state source methods:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        impl_slice.contains(".record_request_started(&request_id, app_type.as_str())")
+            && !impl_slice.contains(".emit_request_started(")
+            && !impl_slice.contains(".record_request_started_now("),
+        "RequestForwarder must call one request-start lifecycle method on the runtime state source"
     );
 }
 

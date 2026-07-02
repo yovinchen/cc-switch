@@ -2655,7 +2655,7 @@ base_url = "https://api.openai.com/v1"
             Arc::new(ProxyEventBus::default()),
         );
 
-        source.record_request_started_now().await;
+        source.record_request_started("req-1", "claude").await;
 
         let status = source.status();
         let status = status.read().await;

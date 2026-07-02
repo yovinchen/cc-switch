@@ -339,8 +339,16 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         Uuid::new_v4().to_string()
     }
 
-    fn emit_request_started(&self, request_id: &str, app_type: &str) {
-        emit_request_started_event_source(self.events.as_ref(), request_id, app_type);
+    fn record_request_started<'a>(
+        &'a self,
+        request_id: &'a str,
+        app_type: &'a str,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            emit_request_started_event_source(self.events.as_ref(), request_id, app_type);
+            let started_at = chrono::Utc::now().to_rfc3339();
+            record_forward_request_started_runtime_source(self.status.as_ref(), &started_at).await;
+        })
     }
 
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
@@ -559,13 +567,6 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         Box::pin(async move {
             let error_message = error.to_string();
             record_forward_failure_runtime_source(self.status.as_ref(), &error_message).await;
-        })
-    }
-
-    fn record_request_started_now<'a>(&'a self) -> BoxFuture<'a, ()> {
-        Box::pin(async move {
-            let started_at = chrono::Utc::now().to_rfc3339();
-            record_forward_request_started_runtime_source(self.status.as_ref(), &started_at).await;
         })
     }
 

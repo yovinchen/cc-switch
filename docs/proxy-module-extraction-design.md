@@ -445,7 +445,7 @@
 430. 成功后的 failover switch 调度已改为 `FailoverSwitchScheduler::schedule_switch(app, ForwarderFailoverSwitchTarget)`；host forwarder 不再拆 target 的 provider id/name 或自行把 app 投影为 owned string，调度输入转换留在 scheduler 边界。
 431. attempt started/succeeded/failed phase 选择已收敛到 `ForwarderRuntimeStateSource::{emit_attempt_started,emit_attempt_succeeded,emit_attempt_failed}`；host forwarder 不再导入/传递 `AttemptEventPhase`，只触发语义化事件方法。
 432. request-started、attempt 事件和 active route target 的 host forwarder 薄 wrapper 已删除；`RequestForwarder` 直接调用 `ForwarderRuntimeStateSource` 语义方法，channel route target 状态写入与 `route_selected` 事件回归测试下移到 source 层。
-433. request-started runtime status 的 timestamp 生成已收敛到 `ForwarderRuntimeStateSource::record_request_started_now()`；host forwarder 不再直接调用 `chrono::Utc` 或传递中间时间字符串。
+433. request-started event 与 runtime status timestamp 生成已收敛到 `ForwarderRuntimeStateSource::record_request_started(request_id, app_type)`；host forwarder 不再拆分事件发送、`chrono::Utc` 时间戳生成或中间时间字符串传递。
 434. request lifecycle id 生成已收敛到 `ForwarderRuntimeStateSource::next_request_id()`；host forwarder 不再直接调用 `uuid::Uuid::new_v4()`，只消费 runtime source 提供的 request id。
 435. active connection RAII guard 类型已从 adapter 边界移到 `proxy/engine/forward_pipeline.rs::ActiveConnectionGuard`；forwarder/response pipeline/response adapter 继续传递同一 guard，但运行态连接计数生命周期 contract 归属 forward pipeline 边界。
 436. `CcSwitchProxyRuntime` 显式持有 `ProxyEventBus` 并供 `CcSwitchProxyServices` event sink 装配使用；`ForwarderRuntimeStateSource` 不再暴露 event bus 读出口，测试观测也改由 fixture 自持 event handle。
