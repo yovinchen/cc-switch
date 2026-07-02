@@ -21,9 +21,7 @@ impl ProxyEventSink for CcSwitchEventSink {
     fn emit_event<'a>(&'a self, event: ProxyCoreEvent) -> BoxFuture<'a, ProxyCoreResult<()>> {
         Box::pin(async move {
             if let Some(events) = self.events.as_ref() {
-                let event_name = event.event_type.event_name();
-                let payload = event.into_event_payload();
-                events.emit(event_name, payload);
+                events.emit_core_event(event);
             }
             Ok(())
         })

@@ -4,7 +4,7 @@ use crate::proxy::host::cc_switch::global_http_client::set_proxy_port;
 use crate::proxy::host::cc_switch::proxy_state::proxy_state_from_runtime_sources;
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy::transport::http::server::ProxyServer;
-use crate::proxy_core::api::events::{server_started_event, server_stopped_event, ProxyCoreEvent};
+use crate::proxy_core::api::events::{server_started_event, server_stopped_event};
 use crate::proxy_core::api::ports::{
     proxy_server_info_from_parts,
     record_proxy_server_started_status as core_record_proxy_server_started_status,
@@ -23,18 +23,12 @@ pub(crate) fn proxy_server_from_runtime_config(
     ProxyServer::from_runtime_state(config, state)
 }
 
-fn emit_proxy_core_event(events: &ProxyEventBus, event: ProxyCoreEvent) {
-    let event_name = event.event_type.event_name();
-    let payload = event.into_event_payload();
-    events.emit(event_name, payload);
-}
-
 fn emit_proxy_server_started_event_source(events: &ProxyEventBus, address: &str, port: u16) {
-    emit_proxy_core_event(events, server_started_event(address, port));
+    events.emit_core_event(server_started_event(address, port));
 }
 
 fn emit_proxy_server_stopped_event_source(events: &ProxyEventBus) {
-    emit_proxy_core_event(events, server_stopped_event());
+    events.emit_core_event(server_stopped_event());
 }
 
 fn record_proxy_server_started_status(status: &mut ProxyRuntimeStatus, address: &str, port: u16) {

@@ -7738,6 +7738,9 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn provider_switched_failover_event_message",
         "pub(crate) fn provider_switched_failover_enabled_event_message",
         "pub(crate) fn proxy_core_event_to_bus_message",
+        "fn proxy_core_event_to_bus_message",
+        "fn emit_proxy_core_event",
+        "struct ProxyEventBusMessage",
         "pub(crate) fn proxy_app_config_from_config_source_parts",
         "pub(crate) fn proxy_official_warning_event_from_current_provider_db",
         "pub(crate) fn proxy_official_warning_event_from_provider",
@@ -22899,14 +22902,20 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let event_sink_path = manifest_dir.join("src/proxy/host/cc_switch/event_sink.rs");
     let event_sink_source = fs::read_to_string(&event_sink_path).expect("read event_sink.rs");
+    let event_bus_path = manifest_dir.join("src/proxy/events.rs");
+    let event_bus_source = fs::read_to_string(&event_bus_path).expect("read proxy/events.rs");
 
     assert!(
         event_sink_source.contains("pub(crate) struct CcSwitchEventSink")
             && event_sink_source.contains("impl ProxyEventSink for CcSwitchEventSink")
-            && event_sink_source.contains("event.event_type.event_name()")
-            && event_sink_source.contains("event.into_event_payload()")
-            && event_sink_source.contains("events.emit("),
-        "CC Switch event sink implementation should live in host/cc_switch/event_sink.rs and own bus dispatch"
+            && event_sink_source.contains("events.emit_core_event(event);"),
+        "CC Switch event sink implementation should live in host/cc_switch/event_sink.rs and delegate core event projection to ProxyEventBus"
+    );
+    assert!(
+        event_bus_source.contains("pub fn emit_core_event(&self, event: ProxyCoreEvent)")
+            && event_bus_source.contains("event.event_type.event_name()")
+            && event_bus_source.contains("event.into_event_payload()"),
+        "ProxyEventBus should own ProxyCoreEvent to event bus envelope projection"
     );
     assert!(
         event_sink_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
@@ -22935,7 +22944,9 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
         "proxy_core_adapter should not re-export event type DTOs as adapter aliases"
     );
     assert!(
-        !adapter_source.contains("pub(crate) fn emit_proxy_core_event(")
+        !adapter_source.contains("fn proxy_core_event_to_bus_message(")
+            && !adapter_source.contains("fn emit_proxy_core_event(")
+            && !adapter_source.contains("pub(crate) fn emit_proxy_core_event(")
             && !adapter_source.contains("pub(crate) fn emit_proxy_core_event_bus_source(")
             && !adapter_source.contains("pub(crate) struct ProxyEventBusMessage"),
         "proxy_core_adapter should not expose generic event bus dispatch facades"

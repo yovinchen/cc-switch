@@ -16,7 +16,7 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy_core::api::events::{
     attempt_event, request_started_event, route_selected_event, AttemptEventChannel,
-    AttemptEventPayloadInput, AttemptEventPhase, ProxyCoreEvent,
+    AttemptEventPayloadInput, AttemptEventPhase,
 };
 use crate::proxy_core::api::ports::{
     current_route_target_from_input, record_active_connection_acquired_status,
@@ -269,14 +269,8 @@ pub(crate) async fn set_active_route_target_runtime_source(
     );
 }
 
-fn emit_proxy_core_event(events: &ProxyEventBus, event: ProxyCoreEvent) {
-    let event_name = event.event_type.event_name();
-    let payload = event.into_event_payload();
-    events.emit(event_name, payload);
-}
-
 fn emit_request_started_event_source(events: &ProxyEventBus, request_id: &str, app_type: &str) {
-    emit_proxy_core_event(events, request_started_event(request_id, app_type));
+    events.emit_core_event(request_started_event(request_id, app_type));
 }
 
 fn attempt_event_payload_input_from_forward_attempt<'a>(
@@ -313,14 +307,11 @@ fn emit_attempt_event_source(
     phase: AttemptEventPhase,
     error: Option<&str>,
 ) {
-    emit_proxy_core_event(
-        events,
-        attempt_event(
-            attempt_event_payload_input_from_forward_attempt(request_id, app_type, attempt, error),
-            attempt.is_channel(),
-            phase,
-        ),
-    );
+    events.emit_core_event(attempt_event(
+        attempt_event_payload_input_from_forward_attempt(request_id, app_type, attempt, error),
+        attempt.is_channel(),
+        phase,
+    ));
 }
 
 async fn record_forward_active_route_target_runtime_source(
@@ -338,12 +329,9 @@ async fn record_forward_active_route_target_runtime_source(
         );
     }
 
-    emit_proxy_core_event(
-        events,
-        route_selected_event(attempt_event_payload_input_from_forward_attempt(
-            request_id, app_type, attempt, None,
-        )),
-    );
+    events.emit_core_event(route_selected_event(
+        attempt_event_payload_input_from_forward_attempt(request_id, app_type, attempt, None),
+    ));
 }
 
 impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {

@@ -270,23 +270,6 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
-    struct ProxyEventBusMessage {
-        event_name: String,
-        payload: Value,
-    }
-
-    fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEventBusMessage {
-        ProxyEventBusMessage {
-            event_name: event.event_type.event_name(),
-            payload: event.into_event_payload(),
-        }
-    }
-
-    fn emit_proxy_core_event(event: ProxyCoreEvent, mut emit: impl FnMut(String, Value)) {
-        let message = proxy_core_event_to_bus_message(event);
-        emit(message.event_name, message.payload);
-    }
-
     fn attempt_event_payload_input_from_forward_attempt<'a>(
         request_id: &'a str,
         app_type: &'a str,
@@ -3760,6 +3743,8 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn proxy_event_adapter_projects_event_stream_contracts() {
+        let bus = ProxyEventBus::default();
+
         assert_eq!(
             crate::proxy_core::api::events::PROXY_OFFICIAL_WARNING_EVENT,
             "proxy-official-warning"
@@ -3780,13 +3765,13 @@ base_url = "https://api.openai.com/v1"
             crate::proxy_core::api::events::SERVER_STOPPED_EVENT,
             "server_stopped"
         );
-        let official_warning = proxy_core_event_to_bus_message(
+        let official_warning = bus.emit_core_event(
             crate::proxy_core::api::events::proxy_official_warning_event(
                 "claude",
                 "Official Claude",
             ),
         );
-        assert_eq!(official_warning.event_name, "proxy-official-warning");
+        assert_eq!(official_warning.event, "proxy-official-warning");
         assert_eq!(
             official_warning.payload,
             json!({
@@ -3816,13 +3801,10 @@ base_url = "https://api.openai.com/v1"
                 provider.category.as_deref()
             )
         );
-        let official_warning_from_core = proxy_core_event_to_bus_message(
+        let official_warning_from_core = bus.emit_core_event(
             crate::proxy_core::api::events::proxy_official_warning_event("codex", &provider.name),
         );
-        assert_eq!(
-            official_warning_from_core.event_name,
-            "proxy-official-warning"
-        );
+        assert_eq!(official_warning_from_core.event, "proxy-official-warning");
         assert_eq!(official_warning_from_core.payload["appType"], "codex");
         assert_eq!(
             official_warning_from_core.payload["providerName"],
@@ -3860,34 +3842,33 @@ base_url = "https://api.openai.com/v1"
                 provider.category.as_deref()
             )
         );
-        let provider_switched = proxy_core_event_to_bus_message(
+        let provider_switched = bus.emit_core_event(
             crate::proxy_core::api::events::provider_switched_failover_event(
                 "claude",
                 "provider-1",
             ),
         );
-        assert_eq!(provider_switched.event_name, "provider-switched");
+        assert_eq!(provider_switched.event, "provider-switched");
         assert_eq!(provider_switched.payload["source"], "failover");
-        let provider_switched_enabled = proxy_core_event_to_bus_message(
+        let provider_switched_enabled = bus.emit_core_event(
             crate::proxy_core::api::events::provider_switched_failover_enabled_event(
                 "claude",
                 "provider-1",
             ),
         );
-        assert_eq!(provider_switched_enabled.event_name, "provider-switched");
+        assert_eq!(provider_switched_enabled.event, "provider-switched");
         assert_eq!(
             provider_switched_enabled.payload["source"],
             "failoverEnabled"
         );
-        let server_started =
-            proxy_core_event_to_bus_message(server_started_event("127.0.0.1", 15721));
-        assert_eq!(server_started.event_name, "server_started");
+        let server_started = bus.emit_core_event(server_started_event("127.0.0.1", 15721));
+        assert_eq!(server_started.event, "server_started");
         assert_eq!(
             server_started.payload,
             json!({"address": "127.0.0.1", "port": 15721})
         );
-        let server_stopped = proxy_core_event_to_bus_message(server_stopped_event());
-        assert_eq!(server_stopped.event_name, "server_stopped");
+        let server_stopped = bus.emit_core_event(server_stopped_event());
+        assert_eq!(server_stopped.event, "server_stopped");
         assert!(server_stopped
             .payload
             .as_object()
@@ -3905,19 +3886,18 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(spec.event, "request_started");
         assert!(spec.data.contains("\"provider\":\"relay-a\""));
 
-        let request_started =
-            proxy_core_event_to_bus_message(request_started_event("req-start", "claude"));
-        assert_eq!(request_started.event_name, "request_started");
+        let request_started = bus.emit_core_event(request_started_event("req-start", "claude"));
+        assert_eq!(request_started.event, "request_started");
         assert_eq!(request_started.payload["requestId"], "req-start");
         assert_eq!(request_started.payload["appType"], "claude");
 
-        let message = proxy_core_event_to_bus_message(ProxyCoreEvent {
+        let message = bus.emit_core_event(ProxyCoreEvent {
             event_type: crate::proxy_core::api::events::ProxyCoreEventType::RouteSelected,
             request_id: Some("req-1".to_string()),
             channel_id: Some("channel-a".to_string()),
             payload: json!({"attemptCount": 2}),
         });
-        assert_eq!(message.event_name, "route_selected");
+        assert_eq!(message.event, "route_selected");
         assert_eq!(message.payload["requestId"], "req-1");
         assert_eq!(message.payload["channelId"], "channel-a");
         assert_eq!(message.payload["attemptCount"], 2);
@@ -3945,7 +3925,7 @@ base_url = "https://api.openai.com/v1"
                 source_kind: "manual".to_string(),
             },
         );
-        let route_message = proxy_core_event_to_bus_message(route_selected_event(
+        let route_message = bus.emit_core_event(route_selected_event(
             attempt_event_payload_input_from_forward_attempt(
                 "req-route",
                 "claude",
@@ -3953,14 +3933,14 @@ base_url = "https://api.openai.com/v1"
                 None,
             ),
         ));
-        assert_eq!(route_message.event_name, "route_selected");
+        assert_eq!(route_message.event, "route_selected");
         assert_eq!(route_message.payload["requestId"], "req-route");
         assert_eq!(route_message.payload["providerId"], "provider-1");
         assert_eq!(route_message.payload["channelId"], "channel-a");
         assert_eq!(route_message.payload["interfaceKind"], "openai_responses");
         assert_eq!(route_message.payload["upstreamModel"], "upstream-sonnet");
 
-        let failed_attempt_message = proxy_core_event_to_bus_message(attempt_event(
+        let failed_attempt_message = bus.emit_core_event(attempt_event(
             attempt_event_payload_input_from_forward_attempt(
                 "req-failed",
                 "claude",
@@ -3970,26 +3950,21 @@ base_url = "https://api.openai.com/v1"
             route_attempt.is_channel(),
             AttemptEventPhase::Failed,
         ));
-        assert_eq!(failed_attempt_message.event_name, "channel_failed");
+        assert_eq!(failed_attempt_message.event, "channel_failed");
         assert_eq!(failed_attempt_message.payload["requestId"], "req-failed");
         assert_eq!(failed_attempt_message.payload["channelId"], "channel-a");
         assert_eq!(failed_attempt_message.payload["error"], "upstream failed");
 
-        let mut emitted = None;
-        emit_proxy_core_event(
-            ProxyCoreEvent {
-                event_type: crate::proxy_core::api::events::ProxyCoreEventType::RouteSelected,
-                request_id: Some("req-2".to_string()),
-                channel_id: Some("channel-b".to_string()),
-                payload: json!({"attemptCount": 1}),
-            },
-            |event_name, payload| emitted = Some((event_name, payload)),
-        );
-        let (event_name, payload) = emitted.expect("event emitted");
-        assert_eq!(event_name, "route_selected");
-        assert_eq!(payload["requestId"], "req-2");
-        assert_eq!(payload["channelId"], "channel-b");
-        assert_eq!(payload["attemptCount"], 1);
+        let emitted = bus.emit_core_event(ProxyCoreEvent {
+            event_type: crate::proxy_core::api::events::ProxyCoreEventType::RouteSelected,
+            request_id: Some("req-2".to_string()),
+            channel_id: Some("channel-b".to_string()),
+            payload: json!({"attemptCount": 1}),
+        });
+        assert_eq!(emitted.event, "route_selected");
+        assert_eq!(emitted.payload["requestId"], "req-2");
+        assert_eq!(emitted.payload["channelId"], "channel-b");
+        assert_eq!(emitted.payload["attemptCount"], 1);
     }
 
     #[test]

@@ -5,8 +5,8 @@
 //! implementation when the forwarding engine is moved behind service ports.
 
 use crate::proxy_core::api::events::{
-    build_proxy_events_connected_payload, build_proxy_events_lagged_payload, ProxyEventEnvelope,
-    PROXY_EVENTS_CONNECTED_EVENT, PROXY_EVENTS_LAGGED_EVENT,
+    build_proxy_events_connected_payload, build_proxy_events_lagged_payload, ProxyCoreEvent,
+    ProxyEventEnvelope, PROXY_EVENTS_CONNECTED_EVENT, PROXY_EVENTS_LAGGED_EVENT,
 };
 use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -39,6 +39,10 @@ impl ProxyEventBus {
         let envelope = self.envelope(event, payload);
         let _ = self.sender.send(envelope.clone());
         envelope
+    }
+
+    pub fn emit_core_event(&self, event: ProxyCoreEvent) -> ProxyEventEnvelope {
+        self.emit(event.event_type.event_name(), event.into_event_payload())
     }
 
     pub fn connected_event(&self) -> ProxyEventEnvelope {
@@ -95,5 +99,18 @@ mod tests {
         let lagged = bus.lagged_event(7);
         assert_eq!(lagged.event, "proxy_events_lagged");
         assert_eq!(lagged.payload["skipped"], 7);
+    }
+
+    #[test]
+    fn event_bus_projects_core_events() {
+        let bus = ProxyEventBus::default();
+
+        let envelope = bus.emit_core_event(crate::proxy_core::api::events::request_started_event(
+            "req-1", "claude",
+        ));
+
+        assert_eq!(envelope.event, "request_started");
+        assert_eq!(envelope.payload["requestId"], "req-1");
+        assert_eq!(envelope.payload["appType"], "claude");
     }
 }
