@@ -1987,6 +1987,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1397. managed-account token 快照 payload 已迁入 `proxy-core::managed_account_auth::ManagedAccountTokenSnapshot`：core 固化缓存中的 `ProviderAuthInfo`、Codex OAuth resolved account id 和 cached_at_ms 字段 contract，host-owned runtime source 只维护 HashMap 存储、时间戳注入和 Tauri auth manager 调用；边界测试防止 snapshot 形状重新落回 host 或 adapter。
 1398. managed-account token snapshot 的 fallback-age 决策已下沉到 `ManagedAccountTokenSnapshot::fallback_decision`：host-owned runtime source 不再直接读取 `cached_at_ms` 调用 fallback helper，而是只取出 snapshot、传入当前时间和 refresh failure kind，由 core 解释缓存年龄、retryable/terminal 和 30 秒窗口。
 1399. managed-account token fallback 日志上下文已下沉到 `ManagedAccountTokenFailureFallbackDecision::fallback_log_message`：host-owned runtime source 不再手动拼 `runtime/account/age/error` 或单独传 account id 给 snapshot fallback，core 通过 `ManagedAccountTokenCacheKey` 与 decision 生成保持兼容的日志文案。
+1400. channel-key round-robin cursor key/advance gate 已迁入 `proxy-core::ports::channel_key_runtime_round_robin_cursor_key`：host-owned `CcSwitchChannelKeyRuntimeSource` 仍持有 DB 和 cursor map，但只根据 core 返回的 cursor key 推进 wildcard round-robin，避免 CC Switch 默认宿主复制 key 轮询语义。
 
 ## 背景
 

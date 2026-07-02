@@ -1,7 +1,8 @@
 use crate::database::{Database, ProxyChannelKeyRecord};
 use crate::proxy_core::api::errors::{config_error_with_context, ProxyCoreResult};
 use crate::proxy_core::api::management::{
-    channel_key_runtime_candidate_from_input, effective_channel_key_runtime_selection_policy,
+    channel_key_runtime_candidate_from_input, channel_key_runtime_round_robin_cursor_key,
+    effective_channel_key_runtime_selection_policy,
     select_channel_key_runtime_candidate_with_policy, ChannelKeyRuntimeCandidate,
     ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeSelectionInput,
     ChannelKeyRuntimeSelectionPolicy, ChannelKeyRuntimeSelectionStrategy,
@@ -114,11 +115,12 @@ fn channel_key_round_robin_offset(
     key_ref: &str,
     strategy: ChannelKeyRuntimeSelectionStrategy,
 ) -> ProxyCoreResult<u64> {
-    if strategy != ChannelKeyRuntimeSelectionStrategy::RoundRobin || key_ref.trim() != "*" {
+    let Some(cursor_key) =
+        channel_key_runtime_round_robin_cursor_key(channel_id, key_ref, strategy)
+    else {
         return Ok(0);
-    }
+    };
 
-    let cursor_key = channel_key_round_robin_cursor_key(channel_id, key_ref);
     let mut cursors = round_robin_cursors.lock().map_err(|error| {
         config_error_with_context("advance channel key round-robin cursor", error)
     })?;
@@ -126,10 +128,6 @@ fn channel_key_round_robin_offset(
     let current = *offset;
     *offset = (*offset).wrapping_add(1);
     Ok(current)
-}
-
-fn channel_key_round_robin_cursor_key(channel_id: &str, key_ref: &str) -> String {
-    format!("{}:{key_ref}", channel_id.trim())
 }
 
 fn channel_key_runtime_selection_clock() -> (i64, u64) {

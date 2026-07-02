@@ -6104,6 +6104,18 @@ pub struct ChannelKeyRuntimeSelectionInput<'a> {
     pub policy: ChannelKeyRuntimeSelectionPolicy,
 }
 
+pub fn channel_key_runtime_round_robin_cursor_key(
+    channel_id: &str,
+    key_ref: &str,
+    strategy: ChannelKeyRuntimeSelectionStrategy,
+) -> Option<String> {
+    if strategy != ChannelKeyRuntimeSelectionStrategy::RoundRobin || key_ref.trim() != "*" {
+        return None;
+    }
+
+    Some(format!("{}:{}", channel_id.trim(), key_ref.trim()))
+}
+
 pub fn select_enabled_channel_key_runtime_candidate<I>(
     candidates: I,
 ) -> Option<ChannelKeyRuntimeCandidate>
@@ -12193,6 +12205,35 @@ GEMINI_API_KEY=sk-test123
         )
         .expect("selected second round-robin candidate");
         assert_eq!(round_robin_second.key_ref, "beta");
+    }
+
+    #[test]
+    fn channel_key_runtime_round_robin_cursor_key_only_advances_wildcard_round_robin() {
+        assert_eq!(
+            super::channel_key_runtime_round_robin_cursor_key(
+                " channel-a ",
+                " * ",
+                super::ChannelKeyRuntimeSelectionStrategy::RoundRobin,
+            )
+            .as_deref(),
+            Some("channel-a:*")
+        );
+        assert_eq!(
+            super::channel_key_runtime_round_robin_cursor_key(
+                "channel-a",
+                "primary",
+                super::ChannelKeyRuntimeSelectionStrategy::RoundRobin,
+            ),
+            None
+        );
+        assert_eq!(
+            super::channel_key_runtime_round_robin_cursor_key(
+                "channel-a",
+                "*",
+                super::ChannelKeyRuntimeSelectionStrategy::Weighted,
+            ),
+            None
+        );
     }
 
     #[test]
