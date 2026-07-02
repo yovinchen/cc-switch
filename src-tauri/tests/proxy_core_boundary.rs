@@ -14878,15 +14878,18 @@ fn stream_check_service_owns_core_dto_and_user_agent_policy_imports() {
 }
 
 #[test]
-fn gemini_auth_service_owns_core_auth_type_reexport() {
+fn gemini_auth_service_uses_core_auth_type_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let service_path = manifest_dir.join("src/services/provider/gemini_auth.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let service_source = fs::read_to_string(&service_path).expect("read gemini_auth.rs");
-    let required_import = "pub(crate) use crate::proxy_core::api::ports::GeminiAuthType;";
-    let required_detector_import =
-        "detect_gemini_auth_type as core_detect_gemini_auth_type, GeminiAuthTypeInput,";
+    let required_import = "use crate::proxy_core::api::ports::{";
+    let required_detector_import = "detect_gemini_auth_type as core_detect_gemini_auth_type";
+    let required_type_import = "GeminiAuthType";
+    let required_input_import = "GeminiAuthTypeInput";
+    let forbidden_service_reexport =
+        "pub(crate) use crate::proxy_core::api::ports::GeminiAuthType;";
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&adapter_source) {
@@ -14913,15 +14916,11 @@ fn gemini_auth_service_owns_core_auth_type_reexport() {
         let direct_core =
             code.contains("crate::proxy_core::") || code.contains("cc_switch_proxy_core::");
         if direct_core
-            && !matches!(
-                code.trim(),
-                "use crate::proxy_core::api::ports::{"
-                    | "pub(crate) use crate::proxy_core::api::ports::GeminiAuthType;"
-            )
+            && !matches!(code.trim(), "use crate::proxy_core::api::ports::{")
             && !code.contains(required_detector_import)
         {
             violations.push(format!(
-                "src/services/provider/gemini_auth.rs:{} contains non-GeminiAuthType direct proxy-core import `{}`",
+                "src/services/provider/gemini_auth.rs:{} contains non-Gemini-auth direct proxy-core import `{}`",
                 line_index + 1,
                 code.trim()
             ));
@@ -14930,7 +14929,17 @@ fn gemini_auth_service_owns_core_auth_type_reexport() {
 
     assert!(
         service_source.contains(required_import),
-        "Gemini auth service must re-export GeminiAuthType directly from proxy_core"
+        "Gemini auth service must import Gemini auth contracts directly from proxy_core"
+    );
+    assert!(
+        !service_source.contains(forbidden_service_reexport),
+        "Gemini auth service should not re-export GeminiAuthType"
+    );
+    assert!(
+        service_source.contains(required_detector_import)
+            && service_source.contains(required_type_import)
+            && service_source.contains(required_input_import),
+        "Gemini auth service must import detector, GeminiAuthType, and GeminiAuthTypeInput from proxy_core"
     );
     assert!(
         service_source.contains("core_detect_gemini_auth_type(GeminiAuthTypeInput")

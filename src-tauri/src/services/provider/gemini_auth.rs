@@ -4,9 +4,8 @@
 
 use crate::error::AppError;
 use crate::provider::Provider;
-pub(crate) use crate::proxy_core::api::ports::GeminiAuthType;
 use crate::proxy_core::api::ports::{
-    detect_gemini_auth_type as core_detect_gemini_auth_type, GeminiAuthTypeInput,
+    detect_gemini_auth_type as core_detect_gemini_auth_type, GeminiAuthType, GeminiAuthTypeInput,
 };
 
 /// Detect Gemini provider authentication type

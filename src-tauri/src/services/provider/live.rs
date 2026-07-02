@@ -42,7 +42,8 @@ use crate::proxy_core::api::ports::{
     sanitize_claude_settings_for_live, should_skip_manual_default_live_import,
     should_skip_startup_default_live_import, CodexLiveSnapshotIssue, CodexLiveSnapshotParts,
     CodexProviderBackfillParts, CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue,
-    GeminiLiveConfigIssue, OpenClawLiveWriteActionDecision as CoreOpenClawLiveWriteActionDecision,
+    GeminiAuthType, GeminiLiveConfigIssue,
+    OpenClawLiveWriteActionDecision as CoreOpenClawLiveWriteActionDecision,
     OpenClawLiveWriteConfigDecision as CoreOpenClawLiveWriteConfigDecision,
     OpenCodeLiveWriteActionDecision as CoreOpenCodeLiveWriteActionDecision,
     OpenCodeLiveWriteConfigDecision as CoreOpenCodeLiveWriteConfigDecision, ProviderLiveSyncScope,
@@ -50,9 +51,7 @@ use crate::proxy_core::api::ports::{
 use crate::services::mcp::McpService;
 use crate::store::AppState;
 
-use super::gemini_auth::{
-    detect_gemini_auth_type, ensure_google_oauth_security_flag, GeminiAuthType,
-};
+use super::gemini_auth::{detect_gemini_auth_type, ensure_google_oauth_security_flag};
 pub(crate) fn provider_exists_in_live_config(
     app_type: &AppType,
     provider_id: &str,
