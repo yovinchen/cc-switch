@@ -2398,7 +2398,7 @@ fn is_allowed_host_proxy_server_core_import(relative: &str, code: &str) -> bool 
     relative == "src/proxy/host/cc_switch/proxy_server.rs"
         && matches!(
             code.trim(),
-            "use crate::proxy_core::api::events::{server_started_event, server_stopped_event, ProxyCoreEvent};"
+            "use crate::proxy_core::api::events::{server_started_event, server_stopped_event};"
                 | "use crate::proxy_core::api::ports::{"
         )
 }
@@ -19493,7 +19493,6 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     assert!(
         runtime_source.contains("use crate::proxy_core::api::events::{")
             && runtime_source.contains("AttemptEventPhase")
-            && runtime_source.contains("ProxyCoreEvent")
             && runtime_source
                 .contains("use crate::proxy_core::api::ports::{")
             && runtime_source.contains("CurrentRouteTarget")
@@ -19513,6 +19512,12 @@ fn production_forwarder_uses_runtime_state_source_resource() {
             && runtime_source.contains("ForwarderRectifierRetryKind")
             && runtime_source.contains("pub(crate) fn current_route_target_from_provider("),
         "default ForwarderRuntimeStateSource should import runtime/event/transport contracts directly from proxy_core"
+    );
+    assert!(
+        runtime_source.contains("events.emit_core_event(request_started_event(")
+            && runtime_source.contains("events.emit_core_event(attempt_event(")
+            && runtime_source.contains("events.emit_core_event(route_selected_event("),
+        "default ForwarderRuntimeStateSource should project core events through ProxyEventBus::emit_core_event"
     );
     let adapter_transport_reexport_slice = optional_function_slice(
         &adapter_source,
