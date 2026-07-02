@@ -9,7 +9,8 @@ use crate::proxy::engine::forward_pipeline::{
     ForwarderFailoverSwitchTarget, ForwarderFailureDecision, ForwarderProviderFailureInput,
     ForwarderProviderRectifierRetryFailureInput, ForwarderRectifierRetryFailureDecision,
     ForwarderRectifierRetryFailureLogInput, ForwarderRectifierRetrySuccessLogInput,
-    ForwarderRuntimeStateSource, ForwarderRuntimeStateSourceRef, ForwarderSuccessStatusInput,
+    ForwarderRetryableFailureLogInput, ForwarderRuntimeStateSource, ForwarderRuntimeStateSourceRef,
+    ForwarderSuccessStatusInput, ForwarderTerminalFailureLogInput,
 };
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::forward_failure_kind_from_proxy_error;
@@ -473,38 +474,25 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         }
     }
 
-    fn log_retryable_forward_failure(
-        &self,
-        app_type: &str,
-        error: &ProxyError,
-        provider: &Provider,
-        attempted_providers: usize,
-        total_providers: usize,
-    ) {
+    fn log_retryable_forward_failure(&self, input: ForwarderRetryableFailureLogInput<'_>) {
         log::warn!(
             "{}",
             retryable_forward_failure_log_line(
-                app_type,
-                error,
-                provider,
-                attempted_providers,
-                total_providers
+                input.app_type,
+                input.error,
+                input.provider,
+                input.attempted_providers,
+                input.total_providers
             )
         );
     }
 
-    fn log_terminal_forward_failure(
-        &self,
-        app_type: &str,
-        attempted_providers: usize,
-        total_providers: usize,
-        last_error: Option<&ProxyError>,
-    ) {
+    fn log_terminal_forward_failure(&self, input: ForwarderTerminalFailureLogInput<'_>) {
         if let Some(log_line) = terminal_forward_failure_log_line_for_error(
-            app_type,
-            attempted_providers,
-            total_providers,
-            last_error,
+            input.app_type,
+            input.attempted_providers,
+            input.total_providers,
+            input.last_error,
         ) {
             log::warn!("{log_line}");
         }

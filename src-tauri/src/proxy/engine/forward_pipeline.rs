@@ -410,6 +410,21 @@ pub(crate) struct ForwarderRectifierRetryFailureLogInput<'a> {
     pub(crate) error: &'a ProxyError,
 }
 
+pub(crate) struct ForwarderRetryableFailureLogInput<'a> {
+    pub(crate) app_type: &'a str,
+    pub(crate) error: &'a ProxyError,
+    pub(crate) provider: &'a Provider,
+    pub(crate) attempted_providers: usize,
+    pub(crate) total_providers: usize,
+}
+
+pub(crate) struct ForwarderTerminalFailureLogInput<'a> {
+    pub(crate) app_type: &'a str,
+    pub(crate) attempted_providers: usize,
+    pub(crate) total_providers: usize,
+    pub(crate) last_error: Option<&'a ProxyError>,
+}
+
 pub(crate) trait FailoverSwitchScheduler {
     fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget);
 }
@@ -499,21 +514,8 @@ pub(crate) trait ForwarderRuntimeStateSource {
         input: ForwarderProviderRectifierRetryFailureInput<'a>,
     ) -> BoxFuture<'a, ()>;
     fn forward_failure_decision(&self, error: &ProxyError) -> ForwarderFailureDecision;
-    fn log_retryable_forward_failure(
-        &self,
-        app_type: &str,
-        error: &ProxyError,
-        provider: &Provider,
-        attempted_providers: usize,
-        total_providers: usize,
-    );
-    fn log_terminal_forward_failure(
-        &self,
-        app_type: &str,
-        attempted_providers: usize,
-        total_providers: usize,
-        last_error: Option<&ProxyError>,
-    );
+    fn log_retryable_forward_failure(&self, input: ForwarderRetryableFailureLogInput<'_>);
+    fn log_terminal_forward_failure(&self, input: ForwarderTerminalFailureLogInput<'_>);
     fn rectifier_retry_failure_decision(
         &self,
         error: &ProxyError,
@@ -1320,11 +1322,13 @@ impl RequestForwarder {
                                 .await;
 
                             self.runtime_state_source.log_retryable_forward_failure(
-                                app_type_str,
-                                &e,
-                                provider,
-                                attempted_providers,
-                                attempts.len(),
+                                ForwarderRetryableFailureLogInput {
+                                    app_type: app_type_str,
+                                    error: &e,
+                                    provider,
+                                    attempted_providers,
+                                    total_providers: attempts.len(),
+                                },
                             );
 
                             last_error = Some(e);
@@ -1366,12 +1370,13 @@ impl RequestForwarder {
             .record_terminal_failure_status()
             .await;
 
-        self.runtime_state_source.log_terminal_forward_failure(
-            app_type_str,
-            attempted_providers,
-            attempts.len(),
-            last_error.as_ref(),
-        );
+        self.runtime_state_source
+            .log_terminal_forward_failure(ForwarderTerminalFailureLogInput {
+                app_type: app_type_str,
+                attempted_providers,
+                total_providers: attempts.len(),
+                last_error: last_error.as_ref(),
+            });
 
         Err(ForwardError {
             error: last_error.unwrap_or(ProxyError::MaxRetriesExceeded),

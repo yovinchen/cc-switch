@@ -19765,6 +19765,29 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "RequestForwarder must trigger retryable failure logging through a runtime-state behavior method"
     );
     assert!(
+        source.contains("pub(crate) struct ForwarderRetryableFailureLogInput<'a>")
+            && source.contains("pub(crate) struct ForwarderTerminalFailureLogInput<'a>")
+            && runtime_trait_slice.contains("input: ForwarderRetryableFailureLogInput<'_>")
+            && runtime_trait_slice.contains("input: ForwarderTerminalFailureLogInput<'_>")
+            && impl_slice.contains("ForwarderRetryableFailureLogInput {")
+            && impl_slice.contains("ForwarderTerminalFailureLogInput {")
+            && runtime_source.contains("ForwarderRetryableFailureLogInput")
+            && runtime_source.contains("ForwarderTerminalFailureLogInput")
+            && runtime_source.contains("input.app_type")
+            && runtime_source.contains("input.error")
+            && runtime_source.contains("input.provider")
+            && runtime_source.contains("input.attempted_providers")
+            && runtime_source.contains("input.total_providers")
+            && runtime_source.contains("input.last_error"),
+        "ForwarderRuntimeStateSource must consume forward failure log facts as structured inputs"
+    );
+    assert!(
+        !impl_slice.contains(
+            "log_retryable_forward_failure(\n                                app_type_str,"
+        ) && !impl_slice.contains("log_terminal_forward_failure(\n            app_type_str,"),
+        "RequestForwarder must not pass forward failure log facts as loose parameters"
+    );
+    assert!(
         impl_slice.contains("forward_failure_decision(&e)"),
         "RequestForwarder must classify forward failures without passing retry log context"
     );
