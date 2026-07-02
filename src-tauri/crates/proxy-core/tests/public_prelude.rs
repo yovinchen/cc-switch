@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
 struct ExternalRelayServices {
+    auth_headers: Mutex<Vec<Vec<String>>>,
     events: Mutex<Vec<ProxyCoreEvent>>,
     forwarded: Mutex<Vec<String>>,
     management_auth: Mutex<ManagementAuthRuntimeConfig>,
@@ -568,12 +569,37 @@ impl ChannelReachabilityProbe for ExternalRelayServices {
 impl AuthProvider for ExternalRelayServices {
     fn resolve_auth<'a>(
         &'a self,
-        _app: &'a AppKind,
-        _provider: &'a ProviderSpec,
-        _channel: &'a ChannelSpec,
-        _request: &'a ProxyRequest,
+        app: &'a AppKind,
+        provider: &'a ProviderSpec,
+        channel: &'a ChannelSpec,
+        request: &'a ProxyRequest,
     ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
-        Box::pin(async { Ok(AuthInfo::default()) })
+        Box::pin(async move {
+            let requested_model = request.requested_model.as_deref().unwrap_or("unknown");
+            let route_group = request.route_group.as_deref().unwrap_or(DEFAULT_ROUTE_GROUP);
+
+            Ok(AuthInfo {
+                headers: vec![
+                    (
+                        header::AUTHORIZATION.as_str().to_string(),
+                        format!(
+                            "Bearer {}:{}:{}",
+                            provider.id, channel.id, requested_model
+                        ),
+                    ),
+                    ("x-relay-channel".to_string(), channel.id.clone()),
+                    ("x-relay-route-group".to_string(), route_group.to_string()),
+                ],
+                account_ref: Some(format!("{}:{}", provider.id, channel.id)),
+                metadata: json!({
+                    "app": app.as_str(),
+                    "providerId": provider.id,
+                    "channelId": channel.id,
+                    "requestedModel": requested_model,
+                    "routeGroup": route_group,
+                }),
+            })
+        })
     }
 }
 
@@ -711,6 +737,31 @@ impl ForwardPipeline for ExternalRelayServices {
                 .as_ref()
                 .map(|route| route.upstream_model.clone());
             let response_model = outbound_model.clone();
+            let auth = self
+                .resolve_auth(
+                    &request.app,
+                    &selected_route.provider,
+                    &selected_route.channel,
+                    &request,
+                )
+                .await?;
+            let resolved_auth_headers = match resolve_auth_provider_headers(&auth)? {
+                AuthProviderHeaderResolution::Explicit(headers) => headers
+                    .into_iter()
+                    .map(|(name, value)| {
+                        format!(
+                            "{}={}",
+                            name.as_str(),
+                            value.to_str().unwrap_or("<non-utf8>")
+                        )
+                    })
+                    .collect(),
+                AuthProviderHeaderResolution::Fallback => vec!["fallback".to_string()],
+            };
+            self.auth_headers
+                .lock()
+                .expect("auth headers mutex")
+                .push(resolved_auth_headers);
 
             Ok(ProxyResult {
                 response: ProxyCoreResponse::empty(StatusCode::OK),
@@ -868,6 +919,75 @@ fn external_host_can_construct_engine_and_handle_request_from_prelude() {
     assert_eq!(usage[0].request_model, "sonnet");
     assert_eq!(usage[0].outbound_model, "relay-sonnet");
     assert_eq!(usage[0].tokens.output_tokens, 5);
+
+    let auth_headers = services.auth_headers.lock().expect("auth headers mutex");
+    assert_eq!(auth_headers.len(), 1);
+    assert_eq!(
+        auth_headers[0].as_slice(),
+        [
+            "authorization=Bearer relay-a:channel-a:sonnet",
+            "x-relay-channel=channel-a",
+            "x-relay-route-group=default"
+        ]
+    );
+}
+
+#[test]
+fn external_host_can_resolve_auth_provider_headers_from_prelude() {
+    let services = ExternalRelayServices::default();
+    let provider = provider_spec();
+    let channel = channel_spec();
+    let mut request = ProxyRequest::new(
+        AppKind::Claude,
+        Method::POST,
+        "/v1/messages",
+        InterfaceKind::AnthropicMessages,
+        ProxyBody::Json(json!({ "model": "sonnet", "messages": [] })),
+    );
+    request.requested_model = Some("sonnet".to_string());
+    request.route_group = Some("premium".to_string());
+
+    let auth = futures::executor::block_on(services.resolve_auth(
+        &AppKind::Claude,
+        &provider,
+        &channel,
+        &request,
+    ))
+    .expect("resolve auth");
+    assert_eq!(auth.account_ref.as_deref(), Some("relay-a:channel-a"));
+    assert_eq!(auth.metadata["requestedModel"], "sonnet");
+    assert_eq!(auth.metadata["routeGroup"], "premium");
+
+    match resolve_auth_provider_headers(&auth).expect("auth provider headers") {
+        AuthProviderHeaderResolution::Explicit(headers) => {
+            let pairs: Vec<(String, String)> = headers
+                .iter()
+                .map(|(name, value)| {
+                    (
+                        name.as_str().to_string(),
+                        value.to_str().expect("utf8 header").to_string(),
+                    )
+                })
+                .collect();
+            assert_eq!(
+                pairs,
+                vec![
+                    (
+                        "authorization".to_string(),
+                        "Bearer relay-a:channel-a:sonnet".to_string(),
+                    ),
+                    ("x-relay-channel".to_string(), "channel-a".to_string()),
+                    ("x-relay-route-group".to_string(), "premium".to_string()),
+                ]
+            );
+        }
+        AuthProviderHeaderResolution::Fallback => panic!("expected explicit auth headers"),
+    }
+
+    assert!(matches!(
+        resolve_auth_provider_headers(&AuthInfo::default()).expect("fallback auth"),
+        AuthProviderHeaderResolution::Fallback
+    ));
 }
 
 #[test]

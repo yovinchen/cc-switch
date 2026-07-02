@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
 struct DemoRelayHost {
+    auth_headers: Mutex<Vec<Vec<String>>>,
     usage: Mutex<Vec<UsageRecord>>,
     events: Mutex<Vec<ProxyCoreEvent>>,
 }
@@ -59,6 +60,11 @@ async fn run() -> ProxyCoreResult<()> {
         .lock()
         .expect("usage mutex")
         .len();
+    let auth_header_sets = services
+        .auth_headers
+        .lock()
+        .expect("auth headers mutex")
+        .len();
     let event_count = services
         .events
         .lock()
@@ -78,13 +84,14 @@ async fn run() -> ProxyCoreResult<()> {
         .ok_or_else(|| ProxyCoreError::Unavailable("missing custom model".to_string()))?;
 
     println!(
-        "relay host ready: running={} route={} channel_base={} upstream={} custom_app={} custom_model={} usage_records={} events={}",
+        "relay host ready: running={} route={} channel_base={} upstream={} custom_app={} custom_model={} auth_header_sets={} usage_records={} events={}",
         status.status.running,
         selected.channel_id,
         listed.base_url,
         forwarded.outbound_model.as_deref().unwrap_or("unknown"),
         custom_catalog.app_type,
         custom_model.upstream_model,
+        auth_header_sets,
         usage_count,
         event_count
     );
@@ -473,16 +480,53 @@ impl ChannelReachabilityProbe for DemoRelayHost {
 impl AuthProvider for DemoRelayHost {
     fn resolve_auth<'a>(
         &'a self,
-        _app: &'a AppKind,
-        _provider: &'a ProviderSpec,
-        _channel: &'a ChannelSpec,
-        _request: &'a ProxyRequest,
+        app: &'a AppKind,
+        provider: &'a ProviderSpec,
+        channel: &'a ChannelSpec,
+        request: &'a ProxyRequest,
     ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
-        Box::pin(async {
+        Box::pin(async move {
+            let requested_model = request.requested_model.as_deref().unwrap_or("unknown");
+            let route_group = request.route_group.as_deref().unwrap_or(DEFAULT_ROUTE_GROUP);
+            let mut headers = match channel.id.as_str() {
+                "claude-premium" => vec![
+                    (
+                        header::AUTHORIZATION.as_str().to_string(),
+                        "Bearer sk-claude-premium".to_string(),
+                    ),
+                    ("anthropic-beta".to_string(), "claude-code-20250219".to_string()),
+                ],
+                "codex-responses" => vec![
+                    (
+                        header::AUTHORIZATION.as_str().to_string(),
+                        "Bearer sk-codex-responses".to_string(),
+                    ),
+                    ("openai-organization".to_string(), "org-relay-west".to_string()),
+                ],
+                "opencode-tools" => vec![(
+                    "x-api-key".to_string(),
+                    "sk-opencode-tools".to_string(),
+                )],
+                _ => vec![(
+                    header::AUTHORIZATION.as_str().to_string(),
+                    format!("Bearer {}", provider.id),
+                )],
+            };
+            headers.push(("x-relay-channel".to_string(), channel.id.clone()));
+            headers.push(("x-relay-route-group".to_string(), route_group.to_string()));
+            headers.push(("x-relay-model".to_string(), requested_model.to_string()));
+
             Ok(AuthInfo {
-                headers: vec![("authorization".to_string(), "Bearer sk-relay".to_string())],
-                account_ref: Some("external-relay-account".to_string()),
-                metadata: json!({ "source": "external-host" }),
+                headers,
+                account_ref: Some(format!("{}:{}", provider.id, channel.id)),
+                metadata: json!({
+                    "source": "external-host",
+                    "app": app.as_str(),
+                    "providerId": provider.id,
+                    "channelId": channel.id,
+                    "requestedModel": requested_model,
+                    "routeGroup": route_group,
+                }),
             })
         })
     }
@@ -614,6 +658,31 @@ impl ForwardPipeline for DemoRelayHost {
                 .model_route
                 .as_ref()
                 .map(|model| model.upstream_model.clone());
+            let auth = self
+                .resolve_auth(
+                    &request.app,
+                    &selected_route.provider,
+                    &selected_route.channel,
+                    &request,
+                )
+                .await?;
+            let auth_headers = match resolve_auth_provider_headers(&auth)? {
+                AuthProviderHeaderResolution::Explicit(headers) => headers
+                    .into_iter()
+                    .map(|(name, value)| {
+                        format!(
+                            "{}={}",
+                            name.as_str(),
+                            value.to_str().unwrap_or("<non-utf8>")
+                        )
+                    })
+                    .collect(),
+                AuthProviderHeaderResolution::Fallback => vec!["fallback".to_string()],
+            };
+            self.auth_headers
+                .lock()
+                .expect("auth headers mutex")
+                .push(auth_headers);
 
             Ok(ProxyResult {
                 response: ProxyCoreResponse::with_body(

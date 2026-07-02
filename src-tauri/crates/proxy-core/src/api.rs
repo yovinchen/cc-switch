@@ -455,6 +455,7 @@ pub mod prelude {
     };
     pub use super::routing::{ChannelQuery, ChannelSpec, DEFAULT_ROUTE_GROUP};
     pub use super::transport::{
+        resolve_auth_provider_headers, AuthProviderHeaderResolution,
         codex_provider_uses_chat_completions, codex_responses_to_chat_conversion_required,
         CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ProxyBody,
         ProxyCoreResponse, ProxyResponseBody, ProxyTransportResponse, ProxyTransportResponseBody,
