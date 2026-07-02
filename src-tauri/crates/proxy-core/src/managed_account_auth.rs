@@ -607,6 +607,39 @@ pub struct ManagedAccountTokenRefreshSuccess {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedAccountTokenRefreshSuccessInput {
+    pub token: String,
+    pub codex_oauth_account_id: Option<String>,
+    pub success_account_label: Option<String>,
+}
+
+impl ManagedAccountTokenRefreshSuccessInput {
+    pub fn new(
+        token: String,
+        codex_oauth_account_id: Option<String>,
+        success_account_label: Option<String>,
+    ) -> Self {
+        Self {
+            token,
+            codex_oauth_account_id,
+            success_account_label,
+        }
+    }
+
+    pub fn copilot(token: String, account_id: Option<&str>) -> Self {
+        Self::new(token, None, account_id.map(str::to_string))
+    }
+
+    pub fn codex_oauth(token: String, resolved_account_id: Option<String>) -> Self {
+        Self::new(token, resolved_account_id.clone(), resolved_account_id)
+    }
+
+    pub fn success_account_label(&self) -> Option<&str> {
+        self.success_account_label.as_deref()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManagedAccountTokenRefreshFailureResolution {
     UseCachedToken {
         snapshot: ManagedAccountTokenSnapshot,
@@ -652,20 +685,18 @@ impl ManagedAccountTokenSnapshotStore {
     pub fn record_refresh_success(
         &mut self,
         key: ManagedAccountTokenCacheKey,
-        token: String,
-        codex_oauth_account_id: Option<String>,
-        success_account_label: Option<&str>,
+        input: ManagedAccountTokenRefreshSuccessInput,
         cached_at_ms: i64,
     ) -> ManagedAccountTokenRefreshSuccess {
+        let ManagedAccountTokenRefreshSuccessInput {
+            token,
+            codex_oauth_account_id,
+            success_account_label,
+        } = input;
         let auth = key.runtime().provider_auth_info(token);
         let log_message =
-            managed_account_token_success_log_message(key.runtime(), success_account_label);
-        self.record_token_snapshot(
-            key,
-            auth.clone(),
-            codex_oauth_account_id.clone(),
-            cached_at_ms,
-        );
+            managed_account_token_success_log_message(key.runtime(), success_account_label.as_deref());
+        self.record_token_snapshot(key, auth.clone(), codex_oauth_account_id.clone(), cached_at_ms);
 
         ManagedAccountTokenRefreshSuccess {
             auth,
@@ -1392,9 +1423,9 @@ mod tests {
         ManagedAccountRuntimeSource,
         ManagedAccountTokenCacheKey, ManagedAccountTokenFailureFallbackDecision,
         ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenRefreshFailureResolution,
-        ManagedAccountTokenRefreshSuccess, ManagedAccountTokenSnapshot,
-        ManagedAccountTokenSnapshotStore, ProviderManagedAuthFacts, CODEX_OAUTH_AUTH_PLACEHOLDER,
-        CODEX_OAUTH_AUTH_PROVIDER,
+        ManagedAccountTokenRefreshSuccess, ManagedAccountTokenRefreshSuccessInput,
+        ManagedAccountTokenSnapshot, ManagedAccountTokenSnapshotStore, ProviderManagedAuthFacts,
+        CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER,
         GITHUB_COPILOT_AUTH_PLACEHOLDER, GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
     };
     use futures::{executor::block_on, future::BoxFuture};
@@ -2423,9 +2454,10 @@ mod tests {
         assert_eq!(
             store.record_refresh_success(
                 key.clone(),
-                "access-token".to_string(),
-                Some("resolved-acct".to_string()),
-                Some("resolved-acct"),
+                ManagedAccountTokenRefreshSuccessInput::codex_oauth(
+                    "access-token".to_string(),
+                    Some("resolved-acct".to_string()),
+                ),
                 now,
             ),
             ManagedAccountTokenRefreshSuccess {
@@ -2448,6 +2480,33 @@ mod tests {
             Some("resolved-acct")
         );
         assert_eq!(snapshot.cached_at_ms, now);
+    }
+
+    #[test]
+    fn managed_account_token_refresh_success_input_names_runtime_facts() {
+        assert_eq!(
+            ManagedAccountTokenRefreshSuccessInput::copilot(
+                "copilot-token".to_string(),
+                Some("gh-account"),
+            ),
+            ManagedAccountTokenRefreshSuccessInput::new(
+                "copilot-token".to_string(),
+                None,
+                Some("gh-account".to_string()),
+            )
+        );
+
+        assert_eq!(
+            ManagedAccountTokenRefreshSuccessInput::codex_oauth(
+                "codex-token".to_string(),
+                Some("codex-account".to_string()),
+            ),
+            ManagedAccountTokenRefreshSuccessInput::new(
+                "codex-token".to_string(),
+                Some("codex-account".to_string()),
+                Some("codex-account".to_string()),
+            )
+        );
     }
 
     #[test]

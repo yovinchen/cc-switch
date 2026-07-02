@@ -24,7 +24,8 @@ use crate::proxy_core::api::auth::{
     ManagedAccountBindingInput, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
     ManagedAccountTokenCacheKey, ManagedAccountTokenRefreshFailureKind,
     ManagedAccountTokenRefreshFailureResolution, ManagedAccountTokenRefreshSuccess,
-    ManagedAccountTokenSnapshot, ManagedAccountTokenSnapshotStore, ProviderAuthInfo,
+    ManagedAccountTokenRefreshSuccessInput, ManagedAccountTokenSnapshot,
+    ManagedAccountTokenSnapshotStore, ProviderAuthInfo,
 };
 use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
@@ -115,18 +116,10 @@ impl CcSwitchManagedAccountRuntimeSource {
     async fn record_token_refresh_success(
         &self,
         key: ManagedAccountTokenCacheKey,
-        token: String,
-        codex_oauth_account_id: Option<String>,
-        success_account_label: Option<&str>,
+        input: ManagedAccountTokenRefreshSuccessInput,
     ) -> ManagedAccountTokenRefreshSuccess {
         let mut snapshots = self.token_snapshots.lock().await;
-        snapshots.record_refresh_success(
-            key,
-            token,
-            codex_oauth_account_id,
-            success_account_label,
-            chrono::Utc::now().timestamp_millis(),
-        )
+        snapshots.record_refresh_success(key, input, chrono::Utc::now().timestamp_millis())
     }
 
     async fn resolve_token_refresh_failure(
@@ -535,7 +528,10 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
             match copilot_token_from_app_handle(app_handle, account_id).await {
                 Ok(token) => {
                     let success = self
-                        .record_token_refresh_success(cache_key, token, None, account_id)
+                        .record_token_refresh_success(
+                            cache_key,
+                            ManagedAccountTokenRefreshSuccessInput::copilot(token, account_id),
+                        )
                         .await;
                     log::debug!("{}", success.log_message);
                     Ok(success.auth)
@@ -575,13 +571,13 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
             let cache_key = ManagedAccountTokenCacheKey::new(runtime, account_id.as_deref());
             match codex_oauth_token_from_app_handle(app_handle, account_id.as_deref()).await {
                 Ok((token, resolved_account_id)) => {
-                    let success_account_label = resolved_account_id.clone();
                     let success = self
                         .record_token_refresh_success(
                             cache_key,
-                            token,
-                            resolved_account_id,
-                            success_account_label.as_deref(),
+                            ManagedAccountTokenRefreshSuccessInput::codex_oauth(
+                                token,
+                                resolved_account_id,
+                            ),
                         )
                         .await;
                     log::debug!("{}", success.log_message);
@@ -717,7 +713,10 @@ mod tests {
             Some("acct"),
         );
         source
-            .record_token_refresh_success(key.clone(), "cached".to_string(), None, Some("acct"))
+            .record_token_refresh_success(
+                key.clone(),
+                ManagedAccountTokenRefreshSuccessInput::copilot("cached".to_string(), Some("acct")),
+            )
             .await;
 
         let snapshot = source
@@ -753,9 +752,10 @@ mod tests {
         source
             .record_token_refresh_success(
                 copilot_account.clone(),
-                "copilot-a".to_string(),
-                None,
-                Some("acct-a"),
+                ManagedAccountTokenRefreshSuccessInput::copilot(
+                    "copilot-a".to_string(),
+                    Some("acct-a"),
+                ),
             )
             .await;
 
@@ -816,9 +816,10 @@ mod tests {
         source
             .record_token_refresh_success(
                 key.clone(),
-                "fresh".to_string(),
-                Some("acct".to_string()),
-                Some("acct"),
+                ManagedAccountTokenRefreshSuccessInput::codex_oauth(
+                    "fresh".to_string(),
+                    Some("acct".to_string()),
+                ),
             )
             .await;
 

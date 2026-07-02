@@ -18234,6 +18234,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && host_source.contains("ManagedAccountTokenRefreshFailureKind")
             && host_source.contains("ManagedAccountTokenRefreshFailureResolution")
             && host_source.contains("ManagedAccountTokenRefreshSuccess")
+            && host_source.contains("ManagedAccountTokenRefreshSuccessInput")
             && host_source.contains("ManagedAccountTokenSnapshot")
             && host_source.contains("ManagedAccountTokenSnapshotStore")
             && host_source.contains("ProviderAuthInfo")
@@ -18256,6 +18257,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
     );
     assert!(
         refresh_success_slice.contains(".record_refresh_success(")
+            && refresh_success_slice.contains("ManagedAccountTokenRefreshSuccessInput")
             && !refresh_success_slice.contains("record_token_snapshot(")
             && !refresh_success_slice.contains("managed_account_token_success_log_message(")
             && !refresh_success_slice.contains("runtime.provider_auth_info("),
@@ -18284,13 +18286,17 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
     assert!(
         host_runtime_source.contains("CodexOAuthResolution::from_refresh_success(success)")
             && host_runtime_source.contains(".map(CodexOAuthResolution::from_snapshot)")
+            && host_runtime_source.contains("ManagedAccountTokenRefreshSuccessInput::copilot(")
+            && host_runtime_source.contains("ManagedAccountTokenRefreshSuccessInput::codex_oauth(")
             && !host_runtime_source.contains("Ok((success.auth, success.codex_oauth_account_id))")
+            && !host_runtime_source.contains("let success_account_label =")
             && !host_runtime_source
                 .contains("map(|snapshot| (snapshot.auth, snapshot.codex_oauth_account_id))"),
         "host runtime source should return Codex OAuth auth/account through the core structured resolution contract"
     );
     for marker in [
         "CodexOAuthResolution",
+        "ManagedAccountTokenRefreshSuccessInput",
         "managed_account_app_handle_unavailable_error_message",
         "managed_account_app_handle_unavailable_log_message",
         "managed_account_token_request_log_message",
