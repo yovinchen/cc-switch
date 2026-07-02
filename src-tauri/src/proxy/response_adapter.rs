@@ -57,10 +57,10 @@ use crate::proxy_core::api::transforms::{
 };
 use crate::proxy_core::api::transport::{
     endpoint_from_path_and_query, endpoint_from_path_query_stripping_prefix,
-    extract_gemini_model_from_path, parse_json_request_body, parse_json_request_body_or_null,
-    rebuilt_json_proxy_response, request_body_read_error_message, request_body_stream_flag,
-    transformed_sse_proxy_response, ProxyBody, ProxyCoreResponse, ProxyRequest,
-    ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext,
+    extract_gemini_model_from_path, parse_json_proxy_request_body,
+    parse_json_proxy_request_body_or_null, rebuilt_json_proxy_response,
+    request_body_read_error_message, transformed_sse_proxy_response, ProxyBody, ProxyCoreResponse,
+    ProxyRequest, ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext,
     ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext, ProxyResult,
     ProxyTransportResponse, ProxyTransportResponseBody, UpstreamSseAggregationKind,
 };
@@ -230,17 +230,16 @@ pub(crate) async fn collect_json_proxy_request(
 ) -> Result<ParsedAxumJsonProxyRequest, ProxyError> {
     let (parts, body) = request.into_parts();
     let body_bytes = collect_axum_request_body(body).await?;
-    let body = parse_json_request_body(body_bytes.as_ref())
+    let parsed = parse_json_proxy_request_body(body_bytes.as_ref())
         .map_err(|error| ProxyError::Internal(error.to_string()))?;
-    let is_stream = request_body_stream_flag(&body);
 
     Ok(ParsedAxumJsonProxyRequest {
         method: parts.method,
         uri: parts.uri,
         headers: parts.headers,
         extensions: parts.extensions,
-        body,
-        is_stream,
+        body: parsed.body,
+        is_stream: parsed.is_stream,
     })
 }
 
@@ -249,17 +248,16 @@ pub(crate) async fn collect_json_or_null_proxy_request(
 ) -> Result<ParsedAxumJsonProxyRequest, ProxyError> {
     let (parts, body) = request.into_parts();
     let body_bytes = collect_axum_request_body(body).await?;
-    let body = parse_json_request_body_or_null(body_bytes.as_ref())
+    let parsed = parse_json_proxy_request_body_or_null(body_bytes.as_ref())
         .map_err(|error| ProxyError::Internal(error.to_string()))?;
-    let is_stream = request_body_stream_flag(&body);
 
     Ok(ParsedAxumJsonProxyRequest {
         method: parts.method,
         uri: parts.uri,
         headers: parts.headers,
         extensions: parts.extensions,
-        body,
-        is_stream,
+        body: parsed.body,
+        is_stream: parsed.is_stream,
     })
 }
 

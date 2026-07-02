@@ -26421,9 +26421,8 @@ fn proxy_response_adapter_owns_core_transport_imports() {
             && source.contains("endpoint_from_path_and_query")
             && source.contains("endpoint_from_path_query_stripping_prefix")
             && source.contains("extract_gemini_model_from_path")
-            && source.contains("parse_json_request_body")
-            && source.contains("parse_json_request_body_or_null")
-            && source.contains("request_body_stream_flag")
+            && source.contains("parse_json_proxy_request_body")
+            && source.contains("parse_json_proxy_request_body_or_null")
             && source.contains("ProxyBody")
             && source.contains("crate::proxy_core::api::events::ProxyEventEnvelope")
             && source.contains("crate::proxy_core::api::management::{")
@@ -26556,6 +26555,18 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         ),
         "proxy_core_adapter should not re-export pure Gemini path model extraction"
     );
+
+    let low_level_body_helpers = [
+        "parse_json_request_body(",
+        "parse_json_request_body_or_null(",
+        "request_body_stream_flag(",
+    ];
+    for helper in low_level_body_helpers {
+        assert!(
+            !source.contains(helper),
+            "response_adapter should delegate JSON body parsing plus stream flag projection to proxy-core helper `{helper}`"
+        );
+    }
 }
 
 #[test]

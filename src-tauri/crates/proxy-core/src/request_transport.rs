@@ -1,4 +1,7 @@
-use crate::{error::ProxyErrorStatusKind, response_transform::claude_api_format_needs_transform};
+use crate::{
+    error::ProxyErrorStatusKind, request_body::request_body_stream_flag,
+    response_transform::claude_api_format_needs_transform,
+};
 use http::HeaderMap;
 use serde_json::{Map, Value};
 use std::net::IpAddr;
@@ -179,12 +182,6 @@ pub fn resolve_upstream_request_transport_policy(
         is_streaming_request,
         force_identity_encoding: needs_transform || codex_responses_to_chat || is_streaming_request,
     }
-}
-
-pub fn request_body_stream_flag(body: &Value) -> bool {
-    body.get("stream")
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false)
 }
 
 pub fn is_streaming_upstream_request(endpoint: &str, body: &Value, headers: &HeaderMap) -> bool {
@@ -481,9 +478,8 @@ mod tests {
         invalid_explicit_proxy_url_message, invalid_mapped_channel_response_status_message,
         is_socks_proxy_url, is_streaming_upstream_request, mapped_channel_response_status,
         proxy_url_points_to_loopback_port, proxy_values_point_to_loopback_port,
-        request_body_stream_flag, resolve_channel_response_status_mapping,
-        resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-        upstream_error_response_projection, upstream_send_error_projection,
+        resolve_channel_response_status_mapping, resolve_upstream_request_transport_policy,
+        resolve_upstream_send_policy, upstream_error_response_projection, upstream_send_error_projection,
         validate_explicit_proxy_url,
         ForwarderProtocolPreparationInput, ForwarderRequestBodyTransformAction,
         ForwarderTransformPlan, ForwarderTransformPlanFacts, UpstreamSendErrorInput,
@@ -491,6 +487,7 @@ mod tests {
         STREAMING_REQWEST_REQUEST_TIMEOUT,
     };
     use crate::error::ProxyErrorStatusKind;
+    use crate::request_body::request_body_stream_flag;
     use http::{header::ACCEPT, HeaderMap, HeaderValue, StatusCode};
     use serde_json::json;
     use std::time::Duration;

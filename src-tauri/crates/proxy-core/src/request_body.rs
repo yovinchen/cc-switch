@@ -28,6 +28,12 @@ pub struct RequestBodyJsonParseError {
     message: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParsedJsonRequestBody {
+    pub body: Value,
+    pub is_stream: bool,
+}
+
 impl RequestBodyJsonParseError {
     fn new(error: serde_json::Error) -> Self {
         Self {
@@ -72,6 +78,32 @@ pub fn parse_json_request_body_or_null(bytes: &[u8]) -> Result<Value, RequestBod
     } else {
         parse_json_request_body(bytes)
     }
+}
+
+pub fn request_body_stream_flag(body: &Value) -> bool {
+    body.get("stream")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
+
+pub fn parse_json_proxy_request_body(
+    bytes: &[u8],
+) -> Result<ParsedJsonRequestBody, RequestBodyJsonParseError> {
+    let body = parse_json_request_body(bytes)?;
+    Ok(ParsedJsonRequestBody {
+        is_stream: request_body_stream_flag(&body),
+        body,
+    })
+}
+
+pub fn parse_json_proxy_request_body_or_null(
+    bytes: &[u8],
+) -> Result<ParsedJsonRequestBody, RequestBodyJsonParseError> {
+    let body = parse_json_request_body_or_null(bytes)?;
+    Ok(ParsedJsonRequestBody {
+        is_stream: request_body_stream_flag(&body),
+        body,
+    })
 }
 
 pub fn forwarder_request_body_model(body: &Value) -> Option<String> {
@@ -635,9 +667,10 @@ mod tests {
         forwarder_request_body_model, inject_openai_stream_include_usage, is_openai_o_series,
         map_anthropic_tool_choice_to_openai_chat, map_anthropic_tool_choice_to_openai_responses,
         map_codex_chat_reasoning_effort, method_allows_upstream_request_body,
+        parse_json_proxy_request_body, parse_json_proxy_request_body_or_null,
         parse_json_request_body, parse_json_request_body_or_null,
         prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-        request_body_filter_log_message, request_body_read_error_message,
+        request_body_filter_log_message, request_body_read_error_message, request_body_stream_flag,
         request_body_serialize_error_message, resolve_codex_provider_upstream_model,
         resolve_reasoning_effort, serialize_upstream_request_body,
         strip_leading_anthropic_billing_header, supports_reasoning_effort,
@@ -683,6 +716,18 @@ mod tests {
             parse_json_request_body_or_null(br#"{"stream":true}"#).unwrap(),
             json!({"stream": true})
         );
+    }
+
+    #[test]
+    fn parses_json_proxy_request_body_with_stream_fact() {
+        let parsed = parse_json_proxy_request_body(br#"{"model":"gpt-5","stream":true}"#).unwrap();
+        assert_eq!(parsed.body, json!({"model": "gpt-5", "stream": true}));
+        assert!(parsed.is_stream);
+        assert!(request_body_stream_flag(&parsed.body));
+
+        let parsed = parse_json_proxy_request_body_or_null(b"").unwrap();
+        assert_eq!(parsed.body, json!(null));
+        assert!(!parsed.is_stream);
     }
 
     #[test]
