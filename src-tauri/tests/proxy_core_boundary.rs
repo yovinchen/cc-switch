@@ -14065,7 +14065,6 @@ fn proxy_management_dto_callers_use_core_entrypoints() {
                 "use crate::proxy_core::api::ports::GlobalProxyConfig;",
                 "use crate::proxy_core::api::ports::ProxyConfig;",
                 "use crate::proxy_core::api::ports::{ProviderHealth, ProviderHealthUpdateInput};",
-                "pub(crate) use crate::proxy_core::api::usage::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};",
                 "use crate::proxy_core::api::usage::{",
             ][..],
         ),
@@ -14300,15 +14299,22 @@ fn proxy_dao_imports_usage_pricing_contracts_directly() {
         "use rust_decimal::Decimal;",
     );
 
-    for required_import in [
-        "pub(crate) use crate::proxy_core::api::usage::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};",
-        "use crate::proxy_core::api::usage::{",
-    ] {
+    for required_import in ["use crate::proxy_core::api::usage::{"] {
         assert!(
             import_slice.contains(required_import),
             "{relative} should import usage pricing contract `{required_import}` directly from proxy_core"
         );
     }
+    assert!(
+        import_slice.contains("PRICING_SOURCE_RESPONSE"),
+        "{relative} should import the pricing response source constant directly from proxy_core usage"
+    );
+    assert!(
+        !import_slice.contains(
+            "pub(crate) use crate::proxy_core::api::usage::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};"
+        ),
+        "{relative} should not re-export pricing source constants from the database layer"
+    );
 
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(import_slice);
     for forbidden in [
@@ -14350,6 +14356,39 @@ fn proxy_dao_imports_usage_pricing_contracts_directly() {
             "proxy_core_adapter should not re-export usage pricing helper `{helper}`"
         );
     }
+
+    let database_mod_source =
+        fs::read_to_string(manifest_dir.join("src/database/mod.rs")).expect("read database/mod.rs");
+    assert!(
+        !database_mod_source.contains("PRICING_SOURCE_REQUEST")
+            && !database_mod_source.contains("PRICING_SOURCE_RESPONSE"),
+        "database module should not re-export usage pricing source constants"
+    );
+
+    let sink_relative = "src/proxy/host/cc_switch/database_usage_sink.rs";
+    let sink_source =
+        fs::read_to_string(manifest_dir.join(sink_relative)).expect("read database_usage_sink.rs");
+    let sink_import_slice = function_slice(
+        &sink_source,
+        "use crate::database",
+        "use futures::future::BoxFuture;",
+    );
+    assert!(
+        sink_import_slice.contains("use crate::database::Database;"),
+        "{sink_relative} should import only Database from the database module"
+    );
+    assert!(
+        sink_import_slice.contains("use crate::proxy_core::api::usage::{")
+            && sink_import_slice.contains("PRICING_SOURCE_REQUEST")
+            && sink_import_slice.contains("PRICING_SOURCE_RESPONSE"),
+        "{sink_relative} should import pricing source constants directly from proxy_core usage"
+    );
+    assert!(
+        !sink_import_slice.contains(
+            "use crate::database::{Database, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};"
+        ),
+        "{sink_relative} should not import pricing source constants through crate::database"
+    );
 }
 
 #[test]

@@ -11,9 +11,8 @@ use crate::proxy_core::api::ports::ProxyConfig;
 use crate::proxy_core::api::ports::{ProviderHealth, ProviderHealthUpdateInput};
 use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
-    PricingSourceValidationError,
+    PricingSourceValidationError, PRICING_SOURCE_RESPONSE,
 };
-pub(crate) use crate::proxy_core::api::usage::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
 use rust_decimal::Decimal;
 
 use super::super::{lock_conn, Database, LiveBackup};
