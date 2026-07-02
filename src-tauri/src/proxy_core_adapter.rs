@@ -334,13 +334,6 @@ mod tests {
         )
     }
 
-    fn codex_api_key_from_auth_and_config(
-        auth: Option<&Value>,
-        config_text: Option<&str>,
-    ) -> Option<String> {
-        crate::codex_config::extract_codex_api_key(auth, config_text)
-    }
-
     fn select_current_provider_ids_from_router_source(
         app_type: &str,
         current: Option<Provider>,
@@ -377,7 +370,10 @@ mod tests {
                 .unwrap_or("");
                 crate::proxy_core::api::ports::provider_codex_credential_values_from_parts(
                     crate::proxy_core::api::ports::CodexCredentialParts {
-                        api_key: codex_api_key_from_auth_and_config(Some(auth), Some(config_toml)),
+                        api_key: crate::codex_config::extract_codex_api_key(
+                            Some(auth),
+                            Some(config_toml),
+                        ),
                         config_toml: Some(config_toml.to_string()),
                     },
                 )
@@ -4126,7 +4122,7 @@ base_url = "https://api.openai.com/v1"
         let auth =
             codex_auth_object_value_from_settings(&codex_auth_settings).expect("codex auth object");
         assert_eq!(
-            codex_api_key_from_auth_and_config(Some(auth), Some("")).as_deref(),
+            crate::codex_config::extract_codex_api_key(Some(auth), Some("")).as_deref(),
             Some("sk-auth")
         );
         assert!(codex_auth_object_value_from_settings(&json!({"auth": "sk-auth"})).is_none());

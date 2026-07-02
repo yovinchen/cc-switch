@@ -8167,6 +8167,10 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
         "proxy_core_adapter should not expose Codex API key extraction as a crate-visible test facade"
     );
     assert!(
+        !source.contains("fn codex_api_key_from_auth_and_config("),
+        "proxy_core_adapter tests should call the owning Codex config extractor directly instead of keeping a private one-hop helper"
+    );
+    assert!(
         !source.contains("pub(crate) fn provider_codex_api_key"),
         "proxy_core_adapter should not expose raw Codex API key extraction as a crate-visible facade"
     );
