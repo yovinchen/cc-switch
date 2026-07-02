@@ -1,25 +1,43 @@
 //! CC Switch proxy runtime resources.
 
+use crate::app_config::AppType;
 use crate::database::Database;
+use crate::error::AppError;
 use crate::proxy::engine::forward_pipeline::{
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderAuthSourceRef,
     ForwarderProtocolStateSourceRef, ForwarderRequestSourceRef, ForwarderResponseSourceRef,
-    ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
+    ForwarderRuntimeConfig, ForwarderRuntimeOptions, ForwarderRuntimeStateSourceRef,
+    ForwarderTransportSourceRef,
 };
 use crate::proxy::engine::routing::ProviderRouter;
+use crate::proxy::error_mapper::forward_error_to_core_error;
 use crate::proxy::events::ProxyEventBus;
+use crate::proxy::host::cc_switch::channel_auth_profile_attempts::required_forward_attempts_from_sources;
+use crate::proxy::host::cc_switch::forward_pipeline::forward_result_to_proxy_result;
+use crate::proxy::route_attempt::ForwardAttempt;
+use crate::proxy::RequestForwarder;
+use crate::proxy_core::api::config::{AppProxyConfig, ResponseRuntimePolicy};
 use crate::proxy_core::api::domain::ProxyRequest;
-use crate::proxy_core::api::errors::ProxyCoreResult;
-use crate::proxy_core::api::ports::{
-    ChannelKeyRuntimeSource, CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus,
+use crate::proxy_core::api::domain::{unsupported_app_kind_config_error, AppKind};
+use crate::proxy_core::api::errors::{
+    config_error_with_context as core_config_error_with_context, ProxyCoreError, ProxyCoreResult,
 };
-use crate::proxy_core::api::routing::RoutePlan;
-use crate::proxy_core::api::transport::ProxyResult;
-use crate::proxy_core_adapter::forward_proxy_request_with_cc_switch_runtime;
+use crate::proxy_core::api::ports::{
+    ChannelKeyRuntimeSource, CopilotOptimizerConfig, CurrentRouteTarget, OptimizerConfig,
+    ProxyConfig, ProxyRuntimeStatus, RectifierConfig,
+};
+use crate::proxy_core::api::routing::{
+    current_provider_db_fallback_required, current_provider_id_from_sources, RoutePlan,
+};
+use crate::proxy_core::api::session::SessionIdResult;
+use crate::proxy_core::api::transport::{resolve_response_runtime_policy, ProxyResult};
 use futures::future::BoxFuture;
+use http::{HeaderMap, Method};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 pub(crate) trait ProxyServiceRuntimeResources:
     HostForwardRuntime + Clone + Send + Sync
@@ -108,4 +126,284 @@ impl HostForwardRuntime for CcSwitchProxyRuntime {
             .await
         })
     }
+}
+
+fn app_error(context: &str, error: AppError) -> ProxyCoreError {
+    core_config_error_with_context(context, error)
+}
+
+fn current_provider_id_from_settings_for_app(app: &AppKind) -> Option<String> {
+    app_type_option_from_proxy_core_app(app)
+        .as_ref()
+        .and_then(crate::settings::get_current_provider)
+}
+
+pub(crate) fn forward_current_provider_id_from_source(
+    settings_current_provider_id: Option<&str>,
+    load_db_current_provider_id: impl FnOnce() -> Option<String>,
+) -> String {
+    let db_current_provider_id =
+        if current_provider_db_fallback_required(settings_current_provider_id) {
+            load_db_current_provider_id()
+        } else {
+            None
+        };
+    current_provider_id_from_sources(
+        settings_current_provider_id,
+        db_current_provider_id.as_deref(),
+    )
+}
+
+fn forward_current_provider_id_from_db_sources(db: &Database, app_type: &AppType) -> String {
+    let app = AppKind::from(app_type);
+    let settings_current_provider_id = current_provider_id_from_settings_for_app(&app);
+    forward_current_provider_id_from_source(settings_current_provider_id.as_deref(), || {
+        db.get_current_provider(app_type.as_str()).ok().flatten()
+    })
+}
+
+pub(crate) fn response_runtime_policy_from_app_proxy_config(
+    config: &AppProxyConfig,
+) -> ResponseRuntimePolicy {
+    resolve_response_runtime_policy(
+        config.auto_failover_enabled,
+        config.max_retries,
+        config.non_streaming_timeout as u64,
+        config.streaming_first_byte_timeout as u64,
+        config.streaming_idle_timeout as u64,
+    )
+}
+
+pub(crate) fn forwarder_runtime_options_from_app_proxy_config(
+    config: &AppProxyConfig,
+) -> ForwarderRuntimeOptions {
+    let policy = response_runtime_policy_from_app_proxy_config(config);
+    ForwarderRuntimeOptions {
+        non_streaming_timeout: policy.timeout.non_streaming_timeout,
+        streaming_first_byte_timeout: policy.timeout.streaming.first_byte_timeout,
+        streaming_idle_timeout: policy.timeout.streaming.idle_timeout,
+        max_retries: policy.max_retries,
+    }
+}
+
+pub(crate) fn forwarder_runtime_config_from_sources(
+    app_config: &AppProxyConfig,
+    rectifier: RectifierConfig,
+    optimizer: OptimizerConfig,
+    copilot_optimizer: CopilotOptimizerConfig,
+) -> ForwarderRuntimeConfig {
+    ForwarderRuntimeConfig {
+        options: forwarder_runtime_options_from_app_proxy_config(app_config),
+        rectifier,
+        optimizer,
+        copilot_optimizer,
+    }
+}
+
+async fn forwarder_runtime_config_from_db_sources(
+    db: &Database,
+    app_type: &AppType,
+) -> ProxyCoreResult<ForwarderRuntimeConfig> {
+    let app_config = db
+        .get_proxy_config_for_app(app_type.as_str())
+        .await
+        .map_err(|error| app_error("load app proxy config", error))?;
+
+    Ok(forwarder_runtime_config_from_sources(
+        &app_config,
+        db.get_rectifier_config().unwrap_or_default(),
+        db.get_optimizer_config().unwrap_or_default(),
+        db.get_copilot_optimizer_config().unwrap_or_default(),
+    ))
+}
+
+impl From<&AppType> for AppKind {
+    fn from(value: &AppType) -> Self {
+        Self::from(value.as_str())
+    }
+}
+
+pub(crate) fn app_type_option_from_proxy_core_app(app: &AppKind) -> Option<AppType> {
+    app.as_str().parse::<AppType>().ok()
+}
+
+pub(crate) fn app_type_from_proxy_core_app(app: &AppKind) -> ProxyCoreResult<AppType> {
+    app.as_str()
+        .parse::<AppType>()
+        .map_err(unsupported_app_kind_config_error)
+}
+
+pub(crate) struct ForwardRuntimeRequest {
+    pub(crate) app_type: AppType,
+    pub(crate) method: Method,
+    pub(crate) endpoint: String,
+    pub(crate) headers: HeaderMap,
+    pub(crate) extensions: http::Extensions,
+    pub(crate) body: Value,
+    pub(crate) session_result: SessionIdResult,
+}
+
+pub(crate) fn forward_runtime_request_from_proxy_request(
+    request: ProxyRequest,
+) -> ProxyCoreResult<ForwardRuntimeRequest> {
+    let ProxyRequest {
+        app,
+        method,
+        endpoint,
+        headers,
+        extensions,
+        body,
+        ..
+    } = request;
+    let app_type = app_type_from_proxy_core_app(&app)?;
+    let body = body.into_json()?;
+    let session_result = extract_proxy_session_id(&headers, &body, app_type.as_str());
+    Ok(ForwardRuntimeRequest {
+        app_type,
+        method,
+        endpoint,
+        headers,
+        extensions,
+        body,
+        session_result,
+    })
+}
+
+#[derive(Clone)]
+struct ForwarderRuntimeHostResources {
+    attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
+    protocol_state_source: ForwarderProtocolStateSourceRef,
+    runtime_state_source: ForwarderRuntimeStateSourceRef,
+    auth_source: ForwarderAuthSourceRef,
+    request_source: ForwarderRequestSourceRef,
+    transport_source: ForwarderTransportSourceRef,
+    response_source: ForwarderResponseSourceRef,
+    failover_switch_scheduler: FailoverSwitchSchedulerRef,
+}
+
+fn forwarder_runtime_host_resources_from_runtime(
+    runtime: &CcSwitchProxyRuntime,
+) -> ForwarderRuntimeHostResources {
+    ForwarderRuntimeHostResources {
+        attempt_runtime_source: runtime.attempt_runtime_source.clone(),
+        protocol_state_source: runtime.protocol_state_source.clone(),
+        runtime_state_source: runtime.runtime_state_source.clone(),
+        auth_source: runtime.auth_source.clone(),
+        request_source: runtime.request_source.clone(),
+        transport_source: runtime.transport_source.clone(),
+        response_source: runtime.response_source.clone(),
+        failover_switch_scheduler: runtime.failover_switch_scheduler.clone(),
+    }
+}
+
+async fn forward_proxy_request_with_cc_switch_runtime(
+    runtime: &CcSwitchProxyRuntime,
+    channel_key_runtime_source: &(dyn ChannelKeyRuntimeSource + Send + Sync),
+    request: ProxyRequest,
+    plan: RoutePlan,
+) -> ProxyCoreResult<ProxyResult> {
+    forward_proxy_request_with_host_runtime(
+        &runtime.db,
+        forwarder_runtime_host_resources_from_runtime(runtime),
+        channel_key_runtime_source,
+        request,
+        plan,
+    )
+    .await
+}
+
+async fn forward_with_preplanned_host_runtime(
+    resources: ForwarderRuntimeHostResources,
+    request: ForwardRuntimeRequest,
+    plan: RoutePlan,
+    forwarder_config: ForwarderRuntimeConfig,
+    current_provider_id: String,
+    attempts: Vec<ForwardAttempt>,
+) -> ProxyCoreResult<ProxyResult> {
+    let ForwarderRuntimeHostResources {
+        attempt_runtime_source,
+        protocol_state_source,
+        runtime_state_source,
+        auth_source,
+        request_source,
+        transport_source,
+        response_source,
+        failover_switch_scheduler,
+    } = resources;
+    let ForwardRuntimeRequest {
+        app_type,
+        method,
+        endpoint,
+        headers,
+        extensions,
+        body,
+        session_result,
+    } = request;
+    let forwarder = RequestForwarder::new_preplanned(
+        attempt_runtime_source,
+        protocol_state_source,
+        runtime_state_source,
+        auth_source,
+        request_source,
+        transport_source,
+        response_source,
+        failover_switch_scheduler,
+        forwarder_config,
+        current_provider_id,
+        session_result.session_id,
+        session_result.client_provided,
+    );
+
+    let result = forwarder
+        .forward_with_preplanned_attempts(
+            &app_type, method, &endpoint, body, headers, extensions, attempts,
+        )
+        .await
+        .map_err(forward_error_to_core_error)?;
+    Ok(forward_result_to_proxy_result(result, plan))
+}
+
+async fn forward_proxy_request_with_host_runtime(
+    db: &Database,
+    resources: ForwarderRuntimeHostResources,
+    channel_key_runtime_source: &(dyn ChannelKeyRuntimeSource + Send + Sync),
+    request: ProxyRequest,
+    plan: RoutePlan,
+) -> ProxyCoreResult<ProxyResult> {
+    let forward_request = forward_runtime_request_from_proxy_request(request)?;
+    let app_type = forward_request.app_type.clone();
+    let forwarder_config = forwarder_runtime_config_from_db_sources(db, &app_type).await?;
+    let current_provider_id = forward_current_provider_id_from_db_sources(db, &app_type);
+    let all_providers = db
+        .get_all_providers(app_type.as_str())
+        .map_err(|error| app_error("load host providers", error))?;
+    let attempts = required_forward_attempts_from_sources(
+        &app_type,
+        &all_providers,
+        &plan,
+        channel_key_runtime_source,
+    )?;
+
+    forward_with_preplanned_host_runtime(
+        resources,
+        forward_request,
+        plan,
+        forwarder_config,
+        current_provider_id,
+        attempts,
+    )
+    .await
+}
+
+pub(crate) fn extract_proxy_session_id(
+    headers: &HeaderMap,
+    body: &Value,
+    client_format: &str,
+) -> SessionIdResult {
+    crate::proxy_core::api::session::extract_session_id_with_generator(
+        headers,
+        body,
+        client_format,
+        || Uuid::new_v4().to_string(),
+    )
 }

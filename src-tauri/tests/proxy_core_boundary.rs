@@ -5737,6 +5737,9 @@ fn proxy_core_adapter_does_not_export_domain_or_model_catalog_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let runtime_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs"))
+            .expect("read proxy_runtime.rs");
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -5754,9 +5757,10 @@ fn proxy_core_adapter_does_not_export_domain_or_model_catalog_aliases() {
         );
     }
     assert!(
-        adapter_runtime_source.contains("use crate::proxy_core::api::domain::AppKind;")
-            && !adapter_runtime_source.contains("ModelMappingProjection"),
-        "proxy_core_adapter runtime internals should import only needed domain DTOs directly and should not retain model mapping DTOs"
+        !adapter_runtime_source.contains("ModelMappingProjection")
+            && runtime_source.contains("use crate::proxy_core::api::domain::{")
+            && runtime_source.contains("AppKind"),
+        "proxy_core_adapter should not retain model mapping DTOs; host runtime should import needed domain DTOs directly"
     );
 }
 
@@ -6754,6 +6758,9 @@ fn proxy_core_adapter_does_not_export_runtime_policy_or_breaker_config_aliases()
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let runtime_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs"))
+            .expect("read proxy_runtime.rs");
 
     for alias in [
         "pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;",
@@ -6775,9 +6782,10 @@ fn proxy_core_adapter_does_not_export_runtime_policy_or_breaker_config_aliases()
         "CircuitBreakerStats",
     ] {
         assert!(
-            adapter_source.contains(core_config_type)
-                && adapter_source.contains("use crate::proxy_core::api::config::{"),
-            "proxy_core_adapter internals should import {core_config_type} directly from proxy_core config"
+            (runtime_source.contains(core_config_type)
+                && runtime_source.contains("use crate::proxy_core::api::config::{"))
+                || adapter_source.contains(core_config_type),
+            "host runtime or test code should import {core_config_type} directly from proxy_core config"
         );
     }
 }
@@ -8473,6 +8481,9 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let runtime_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs"))
+            .expect("read proxy_runtime.rs");
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -8509,9 +8520,9 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
     }
     for marker in ["RoutePlan"] {
         assert!(
-            adapter_routing_import.contains(marker)
-                || adapter_runtime_source.contains("use crate::proxy_core::api::routing::RoutePlan;"),
-            "proxy_core_adapter internals should import routing DTO `{marker}` directly from proxy_core::api::routing"
+            runtime_source.contains(marker)
+                && runtime_source.contains("use crate::proxy_core::api::routing::{"),
+            "proxy_runtime should import routing DTO `{marker}` directly from proxy_core::api::routing"
         );
     }
     assert!(
@@ -11766,7 +11777,7 @@ fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let classification_slice = function_slice(
         &source,
         "fn provider_kind_from_provider(",
-        "fn extract_proxy_session_id",
+        "#[cfg(test)]\nmod tests",
     );
 
     assert!(
@@ -17339,6 +17350,9 @@ fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
         .split("\n#[cfg(test)]\nmod tests")
         .next()
         .unwrap_or(&source);
+    let runtime_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs"))
+            .expect("read proxy_runtime.rs");
     let attempt_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/channel_auth_profile_attempts.rs");
     let attempt_source =
@@ -17350,15 +17364,13 @@ fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
     );
 
     assert!(
-        source.contains(
+        runtime_source.contains(
             "use crate::proxy::host::cc_switch::channel_auth_profile_attempts::required_forward_attempts_from_sources;"
-        ) && source.contains(
-            "use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{"
         ) && !source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::channel_auth_profile_attempts"
         ) && !source.contains("fn apply_channel_auth_profile_providers_from_source(")
             && !source.contains("fn required_forward_attempts_from_sources("),
-        "proxy_core_adapter should only use, not re-export or own, the auth-profile attempt source helpers"
+        "proxy_runtime should consume, and proxy_core_adapter should not re-export or own, auth-profile attempt source helpers"
     );
     assert!(
         function.contains("channel_auth_profile_provider_application("),
@@ -17408,6 +17420,9 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         .split("\n#[cfg(test)]\nmod tests")
         .next()
         .unwrap_or(&source);
+    let proxy_runtime_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs"))
+            .expect("read proxy_runtime.rs");
     let runtime_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/channel_key_runtime_source.rs");
     let runtime_source =
@@ -17474,8 +17489,8 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "proxy_core_adapter should consume the core channel key runtime source, not define a host-local trait"
     );
     assert!(
-        source.contains("ChannelKeyRuntimeSource"),
-        "proxy_core_adapter should import the core channel key runtime source contract"
+        proxy_runtime_source.contains("ChannelKeyRuntimeSource"),
+        "proxy_runtime should import the core channel key runtime source contract"
     );
     assert!(
         !adapter_core_ports_import.contains("ChannelKeyRuntimeSource"),
@@ -17521,10 +17536,8 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "CC Switch ProxyServices implementation should return the channel key runtime source"
     );
     assert!(
-        source.contains(
+        proxy_runtime_source.contains(
             "use crate::proxy::host::cc_switch::channel_auth_profile_attempts::required_forward_attempts_from_sources;"
-        ) && source.contains(
-            "use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{"
         ) && !source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::channel_auth_profile_attempts"
         ) && !source.contains("fn apply_channel_auth_profile_providers_from_source(")
@@ -17589,9 +17602,9 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let host_runtime_impl = runtime_source.as_str();
     let optional_runtime_function = pipeline_source.as_str();
     let host_forward_function = function_slice(
-        &source,
+        &runtime_source,
         "async fn forward_proxy_request_with_host_runtime",
-        "fn provider_kind_from_provider",
+        "pub(crate) fn extract_proxy_session_id",
     );
     let adapter_core_ports_import = optional_function_slice(
         &source,
@@ -17719,6 +17732,12 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
         "host forward runtime should build attempts through source-injected auth profile handling"
     );
     assert!(
+        !source.contains("async fn forward_proxy_request_with_host_runtime")
+            && !source.contains("async fn forward_with_preplanned_host_runtime")
+            && !source.contains("ForwarderRuntimeHostResources"),
+        "proxy_core_adapter should not own the CC Switch runtime forward bridge"
+    );
+    assert!(
         attempt_source_function.contains("apply_channel_auth_profile_providers_from_source("),
         "required forward attempts source helper should delegate auth profile application through the source contract"
     );
@@ -17738,19 +17757,25 @@ fn proxy_core_adapter_delegates_proxy_runtime_to_host_module() {
             && runtime_source.contains("pub(crate) trait HostForwardRuntime")
             && runtime_source.contains("impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime")
             && runtime_source.contains("impl HostForwardRuntime for CcSwitchProxyRuntime")
+            && runtime_source.contains("async fn forward_proxy_request_with_host_runtime")
+            && runtime_source.contains("async fn forward_with_preplanned_host_runtime")
+            && runtime_source.contains("struct ForwarderRuntimeHostResources")
             && runtime_source.contains("forward_proxy_request_with_cc_switch_runtime("),
-        "CC Switch proxy runtime data shape and runtime trait impls should live in host/cc_switch/proxy_runtime.rs"
+        "CC Switch proxy runtime data shape, runtime trait impls, and forward bridge should live in host/cc_switch/proxy_runtime.rs"
     );
     assert!(
-        adapter_source.contains(
-            "use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;"
-        ) && !adapter_source.contains(
-            "pub(crate) use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime"
-        ) && !adapter_source.contains("pub(crate) struct CcSwitchProxyRuntime")
+        !adapter_source.contains("forward_proxy_request_with_cc_switch_runtime")
+            && !adapter_source.contains("async fn forward_proxy_request_with_host_runtime")
+            && !adapter_source.contains("async fn forward_with_preplanned_host_runtime")
+            && !adapter_source.contains("ForwarderRuntimeHostResources")
+            && !adapter_source.contains(
+                "pub(crate) use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime"
+            )
+            && !adapter_source.contains("pub(crate) struct CcSwitchProxyRuntime")
             && !adapter_source
                 .contains("impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime")
             && !adapter_source.contains("impl HostForwardRuntime for CcSwitchProxyRuntime"),
-        "proxy_core_adapter should only use the CC Switch proxy runtime privately and not re-export or own it"
+        "proxy_core_adapter should not import, re-export, or own the CC Switch proxy runtime forward bridge"
     );
 }
 
@@ -23113,12 +23138,14 @@ fn production_forwarder_runtime_config_reaches_forwarder_as_single_input() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let runtime_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs");
+    let runtime_source = fs::read_to_string(&runtime_path).expect("read proxy_runtime.rs");
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let forwarder_source =
         fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
 
     let bridge_slice = function_slice(
-        &adapter_source,
+        &runtime_source,
         "async fn forward_with_preplanned_host_runtime",
         "async fn forward_proxy_request_with_host_runtime",
     );
@@ -23176,7 +23203,7 @@ fn production_forwarder_runtime_config_reaches_forwarder_as_single_input() {
         for marker in bridge_forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs forward bridge:{} splits runtime config marker `{}`",
+                    "src/proxy/host/cc_switch/proxy_runtime.rs forward bridge:{} splits runtime config marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -23188,6 +23215,11 @@ fn production_forwarder_runtime_config_reaches_forwarder_as_single_input() {
         violations.is_empty(),
         "host forward bridge must not split forwarder runtime config before constructing RequestForwarder:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        !adapter_source.contains("async fn forward_with_preplanned_host_runtime")
+            && !adapter_source.contains("async fn forward_proxy_request_with_host_runtime"),
+        "proxy_core_adapter should not own the forward runtime bridge after proxy_runtime owns it"
     );
 }
 

@@ -1,14 +1,9 @@
+#[cfg(test)]
 use crate::app_config::AppType;
-use crate::database::Database;
+#[cfg(test)]
 use crate::error::AppError;
 #[cfg(test)]
 use crate::provider::Provider;
-use crate::proxy::engine::forward_pipeline::{
-    FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderAuthSourceRef,
-    ForwarderProtocolStateSourceRef, ForwarderRequestSourceRef, ForwarderResponseSourceRef,
-    ForwarderRuntimeConfig, ForwarderRuntimeOptions, ForwarderRuntimeStateSourceRef,
-    ForwarderTransportSourceRef,
-};
 #[cfg(test)]
 use crate::proxy::engine::forward_pipeline::{
     ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
@@ -19,181 +14,10 @@ use crate::proxy::engine::forward_pipeline::{
     ForwarderProtocolStateSource, ForwarderProviderRequestBodyInput,
     ForwarderProviderTransformInput, ForwarderRectifierRetryFailureDecision,
     ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
-    ForwarderRequestPreparationInput, ForwarderThinkingBudgetRectifierInput,
-    ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
-    ForwarderUpstreamUrlInput,
+    ForwarderRequestPreparationInput, ForwarderRuntimeOptions,
+    ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
+    ForwarderTransformPlanInput, ForwarderUpstreamUrlInput,
 };
-use crate::proxy::error_mapper::forward_error_to_core_error;
-use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
-#[cfg(test)]
-use crate::proxy::provider::claude_provider_api_format;
-use crate::proxy::route_attempt::ForwardAttempt;
-#[cfg(test)]
-use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
-use crate::proxy::RequestForwarder;
-use crate::proxy_core::api::config::{AppProxyConfig, ResponseRuntimePolicy};
-use crate::proxy_core::api::domain::AppKind;
-use crate::proxy_core::api::routing::RoutePlan;
-use crate::proxy_core::api::session::SessionIdResult;
-use http::{HeaderMap, Method};
-use serde_json::Value;
-use uuid::Uuid;
-
-use crate::proxy_core::api::errors::config_error_with_context as core_config_error_with_context;
-use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};
-fn app_error(context: &str, error: AppError) -> ProxyCoreError {
-    core_config_error_with_context(context, error)
-}
-
-use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
-
-fn current_provider_id_from_settings_for_app(app: &AppKind) -> Option<String> {
-    app_type_option_from_proxy_core_app(app)
-        .as_ref()
-        .and_then(crate::settings::get_current_provider)
-}
-
-fn forward_current_provider_id_from_source(
-    settings_current_provider_id: Option<&str>,
-    load_db_current_provider_id: impl FnOnce() -> Option<String>,
-) -> String {
-    let db_current_provider_id =
-        if current_provider_db_fallback_required(settings_current_provider_id) {
-            load_db_current_provider_id()
-        } else {
-            None
-        };
-    current_provider_id_from_sources(
-        settings_current_provider_id,
-        db_current_provider_id.as_deref(),
-    )
-}
-
-fn forward_current_provider_id_from_db_sources(db: &Database, app_type: &AppType) -> String {
-    let app = AppKind::from(app_type);
-    let settings_current_provider_id = current_provider_id_from_settings_for_app(&app);
-    forward_current_provider_id_from_source(settings_current_provider_id.as_deref(), || {
-        db.get_current_provider(app_type.as_str()).ok().flatten()
-    })
-}
-
-use crate::proxy_core::api::domain::unsupported_app_kind_config_error;
-
-use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
-use crate::proxy_core::api::transport::{ProxyRequest, ProxyResult};
-
-use crate::proxy_core::api::transport::resolve_response_runtime_policy;
-
-fn response_runtime_policy_from_app_proxy_config(config: &AppProxyConfig) -> ResponseRuntimePolicy {
-    resolve_response_runtime_policy(
-        config.auto_failover_enabled,
-        config.max_retries,
-        config.non_streaming_timeout as u64,
-        config.streaming_first_byte_timeout as u64,
-        config.streaming_idle_timeout as u64,
-    )
-}
-
-fn forwarder_runtime_options_from_app_proxy_config(
-    config: &AppProxyConfig,
-) -> ForwarderRuntimeOptions {
-    let policy = response_runtime_policy_from_app_proxy_config(config);
-    ForwarderRuntimeOptions {
-        non_streaming_timeout: policy.timeout.non_streaming_timeout,
-        streaming_first_byte_timeout: policy.timeout.streaming.first_byte_timeout,
-        streaming_idle_timeout: policy.timeout.streaming.idle_timeout,
-        max_retries: policy.max_retries,
-    }
-}
-
-fn forwarder_runtime_config_from_sources(
-    app_config: &AppProxyConfig,
-    rectifier: RectifierConfig,
-    optimizer: OptimizerConfig,
-    copilot_optimizer: CopilotOptimizerConfig,
-) -> ForwarderRuntimeConfig {
-    ForwarderRuntimeConfig {
-        options: forwarder_runtime_options_from_app_proxy_config(app_config),
-        rectifier,
-        optimizer,
-        copilot_optimizer,
-    }
-}
-
-async fn forwarder_runtime_config_from_db_sources(
-    db: &Database,
-    app_type: &AppType,
-) -> ProxyCoreResult<ForwarderRuntimeConfig> {
-    let app_config = db
-        .get_proxy_config_for_app(app_type.as_str())
-        .await
-        .map_err(|error| app_error("load app proxy config", error))?;
-
-    Ok(forwarder_runtime_config_from_sources(
-        &app_config,
-        db.get_rectifier_config().unwrap_or_default(),
-        db.get_optimizer_config().unwrap_or_default(),
-        db.get_copilot_optimizer_config().unwrap_or_default(),
-    ))
-}
-
-use crate::proxy_core::api::routing::{
-    current_provider_db_fallback_required, current_provider_id_from_sources,
-};
-
-impl From<&AppType> for AppKind {
-    fn from(value: &AppType) -> Self {
-        Self::from(value.as_str())
-    }
-}
-
-fn app_type_option_from_proxy_core_app(app: &AppKind) -> Option<AppType> {
-    app.as_str().parse::<AppType>().ok()
-}
-
-fn app_type_from_proxy_core_app(app: &AppKind) -> ProxyCoreResult<AppType> {
-    app.as_str()
-        .parse::<AppType>()
-        .map_err(unsupported_app_kind_config_error)
-}
-
-struct ForwardRuntimeRequest {
-    app_type: AppType,
-    method: Method,
-    endpoint: String,
-    headers: HeaderMap,
-    extensions: http::Extensions,
-    body: Value,
-    session_result: SessionIdResult,
-}
-
-fn forward_runtime_request_from_proxy_request(
-    request: ProxyRequest,
-) -> ProxyCoreResult<ForwardRuntimeRequest> {
-    let ProxyRequest {
-        app,
-        method,
-        endpoint,
-        headers,
-        extensions,
-        body,
-        ..
-    } = request;
-    let app_type = app_type_from_proxy_core_app(&app)?;
-    let body = body.into_json()?;
-    let session_result = extract_proxy_session_id(&headers, &body, app_type.as_str());
-    Ok(ForwardRuntimeRequest {
-        app_type,
-        method,
-        endpoint,
-        headers,
-        extensions,
-        body,
-        session_result,
-    })
-}
-
-use crate::proxy::host::cc_switch::channel_auth_profile_attempts::required_forward_attempts_from_sources;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
     apply_channel_auth_profile_providers_from_source, forward_attempts_from_plan,
@@ -201,6 +25,25 @@ use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
 };
 #[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_runtime_state_source::CcSwitchForwarderRuntimeStateSource;
+#[cfg(test)]
+use crate::proxy::host::cc_switch::proxy_runtime::{
+    app_type_from_proxy_core_app, app_type_option_from_proxy_core_app, extract_proxy_session_id,
+    forward_current_provider_id_from_source, forward_runtime_request_from_proxy_request,
+    forwarder_runtime_config_from_sources, forwarder_runtime_options_from_app_proxy_config,
+    response_runtime_policy_from_app_proxy_config,
+};
+#[cfg(test)]
+use crate::proxy::provider::claude_provider_api_format;
+#[cfg(test)]
+use crate::proxy::route_attempt::ForwardAttempt;
+#[cfg(test)]
+use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
+#[cfg(test)]
+use http::{HeaderMap, Method};
+#[cfg(test)]
+use serde_json::Value;
+#[cfg(test)]
+use uuid::Uuid;
 
 #[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_protocol_state_source::CcSwitchForwarderProtocolStateSource;
@@ -220,136 +63,8 @@ use crate::proxy::host::cc_switch::forwarder_request_source::{
     CcSwitchForwarderRequestSource,
 };
 
-use crate::proxy::host::cc_switch::forward_pipeline::forward_result_to_proxy_result;
-
 #[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_response_source::CcSwitchForwarderResponseSource;
-
-#[derive(Clone)]
-struct ForwarderRuntimeHostResources {
-    attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
-    protocol_state_source: ForwarderProtocolStateSourceRef,
-    runtime_state_source: ForwarderRuntimeStateSourceRef,
-    auth_source: ForwarderAuthSourceRef,
-    request_source: ForwarderRequestSourceRef,
-    transport_source: ForwarderTransportSourceRef,
-    response_source: ForwarderResponseSourceRef,
-    failover_switch_scheduler: FailoverSwitchSchedulerRef,
-}
-
-fn forwarder_runtime_host_resources_from_runtime(
-    runtime: &CcSwitchProxyRuntime,
-) -> ForwarderRuntimeHostResources {
-    ForwarderRuntimeHostResources {
-        attempt_runtime_source: runtime.attempt_runtime_source.clone(),
-        protocol_state_source: runtime.protocol_state_source.clone(),
-        runtime_state_source: runtime.runtime_state_source.clone(),
-        auth_source: runtime.auth_source.clone(),
-        request_source: runtime.request_source.clone(),
-        transport_source: runtime.transport_source.clone(),
-        response_source: runtime.response_source.clone(),
-        failover_switch_scheduler: runtime.failover_switch_scheduler.clone(),
-    }
-}
-
-pub(crate) async fn forward_proxy_request_with_cc_switch_runtime(
-    runtime: &CcSwitchProxyRuntime,
-    channel_key_runtime_source: &(dyn ChannelKeyRuntimeSource + Send + Sync),
-    request: ProxyRequest,
-    plan: RoutePlan,
-) -> ProxyCoreResult<ProxyResult> {
-    forward_proxy_request_with_host_runtime(
-        &runtime.db,
-        forwarder_runtime_host_resources_from_runtime(runtime),
-        channel_key_runtime_source,
-        request,
-        plan,
-    )
-    .await
-}
-
-async fn forward_with_preplanned_host_runtime(
-    resources: ForwarderRuntimeHostResources,
-    request: ForwardRuntimeRequest,
-    plan: RoutePlan,
-    forwarder_config: ForwarderRuntimeConfig,
-    current_provider_id: String,
-    attempts: Vec<ForwardAttempt>,
-) -> ProxyCoreResult<ProxyResult> {
-    let ForwarderRuntimeHostResources {
-        attempt_runtime_source,
-        protocol_state_source,
-        runtime_state_source,
-        auth_source,
-        request_source,
-        transport_source,
-        response_source,
-        failover_switch_scheduler,
-    } = resources;
-    let ForwardRuntimeRequest {
-        app_type,
-        method,
-        endpoint,
-        headers,
-        extensions,
-        body,
-        session_result,
-    } = request;
-    let forwarder = RequestForwarder::new_preplanned(
-        attempt_runtime_source,
-        protocol_state_source,
-        runtime_state_source,
-        auth_source,
-        request_source,
-        transport_source,
-        response_source,
-        failover_switch_scheduler,
-        forwarder_config,
-        current_provider_id,
-        session_result.session_id,
-        session_result.client_provided,
-    );
-
-    let result = forwarder
-        .forward_with_preplanned_attempts(
-            &app_type, method, &endpoint, body, headers, extensions, attempts,
-        )
-        .await
-        .map_err(forward_error_to_core_error)?;
-    Ok(forward_result_to_proxy_result(result, plan))
-}
-
-async fn forward_proxy_request_with_host_runtime(
-    db: &Database,
-    resources: ForwarderRuntimeHostResources,
-    channel_key_runtime_source: &(dyn ChannelKeyRuntimeSource + Send + Sync),
-    request: ProxyRequest,
-    plan: RoutePlan,
-) -> ProxyCoreResult<ProxyResult> {
-    let forward_request = forward_runtime_request_from_proxy_request(request)?;
-    let app_type = forward_request.app_type.clone();
-    let forwarder_config = forwarder_runtime_config_from_db_sources(db, &app_type).await?;
-    let current_provider_id = forward_current_provider_id_from_db_sources(db, &app_type);
-    let all_providers = db
-        .get_all_providers(app_type.as_str())
-        .map_err(|error| app_error("load host providers", error))?;
-    let attempts = required_forward_attempts_from_sources(
-        &app_type,
-        &all_providers,
-        &plan,
-        channel_key_runtime_source,
-    )?;
-
-    forward_with_preplanned_host_runtime(
-        resources,
-        forward_request,
-        plan,
-        forwarder_config,
-        current_provider_id,
-        attempts,
-    )
-    .await
-}
 
 #[cfg(test)]
 fn provider_kind_from_provider(
@@ -393,19 +108,6 @@ fn provider_uses_managed_account_auth(provider: &Provider) -> bool {
     provider_managed_auth_classification(provider).uses_managed_account
 }
 
-fn extract_proxy_session_id(
-    headers: &HeaderMap,
-    body: &Value,
-    client_format: &str,
-) -> SessionIdResult {
-    crate::proxy_core::api::session::extract_session_id_with_generator(
-        headers,
-        body,
-        client_format,
-        || Uuid::new_v4().to_string(),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
@@ -417,7 +119,7 @@ mod tests {
     use crate::proxy_core::api::config::{
         app_type_from_circuit_key, channel_circuit_key, circuit_breaker_config_from_app_config,
         circuit_failure_threshold_from_app_config, provider_circuit_key, AllowResult,
-        CircuitBreakerConfig, CircuitBreakerStats, CircuitState,
+        AppProxyConfig, CircuitBreakerConfig, CircuitBreakerStats, CircuitState,
     };
     use crate::proxy_core::api::domain::{
         extract_claude_base_url_from_settings, AppKind, ProviderKind,
@@ -542,7 +244,7 @@ mod tests {
         proxy_error_http_status_code, proxy_error_response_body,
         selected_provider_display_name_for_error, selected_provider_missing_from_source_message,
         selected_provider_not_applied_message, unselected_provider_fallback_id,
-        upstream_proxy_error_response_body, ProxyCoreError, ProxyErrorStatusKind,
+        upstream_proxy_error_response_body, ProxyCoreError, ProxyCoreResult, ProxyErrorStatusKind,
     };
     use crate::proxy_core::api::events::{
         attempt_event, request_started_event, route_selected_event, server_started_event,
@@ -557,15 +259,16 @@ mod tests {
     use crate::proxy_core::api::ports::{
         codex_restored_live_settings_parts, current_route_target_from_input,
         gemini_env_json_from_map, gemini_env_string_map_from_settings,
-        gemini_live_config_object_from_settings, CurrentRouteTarget, CurrentRouteTargetInput,
-        GeminiLiveConfigIssue, ProxyConfig, ProxyRuntimeStatus,
+        gemini_live_config_object_from_settings, ChannelKeyRuntimeSource, CopilotOptimizerConfig,
+        CurrentRouteTarget, CurrentRouteTargetInput, GeminiLiveConfigIssue, OptimizerConfig,
+        ProxyConfig, ProxyRuntimeStatus, RectifierConfig,
     };
     use crate::proxy_core::api::routing::{
-        apply_route_candidate_circuit_availability, resolve_channel_route,
-        route_candidate_channel_circuit_keys, select_provider_ids, ChannelRouteCandidate,
-        ChannelSpec, ChannelStatus, InterfaceKind, ProviderSelectionCandidate,
-        ProviderSelectionFailure, ProviderSelectionInput, RouteResolveChannelInput,
-        RouteResolveModelInput, RouteSelection,
+        apply_route_candidate_circuit_availability, current_provider_id_from_sources,
+        resolve_channel_route, route_candidate_channel_circuit_keys, select_provider_ids,
+        ChannelRouteCandidate, ChannelSpec, ChannelStatus, InterfaceKind,
+        ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput, RoutePlan,
+        RouteResolveChannelInput, RouteResolveModelInput, RouteSelection,
     };
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{
@@ -579,6 +282,7 @@ mod tests {
     use crate::proxy_core::api::transforms::{
         CodexChatReasoningOptions, CodexChatReasoningProfile,
     };
+    use crate::proxy_core::api::transport::resolve_response_runtime_policy;
     use crate::proxy_core::api::transport::{
         anthropic_beta_header_value, apply_forwarder_media_prevention_from_facts,
         bedrock_env_flag_from_provider_settings, build_claude_auth_headers,
@@ -589,7 +293,7 @@ mod tests {
         CopilotClassification, ForwardFailureKind, ForwardUpstreamUrlPlanInput,
         ForwarderMediaPreventionFacts, ForwarderProtocolPreparationInput, ForwarderTransformPlan,
         OptionalCopilotAuthOptimizationPreparationInput, PreparedCopilotAuthOptimization,
-        ProxyBody, ProxyCoreResponse, ProxyResponseBody, ProxyTransportResponseBody,
+        ProxyBody, ProxyCoreResponse, ProxyRequest, ProxyResponseBody, ProxyTransportResponseBody,
         UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamSseAggregationKind,
         UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
     };
@@ -6483,7 +6187,10 @@ wire_api = "chat"
     #[test]
     fn error_mapper_adapter_projects_error_contracts() {
         assert!(matches!(
-            app_error("load config", AppError::Message("disk failed".to_string())),
+            crate::proxy_core::api::errors::config_error_with_context(
+                "load config",
+                AppError::Message("disk failed".to_string())
+            ),
             ProxyCoreError::Config(message)
                 if message == "load config: disk failed"
         ));
