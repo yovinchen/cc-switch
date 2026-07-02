@@ -59,6 +59,12 @@ pub struct UpstreamSendErrorProjection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpstreamErrorResponseProjection {
+    pub status: u16,
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForwarderTransformPlan {
     pub needs_transform: bool,
     pub use_claude_transform: bool,
@@ -377,6 +383,16 @@ pub fn upstream_send_error_projection(
     }
 }
 
+pub fn upstream_error_response_projection(
+    status: http::StatusCode,
+    body: &[u8],
+) -> UpstreamErrorResponseProjection {
+    UpstreamErrorResponseProjection {
+        status: status.as_u16(),
+        body: std::str::from_utf8(body).ok().map(str::to_owned),
+    }
+}
+
 pub fn mapped_channel_response_status(status: u16, mapping: &Value) -> Option<u16> {
     match mapping {
         Value::Array(entries) => entries
@@ -467,14 +483,15 @@ mod tests {
         proxy_url_points_to_loopback_port, proxy_values_point_to_loopback_port,
         request_body_stream_flag, resolve_channel_response_status_mapping,
         resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-        upstream_send_error_projection, validate_explicit_proxy_url,
+        upstream_error_response_projection, upstream_send_error_projection,
+        validate_explicit_proxy_url,
         ForwarderProtocolPreparationInput, ForwarderRequestBodyTransformAction,
         ForwarderTransformPlan, ForwarderTransformPlanFacts, UpstreamSendErrorInput,
         UpstreamSendPolicyInput, UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT,
         STREAMING_REQWEST_REQUEST_TIMEOUT,
     };
     use crate::error::ProxyErrorStatusKind;
-    use http::{header::ACCEPT, HeaderMap, HeaderValue};
+    use http::{header::ACCEPT, HeaderMap, HeaderValue, StatusCode};
     use serde_json::json;
     use std::time::Duration;
 
@@ -903,6 +920,23 @@ mod tests {
         });
         assert_eq!(other.status_kind, ProxyErrorStatusKind::ForwardFailed);
         assert_eq!(other.message, "invalid header value");
+    }
+
+    #[test]
+    fn upstream_error_response_projection_preserves_utf8_body() {
+        let projection =
+            upstream_error_response_projection(StatusCode::BAD_GATEWAY, b"{\"error\":\"bad\"}");
+
+        assert_eq!(projection.status, 502);
+        assert_eq!(projection.body.as_deref(), Some("{\"error\":\"bad\"}"));
+    }
+
+    #[test]
+    fn upstream_error_response_projection_drops_non_utf8_body() {
+        let projection = upstream_error_response_projection(StatusCode::BAD_GATEWAY, &[0xff, 0xfe]);
+
+        assert_eq!(projection.status, 502);
+        assert_eq!(projection.body, None);
     }
 
     #[test]

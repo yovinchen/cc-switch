@@ -10,7 +10,7 @@ use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy_core::api::transport::{
     apply_channel_response_policy, non_streaming_body_timeout_message,
     streaming_body_ended_before_first_chunk_message, streaming_body_first_chunk_read_error_message,
-    streaming_body_first_chunk_timeout_message,
+    streaming_body_first_chunk_timeout_message, upstream_error_response_projection,
 };
 
 pub(crate) struct CcSwitchForwarderResponseSource;
@@ -105,9 +105,13 @@ impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
                 return self.prepare_success_response(input).await;
             }
 
-            let status = input.response.status().as_u16();
-            let body = String::from_utf8(input.response.bytes().await?.to_vec()).ok();
-            Err(ProxyError::UpstreamError { status, body })
+            let status = input.response.status();
+            let body = input.response.bytes().await?;
+            let projection = upstream_error_response_projection(status, &body);
+            Err(ProxyError::UpstreamError {
+                status: projection.status,
+                body: projection.body,
+            })
         })
     }
 }
@@ -199,5 +203,33 @@ mod tests {
             response.headers().get("x-relay-model"),
             Some(&HeaderValue::from_static("sonnet"))
         );
+    }
+
+    #[tokio::test]
+    async fn upstream_error_projection_uses_core_body_policy() {
+        let source = CcSwitchForwarderResponseSource;
+        let response = ProxyResponse::buffered(
+            StatusCode::BAD_GATEWAY,
+            HeaderMap::new(),
+            Bytes::from_static(b"{\"error\":\"bad_gateway\"}"),
+        );
+
+        let result = source
+            .finalize_upstream_response(ForwarderResponseFinalizationInput {
+                response,
+                request_is_streaming: false,
+                non_streaming_timeout: std::time::Duration::ZERO,
+                streaming_first_byte_timeout: std::time::Duration::ZERO,
+            })
+            .await;
+
+        match result {
+            Err(ProxyError::UpstreamError { status, body }) => {
+                assert_eq!(status, 502);
+                assert_eq!(body.as_deref(), Some("{\"error\":\"bad_gateway\"}"));
+            }
+            Ok(_) => panic!("expected upstream error projection, got successful response"),
+            Err(error) => panic!("expected upstream error projection, got {error:?}"),
+        }
     }
 }

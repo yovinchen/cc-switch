@@ -21433,8 +21433,10 @@ fn production_forwarder_uses_response_source_resource() {
     );
     assert!(
         response_source_impl_slice.contains("input.response.bytes().await?")
-            && response_source_impl_slice.contains("ProxyError::UpstreamError { status, body }"),
-        "default ForwarderResponseSource should project upstream error responses inside finalize_upstream_response"
+            && response_source_impl_slice.contains("upstream_error_response_projection(")
+            && response_source_impl_slice.contains("ProxyError::UpstreamError {")
+            && !response_source_impl_slice.contains("String::from_utf8("),
+        "default ForwarderResponseSource should read upstream error bodies but delegate status/body projection to proxy-core"
     );
     assert!(
         state_source.contains("default_forwarder_response_source()")
@@ -21472,6 +21474,7 @@ fn production_forwarder_uses_response_source_resource() {
         "streaming_body_ended_before_first_chunk_message",
         "streaming_body_first_chunk_read_error_message",
         "streaming_body_first_chunk_timeout_message",
+        "upstream_error_response_projection",
     ] {
         assert!(
             response_core_transport_import_slice.contains(marker),
