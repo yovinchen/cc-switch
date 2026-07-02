@@ -251,6 +251,15 @@ pub fn endpoint_from_path_and_query(path: &str, query: Option<&str>) -> String {
     append_query_to_endpoint_path(path, query)
 }
 
+pub fn endpoint_from_path_query_stripping_prefix(
+    path: &str,
+    query: Option<&str>,
+    prefix: Option<&str>,
+) -> String {
+    let endpoint = endpoint_from_path_and_query(path, query);
+    strip_endpoint_prefix(&endpoint, prefix).to_string()
+}
+
 pub fn strip_endpoint_prefix<'a>(endpoint: &'a str, prefix: Option<&str>) -> &'a str {
     prefix
         .and_then(|prefix| endpoint.strip_prefix(prefix))
@@ -606,8 +615,9 @@ mod tests {
         apply_channel_param_overrides_to_url, build_claude_upstream_url, build_codex_upstream_url,
         claude_transform_endpoint_rewrite_input_from_body, codex_provider_uses_chat_completions,
         codex_responses_to_chat_conversion_required, extract_gemini_model_from_path,
-        endpoint_from_path_and_query, forward_upstream_url_plan, forwarder_provider_url_facts,
-        interface_kind_for_forward, invalid_upstream_url_error_message, is_codex_chat_completions_url,
+        endpoint_from_path_and_query, endpoint_from_path_query_stripping_prefix,
+        forward_upstream_url_plan, forwarder_provider_url_facts, interface_kind_for_forward,
+        invalid_upstream_url_error_message, is_codex_chat_completions_url,
         is_codex_chat_full_endpoint_base, is_codex_chat_wire_api, is_codex_responses_endpoint,
         is_github_copilot_upstream, is_origin_only_url, merge_query_params,
         request_model_for_forward, resolve_codex_provider_uses_chat_completions,
@@ -736,6 +746,26 @@ mod tests {
         assert_eq!(
             endpoint_from_path_and_query("/responses?existing=true", Some("x-id=1")),
             "/responses?existing=true&x-id=1"
+        );
+    }
+
+    #[test]
+    fn endpoint_from_path_query_stripping_prefix_preserves_query_after_prefix_strip() {
+        assert_eq!(
+            endpoint_from_path_query_stripping_prefix(
+                "/claude-desktop/v1/messages",
+                Some("x-id=1"),
+                Some("/claude-desktop")
+            ),
+            "/v1/messages?x-id=1"
+        );
+        assert_eq!(
+            endpoint_from_path_query_stripping_prefix(
+                "/v1/messages",
+                Some("x-id=1"),
+                Some("/claude-desktop")
+            ),
+            "/v1/messages?x-id=1"
         );
     }
 

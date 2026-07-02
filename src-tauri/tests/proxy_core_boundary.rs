@@ -26007,6 +26007,7 @@ fn proxy_response_adapter_owns_core_transport_imports() {
             && source.contains("crate::proxy_core::api::domain::AppKind")
             && source.contains("crate::proxy_core::api::transport::{")
             && source.contains("endpoint_from_path_and_query")
+            && source.contains("endpoint_from_path_query_stripping_prefix")
             && source.contains("extract_gemini_model_from_path")
             && source.contains("parse_json_request_body")
             && source.contains("parse_json_request_body_or_null")
@@ -26026,19 +26027,23 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         !source.contains("append_query_to_endpoint_path"),
         "response_adapter should use the core endpoint_from_path_and_query bridge instead of the lower-level query append helper"
     );
+    assert!(
+        !source.contains("strip_endpoint_prefix"),
+        "response_adapter should use the core endpoint_from_path_query_stripping_prefix bridge instead of composing prefix stripping locally"
+    );
 
     let mut violations = Vec::new();
     for marker in [
         "AppKind",
         "InterfaceKind",
         "endpoint_from_path_and_query",
+        "endpoint_from_path_query_stripping_prefix",
         "extract_gemini_model_from_path",
         "parse_json_request_body",
         "parse_json_request_body_or_null",
         "rebuilt_json_proxy_response",
         "request_body_read_error_message",
         "request_body_stream_flag",
-        "strip_endpoint_prefix",
         "transformed_sse_proxy_response",
         "ProxyBody",
         "ProxyCoreResponse",

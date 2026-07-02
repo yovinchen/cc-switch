@@ -56,10 +56,10 @@ use crate::proxy_core::api::transforms::{
     CodexChatTransformStreamingDecision, CodexToolContext,
 };
 use crate::proxy_core::api::transport::{
-    endpoint_from_path_and_query, extract_gemini_model_from_path, parse_json_request_body,
-    parse_json_request_body_or_null, rebuilt_json_proxy_response, request_body_read_error_message,
-    request_body_stream_flag, strip_endpoint_prefix, transformed_sse_proxy_response, ProxyBody,
-    ProxyCoreResponse, ProxyRequest,
+    endpoint_from_path_and_query, endpoint_from_path_query_stripping_prefix,
+    extract_gemini_model_from_path, parse_json_request_body, parse_json_request_body_or_null,
+    rebuilt_json_proxy_response, request_body_read_error_message, request_body_stream_flag,
+    transformed_sse_proxy_response, ProxyBody, ProxyCoreResponse, ProxyRequest,
     ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext,
     ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext, ProxyResult,
     ProxyTransportResponse, ProxyTransportResponseBody, UpstreamSseAggregationKind,
@@ -130,15 +130,11 @@ impl ParsedAxumJsonProxyRequest {
             .map(|ctx| ctx.with_model_from_uri(uri))
     }
 
-    pub(crate) fn endpoint_from_request_uri(&self) -> String {
-        endpoint_from_uri(&self.uri)
-    }
-
     pub(crate) fn endpoint_from_request_uri_stripping_prefix(
         &self,
         strip_prefix: Option<&str>,
     ) -> String {
-        strip_endpoint_prefix(&self.endpoint_from_request_uri(), strip_prefix).to_string()
+        endpoint_from_path_query_stripping_prefix(self.uri.path(), self.uri.query(), strip_prefix)
     }
 
     pub(crate) fn endpoint_for_path(&self, path: &str) -> String {
