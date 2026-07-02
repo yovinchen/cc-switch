@@ -1991,6 +1991,285 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn proxy_server_runtime_smoke_retries_failed_channel_to_next_materialized_channel() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "runtime-retry-provider".to_string(),
+            "Runtime Retry Provider".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://unused-provider.example.com/v1",
+                    "ANTHROPIC_API_KEY": "provider-secret"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+        db.set_current_provider("claude", "runtime-retry-provider")
+            .unwrap();
+        let mut proxy_config = db.get_proxy_config_for_app("claude").await.unwrap();
+        proxy_config.enabled = true;
+        proxy_config.auto_failover_enabled = true;
+        proxy_config.max_retries = 1;
+        db.update_proxy_config_for_app(proxy_config).await.unwrap();
+
+        let failing_response = json!({
+            "error": {
+                "type": "overloaded_error",
+                "message": "first relay unavailable"
+            }
+        });
+        let (failing_base_url, failing_handle) = start_forwarding_upstream_server_with_response(
+            "503 Service Unavailable",
+            failing_response,
+        )
+        .await;
+        let success_response = json!({
+            "id": "msg-runtime-retry",
+            "type": "message",
+            "role": "assistant",
+            "model": "runtime-upstream-success",
+            "content": [{
+                "type": "text",
+                "text": "ok"
+            }],
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+                "input_tokens": 7,
+                "output_tokens": 11
+            }
+        });
+        let (success_base_url, success_handle) =
+            start_forwarding_upstream_server_with_response("200 OK", success_response).await;
+
+        let config = ProxyConfig {
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 0,
+            ..ProxyConfig::default()
+        };
+        let server = ProxyServer::new(config, db, None);
+        let info = server.start().await.expect("start proxy server");
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("reqwest client");
+        let base_url = format!("http://127.0.0.1:{}", info.port);
+
+        let smoke = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let failing_channel_response = client
+                .post(format!("{base_url}/proxy/v1/channels"))
+                .json(&json!({
+                    "id": "runtime-retry-failing-channel",
+                    "providerId": "runtime-retry-provider",
+                    "appType": "claude",
+                    "name": "Runtime Retry Failing Relay",
+                    "baseUrl": failing_base_url,
+                    "interfaceKind": "anthropic_messages",
+                    "authProfileRef": "channel-key:primary",
+                    "priority": 100,
+                    "retryPolicy": {
+                        "maxAttempts": 2
+                    },
+                    "models": [{
+                        "publicModel": "runtime-retry-public",
+                        "upstreamModel": "runtime-upstream-failing"
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if failing_channel_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected failing channel create status: {}",
+                    failing_channel_response.status()
+                ));
+            }
+            let failing_channel = failing_channel_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if failing_channel["id"] != "runtime-retry-failing-channel"
+                || failing_channel["retryPolicy"]["maxAttempts"] != 2
+            {
+                return Err(format!(
+                    "unexpected failing channel create body: {failing_channel}"
+                ));
+            }
+
+            let success_channel_response = client
+                .post(format!("{base_url}/proxy/v1/channels"))
+                .json(&json!({
+                    "id": "runtime-retry-success-channel",
+                    "providerId": "runtime-retry-provider",
+                    "appType": "claude",
+                    "name": "Runtime Retry Success Relay",
+                    "baseUrl": success_base_url,
+                    "interfaceKind": "anthropic_messages",
+                    "authProfileRef": "channel-key:secondary",
+                    "priority": 50,
+                    "models": [{
+                        "publicModel": "runtime-retry-public",
+                        "upstreamModel": "runtime-upstream-success"
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if success_channel_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected success channel create status: {}",
+                    success_channel_response.status()
+                ));
+            }
+            let success_channel = success_channel_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if success_channel["id"] != "runtime-retry-success-channel" {
+                return Err(format!(
+                    "unexpected success channel create body: {success_channel}"
+                ));
+            }
+
+            let failing_key_response = client
+                .put(format!(
+                    "{base_url}/proxy/v1/channels/runtime-retry-failing-channel/keys/primary"
+                ))
+                .json(&json!({
+                    "keyValue": "sk-runtime-failing-channel",
+                    "status": "enabled",
+                    "priority": 50,
+                    "weight": 100
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if failing_key_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected failing channel key status: {}",
+                    failing_key_response.status()
+                ));
+            }
+
+            let success_key_response = client
+                .put(format!(
+                    "{base_url}/proxy/v1/channels/runtime-retry-success-channel/keys/secondary"
+                ))
+                .json(&json!({
+                    "keyValue": "sk-runtime-success-channel",
+                    "status": "enabled",
+                    "priority": 50,
+                    "weight": 100
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if success_key_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected success channel key status: {}",
+                    success_key_response.status()
+                ));
+            }
+
+            let response = client
+                .post(format!("{base_url}/v1/messages"))
+                .json(&json!({
+                    "model": "runtime-retry-public",
+                    "max_tokens": 16,
+                    "messages": [{
+                        "role": "user",
+                        "content": "retry me"
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected retried response status: {}",
+                    response.status()
+                ));
+            }
+            let body = response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if body["id"] != "msg-runtime-retry"
+                || body["model"] != "runtime-upstream-success"
+                || body["usage"]["input_tokens"] != 7
+                || body["usage"]["output_tokens"] != 11
+            {
+                return Err(format!("unexpected retried response body: {body}"));
+            }
+
+            Ok::<(), String>(())
+        })
+        .await
+        .map_err(|_| "timed out waiting for runtime channel retry smoke".to_string())
+        .and_then(|result| result);
+        let stop = server.stop().await;
+
+        assert!(stop.is_ok(), "stop proxy server: {stop:?}");
+        smoke.expect("runtime channel retry smoke");
+        let failing_capture =
+            tokio::time::timeout(std::time::Duration::from_secs(1), failing_handle)
+                .await
+                .expect("failing upstream server should receive first attempt")
+                .expect("failing upstream server task")
+                .expect("capture failing upstream request");
+        let success_capture =
+            tokio::time::timeout(std::time::Duration::from_secs(1), success_handle)
+                .await
+                .expect("success upstream server should receive retried attempt")
+                .expect("success upstream server task")
+                .expect("capture success upstream request");
+
+        assert!(
+            failing_capture
+                .head
+                .to_ascii_lowercase()
+                .contains("x-api-key: sk-runtime-failing-channel"),
+            "first channel key was not used on failing attempt: {}",
+            failing_capture.head
+        );
+        assert_eq!(
+            failing_capture.body["model"], "runtime-upstream-failing",
+            "first attempt did not use failing channel model override"
+        );
+        assert!(
+            success_capture
+                .head
+                .to_ascii_lowercase()
+                .contains("x-api-key: sk-runtime-success-channel"),
+            "second channel key was not used on retry attempt: {}",
+            success_capture.head
+        );
+        assert!(
+            !success_capture.head.contains("provider-secret"),
+            "provider fallback secret leaked into retried upstream request: {}",
+            success_capture.head
+        );
+        assert_eq!(
+            success_capture.body["model"], "runtime-upstream-success",
+            "retry attempt did not use success channel model override"
+        );
+
+        let current_route = server.state.current_providers.read().await;
+        let active = current_route
+            .get("claude")
+            .expect("retry should set active route target");
+        assert_eq!(
+            active.channel_id.as_deref(),
+            Some("runtime-retry-success-channel")
+        );
+        assert_eq!(
+            active.upstream_model.as_deref(),
+            Some("runtime-upstream-success")
+        );
+    }
+
+    #[tokio::test]
     async fn proxy_server_runtime_smoke_materializes_channel_migration() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let provider = Provider::with_id(
@@ -3056,6 +3335,32 @@ mod tests {
         String,
         tokio::task::JoinHandle<Result<CapturedUpstreamRequest, String>>,
     ) {
+        let response_body = json!({
+            "id": "msg-runtime-forward",
+            "type": "message",
+            "role": "assistant",
+            "model": "runtime-upstream",
+            "content": [{
+                "type": "text",
+                "text": "ok"
+            }],
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+                "input_tokens": 3,
+                "output_tokens": 5
+            }
+        });
+        start_forwarding_upstream_server_with_response("200 OK", response_body).await
+    }
+
+    async fn start_forwarding_upstream_server_with_response(
+        status_line: &'static str,
+        response_body: Value,
+    ) -> (
+        String,
+        tokio::task::JoinHandle<Result<CapturedUpstreamRequest, String>>,
+    ) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind forwarding upstream server");
@@ -3107,25 +3412,9 @@ mod tests {
             let body =
                 serde_json::from_slice::<Value>(&bytes[header_end..header_end + content_length])
                     .map_err(|error| error.to_string())?;
-            let response_body = json!({
-                "id": "msg-runtime-forward",
-                "type": "message",
-                "role": "assistant",
-                "model": "runtime-upstream",
-                "content": [{
-                    "type": "text",
-                    "text": "ok"
-                }],
-                "stop_reason": "end_turn",
-                "stop_sequence": null,
-                "usage": {
-                    "input_tokens": 3,
-                    "output_tokens": 5
-                }
-            })
-            .to_string();
+            let response_body = response_body.to_string();
             let response = format!(
-                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                "HTTP/1.1 {status_line}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
                 response_body.len(),
                 response_body
             );
