@@ -399,6 +399,17 @@ pub(crate) struct ForwarderProviderRectifierRetryFailureInput<'a> {
     pub(crate) error: &'a ProxyError,
 }
 
+pub(crate) struct ForwarderRectifierRetrySuccessLogInput<'a> {
+    pub(crate) app_type: &'a str,
+    pub(crate) kind: ForwarderRectifierRetryKind,
+}
+
+pub(crate) struct ForwarderRectifierRetryFailureLogInput<'a> {
+    pub(crate) app_type: &'a str,
+    pub(crate) kind: ForwarderRectifierRetryKind,
+    pub(crate) error: &'a ProxyError,
+}
+
 pub(crate) trait FailoverSwitchScheduler {
     fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget);
 }
@@ -507,13 +518,8 @@ pub(crate) trait ForwarderRuntimeStateSource {
         &self,
         error: &ProxyError,
     ) -> ForwarderRectifierRetryFailureDecision;
-    fn log_rectifier_retry_success(&self, app_type: &str, kind: ForwarderRectifierRetryKind);
-    fn log_rectifier_retry_failure(
-        &self,
-        app_type: &str,
-        kind: ForwarderRectifierRetryKind,
-        error: &ProxyError,
-    );
+    fn log_rectifier_retry_success(&self, input: ForwarderRectifierRetrySuccessLogInput<'_>);
+    fn log_rectifier_retry_failure(&self, input: ForwarderRectifierRetryFailureLogInput<'_>);
     fn record_forward_error_status<'a>(&'a self, error: &'a ProxyError) -> BoxFuture<'a, ()>;
     fn record_no_available_provider_status<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_terminal_failure_status<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -1052,8 +1058,12 @@ impl RequestForwarder {
                             .await
                         {
                             Ok(success) => {
-                                self.runtime_state_source
-                                    .log_rectifier_retry_success(app_type_str, retry_kind);
+                                self.runtime_state_source.log_rectifier_retry_success(
+                                    ForwarderRectifierRetrySuccessLogInput {
+                                        app_type: app_type_str,
+                                        kind: retry_kind,
+                                    },
+                                );
                                 return Ok(self
                                     .complete_successful_attempt(
                                         request_id,
@@ -1066,9 +1076,11 @@ impl RequestForwarder {
                             }
                             Err(retry_err) => {
                                 self.runtime_state_source.log_rectifier_retry_failure(
-                                    app_type_str,
-                                    retry_kind,
-                                    &retry_err,
+                                    ForwarderRectifierRetryFailureLogInput {
+                                        app_type: app_type_str,
+                                        kind: retry_kind,
+                                        error: &retry_err,
+                                    },
                                 );
                                 if let Some(err) = self
                                     .handle_rectifier_retry_failure(
@@ -1135,8 +1147,12 @@ impl RequestForwarder {
                                     .await
                                 {
                                     Ok(success) => {
-                                        self.runtime_state_source
-                                            .log_rectifier_retry_success(app_type_str, retry_kind);
+                                        self.runtime_state_source.log_rectifier_retry_success(
+                                            ForwarderRectifierRetrySuccessLogInput {
+                                                app_type: app_type_str,
+                                                kind: retry_kind,
+                                            },
+                                        );
                                         return Ok(self
                                             .complete_successful_attempt(
                                                 request_id,
@@ -1149,9 +1165,11 @@ impl RequestForwarder {
                                     }
                                     Err(retry_err) => {
                                         self.runtime_state_source.log_rectifier_retry_failure(
-                                            app_type_str,
-                                            retry_kind,
-                                            &retry_err,
+                                            ForwarderRectifierRetryFailureLogInput {
+                                                app_type: app_type_str,
+                                                kind: retry_kind,
+                                                error: &retry_err,
+                                            },
                                         );
                                         if let Some(err) = self
                                             .handle_rectifier_retry_failure(
@@ -1219,8 +1237,12 @@ impl RequestForwarder {
                                     .await
                                 {
                                     Ok(success) => {
-                                        self.runtime_state_source
-                                            .log_rectifier_retry_success(app_type_str, retry_kind);
+                                        self.runtime_state_source.log_rectifier_retry_success(
+                                            ForwarderRectifierRetrySuccessLogInput {
+                                                app_type: app_type_str,
+                                                kind: retry_kind,
+                                            },
+                                        );
                                         return Ok(self
                                             .complete_successful_attempt(
                                                 request_id,
@@ -1233,9 +1255,11 @@ impl RequestForwarder {
                                     }
                                     Err(retry_err) => {
                                         self.runtime_state_source.log_rectifier_retry_failure(
-                                            app_type_str,
-                                            retry_kind,
-                                            &retry_err,
+                                            ForwarderRectifierRetryFailureLogInput {
+                                                app_type: app_type_str,
+                                                kind: retry_kind,
+                                                error: &retry_err,
+                                            },
                                         );
                                         if let Some(err) = self
                                             .handle_rectifier_retry_failure(

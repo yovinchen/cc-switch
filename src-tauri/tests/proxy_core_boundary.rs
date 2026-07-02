@@ -19733,6 +19733,30 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "RequestForwarder must trigger rectifier retry logging through runtime-state behavior methods"
     );
     assert!(
+        source.contains("pub(crate) struct ForwarderRectifierRetrySuccessLogInput<'a>")
+            && source.contains("pub(crate) struct ForwarderRectifierRetryFailureLogInput<'a>")
+            && runtime_trait_slice.contains("input: ForwarderRectifierRetrySuccessLogInput<'_>")
+            && runtime_trait_slice.contains("input: ForwarderRectifierRetryFailureLogInput<'_>")
+            && impl_slice.contains("ForwarderRectifierRetrySuccessLogInput {")
+            && impl_slice.contains("ForwarderRectifierRetryFailureLogInput {")
+            && runtime_source.contains("ForwarderRectifierRetrySuccessLogInput")
+            && runtime_source.contains("ForwarderRectifierRetryFailureLogInput")
+            && runtime_source.contains("input.app_type")
+            && runtime_source.contains("input.kind")
+            && runtime_source.contains("input.error"),
+        "ForwarderRuntimeStateSource must consume rectifier retry log facts as structured inputs"
+    );
+    assert!(
+        !impl_slice.contains("log_rectifier_retry_success(app_type_str, retry_kind)")
+            && !impl_slice.contains(
+                "log_rectifier_retry_failure(\n                                            app_type_str,"
+            )
+            && !impl_slice.contains(
+                "log_rectifier_retry_failure(\n                                    app_type_str,"
+            ),
+        "RequestForwarder must not pass rectifier retry log facts as loose parameters"
+    );
+    assert!(
         impl_slice.contains("log_terminal_forward_failure("),
         "RequestForwarder must trigger terminal failure logging through a runtime-state behavior method"
     );

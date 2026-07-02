@@ -8,6 +8,7 @@ use crate::provider::Provider;
 use crate::proxy::engine::forward_pipeline::{
     ForwarderFailoverSwitchTarget, ForwarderFailureDecision, ForwarderProviderFailureInput,
     ForwarderProviderRectifierRetryFailureInput, ForwarderRectifierRetryFailureDecision,
+    ForwarderRectifierRetryFailureLogInput, ForwarderRectifierRetrySuccessLogInput,
     ForwarderRuntimeStateSource, ForwarderRuntimeStateSourceRef, ForwarderSuccessStatusInput,
 };
 use crate::proxy::error::ProxyError;
@@ -521,22 +522,17 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         }
     }
 
-    fn log_rectifier_retry_success(&self, app_type: &str, kind: ForwarderRectifierRetryKind) {
+    fn log_rectifier_retry_success(&self, input: ForwarderRectifierRetrySuccessLogInput<'_>) {
         log::info!(
             "{}",
-            forwarder_rectifier_retry_success_log_line(app_type, kind)
+            forwarder_rectifier_retry_success_log_line(input.app_type, input.kind)
         );
     }
 
-    fn log_rectifier_retry_failure(
-        &self,
-        app_type: &str,
-        kind: ForwarderRectifierRetryKind,
-        error: &ProxyError,
-    ) {
+    fn log_rectifier_retry_failure(&self, input: ForwarderRectifierRetryFailureLogInput<'_>) {
         log::warn!(
             "{}",
-            forwarder_rectifier_retry_failure_log_line(app_type, kind, error)
+            forwarder_rectifier_retry_failure_log_line(input.app_type, input.kind, input.error)
         );
     }
 
