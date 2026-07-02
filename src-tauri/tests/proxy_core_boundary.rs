@@ -23600,7 +23600,7 @@ fn production_proxy_server_delegates_circuit_runtime_to_host_module() {
 }
 
 #[test]
-fn production_proxy_server_delegates_runtime_assembly_to_adapter() {
+fn production_proxy_server_delegates_runtime_assembly_to_host_state() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
@@ -23622,13 +23622,13 @@ fn production_proxy_server_delegates_runtime_assembly_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "production ProxyServer must delegate runtime assembly to proxy_core_adapter:\n{}",
+        "production ProxyServer must delegate runtime assembly to host ProxyState construction:\n{}",
         violations.join("\n")
     );
 }
 
 #[test]
-fn production_proxy_server_imports_runtime_services_from_adapter() {
+fn production_proxy_server_imports_host_services_without_compat_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
@@ -23649,7 +23649,7 @@ fn production_proxy_server_imports_runtime_services_from_adapter() {
 
     assert!(
         violations.is_empty(),
-        "production ProxyServer must import runtime services from proxy_core_adapter, not proxy_core_host compat module:\n{}",
+        "production ProxyServer must import runtime services from owning host modules, not proxy_core_host compat module:\n{}",
         violations.join("\n")
     );
 }
@@ -23885,7 +23885,7 @@ fn proxy_core_host_compat_surface_stays_test_only() {
 
     assert!(
         violations.is_empty(),
-        "proxy_core_host.rs must remain a test-only compatibility shell; production services belong in proxy_core_adapter:\n{}",
+        "proxy_core_host.rs must remain a test-only compatibility shell; production services belong in owning host/transport modules:\n{}",
         violations.join("\n")
     );
 }
@@ -24141,7 +24141,7 @@ fn production_proxy_server_delegates_runtime_state_to_host_server_module() {
 
     assert!(
         violations.is_empty(),
-        "production ProxyServer must delegate runtime state projection/mutation to proxy_core_adapter:\n{}",
+        "production ProxyServer must delegate runtime state projection/mutation to host proxy_server.rs:\n{}",
         violations.join("\n")
     );
 }
@@ -24197,7 +24197,7 @@ fn production_http_server_imports_runtime_contracts_directly() {
 }
 
 #[test]
-fn production_proxy_server_delegates_route_assembly_to_adapter() {
+fn production_proxy_server_delegates_route_assembly_to_transport_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
@@ -24217,7 +24217,7 @@ fn production_proxy_server_delegates_route_assembly_to_adapter() {
         start_slice.contains(
             "start_proxy_http_server(&self.config, self.state.clone(), &self.http_server_handles)"
         ),
-        "ProxyServer::start must delegate Axum route assembly through proxy_core_adapter"
+        "ProxyServer::start must delegate Axum route assembly through the HTTP transport module"
     );
 
     assert!(
@@ -24252,7 +24252,7 @@ fn production_proxy_server_delegates_route_assembly_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "production ProxyServer must delegate Axum route assembly to proxy_core_adapter:\n{}",
+        "production ProxyServer must delegate Axum route assembly to transport/http/server.rs:\n{}",
         violations.join("\n")
     );
 }
@@ -24312,13 +24312,13 @@ fn production_proxy_server_delegates_accept_loop_to_transport_module() {
 
     assert!(
         violations.is_empty(),
-        "production ProxyServer must delegate Hyper accept-loop and header-case capture to proxy_core_adapter:\n{}",
+        "production ProxyServer must delegate Hyper accept-loop and header-case capture to transport/http/server.rs:\n{}",
         violations.join("\n")
     );
 }
 
 #[test]
-fn production_proxy_server_delegates_listener_bind_to_adapter() {
+fn production_proxy_server_delegates_listener_bind_to_transport_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
@@ -24338,7 +24338,7 @@ fn production_proxy_server_delegates_listener_bind_to_adapter() {
         start_slice.contains(
             "start_proxy_http_server(&self.config, self.state.clone(), &self.http_server_handles)"
         ),
-        "ProxyServer::start must delegate start orchestration to proxy_core_adapter"
+        "ProxyServer::start must delegate start orchestration to the HTTP transport module"
     );
 
     assert!(
@@ -24371,13 +24371,13 @@ fn production_proxy_server_delegates_listener_bind_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "production ProxyServer must delegate listener binding to proxy_core_adapter:\n{}",
+        "production ProxyServer must delegate listener binding to transport/http/server.rs:\n{}",
         violations.join("\n")
     );
 }
 
 #[test]
-fn production_proxy_server_delegates_stop_wait_to_adapter() {
+fn production_proxy_server_delegates_stop_wait_to_transport_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
@@ -24396,7 +24396,7 @@ fn production_proxy_server_delegates_stop_wait_to_adapter() {
 
     assert!(
         stop_slice.contains("stop_proxy_http_server(&self.http_server_handles).await"),
-        "ProxyServer::stop must delegate shutdown, handle take, and accept-loop wait to proxy_core_adapter"
+        "ProxyServer::stop must delegate shutdown, handle take, and accept-loop wait to the HTTP transport module"
     );
 
     assert!(
@@ -24434,13 +24434,13 @@ fn production_proxy_server_delegates_stop_wait_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "production ProxyServer must delegate accept-loop stop wait/error mapping to proxy_core_adapter:\n{}",
+        "production ProxyServer must delegate accept-loop stop wait/error mapping to transport/http/server.rs:\n{}",
         violations.join("\n")
     );
 }
 
 #[test]
-fn production_proxy_server_delegates_handle_storage_to_adapter() {
+fn production_proxy_server_delegates_handle_storage_to_transport_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
