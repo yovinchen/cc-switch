@@ -18107,9 +18107,14 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && host_source.contains("ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource")
             && host_source.contains("ManagedAccountTokenCacheKey")
             && host_source.contains("ManagedAccountTokenRefreshFailureKind")
+            && host_source.contains("ManagedAccountTokenSnapshot")
             && host_source.contains("ProviderAuthInfo")
             && host_source.contains("use crate::proxy_core::api::model_catalog::CopilotModel;"),
         "managed_account_runtime_source.rs should import pure runtime source contracts and diagnostics directly from proxy_core::api"
+    );
+    assert!(
+        !host_source.contains("struct ManagedAccountTokenSnapshot"),
+        "ManagedAccountTokenSnapshot shape should live in proxy-core, not host runtime source"
     );
     for marker in [
         "managed_account_app_handle_unavailable_error_message",
@@ -18126,6 +18131,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "ManagedAccountAuthRuntime",
         "ManagedAccountTokenCacheKey",
         "ManagedAccountTokenRefreshFailureKind",
+        "ManagedAccountTokenSnapshot",
         "CoreManagedAccountRuntimeSource",
         "default_managed_account_runtime_source",
         "resolve_managed_account_auth_from_runtime_source",

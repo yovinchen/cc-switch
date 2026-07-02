@@ -528,6 +528,27 @@ impl ManagedAccountTokenCacheKey {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedAccountTokenSnapshot {
+    pub auth: ProviderAuthInfo,
+    pub codex_oauth_account_id: Option<String>,
+    pub cached_at_ms: i64,
+}
+
+impl ManagedAccountTokenSnapshot {
+    pub fn new(
+        auth: ProviderAuthInfo,
+        codex_oauth_account_id: Option<String>,
+        cached_at_ms: i64,
+    ) -> Self {
+        Self {
+            auth,
+            codex_oauth_account_id,
+            cached_at_ms,
+        }
+    }
+}
+
 impl ManagedAccountAuthRuntime {
     pub fn provider_auth_strategy(self) -> ProviderAuthStrategy {
         match self {
@@ -1178,7 +1199,7 @@ mod tests {
         ManagedAccountAuthPlan, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
         ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAccountRuntimeSource,
         ManagedAccountTokenCacheKey, ManagedAccountTokenFailureFallbackDecision,
-        ManagedAccountTokenRefreshFailureKind, ProviderManagedAuthFacts,
+        ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenSnapshot, ProviderManagedAuthFacts,
         CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PLACEHOLDER,
         GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
     };
@@ -2065,6 +2086,17 @@ mod tests {
             ManagedAccountAuthRuntime::CodexOAuth
         );
         assert_eq!(codex_same_account.account_id(), Some("acct"));
+    }
+
+    #[test]
+    fn managed_account_token_snapshot_preserves_auth_and_codex_account() {
+        let auth = ManagedAccountAuthRuntime::CodexOAuth.provider_auth_info("token".to_string());
+        let snapshot =
+            ManagedAccountTokenSnapshot::new(auth.clone(), Some("acct".to_string()), 1_771);
+
+        assert_eq!(snapshot.auth, auth);
+        assert_eq!(snapshot.codex_oauth_account_id.as_deref(), Some("acct"));
+        assert_eq!(snapshot.cached_at_ms, 1_771);
     }
 
     #[test]

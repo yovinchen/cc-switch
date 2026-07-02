@@ -25,19 +25,12 @@ use crate::proxy_core::api::auth::{
     resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
     ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
     ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagedAccountTokenCacheKey,
-    ManagedAccountTokenRefreshFailureKind, ProviderAuthInfo,
+    ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenSnapshot, ProviderAuthInfo,
 };
 use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 
 pub(crate) type ManagedAccountRuntimeSourceRef = Arc<dyn ManagedAccountRuntimeSource + Send + Sync>;
-
-#[derive(Debug, Clone)]
-struct ManagedAccountTokenSnapshot {
-    auth: ProviderAuthInfo,
-    codex_oauth_account_id: Option<String>,
-    cached_at_ms: i64,
-}
 
 pub(crate) struct CcSwitchManagedAccountRuntimeSource {
     app_handle: Option<tauri::AppHandle>,
@@ -61,11 +54,11 @@ impl CcSwitchManagedAccountRuntimeSource {
         let mut snapshots = self.token_snapshots.lock().await;
         snapshots.insert(
             key,
-            ManagedAccountTokenSnapshot {
+            ManagedAccountTokenSnapshot::new(
                 auth,
                 codex_oauth_account_id,
-                cached_at_ms: chrono::Utc::now().timestamp_millis(),
-            },
+                chrono::Utc::now().timestamp_millis(),
+            ),
         );
     }
 
@@ -724,12 +717,11 @@ mod tests {
             let mut snapshots = source.token_snapshots.lock().await;
             snapshots.insert(
                 key.clone(),
-                ManagedAccountTokenSnapshot {
-                    auth: ManagedAccountAuthRuntime::CodexOAuth
-                        .provider_auth_info("cached".to_string()),
-                    codex_oauth_account_id: Some("acct".to_string()),
-                    cached_at_ms: chrono::Utc::now().timestamp_millis() - 30_001,
-                },
+                ManagedAccountTokenSnapshot::new(
+                    ManagedAccountAuthRuntime::CodexOAuth.provider_auth_info("cached".to_string()),
+                    Some("acct".to_string()),
+                    chrono::Utc::now().timestamp_millis() - 30_001,
+                ),
             );
         }
 
