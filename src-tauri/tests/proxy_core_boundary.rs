@@ -2941,7 +2941,10 @@ fn request_context_owns_core_context_imports() {
             && source.contains("use crate::proxy_core::api::usage::{")
             && source.contains("usage_route_context_from_selection")
             && source.contains("UsageRouteContext")
-            && source.contains("use crate::proxy::provider::claude_provider_api_format;"),
+            && source.contains(
+                "use crate::proxy::host::cc_switch::provider_projection::provider_claude_api_format;"
+            )
+            && !source.contains("use crate::proxy::provider::claude_provider_api_format;"),
         "engine/context.rs should import pure request context contracts directly"
     );
     assert!(

@@ -5,8 +5,8 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
+use crate::proxy::host::cc_switch::provider_projection::provider_claude_api_format;
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
-use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy_core::api::config::{
     AppProxyConfig, ProxyAppConfig, ResponseRuntimePolicy, ResponseTimeoutConfig,
@@ -274,7 +274,7 @@ impl RequestContext {
     ) -> Result<String, ProxyError> {
         Ok(claude_api_format_from_metadata(
             &result.metadata,
-            claude_provider_api_format(self.provider()?),
+            provider_claude_api_format(self.provider()?),
         ))
     }
 
