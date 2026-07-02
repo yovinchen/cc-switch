@@ -1990,6 +1990,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1400. channel-key round-robin cursor key/advance gate 已迁入 `proxy-core::ports::channel_key_runtime_round_robin_cursor_key`：host-owned `CcSwitchChannelKeyRuntimeSource` 仍持有 DB 和 cursor map，但只根据 core 返回的 cursor key 推进 wildcard round-robin，避免 CC Switch 默认宿主复制 key 轮询语义。
 1401. channel response status mapping 与 `responseOverrides.headers` 的组合应用顺序已迁入 `proxy-core::response_headers::apply_channel_response_policy`：host-owned `CcSwitchForwarderResponseSource` 只把 core 返回的 status/header application 写回 `ProxyResponse` 并保留现有日志，避免默认宿主重新组合 channel 响应策略。
 1402. 非成功上游响应的 status/body 投影已迁入 `proxy-core::request_transport::upstream_error_response_projection`：host-owned `CcSwitchForwarderResponseSource` 仍负责读取 body 和构造 host `ProxyError::UpstreamError`，但 UTF-8 body 保留/丢弃规则由 core 维护。
+1403. 成功上游响应的 finalization 分支选择已迁入 `proxy-core::response_timeout::upstream_success_response_finalization_plan`：host-owned `CcSwitchForwarderResponseSource` 仍负责实际 body timeout 读取、stream 首包预读和 `ProxyResponse` 构造，但 streaming/non-streaming/zero-timeout 的 readiness 策略由 core 维护。
 
 ## 背景
 

@@ -21413,6 +21413,11 @@ fn production_forwarder_uses_response_source_resource() {
         "impl ForwarderResponseSource for CcSwitchForwarderResponseSource",
         "async fn prime_streaming_forward_response",
     );
+    let success_response_slice = function_slice(
+        &response_source,
+        "fn prepare_success_response",
+        "impl ForwarderResponseSource for CcSwitchForwarderResponseSource",
+    );
     assert!(
         response_source.contains("use crate::proxy::engine::forward_pipeline::{")
             && response_source.contains("ForwarderChannelResponseStatusInput")
@@ -21430,6 +21435,18 @@ fn production_forwarder_uses_response_source_resource() {
     assert!(
         response_source.contains("fn prepare_success_response"),
         "default ForwarderResponseSource implementation must retain success response readiness projection"
+    );
+    assert!(
+        success_response_slice.contains("upstream_success_response_finalization_plan(")
+            && success_response_slice
+                .contains("UpstreamSuccessResponseFinalizationPlan::Passthrough")
+            && success_response_slice
+                .contains("UpstreamSuccessResponseFinalizationPlan::PrimeStreaming")
+            && success_response_slice
+                .contains("UpstreamSuccessResponseFinalizationPlan::BufferNonStreaming")
+            && !success_response_slice.contains("if request_is_streaming")
+            && !success_response_slice.contains("non_streaming_timeout.is_zero()"),
+        "default ForwarderResponseSource should delegate success response finalization branch selection to proxy-core"
     );
     assert!(
         response_source_impl_slice.contains("input.response.bytes().await?")
@@ -21475,6 +21492,8 @@ fn production_forwarder_uses_response_source_resource() {
         "streaming_body_first_chunk_read_error_message",
         "streaming_body_first_chunk_timeout_message",
         "upstream_error_response_projection",
+        "upstream_success_response_finalization_plan",
+        "UpstreamSuccessResponseFinalizationPlan",
     ] {
         assert!(
             response_core_transport_import_slice.contains(marker),

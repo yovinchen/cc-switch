@@ -11,6 +11,7 @@ use crate::proxy_core::api::transport::{
     apply_channel_response_policy, non_streaming_body_timeout_message,
     streaming_body_ended_before_first_chunk_message, streaming_body_first_chunk_read_error_message,
     streaming_body_first_chunk_timeout_message, upstream_error_response_projection,
+    upstream_success_response_finalization_plan, UpstreamSuccessResponseFinalizationPlan,
 };
 
 pub(crate) struct CcSwitchForwarderResponseSource;
@@ -28,24 +29,27 @@ impl CcSwitchForwarderResponseSource {
                 streaming_first_byte_timeout,
             } = input;
 
-            if request_is_streaming {
-                return prime_streaming_forward_response(response, streaming_first_byte_timeout)
-                    .await;
+            match upstream_success_response_finalization_plan(
+                request_is_streaming,
+                non_streaming_timeout,
+                streaming_first_byte_timeout,
+            ) {
+                UpstreamSuccessResponseFinalizationPlan::Passthrough => Ok(response),
+                UpstreamSuccessResponseFinalizationPlan::PrimeStreaming { timeout } => {
+                    prime_streaming_forward_response(response, timeout).await
+                }
+                UpstreamSuccessResponseFinalizationPlan::BufferNonStreaming { timeout } => {
+                    let status = response.status();
+                    let headers = response.headers().clone();
+                    let body = tokio::time::timeout(timeout, response.bytes())
+                        .await
+                        .map_err(|_| {
+                            ProxyError::Timeout(non_streaming_body_timeout_message(timeout))
+                        })??;
+
+                    Ok(ProxyResponse::buffered(status, headers, body))
+                }
             }
-
-            if non_streaming_timeout.is_zero() {
-                return Ok(response);
-            }
-
-            let status = response.status();
-            let headers = response.headers().clone();
-            let body = tokio::time::timeout(non_streaming_timeout, response.bytes())
-                .await
-                .map_err(|_| {
-                    ProxyError::Timeout(non_streaming_body_timeout_message(non_streaming_timeout))
-                })??;
-
-            Ok(ProxyResponse::buffered(status, headers, body))
         })
     }
 }
@@ -231,5 +235,28 @@ mod tests {
             Ok(_) => panic!("expected upstream error projection, got successful response"),
             Err(error) => panic!("expected upstream error projection, got {error:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn success_response_finalization_buffers_non_streaming_body() {
+        let source = CcSwitchForwarderResponseSource;
+        let response =
+            ProxyResponse::buffered(StatusCode::OK, HeaderMap::new(), Bytes::from_static(b"ok"));
+
+        let result = source
+            .finalize_upstream_response(ForwarderResponseFinalizationInput {
+                response,
+                request_is_streaming: false,
+                non_streaming_timeout: std::time::Duration::from_secs(1),
+                streaming_first_byte_timeout: std::time::Duration::ZERO,
+            })
+            .await
+            .expect("success response");
+
+        assert_eq!(result.status(), StatusCode::OK);
+        assert_eq!(
+            result.bytes().await.expect("body"),
+            Bytes::from_static(b"ok")
+        );
     }
 }

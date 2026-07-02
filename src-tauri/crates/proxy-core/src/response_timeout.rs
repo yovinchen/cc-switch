@@ -50,6 +50,13 @@ pub struct ResponseRuntimePolicy {
     pub max_retries: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpstreamSuccessResponseFinalizationPlan {
+    Passthrough,
+    BufferNonStreaming { timeout: Duration },
+    PrimeStreaming { timeout: Duration },
+}
+
 impl ResponseTimeoutConfig {
     pub fn body_timeout_duration(self) -> Duration {
         if self.non_streaming_timeout > 0 {
@@ -89,6 +96,30 @@ pub fn streaming_body_first_chunk_read_error_message(
     error: impl std::fmt::Display,
 ) -> String {
     format!("读取流式响应首包失败: {error}")
+}
+
+pub fn upstream_success_response_finalization_plan(
+    request_is_streaming: bool,
+    non_streaming_timeout: Duration,
+    streaming_first_byte_timeout: Duration,
+) -> UpstreamSuccessResponseFinalizationPlan {
+    if request_is_streaming {
+        return if streaming_first_byte_timeout.is_zero() {
+            UpstreamSuccessResponseFinalizationPlan::Passthrough
+        } else {
+            UpstreamSuccessResponseFinalizationPlan::PrimeStreaming {
+                timeout: streaming_first_byte_timeout,
+            }
+        };
+    }
+
+    if non_streaming_timeout.is_zero() {
+        UpstreamSuccessResponseFinalizationPlan::Passthrough
+    } else {
+        UpstreamSuccessResponseFinalizationPlan::BufferNonStreaming {
+            timeout: non_streaming_timeout,
+        }
+    }
 }
 
 pub fn resolve_response_runtime_policy(
@@ -241,6 +272,54 @@ mod tests {
         assert_eq!(
             streaming_body_first_chunk_read_error_message("connection reset"),
             "读取流式响应首包失败: connection reset"
+        );
+    }
+
+    #[test]
+    fn success_response_finalization_primes_streaming_when_first_byte_timeout_is_enabled() {
+        assert_eq!(
+            upstream_success_response_finalization_plan(
+                true,
+                Duration::from_secs(45),
+                Duration::from_secs(12)
+            ),
+            UpstreamSuccessResponseFinalizationPlan::PrimeStreaming {
+                timeout: Duration::from_secs(12)
+            }
+        );
+    }
+
+    #[test]
+    fn success_response_finalization_passes_through_streaming_when_timeout_is_disabled() {
+        assert_eq!(
+            upstream_success_response_finalization_plan(
+                true,
+                Duration::from_secs(45),
+                Duration::ZERO
+            ),
+            UpstreamSuccessResponseFinalizationPlan::Passthrough
+        );
+    }
+
+    #[test]
+    fn success_response_finalization_buffers_non_streaming_when_timeout_is_enabled() {
+        assert_eq!(
+            upstream_success_response_finalization_plan(
+                false,
+                Duration::from_secs(45),
+                Duration::from_secs(12)
+            ),
+            UpstreamSuccessResponseFinalizationPlan::BufferNonStreaming {
+                timeout: Duration::from_secs(45)
+            }
+        );
+    }
+
+    #[test]
+    fn success_response_finalization_passes_through_non_streaming_when_timeout_is_disabled() {
+        assert_eq!(
+            upstream_success_response_finalization_plan(false, Duration::ZERO, Duration::ZERO),
+            UpstreamSuccessResponseFinalizationPlan::Passthrough
         );
     }
 
