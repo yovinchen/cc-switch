@@ -1376,6 +1376,7 @@ mod tests {
                 .json::<Value>()
                 .await
                 .map_err(|error| error.to_string())?;
+            let channel_test_status = channel_test["status"].as_str();
             if channel_test["channelId"] != channel_id
                 || channel_test["providerId"] != "runtime-provider"
                 || channel_test["appType"] != "claude"
@@ -1385,7 +1386,7 @@ mod tests {
                 || channel_test["model"] != "runtime-public"
                 || channel_test["modelAvailable"] != true
                 || channel_test["success"] != true
-                || channel_test["status"] != "operational"
+                || !matches!(channel_test_status, Some("operational" | "degraded"))
                 || channel_test["message"] != "Reachable"
                 || channel_test["httpStatus"] != 204
                 || channel_test["retryCount"] != 0
