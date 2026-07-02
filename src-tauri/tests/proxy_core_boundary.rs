@@ -23575,9 +23575,11 @@ fn production_lib_does_not_compile_proxy_core_host_compat_module() {
 
     let mut violations = Vec::new();
     for (line_index, line) in lines.iter().enumerate() {
-        if line.trim() != "mod proxy_core_host;" {
-            continue;
-        }
+        let module_name = match line.trim() {
+            "mod proxy_core_adapter;" => "proxy_core_adapter",
+            "mod proxy_core_host;" => "proxy_core_host",
+            _ => continue,
+        };
 
         let previous = line_index
             .checked_sub(1)
@@ -23586,15 +23588,15 @@ fn production_lib_does_not_compile_proxy_core_host_compat_module() {
             .unwrap_or_default();
         if previous != "#[cfg(test)]" {
             violations.push(format!(
-                "src/lib.rs:{} declares proxy_core_host without #[cfg(test)]",
-                line_index + 1
+                "src/lib.rs:{} declares {module_name} without #[cfg(test)]",
+                line_index + 1,
             ));
         }
     }
 
     assert!(
         violations.is_empty(),
-        "production lib.rs must keep proxy_core_host as test-only compatibility module:\n{}",
+        "production lib.rs must keep proxy_core_adapter and proxy_core_host as test-only compatibility modules:\n{}",
         violations.join("\n")
     );
 }
