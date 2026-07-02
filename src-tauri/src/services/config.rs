@@ -1,11 +1,12 @@
-use super::provider::{sanitize_claude_settings_for_live, ProviderService};
+use super::provider::ProviderService;
 use crate::app_config::{AppType, MultiAppConfig};
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core::api::ports::{
     codex_live_settings_parts_from_settings as core_codex_live_settings_parts_from_settings,
     codex_provider_backfill_parts_from_settings as core_codex_provider_backfill_parts_from_settings,
-    codex_restored_live_settings_parts, CodexLiveSettingsIssue, CodexLiveSettingsParts,
+    codex_restored_live_settings_parts, sanitize_claude_settings_for_live, CodexLiveSettingsIssue,
+    CodexLiveSettingsParts,
 };
 use chrono::Utc;
 use serde_json::Value;

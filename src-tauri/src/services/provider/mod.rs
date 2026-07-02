@@ -16,7 +16,6 @@ use crate::database::{validate_cost_multiplier, validate_pricing_source};
 use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
 use crate::proxy_core::api::domain::AppKind;
-pub(crate) use crate::proxy_core::api::ports::sanitize_claude_settings_for_live;
 use crate::proxy_core::api::ports::{
     common_config_snippet_issue_message, normalize_provider_settings_for_storage,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,

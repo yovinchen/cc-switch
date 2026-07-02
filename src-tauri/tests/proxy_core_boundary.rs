@@ -483,8 +483,11 @@ const FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_ADAPTER_MARKERS: &[&str] =
     &["pub(crate) fn provider_effective_settings_with_common_config_from_db"];
-const FORBIDDEN_PROXY_SERVICE_LIVE_WRITE_PROVIDER_FACADE_MARKERS: &[&str] =
-    &["crate::services::provider::sanitize_claude_settings_for_live("];
+const FORBIDDEN_PROXY_SERVICE_LIVE_WRITE_PROVIDER_FACADE_MARKERS: &[&str] = &[
+    "crate::services::provider::sanitize_claude_settings_for_live(",
+    "use super::provider::{sanitize_claude_settings_for_live",
+    "use crate::services::provider::sanitize_claude_settings_for_live",
+];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "crate::proxy::managed_account_auth",
     "CopilotAuthState",
@@ -2447,13 +2450,10 @@ fn is_allowed_provider_switch_policy_core_import(relative: &str, code: &str) -> 
 }
 
 fn is_allowed_provider_common_config_issue_core_import(relative: &str, code: &str) -> bool {
-    (matches!(
+    matches!(
         relative,
-        "src/services/provider/mod.rs" | "src/services/provider/live.rs"
-    ) && code.trim() == "use crate::proxy_core::api::ports::{")
-        || (relative == "src/services/provider/mod.rs"
-            && code.trim()
-                == "pub(crate) use crate::proxy_core::api::ports::sanitize_claude_settings_for_live;")
+        "src/services/provider/mod.rs" | "src/services/provider/live.rs" | "src/services/config.rs"
+    ) && code.trim() == "use crate::proxy_core::api::ports::{"
 }
 
 fn is_allowed_provider_custom_user_agent_core_import(relative: &str, code: &str) -> bool {
@@ -8900,7 +8900,6 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
                 "provider_switch_requires_takeover_lock",
                 "provider_switch_should_mark_live_config_managed",
                 "provider_takeover_live_sync_target_for_app",
-                "sanitize_claude_settings_for_live",
                 "should_skip_provider_legacy_common_config_migration",
                 "ProviderAdditiveLiveWriteAction",
                 "ProviderAdditiveUpdateRoute",
@@ -8912,6 +8911,10 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
                 "ProviderSwitchDispatch",
                 "ProviderTakeoverLiveSyncTarget",
             ][..],
+        ),
+        (
+            "src/services/config.rs",
+            &["sanitize_claude_settings_for_live"][..],
         ),
         (
             "src/services/provider/live.rs",
@@ -16996,6 +16999,8 @@ fn production_proxy_service_delegates_live_write_provider_facade_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
+    let config_source =
+        fs::read_to_string(manifest_dir.join("src/services/config.rs")).expect("read config.rs");
     let function = function_slice(
         &source,
         "    fn write_claude_live",
@@ -17015,10 +17020,22 @@ fn production_proxy_service_delegates_live_write_provider_facade_to_adapter() {
             }
         }
     }
+    for (line_index, line) in production_lines(&config_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVICE_LIVE_WRITE_PROVIDER_FACADE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/config.rs:{} contains provider facade marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
 
     assert!(
         violations.is_empty(),
-        "ProxyService must call live write sanitizers through proxy_core_adapter, not services::provider facade:\n{}",
+        "Live write paths must call sanitizers through core/host owning modules, not services::provider facade:\n{}",
         violations.join("\n")
     );
 }
