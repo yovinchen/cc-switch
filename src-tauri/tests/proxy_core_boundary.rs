@@ -24155,6 +24155,50 @@ fn production_lib_does_not_compile_proxy_core_host_compat_module() {
 }
 
 #[test]
+fn production_sources_do_not_import_proxy_core_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut rust_files = Vec::new();
+    collect_rust_files(&manifest_dir.join("src"), &mut rust_files);
+
+    let mut violations = Vec::new();
+    for path in rust_files {
+        let relative = path
+            .strip_prefix(&manifest_dir)
+            .expect("source path under manifest dir")
+            .to_string_lossy()
+            .replace('\\', "/");
+        if matches!(
+            relative.as_str(),
+            "src/proxy_core_adapter.rs" | "src/proxy_core_host.rs"
+        ) {
+            continue;
+        }
+
+        let source = fs::read_to_string(&path).expect("read source file");
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in [
+                "use crate::proxy_core_adapter",
+                "crate::proxy_core_adapter::",
+            ] {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "{relative}:{} imports test-only proxy_core_adapter marker `{marker}`",
+                        line_index + 1
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production sources must call proxy_core::api or owning host/engine modules directly instead of re-entering proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_host_compat_surface_stays_test_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
