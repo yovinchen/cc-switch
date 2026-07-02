@@ -24,27 +24,13 @@ use crate::proxy_core::api::auth::{
     resolve_copilot_model_vendor_for_binding_with_runtime_source as resolve_core_copilot_model_vendor_for_binding_with_runtime_source,
     resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
     ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
-    ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ProviderAuthInfo,
+    ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagedAccountTokenCacheKey,
+    ProviderAuthInfo,
 };
 use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 
 pub(crate) type ManagedAccountRuntimeSourceRef = Arc<dyn ManagedAccountRuntimeSource + Send + Sync>;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct ManagedAccountTokenCacheKey {
-    runtime: ManagedAccountAuthRuntime,
-    account_id: Option<String>,
-}
-
-impl ManagedAccountTokenCacheKey {
-    fn new(runtime: ManagedAccountAuthRuntime, account_id: Option<&str>) -> Self {
-        Self {
-            runtime,
-            account_id: account_id.map(str::to_string),
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 struct ManagedAccountTokenSnapshot {
@@ -106,7 +92,7 @@ impl CcSwitchManagedAccountRuntimeSource {
         log::warn!(
             "{}",
             managed_account_token_failure_fallback_log_message(
-                key.runtime,
+                key.runtime(),
                 account_id,
                 decision.cached_token_age_ms.unwrap_or_default(),
                 error,
@@ -658,6 +644,60 @@ mod tests {
             snapshot.auth.strategy,
             ManagedAccountAuthRuntime::GitHubCopilot.provider_auth_strategy()
         );
+    }
+
+    #[tokio::test]
+    async fn token_snapshot_cache_is_scoped_by_runtime_and_account() {
+        let source = CcSwitchManagedAccountRuntimeSource::new(None);
+        let copilot_account = ManagedAccountTokenCacheKey::new(
+            ManagedAccountAuthRuntime::GitHubCopilot,
+            Some("acct-a"),
+        );
+        let codex_same_account =
+            ManagedAccountTokenCacheKey::new(ManagedAccountAuthRuntime::CodexOAuth, Some("acct-a"));
+        let copilot_other_account = ManagedAccountTokenCacheKey::new(
+            ManagedAccountAuthRuntime::GitHubCopilot,
+            Some("acct-b"),
+        );
+
+        source
+            .record_token_snapshot(
+                copilot_account.clone(),
+                ManagedAccountAuthRuntime::GitHubCopilot
+                    .provider_auth_info("copilot-a".to_string()),
+                None,
+            )
+            .await;
+
+        assert!(source
+            .token_snapshot_for_retryable_failure(
+                &codex_same_account,
+                Some("acct-a"),
+                "network timeout",
+                true,
+            )
+            .await
+            .is_none());
+        assert!(source
+            .token_snapshot_for_retryable_failure(
+                &copilot_other_account,
+                Some("acct-b"),
+                "network timeout",
+                true,
+            )
+            .await
+            .is_none());
+
+        let snapshot = source
+            .token_snapshot_for_retryable_failure(
+                &copilot_account,
+                Some("acct-a"),
+                "network timeout",
+                true,
+            )
+            .await
+            .expect("matching runtime/account should use cached token");
+        assert_eq!(snapshot.auth.api_key, "copilot-a");
     }
 
     #[tokio::test]

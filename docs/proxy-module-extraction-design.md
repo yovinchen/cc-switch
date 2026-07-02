@@ -1982,6 +1982,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1392. Claude request api_format transform wrapper 已迁回 `proxy/provider/claude.rs` owning module：prompt-cache key、Codex OAuth、Codex fast-mode、reasoning-content preserve、Gemini shadow 和 cache trace log 输入由 Claude provider helper 本地装配，`ForwarderProtocolStateSource` 直接调用 provider helper。
 1393. Claude response/SSE api_format transform wrapper 已迁回 `proxy/provider/claude.rs` owning module：Gemini shadow、provider/session id、tool schema hints、随机 tool-call id 和 rectifier 日志回调由 Claude provider helper 本地装配，`response_pipeline` 直接调用 provider helper，`proxy_core_adapter` 不再暴露 `provider_claude_transform_response_for_api_format` / `provider_claude_transform_sse_for_api_format` 或 Gemini UUID wrapper。
 1394. Forwarder attempt runtime 的 ProviderRouter permit、provider/channel health record 与 neutral HalfOpen permit release 副作用 helper 已迁回 `proxy/host/cc_switch/forwarder_attempt_runtime_source.rs` owning module：默认 source 直接拥有 allow/success/failure/release 运行态调用，`proxy_core_adapter` 不再暴露 `allow_forward_attempt_runtime_source`、`record_forward_attempt_*_runtime_source` 或 `release_forward_attempt_permit_neutral_runtime_source`。
+1395. managed-account token 快照缓存 key 语义已迁入 `proxy-core::managed_account_auth::ManagedAccountTokenCacheKey`：core 固化 runtime + account_id 的隔离 contract，host-owned `CcSwitchManagedAccountRuntimeSource` 只负责持有最近成功 token 快照和按 core 30 秒短窗口 fallback 决策读取，避免 Copilot/Codex 或不同账号的 token 快照串用；边界测试防止 key contract 回流到 `proxy_core_adapter`。
 
 ## 背景
 

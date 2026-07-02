@@ -505,6 +505,29 @@ pub enum ManagedAccountAuthRuntime {
     CodexOAuth,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ManagedAccountTokenCacheKey {
+    runtime: ManagedAccountAuthRuntime,
+    account_id: Option<String>,
+}
+
+impl ManagedAccountTokenCacheKey {
+    pub fn new(runtime: ManagedAccountAuthRuntime, account_id: Option<&str>) -> Self {
+        Self {
+            runtime,
+            account_id: account_id.map(str::to_string),
+        }
+    }
+
+    pub fn runtime(&self) -> ManagedAccountAuthRuntime {
+        self.runtime
+    }
+
+    pub fn account_id(&self) -> Option<&str> {
+        self.account_id.as_deref()
+    }
+}
+
 impl ManagedAccountAuthRuntime {
     pub fn provider_auth_strategy(self) -> ProviderAuthStrategy {
         match self {
@@ -1142,7 +1165,8 @@ mod tests {
         CodexOAuthDevicePollStatusKind, CopilotOAuthPollErrorKind, ManagedAccountAuthError,
         ManagedAccountAuthPlan, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
         ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAccountRuntimeSource,
-        ManagedAccountTokenFailureFallbackDecision, ProviderManagedAuthFacts,
+        ManagedAccountTokenCacheKey, ManagedAccountTokenFailureFallbackDecision,
+        ProviderManagedAuthFacts,
         CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PLACEHOLDER,
         GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
     };
@@ -1982,6 +2006,27 @@ mod tests {
                 cached_token_age_ms: Some(0),
             }
         );
+    }
+
+    #[test]
+    fn managed_account_token_cache_key_isolates_runtime_and_account() {
+        let copilot_account =
+            ManagedAccountTokenCacheKey::new(ManagedAccountAuthRuntime::GitHubCopilot, Some("acct"));
+        let codex_same_account =
+            ManagedAccountTokenCacheKey::new(ManagedAccountAuthRuntime::CodexOAuth, Some("acct"));
+        let codex_other_account =
+            ManagedAccountTokenCacheKey::new(ManagedAccountAuthRuntime::CodexOAuth, Some("other"));
+        let codex_default =
+            ManagedAccountTokenCacheKey::new(ManagedAccountAuthRuntime::CodexOAuth, None);
+
+        assert_ne!(copilot_account, codex_same_account);
+        assert_ne!(codex_same_account, codex_other_account);
+        assert_ne!(codex_same_account, codex_default);
+        assert_eq!(
+            codex_same_account.runtime(),
+            ManagedAccountAuthRuntime::CodexOAuth
+        );
+        assert_eq!(codex_same_account.account_id(), Some("acct"));
     }
 
     #[test]

@@ -18103,6 +18103,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && host_source.contains("managed_account_token_failure_error_message")
             && host_source.contains("resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source")
             && host_source.contains("ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource")
+            && host_source.contains("ManagedAccountTokenCacheKey")
             && host_source.contains("ProviderAuthInfo")
             && host_source.contains("use crate::proxy_core::api::model_catalog::CopilotModel;"),
         "managed_account_runtime_source.rs should import pure runtime source contracts and diagnostics directly from proxy_core::api"
@@ -18120,6 +18121,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "resolve_core_managed_account_auth_for_binding_with_runtime_source",
         "ManagedAccountAuthResolution",
         "ManagedAccountAuthRuntime",
+        "ManagedAccountTokenCacheKey",
         "CoreManagedAccountRuntimeSource",
         "default_managed_account_runtime_source",
         "resolve_managed_account_auth_from_runtime_source",
