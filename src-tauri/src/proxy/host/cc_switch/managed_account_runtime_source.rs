@@ -446,10 +446,10 @@ async fn copilot_token_from_app_handle(
     }
 }
 
-async fn codex_oauth_token_from_app_handle(
+async fn codex_oauth_refresh_success_from_app_handle(
     app_handle: &tauri::AppHandle,
     account_id: Option<&str>,
-) -> Result<(String, Option<String>), CodexOAuthError> {
+) -> Result<ManagedAccountTokenRefreshSuccessInput, CodexOAuthError> {
     let codex_state = app_handle.state::<CodexOAuthState>();
     let codex_auth = codex_state.0.read().await;
 
@@ -464,7 +464,10 @@ async fn codex_oauth_token_from_app_handle(
                 Some(id) => Some(id.to_string()),
                 None => codex_auth.default_account_id().await,
             };
-            Ok((token, resolved_account_id))
+            Ok(ManagedAccountTokenRefreshSuccessInput::codex_oauth(
+                token,
+                resolved_account_id,
+            ))
         }
         Err(error) => Err(error),
     }
@@ -569,16 +572,12 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
             );
 
             let cache_key = ManagedAccountTokenCacheKey::new(runtime, account_id.as_deref());
-            match codex_oauth_token_from_app_handle(app_handle, account_id.as_deref()).await {
-                Ok((token, resolved_account_id)) => {
+            match codex_oauth_refresh_success_from_app_handle(app_handle, account_id.as_deref())
+                .await
+            {
+                Ok(refresh_success) => {
                     let success = self
-                        .record_token_refresh_success(
-                            cache_key,
-                            ManagedAccountTokenRefreshSuccessInput::codex_oauth(
-                                token,
-                                resolved_account_id,
-                            ),
-                        )
+                        .record_token_refresh_success(cache_key, refresh_success)
                         .await;
                     log::debug!("{}", success.log_message);
                     Ok(CodexOAuthResolution::from_refresh_success(success))

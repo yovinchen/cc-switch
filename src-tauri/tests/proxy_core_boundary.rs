@@ -18209,7 +18209,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "copilot_token_failure_kind(",
         "codex_oauth_token_failure_kind(",
         "copilot_token_from_app_handle(",
-        "codex_oauth_token_from_app_handle(",
+        "codex_oauth_refresh_success_from_app_handle(",
         "copilot_api_endpoint_from_app_handle(",
         "copilot_live_models_from_app_handle(",
         "copilot_model_vendor_from_app_handle(",
@@ -18287,8 +18287,13 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         host_runtime_source.contains("CodexOAuthResolution::from_refresh_success(success)")
             && host_runtime_source.contains(".map(CodexOAuthResolution::from_snapshot)")
             && host_runtime_source.contains("ManagedAccountTokenRefreshSuccessInput::copilot(")
-            && host_runtime_source.contains("ManagedAccountTokenRefreshSuccessInput::codex_oauth(")
+            && host_source.contains("ManagedAccountTokenRefreshSuccessInput::codex_oauth(")
+            && host_source.contains(
+                "Result<ManagedAccountTokenRefreshSuccessInput, CodexOAuthError>"
+            )
             && !host_runtime_source.contains("Ok((success.auth, success.codex_oauth_account_id))")
+            && !host_source.contains("Result<(String, Option<String>), CodexOAuthError>")
+            && !host_source.contains("Ok((token, resolved_account_id))")
             && !host_runtime_source.contains("let success_account_label =")
             && !host_runtime_source
                 .contains("map(|snapshot| (snapshot.auth, snapshot.codex_oauth_account_id))"),
@@ -18321,6 +18326,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "copilot_api_endpoint_from_app_handle",
         "copilot_live_models_from_app_handle",
         "copilot_model_vendor_from_app_handle",
+        "codex_oauth_refresh_success_from_app_handle",
     ] {
         assert!(
             !adapter_runtime_source.contains(marker),
