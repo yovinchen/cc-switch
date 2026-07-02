@@ -5173,10 +5173,18 @@ fn production_proxy_events_handler_delegates_sse_orchestration_to_response_adapt
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let response_adapter =
+        fs::read_to_string(&response_adapter_path).expect("read response_adapter.rs");
     let handler = function_slice(
         &source,
         "pub async fn stream_proxy_events(",
         "/// Management API auth middleware.",
+    );
+    let response_adapter_events_slice = function_slice(
+        &response_adapter,
+        "pub(crate) fn proxy_events_request_to_axum_sse_response",
+        "#[cfg(test)]",
     );
 
     assert!(
@@ -5202,6 +5210,15 @@ fn production_proxy_events_handler_delegates_sse_orchestration_to_response_adapt
         violations.is_empty(),
         "proxy events handler must delegate event subscription and SSE keep-alive construction to response_adapter:\n{}",
         violations.join("\n")
+    );
+
+    assert!(
+        response_adapter_events_slice.contains("proxy_events_sse_keep_alive_spec()")
+            && response_adapter_events_slice.contains("keep_alive.interval_secs")
+            && response_adapter_events_slice.contains("keep_alive.text")
+            && !response_adapter_events_slice.contains("Duration::from_secs(15)")
+            && !response_adapter_events_slice.contains(".text(\"keep-alive\")"),
+        "response_adapter should build Axum SSE keep-alive from proxy-core event stream contract"
     );
 }
 

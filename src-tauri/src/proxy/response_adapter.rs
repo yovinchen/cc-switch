@@ -30,7 +30,7 @@ use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy::provider::codex_provider_should_convert_responses_to_chat;
 use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
 use crate::proxy_core::api::domain::AppKind;
-use crate::proxy_core::api::events::ProxyEventEnvelope;
+use crate::proxy_core::api::events::{proxy_events_sse_keep_alive_spec, ProxyEventEnvelope};
 use crate::proxy_core::api::management::{
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
@@ -1376,10 +1376,11 @@ pub(crate) fn proxy_events_request_to_axum_sse_response(
         }
     };
 
+    let keep_alive = proxy_events_sse_keep_alive_spec();
     Sse::new(stream).keep_alive(
         KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("keep-alive"),
+            .interval(Duration::from_secs(keep_alive.interval_secs))
+            .text(keep_alive.text),
     )
 }
 

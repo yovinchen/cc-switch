@@ -12,6 +12,8 @@ pub const SERVER_STARTED_EVENT: &str = "server_started";
 pub const SERVER_STOPPED_EVENT: &str = "server_stopped";
 pub const PROVIDER_SWITCHED_SOURCE_FAILOVER: &str = "failover";
 pub const PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED: &str = "failoverEnabled";
+pub const PROXY_EVENTS_SSE_KEEP_ALIVE_INTERVAL_SECS: u64 = 15;
+pub const PROXY_EVENTS_SSE_KEEP_ALIVE_TEXT: &str = "keep-alive";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -27,6 +29,12 @@ pub struct ProxyEventSseSpec {
     pub id: String,
     pub event: String,
     pub data: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProxyEventsSseKeepAliveSpec {
+    pub interval_secs: u64,
+    pub text: &'static str,
 }
 
 impl ProxyEventEnvelope {
@@ -54,6 +62,13 @@ impl ProxyEventEnvelope {
             event: self.event.clone(),
             data: self.sse_data_json(),
         }
+    }
+}
+
+pub fn proxy_events_sse_keep_alive_spec() -> ProxyEventsSseKeepAliveSpec {
+    ProxyEventsSseKeepAliveSpec {
+        interval_secs: PROXY_EVENTS_SSE_KEEP_ALIVE_INTERVAL_SECS,
+        text: PROXY_EVENTS_SSE_KEEP_ALIVE_TEXT,
     }
 }
 
@@ -290,11 +305,13 @@ mod tests {
         build_proxy_official_warning_event_payload, build_provider_switched_event_payload,
         build_request_started_event_payload, build_server_started_event_payload,
         build_server_stopped_event_payload, provider_switched_failover_enabled_event,
-        provider_switched_failover_event, proxy_official_warning_event, request_started_event,
-        route_selected_event, server_started_event, server_stopped_event,
+        provider_switched_failover_event, proxy_events_sse_keep_alive_spec,
+        proxy_official_warning_event, request_started_event, route_selected_event,
+        server_started_event, server_stopped_event,
         AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ProxyEventEnvelope,
         PROVIDER_SWITCHED_EVENT, PROVIDER_SWITCHED_SOURCE_FAILOVER,
         PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED, PROXY_OFFICIAL_WARNING_EVENT,
+        PROXY_EVENTS_SSE_KEEP_ALIVE_INTERVAL_SECS, PROXY_EVENTS_SSE_KEEP_ALIVE_TEXT,
         REQUEST_STARTED_EVENT, SERVER_STARTED_EVENT, SERVER_STOPPED_EVENT,
     };
 
@@ -561,6 +578,16 @@ mod tests {
         assert_eq!(spec.event, "proxy_events_connected");
         assert_eq!(data["id"], 7);
         assert_eq!(data["payload"]["bufferSize"], 256);
+    }
+
+    #[test]
+    fn proxy_events_sse_keep_alive_spec_preserves_external_contract() {
+        let spec = proxy_events_sse_keep_alive_spec();
+
+        assert_eq!(spec.interval_secs, 15);
+        assert_eq!(spec.text, "keep-alive");
+        assert_eq!(spec.interval_secs, PROXY_EVENTS_SSE_KEEP_ALIVE_INTERVAL_SECS);
+        assert_eq!(spec.text, PROXY_EVENTS_SSE_KEEP_ALIVE_TEXT);
     }
 
     #[test]
