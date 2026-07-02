@@ -2,11 +2,9 @@
 //!
 //! 提供 Copilot OAuth 认证相关的 Tauri 命令，支持多账号管理。
 
-use crate::proxy::copilot_auth::{
-    CopilotAuthManager, CopilotAuthStatus, CopilotUsageResponse, GitHubAccount,
-    GitHubDeviceCodeResponse,
-};
-use crate::proxy_core::api::model_catalog::CopilotModel;
+use crate::proxy::copilot_auth::CopilotAuthManager;
+use crate::proxy_core::api::auth::{CopilotAuthStatus, GitHubAccount, GitHubDeviceCodeResponse};
+use crate::proxy_core::api::model_catalog::{CopilotModel, CopilotUsageResponse};
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;

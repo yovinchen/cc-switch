@@ -13808,15 +13808,15 @@ fn copilot_model_callers_use_core_dto_entrypoint() {
         let source = fs::read_to_string(manifest_dir.join(relative)).expect("read caller source");
         let allowed_direct_core_lines = match relative {
             "src/commands/copilot.rs" => {
-                &["use crate::proxy_core::api::model_catalog::CopilotModel;"][..]
+                &[
+                    "use crate::proxy_core::api::auth::{CopilotAuthStatus, GitHubAccount, GitHubDeviceCodeResponse};",
+                    "use crate::proxy_core::api::model_catalog::{CopilotModel, CopilotUsageResponse};",
+                ][..]
             }
             "src/proxy/copilot_auth.rs" => &[
                 "#[serde(default = \"crate::proxy_core::api::model_catalog::default_copilot_github_domain\")]",
-                "pub use crate::proxy_core::api::auth::{",
                 "use crate::proxy_core::api::auth::{",
                 "use crate::proxy_core::api::model_catalog::{",
-                "use crate::proxy_core::api::model_catalog::CopilotModel;",
-                "pub use crate::proxy_core::api::model_catalog::CopilotUsageResponse;",
             ][..],
             _ => &[][..],
         };
@@ -13841,7 +13841,7 @@ fn copilot_model_callers_use_core_dto_entrypoint() {
             }
         }
         assert!(
-            source.contains("use crate::proxy_core::api::model_catalog::CopilotModel;"),
+            source.contains("CopilotModel") && source.contains("proxy_core::api::model_catalog"),
             "{} must import CopilotModel directly from proxy_core",
             relative
         );
@@ -14543,21 +14543,44 @@ fn production_managed_auth_legacy_command_dtos_delegate_to_core() {
         copilot_source.contains("CopilotAuthStatus")
             && copilot_source.contains("GitHubAccount")
             && copilot_source.contains("GitHubDeviceCodeResponse")
-            && copilot_source.contains("pub use crate::proxy_core::api::auth::{")
+            && copilot_source.contains("use crate::proxy_core::api::auth::{")
+            && !copilot_source.contains("pub use crate::proxy_core::api::auth::{")
             && !copilot_source.contains("proxy_core_adapter::{CopilotAuthStatus")
             && !copilot_source.contains("proxy_core_adapter::CopilotAuthStatus")
             && !copilot_source.contains("proxy_core_adapter::GitHubAccount")
             && !copilot_source.contains("proxy_core_adapter::GitHubDeviceCodeResponse"),
-        "copilot_auth.rs should re-export legacy managed-auth command DTOs directly from proxy_core"
+        "copilot_auth.rs should consume legacy managed-auth command DTOs directly from proxy_core without re-exporting them"
     );
     assert!(
         codex_source.contains("use crate::proxy_core::api::auth::{")
             && codex_source.contains("CodexOAuthStatus")
+            && codex_source.contains("GitHubAccount")
+            && codex_source.contains("GitHubDeviceCodeResponse")
             && codex_source.contains("codex_oauth_status_from_parts")
+            && !codex_source.contains("use super::copilot_auth::{GitHubAccount, GitHubDeviceCodeResponse}")
             && !codex_source.contains("proxy_core_adapter::CodexOAuthStatus")
             && !codex_source.contains("use crate::proxy_core_adapter::{"),
-        "codex_oauth_auth.rs should consume Codex OAuth core auth contracts directly"
+        "codex_oauth_auth.rs should consume Codex OAuth and shared managed-auth core auth contracts directly"
     );
+
+    for (relative, required_import, forbidden_import) in [
+        (
+            "src/commands/auth.rs",
+            "use crate::proxy_core::api::auth::{",
+            "use crate::proxy::copilot_auth::{CopilotAuthError, GitHubAccount, GitHubDeviceCodeResponse};",
+        ),
+        (
+            "src/commands/copilot.rs",
+            "use crate::proxy_core::api::auth::{",
+            "CopilotAuthStatus, CopilotUsageResponse, GitHubAccount",
+        ),
+    ] {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read command source");
+        assert!(
+            source.contains(required_import) && !source.contains(forbidden_import),
+            "{relative} should import managed-auth command DTOs directly from proxy_core"
+        );
+    }
 
     for (line_index, line) in production_lines(&codex_source) {
         let code = line.split("//").next().unwrap_or_default();
@@ -18727,8 +18750,12 @@ fn production_copilot_auth_delegates_usage_contract_to_core() {
         "copilot_auth.rs should not own Copilot usage DTO contracts"
     );
     assert!(
-        source.contains("pub use crate::proxy_core::api::model_catalog::CopilotUsageResponse;"),
-        "copilot_auth.rs should re-export CopilotUsageResponse directly from proxy_core"
+        source.contains("use crate::proxy_core::api::model_catalog::{")
+            && source.contains("CopilotUsageResponse")
+            && !source.contains(
+                "pub use crate::proxy_core::api::model_catalog::CopilotUsageResponse;"
+            ),
+        "copilot_auth.rs should consume CopilotUsageResponse directly from proxy_core without re-exporting it"
     );
     assert!(
         fetch_usage_slice.contains("parse_copilot_usage_response_bytes(")

@@ -27,27 +27,23 @@ use tokio::sync::{Mutex, RwLock};
 use crate::proxy_core::api::auth::{
     compare_managed_auth_account_order, copilot_auth_status_from_parts,
     copilot_oauth_poll_error_kind, copilot_token_is_expiring_soon,
-    managed_auth_fallback_default_account_id, CopilotOAuthPollErrorKind, ManagedAuthAccountSortKey,
+    managed_auth_fallback_default_account_id, CopilotAuthStatus, CopilotOAuthPollErrorKind,
+    GitHubAccount, GitHubDeviceCodeResponse, ManagedAuthAccountSortKey,
     ManagedAuthDefaultAccountCandidate,
 };
-use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core::api::model_catalog::{
     copilot_api_base, copilot_api_endpoint_from_usage_or_default, copilot_composite_account_id,
     copilot_github_client_id, copilot_github_device_code_url, copilot_github_oauth_token_url,
     copilot_github_user_url, copilot_token_url, copilot_usage_response_endpoint, copilot_usage_url,
     is_copilot_ghes_domain, normalize_github_domain, parse_copilot_models_response_bytes,
-    parse_copilot_usage_response_bytes, COPILOT_PUBLIC_GITHUB_DOMAIN,
+    parse_copilot_usage_response_bytes, CopilotModel, CopilotUsageResponse,
+    COPILOT_PUBLIC_GITHUB_DOMAIN,
 };
 const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;
 pub(crate) const COPILOT_EDITOR_VERSION: &str = "vscode/1.110.1";
 pub(crate) const COPILOT_PLUGIN_VERSION: &str = "copilot-chat/0.38.2";
 pub(crate) const COPILOT_USER_AGENT: &str = "GitHubCopilotChat/0.38.2";
 pub(crate) const COPILOT_API_VERSION: &str = "2025-10-01";
-
-pub use crate::proxy_core::api::auth::{
-    CopilotAuthStatus, GitHubAccount, GitHubDeviceCodeResponse,
-};
-pub use crate::proxy_core::api::model_catalog::CopilotUsageResponse;
 
 /// Copilot 认证错误
 #[derive(Debug, thiserror::Error)]

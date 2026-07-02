@@ -3,11 +3,11 @@ use tauri::State;
 use crate::commands::codex_oauth::CodexOAuthState;
 use crate::commands::copilot::CopilotAuthState;
 use crate::proxy::codex_oauth_auth::CodexOAuthError;
-use crate::proxy::copilot_auth::{CopilotAuthError, GitHubAccount, GitHubDeviceCodeResponse};
+use crate::proxy::copilot_auth::CopilotAuthError;
 use crate::proxy_core::api::auth::{
     ensure_managed_auth_provider, managed_auth_account_from_parts,
-    managed_auth_device_code_response_from_parts, managed_auth_status_from_parts,
-    ManagedAuthAccount, ManagedAuthDeviceCodeResponse, ManagedAuthStatus,
+    managed_auth_device_code_response_from_parts, managed_auth_status_from_parts, GitHubAccount,
+    GitHubDeviceCodeResponse, ManagedAuthAccount, ManagedAuthDeviceCodeResponse, ManagedAuthStatus,
     CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
 };
 
