@@ -14,7 +14,7 @@ use crate::proxy::engine::forward_pipeline::{
     ForwarderProtocolStateSource, ForwarderProviderRequestBodyInput,
     ForwarderProviderTransformInput, ForwarderRectifierRetryFailureDecision,
     ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
-    ForwarderRequestPreparationInput, ForwarderRuntimeOptions,
+    ForwarderRequestPreparationInput, ForwarderRuntimeOptions, ForwarderSuccessStatusInput,
     ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
     ForwarderTransformPlanInput, ForwarderUpstreamUrlInput,
 };
@@ -2538,7 +2538,12 @@ base_url = "https://api.openai.com/v1"
         );
 
         assert_eq!(
-            source.record_success_status("provider-b", &provider).await,
+            source
+                .record_success_status(ForwarderSuccessStatusInput {
+                    current_provider_id_at_start: "provider-b",
+                    provider: &provider,
+                })
+                .await,
             None
         );
 
@@ -2548,7 +2553,10 @@ base_url = "https://api.openai.com/v1"
             Arc::new(ProxyEventBus::default()),
         );
         let target = source
-            .record_success_status("provider-a", &provider)
+            .record_success_status(ForwarderSuccessStatusInput {
+                current_provider_id_at_start: "provider-a",
+                provider: &provider,
+            })
             .await
             .expect("alternate provider success should schedule switch target");
 

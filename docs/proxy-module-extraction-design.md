@@ -433,7 +433,7 @@
 418. Copilot 托管账号的动态 API endpoint 与 live model id 解析编排已迁入 `proxy-core::managed_account_auth`，host adapter 只负责把 Provider account binding 投影为 account id，并保留 base URL 日志与请求体 model 写回副作用。
 419. Copilot live model vendor 的 runtime-source gate 已迁入 `proxy-core::managed_account_auth::resolve_copilot_model_vendor_with_runtime_source`；host adapter 只从请求体读取模型名并把 vendor 事实交给 Claude API format 规则。
 420. rectifier client-side failure 的 runtime status 记录已收敛到 `ForwarderRuntimeStateSource::record_forward_error_status`；signature/budget rectifier 客户端失败分支不再直接对 `ProxyError` 执行 `to_string()` 或处理中间状态文案，只把错误交给 runtime source 写入状态。
-421. success status 后的 failover switch target 已收敛到 `ForwarderRuntimeStateSource::record_success_status` 返回的 `ForwarderFailoverSwitchTarget`；host forwarder 不再把成功状态的 bool 决策重新投影为 provider id/name，只调度 source 返回的 target。
+421. success status 后的 failover switch target 已收敛到 `ForwarderRuntimeStateSource::record_success_status(ForwarderSuccessStatusInput)` 返回的 `ForwarderFailoverSwitchTarget`；host forwarder 不再散传 start provider/provider 事实或把成功状态的 bool 决策重新投影为 provider id/name，只调度 source 返回的 target。
 422. forwarder 四条成功返回分支已收敛到 `complete_successful_attempt` 单入口；`forward()` 返回结构化 `ForwarderUpstreamSuccess`，成功副作用、active target 更新、status/switch 调度和 `ForwardResult` 投影不再在主成功/media/signature/budget retry 分支重复展开。
 423. per-attempt current provider 状态写入已收敛到 `ForwarderRuntimeStateSource::record_current_provider(&Provider)`；host forwarder 不再拆 `provider.id/name` 写 runtime status，只传递当前 provider 事实。
 424. provider failure 名称投影已收敛到 `ForwarderRuntimeStateSource::{forward_failure_decision,record_provider_failure,record_provider_rectifier_retry_failure}` 接收 `&Provider`；host forwarder 不再拆 `provider.name` 构造重试日志或 runtime failure status。

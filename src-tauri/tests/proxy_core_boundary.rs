@@ -19659,6 +19659,23 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "ForwarderRuntimeStateSource must expose request-start lifecycle as one behavior, not split event/status helpers"
     );
     assert!(
+        source.contains("pub(crate) struct ForwarderSuccessStatusInput<'a>")
+            && runtime_trait_slice.contains("input: ForwarderSuccessStatusInput<'a>")
+            && impl_slice.contains("record_success_status(ForwarderSuccessStatusInput {")
+            && runtime_source.contains("ForwarderSuccessStatusInput")
+            && runtime_source.contains("input.current_provider_id_at_start")
+            && runtime_source.contains("input.provider.id.as_str()"),
+        "ForwarderRuntimeStateSource must consume success-status facts as a structured input"
+    );
+    assert!(
+        !impl_slice.contains(
+            "record_success_status(self.current_provider_id_at_start.as_str(), provider)"
+        ) && !runtime_trait_slice.contains(
+            "fn record_success_status<'a>(\n        &'a self,\n        current_provider_id_at_start: &'a str,"
+        ),
+        "RequestForwarder and ForwarderRuntimeStateSource must not pass success status facts as loose parameters"
+    );
+    assert!(
         runtime_trait_slice.contains("fn record_attempt_started(")
             && !runtime_trait_slice.contains("fn emit_attempt_started("),
         "ForwarderRuntimeStateSource must expose attempt-started lifecycle as a record behavior, not an event-emitter surface"

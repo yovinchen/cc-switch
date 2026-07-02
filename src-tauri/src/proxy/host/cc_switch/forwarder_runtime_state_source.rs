@@ -8,7 +8,7 @@ use crate::provider::Provider;
 use crate::proxy::engine::forward_pipeline::{
     ForwarderFailoverSwitchTarget, ForwarderFailureDecision,
     ForwarderRectifierRetryFailureDecision, ForwarderRuntimeStateSource,
-    ForwarderRuntimeStateSourceRef,
+    ForwarderRuntimeStateSourceRef, ForwarderSuccessStatusInput,
 };
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::forward_failure_kind_from_proxy_error;
@@ -408,19 +408,18 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
 
     fn record_success_status<'a>(
         &'a self,
-        current_provider_id_at_start: &'a str,
-        provider: &'a Provider,
+        input: ForwarderSuccessStatusInput<'a>,
     ) -> BoxFuture<'a, Option<ForwarderFailoverSwitchTarget>> {
         Box::pin(async move {
             let should_switch = record_forward_success_runtime_source(
                 self.status.as_ref(),
-                current_provider_id_at_start,
-                provider.id.as_str(),
+                input.current_provider_id_at_start,
+                input.provider.id.as_str(),
             )
             .await;
             should_switch.then(|| ForwarderFailoverSwitchTarget {
-                provider_id: provider.id.clone(),
-                provider_name: provider.name.clone(),
+                provider_id: input.provider.id.clone(),
+                provider_name: input.provider.name.clone(),
             })
         })
     }

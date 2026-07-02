@@ -383,6 +383,11 @@ pub(crate) struct ForwarderFailoverSwitchTarget {
     pub(crate) provider_name: String,
 }
 
+pub(crate) struct ForwarderSuccessStatusInput<'a> {
+    pub(crate) current_provider_id_at_start: &'a str,
+    pub(crate) provider: &'a Provider,
+}
+
 pub(crate) trait FailoverSwitchScheduler {
     fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget);
 }
@@ -460,8 +465,7 @@ pub(crate) trait ForwarderRuntimeStateSource {
     );
     fn record_success_status<'a>(
         &'a self,
-        current_provider_id_at_start: &'a str,
-        provider: &'a Provider,
+        input: ForwarderSuccessStatusInput<'a>,
     ) -> BoxFuture<'a, Option<ForwarderFailoverSwitchTarget>>;
     fn record_current_provider<'a>(&'a self, provider: &'a Provider) -> BoxFuture<'a, ()>;
     fn record_provider_failure<'a>(
@@ -744,7 +748,10 @@ impl RequestForwarder {
     async fn record_success_status_and_maybe_switch(&self, app_type: &str, provider: &Provider) {
         let switch_target = self
             .runtime_state_source
-            .record_success_status(self.current_provider_id_at_start.as_str(), provider)
+            .record_success_status(ForwarderSuccessStatusInput {
+                current_provider_id_at_start: self.current_provider_id_at_start.as_str(),
+                provider,
+            })
             .await;
         if let Some(target) = switch_target {
             self.failover_switch_scheduler
