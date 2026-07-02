@@ -19,12 +19,19 @@ use crate::proxy_core::api::domain::{
 use crate::proxy_core::api::errors::{
     config_error_with_context as core_config_error_with_context, ProxyCoreError, ProxyCoreResult,
 };
+use crate::proxy_core::api::ports::{
+    codex_config_text_from_settings, codex_wire_api_from_config_toml,
+};
 use crate::proxy_core::api::transforms::{
     claude_provider_transform_required, claude_transform_streaming_decision,
     ClaudeTransformStreamingDecision,
 };
+use crate::proxy_core::api::transport::{
+    codex_responses_to_chat_conversion_required, CodexProviderChatCompletionsFacts,
+    CodexResponsesToChatConversionFacts,
+};
 use http::HeaderMap;
-use serde_json::json;
+use serde_json::{json, Value};
 
 fn provider_projection_error(context: &str, error: AppError) -> ProxyCoreError {
     core_config_error_with_context(context, error)
@@ -65,6 +72,57 @@ pub(crate) fn provider_managed_auth_classification(
 
 pub(crate) fn provider_is_codex_oauth(provider: &Provider) -> bool {
     provider_managed_auth_classification(provider).is_codex_oauth
+}
+
+fn provider_codex_config_text(provider: &Provider) -> Option<&str> {
+    codex_config_text_from_settings(&provider.settings_config)
+}
+
+fn with_provider_codex_chat_completions_facts<T>(
+    provider: &Provider,
+    evaluate: impl FnOnce(CodexProviderChatCompletionsFacts<'_>) -> T,
+) -> T {
+    let config_text = provider_codex_config_text(provider);
+    let wire_api = config_text.and_then(codex_wire_api_from_config_toml);
+    let config_base_url = config_text.and_then(crate::codex_config::extract_codex_base_url);
+
+    evaluate(CodexProviderChatCompletionsFacts {
+        api_format: provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.api_format.as_deref())
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("api_format")
+                    .and_then(Value::as_str)
+            })
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("apiFormat")
+                    .and_then(Value::as_str)
+            }),
+        wire_api: wire_api.as_deref(),
+        base_url: provider
+            .settings_config
+            .get("base_url")
+            .or_else(|| provider.settings_config.get("baseURL"))
+            .and_then(Value::as_str),
+        config_base_url: config_base_url.as_deref(),
+    })
+}
+
+pub(crate) fn provider_codex_responses_to_chat_conversion_required(
+    provider: &Provider,
+    endpoint: &str,
+) -> bool {
+    with_provider_codex_chat_completions_facts(provider, |provider_facts| {
+        codex_responses_to_chat_conversion_required(CodexResponsesToChatConversionFacts {
+            provider: provider_facts,
+            endpoint,
+        })
+    })
 }
 
 pub(crate) fn provider_claude_base_url(provider: &Provider) -> Option<String> {

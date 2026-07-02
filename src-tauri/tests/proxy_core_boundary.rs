@@ -26404,6 +26404,66 @@ fn proxy_response_adapter_uses_grouped_api_surface() {
 }
 
 #[test]
+fn response_adapter_delegates_codex_chat_conversion_gate_to_provider_projection() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let response_adapter =
+        fs::read_to_string(&response_adapter_path).expect("read proxy/response_adapter.rs");
+    let provider_projection_path =
+        manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
+    let provider_projection =
+        fs::read_to_string(&provider_projection_path).expect("read provider_projection.rs");
+    let proxy_core_adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let proxy_core_adapter =
+        fs::read_to_string(&proxy_core_adapter_path).expect("read proxy_core_adapter.rs");
+
+    let response_gate_slice = function_slice(
+        &response_adapter,
+        "pub(crate) fn codex_response_needs_chat_transform",
+        "pub(crate) fn claude_transform_streaming_decision_for_response",
+    );
+    let projection_gate_slice = function_slice(
+        &provider_projection,
+        "fn with_provider_codex_chat_completions_facts",
+        "pub(crate) fn provider_claude_base_url",
+    );
+
+    assert!(
+        !response_adapter
+            .contains("crate::proxy::provider::codex_provider_should_convert_responses_to_chat"),
+        "response_adapter must not import the Codex provider adapter's Provider-shaped response conversion helper"
+    );
+    assert!(
+        response_adapter.contains("provider_codex_responses_to_chat_conversion_required"),
+        "response_adapter should consume Codex Provider response facts from provider_projection"
+    );
+    assert!(
+        response_gate_slice.contains("provider_codex_responses_to_chat_conversion_required("),
+        "Codex response branch gate should delegate to host provider_projection"
+    );
+    assert!(
+        !response_gate_slice.contains("codex_provider_should_convert_responses_to_chat("),
+        "Codex response branch gate must not call the provider adapter helper directly"
+    );
+    assert!(
+        provider_projection.contains(
+            "pub(crate) fn provider_codex_responses_to_chat_conversion_required"
+        ),
+        "provider_projection should own the CC Switch Provider -> Codex Responses-to-Chat fact projection"
+    );
+    assert!(
+        projection_gate_slice.contains("codex_responses_to_chat_conversion_required(")
+            && projection_gate_slice.contains("CodexResponsesToChatConversionFacts"),
+        "provider_projection must delegate Codex Responses-to-Chat policy to proxy-core"
+    );
+    assert!(
+        !proxy_core_adapter
+            .contains("pub(crate) fn provider_codex_responses_to_chat_conversion_required"),
+        "proxy_core_adapter should not grow a Codex response conversion provider projection facade"
+    );
+}
+
+#[test]
 fn proxy_response_adapter_owns_core_transport_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/response_adapter.rs");
