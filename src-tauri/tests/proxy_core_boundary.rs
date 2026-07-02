@@ -4009,8 +4009,7 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
     );
     assert!(
         function.contains(".list_proxy_channel_key_runtime_candidates(")
-            && function.contains(".get_proxy_channel(")
-            && function.contains("effective_channel_key_failure_cooldown_ms(")
+            && function.contains("channel_key_runtime_selection_policy_from_database(")
             && function.contains("select_proxy_channel_key_runtime_candidate(")
             && !function.contains(".key_value"),
         "channel key runtime source must load runtime DB key records and channel policy, delegate key-ref/enabled selection to core, and return the selected runtime candidate"
@@ -4020,15 +4019,15 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
             && runtime_source.contains("config_error_with_context")
             && runtime_source.contains("ProxyCoreResult")
             && runtime_source.contains("use crate::proxy_core::api::management::{")
-            && runtime_source.contains(
-                "use crate::proxy_core::api::routing::effective_channel_key_failure_cooldown_ms;"
-            )
+            && runtime_source.contains("effective_channel_key_runtime_selection_policy")
             && runtime_source.contains("channel_key_runtime_candidate_from_input")
             && runtime_source.contains("select_channel_key_runtime_candidate_with_policy")
             && runtime_source.contains("ChannelKeyRuntimeCandidateInput")
             && runtime_source.contains("ChannelKeyRuntimeSelectionInput")
             && runtime_source.contains("ChannelKeyRuntimeSelectionPolicy")
-            && runtime_source.contains("ChannelKeyRuntimeSelectionPolicy::weighted(")
+            && runtime_source.contains("fn channel_key_runtime_selection_policy_from_database(")
+            && runtime_source.contains(".get_proxy_channel(")
+            && runtime_source.contains("effective_channel_key_runtime_selection_policy(")
             && runtime_source.contains("DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS"),
         "channel key runtime source should import pure candidate projection/selection policy directly from proxy_core::api"
     );
@@ -6904,7 +6903,9 @@ fn engine_and_host_test_fixtures_import_core_contracts_directly() {
             "src/proxy/host/cc_switch/channel_key_runtime_source.rs",
             &[
                 "use crate::proxy_core::api::management::{",
-                "ProxyChannelKeyWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,",
+                "ProxyChannelKeyWriteRequest",
+                "ProxyChannelPatchRequest",
+                "ProxyChannelWriteRequest",
             ],
             &[
                 "ProxyChannelKeyWriteRequest",
@@ -17663,11 +17664,12 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
     );
     assert!(
         runtime_source_lookup.contains(".list_proxy_channel_key_runtime_candidates(")
-            && runtime_source_lookup.contains(".get_proxy_channel(")
-            && runtime_source_lookup.contains("effective_channel_key_failure_cooldown_ms(")
+            && runtime_source_lookup.contains("channel_key_runtime_selection_policy_from_database(")
             && runtime_source_lookup.contains("select_proxy_channel_key_runtime_candidate(")
             && runtime_source.contains("channel_key_runtime_selection_clock(")
-            && runtime_source.contains("ChannelKeyRuntimeSelectionPolicy::weighted(")
+            && runtime_source.contains("fn channel_key_runtime_selection_policy_from_database(")
+            && runtime_source.contains(".get_proxy_channel(")
+            && runtime_source.contains("effective_channel_key_runtime_selection_policy(")
             && !runtime_source_lookup.contains(".key_value"),
         "CC Switch channel key runtime lookup helper should own runtime DB candidate loading, per-channel cooldown policy, explicit core key-ref selection policy, and preserve selected candidate metadata"
     );

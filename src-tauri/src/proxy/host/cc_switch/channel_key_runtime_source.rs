@@ -1,12 +1,12 @@
 use crate::database::{Database, ProxyChannelKeyRecord};
 use crate::proxy_core::api::errors::{config_error_with_context, ProxyCoreResult};
 use crate::proxy_core::api::management::{
-    channel_key_runtime_candidate_from_input, select_channel_key_runtime_candidate_with_policy,
-    ChannelKeyRuntimeCandidate, ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeSelectionInput,
+    channel_key_runtime_candidate_from_input, effective_channel_key_runtime_selection_policy,
+    select_channel_key_runtime_candidate_with_policy, ChannelKeyRuntimeCandidate,
+    ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeSelectionInput,
     ChannelKeyRuntimeSelectionPolicy, DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
 };
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
-use crate::proxy_core::api::routing::effective_channel_key_failure_cooldown_ms;
 use std::sync::Arc;
 
 pub(crate) fn proxy_channel_key_record_to_runtime_candidate(
@@ -27,7 +27,7 @@ fn select_proxy_channel_key_runtime_candidate<I>(
     keys: I,
     key_ref: &str,
     now_ms: i64,
-    failure_cooldown_ms: i64,
+    policy: ChannelKeyRuntimeSelectionPolicy,
     weighted_roll: u64,
 ) -> Option<ChannelKeyRuntimeCandidate>
 where
@@ -40,7 +40,7 @@ where
             key_ref,
             now_ms,
             weighted_roll,
-            policy: ChannelKeyRuntimeSelectionPolicy::weighted(failure_cooldown_ms),
+            policy,
         },
     )
 }
@@ -64,35 +64,29 @@ fn load_channel_key_candidate_from_database(
     let keys = db
         .list_proxy_channel_key_runtime_candidates(channel_id)
         .map_err(|error| config_error_with_context("load channel auth key", error))?;
-    let failure_cooldown_ms = channel_key_failure_cooldown_ms_from_database(db, channel_id)?;
+    let policy = channel_key_runtime_selection_policy_from_database(db, channel_id)?;
     let (now_ms, weighted_roll) = channel_key_runtime_selection_clock();
     Ok(keys.and_then(|keys| {
-        select_proxy_channel_key_runtime_candidate(
-            keys,
-            key_ref,
-            now_ms,
-            failure_cooldown_ms,
-            weighted_roll,
-        )
+        select_proxy_channel_key_runtime_candidate(keys, key_ref, now_ms, policy, weighted_roll)
     }))
 }
 
-fn channel_key_failure_cooldown_ms_from_database(
+fn channel_key_runtime_selection_policy_from_database(
     db: &Database,
     channel_id: &str,
-) -> ProxyCoreResult<i64> {
+) -> ProxyCoreResult<ChannelKeyRuntimeSelectionPolicy> {
     let channel = db
         .get_proxy_channel(channel_id)
         .map_err(|error| config_error_with_context("load channel key health policy", error))?;
 
     Ok(channel
         .map(|channel| {
-            effective_channel_key_failure_cooldown_ms(
+            effective_channel_key_runtime_selection_policy(
                 DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
                 &channel.health_policy,
             )
         })
-        .unwrap_or(DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS))
+        .unwrap_or_default())
 }
 
 fn channel_key_runtime_selection_clock() -> (i64, u64) {
@@ -121,7 +115,8 @@ mod tests {
     use super::*;
     use crate::provider::Provider;
     use crate::proxy_core::api::management::{
-        ProxyChannelKeyWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+        ChannelKeyRuntimeSelectionStrategy, ProxyChannelKeyWriteRequest, ProxyChannelPatchRequest,
+        ProxyChannelWriteRequest,
     };
     use serde_json::json;
 
@@ -153,7 +148,7 @@ mod tests {
             ],
             "*",
             now_ms,
-            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+            ChannelKeyRuntimeSelectionPolicy::weighted(DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS),
             0,
         )
         .expect("selected first weighted candidate");
@@ -167,11 +162,60 @@ mod tests {
             ],
             "*",
             now_ms,
-            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+            ChannelKeyRuntimeSelectionPolicy::weighted(DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS),
             1,
         )
         .expect("selected second weighted candidate");
         assert_eq!(second.key_ref, "beta");
+    }
+
+    #[test]
+    fn channel_key_runtime_source_reads_selection_policy_from_channel_health_policy() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "provider-key" } }),
+            None,
+        );
+        db.save_provider("claude", &provider)
+            .expect("save provider");
+        db.create_proxy_channel(ProxyChannelWriteRequest {
+            id: Some("channel-key-policy".to_string()),
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            name: "Channel Key Policy".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            health_policy: json!({
+                "channelKeySelectionStrategy": "priority",
+                "keyFailureCooldownMs": 5_000
+            }),
+            ..Default::default()
+        })
+        .expect("create channel");
+
+        let policy =
+            channel_key_runtime_selection_policy_from_database(db.as_ref(), "channel-key-policy")
+                .expect("load channel key selection policy");
+        assert_eq!(
+            policy.strategy,
+            ChannelKeyRuntimeSelectionStrategy::Priority
+        );
+        assert_eq!(policy.failure_cooldown_ms, 5_000);
+
+        let selected = select_proxy_channel_key_runtime_candidate(
+            vec![
+                proxy_channel_key_record("alpha", 20, 1, None),
+                proxy_channel_key_record("beta", 20, 1, None),
+            ],
+            "*",
+            1_771_000_120_000,
+            policy,
+            1,
+        )
+        .expect("selected priority candidate from configured policy");
+        assert_eq!(selected.key_ref, "alpha");
     }
 
     #[test]

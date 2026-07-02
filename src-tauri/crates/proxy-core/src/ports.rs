@@ -5,6 +5,7 @@ use super::domain::{
     AppKind, AuthProfileRef, ChannelAttemptResult, ChannelQuery, ChannelSpec, InterfaceKind,
     ModelRoute, ProviderAttemptResult, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan,
     RoutePolicy, RouteRequest, UsageRecord, DEFAULT_ROUTE_GROUP,
+    effective_channel_key_failure_cooldown_ms,
 };
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::model_mapping::{
@@ -6024,6 +6025,48 @@ impl Default for ChannelKeyRuntimeSelectionPolicy {
     }
 }
 
+fn channel_key_runtime_selection_strategy_from_value(
+    value: &Value,
+) -> Option<ChannelKeyRuntimeSelectionStrategy> {
+    let value = value.as_str()?.trim().to_ascii_lowercase();
+    match value.as_str() {
+        "priority" | "ordered" | "failover" => Some(ChannelKeyRuntimeSelectionStrategy::Priority),
+        "weighted" | "weight" | "weighted_random" | "weighted-random" | "weightedrandom"
+        | "random" => Some(ChannelKeyRuntimeSelectionStrategy::Weighted),
+        _ => None,
+    }
+}
+
+pub fn health_policy_channel_key_selection_strategy(
+    policy: &Value,
+) -> Option<ChannelKeyRuntimeSelectionStrategy> {
+    let policy = policy.as_object()?;
+    policy
+        .get("channelKeySelectionStrategy")
+        .or_else(|| policy.get("channel_key_selection_strategy"))
+        .or_else(|| policy.get("keySelectionStrategy"))
+        .or_else(|| policy.get("key_selection_strategy"))
+        .and_then(channel_key_runtime_selection_strategy_from_value)
+}
+
+pub fn effective_channel_key_runtime_selection_policy(
+    default_failure_cooldown_ms: i64,
+    health_policy: &Value,
+) -> ChannelKeyRuntimeSelectionPolicy {
+    let failure_cooldown_ms =
+        effective_channel_key_failure_cooldown_ms(default_failure_cooldown_ms, health_policy);
+    match health_policy_channel_key_selection_strategy(health_policy)
+        .unwrap_or(ChannelKeyRuntimeSelectionStrategy::Weighted)
+    {
+        ChannelKeyRuntimeSelectionStrategy::Priority => {
+            ChannelKeyRuntimeSelectionPolicy::priority(failure_cooldown_ms)
+        }
+        ChannelKeyRuntimeSelectionStrategy::Weighted => {
+            ChannelKeyRuntimeSelectionPolicy::weighted(failure_cooldown_ms)
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChannelKeyRuntimeSelectionInput<'a> {
     pub key_ref: &'a str,
@@ -11885,6 +11928,53 @@ GEMINI_API_KEY=sk-test123
         )
         .expect("selected by weighted roll");
         assert_eq!(weighted_selected.key_ref, "beta");
+    }
+
+    #[test]
+    fn channel_key_runtime_selection_policy_reads_channel_health_policy() {
+        let priority = super::effective_channel_key_runtime_selection_policy(
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+            &json!({
+                "channelKeySelectionStrategy": "priority",
+                "keyFailureCooldownMs": 5_000
+            }),
+        );
+        assert_eq!(
+            priority.strategy,
+            super::ChannelKeyRuntimeSelectionStrategy::Priority
+        );
+        assert_eq!(priority.failure_cooldown_ms, 5_000);
+        assert_eq!(
+            super::health_policy_channel_key_selection_strategy(
+                &json!({"channel_key_selection_strategy": "ordered"})
+            ),
+            Some(super::ChannelKeyRuntimeSelectionStrategy::Priority)
+        );
+        assert_eq!(
+            super::health_policy_channel_key_selection_strategy(
+                &json!({"keySelectionStrategy": "weightedRandom"})
+            ),
+            Some(super::ChannelKeyRuntimeSelectionStrategy::Weighted)
+        );
+        assert_eq!(
+            super::health_policy_channel_key_selection_strategy(
+                &json!({"key_selection_strategy": "random"})
+            ),
+            Some(super::ChannelKeyRuntimeSelectionStrategy::Weighted)
+        );
+
+        let defaulted = super::effective_channel_key_runtime_selection_policy(
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+            &json!({"channelKeySelectionStrategy": "roundRobin"}),
+        );
+        assert_eq!(
+            defaulted.strategy,
+            super::ChannelKeyRuntimeSelectionStrategy::Weighted
+        );
+        assert_eq!(
+            defaulted.failure_cooldown_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS
+        );
     }
 
     #[test]

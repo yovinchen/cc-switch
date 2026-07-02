@@ -60,6 +60,8 @@ pub mod management {
     pub use crate::management_api::*;
     pub use crate::ports::{
         channel_key_record_from_input, channel_key_runtime_candidate_from_input,
+        effective_channel_key_runtime_selection_policy,
+        health_policy_channel_key_selection_strategy,
         channel_model_record_from_input, channel_route_source_for_materialized_count,
         channel_health_update_from_input,
         channel_reachability_result_from_stream_check_result,
