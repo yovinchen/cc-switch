@@ -6,11 +6,12 @@ use uuid::Uuid;
 
 use crate::provider::Provider;
 use crate::proxy::engine::forward_pipeline::{
-    ForwarderFailoverSwitchTarget, ForwarderFailureDecision, ForwarderProviderFailureInput,
+    ForwarderAttemptFailedInput, ForwarderAttemptStartedInput, ForwarderFailoverSwitchTarget,
+    ForwarderFailureDecision, ForwarderProviderFailureInput,
     ForwarderProviderRectifierRetryFailureInput, ForwarderRectifierRetryFailureDecision,
     ForwarderRectifierRetryFailureLogInput, ForwarderRectifierRetrySuccessLogInput,
     ForwarderRetryableFailureLogInput, ForwarderRuntimeStateSource, ForwarderRuntimeStateSourceRef,
-    ForwarderSuccessStatusInput, ForwarderTerminalFailureLogInput,
+    ForwarderSuccessStatusInput, ForwarderSuccessfulAttemptInput, ForwarderTerminalFailureLogInput,
 };
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::forward_failure_kind_from_proxy_error;
@@ -353,12 +354,12 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         })
     }
 
-    fn record_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
+    fn record_attempt_started(&self, input: ForwarderAttemptStartedInput<'_>) {
         emit_attempt_event_source(
             self.events.as_ref(),
-            request_id,
-            app_type,
-            attempt,
+            input.request_id,
+            input.app_type,
+            input.attempt,
             AttemptEventPhase::Started,
             None,
         );
@@ -366,43 +367,35 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
 
     fn record_successful_attempt<'a>(
         &'a self,
-        request_id: &'a str,
-        app_type: &'a str,
-        attempt: &'a ForwardAttempt,
+        input: ForwarderSuccessfulAttemptInput<'a>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             emit_attempt_event_source(
                 self.events.as_ref(),
-                request_id,
-                app_type,
-                attempt,
+                input.request_id,
+                input.app_type,
+                input.attempt,
                 AttemptEventPhase::Succeeded,
                 None,
             );
             record_forward_active_route_target_runtime_source(
                 self.current_providers.as_ref(),
                 self.events.as_ref(),
-                request_id,
-                app_type,
-                attempt,
+                input.request_id,
+                input.app_type,
+                input.attempt,
             )
             .await;
         })
     }
 
-    fn record_failed_attempt(
-        &self,
-        request_id: &str,
-        app_type: &str,
-        attempt: &ForwardAttempt,
-        error: &ProxyError,
-    ) {
-        let error_message = error.to_string();
+    fn record_failed_attempt(&self, input: ForwarderAttemptFailedInput<'_>) {
+        let error_message = input.error.to_string();
         emit_attempt_event_source(
             self.events.as_ref(),
-            request_id,
-            app_type,
-            attempt,
+            input.request_id,
+            input.app_type,
+            input.attempt,
             AttemptEventPhase::Failed,
             Some(&error_message),
         );

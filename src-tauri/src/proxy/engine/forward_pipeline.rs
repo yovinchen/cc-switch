@@ -425,6 +425,25 @@ pub(crate) struct ForwarderTerminalFailureLogInput<'a> {
     pub(crate) last_error: Option<&'a ProxyError>,
 }
 
+pub(crate) struct ForwarderAttemptStartedInput<'a> {
+    pub(crate) request_id: &'a str,
+    pub(crate) app_type: &'a str,
+    pub(crate) attempt: &'a ForwardAttempt,
+}
+
+pub(crate) struct ForwarderSuccessfulAttemptInput<'a> {
+    pub(crate) request_id: &'a str,
+    pub(crate) app_type: &'a str,
+    pub(crate) attempt: &'a ForwardAttempt,
+}
+
+pub(crate) struct ForwarderAttemptFailedInput<'a> {
+    pub(crate) request_id: &'a str,
+    pub(crate) app_type: &'a str,
+    pub(crate) attempt: &'a ForwardAttempt,
+    pub(crate) error: &'a ProxyError,
+}
+
 pub(crate) trait FailoverSwitchScheduler {
     fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget);
 }
@@ -486,20 +505,12 @@ pub(crate) trait ForwarderRuntimeStateSource {
         request_id: &'a str,
         app_type: &'a str,
     ) -> BoxFuture<'a, ()>;
-    fn record_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
+    fn record_attempt_started(&self, input: ForwarderAttemptStartedInput<'_>);
     fn record_successful_attempt<'a>(
         &'a self,
-        request_id: &'a str,
-        app_type: &'a str,
-        attempt: &'a ForwardAttempt,
+        input: ForwarderSuccessfulAttemptInput<'a>,
     ) -> BoxFuture<'a, ()>;
-    fn record_failed_attempt(
-        &self,
-        request_id: &str,
-        app_type: &str,
-        attempt: &ForwardAttempt,
-        error: &ProxyError,
-    );
+    fn record_failed_attempt(&self, input: ForwarderAttemptFailedInput<'_>);
     fn record_success_status<'a>(
         &'a self,
         input: ForwarderSuccessStatusInput<'a>,
@@ -757,7 +768,11 @@ impl RequestForwarder {
             })
             .await;
         self.runtime_state_source
-            .record_successful_attempt(request_id, app_type, attempt)
+            .record_successful_attempt(ForwarderSuccessfulAttemptInput {
+                request_id,
+                app_type,
+                attempt,
+            })
             .await;
     }
 
@@ -815,7 +830,12 @@ impl RequestForwarder {
             })
             .await;
         self.runtime_state_source
-            .record_failed_attempt(request_id, app_type, attempt, error);
+            .record_failed_attempt(ForwarderAttemptFailedInput {
+                request_id,
+                app_type,
+                attempt,
+                error,
+            });
     }
 
     async fn release_attempt_permit_neutral(&self, input: ForwarderAttemptNeutralReleaseInput<'_>) {
@@ -976,7 +996,11 @@ impl RequestForwarder {
                 } => used_half_open_permit,
             };
             self.runtime_state_source
-                .record_attempt_started(request_id, app_type_str, attempt);
+                .record_attempt_started(ForwarderAttemptStartedInput {
+                    request_id,
+                    app_type: app_type_str,
+                    attempt,
+                });
 
             let mut provider_body =
                 self.request_source

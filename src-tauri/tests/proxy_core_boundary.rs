@@ -19647,8 +19647,7 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "ForwarderRectifierRetryFailureDecision must not carry formatted error messages back to RequestForwarder"
     );
     assert!(
-        runtime_trait_slice.contains("fn record_failed_attempt(")
-            && runtime_trait_slice.contains("error: &ProxyError")
+        runtime_trait_slice.contains("input: ForwarderAttemptFailedInput<'_>")
             && !runtime_trait_slice.contains("fn emit_attempt_failed_for_error("),
         "ForwarderRuntimeStateSource must own attempt-failed error message projection"
     );
@@ -19709,6 +19708,31 @@ fn production_forwarder_uses_runtime_state_source_resource() {
             && !runtime_trait_slice.contains("fn emit_attempt_succeeded(")
             && !runtime_trait_slice.contains("fn record_active_route_target("),
         "ForwarderRuntimeStateSource must expose successful-attempt event and active-route target update as one behavior"
+    );
+    assert!(
+        source.contains("pub(crate) struct ForwarderAttemptStartedInput<'a>")
+            && source.contains("pub(crate) struct ForwarderSuccessfulAttemptInput<'a>")
+            && source.contains("pub(crate) struct ForwarderAttemptFailedInput<'a>")
+            && runtime_trait_slice.contains("input: ForwarderAttemptStartedInput<'_>")
+            && runtime_trait_slice.contains("input: ForwarderSuccessfulAttemptInput<'a>")
+            && runtime_trait_slice.contains("input: ForwarderAttemptFailedInput<'_>")
+            && impl_slice.contains("record_attempt_started(ForwarderAttemptStartedInput {")
+            && impl_slice.contains("record_successful_attempt(ForwarderSuccessfulAttemptInput {")
+            && impl_slice.contains("record_failed_attempt(ForwarderAttemptFailedInput {")
+            && runtime_source.contains("ForwarderAttemptStartedInput")
+            && runtime_source.contains("ForwarderSuccessfulAttemptInput")
+            && runtime_source.contains("ForwarderAttemptFailedInput")
+            && runtime_source.contains("input.request_id")
+            && runtime_source.contains("input.app_type")
+            && runtime_source.contains("input.attempt")
+            && runtime_source.contains("input.error.to_string()"),
+        "ForwarderRuntimeStateSource must consume attempt lifecycle facts as structured inputs"
+    );
+    assert!(
+        !impl_slice.contains(".record_attempt_started(request_id, app_type_str, attempt)")
+            && !impl_slice.contains(".record_successful_attempt(request_id, app_type, attempt)")
+            && !impl_slice.contains(".record_failed_attempt(request_id, app_type, attempt, error)"),
+        "RequestForwarder must not pass attempt lifecycle facts as loose parameters"
     );
     assert!(
         provider_failure_runtime_source_slice.contains("provider: &Provider")
@@ -19982,8 +20006,8 @@ fn production_forwarder_attempt_events_use_runtime_state_source() {
         violations.join("\n")
     );
     assert!(
-        impl_slice.contains(".record_attempt_started(request_id, app_type_str, attempt)")
-            && impl_slice.contains(".record_failed_attempt(request_id, app_type, attempt, error)")
+        impl_slice.contains(".record_attempt_started(ForwarderAttemptStartedInput {")
+            && impl_slice.contains(".record_failed_attempt(ForwarderAttemptFailedInput {")
             && !impl_slice.contains(".emit_attempt_started(")
             && !impl_slice.contains(".emit_attempt_failed_for_error("),
         "RequestForwarder must record attempt lifecycle through semantic runtime state source methods"
@@ -20019,7 +20043,7 @@ fn production_forwarder_active_route_target_uses_runtime_state_source() {
         violations.join("\n")
     );
     assert!(
-        impl_slice.contains(".record_successful_attempt(request_id, app_type, attempt)")
+        impl_slice.contains(".record_successful_attempt(ForwarderSuccessfulAttemptInput {")
             && !impl_slice.contains(".emit_attempt_succeeded(")
             && !impl_slice.contains(".record_active_route_target("),
         "RequestForwarder must record successful attempt route state through one runtime state source method"

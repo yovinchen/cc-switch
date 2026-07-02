@@ -7,7 +7,8 @@ use crate::provider::Provider;
 #[cfg(test)]
 use crate::proxy::engine::forward_pipeline::{
     ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
-    ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderClaudeBodyPolicyInput,
+    ForwarderAttemptBodyInput, ForwarderAttemptFailedInput, ForwarderAttemptStartedInput,
+    ForwarderAuthHeadersInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCodexChatProtocolEnrichmentInput, ForwarderCodexResponsesToChatInput,
     ForwarderCopilotRequestOptimizationGateInput, ForwarderCopilotRequestOptimizationInput,
     ForwarderFailoverSwitchTarget, ForwarderMediaRetryPlanInput, ForwarderPreparedRequest,
@@ -16,8 +17,9 @@ use crate::proxy::engine::forward_pipeline::{
     ForwarderProviderTransformInput, ForwarderRectifierRetryFailureDecision,
     ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
     ForwarderRequestPreparationInput, ForwarderRuntimeOptions, ForwarderSuccessStatusInput,
-    ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
-    ForwarderTransformPlanInput, ForwarderUpstreamUrlInput,
+    ForwarderSuccessfulAttemptInput, ForwarderThinkingBudgetRectifierInput,
+    ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
+    ForwarderUpstreamUrlInput,
 };
 #[cfg(test)]
 use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
@@ -2818,7 +2820,11 @@ base_url = "https://api.openai.com/v1"
             events,
         );
 
-        source.record_attempt_started("req-1", "claude", &attempt);
+        source.record_attempt_started(ForwarderAttemptStartedInput {
+            request_id: "req-1",
+            app_type: "claude",
+            attempt: &attempt,
+        });
         let started = subscriber.recv().await.expect("started event");
         assert_eq!(started.event, "channel_attempt");
         assert_eq!(started.payload["requestId"], "req-1");
@@ -2827,7 +2833,11 @@ base_url = "https://api.openai.com/v1"
         assert!(started.payload.get("error").is_none());
 
         source
-            .record_successful_attempt("req-1", "claude", &attempt)
+            .record_successful_attempt(ForwarderSuccessfulAttemptInput {
+                request_id: "req-1",
+                app_type: "claude",
+                attempt: &attempt,
+            })
             .await;
         let succeeded = subscriber.recv().await.expect("succeeded event");
         assert_eq!(succeeded.event, "channel_succeeded");
@@ -2837,12 +2847,13 @@ base_url = "https://api.openai.com/v1"
         let route_selected = subscriber.recv().await.expect("route selected event");
         assert_eq!(route_selected.event, "route_selected");
 
-        source.record_failed_attempt(
-            "req-1",
-            "claude",
-            &attempt,
-            &ProxyError::ForwardFailed("upstream failed".to_string()),
-        );
+        let forward_error = ProxyError::ForwardFailed("upstream failed".to_string());
+        source.record_failed_attempt(ForwarderAttemptFailedInput {
+            request_id: "req-1",
+            app_type: "claude",
+            attempt: &attempt,
+            error: &forward_error,
+        });
         let failed = subscriber.recv().await.expect("failed event");
         assert_eq!(failed.event, "channel_failed");
         assert_eq!(failed.payload["channelId"], "channel-a");
@@ -2865,7 +2876,11 @@ base_url = "https://api.openai.com/v1"
         );
 
         source
-            .record_successful_attempt("req-route", "claude", &attempt)
+            .record_successful_attempt(ForwarderSuccessfulAttemptInput {
+                request_id: "req-route",
+                app_type: "claude",
+                attempt: &attempt,
+            })
             .await;
 
         let current_providers = current_providers.read().await;
