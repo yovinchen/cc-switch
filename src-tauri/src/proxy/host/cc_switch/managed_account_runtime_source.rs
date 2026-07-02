@@ -433,17 +433,19 @@ pub(crate) async fn copilot_model_vendor_from_app_handle(
     }
 }
 
-async fn copilot_token_from_app_handle(
+async fn copilot_refresh_success_from_app_handle(
     app_handle: &tauri::AppHandle,
     account_id: Option<&str>,
-) -> Result<String, CopilotAuthError> {
+) -> Result<ManagedAccountTokenRefreshSuccessInput, CopilotAuthError> {
     let copilot_state = app_handle.state::<CopilotAuthState>();
     let copilot_auth = copilot_state.0.read().await;
 
-    match account_id {
+    let token_result = match account_id {
         Some(id) => copilot_auth.get_valid_token_for_account(id).await,
         None => copilot_auth.get_valid_token().await,
-    }
+    };
+
+    token_result.map(|token| ManagedAccountTokenRefreshSuccessInput::copilot(token, account_id))
 }
 
 async fn codex_oauth_refresh_success_from_app_handle(
@@ -528,13 +530,10 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
             );
 
             let cache_key = ManagedAccountTokenCacheKey::new(runtime, account_id);
-            match copilot_token_from_app_handle(app_handle, account_id).await {
-                Ok(token) => {
+            match copilot_refresh_success_from_app_handle(app_handle, account_id).await {
+                Ok(refresh_success) => {
                     let success = self
-                        .record_token_refresh_success(
-                            cache_key,
-                            ManagedAccountTokenRefreshSuccessInput::copilot(token, account_id),
-                        )
+                        .record_token_refresh_success(cache_key, refresh_success)
                         .await;
                     log::debug!("{}", success.log_message);
                     Ok(success.auth)

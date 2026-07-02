@@ -18208,7 +18208,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "record_token_refresh_success(",
         "copilot_token_failure_kind(",
         "codex_oauth_token_failure_kind(",
-        "copilot_token_from_app_handle(",
+        "copilot_refresh_success_from_app_handle(",
         "codex_oauth_refresh_success_from_app_handle(",
         "copilot_api_endpoint_from_app_handle(",
         "copilot_live_models_from_app_handle(",
@@ -18286,11 +18286,15 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
     assert!(
         host_runtime_source.contains("CodexOAuthResolution::from_refresh_success(success)")
             && host_runtime_source.contains(".map(CodexOAuthResolution::from_snapshot)")
-            && host_runtime_source.contains("ManagedAccountTokenRefreshSuccessInput::copilot(")
+            && host_source.contains("ManagedAccountTokenRefreshSuccessInput::copilot(")
             && host_source.contains("ManagedAccountTokenRefreshSuccessInput::codex_oauth(")
+            && host_source.contains(
+                "Result<ManagedAccountTokenRefreshSuccessInput, CopilotAuthError>"
+            )
             && host_source.contains(
                 "Result<ManagedAccountTokenRefreshSuccessInput, CodexOAuthError>"
             )
+            && !host_source.contains("Result<String, CopilotAuthError>")
             && !host_runtime_source.contains("Ok((success.auth, success.codex_oauth_account_id))")
             && !host_source.contains("Result<(String, Option<String>), CodexOAuthError>")
             && !host_source.contains("Ok((token, resolved_account_id))")
@@ -18326,6 +18330,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "copilot_api_endpoint_from_app_handle",
         "copilot_live_models_from_app_handle",
         "copilot_model_vendor_from_app_handle",
+        "copilot_refresh_success_from_app_handle",
         "codex_oauth_refresh_success_from_app_handle",
     ] {
         assert!(
@@ -18340,7 +18345,8 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             "pub(crate) use crate::proxy::host::cc_switch::managed_account_runtime_source::{"
         ) && !adapter_source.contains(
             "impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource"
-        ) && !adapter_source.contains("fn copilot_token_from_app_handle(")
+        ) && !adapter_source.contains("fn copilot_refresh_success_from_app_handle(")
+            && !adapter_source.contains("fn copilot_token_from_app_handle(")
             && !adapter_source.contains("fn codex_oauth_token_from_app_handle("),
         "proxy_core_adapter should only use, not re-export or own, the managed-account Tauri runtime source"
     );

@@ -2014,6 +2014,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1420. Codex OAuth runtime token 解析结果已从裸 `(ProviderAuthInfo, Option<String>)` tuple 收敛为 `proxy-core::managed_account_auth::CodexOAuthResolution` 结构化契约：core runtime source trait、默认 CC Switch Tauri runtime source 和测试 fixture 都通过该结构传递 auth 与 resolved account id，host 成功/失败缓存路径分别调用 `CodexOAuthResolution::from_refresh_success` / `from_snapshot`，避免外部中转宿主猜测 tuple 字段语义。
 1421. managed-account token refresh 成功输入已收敛为 `ManagedAccountTokenRefreshSuccessInput`：Copilot 与 Codex OAuth 成功路径分别用 `copilot` / `codex_oauth` 构造器表达 token、resolved account id 和成功日志 label，`ManagedAccountTokenSnapshotStore::record_refresh_success` 不再接收散开的 token/account/label 参数，CC Switch host runtime source 只桥接 Tauri token 结果到 core 成功事实。
 1422. CC Switch Codex OAuth token helper 已从裸 `(token, resolved_account_id)` 返回值收敛为 `ManagedAccountTokenRefreshSuccessInput`：`codex_oauth_refresh_success_from_app_handle` 仍负责 Tauri `CodexOAuthState` token 获取和默认账号查询，但返回值直接是 core token refresh 成功输入，runtime source 调用点不再拆 tuple 后二次组装 core contract。
+1423. CC Switch Copilot token helper 已与 Codex OAuth 对齐，从裸 token 返回值收敛为 `ManagedAccountTokenRefreshSuccessInput`：`copilot_refresh_success_from_app_handle` 仍负责 Tauri `CopilotAuthState` token 获取，但返回值直接携带 core token refresh 成功输入，runtime source 调用点不再把 token 和 account label 散参拼回 core cache contract。
 
 ## 背景
 
