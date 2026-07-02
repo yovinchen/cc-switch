@@ -1,18 +1,23 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
 use serde_json::Value;
 use tauri::Manager;
+use tokio::sync::Mutex;
 
 use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::provider::Provider;
+use crate::proxy::codex_oauth_auth::CodexOAuthError;
+use crate::proxy::copilot_auth::CopilotAuthError;
 use crate::proxy::error::ProxyError;
 use crate::proxy::host::cc_switch::provider_projection::provider_managed_account_binding_context;
 use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy_core::api::auth::{
     managed_account_app_handle_unavailable_error_message,
     managed_account_app_handle_unavailable_log_message,
-    managed_account_token_failure_error_message, managed_account_token_failure_log_message,
+    managed_account_token_failure_error_message, managed_account_token_failure_fallback_decision,
+    managed_account_token_failure_fallback_log_message, managed_account_token_failure_log_message,
     managed_account_token_request_log_message, managed_account_token_success_log_message,
     resolve_copilot_dynamic_base_url_for_binding_with_runtime_source as resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source,
     resolve_copilot_live_model_for_binding_with_runtime_source as resolve_core_copilot_live_model_for_binding_with_runtime_source,
@@ -26,13 +31,88 @@ use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 
 pub(crate) type ManagedAccountRuntimeSourceRef = Arc<dyn ManagedAccountRuntimeSource + Send + Sync>;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ManagedAccountTokenCacheKey {
+    runtime: ManagedAccountAuthRuntime,
+    account_id: Option<String>,
+}
+
+impl ManagedAccountTokenCacheKey {
+    fn new(runtime: ManagedAccountAuthRuntime, account_id: Option<&str>) -> Self {
+        Self {
+            runtime,
+            account_id: account_id.map(str::to_string),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ManagedAccountTokenSnapshot {
+    auth: ProviderAuthInfo,
+    codex_oauth_account_id: Option<String>,
+    cached_at_ms: i64,
+}
+
 pub(crate) struct CcSwitchManagedAccountRuntimeSource {
     app_handle: Option<tauri::AppHandle>,
+    token_snapshots: Arc<Mutex<HashMap<ManagedAccountTokenCacheKey, ManagedAccountTokenSnapshot>>>,
 }
 
 impl CcSwitchManagedAccountRuntimeSource {
     fn new(app_handle: Option<tauri::AppHandle>) -> Self {
-        Self { app_handle }
+        Self {
+            app_handle,
+            token_snapshots: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    async fn record_token_snapshot(
+        &self,
+        key: ManagedAccountTokenCacheKey,
+        auth: ProviderAuthInfo,
+        codex_oauth_account_id: Option<String>,
+    ) {
+        let mut snapshots = self.token_snapshots.lock().await;
+        snapshots.insert(
+            key,
+            ManagedAccountTokenSnapshot {
+                auth,
+                codex_oauth_account_id,
+                cached_at_ms: chrono::Utc::now().timestamp_millis(),
+            },
+        );
+    }
+
+    async fn token_snapshot_for_retryable_failure(
+        &self,
+        key: &ManagedAccountTokenCacheKey,
+        account_id: Option<&str>,
+        error: &str,
+        is_retryable_failure: bool,
+    ) -> Option<ManagedAccountTokenSnapshot> {
+        let snapshot = {
+            let snapshots = self.token_snapshots.lock().await;
+            snapshots.get(key).cloned()
+        }?;
+        let decision = managed_account_token_failure_fallback_decision(
+            Some(snapshot.cached_at_ms),
+            chrono::Utc::now().timestamp_millis(),
+            is_retryable_failure,
+        );
+        if !decision.should_use_cached_token {
+            return None;
+        }
+
+        log::warn!(
+            "{}",
+            managed_account_token_failure_fallback_log_message(
+                key.runtime,
+                account_id,
+                decision.cached_token_age_ms.unwrap_or_default(),
+                error,
+            )
+        );
+        Some(snapshot)
     }
 }
 
@@ -320,7 +400,7 @@ pub(crate) async fn copilot_model_vendor_from_app_handle(
 async fn copilot_token_from_app_handle(
     app_handle: &tauri::AppHandle,
     account_id: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CopilotAuthError> {
     let copilot_state = app_handle.state::<CopilotAuthState>();
     let copilot_auth = copilot_state.0.read().await;
 
@@ -328,13 +408,12 @@ async fn copilot_token_from_app_handle(
         Some(id) => copilot_auth.get_valid_token_for_account(id).await,
         None => copilot_auth.get_valid_token().await,
     }
-    .map_err(|error| error.to_string())
 }
 
 async fn codex_oauth_token_from_app_handle(
     app_handle: &tauri::AppHandle,
     account_id: Option<&str>,
-) -> Result<(String, Option<String>), String> {
+) -> Result<(String, Option<String>), CodexOAuthError> {
     let codex_state = app_handle.state::<CodexOAuthState>();
     let codex_auth = codex_state.0.read().await;
 
@@ -351,8 +430,28 @@ async fn codex_oauth_token_from_app_handle(
             };
             Ok((token, resolved_account_id))
         }
-        Err(error) => Err(error.to_string()),
+        Err(error) => Err(error),
     }
+}
+
+fn copilot_token_failure_is_retryable(error: &CopilotAuthError) -> bool {
+    matches!(
+        error,
+        CopilotAuthError::CopilotTokenFetchFailed(_)
+            | CopilotAuthError::NetworkError(_)
+            | CopilotAuthError::ParseError(_)
+            | CopilotAuthError::IoError(_)
+    )
+}
+
+fn codex_oauth_token_failure_is_retryable(error: &CodexOAuthError) -> bool {
+    matches!(
+        error,
+        CodexOAuthError::TokenFetchFailed(_)
+            | CodexOAuthError::NetworkError(_)
+            | CodexOAuthError::ParseError(_)
+            | CodexOAuthError::IoError(_)
+    )
 }
 
 impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
@@ -379,15 +478,33 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                 managed_account_token_request_log_message(runtime, account_id)
             );
 
+            let cache_key = ManagedAccountTokenCacheKey::new(runtime, account_id);
             match copilot_token_from_app_handle(app_handle, account_id).await {
                 Ok(token) => {
+                    let auth = runtime.provider_auth_info(token);
+                    self.record_token_snapshot(cache_key, auth.clone(), None)
+                        .await;
                     log::debug!(
                         "{}",
                         managed_account_token_success_log_message(runtime, account_id)
                     );
-                    Ok(runtime.provider_auth_info(token))
+                    Ok(auth)
                 }
                 Err(error) => {
+                    let is_retryable_failure = copilot_token_failure_is_retryable(&error);
+                    let error = error.to_string();
+                    if let Some(snapshot) = self
+                        .token_snapshot_for_retryable_failure(
+                            &cache_key,
+                            account_id,
+                            &error,
+                            is_retryable_failure,
+                        )
+                        .await
+                    {
+                        return Ok(snapshot.auth);
+                    }
+
                     log::error!(
                         "{}",
                         managed_account_token_failure_log_message(runtime, account_id, &error)
@@ -421,8 +538,16 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                 managed_account_token_request_log_message(runtime, account_id.as_deref())
             );
 
+            let cache_key = ManagedAccountTokenCacheKey::new(runtime, account_id.as_deref());
             match codex_oauth_token_from_app_handle(app_handle, account_id.as_deref()).await {
                 Ok((token, resolved_account_id)) => {
+                    let auth = runtime.provider_auth_info(token);
+                    self.record_token_snapshot(
+                        cache_key,
+                        auth.clone(),
+                        resolved_account_id.clone(),
+                    )
+                    .await;
                     log::debug!(
                         "{}",
                         managed_account_token_success_log_message(
@@ -430,9 +555,23 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                             resolved_account_id.as_deref()
                         )
                     );
-                    Ok((runtime.provider_auth_info(token), resolved_account_id))
+                    Ok((auth, resolved_account_id))
                 }
                 Err(error) => {
+                    let is_retryable_failure = codex_oauth_token_failure_is_retryable(&error);
+                    let error = error.to_string();
+                    if let Some(snapshot) = self
+                        .token_snapshot_for_retryable_failure(
+                            &cache_key,
+                            account_id.as_deref(),
+                            &error,
+                            is_retryable_failure,
+                        )
+                        .await
+                    {
+                        return Ok((snapshot.auth, snapshot.codex_oauth_account_id));
+                    }
+
                     log::error!(
                         "{}",
                         managed_account_token_failure_log_message(
@@ -488,4 +627,78 @@ pub(crate) async fn resolve_managed_account_auth_from_runtime_source(
     runtime_source
         .resolve_auth_for_provider(auth_provider, auth)
         .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn token_snapshot_falls_back_for_recent_retryable_failure() {
+        let source = CcSwitchManagedAccountRuntimeSource::new(None);
+        let key = ManagedAccountTokenCacheKey::new(
+            ManagedAccountAuthRuntime::GitHubCopilot,
+            Some("acct"),
+        );
+        source
+            .record_token_snapshot(
+                key.clone(),
+                ManagedAccountAuthRuntime::GitHubCopilot.provider_auth_info("cached".to_string()),
+                None,
+            )
+            .await;
+
+        let snapshot = source
+            .token_snapshot_for_retryable_failure(&key, Some("acct"), "network timeout", true)
+            .await
+            .expect("recent retryable failure should use cached token");
+
+        assert_eq!(snapshot.auth.api_key, "cached");
+        assert_eq!(
+            snapshot.auth.strategy,
+            ManagedAccountAuthRuntime::GitHubCopilot.provider_auth_strategy()
+        );
+    }
+
+    #[tokio::test]
+    async fn token_snapshot_does_not_hide_non_retryable_or_stale_failures() {
+        let source = CcSwitchManagedAccountRuntimeSource::new(None);
+        let key =
+            ManagedAccountTokenCacheKey::new(ManagedAccountAuthRuntime::CodexOAuth, Some("acct"));
+        {
+            let mut snapshots = source.token_snapshots.lock().await;
+            snapshots.insert(
+                key.clone(),
+                ManagedAccountTokenSnapshot {
+                    auth: ManagedAccountAuthRuntime::CodexOAuth
+                        .provider_auth_info("cached".to_string()),
+                    codex_oauth_account_id: Some("acct".to_string()),
+                    cached_at_ms: chrono::Utc::now().timestamp_millis() - 30_001,
+                },
+            );
+        }
+
+        assert!(source
+            .token_snapshot_for_retryable_failure(&key, Some("acct"), "network timeout", true)
+            .await
+            .is_none());
+
+        source
+            .record_token_snapshot(
+                key.clone(),
+                ManagedAccountAuthRuntime::CodexOAuth.provider_auth_info("fresh".to_string()),
+                Some("acct".to_string()),
+            )
+            .await;
+
+        assert!(source
+            .token_snapshot_for_retryable_failure(
+                &key,
+                Some("acct"),
+                "refresh token revoked",
+                false
+            )
+            .await
+            .is_none());
+    }
 }

@@ -499,7 +499,7 @@ pub fn managed_auth_device_code_response_from_parts(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ManagedAccountAuthRuntime {
     GitHubCopilot,
     CodexOAuth,
@@ -1017,6 +1017,52 @@ pub fn managed_account_token_failure_error_message(
     format!("{} 认证失败: {error}", runtime.auth_error_label())
 }
 
+pub const MANAGED_ACCOUNT_TOKEN_FAILURE_FALLBACK_TTL_MS: i64 = 30_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ManagedAccountTokenFailureFallbackDecision {
+    pub should_use_cached_token: bool,
+    pub cached_token_age_ms: Option<i64>,
+}
+
+pub fn managed_account_token_failure_fallback_decision(
+    cached_at_ms: Option<i64>,
+    now_ms: i64,
+    is_retryable_failure: bool,
+) -> ManagedAccountTokenFailureFallbackDecision {
+    let cached_token_age_ms = cached_at_ms.map(|cached_at_ms| {
+        if now_ms >= cached_at_ms {
+            now_ms - cached_at_ms
+        } else {
+            0
+        }
+    });
+    let should_use_cached_token = is_retryable_failure
+        && cached_token_age_ms
+            .map(|age_ms| age_ms <= MANAGED_ACCOUNT_TOKEN_FAILURE_FALLBACK_TTL_MS)
+            .unwrap_or(false);
+
+    ManagedAccountTokenFailureFallbackDecision {
+        should_use_cached_token,
+        cached_token_age_ms,
+    }
+}
+
+pub fn managed_account_token_failure_fallback_log_message(
+    runtime: ManagedAccountAuthRuntime,
+    account_id: Option<&str>,
+    cached_token_age_ms: i64,
+    error: &str,
+) -> String {
+    format!(
+        "[{}] 获取 {} 失败，使用最近成功 token 快照回退 (account={}, ageMs={}): {error}",
+        runtime.log_label(),
+        runtime.token_label(),
+        account_id.unwrap_or("default"),
+        cached_token_age_ms
+    )
+}
+
 pub fn validate_managed_account_upstream_auth(
     url: &str,
     headers: &HeaderMap,
@@ -1079,7 +1125,8 @@ mod tests {
         GitHubDeviceCodeResponse, ManagedAuthAccountSortKey, ManagedAuthDefaultAccountCandidate,
         managed_account_app_handle_unavailable_error_message,
         managed_account_app_handle_unavailable_log_message,
-        managed_account_token_failure_error_message, managed_account_token_failure_log_message,
+        managed_account_token_failure_error_message, managed_account_token_failure_fallback_decision,
+        managed_account_token_failure_fallback_log_message, managed_account_token_failure_log_message,
         managed_account_token_request_log_message, managed_account_token_success_log_message,
         managed_account_auth_plan, managed_provider_auth_info_for_provider_kind,
         provider_kind_is_codex_oauth, provider_kind_is_github_copilot,
@@ -1095,8 +1142,9 @@ mod tests {
         CodexOAuthDevicePollStatusKind, CopilotOAuthPollErrorKind, ManagedAccountAuthError,
         ManagedAccountAuthPlan, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
         ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAccountRuntimeSource,
-        ProviderManagedAuthFacts, CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER,
-        GITHUB_COPILOT_AUTH_PLACEHOLDER, GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
+        ManagedAccountTokenFailureFallbackDecision, ProviderManagedAuthFacts,
+        CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PLACEHOLDER,
+        GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
     };
     use futures::{executor::block_on, future::BoxFuture};
     use http::{HeaderMap, HeaderValue, StatusCode};
@@ -1892,6 +1940,60 @@ mod tests {
                 "revoked",
             ),
             "Codex OAuth 认证失败: revoked"
+        );
+    }
+
+    #[test]
+    fn managed_account_token_failure_fallback_decision_uses_short_retryable_window() {
+        let now = 1_771_000_000_000;
+
+        assert_eq!(
+            managed_account_token_failure_fallback_decision(None, now, true),
+            ManagedAccountTokenFailureFallbackDecision {
+                should_use_cached_token: false,
+                cached_token_age_ms: None,
+            }
+        );
+        assert_eq!(
+            managed_account_token_failure_fallback_decision(Some(now - 1_000), now, false),
+            ManagedAccountTokenFailureFallbackDecision {
+                should_use_cached_token: false,
+                cached_token_age_ms: Some(1_000),
+            }
+        );
+        assert_eq!(
+            managed_account_token_failure_fallback_decision(Some(now - 30_000), now, true),
+            ManagedAccountTokenFailureFallbackDecision {
+                should_use_cached_token: true,
+                cached_token_age_ms: Some(30_000),
+            }
+        );
+        assert_eq!(
+            managed_account_token_failure_fallback_decision(Some(now - 30_001), now, true),
+            ManagedAccountTokenFailureFallbackDecision {
+                should_use_cached_token: false,
+                cached_token_age_ms: Some(30_001),
+            }
+        );
+        assert_eq!(
+            managed_account_token_failure_fallback_decision(Some(now + 5_000), now, true),
+            ManagedAccountTokenFailureFallbackDecision {
+                should_use_cached_token: true,
+                cached_token_age_ms: Some(0),
+            }
+        );
+    }
+
+    #[test]
+    fn managed_account_token_failure_fallback_message_identifies_snapshot_age() {
+        assert_eq!(
+            managed_account_token_failure_fallback_log_message(
+                ManagedAccountAuthRuntime::GitHubCopilot,
+                Some("acct-1"),
+                1_500,
+                "network timeout",
+            ),
+            "[Copilot] 获取 Copilot token 失败，使用最近成功 token 快照回退 (account=acct-1, ageMs=1500): network timeout"
         );
     }
 
