@@ -7,12 +7,13 @@ use tauri::Manager;
 use tokio::sync::Mutex;
 
 use crate::commands::{CodexOAuthState, CopilotAuthState};
+#[cfg(test)]
 use crate::provider::Provider;
 use crate::proxy::codex_oauth_auth::CodexOAuthError;
 use crate::proxy::copilot_auth::CopilotAuthError;
 use crate::proxy::error::ProxyError;
+#[cfg(test)]
 use crate::proxy::host::cc_switch::provider_projection::provider_managed_account_binding_context;
-use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy_core::api::auth::{
     managed_account_app_handle_unavailable_error_message,
     managed_account_app_handle_unavailable_log_message,
@@ -22,7 +23,7 @@ use crate::proxy_core::api::auth::{
     resolve_copilot_live_model_for_binding_with_runtime_source as resolve_core_copilot_live_model_for_binding_with_runtime_source,
     resolve_copilot_model_vendor_for_binding_with_runtime_source as resolve_core_copilot_model_vendor_for_binding_with_runtime_source,
     resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
-    ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
+    ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ManagedAccountBindingInput,
     ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagedAccountTokenCacheKey,
     ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenSnapshot, ProviderAuthInfo,
 };
@@ -31,49 +32,69 @@ use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 
 pub(crate) type ManagedAccountRuntimeSourceRef = Arc<dyn ManagedAccountRuntimeSource + Send + Sync>;
 
-pub(crate) struct ManagedAccountAuthForProviderInput<'a> {
-    pub(crate) auth_provider: &'a Provider,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ManagedAccountRuntimeBindingFacts<'a> {
+    pub(crate) binding: Option<ManagedAccountBindingInput<'a>>,
+    pub(crate) legacy_github_copilot_account_id: Option<&'a str>,
+}
+
+impl<'a> ManagedAccountRuntimeBindingFacts<'a> {
+    pub(crate) fn new(
+        binding: Option<ManagedAccountBindingInput<'a>>,
+        legacy_github_copilot_account_id: Option<&'a str>,
+    ) -> Self {
+        Self {
+            binding,
+            legacy_github_copilot_account_id,
+        }
+    }
+}
+
+pub(crate) struct ManagedAccountAuthForBindingInput<'a> {
+    pub(crate) binding_facts: ManagedAccountRuntimeBindingFacts<'a>,
     pub(crate) auth: ProviderAuthInfo,
 }
 
-pub(crate) struct ManagedAccountCopilotDynamicBaseUrlInput<'a> {
-    pub(crate) auth_provider: &'a Provider,
+pub(crate) struct ManagedAccountCopilotDynamicBaseUrlForBindingInput<'a> {
+    pub(crate) binding_facts: ManagedAccountRuntimeBindingFacts<'a>,
     pub(crate) current_base_url: &'a str,
     pub(crate) is_copilot: bool,
     pub(crate) is_full_url: bool,
 }
 
-pub(crate) struct ManagedAccountApplyCopilotDynamicBaseUrlInput<'a> {
-    pub(crate) auth_provider: &'a Provider,
+pub(crate) struct ManagedAccountApplyCopilotDynamicBaseUrlForBindingInput<'a> {
+    pub(crate) binding_facts: ManagedAccountRuntimeBindingFacts<'a>,
     pub(crate) base_url: &'a mut String,
     pub(crate) is_copilot: bool,
     pub(crate) is_full_url: bool,
 }
 
-pub(crate) struct ManagedAccountCopilotLiveModelInput<'a> {
-    pub(crate) auth_provider: &'a Provider,
+pub(crate) struct ManagedAccountCopilotLiveModelForBindingInput<'a> {
+    pub(crate) binding_facts: ManagedAccountRuntimeBindingFacts<'a>,
     pub(crate) model_id: &'a str,
 }
 
-pub(crate) struct ManagedAccountApplyCopilotLiveModelInput<'a> {
-    pub(crate) auth_provider: &'a Provider,
+pub(crate) struct ManagedAccountApplyCopilotLiveModelForBindingInput<'a> {
+    pub(crate) binding_facts: ManagedAccountRuntimeBindingFacts<'a>,
     pub(crate) body: &'a mut Value,
 }
 
-pub(crate) struct ManagedAccountAdapterCopilotLiveModelInput<'a> {
-    pub(crate) auth_provider: &'a Provider,
+pub(crate) struct ManagedAccountAdapterCopilotLiveModelForBindingInput<'a> {
+    pub(crate) binding_facts: ManagedAccountRuntimeBindingFacts<'a>,
     pub(crate) body: &'a mut Value,
     pub(crate) is_copilot: bool,
 }
 
-pub(crate) struct ManagedAccountClaudeApiFormatInput<'a> {
-    pub(crate) auth_provider: &'a Provider,
+pub(crate) struct ManagedAccountClaudeApiFormatForBindingInput<'a> {
+    pub(crate) binding_facts: ManagedAccountRuntimeBindingFacts<'a>,
+    pub(crate) provider_api_format: &'a str,
     pub(crate) body: &'a Value,
     pub(crate) is_copilot: bool,
 }
 
-pub(crate) struct ManagedAccountAdapterClaudeApiFormatInput<'a> {
-    pub(crate) auth_provider: &'a Provider,
+pub(crate) struct ManagedAccountAdapterClaudeApiFormatForBindingInput<'a> {
+    pub(crate) binding_facts: ManagedAccountRuntimeBindingFacts<'a>,
+    pub(crate) provider_api_format: &'a str,
     pub(crate) body: &'a Value,
     pub(crate) is_copilot: bool,
     pub(crate) is_claude_adapter: bool,
@@ -142,46 +163,40 @@ pub(crate) fn default_managed_account_runtime_source() -> ManagedAccountRuntimeS
 }
 
 fn forwarder_claude_api_format_for_provider(
-    provider: &Provider,
+    provider_api_format: &str,
     is_copilot: bool,
     copilot_model_vendor: Option<&str>,
 ) -> String {
-    resolve_claude_forward_api_format(
-        claude_provider_api_format(provider),
-        is_copilot,
-        copilot_model_vendor,
-    )
+    resolve_claude_forward_api_format(provider_api_format, is_copilot, copilot_model_vendor)
 }
 
 pub(crate) trait ManagedAccountRuntimeSource:
     CoreManagedAccountRuntimeSource<Error = ProxyError> + Send + Sync
 {
-    fn resolve_auth_for_provider<'a>(
+    fn resolve_auth_for_binding<'a>(
         &'a self,
-        input: ManagedAccountAuthForProviderInput<'a>,
+        input: ManagedAccountAuthForBindingInput<'a>,
     ) -> BoxFuture<'a, Result<ManagedAccountAuthResolution, ProxyError>> {
         Box::pin(async move {
-            let binding_context = provider_managed_account_binding_context(input.auth_provider);
             resolve_core_managed_account_auth_for_binding_with_runtime_source(
                 self,
                 input.auth,
-                binding_context.binding,
-                binding_context.legacy_github_copilot_account_id,
+                input.binding_facts.binding,
+                input.binding_facts.legacy_github_copilot_account_id,
             )
             .await
         })
     }
 
-    fn resolve_copilot_dynamic_base_url_for_provider<'a>(
+    fn resolve_copilot_dynamic_base_url_for_binding<'a>(
         &'a self,
-        input: ManagedAccountCopilotDynamicBaseUrlInput<'a>,
+        input: ManagedAccountCopilotDynamicBaseUrlForBindingInput<'a>,
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
-            let binding_context = provider_managed_account_binding_context(input.auth_provider);
             resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source(
                 self,
-                binding_context.binding,
-                binding_context.legacy_github_copilot_account_id,
+                input.binding_facts.binding,
+                input.binding_facts.legacy_github_copilot_account_id,
                 input.current_base_url,
                 input.is_copilot,
                 input.is_full_url,
@@ -190,15 +205,15 @@ pub(crate) trait ManagedAccountRuntimeSource:
         })
     }
 
-    fn apply_copilot_dynamic_base_url_for_provider<'a>(
+    fn apply_copilot_dynamic_base_url_for_binding<'a>(
         &'a self,
-        input: ManagedAccountApplyCopilotDynamicBaseUrlInput<'a>,
+        input: ManagedAccountApplyCopilotDynamicBaseUrlForBindingInput<'a>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             let Some(next_base_url) = self
-                .resolve_copilot_dynamic_base_url_for_provider(
-                    ManagedAccountCopilotDynamicBaseUrlInput {
-                        auth_provider: input.auth_provider,
+                .resolve_copilot_dynamic_base_url_for_binding(
+                    ManagedAccountCopilotDynamicBaseUrlForBindingInput {
+                        binding_facts: input.binding_facts,
                         current_base_url: input.base_url,
                         is_copilot: input.is_copilot,
                         is_full_url: input.is_full_url,
@@ -218,25 +233,24 @@ pub(crate) trait ManagedAccountRuntimeSource:
         })
     }
 
-    fn resolve_copilot_live_model_for_provider<'a>(
+    fn resolve_copilot_live_model_for_binding<'a>(
         &'a self,
-        input: ManagedAccountCopilotLiveModelInput<'a>,
+        input: ManagedAccountCopilotLiveModelForBindingInput<'a>,
     ) -> BoxFuture<'a, Result<Option<String>, String>> {
         Box::pin(async move {
-            let binding_context = provider_managed_account_binding_context(input.auth_provider);
             resolve_core_copilot_live_model_for_binding_with_runtime_source(
                 self,
-                binding_context.binding,
-                binding_context.legacy_github_copilot_account_id,
+                input.binding_facts.binding,
+                input.binding_facts.legacy_github_copilot_account_id,
                 input.model_id,
             )
             .await
         })
     }
 
-    fn apply_copilot_live_model_for_provider<'a>(
+    fn apply_copilot_live_model_for_binding<'a>(
         &'a self,
-        input: ManagedAccountApplyCopilotLiveModelInput<'a>,
+        input: ManagedAccountApplyCopilotLiveModelForBindingInput<'a>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             let Some(model_id) = input.body.get("model").and_then(Value::as_str) else {
@@ -245,10 +259,12 @@ pub(crate) trait ManagedAccountRuntimeSource:
             let model_id = model_id.to_string();
 
             let resolved = match self
-                .resolve_copilot_live_model_for_provider(ManagedAccountCopilotLiveModelInput {
-                    auth_provider: input.auth_provider,
-                    model_id: &model_id,
-                })
+                .resolve_copilot_live_model_for_binding(
+                    ManagedAccountCopilotLiveModelForBindingInput {
+                        binding_facts: input.binding_facts,
+                        model_id: &model_id,
+                    },
+                )
                 .await
             {
                 Ok(Some(resolved)) => resolved,
@@ -264,35 +280,36 @@ pub(crate) trait ManagedAccountRuntimeSource:
         })
     }
 
-    fn apply_copilot_live_model_for_adapter<'a>(
+    fn apply_copilot_live_model_for_binding_adapter<'a>(
         &'a self,
-        input: ManagedAccountAdapterCopilotLiveModelInput<'a>,
+        input: ManagedAccountAdapterCopilotLiveModelForBindingInput<'a>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             if !input.is_copilot {
                 return;
             }
 
-            self.apply_copilot_live_model_for_provider(ManagedAccountApplyCopilotLiveModelInput {
-                auth_provider: input.auth_provider,
-                body: input.body,
-            })
+            self.apply_copilot_live_model_for_binding(
+                ManagedAccountApplyCopilotLiveModelForBindingInput {
+                    binding_facts: input.binding_facts,
+                    body: input.body,
+                },
+            )
             .await;
         })
     }
 
-    fn resolve_claude_api_format_for_provider<'a>(
+    fn resolve_claude_api_format_for_binding<'a>(
         &'a self,
-        input: ManagedAccountClaudeApiFormatInput<'a>,
+        input: ManagedAccountClaudeApiFormatForBindingInput<'a>,
     ) -> BoxFuture<'a, String> {
         Box::pin(async move {
             let model = input.body.get("model").and_then(Value::as_str);
             let copilot_model_vendor = if let Some(model_id) = model {
-                let binding_context = provider_managed_account_binding_context(input.auth_provider);
                 resolve_core_copilot_model_vendor_for_binding_with_runtime_source(
                     self,
-                    binding_context.binding,
-                    binding_context.legacy_github_copilot_account_id,
+                    input.binding_facts.binding,
+                    input.binding_facts.legacy_github_copilot_account_id,
                     model_id,
                     input.is_copilot,
                 )
@@ -302,16 +319,16 @@ pub(crate) trait ManagedAccountRuntimeSource:
             };
 
             forwarder_claude_api_format_for_provider(
-                input.auth_provider,
+                input.provider_api_format,
                 input.is_copilot,
                 copilot_model_vendor.as_deref(),
             )
         })
     }
 
-    fn resolve_claude_api_format_for_adapter<'a>(
+    fn resolve_claude_api_format_for_binding_adapter<'a>(
         &'a self,
-        input: ManagedAccountAdapterClaudeApiFormatInput<'a>,
+        input: ManagedAccountAdapterClaudeApiFormatForBindingInput<'a>,
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
             if !input.is_claude_adapter {
@@ -319,11 +336,14 @@ pub(crate) trait ManagedAccountRuntimeSource:
             }
 
             Some(
-                self.resolve_claude_api_format_for_provider(ManagedAccountClaudeApiFormatInput {
-                    auth_provider: input.auth_provider,
-                    body: input.body,
-                    is_copilot: input.is_copilot,
-                })
+                self.resolve_claude_api_format_for_binding(
+                    ManagedAccountClaudeApiFormatForBindingInput {
+                        binding_facts: input.binding_facts,
+                        provider_api_format: input.provider_api_format,
+                        body: input.body,
+                        is_copilot: input.is_copilot,
+                    },
+                )
                 .await,
             )
         })
@@ -634,9 +654,13 @@ pub(crate) async fn resolve_managed_account_auth_from_runtime_source(
     auth_provider: &Provider,
     auth: ProviderAuthInfo,
 ) -> Result<ManagedAccountAuthResolution, ProxyError> {
+    let binding_context = provider_managed_account_binding_context(auth_provider);
     runtime_source
-        .resolve_auth_for_provider(ManagedAccountAuthForProviderInput {
-            auth_provider,
+        .resolve_auth_for_binding(ManagedAccountAuthForBindingInput {
+            binding_facts: ManagedAccountRuntimeBindingFacts::new(
+                binding_context.binding,
+                binding_context.legacy_github_copilot_account_id,
+            ),
             auth,
         })
         .await

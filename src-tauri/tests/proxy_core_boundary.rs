@@ -18166,10 +18166,11 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && host_source.contains("managed_account_token_failure_error_message")
             && host_source.contains("resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source")
             && host_source.contains("ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource")
-            && host_source.contains("ManagedAccountAuthForProviderInput")
-            && host_source.contains("ManagedAccountApplyCopilotDynamicBaseUrlInput")
-            && host_source.contains("ManagedAccountAdapterCopilotLiveModelInput")
-            && host_source.contains("ManagedAccountAdapterClaudeApiFormatInput")
+            && host_source.contains("ManagedAccountRuntimeBindingFacts")
+            && host_source.contains("ManagedAccountAuthForBindingInput")
+            && host_source.contains("ManagedAccountApplyCopilotDynamicBaseUrlForBindingInput")
+            && host_source.contains("ManagedAccountAdapterCopilotLiveModelForBindingInput")
+            && host_source.contains("ManagedAccountAdapterClaudeApiFormatForBindingInput")
             && host_source.contains("ManagedAccountTokenCacheKey")
             && host_source.contains("ManagedAccountTokenRefreshFailureKind")
             && host_source.contains("ManagedAccountTokenSnapshot")
@@ -18264,29 +18265,31 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/managed_account_runtime_source.rs");
     let source = fs::read_to_string(&path).expect("read managed_account_runtime_source.rs");
-    assert!(
-        source.contains(
-            "use crate::proxy::host::cc_switch::provider_projection::provider_managed_account_binding_context;"
-        ),
-        "managed account runtime source should import ProviderMeta binding projection from host provider_projection"
-    );
+    let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/forwarder_auth_source.rs");
+    let auth_source = fs::read_to_string(&auth_source_path).expect("read forwarder_auth_source.rs");
     let method = function_slice(
         &source,
-        "fn resolve_auth_for_provider<'a>",
-        "fn resolve_copilot_dynamic_base_url_for_provider<'a>",
+        "fn resolve_auth_for_binding<'a>",
+        "fn resolve_copilot_dynamic_base_url_for_binding<'a>",
     );
 
     assert!(
         method.contains("resolve_core_managed_account_auth_for_binding_with_runtime_source("),
-        "adapter managed-auth provider extension must delegate runtime-token resolution to proxy-core"
+        "managed-auth binding extension must delegate runtime-token resolution to proxy-core"
     );
     assert!(
-        method.contains("provider_managed_account_binding_context")
-            && method.contains("input.auth_provider")
-            && method.contains("input.auth")
-            && method.contains("binding_context.binding")
-            && method.contains("binding_context.legacy_github_copilot_account_id"),
-        "adapter managed-auth provider extension must consume structured CC Switch ProviderMeta binding context"
+        method.contains("input.auth")
+            && method.contains("input.binding_facts.binding")
+            && method.contains("input.binding_facts.legacy_github_copilot_account_id")
+            && !method.contains("provider_managed_account_binding_context")
+            && !method.contains("input.auth_provider"),
+        "managed-account runtime source must consume already-projected binding facts instead of reading CC Switch Provider"
+    );
+    assert!(
+        auth_source.contains("provider_managed_account_binding_context(auth_provider)")
+            && auth_source.contains(".resolve_auth_for_binding(ManagedAccountAuthForBindingInput {")
+            && auth_source.contains("ManagedAccountRuntimeBindingFacts::new("),
+        "ForwarderAuthSource should project CC Switch Provider metadata before calling the managed-account runtime source"
     );
 
     let mut violations = Vec::new();
@@ -18295,7 +18298,7 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
         for marker in FORBIDDEN_ADAPTER_MANAGED_AUTH_PLAN_RUNTIME_CALL_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "host managed_account_runtime_source.rs ManagedAccountRuntimeSource::resolve_auth_for_provider:{} contains direct runtime call marker `{}`",
+                    "host managed_account_runtime_source.rs ManagedAccountRuntimeSource::resolve_auth_for_binding:{} contains direct runtime call marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -18305,7 +18308,7 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
 
     assert!(
         violations.is_empty(),
-        "host managed-auth provider extension must call core runtime-source orchestration instead of host auth functions directly:\n{}",
+        "host managed-auth binding extension must call core runtime-source orchestration instead of host auth functions directly:\n{}",
         violations.join("\n")
     );
 }
@@ -18347,7 +18350,7 @@ fn production_adapter_managed_auth_tests_use_runtime_source_surface() {
 
     assert!(
         test_surface.contains("runtime_source: &(dyn ManagedAccountRuntimeSource + Send + Sync)")
-            && test_surface.contains(".resolve_auth_for_provider("),
+            && test_surface.contains(".resolve_auth_for_binding("),
         "managed-auth host test helper must keep using ManagedAccountRuntimeSource directly"
     );
     assert!(
@@ -18570,17 +18573,18 @@ fn production_forwarder_delegates_copilot_dynamic_base_url_to_runtime_source() {
         fs::read_to_string(&source_path).expect("read managed_account_runtime_source.rs");
 
     assert!(
-        runtime_source.contains("apply_copilot_dynamic_base_url_for_provider"),
-        "ManagedAccountRuntimeSource must expose provider-aware Copilot dynamic base URL mutation"
+        runtime_source.contains("apply_copilot_dynamic_base_url_for_binding"),
+        "ManagedAccountRuntimeSource must expose binding-aware Copilot dynamic base URL mutation"
     );
     assert!(
-        runtime_source.contains("pub(crate) struct ManagedAccountCopilotDynamicBaseUrlInput<'a>")
+        runtime_source
+            .contains("pub(crate) struct ManagedAccountCopilotDynamicBaseUrlForBindingInput<'a>")
             && runtime_source
-                .contains("pub(crate) struct ManagedAccountApplyCopilotDynamicBaseUrlInput<'a>")
-            && runtime_source.contains("input.auth_provider")
+                .contains("pub(crate) struct ManagedAccountApplyCopilotDynamicBaseUrlForBindingInput<'a>")
+            && runtime_source.contains("input.binding_facts")
             && runtime_source.contains("input.current_base_url")
             && runtime_source.contains("input.is_full_url"),
-        "ManagedAccountRuntimeSource must consume Copilot dynamic base URL facts as structured inputs"
+        "ManagedAccountRuntimeSource must consume Copilot dynamic base URL facts as structured binding inputs"
     );
     assert!(
         runtime_source.contains(
@@ -18631,17 +18635,18 @@ fn production_forwarder_delegates_claude_api_format_to_runtime_source() {
         fs::read_to_string(&source_path).expect("read managed_account_runtime_source.rs");
 
     assert!(
-        runtime_source.contains("resolve_claude_api_format_for_adapter"),
+        runtime_source.contains("resolve_claude_api_format_for_binding_adapter"),
         "ManagedAccountRuntimeSource must expose adapter-gated Claude API format resolution"
     );
     assert!(
-        runtime_source.contains("pub(crate) struct ManagedAccountClaudeApiFormatInput<'a>")
+        runtime_source.contains("pub(crate) struct ManagedAccountClaudeApiFormatForBindingInput<'a>")
             && runtime_source
-                .contains("pub(crate) struct ManagedAccountAdapterClaudeApiFormatInput<'a>")
-            && runtime_source.contains("input.auth_provider")
+                .contains("pub(crate) struct ManagedAccountAdapterClaudeApiFormatForBindingInput<'a>")
+            && runtime_source.contains("input.binding_facts")
+            && runtime_source.contains("input.provider_api_format")
             && runtime_source.contains("input.body")
             && runtime_source.contains("input.is_claude_adapter"),
-        "ManagedAccountRuntimeSource must consume Claude API format facts as structured inputs"
+        "ManagedAccountRuntimeSource must consume Claude API format facts as structured binding inputs"
     );
     assert!(
         runtime_source.contains("resolve_core_copilot_model_vendor_for_binding_with_runtime_source("),
@@ -19140,19 +19145,19 @@ fn production_forwarder_delegates_copilot_live_model_resolution_to_runtime_sourc
         fs::read_to_string(&source_path).expect("read managed_account_runtime_source.rs");
 
     assert!(
-        runtime_source.contains("apply_copilot_live_model_for_adapter"),
+        runtime_source.contains("apply_copilot_live_model_for_binding_adapter"),
         "ManagedAccountRuntimeSource must expose adapter-gated Copilot live model body resolution"
     );
     assert!(
-        runtime_source.contains("pub(crate) struct ManagedAccountCopilotLiveModelInput<'a>")
+        runtime_source.contains("pub(crate) struct ManagedAccountCopilotLiveModelForBindingInput<'a>")
             && runtime_source
-                .contains("pub(crate) struct ManagedAccountApplyCopilotLiveModelInput<'a>")
+                .contains("pub(crate) struct ManagedAccountApplyCopilotLiveModelForBindingInput<'a>")
             && runtime_source
-                .contains("pub(crate) struct ManagedAccountAdapterCopilotLiveModelInput<'a>")
-            && runtime_source.contains("input.auth_provider")
+                .contains("pub(crate) struct ManagedAccountAdapterCopilotLiveModelForBindingInput<'a>")
+            && runtime_source.contains("input.binding_facts")
             && runtime_source.contains("input.body")
             && runtime_source.contains("input.is_copilot"),
-        "ManagedAccountRuntimeSource must consume Copilot live model facts as structured inputs"
+        "ManagedAccountRuntimeSource must consume Copilot live model facts as structured binding inputs"
     );
     assert!(
         runtime_source.contains("resolve_core_copilot_live_model_for_binding_with_runtime_source("),
@@ -19240,11 +19245,13 @@ fn production_forwarder_uses_request_source_for_managed_account_runtime() {
         );
     }
     assert!(
-        request_source_impl_slice.contains("ManagedAccountAdapterCopilotLiveModelInput {")
+        request_source_impl_slice.contains("provider_managed_account_binding_context(input.provider)")
+            && request_source_impl_slice.contains("ManagedAccountAdapterCopilotLiveModelForBindingInput {")
             && request_source_impl_slice
-                .contains("ManagedAccountApplyCopilotDynamicBaseUrlInput {")
-            && request_source_impl_slice.contains("ManagedAccountAdapterClaudeApiFormatInput {"),
-        "ForwarderRequestSource must pass managed-account runtime facts as structured inputs"
+                .contains("ManagedAccountApplyCopilotDynamicBaseUrlForBindingInput {")
+            && request_source_impl_slice.contains("ManagedAccountAdapterClaudeApiFormatForBindingInput {")
+            && request_source_impl_slice.contains("ManagedAccountRuntimeBindingFacts::new("),
+        "ForwarderRequestSource must project provider binding and pass managed-account runtime facts as structured inputs"
     );
 }
 
@@ -19312,10 +19319,10 @@ fn production_forwarder_uses_auth_source_resource() {
         "};",
     );
     assert!(
-        auth_source.contains(
-            "use crate::proxy::host::cc_switch::provider_projection::proxy_provider_to_core_spec;"
-        ),
-        "default ForwarderAuthSource should import provider projection from host provider_projection"
+        auth_source.contains("use crate::proxy::host::cc_switch::provider_projection::{")
+            && auth_source.contains("provider_managed_account_binding_context")
+            && auth_source.contains("proxy_provider_to_core_spec"),
+        "default ForwarderAuthSource should import provider projection and binding projection from host provider_projection"
     );
     for marker in [
         "pub(crate) type ForwarderAuthSourceRef",
