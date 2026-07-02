@@ -2270,6 +2270,266 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn proxy_server_runtime_smoke_cools_failed_wildcard_channel_key() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "runtime-key-cooldown-provider".to_string(),
+            "Runtime Key Cooldown Provider".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://unused-provider.example.com/v1",
+                    "ANTHROPIC_API_KEY": "provider-secret"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+        db.set_current_provider("claude", "runtime-key-cooldown-provider")
+            .unwrap();
+        let mut proxy_config = db.get_proxy_config_for_app("claude").await.unwrap();
+        proxy_config.enabled = true;
+        proxy_config.auto_failover_enabled = true;
+        proxy_config.max_retries = 0;
+        db.update_proxy_config_for_app(proxy_config).await.unwrap();
+
+        let (upstream_base_url, upstream_handle) =
+            start_forwarding_upstream_server_with_response_sequence(vec![
+                (
+                    "503 Service Unavailable",
+                    json!({
+                        "error": {
+                            "type": "overloaded_error",
+                            "message": "selected key failed"
+                        }
+                    }),
+                ),
+                (
+                    "200 OK",
+                    json!({
+                        "id": "msg-runtime-key-cooldown",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "runtime-key-cooldown-upstream",
+                        "content": [{
+                            "type": "text",
+                            "text": "ok"
+                        }],
+                        "stop_reason": "end_turn",
+                        "stop_sequence": null,
+                        "usage": {
+                            "input_tokens": 13,
+                            "output_tokens": 17
+                        }
+                    }),
+                ),
+            ])
+            .await;
+
+        let config = ProxyConfig {
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 0,
+            ..ProxyConfig::default()
+        };
+        let server = ProxyServer::new(config, db, None);
+        let info = server.start().await.expect("start proxy server");
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("reqwest client");
+        let base_url = format!("http://127.0.0.1:{}", info.port);
+
+        let smoke = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let channel_response = client
+                .post(format!("{base_url}/proxy/v1/channels"))
+                .json(&json!({
+                    "id": "runtime-key-cooldown-channel",
+                    "providerId": "runtime-key-cooldown-provider",
+                    "appType": "claude",
+                    "name": "Runtime Key Cooldown Relay",
+                    "baseUrl": upstream_base_url,
+                    "interfaceKind": "anthropic_messages",
+                    "authProfileRef": "channel-key:*",
+                    "priority": 100,
+                    "healthPolicy": {
+                        "channelKeySelectionStrategy": "priority",
+                        "keyFailureCooldownMs": 60000
+                    },
+                    "models": [{
+                        "publicModel": "runtime-key-cooldown-public",
+                        "upstreamModel": "runtime-key-cooldown-upstream"
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if channel_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected channel create status: {}",
+                    channel_response.status()
+                ));
+            }
+
+            for (key_ref, key_value, priority) in [
+                ("primary", "sk-runtime-key-cooldown-primary", 100),
+                ("backup", "sk-runtime-key-cooldown-backup", 10),
+            ] {
+                let key_response = client
+                    .put(format!(
+                        "{base_url}/proxy/v1/channels/runtime-key-cooldown-channel/keys/{key_ref}"
+                    ))
+                    .json(&json!({
+                        "keyValue": key_value,
+                        "status": "enabled",
+                        "priority": priority,
+                        "weight": 100
+                    }))
+                    .send()
+                    .await
+                    .map_err(|error| error.to_string())?;
+                if key_response.status() != StatusCode::OK {
+                    return Err(format!(
+                        "unexpected channel key status for {key_ref}: {}",
+                        key_response.status()
+                    ));
+                }
+            }
+
+            let first_response = client
+                .post(format!("{base_url}/v1/messages"))
+                .json(&json!({
+                    "model": "runtime-key-cooldown-public",
+                    "max_tokens": 16,
+                    "messages": [{
+                        "role": "user",
+                        "content": "cool down this key"
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if first_response.status() != StatusCode::BAD_GATEWAY {
+                return Err(format!(
+                    "unexpected first cooldown response status: {}",
+                    first_response.status()
+                ));
+            }
+            let _ = first_response
+                .bytes()
+                .await
+                .map_err(|error| error.to_string())?;
+
+            let second_response = client
+                .post(format!("{base_url}/v1/messages"))
+                .json(&json!({
+                    "model": "runtime-key-cooldown-public",
+                    "max_tokens": 16,
+                    "messages": [{
+                        "role": "user",
+                        "content": "retry after cooldown marker"
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if second_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected second cooldown response status: {}",
+                    second_response.status()
+                ));
+            }
+            let body = second_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if body["id"] != "msg-runtime-key-cooldown"
+                || body["model"] != "runtime-key-cooldown-upstream"
+                || body["usage"]["input_tokens"] != 13
+                || body["usage"]["output_tokens"] != 17
+            {
+                return Err(format!("unexpected cooldown response body: {body}"));
+            }
+
+            Ok::<(), String>(())
+        })
+        .await
+        .map_err(|_| "timed out waiting for runtime channel key cooldown smoke".to_string())
+        .and_then(|result| result);
+        let stop = server.stop().await;
+
+        assert!(stop.is_ok(), "stop proxy server: {stop:?}");
+        smoke.expect("runtime channel key cooldown smoke");
+        let captures = tokio::time::timeout(std::time::Duration::from_secs(1), upstream_handle)
+            .await
+            .expect("upstream server should receive cooldown sequence")
+            .expect("upstream server task")
+            .expect("capture cooldown upstream requests");
+        assert_eq!(captures.len(), 2);
+        let first_capture = &captures[0];
+        let second_capture = &captures[1];
+
+        assert!(
+            first_capture
+                .head
+                .to_ascii_lowercase()
+                .contains("x-api-key: sk-runtime-key-cooldown-primary"),
+            "first request did not use primary wildcard key: {}",
+            first_capture.head
+        );
+        assert!(
+            second_capture
+                .head
+                .to_ascii_lowercase()
+                .contains("x-api-key: sk-runtime-key-cooldown-backup"),
+            "second request did not avoid failed primary key: {}",
+            second_capture.head
+        );
+        assert!(
+            !second_capture.head.contains("provider-secret"),
+            "provider fallback secret leaked into cooldown retry request: {}",
+            second_capture.head
+        );
+        assert_eq!(
+            first_capture.body["model"], "runtime-key-cooldown-upstream",
+            "first request did not apply channel model override"
+        );
+        assert_eq!(
+            second_capture.body["model"], "runtime-key-cooldown-upstream",
+            "second request did not apply channel model override"
+        );
+
+        let primary_key = server
+            .state
+            .db
+            .get_proxy_channel_key("runtime-key-cooldown-channel", "primary")
+            .expect("read primary key")
+            .expect("primary key");
+        let backup_key = server
+            .state
+            .db
+            .get_proxy_channel_key("runtime-key-cooldown-channel", "backup")
+            .expect("read backup key")
+            .expect("backup key");
+        assert!(
+            primary_key.last_failure_at.is_some(),
+            "failed primary key should record last_failure_at"
+        );
+        assert_eq!(backup_key.last_failure_at, None);
+
+        let current_route = server.state.current_providers.read().await;
+        let active = current_route
+            .get("claude")
+            .expect("cooldown success should set active route target");
+        assert_eq!(
+            active.channel_id.as_deref(),
+            Some("runtime-key-cooldown-channel")
+        );
+        assert_eq!(
+            active.upstream_model.as_deref(),
+            Some("runtime-key-cooldown-upstream")
+        );
+    }
+
+    #[tokio::test]
     async fn proxy_server_runtime_smoke_materializes_channel_migration() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let provider = Provider::with_id(
@@ -3369,64 +3629,107 @@ mod tests {
             .expect("forwarding upstream server local addr");
         let handle = tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.map_err(|error| error.to_string())?;
-            let mut bytes = Vec::new();
-            let header_end = loop {
-                let mut chunk = [0_u8; 1024];
-                let read = socket
-                    .read(&mut chunk)
-                    .await
-                    .map_err(|error| error.to_string())?;
-                if read == 0 {
-                    return Err("upstream connection closed before headers".to_string());
-                }
-                bytes.extend_from_slice(&chunk[..read]);
-                if let Some(index) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
-                    break index + 4;
-                }
-                if bytes.len() > 32 * 1024 {
-                    return Err("upstream request headers too large".to_string());
-                }
-            };
-
-            let head = String::from_utf8_lossy(&bytes[..header_end]).to_string();
-            let content_length = head
-                .lines()
-                .find_map(|line| {
-                    let (name, value) = line.split_once(':')?;
-                    name.eq_ignore_ascii_case("content-length")
-                        .then(|| value.trim().parse::<usize>().ok())
-                        .flatten()
-                })
-                .unwrap_or(0);
-            while bytes.len() < header_end + content_length {
-                let mut chunk = [0_u8; 1024];
-                let read = socket
-                    .read(&mut chunk)
-                    .await
-                    .map_err(|error| error.to_string())?;
-                if read == 0 {
-                    return Err("upstream connection closed before body".to_string());
-                }
-                bytes.extend_from_slice(&chunk[..read]);
-            }
-            let body =
-                serde_json::from_slice::<Value>(&bytes[header_end..header_end + content_length])
-                    .map_err(|error| error.to_string())?;
-            let response_body = response_body.to_string();
-            let response = format!(
-                "HTTP/1.1 {status_line}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
-                response_body.len(),
-                response_body
-            );
-            socket
-                .write_all(response.as_bytes())
-                .await
-                .map_err(|error| error.to_string())?;
+            let captured = read_captured_upstream_request(&mut socket).await?;
+            write_json_upstream_response(&mut socket, status_line, response_body).await?;
             let _ = socket.shutdown().await;
 
-            Ok(CapturedUpstreamRequest { head, body })
+            Ok(captured)
         });
 
         (format!("http://{addr}/v1"), handle)
+    }
+
+    async fn start_forwarding_upstream_server_with_response_sequence(
+        responses: Vec<(&'static str, Value)>,
+    ) -> (
+        String,
+        tokio::task::JoinHandle<Result<Vec<CapturedUpstreamRequest>, String>>,
+    ) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind forwarding upstream sequence server");
+        let addr = listener
+            .local_addr()
+            .expect("forwarding upstream sequence server local addr");
+        let handle = tokio::spawn(async move {
+            let mut captures = Vec::new();
+            for (status_line, response_body) in responses {
+                let (mut socket, _) = listener.accept().await.map_err(|error| error.to_string())?;
+                let captured = read_captured_upstream_request(&mut socket).await?;
+                write_json_upstream_response(&mut socket, status_line, response_body).await?;
+                let _ = socket.shutdown().await;
+                captures.push(captured);
+            }
+
+            Ok(captures)
+        });
+
+        (format!("http://{addr}/v1"), handle)
+    }
+
+    async fn read_captured_upstream_request(
+        socket: &mut tokio::net::TcpStream,
+    ) -> Result<CapturedUpstreamRequest, String> {
+        let mut bytes = Vec::new();
+        let header_end = loop {
+            let mut chunk = [0_u8; 1024];
+            let read = socket
+                .read(&mut chunk)
+                .await
+                .map_err(|error| error.to_string())?;
+            if read == 0 {
+                return Err("upstream connection closed before headers".to_string());
+            }
+            bytes.extend_from_slice(&chunk[..read]);
+            if let Some(index) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+                break index + 4;
+            }
+            if bytes.len() > 32 * 1024 {
+                return Err("upstream request headers too large".to_string());
+            }
+        };
+
+        let head = String::from_utf8_lossy(&bytes[..header_end]).to_string();
+        let content_length = head
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().ok())
+                    .flatten()
+            })
+            .unwrap_or(0);
+        while bytes.len() < header_end + content_length {
+            let mut chunk = [0_u8; 1024];
+            let read = socket
+                .read(&mut chunk)
+                .await
+                .map_err(|error| error.to_string())?;
+            if read == 0 {
+                return Err("upstream connection closed before body".to_string());
+            }
+            bytes.extend_from_slice(&chunk[..read]);
+        }
+        let body = serde_json::from_slice::<Value>(&bytes[header_end..header_end + content_length])
+            .map_err(|error| error.to_string())?;
+
+        Ok(CapturedUpstreamRequest { head, body })
+    }
+
+    async fn write_json_upstream_response(
+        socket: &mut tokio::net::TcpStream,
+        status_line: &str,
+        response_body: Value,
+    ) -> Result<(), String> {
+        let response_body = response_body.to_string();
+        let response = format!(
+            "HTTP/1.1 {status_line}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+            response_body.len(),
+            response_body
+        );
+        socket
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|error| error.to_string())
     }
 }
