@@ -26,7 +26,10 @@ use crate::proxy::host::cc_switch::claude_desktop_provider::{
 };
 #[cfg(test)]
 use crate::proxy::host::cc_switch::managed_account_runtime_source::default_managed_account_runtime_source;
-use crate::proxy::host::cc_switch::managed_account_runtime_source::ManagedAccountRuntimeSourceRef;
+use crate::proxy::host::cc_switch::managed_account_runtime_source::{
+    ManagedAccountAdapterClaudeApiFormatInput, ManagedAccountAdapterCopilotLiveModelInput,
+    ManagedAccountApplyCopilotDynamicBaseUrlInput, ManagedAccountRuntimeSourceRef,
+};
 use crate::proxy::host::cc_switch::provider_adapter_context::{
     forwarder_provider_adapter_context_for_app, ForwarderAdapterContext,
 };
@@ -472,7 +475,11 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             self.managed_account_runtime_source
-                .apply_copilot_live_model_for_adapter(input.provider, input.body, input.is_copilot)
+                .apply_copilot_live_model_for_adapter(ManagedAccountAdapterCopilotLiveModelInput {
+                    auth_provider: input.provider,
+                    body: input.body,
+                    is_copilot: input.is_copilot,
+                })
                 .await;
         })
     }
@@ -484,10 +491,12 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         Box::pin(async move {
             self.managed_account_runtime_source
                 .apply_copilot_dynamic_base_url_for_provider(
-                    input.provider,
-                    input.base_url,
-                    input.is_copilot,
-                    input.is_full_url,
+                    ManagedAccountApplyCopilotDynamicBaseUrlInput {
+                        auth_provider: input.provider,
+                        base_url: input.base_url,
+                        is_copilot: input.is_copilot,
+                        is_full_url: input.is_full_url,
+                    },
                 )
                 .await;
         })
@@ -499,12 +508,12 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
             self.managed_account_runtime_source
-                .resolve_claude_api_format_for_adapter(
-                    input.provider,
-                    input.body,
-                    input.is_copilot,
-                    input.adapter.facts().is_claude_adapter,
-                )
+                .resolve_claude_api_format_for_adapter(ManagedAccountAdapterClaudeApiFormatInput {
+                    auth_provider: input.provider,
+                    body: input.body,
+                    is_copilot: input.is_copilot,
+                    is_claude_adapter: input.adapter.facts().is_claude_adapter,
+                })
                 .await
         })
     }

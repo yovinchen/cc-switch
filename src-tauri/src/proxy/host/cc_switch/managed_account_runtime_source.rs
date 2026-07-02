@@ -31,6 +31,54 @@ use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
 
 pub(crate) type ManagedAccountRuntimeSourceRef = Arc<dyn ManagedAccountRuntimeSource + Send + Sync>;
 
+pub(crate) struct ManagedAccountAuthForProviderInput<'a> {
+    pub(crate) auth_provider: &'a Provider,
+    pub(crate) auth: ProviderAuthInfo,
+}
+
+pub(crate) struct ManagedAccountCopilotDynamicBaseUrlInput<'a> {
+    pub(crate) auth_provider: &'a Provider,
+    pub(crate) current_base_url: &'a str,
+    pub(crate) is_copilot: bool,
+    pub(crate) is_full_url: bool,
+}
+
+pub(crate) struct ManagedAccountApplyCopilotDynamicBaseUrlInput<'a> {
+    pub(crate) auth_provider: &'a Provider,
+    pub(crate) base_url: &'a mut String,
+    pub(crate) is_copilot: bool,
+    pub(crate) is_full_url: bool,
+}
+
+pub(crate) struct ManagedAccountCopilotLiveModelInput<'a> {
+    pub(crate) auth_provider: &'a Provider,
+    pub(crate) model_id: &'a str,
+}
+
+pub(crate) struct ManagedAccountApplyCopilotLiveModelInput<'a> {
+    pub(crate) auth_provider: &'a Provider,
+    pub(crate) body: &'a mut Value,
+}
+
+pub(crate) struct ManagedAccountAdapterCopilotLiveModelInput<'a> {
+    pub(crate) auth_provider: &'a Provider,
+    pub(crate) body: &'a mut Value,
+    pub(crate) is_copilot: bool,
+}
+
+pub(crate) struct ManagedAccountClaudeApiFormatInput<'a> {
+    pub(crate) auth_provider: &'a Provider,
+    pub(crate) body: &'a Value,
+    pub(crate) is_copilot: bool,
+}
+
+pub(crate) struct ManagedAccountAdapterClaudeApiFormatInput<'a> {
+    pub(crate) auth_provider: &'a Provider,
+    pub(crate) body: &'a Value,
+    pub(crate) is_copilot: bool,
+    pub(crate) is_claude_adapter: bool,
+}
+
 pub(crate) struct CcSwitchManagedAccountRuntimeSource {
     app_handle: Option<tauri::AppHandle>,
     token_snapshots: Arc<Mutex<HashMap<ManagedAccountTokenCacheKey, ManagedAccountTokenSnapshot>>>,
@@ -110,14 +158,13 @@ pub(crate) trait ManagedAccountRuntimeSource:
 {
     fn resolve_auth_for_provider<'a>(
         &'a self,
-        auth_provider: &'a Provider,
-        auth: ProviderAuthInfo,
+        input: ManagedAccountAuthForProviderInput<'a>,
     ) -> BoxFuture<'a, Result<ManagedAccountAuthResolution, ProxyError>> {
         Box::pin(async move {
-            let binding_context = provider_managed_account_binding_context(auth_provider);
+            let binding_context = provider_managed_account_binding_context(input.auth_provider);
             resolve_core_managed_account_auth_for_binding_with_runtime_source(
                 self,
-                auth,
+                input.auth,
                 binding_context.binding,
                 binding_context.legacy_github_copilot_account_id,
             )
@@ -127,20 +174,17 @@ pub(crate) trait ManagedAccountRuntimeSource:
 
     fn resolve_copilot_dynamic_base_url_for_provider<'a>(
         &'a self,
-        auth_provider: &'a Provider,
-        current_base_url: &'a str,
-        is_copilot: bool,
-        is_full_url: bool,
+        input: ManagedAccountCopilotDynamicBaseUrlInput<'a>,
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
-            let binding_context = provider_managed_account_binding_context(auth_provider);
+            let binding_context = provider_managed_account_binding_context(input.auth_provider);
             resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source(
                 self,
                 binding_context.binding,
                 binding_context.legacy_github_copilot_account_id,
-                current_base_url,
-                is_copilot,
-                is_full_url,
+                input.current_base_url,
+                input.is_copilot,
+                input.is_full_url,
             )
             .await
         })
@@ -148,18 +192,17 @@ pub(crate) trait ManagedAccountRuntimeSource:
 
     fn apply_copilot_dynamic_base_url_for_provider<'a>(
         &'a self,
-        auth_provider: &'a Provider,
-        base_url: &'a mut String,
-        is_copilot: bool,
-        is_full_url: bool,
+        input: ManagedAccountApplyCopilotDynamicBaseUrlInput<'a>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             let Some(next_base_url) = self
                 .resolve_copilot_dynamic_base_url_for_provider(
-                    auth_provider,
-                    base_url,
-                    is_copilot,
-                    is_full_url,
+                    ManagedAccountCopilotDynamicBaseUrlInput {
+                        auth_provider: input.auth_provider,
+                        current_base_url: input.base_url,
+                        is_copilot: input.is_copilot,
+                        is_full_url: input.is_full_url,
+                    },
                 )
                 .await
             else {
@@ -169,24 +212,23 @@ pub(crate) trait ManagedAccountRuntimeSource:
             log::debug!(
                 "[Copilot] 使用动态 API endpoint: {} (原: {})",
                 next_base_url,
-                base_url
+                input.base_url
             );
-            *base_url = next_base_url;
+            *input.base_url = next_base_url;
         })
     }
 
     fn resolve_copilot_live_model_for_provider<'a>(
         &'a self,
-        auth_provider: &'a Provider,
-        model_id: &'a str,
+        input: ManagedAccountCopilotLiveModelInput<'a>,
     ) -> BoxFuture<'a, Result<Option<String>, String>> {
         Box::pin(async move {
-            let binding_context = provider_managed_account_binding_context(auth_provider);
+            let binding_context = provider_managed_account_binding_context(input.auth_provider);
             resolve_core_copilot_live_model_for_binding_with_runtime_source(
                 self,
                 binding_context.binding,
                 binding_context.legacy_github_copilot_account_id,
-                model_id,
+                input.model_id,
             )
             .await
         })
@@ -194,17 +236,19 @@ pub(crate) trait ManagedAccountRuntimeSource:
 
     fn apply_copilot_live_model_for_provider<'a>(
         &'a self,
-        auth_provider: &'a Provider,
-        body: &'a mut Value,
+        input: ManagedAccountApplyCopilotLiveModelInput<'a>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            let Some(model_id) = body.get("model").and_then(Value::as_str) else {
+            let Some(model_id) = input.body.get("model").and_then(Value::as_str) else {
                 return;
             };
             let model_id = model_id.to_string();
 
             let resolved = match self
-                .resolve_copilot_live_model_for_provider(auth_provider, &model_id)
+                .resolve_copilot_live_model_for_provider(ManagedAccountCopilotLiveModelInput {
+                    auth_provider: input.auth_provider,
+                    model_id: &model_id,
+                })
                 .await
             {
                 Ok(Some(resolved)) => resolved,
@@ -216,42 +260,41 @@ pub(crate) trait ManagedAccountRuntimeSource:
             };
 
             log::info!("[Copilot] live-model resolve: {model_id} → {resolved}");
-            body["model"] = Value::String(resolved);
+            input.body["model"] = Value::String(resolved);
         })
     }
 
     fn apply_copilot_live_model_for_adapter<'a>(
         &'a self,
-        auth_provider: &'a Provider,
-        body: &'a mut Value,
-        is_copilot: bool,
+        input: ManagedAccountAdapterCopilotLiveModelInput<'a>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            if !is_copilot {
+            if !input.is_copilot {
                 return;
             }
 
-            self.apply_copilot_live_model_for_provider(auth_provider, body)
-                .await;
+            self.apply_copilot_live_model_for_provider(ManagedAccountApplyCopilotLiveModelInput {
+                auth_provider: input.auth_provider,
+                body: input.body,
+            })
+            .await;
         })
     }
 
     fn resolve_claude_api_format_for_provider<'a>(
         &'a self,
-        auth_provider: &'a Provider,
-        body: &'a Value,
-        is_copilot: bool,
+        input: ManagedAccountClaudeApiFormatInput<'a>,
     ) -> BoxFuture<'a, String> {
         Box::pin(async move {
-            let model = body.get("model").and_then(Value::as_str);
+            let model = input.body.get("model").and_then(Value::as_str);
             let copilot_model_vendor = if let Some(model_id) = model {
-                let binding_context = provider_managed_account_binding_context(auth_provider);
+                let binding_context = provider_managed_account_binding_context(input.auth_provider);
                 resolve_core_copilot_model_vendor_for_binding_with_runtime_source(
                     self,
                     binding_context.binding,
                     binding_context.legacy_github_copilot_account_id,
                     model_id,
-                    is_copilot,
+                    input.is_copilot,
                 )
                 .await
             } else {
@@ -259,8 +302,8 @@ pub(crate) trait ManagedAccountRuntimeSource:
             };
 
             forwarder_claude_api_format_for_provider(
-                auth_provider,
-                is_copilot,
+                input.auth_provider,
+                input.is_copilot,
                 copilot_model_vendor.as_deref(),
             )
         })
@@ -268,19 +311,20 @@ pub(crate) trait ManagedAccountRuntimeSource:
 
     fn resolve_claude_api_format_for_adapter<'a>(
         &'a self,
-        auth_provider: &'a Provider,
-        body: &'a Value,
-        is_copilot: bool,
-        is_claude_adapter: bool,
+        input: ManagedAccountAdapterClaudeApiFormatInput<'a>,
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
-            if !is_claude_adapter {
+            if !input.is_claude_adapter {
                 return None;
             }
 
             Some(
-                self.resolve_claude_api_format_for_provider(auth_provider, body, is_copilot)
-                    .await,
+                self.resolve_claude_api_format_for_provider(ManagedAccountClaudeApiFormatInput {
+                    auth_provider: input.auth_provider,
+                    body: input.body,
+                    is_copilot: input.is_copilot,
+                })
+                .await,
             )
         })
     }
@@ -591,7 +635,10 @@ pub(crate) async fn resolve_managed_account_auth_from_runtime_source(
     auth: ProviderAuthInfo,
 ) -> Result<ManagedAccountAuthResolution, ProxyError> {
     runtime_source
-        .resolve_auth_for_provider(auth_provider, auth)
+        .resolve_auth_for_provider(ManagedAccountAuthForProviderInput {
+            auth_provider,
+            auth,
+        })
         .await
 }
 

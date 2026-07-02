@@ -18150,6 +18150,10 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && host_source.contains("managed_account_token_failure_error_message")
             && host_source.contains("resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source")
             && host_source.contains("ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource")
+            && host_source.contains("ManagedAccountAuthForProviderInput")
+            && host_source.contains("ManagedAccountApplyCopilotDynamicBaseUrlInput")
+            && host_source.contains("ManagedAccountAdapterCopilotLiveModelInput")
+            && host_source.contains("ManagedAccountAdapterClaudeApiFormatInput")
             && host_source.contains("ManagedAccountTokenCacheKey")
             && host_source.contains("ManagedAccountTokenRefreshFailureKind")
             && host_source.contains("ManagedAccountTokenSnapshot")
@@ -18262,6 +18266,8 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
     );
     assert!(
         method.contains("provider_managed_account_binding_context")
+            && method.contains("input.auth_provider")
+            && method.contains("input.auth")
             && method.contains("binding_context.binding")
             && method.contains("binding_context.legacy_github_copilot_account_id"),
         "adapter managed-auth provider extension must consume structured CC Switch ProviderMeta binding context"
@@ -18362,7 +18368,6 @@ fn production_forwarder_uses_managed_auth_runtime_source_resource() {
         "struct CcSwitchForwarderRequestSource",
         "impl ForwarderRequestSource for CcSwitchForwarderRequestSource",
     );
-
     assert!(
         !struct_slice.contains("managed_account_runtime_source")
             && struct_slice.contains("auth_source")
@@ -18553,6 +18558,15 @@ fn production_forwarder_delegates_copilot_dynamic_base_url_to_runtime_source() {
         "ManagedAccountRuntimeSource must expose provider-aware Copilot dynamic base URL mutation"
     );
     assert!(
+        runtime_source.contains("pub(crate) struct ManagedAccountCopilotDynamicBaseUrlInput<'a>")
+            && runtime_source
+                .contains("pub(crate) struct ManagedAccountApplyCopilotDynamicBaseUrlInput<'a>")
+            && runtime_source.contains("input.auth_provider")
+            && runtime_source.contains("input.current_base_url")
+            && runtime_source.contains("input.is_full_url"),
+        "ManagedAccountRuntimeSource must consume Copilot dynamic base URL facts as structured inputs"
+    );
+    assert!(
         runtime_source.contains(
             "resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source("
         ),
@@ -18603,6 +18617,15 @@ fn production_forwarder_delegates_claude_api_format_to_runtime_source() {
     assert!(
         runtime_source.contains("resolve_claude_api_format_for_adapter"),
         "ManagedAccountRuntimeSource must expose adapter-gated Claude API format resolution"
+    );
+    assert!(
+        runtime_source.contains("pub(crate) struct ManagedAccountClaudeApiFormatInput<'a>")
+            && runtime_source
+                .contains("pub(crate) struct ManagedAccountAdapterClaudeApiFormatInput<'a>")
+            && runtime_source.contains("input.auth_provider")
+            && runtime_source.contains("input.body")
+            && runtime_source.contains("input.is_claude_adapter"),
+        "ManagedAccountRuntimeSource must consume Claude API format facts as structured inputs"
     );
     assert!(
         runtime_source.contains("resolve_core_copilot_model_vendor_for_binding_with_runtime_source("),
@@ -19105,6 +19128,17 @@ fn production_forwarder_delegates_copilot_live_model_resolution_to_runtime_sourc
         "ManagedAccountRuntimeSource must expose adapter-gated Copilot live model body resolution"
     );
     assert!(
+        runtime_source.contains("pub(crate) struct ManagedAccountCopilotLiveModelInput<'a>")
+            && runtime_source
+                .contains("pub(crate) struct ManagedAccountApplyCopilotLiveModelInput<'a>")
+            && runtime_source
+                .contains("pub(crate) struct ManagedAccountAdapterCopilotLiveModelInput<'a>")
+            && runtime_source.contains("input.auth_provider")
+            && runtime_source.contains("input.body")
+            && runtime_source.contains("input.is_copilot"),
+        "ManagedAccountRuntimeSource must consume Copilot live model facts as structured inputs"
+    );
+    assert!(
         runtime_source.contains("resolve_core_copilot_live_model_for_binding_with_runtime_source("),
         "ManagedAccountRuntimeSource must delegate Copilot live model account binding to proxy-core"
     );
@@ -19162,6 +19196,11 @@ fn production_forwarder_uses_request_source_for_managed_account_runtime() {
         "struct CcSwitchForwarderRequestSource",
         "impl ForwarderRequestSource for CcSwitchForwarderRequestSource",
     );
+    let request_source_impl_slice = function_slice(
+        &request_source,
+        "impl ForwarderRequestSource for CcSwitchForwarderRequestSource",
+        "pub(crate) fn forwarder_rectifier_error_message",
+    );
 
     assert!(
         !struct_slice.contains("managed_account_runtime_source"),
@@ -19184,6 +19223,13 @@ fn production_forwarder_uses_request_source_for_managed_account_runtime() {
             "RequestForwarder must call request source method `{marker}`"
         );
     }
+    assert!(
+        request_source_impl_slice.contains("ManagedAccountAdapterCopilotLiveModelInput {")
+            && request_source_impl_slice
+                .contains("ManagedAccountApplyCopilotDynamicBaseUrlInput {")
+            && request_source_impl_slice.contains("ManagedAccountAdapterClaudeApiFormatInput {"),
+        "ForwarderRequestSource must pass managed-account runtime facts as structured inputs"
+    );
 }
 
 #[test]

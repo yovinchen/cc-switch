@@ -8,7 +8,9 @@ use crate::proxy::engine::forward_pipeline::{
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::proxy_core_error_to_proxy_error;
 use crate::proxy::host::cc_switch::auth_provider::CcSwitchAuthProvider;
-use crate::proxy::host::cc_switch::managed_account_runtime_source::ManagedAccountRuntimeSourceRef;
+use crate::proxy::host::cc_switch::managed_account_runtime_source::{
+    ManagedAccountAuthForProviderInput, ManagedAccountRuntimeSourceRef,
+};
 use crate::proxy::host::cc_switch::provider_projection::proxy_provider_to_core_spec;
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::ports::AuthProvider;
@@ -91,7 +93,10 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
                     if let Some(mut auth) = input.adapter.provider_auth_info(auth_provider) {
                         let managed_auth = self
                             .managed_account_runtime_source
-                            .resolve_auth_for_provider(auth_provider, auth)
+                            .resolve_auth_for_provider(ManagedAccountAuthForProviderInput {
+                                auth_provider,
+                                auth,
+                            })
                             .await?;
                         auth = managed_auth.auth;
                         should_send_codex_oauth_session_headers =

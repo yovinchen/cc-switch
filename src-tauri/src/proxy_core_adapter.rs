@@ -168,7 +168,10 @@ mod tests {
     use crate::proxy::host::cc_switch::managed_account_runtime_source::{
         copilot_api_endpoint_from_app_handle, copilot_live_models_from_app_handle,
         copilot_model_vendor_from_app_handle, default_managed_account_runtime_source,
-        resolve_managed_account_auth_from_runtime_source, ManagedAccountRuntimeSource,
+        resolve_managed_account_auth_from_runtime_source,
+        ManagedAccountAdapterClaudeApiFormatInput, ManagedAccountAdapterCopilotLiveModelInput,
+        ManagedAccountApplyCopilotDynamicBaseUrlInput, ManagedAccountAuthForProviderInput,
+        ManagedAccountRuntimeSource,
     };
     use crate::proxy::host::cc_switch::provider_projection::{
         provider_claude_auth_key, provider_claude_base_url, provider_claude_kind,
@@ -3139,13 +3142,13 @@ base_url = "https://api.openai.com/v1"
         let codex_provider = provider_with_managed_account_binding("codex_oauth", "codex-acct");
 
         let copilot = source
-            .resolve_auth_for_provider(
-                &copilot_provider,
-                ProviderAuthInfo::new(
+            .resolve_auth_for_provider(ManagedAccountAuthForProviderInput {
+                auth_provider: &copilot_provider,
+                auth: ProviderAuthInfo::new(
                     "PROXY_MANAGED".to_string(),
                     ProviderAuthStrategy::GitHubCopilot,
                 ),
-            )
+            })
             .await
             .expect("copilot managed auth");
         assert_eq!(copilot.auth.api_key, "copilot-token:copilot-acct");
@@ -3154,13 +3157,13 @@ base_url = "https://api.openai.com/v1"
         assert!(!copilot.should_send_codex_oauth_session_headers);
 
         let codex = source
-            .resolve_auth_for_provider(
-                &codex_provider,
-                ProviderAuthInfo::new(
+            .resolve_auth_for_provider(ManagedAccountAuthForProviderInput {
+                auth_provider: &codex_provider,
+                auth: ProviderAuthInfo::new(
                     "PROXY_MANAGED".to_string(),
                     ProviderAuthStrategy::CodexOAuth,
                 ),
-            )
+            })
             .await
             .expect("codex managed auth");
         assert_eq!(codex.auth.api_key, "codex-token:codex-acct");
@@ -3189,13 +3192,21 @@ base_url = "https://api.openai.com/v1"
         let mut body = json!({ "model": "claude-sonnet-4-6" });
 
         source
-            .apply_copilot_live_model_for_adapter(&provider, &mut body, false)
+            .apply_copilot_live_model_for_adapter(ManagedAccountAdapterCopilotLiveModelInput {
+                auth_provider: &provider,
+                body: &mut body,
+                is_copilot: false,
+            })
             .await;
 
         assert_eq!(body["model"], "claude-sonnet-4-6");
 
         source
-            .apply_copilot_live_model_for_adapter(&provider, &mut body, true)
+            .apply_copilot_live_model_for_adapter(ManagedAccountAdapterCopilotLiveModelInput {
+                auth_provider: &provider,
+                body: &mut body,
+                is_copilot: true,
+            })
             .await;
 
         assert_eq!(body["model"], "claude-sonnet-4.6");
@@ -3216,7 +3227,14 @@ base_url = "https://api.openai.com/v1"
         let mut base_url = "https://api.githubcopilot.com".to_string();
 
         source
-            .apply_copilot_dynamic_base_url_for_provider(&provider, &mut base_url, true, false)
+            .apply_copilot_dynamic_base_url_for_provider(
+                ManagedAccountApplyCopilotDynamicBaseUrlInput {
+                    auth_provider: &provider,
+                    base_url: &mut base_url,
+                    is_copilot: true,
+                    is_full_url: false,
+                },
+            )
             .await;
 
         assert_eq!(base_url, "https://api.enterprise.githubcopilot.com");
@@ -3240,13 +3258,23 @@ base_url = "https://api.openai.com/v1"
 
         assert_eq!(
             source
-                .resolve_claude_api_format_for_adapter(&provider, &body, false, false)
+                .resolve_claude_api_format_for_adapter(ManagedAccountAdapterClaudeApiFormatInput {
+                    auth_provider: &provider,
+                    body: &body,
+                    is_copilot: false,
+                    is_claude_adapter: false,
+                })
                 .await,
             None
         );
         assert_eq!(
             source
-                .resolve_claude_api_format_for_adapter(&provider, &body, false, true)
+                .resolve_claude_api_format_for_adapter(ManagedAccountAdapterClaudeApiFormatInput {
+                    auth_provider: &provider,
+                    body: &body,
+                    is_copilot: false,
+                    is_claude_adapter: true,
+                })
                 .await
                 .as_deref(),
             Some("openai_chat")
