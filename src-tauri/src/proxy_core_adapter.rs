@@ -195,7 +195,7 @@ mod tests {
     use crate::proxy_core::api::auth::{
         claude_desktop_model_id_is_profile_safe, extract_gemini_base_url_from_settings,
         validate_claude_desktop_gateway_bearer_header, ClaudeAuthKeySource,
-        ClaudeDesktopGatewayAuthError, ManagedAccountAuthRuntime,
+        ClaudeDesktopGatewayAuthError, CodexOAuthResolution, ManagedAccountAuthRuntime,
         ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagementAuthError,
         ProviderAuthInfo, ProviderAuthStrategy,
     };
@@ -2910,7 +2910,7 @@ base_url = "https://api.openai.com/v1"
             &'a self,
             _account_id: Option<String>,
             _runtime: ManagedAccountAuthRuntime,
-        ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), ProxyError>> {
+        ) -> BoxFuture<'a, Result<CodexOAuthResolution, ProxyError>> {
             Box::pin(async move {
                 Err(ProxyError::AuthError(
                     "test source does not resolve oauth".to_string(),
@@ -2963,10 +2963,10 @@ base_url = "https://api.openai.com/v1"
             &'a self,
             account_id: Option<String>,
             runtime: ManagedAccountAuthRuntime,
-        ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), ProxyError>> {
+        ) -> BoxFuture<'a, Result<CodexOAuthResolution, ProxyError>> {
             Box::pin(async move {
                 let resolved_account_id = account_id.unwrap_or_else(|| "codex-default".to_string());
-                Ok((
+                Ok(CodexOAuthResolution::new(
                     ProviderAuthInfo::new(
                         format!("codex-token:{resolved_account_id}"),
                         runtime.provider_auth_strategy(),

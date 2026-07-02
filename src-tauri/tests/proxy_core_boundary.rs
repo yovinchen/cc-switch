@@ -18224,6 +18224,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && host_source.contains("managed_account_app_handle_unavailable_error_message")
             && host_source.contains("resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source")
             && host_source.contains("ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource")
+            && host_source.contains("CodexOAuthResolution")
             && host_source.contains("ManagedAccountRuntimeBindingFacts")
             && host_source.contains("ManagedAccountAuthForBindingInput")
             && host_source.contains("ManagedAccountApplyCopilotDynamicBaseUrlForBindingInput")
@@ -18280,7 +18281,16 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && !refresh_failure_slice.contains("account_id: Option<&str>"),
         "host runtime source should delegate refresh-failure fallback/reject decisions and messages to core token-cache contracts"
     );
+    assert!(
+        host_runtime_source.contains("CodexOAuthResolution::from_refresh_success(success)")
+            && host_runtime_source.contains(".map(CodexOAuthResolution::from_snapshot)")
+            && !host_runtime_source.contains("Ok((success.auth, success.codex_oauth_account_id))")
+            && !host_runtime_source
+                .contains("map(|snapshot| (snapshot.auth, snapshot.codex_oauth_account_id))"),
+        "host runtime source should return Codex OAuth auth/account through the core structured resolution contract"
+    );
     for marker in [
+        "CodexOAuthResolution",
         "managed_account_app_handle_unavailable_error_message",
         "managed_account_app_handle_unavailable_log_message",
         "managed_account_token_request_log_message",

@@ -20,11 +20,11 @@ use crate::proxy_core::api::auth::{
     resolve_copilot_live_model_for_binding_with_runtime_source as resolve_core_copilot_live_model_for_binding_with_runtime_source,
     resolve_copilot_model_vendor_for_binding_with_runtime_source as resolve_core_copilot_model_vendor_for_binding_with_runtime_source,
     resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
-    ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ManagedAccountBindingInput,
-    ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagedAccountTokenCacheKey,
-    ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenRefreshFailureResolution,
-    ManagedAccountTokenRefreshSuccess, ManagedAccountTokenSnapshot,
-    ManagedAccountTokenSnapshotStore, ProviderAuthInfo,
+    CodexOAuthResolution, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
+    ManagedAccountBindingInput, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
+    ManagedAccountTokenCacheKey, ManagedAccountTokenRefreshFailureKind,
+    ManagedAccountTokenRefreshFailureResolution, ManagedAccountTokenRefreshSuccess,
+    ManagedAccountTokenSnapshot, ManagedAccountTokenSnapshotStore, ProviderAuthInfo,
 };
 use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
@@ -555,7 +555,7 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
         &'a self,
         account_id: Option<String>,
         runtime: ManagedAccountAuthRuntime,
-    ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), ProxyError>> {
+    ) -> BoxFuture<'a, Result<CodexOAuthResolution, ProxyError>> {
         Box::pin(async move {
             let Some(app_handle) = self.app_handle.as_ref() else {
                 log::error!(
@@ -585,14 +585,14 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                         )
                         .await;
                     log::debug!("{}", success.log_message);
-                    Ok((success.auth, success.codex_oauth_account_id))
+                    Ok(CodexOAuthResolution::from_refresh_success(success))
                 }
                 Err(error) => {
                     let failure_kind = codex_oauth_token_failure_kind(&error);
                     let error = error.to_string();
                     self.resolve_token_refresh_failure(&cache_key, &error, failure_kind)
                         .await
-                        .map(|snapshot| (snapshot.auth, snapshot.codex_oauth_account_id))
+                        .map(CodexOAuthResolution::from_snapshot)
                 }
             }
         })

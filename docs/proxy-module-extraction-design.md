@@ -2011,6 +2011,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1417. managed-account token refresh 失败后的最终 fallback/reject 决策已下沉到 `ManagedAccountTokenSnapshotStore::resolve_refresh_failure`：core 统一根据 runtime/account key、refresh failure kind、缓存年龄和错误文本返回“使用最近成功 token 快照”或“直出认证失败”的日志/错误 contract；CC Switch host runtime source 只负责 Tauri OAuth token 获取、具体错误枚举到 retryable/terminal 的分类，以及把 core 决策映射为 `ProxyError::AuthError` 或 cached snapshot，避免外部中转宿主复制 CC Switch 的 token refresh 失败文案和 fallback 分支。
 1418. managed-account token refresh 成功后的 auth 创建、快照写入和成功日志 contract 已下沉到 `ManagedAccountTokenSnapshotStore::record_refresh_success`：core 统一由 runtime 生成 `ProviderAuthInfo`、写入 runtime/account 隔离快照并返回稳定成功日志；CC Switch host runtime source 成功路径只传入 OAuth manager 返回的 token、Codex resolved account id 和日志账号 label，再把 core result 映射到 Copilot/Codex OAuth 运行时返回值。
 1419. channel-key runtime candidate 的字段组装入口已补齐到 `proxy-core::ports::channel_key_runtime_candidate_from_parts`：DB-backed `CcSwitchChannelKeyRuntimeSource` 只把 `ProxyChannelKeyRecord` 字段投影进 core helper，不再在 host 模块手写 `ChannelKeyRuntimeCandidateInput`，后续外部中转宿主实现 channel-key runtime source 时可复用同一 runtime candidate contract。
+1420. Codex OAuth runtime token 解析结果已从裸 `(ProviderAuthInfo, Option<String>)` tuple 收敛为 `proxy-core::managed_account_auth::CodexOAuthResolution` 结构化契约：core runtime source trait、默认 CC Switch Tauri runtime source 和测试 fixture 都通过该结构传递 auth 与 resolved account id，host 成功/失败缓存路径分别调用 `CodexOAuthResolution::from_refresh_success` / `from_snapshot`，避免外部中转宿主猜测 tuple 字段语义。
 
 ## 背景
 

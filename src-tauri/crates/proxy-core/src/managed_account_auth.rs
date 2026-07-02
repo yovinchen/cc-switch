@@ -29,7 +29,28 @@ pub const CODEX_OAUTH_DEVICE_VERIFICATION_URL: &str = "https://auth.openai.com/c
 pub const CODEX_OAUTH_DEVICE_REDIRECT_URI: &str = "https://auth.openai.com/deviceauth/callback";
 
 pub type ManagedAccountRuntimeResultFuture<'a, T, E> = BoxFuture<'a, Result<T, E>>;
-pub type CodexOAuthResolution = (ProviderAuthInfo, Option<String>);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodexOAuthResolution {
+    pub auth: ProviderAuthInfo,
+    pub codex_oauth_account_id: Option<String>,
+}
+
+impl CodexOAuthResolution {
+    pub fn new(auth: ProviderAuthInfo, codex_oauth_account_id: Option<String>) -> Self {
+        Self {
+            auth,
+            codex_oauth_account_id,
+        }
+    }
+
+    pub fn from_refresh_success(success: ManagedAccountTokenRefreshSuccess) -> Self {
+        Self::new(success.auth, success.codex_oauth_account_id)
+    }
+
+    pub fn from_snapshot(snapshot: ManagedAccountTokenSnapshot) -> Self {
+        Self::new(snapshot.auth, snapshot.codex_oauth_account_id)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CopilotOAuthPollErrorKind {
@@ -963,12 +984,12 @@ where
             runtime: runtime @ ManagedAccountAuthRuntime::CodexOAuth,
             account_id,
         } => {
-            let (auth, codex_oauth_account_id) = runtime_source
+            let codex_oauth = runtime_source
                 .resolve_codex_oauth(account_id, runtime)
                 .await?;
             Ok(ManagedAccountAuthResolution::runtime_token(
-                auth,
-                codex_oauth_account_id,
+                codex_oauth.auth,
+                codex_oauth.codex_oauth_account_id,
                 should_send_codex_oauth_session_headers,
             ))
         }
@@ -1365,9 +1386,10 @@ mod tests {
         resolve_copilot_model_vendor_with_runtime_source,
         resolve_managed_account_auth_for_binding_with_runtime_source,
         resolve_managed_account_auth_with_runtime_source, validate_managed_account_upstream_auth,
-        CodexOAuthDevicePollStatusKind, CopilotOAuthPollErrorKind, ManagedAccountAuthError,
-        ManagedAccountAuthPlan, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
-        ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAccountRuntimeSource,
+        CodexOAuthDevicePollStatusKind, CodexOAuthResolution, CopilotOAuthPollErrorKind,
+        ManagedAccountAuthError, ManagedAccountAuthPlan, ManagedAccountAuthResolution,
+        ManagedAccountAuthRuntime, ManagedAccountBindingInput, ManagedAccountBindingSource,
+        ManagedAccountRuntimeSource,
         ManagedAccountTokenCacheKey, ManagedAccountTokenFailureFallbackDecision,
         ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenRefreshFailureResolution,
         ManagedAccountTokenRefreshSuccess, ManagedAccountTokenSnapshot,
@@ -1928,10 +1950,10 @@ mod tests {
             &'a self,
             account_id: Option<String>,
             runtime: ManagedAccountAuthRuntime,
-        ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), Self::Error>> {
+        ) -> BoxFuture<'a, Result<CodexOAuthResolution, Self::Error>> {
             Box::pin(async move {
                 let account_id = account_id.unwrap_or_else(|| "codex-default".to_string());
-                Ok((
+                Ok(CodexOAuthResolution::new(
                     ProviderAuthInfo::new(
                         format!("codex-token:{account_id}"),
                         runtime.provider_auth_strategy(),
@@ -1985,7 +2007,7 @@ mod tests {
             &'a self,
             _account_id: Option<String>,
             _runtime: ManagedAccountAuthRuntime,
-        ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), Self::Error>> {
+        ) -> BoxFuture<'a, Result<CodexOAuthResolution, Self::Error>> {
             Box::pin(async move { Err("oauth not used".to_string()) })
         }
 
@@ -2426,6 +2448,26 @@ mod tests {
             Some("resolved-acct")
         );
         assert_eq!(snapshot.cached_at_ms, now);
+    }
+
+    #[test]
+    fn codex_oauth_resolution_is_structured_from_success_and_snapshot() {
+        let auth = ManagedAccountAuthRuntime::CodexOAuth.provider_auth_info("token".to_string());
+        let success = ManagedAccountTokenRefreshSuccess {
+            auth: auth.clone(),
+            codex_oauth_account_id: Some("acct".to_string()),
+            log_message: "ok".to_string(),
+        };
+        assert_eq!(
+            CodexOAuthResolution::from_refresh_success(success),
+            CodexOAuthResolution::new(auth.clone(), Some("acct".to_string()))
+        );
+
+        let snapshot = ManagedAccountTokenSnapshot::new(auth.clone(), Some("acct".to_string()), 42);
+        assert_eq!(
+            CodexOAuthResolution::from_snapshot(snapshot),
+            CodexOAuthResolution::new(auth, Some("acct".to_string()))
+        );
     }
 
     #[test]
