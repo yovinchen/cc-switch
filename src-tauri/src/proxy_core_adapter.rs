@@ -278,40 +278,6 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
-    fn attempt_event_payload_input_from_forward_attempt<'a>(
-        request_id: &'a str,
-        app_type: &'a str,
-        attempt: &'a ForwardAttempt,
-        error: Option<&'a str>,
-    ) -> AttemptEventPayloadInput<'a> {
-        let provider = attempt.provider();
-        let channel = attempt.channel().map(|channel| AttemptEventChannel {
-            channel_id: channel.channel_id.as_str(),
-            channel_name: channel.channel_name.as_str(),
-            interface_kind: channel.interface_kind.as_str(),
-            public_model: channel.public_model.as_deref(),
-            upstream_model: channel.upstream_model.as_deref(),
-            pricing_model: channel.pricing_model.as_deref(),
-        });
-
-        AttemptEventPayloadInput {
-            request_id,
-            app_type,
-            provider_id: provider.id.as_str(),
-            provider_name: provider.name.as_str(),
-            channel,
-            error,
-        }
-    }
-
-    fn live_takeover_app_types() -> [AppType; 3] {
-        live_takeover_app_kinds().map(|app| {
-            app.as_str()
-                .parse::<AppType>()
-                .expect("proxy-core live takeover app kind must be supported by cc-switch")
-        })
-    }
-
     fn provider_credential_values_with_issue(
         provider: &Provider,
         app_type: &AppType,
@@ -3991,14 +3957,24 @@ base_url = "https://api.openai.com/v1"
                 source_kind: "manual".to_string(),
             },
         );
-        let route_message = bus.emit_core_event(route_selected_event(
-            attempt_event_payload_input_from_forward_attempt(
-                "req-route",
-                "claude",
-                &route_attempt,
-                None,
-            ),
-        ));
+        let route_provider = route_attempt.provider();
+        let route_channel = route_attempt.channel().expect("channel route attempt");
+        let route_payload = AttemptEventPayloadInput {
+            request_id: "req-route",
+            app_type: "claude",
+            provider_id: route_provider.id.as_str(),
+            provider_name: route_provider.name.as_str(),
+            channel: Some(AttemptEventChannel {
+                channel_id: route_channel.channel_id.as_str(),
+                channel_name: route_channel.channel_name.as_str(),
+                interface_kind: route_channel.interface_kind.as_str(),
+                public_model: route_channel.public_model.as_deref(),
+                upstream_model: route_channel.upstream_model.as_deref(),
+                pricing_model: route_channel.pricing_model.as_deref(),
+            }),
+            error: None,
+        };
+        let route_message = bus.emit_core_event(route_selected_event(route_payload));
         assert_eq!(route_message.event, "route_selected");
         assert_eq!(route_message.payload["requestId"], "req-route");
         assert_eq!(route_message.payload["providerId"], "provider-1");
@@ -4007,12 +3983,11 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(route_message.payload["upstreamModel"], "upstream-sonnet");
 
         let failed_attempt_message = bus.emit_core_event(attempt_event(
-            attempt_event_payload_input_from_forward_attempt(
-                "req-failed",
-                "claude",
-                &route_attempt,
-                Some("upstream failed"),
-            ),
+            AttemptEventPayloadInput {
+                request_id: "req-failed",
+                error: Some("upstream failed"),
+                ..route_payload
+            },
             route_attempt.is_channel(),
             AttemptEventPhase::Failed,
         ));
@@ -7724,7 +7699,11 @@ wire_api = "chat"
             &AppType::Hermes
         )));
 
-        let live_takeover_apps = live_takeover_app_types();
+        let live_takeover_apps = live_takeover_app_kinds().map(|app| {
+            app.as_str()
+                .parse::<AppType>()
+                .expect("proxy-core live takeover app kind must be supported by cc-switch")
+        });
         assert_eq!(
             live_takeover_apps,
             [AppType::Claude, AppType::Codex, AppType::Gemini]

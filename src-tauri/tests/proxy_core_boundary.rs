@@ -9255,6 +9255,10 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
         !adapter_source.contains("pub(crate) fn should_reapply_codex_official_live_for_provider"),
         "proxy_core_adapter should not keep a Provider-shaped official live reapply facade"
     );
+    assert!(
+        !adapter_source.contains("fn live_takeover_app_types()"),
+        "proxy_core_adapter tests should project live takeover app kinds directly instead of keeping a private app-type list facade"
+    );
 }
 
 #[test]
@@ -23320,7 +23324,8 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
             && !adapter_source.contains("fn emit_proxy_core_event(")
             && !adapter_source.contains("pub(crate) fn emit_proxy_core_event(")
             && !adapter_source.contains("pub(crate) fn emit_proxy_core_event_bus_source(")
-            && !adapter_source.contains("pub(crate) struct ProxyEventBusMessage"),
+            && !adapter_source.contains("pub(crate) struct ProxyEventBusMessage")
+            && !adapter_source.contains("fn attempt_event_payload_input_from_forward_attempt("),
         "proxy_core_adapter should not expose generic event bus dispatch facades"
     );
     assert!(
