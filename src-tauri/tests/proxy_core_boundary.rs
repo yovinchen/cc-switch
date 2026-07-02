@@ -20151,6 +20151,11 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         "ForwarderAttemptRuntimeSource must receive allow facts through an input DTO"
     );
     assert!(
+        source.contains("pub(crate) struct ForwarderAttemptSuccessInput")
+            && source.contains("pub(crate) struct ForwarderAttemptFailureInput"),
+        "ForwarderAttemptRuntimeSource must receive success/failure outcome facts through input DTOs"
+    );
+    assert!(
         source.contains("pub(crate) enum ForwarderAttemptAllowDecision"),
         "ForwarderAttemptRuntimeSource must return a structured allow decision"
     );
@@ -20166,9 +20171,23 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         source.contains("attempted_providers: usize") && source.contains("max_attempts: usize"),
         "ForwarderAttemptAllowInput must carry max-attempt policy facts"
     );
+    assert!(
+        source.contains("pub(crate) struct ForwarderAttemptSuccessInput")
+            && source.contains("attempt: &'a ForwardAttempt")
+            && source.contains("app_type: &'a str")
+            && source.contains("used_half_open_permit: bool"),
+        "ForwarderAttemptSuccessInput must carry structured success runtime facts"
+    );
+    assert!(
+        source.contains("pub(crate) struct ForwarderAttemptFailureInput")
+            && source.contains("error: &'a ProxyError"),
+        "ForwarderAttemptFailureInput must carry structured failure runtime facts including ProxyError"
+    );
     for marker in [
         "pub(crate) type ForwarderAttemptRuntimeSourceRef",
         "pub(crate) struct ForwarderAttemptAllowInput",
+        "pub(crate) struct ForwarderAttemptSuccessInput",
+        "pub(crate) struct ForwarderAttemptFailureInput",
         "pub(crate) enum ForwarderAttemptAllowDecision",
         "pub(crate) trait ForwarderAttemptRuntimeSource",
     ] {
@@ -20187,6 +20206,14 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
             && impl_slice.contains("attempted_providers,")
             && impl_slice.contains("max_attempts: self.max_attempts,"),
         "RequestForwarder must pass attempt allow facts as an input DTO"
+    );
+    assert!(
+        impl_slice.contains("record_success(ForwarderAttemptSuccessInput {")
+            && impl_slice.contains("record_failure(ForwarderAttemptFailureInput {")
+            && !impl_slice.contains(".record_success(attempt, app_type, used_half_open_permit)")
+            && !impl_slice
+                .contains(".record_failure(attempt, app_type, used_half_open_permit, error)"),
+        "RequestForwarder must pass attempt success/failure facts as input DTOs"
     );
     let attempt_runtime_impl_slice = function_slice(
         &attempt_source,

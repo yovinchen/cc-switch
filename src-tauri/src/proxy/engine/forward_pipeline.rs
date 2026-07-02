@@ -553,26 +553,28 @@ pub(crate) enum ForwarderAttemptAllowDecision {
     Allowed { used_half_open_permit: bool },
 }
 
+pub(crate) struct ForwarderAttemptSuccessInput<'a> {
+    pub(crate) attempt: &'a ForwardAttempt,
+    pub(crate) app_type: &'a str,
+    pub(crate) used_half_open_permit: bool,
+}
+
+pub(crate) struct ForwarderAttemptFailureInput<'a> {
+    pub(crate) attempt: &'a ForwardAttempt,
+    pub(crate) app_type: &'a str,
+    pub(crate) used_half_open_permit: bool,
+    pub(crate) error: &'a ProxyError,
+}
+
 pub(crate) trait ForwarderAttemptRuntimeSource {
     fn allow<'a>(
         &'a self,
         input: ForwarderAttemptAllowInput<'a>,
     ) -> BoxFuture<'a, ForwarderAttemptAllowDecision>;
 
-    fn record_success<'a>(
-        &'a self,
-        attempt: &'a ForwardAttempt,
-        app_type: &'a str,
-        used_half_open_permit: bool,
-    ) -> BoxFuture<'a, ()>;
+    fn record_success<'a>(&'a self, input: ForwarderAttemptSuccessInput<'a>) -> BoxFuture<'a, ()>;
 
-    fn record_failure<'a>(
-        &'a self,
-        attempt: &'a ForwardAttempt,
-        app_type: &'a str,
-        used_half_open_permit: bool,
-        error: &'a ProxyError,
-    ) -> BoxFuture<'a, ()>;
+    fn record_failure<'a>(&'a self, input: ForwarderAttemptFailureInput<'a>) -> BoxFuture<'a, ()>;
 
     fn release_attempt_permit_neutral<'a>(
         &'a self,
@@ -724,7 +726,11 @@ impl RequestForwarder {
         used_half_open_permit: bool,
     ) {
         self.attempt_runtime_source
-            .record_success(attempt, app_type, used_half_open_permit)
+            .record_success(ForwarderAttemptSuccessInput {
+                attempt,
+                app_type,
+                used_half_open_permit,
+            })
             .await;
         self.runtime_state_source
             .record_successful_attempt(request_id, app_type, attempt)
@@ -774,7 +780,12 @@ impl RequestForwarder {
         error: &ProxyError,
     ) {
         self.attempt_runtime_source
-            .record_failure(attempt, app_type, used_half_open_permit, error)
+            .record_failure(ForwarderAttemptFailureInput {
+                attempt,
+                app_type,
+                used_half_open_permit,
+                error,
+            })
             .await;
         self.runtime_state_source
             .record_failed_attempt(request_id, app_type, attempt, error);

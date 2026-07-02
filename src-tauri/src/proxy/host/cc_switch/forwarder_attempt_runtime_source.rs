@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::database::Database;
 use crate::proxy::engine::forward_pipeline::{
-    ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptRuntimeSource,
-    ForwarderAttemptRuntimeSourceRef,
+    ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptFailureInput,
+    ForwarderAttemptRuntimeSource, ForwarderAttemptRuntimeSourceRef, ForwarderAttemptSuccessInput,
 };
 use crate::proxy::engine::routing::ProviderRouter;
 use crate::proxy::error::ProxyError;
@@ -232,42 +232,31 @@ impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
         })
     }
 
-    fn record_success<'a>(
-        &'a self,
-        attempt: &'a ForwardAttempt,
-        app_type: &'a str,
-        used_half_open_permit: bool,
-    ) -> BoxFuture<'a, ()> {
+    fn record_success<'a>(&'a self, input: ForwarderAttemptSuccessInput<'a>) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             record_forward_attempt_success_runtime_source(
                 &self.router,
-                attempt,
-                app_type,
-                used_half_open_permit,
+                input.attempt,
+                input.app_type,
+                input.used_half_open_permit,
             )
             .await;
         })
     }
 
-    fn record_failure<'a>(
-        &'a self,
-        attempt: &'a ForwardAttempt,
-        app_type: &'a str,
-        used_half_open_permit: bool,
-        error: &'a ProxyError,
-    ) -> BoxFuture<'a, ()> {
+    fn record_failure<'a>(&'a self, input: ForwarderAttemptFailureInput<'a>) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             record_forward_attempt_failure_runtime_source(
                 self.router.as_ref(),
-                attempt,
-                app_type,
-                used_half_open_permit,
-                error,
+                input.attempt,
+                input.app_type,
+                input.used_half_open_permit,
+                input.error,
             )
             .await;
             record_selected_channel_key_failure(
                 self.db.as_ref(),
-                attempt,
+                input.attempt,
                 chrono::Utc::now().timestamp_millis(),
             );
         })
@@ -383,14 +372,15 @@ mod tests {
             db.clone(),
         );
         let before = chrono::Utc::now().timestamp_millis();
+        let error = ProxyError::ForwardFailed("upstream timeout".to_string());
 
         source
-            .record_failure(
-                &attempt,
-                "claude",
-                false,
-                &ProxyError::ForwardFailed("upstream timeout".to_string()),
-            )
+            .record_failure(ForwarderAttemptFailureInput {
+                attempt: &attempt,
+                app_type: "claude",
+                used_half_open_permit: false,
+                error: &error,
+            })
             .await;
 
         let after = chrono::Utc::now().timestamp_millis();
@@ -454,22 +444,24 @@ mod tests {
             &provider,
             candidate("runtime-key-neutral"),
         );
+        let plain_channel_error = ProxyError::ForwardFailed("plain channel failed".to_string());
         source
-            .record_failure(
-                &plain_channel_attempt,
-                "claude",
-                false,
-                &ProxyError::ForwardFailed("plain channel failed".to_string()),
-            )
+            .record_failure(ForwarderAttemptFailureInput {
+                attempt: &plain_channel_attempt,
+                app_type: "claude",
+                used_half_open_permit: false,
+                error: &plain_channel_error,
+            })
             .await;
         let provider_attempt = ForwardAttempt::from_provider(provider);
+        let provider_error = ProxyError::ForwardFailed("provider failed".to_string());
         source
-            .record_failure(
-                &provider_attempt,
-                "claude",
-                false,
-                &ProxyError::ForwardFailed("provider failed".to_string()),
-            )
+            .record_failure(ForwarderAttemptFailureInput {
+                attempt: &provider_attempt,
+                app_type: "claude",
+                used_half_open_permit: false,
+                error: &provider_error,
+            })
             .await;
 
         let stored_key = db
@@ -538,13 +530,14 @@ mod tests {
             Arc::new(provider_router_from_database(db.clone())),
             db.clone(),
         );
+        let error = ProxyError::ForwardFailed("wildcard key failed".to_string());
         source
-            .record_failure(
-                &attempt,
-                "claude",
-                false,
-                &ProxyError::ForwardFailed("wildcard key failed".to_string()),
-            )
+            .record_failure(ForwarderAttemptFailureInput {
+                attempt: &attempt,
+                app_type: "claude",
+                used_half_open_permit: false,
+                error: &error,
+            })
             .await;
 
         let fallback = key_source
