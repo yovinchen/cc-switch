@@ -388,6 +388,15 @@ pub(crate) struct ForwarderSuccessStatusInput<'a> {
     pub(crate) provider: &'a Provider,
 }
 
+pub(crate) struct ForwarderRequestStartedInput<'a> {
+    pub(crate) request_id: &'a str,
+    pub(crate) app_type: &'a str,
+}
+
+pub(crate) struct ForwarderCurrentProviderInput<'a> {
+    pub(crate) provider: &'a Provider,
+}
+
 pub(crate) struct ForwarderProviderFailureInput<'a> {
     pub(crate) provider: &'a Provider,
     pub(crate) error: &'a ProxyError,
@@ -441,6 +450,10 @@ pub(crate) struct ForwarderAttemptFailedInput<'a> {
     pub(crate) request_id: &'a str,
     pub(crate) app_type: &'a str,
     pub(crate) attempt: &'a ForwardAttempt,
+    pub(crate) error: &'a ProxyError,
+}
+
+pub(crate) struct ForwarderForwardErrorStatusInput<'a> {
     pub(crate) error: &'a ProxyError,
 }
 
@@ -502,8 +515,7 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn next_request_id(&self) -> String;
     fn record_request_started<'a>(
         &'a self,
-        request_id: &'a str,
-        app_type: &'a str,
+        input: ForwarderRequestStartedInput<'a>,
     ) -> BoxFuture<'a, ()>;
     fn record_attempt_started(&self, input: ForwarderAttemptStartedInput<'_>);
     fn record_successful_attempt<'a>(
@@ -515,7 +527,10 @@ pub(crate) trait ForwarderRuntimeStateSource {
         &'a self,
         input: ForwarderSuccessStatusInput<'a>,
     ) -> BoxFuture<'a, Option<ForwarderFailoverSwitchTarget>>;
-    fn record_current_provider<'a>(&'a self, provider: &'a Provider) -> BoxFuture<'a, ()>;
+    fn record_current_provider<'a>(
+        &'a self,
+        input: ForwarderCurrentProviderInput<'a>,
+    ) -> BoxFuture<'a, ()>;
     fn record_provider_failure<'a>(
         &'a self,
         input: ForwarderProviderFailureInput<'a>,
@@ -533,7 +548,10 @@ pub(crate) trait ForwarderRuntimeStateSource {
     ) -> ForwarderRectifierRetryFailureDecision;
     fn log_rectifier_retry_success(&self, input: ForwarderRectifierRetrySuccessLogInput<'_>);
     fn log_rectifier_retry_failure(&self, input: ForwarderRectifierRetryFailureLogInput<'_>);
-    fn record_forward_error_status<'a>(&'a self, error: &'a ProxyError) -> BoxFuture<'a, ()>;
+    fn record_forward_error_status<'a>(
+        &'a self,
+        input: ForwarderForwardErrorStatusInput<'a>,
+    ) -> BoxFuture<'a, ()>;
     fn record_no_available_provider_status<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_terminal_failure_status<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -895,7 +913,9 @@ impl RequestForwarder {
                 })
                 .await;
                 self.runtime_state_source
-                    .record_forward_error_status(&retry_err)
+                    .record_forward_error_status(ForwarderForwardErrorStatusInput {
+                        error: &retry_err,
+                    })
                     .await;
                 Some(ForwardError { error: retry_err })
             }
@@ -919,7 +939,10 @@ impl RequestForwarder {
     ) -> Result<ForwardResult, ForwardError> {
         let request_id = self.runtime_state_source.next_request_id();
         self.runtime_state_source
-            .record_request_started(&request_id, app_type.as_str())
+            .record_request_started(ForwarderRequestStartedInput {
+                request_id: &request_id,
+                app_type: app_type.as_str(),
+            })
             .await;
         let guard = ActiveConnectionGuard::acquire(self.runtime_state_source.clone()).await;
         let result = self
@@ -1018,7 +1041,7 @@ impl RequestForwarder {
             // forward_with_preplanned_attempts 在客户端请求维度统一处理，这里只刷
             // 新「正在尝试哪个 provider」的展示字段。
             self.runtime_state_source
-                .record_current_provider(provider)
+                .record_current_provider(ForwarderCurrentProviderInput { provider })
                 .await;
 
             // 转发请求（每个 Provider 只尝试一次，重试由客户端控制）
@@ -1148,7 +1171,9 @@ impl RequestForwarder {
                                 )
                                 .await;
                                 self.runtime_state_source
-                                    .record_forward_error_status(&e)
+                                    .record_forward_error_status(ForwarderForwardErrorStatusInput {
+                                        error: &e,
+                                    })
                                     .await;
                                 return Err(ForwardError { error: e });
                             }
@@ -1241,7 +1266,9 @@ impl RequestForwarder {
                                 )
                                 .await;
                                 self.runtime_state_source
-                                    .record_forward_error_status(&e)
+                                    .record_forward_error_status(ForwarderForwardErrorStatusInput {
+                                        error: &e,
+                                    })
                                     .await;
                                 return Err(ForwardError { error: e });
                             }
@@ -1316,7 +1343,9 @@ impl RequestForwarder {
                         })
                         .await;
                         self.runtime_state_source
-                            .record_forward_error_status(&e)
+                            .record_forward_error_status(ForwarderForwardErrorStatusInput {
+                                error: &e,
+                            })
                             .await;
                         return Err(ForwardError { error: e });
                     }
@@ -1370,7 +1399,9 @@ impl RequestForwarder {
                             )
                             .await;
                             self.runtime_state_source
-                                .record_forward_error_status(&e)
+                                .record_forward_error_status(ForwarderForwardErrorStatusInput {
+                                    error: &e,
+                                })
                                 .await;
                             return Err(ForwardError { error: e });
                         }

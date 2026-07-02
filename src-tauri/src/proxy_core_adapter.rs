@@ -11,15 +11,15 @@ use crate::proxy::engine::forward_pipeline::{
     ForwarderAuthHeadersInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCodexChatProtocolEnrichmentInput, ForwarderCodexResponsesToChatInput,
     ForwarderCopilotRequestOptimizationGateInput, ForwarderCopilotRequestOptimizationInput,
-    ForwarderFailoverSwitchTarget, ForwarderMediaRetryPlanInput, ForwarderPreparedRequest,
-    ForwarderProtocolStateSource, ForwarderProviderFailureInput,
-    ForwarderProviderRectifierRetryFailureInput, ForwarderProviderRequestBodyInput,
-    ForwarderProviderTransformInput, ForwarderRectifierRetryFailureDecision,
-    ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
-    ForwarderRequestPreparationInput, ForwarderRuntimeOptions, ForwarderSuccessStatusInput,
-    ForwarderSuccessfulAttemptInput, ForwarderThinkingBudgetRectifierInput,
-    ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput,
-    ForwarderUpstreamUrlInput,
+    ForwarderCurrentProviderInput, ForwarderFailoverSwitchTarget, ForwarderForwardErrorStatusInput,
+    ForwarderMediaRetryPlanInput, ForwarderPreparedRequest, ForwarderProtocolStateSource,
+    ForwarderProviderFailureInput, ForwarderProviderRectifierRetryFailureInput,
+    ForwarderProviderRequestBodyInput, ForwarderProviderTransformInput,
+    ForwarderRectifierRetryFailureDecision, ForwarderRequestBodyTransformInput,
+    ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestStartedInput,
+    ForwarderRuntimeOptions, ForwarderSuccessStatusInput, ForwarderSuccessfulAttemptInput,
+    ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
+    ForwarderTransformPlanInput, ForwarderUpstreamUrlInput,
 };
 #[cfg(test)]
 use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
@@ -2586,7 +2586,11 @@ base_url = "https://api.openai.com/v1"
             None,
         );
 
-        source.record_current_provider(&provider).await;
+        source
+            .record_current_provider(ForwarderCurrentProviderInput {
+                provider: &provider,
+            })
+            .await;
 
         let status = source.status();
         let status = status.read().await;
@@ -2666,7 +2670,12 @@ base_url = "https://api.openai.com/v1"
             Arc::new(ProxyEventBus::default()),
         );
 
-        source.record_request_started("req-1", "claude").await;
+        source
+            .record_request_started(ForwarderRequestStartedInput {
+                request_id: "req-1",
+                app_type: "claude",
+            })
+            .await;
 
         let status = source.status();
         let status = status.read().await;
@@ -2695,8 +2704,11 @@ base_url = "https://api.openai.com/v1"
             Arc::new(ProxyEventBus::default()),
         );
 
+        let timeout_error = ProxyError::Timeout("upstream timed out".to_string());
         source
-            .record_forward_error_status(&ProxyError::Timeout("upstream timed out".to_string()))
+            .record_forward_error_status(ForwarderForwardErrorStatusInput {
+                error: &timeout_error,
+            })
             .await;
 
         let status = source.status();

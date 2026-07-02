@@ -19653,9 +19653,41 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     );
     assert!(
         runtime_trait_slice.contains("fn record_request_started<'a>(")
+            && runtime_trait_slice.contains("input: ForwarderRequestStartedInput<'a>")
             && !runtime_trait_slice.contains("fn emit_request_started(")
             && !runtime_trait_slice.contains("fn record_request_started_now"),
         "ForwarderRuntimeStateSource must expose request-start lifecycle as one behavior, not split event/status helpers"
+    );
+    assert!(
+        source.contains("pub(crate) struct ForwarderRequestStartedInput<'a>")
+            && source.contains("pub(crate) struct ForwarderCurrentProviderInput<'a>")
+            && source.contains("pub(crate) struct ForwarderForwardErrorStatusInput<'a>")
+            && runtime_trait_slice.contains("input: ForwarderCurrentProviderInput<'a>")
+            && runtime_trait_slice.contains("input: ForwarderForwardErrorStatusInput<'a>")
+            && impl_slice.contains("record_request_started(ForwarderRequestStartedInput {")
+            && impl_slice.contains("record_current_provider(ForwarderCurrentProviderInput {")
+            && impl_slice.contains("record_forward_error_status(ForwarderForwardErrorStatusInput {")
+            && runtime_source.contains("ForwarderRequestStartedInput")
+            && runtime_source.contains("ForwarderCurrentProviderInput")
+            && runtime_source.contains("ForwarderForwardErrorStatusInput")
+            && runtime_source.contains("input.request_id")
+            && runtime_source.contains("input.app_type")
+            && runtime_source.contains("input.provider.id.as_str()")
+            && runtime_source.contains("input.provider.name.as_str()")
+            && runtime_source.contains("input.error.to_string()"),
+        "ForwarderRuntimeStateSource must consume request/current/error status facts as structured inputs"
+    );
+    assert!(
+        !impl_slice.contains(".record_request_started(&request_id, app_type.as_str())")
+            && !impl_slice.contains(".record_current_provider(provider)")
+            && !impl_slice.contains(".record_forward_error_status(&e)")
+            && !impl_slice.contains(".record_forward_error_status(&retry_err)")
+            && !runtime_trait_slice.contains(
+                "fn record_request_started<'a>(\n        &'a self,\n        request_id:"
+            )
+            && !runtime_trait_slice.contains("fn record_current_provider<'a>(&'a self, provider:")
+            && !runtime_trait_slice.contains("fn record_forward_error_status<'a>(&'a self, error:"),
+        "RequestForwarder and ForwarderRuntimeStateSource must not pass request/current/error status facts as loose parameters"
     );
     assert!(
         source.contains("pub(crate) struct ForwarderSuccessStatusInput<'a>")
@@ -19970,10 +20002,12 @@ fn production_forwarder_request_lifecycle_uses_runtime_state_source() {
         violations.join("\n")
     );
     assert!(
-        impl_slice.contains(".record_request_started(&request_id, app_type.as_str())")
+        impl_slice.contains(".record_request_started(ForwarderRequestStartedInput {")
+            && impl_slice.contains("request_id: &request_id")
+            && impl_slice.contains("app_type: app_type.as_str()")
             && !impl_slice.contains(".emit_request_started(")
             && !impl_slice.contains(".record_request_started_now("),
-        "RequestForwarder must call one request-start lifecycle method on the runtime state source"
+        "RequestForwarder must call one request-start lifecycle method on the runtime state source with structured input"
     );
 }
 

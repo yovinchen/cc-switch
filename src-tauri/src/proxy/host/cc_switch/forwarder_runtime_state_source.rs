@@ -6,10 +6,11 @@ use uuid::Uuid;
 
 use crate::provider::Provider;
 use crate::proxy::engine::forward_pipeline::{
-    ForwarderAttemptFailedInput, ForwarderAttemptStartedInput, ForwarderFailoverSwitchTarget,
-    ForwarderFailureDecision, ForwarderProviderFailureInput,
-    ForwarderProviderRectifierRetryFailureInput, ForwarderRectifierRetryFailureDecision,
-    ForwarderRectifierRetryFailureLogInput, ForwarderRectifierRetrySuccessLogInput,
+    ForwarderAttemptFailedInput, ForwarderAttemptStartedInput, ForwarderCurrentProviderInput,
+    ForwarderFailoverSwitchTarget, ForwarderFailureDecision, ForwarderForwardErrorStatusInput,
+    ForwarderProviderFailureInput, ForwarderProviderRectifierRetryFailureInput,
+    ForwarderRectifierRetryFailureDecision, ForwarderRectifierRetryFailureLogInput,
+    ForwarderRectifierRetrySuccessLogInput, ForwarderRequestStartedInput,
     ForwarderRetryableFailureLogInput, ForwarderRuntimeStateSource, ForwarderRuntimeStateSourceRef,
     ForwarderSuccessStatusInput, ForwarderSuccessfulAttemptInput, ForwarderTerminalFailureLogInput,
 };
@@ -344,11 +345,14 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
 
     fn record_request_started<'a>(
         &'a self,
-        request_id: &'a str,
-        app_type: &'a str,
+        input: ForwarderRequestStartedInput<'a>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            emit_request_started_event_source(self.events.as_ref(), request_id, app_type);
+            emit_request_started_event_source(
+                self.events.as_ref(),
+                input.request_id,
+                input.app_type,
+            );
             let started_at = chrono::Utc::now().to_rfc3339();
             record_forward_request_started_runtime_source(self.status.as_ref(), &started_at).await;
         })
@@ -419,12 +423,15 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         })
     }
 
-    fn record_current_provider<'a>(&'a self, provider: &'a Provider) -> BoxFuture<'a, ()> {
+    fn record_current_provider<'a>(
+        &'a self,
+        input: ForwarderCurrentProviderInput<'a>,
+    ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             record_forward_current_provider_runtime_source(
                 self.status.as_ref(),
-                provider.id.as_str(),
-                provider.name.as_str(),
+                input.provider.id.as_str(),
+                input.provider.name.as_str(),
             )
             .await;
         })
@@ -537,9 +544,12 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         })
     }
 
-    fn record_forward_error_status<'a>(&'a self, error: &'a ProxyError) -> BoxFuture<'a, ()> {
+    fn record_forward_error_status<'a>(
+        &'a self,
+        input: ForwarderForwardErrorStatusInput<'a>,
+    ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            let error_message = error.to_string();
+            let error_message = input.error.to_string();
             record_forward_failure_runtime_source(self.status.as_ref(), &error_message).await;
         })
     }
