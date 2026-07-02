@@ -18205,8 +18205,6 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "managed_account_app_handle_unavailable_error_message(",
         "managed_account_token_request_log_message(",
         "managed_account_token_success_log_message(",
-        "managed_account_token_failure_log_message(",
-        "managed_account_token_failure_error_message(",
         "copilot_token_failure_kind(",
         "codex_oauth_token_failure_kind(",
         "copilot_token_from_app_handle(",
@@ -18223,7 +18221,6 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
     assert!(
         host_source.contains("use crate::proxy_core::api::auth::{")
             && host_source.contains("managed_account_app_handle_unavailable_error_message")
-            && host_source.contains("managed_account_token_failure_error_message")
             && host_source.contains("resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source")
             && host_source.contains("ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource")
             && host_source.contains("ManagedAccountRuntimeBindingFacts")
@@ -18233,6 +18230,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && host_source.contains("ManagedAccountAdapterClaudeApiFormatForBindingInput")
             && host_source.contains("ManagedAccountTokenCacheKey")
             && host_source.contains("ManagedAccountTokenRefreshFailureKind")
+            && host_source.contains("ManagedAccountTokenRefreshFailureResolution")
             && host_source.contains("ManagedAccountTokenSnapshot")
             && host_source.contains("ManagedAccountTokenSnapshotStore")
             && host_source.contains("ProviderAuthInfo")
@@ -18248,25 +18246,29 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && !host_source.contains("HashMap<ManagedAccountTokenCacheKey"),
         "managed account token snapshot storage should use the core snapshot store instead of a host-owned HashMap"
     );
-    let snapshot_fallback_slice = function_slice(
+    let refresh_failure_slice = function_slice(
         &host_source,
-        "async fn token_snapshot_for_refresh_failure",
+        "async fn resolve_token_refresh_failure",
         "pub(crate) fn managed_account_runtime_source_from_app_handle",
     );
     assert!(
-        snapshot_fallback_slice.contains(".snapshot_for_refresh_failure(")
-            && snapshot_fallback_slice.contains("fallback.fallback_log_message(key, error)")
-            && !snapshot_fallback_slice.contains("managed_account_token_failure_fallback_decision(")
-            && !snapshot_fallback_slice.contains("managed_account_token_failure_fallback_log_message(")
-            && !snapshot_fallback_slice.contains("Some(snapshot.cached_at_ms)")
-            && !snapshot_fallback_slice.contains("account_id: Option<&str>"),
-        "host runtime source should delegate snapshot storage, fallback policy, and log context to core token-cache contracts"
+        refresh_failure_slice.contains(".resolve_refresh_failure(")
+            && refresh_failure_slice
+                .contains("ManagedAccountTokenRefreshFailureResolution::UseCachedToken")
+            && refresh_failure_slice.contains("ManagedAccountTokenRefreshFailureResolution::Reject")
+            && !refresh_failure_slice.contains(".snapshot_for_refresh_failure(")
+            && !refresh_failure_slice.contains("managed_account_token_failure_log_message(")
+            && !refresh_failure_slice.contains("managed_account_token_failure_error_message(")
+            && !refresh_failure_slice.contains("fallback.fallback_log_message(")
+            && !refresh_failure_slice.contains("managed_account_token_failure_fallback_decision(")
+            && !refresh_failure_slice.contains("managed_account_token_failure_fallback_log_message(")
+            && !refresh_failure_slice.contains("Some(snapshot.cached_at_ms)")
+            && !refresh_failure_slice.contains("account_id: Option<&str>"),
+        "host runtime source should delegate refresh-failure fallback/reject decisions and messages to core token-cache contracts"
     );
     for marker in [
         "managed_account_app_handle_unavailable_error_message",
         "managed_account_app_handle_unavailable_log_message",
-        "managed_account_token_failure_error_message",
-        "managed_account_token_failure_log_message",
         "managed_account_token_request_log_message",
         "managed_account_token_success_log_message",
         "resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source",
@@ -18277,6 +18279,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "ManagedAccountAuthRuntime",
         "ManagedAccountTokenCacheKey",
         "ManagedAccountTokenRefreshFailureKind",
+        "ManagedAccountTokenRefreshFailureResolution",
         "ManagedAccountTokenSnapshot",
         "ManagedAccountTokenSnapshotStore",
         "CoreManagedAccountRuntimeSource",

@@ -578,6 +578,18 @@ impl ManagedAccountTokenSnapshotFallback {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ManagedAccountTokenRefreshFailureResolution {
+    UseCachedToken {
+        snapshot: ManagedAccountTokenSnapshot,
+        log_message: String,
+    },
+    Reject {
+        log_message: String,
+        error_message: String,
+    },
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ManagedAccountTokenSnapshotStore {
     snapshots: HashMap<ManagedAccountTokenCacheKey, ManagedAccountTokenSnapshot>,
@@ -629,6 +641,30 @@ impl ManagedAccountTokenSnapshotStore {
             snapshot: snapshot.clone(),
             decision,
         })
+    }
+
+    pub fn resolve_refresh_failure(
+        &self,
+        key: &ManagedAccountTokenCacheKey,
+        now_ms: i64,
+        failure_kind: ManagedAccountTokenRefreshFailureKind,
+        error: &str,
+    ) -> ManagedAccountTokenRefreshFailureResolution {
+        if let Some(fallback) = self.snapshot_for_refresh_failure(key, now_ms, failure_kind) {
+            return ManagedAccountTokenRefreshFailureResolution::UseCachedToken {
+                log_message: fallback.fallback_log_message(key, error),
+                snapshot: fallback.snapshot,
+            };
+        }
+
+        ManagedAccountTokenRefreshFailureResolution::Reject {
+            log_message: managed_account_token_failure_log_message(
+                key.runtime(),
+                key.account_id(),
+                error,
+            ),
+            error_message: managed_account_token_failure_error_message(key.runtime(), error),
+        }
     }
 }
 
@@ -1301,10 +1337,10 @@ mod tests {
         ManagedAccountAuthPlan, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
         ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAccountRuntimeSource,
         ManagedAccountTokenCacheKey, ManagedAccountTokenFailureFallbackDecision,
-        ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenSnapshot,
-        ManagedAccountTokenSnapshotStore, ProviderManagedAuthFacts, CODEX_OAUTH_AUTH_PLACEHOLDER,
-        CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PLACEHOLDER, GITHUB_COPILOT_AUTH_PROVIDER,
-        PROXY_AUTH_PLACEHOLDER,
+        ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenRefreshFailureResolution,
+        ManagedAccountTokenSnapshot, ManagedAccountTokenSnapshotStore, ProviderManagedAuthFacts,
+        CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER,
+        GITHUB_COPILOT_AUTH_PLACEHOLDER, GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
     };
     use futures::{executor::block_on, future::BoxFuture};
     use http::{HeaderMap, HeaderValue, StatusCode};
@@ -2320,6 +2356,56 @@ mod tests {
                 ManagedAccountTokenRefreshFailureKind::Terminal,
             )
             .is_none());
+    }
+
+    #[test]
+    fn managed_account_token_snapshot_store_resolves_refresh_failures() {
+        let now = 1_771_000_000_000;
+        let mut store = ManagedAccountTokenSnapshotStore::new();
+        let key = ManagedAccountTokenCacheKey::new(
+            ManagedAccountAuthRuntime::GitHubCopilot,
+            Some("acct-a"),
+        );
+
+        store.record_token_snapshot(
+            key.clone(),
+            ManagedAccountAuthRuntime::GitHubCopilot.provider_auth_info("cached".to_string()),
+            None,
+            now - 1_500,
+        );
+
+        assert_eq!(
+            store.resolve_refresh_failure(
+                &key,
+                now,
+                ManagedAccountTokenRefreshFailureKind::Retryable,
+                "network timeout",
+            ),
+            ManagedAccountTokenRefreshFailureResolution::UseCachedToken {
+                snapshot: ManagedAccountTokenSnapshot::new(
+                    ManagedAccountAuthRuntime::GitHubCopilot
+                        .provider_auth_info("cached".to_string()),
+                    None,
+                    now - 1_500,
+                ),
+                log_message: "[Copilot] 获取 Copilot token 失败，使用最近成功 token 快照回退 (account=acct-a, ageMs=1500): network timeout"
+                    .to_string(),
+            }
+        );
+
+        assert_eq!(
+            store.resolve_refresh_failure(
+                &key,
+                now,
+                ManagedAccountTokenRefreshFailureKind::Terminal,
+                "revoked",
+            ),
+            ManagedAccountTokenRefreshFailureResolution::Reject {
+                log_message: "[Copilot] 获取 Copilot token 失败 (account=acct-a): revoked"
+                    .to_string(),
+                error_message: "GitHub Copilot 认证失败: revoked".to_string(),
+            }
+        );
     }
 
     #[test]

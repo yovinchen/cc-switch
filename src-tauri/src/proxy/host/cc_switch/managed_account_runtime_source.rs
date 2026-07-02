@@ -15,17 +15,16 @@ use crate::proxy::error::ProxyError;
 use crate::proxy::host::cc_switch::provider_projection::provider_managed_account_binding_context;
 use crate::proxy_core::api::auth::{
     managed_account_app_handle_unavailable_error_message,
-    managed_account_app_handle_unavailable_log_message,
-    managed_account_token_failure_error_message, managed_account_token_failure_log_message,
-    managed_account_token_request_log_message, managed_account_token_success_log_message,
+    managed_account_app_handle_unavailable_log_message, managed_account_token_request_log_message,
+    managed_account_token_success_log_message,
     resolve_copilot_dynamic_base_url_for_binding_with_runtime_source as resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source,
     resolve_copilot_live_model_for_binding_with_runtime_source as resolve_core_copilot_live_model_for_binding_with_runtime_source,
     resolve_copilot_model_vendor_for_binding_with_runtime_source as resolve_core_copilot_model_vendor_for_binding_with_runtime_source,
     resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
     ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ManagedAccountBindingInput,
     ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagedAccountTokenCacheKey,
-    ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenSnapshot,
-    ManagedAccountTokenSnapshotStore, ProviderAuthInfo,
+    ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenRefreshFailureResolution,
+    ManagedAccountTokenSnapshot, ManagedAccountTokenSnapshotStore, ProviderAuthInfo,
 };
 use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
@@ -128,23 +127,38 @@ impl CcSwitchManagedAccountRuntimeSource {
         );
     }
 
-    async fn token_snapshot_for_refresh_failure(
+    async fn resolve_token_refresh_failure(
         &self,
         key: &ManagedAccountTokenCacheKey,
         error: &str,
         failure_kind: ManagedAccountTokenRefreshFailureKind,
-    ) -> Option<ManagedAccountTokenSnapshot> {
-        let fallback = {
+    ) -> Result<ManagedAccountTokenSnapshot, ProxyError> {
+        let resolution = {
             let snapshots = self.token_snapshots.lock().await;
-            snapshots.snapshot_for_refresh_failure(
+            snapshots.resolve_refresh_failure(
                 key,
                 chrono::Utc::now().timestamp_millis(),
                 failure_kind,
+                error,
             )
-        }?;
+        };
 
-        log::warn!("{}", fallback.fallback_log_message(key, error));
-        Some(fallback.snapshot)
+        match resolution {
+            ManagedAccountTokenRefreshFailureResolution::UseCachedToken {
+                snapshot,
+                log_message,
+            } => {
+                log::warn!("{log_message}");
+                Ok(snapshot)
+            }
+            ManagedAccountTokenRefreshFailureResolution::Reject {
+                log_message,
+                error_message,
+            } => {
+                log::error!("{log_message}");
+                Err(ProxyError::AuthError(error_message))
+            }
+        }
     }
 }
 
@@ -530,20 +544,9 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                 Err(error) => {
                     let failure_kind = copilot_token_failure_kind(&error);
                     let error = error.to_string();
-                    if let Some(snapshot) = self
-                        .token_snapshot_for_refresh_failure(&cache_key, &error, failure_kind)
+                    self.resolve_token_refresh_failure(&cache_key, &error, failure_kind)
                         .await
-                    {
-                        return Ok(snapshot.auth);
-                    }
-
-                    log::error!(
-                        "{}",
-                        managed_account_token_failure_log_message(runtime, account_id, &error)
-                    );
-                    Err(ProxyError::AuthError(
-                        managed_account_token_failure_error_message(runtime, &error),
-                    ))
+                        .map(|snapshot| snapshot.auth)
                 }
             }
         })
@@ -592,24 +595,9 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                 Err(error) => {
                     let failure_kind = codex_oauth_token_failure_kind(&error);
                     let error = error.to_string();
-                    if let Some(snapshot) = self
-                        .token_snapshot_for_refresh_failure(&cache_key, &error, failure_kind)
+                    self.resolve_token_refresh_failure(&cache_key, &error, failure_kind)
                         .await
-                    {
-                        return Ok((snapshot.auth, snapshot.codex_oauth_account_id));
-                    }
-
-                    log::error!(
-                        "{}",
-                        managed_account_token_failure_log_message(
-                            runtime,
-                            account_id.as_deref(),
-                            &error
-                        )
-                    );
-                    Err(ProxyError::AuthError(
-                        managed_account_token_failure_error_message(runtime, &error),
-                    ))
+                        .map(|snapshot| (snapshot.auth, snapshot.codex_oauth_account_id))
                 }
             }
         })
@@ -742,7 +730,7 @@ mod tests {
             .await;
 
         let snapshot = source
-            .token_snapshot_for_refresh_failure(
+            .resolve_token_refresh_failure(
                 &key,
                 "network timeout",
                 ManagedAccountTokenRefreshFailureKind::Retryable,
@@ -781,24 +769,24 @@ mod tests {
             .await;
 
         assert!(source
-            .token_snapshot_for_refresh_failure(
+            .resolve_token_refresh_failure(
                 &codex_same_account,
                 "network timeout",
                 ManagedAccountTokenRefreshFailureKind::Retryable,
             )
             .await
-            .is_none());
+            .is_err());
         assert!(source
-            .token_snapshot_for_refresh_failure(
+            .resolve_token_refresh_failure(
                 &copilot_other_account,
                 "network timeout",
                 ManagedAccountTokenRefreshFailureKind::Retryable,
             )
             .await
-            .is_none());
+            .is_err());
 
         let snapshot = source
-            .token_snapshot_for_refresh_failure(
+            .resolve_token_refresh_failure(
                 &copilot_account,
                 "network timeout",
                 ManagedAccountTokenRefreshFailureKind::Retryable,
@@ -826,13 +814,13 @@ mod tests {
         }
 
         assert!(source
-            .token_snapshot_for_refresh_failure(
+            .resolve_token_refresh_failure(
                 &key,
                 "network timeout",
                 ManagedAccountTokenRefreshFailureKind::Retryable,
             )
             .await
-            .is_none());
+            .is_err());
 
         source
             .record_token_snapshot(
@@ -843,12 +831,12 @@ mod tests {
             .await;
 
         assert!(source
-            .token_snapshot_for_refresh_failure(
+            .resolve_token_refresh_failure(
                 &key,
                 "refresh token revoked",
                 ManagedAccountTokenRefreshFailureKind::Terminal,
             )
             .await
-            .is_none());
+            .is_err());
     }
 }
