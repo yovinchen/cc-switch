@@ -25028,8 +25028,9 @@ fn production_provider_router_owns_failover_provider_selection_projection() {
         !source.contains("use crate::proxy_core_adapter::select_failover_provider_ids_from_router_lookup_availability")
             && !adapter_source.contains(
                 "fn select_failover_provider_ids_from_router_lookup_availability("
-            ),
-        "proxy_core_adapter should not retain the ProviderRouter failover selection projection"
+            )
+            && !adapter_source.contains("fn select_current_provider_ids_from_router_source("),
+        "proxy_core_adapter should not retain ProviderRouter provider-id selection projections"
     );
 
     let mut violations = Vec::new();

@@ -334,23 +334,6 @@ mod tests {
         )
     }
 
-    fn select_current_provider_ids_from_router_source(
-        app_type: &str,
-        current: Option<Provider>,
-    ) -> Result<Vec<String>, AppError> {
-        let current_provider_id = current.map(|provider| provider.id);
-        let selected_ids =
-            select_provider_ids(ProviderSelectionInput::current(current_provider_id.clone()))
-                .map_err(|error| {
-                    provider_router_app_error_from_provider_selection_failure(app_type, error)
-                })?;
-
-        Ok(selected_ids
-            .into_iter()
-            .filter(|provider_id| current_provider_id.as_ref() == Some(provider_id))
-            .collect())
-    }
-
     fn provider_credential_values_with_issue(
         provider: &Provider,
         app_type: &AppType,
@@ -3791,18 +3774,16 @@ base_url = "https://api.openai.com/v1"
             "db-provider"
         );
         assert_eq!(forward_current_provider_id_from_source(None, || None), "");
-        let current_provider = Provider::with_id(
+        let selected_current = select_provider_ids(ProviderSelectionInput::current(Some(
             "provider-a".to_string(),
-            "Provider A".to_string(),
-            json!({}),
-            None,
-        );
-        let selected_current =
-            select_current_provider_ids_from_router_source("claude", Some(current_provider))
-                .expect("selected current provider id");
+        )))
+        .map_err(|error| provider_router_app_error_from_provider_selection_failure("claude", error))
+        .expect("selected current provider id");
         assert_eq!(selected_current, vec!["provider-a"]);
         assert!(matches!(
-            select_current_provider_ids_from_router_source("claude", None),
+            select_provider_ids(ProviderSelectionInput::current(None)).map_err(|error| {
+                provider_router_app_error_from_provider_selection_failure("claude", error)
+            }),
             Err(AppError::NoProvidersConfigured)
         ));
 
