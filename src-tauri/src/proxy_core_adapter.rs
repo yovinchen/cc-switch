@@ -226,8 +226,9 @@ mod tests {
     use crate::proxy_core::api::ports::{
         codex_restored_live_settings_parts, gemini_env_json_from_map,
         gemini_env_string_map_from_settings, gemini_live_config_object_from_settings,
-        ChannelKeyRuntimeSource, CopilotOptimizerConfig, CurrentRouteTarget, GeminiLiveConfigIssue,
-        OptimizerConfig, ProxyConfig, ProxyRuntimeStatus, RectifierConfig,
+        ChannelKeyRuntimeLookupInput, ChannelKeyRuntimeSource, CopilotOptimizerConfig,
+        CurrentRouteTarget, GeminiLiveConfigIssue, OptimizerConfig, ProxyConfig,
+        ProxyRuntimeStatus, RectifierConfig,
     };
     use crate::proxy_core::api::routing::{
         apply_route_candidate_circuit_availability, current_provider_id_from_sources,
@@ -999,14 +1000,13 @@ mod tests {
         impl ChannelKeyRuntimeSource for TestChannelKeyRuntimeSource {
             fn load_channel_key_candidate(
                 &self,
-                channel_id: &str,
-                key_ref: &str,
+                input: ChannelKeyRuntimeLookupInput<'_>,
             ) -> ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>> {
                 let Some((expected_channel_id, expected_key_ref)) = self.expected else {
                     panic!("provider auth should not load channel keys");
                 };
-                assert_eq!(channel_id, expected_channel_id);
-                assert_eq!(key_ref, expected_key_ref);
+                assert_eq!(input.channel_id, expected_channel_id);
+                assert_eq!(input.key_ref, expected_key_ref);
                 Ok(self.candidate.clone())
             }
         }

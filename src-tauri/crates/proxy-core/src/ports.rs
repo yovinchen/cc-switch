@@ -359,8 +359,7 @@ pub trait AuthProvider: Send + Sync {
 pub trait ChannelKeyRuntimeSource: Send + Sync {
     fn load_channel_key_candidate(
         &self,
-        channel_id: &str,
-        key_ref: &str,
+        input: ChannelKeyRuntimeLookupInput<'_>,
     ) -> ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>>;
 }
 
@@ -5970,6 +5969,12 @@ pub struct ChannelKeyRuntimeCandidateInput {
     pub priority: i64,
     pub weight: u32,
     pub last_failure_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChannelKeyRuntimeLookupInput<'a> {
+    pub channel_id: &'a str,
+    pub key_ref: &'a str,
 }
 
 pub fn channel_key_runtime_candidate_from_input(

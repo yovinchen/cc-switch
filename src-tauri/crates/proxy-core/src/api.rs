@@ -85,7 +85,8 @@ pub mod management {
         CHANNEL_HEALTH_UNKNOWN_STATUS, ChannelHealthResetResponse, ChannelHealthUpdate,
         ChannelHealthUpdateInput, ChannelKeyDeleteResponse, ChannelKeyRecord,
         ChannelKeyRecordInput, ChannelKeyRecordResponse, ChannelKeyRuntimeCandidate,
-        ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeSelectionInput,
+        ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeLookupInput,
+        ChannelKeyRuntimeSelectionInput,
         ChannelKeyRuntimeSelectionPolicy, ChannelKeyRuntimeSelectionStrategy,
         ChannelKeysResponse, ChannelListQuery,
         ChannelListResponse, ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
@@ -123,8 +124,8 @@ pub mod ports {
         app_proxy_config_defaults_for_app, auth_info_from_profile_ref,
         auth_info_from_route_context, AppProxyConfig, AppSummaryConfig, AuthInfo, AuthProvider,
         ChannelBreakerStats, ChannelBreakerStatsResponse, ChannelHealthReset,
-        ChannelHealthResetResponse, ChannelHealthStore, ChannelKeyRuntimeSource,
-        ChannelReachabilityProbe, ChannelModelRecord, ChannelSource,
+        ChannelHealthResetResponse, ChannelHealthStore, ChannelKeyRuntimeLookupInput,
+        ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelModelRecord, ChannelSource,
         CopilotOptimizerConfig, CopilotOptimizerConfigSpec, CurrentRouteChannelTargetInput,
         CurrentRouteTarget, CurrentRouteTargetInput, ForwardCurrentProviderStatusInput,
         ForwardFailureStatusInput, ForwardPipeline, ForwardProviderFailureStatusInput,
@@ -409,7 +410,7 @@ pub mod prelude {
         ChannelModelRecordInput, ChannelModelsResponse, ChannelModelsSource, ChannelPathRequest,
         ChannelReachabilityInput, ChannelReachabilityResult, ChannelReachabilityStatus,
         ChannelRecord, ChannelRecordInput,
-        ChannelKeyRuntimeCandidate, ChannelKeyRuntimeSelectionInput,
+        ChannelKeyRuntimeCandidate, ChannelKeyRuntimeLookupInput, ChannelKeyRuntimeSelectionInput,
         ChannelKeyRuntimeSelectionPolicy, ChannelKeyRuntimeSelectionStrategy,
         ChannelRecordResponse, ChannelRecordSource,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, ChannelTestInput,
@@ -447,10 +448,10 @@ pub mod prelude {
         CurrentRouteTargetInput,
     };
     pub use super::ports::{
-        AppProxyConfig, AuthInfo, AuthProvider, ChannelBreakerStats, ChannelHealthReset, ChannelHealthStore,
-        ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource, ForwardPipeline, ModelCatalogProvider,
-        ProviderAttemptResult,
-        ProviderHealthStore, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
+        AppProxyConfig, AuthInfo, AuthProvider, ChannelBreakerStats, ChannelHealthReset,
+        ChannelHealthStore, ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource,
+        ForwardPipeline, ModelCatalogProvider, ProviderAttemptResult, ProviderHealthStore,
+        ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
         ClaudeDesktopGatewayAuthSource, ManagementAuthRuntimeConfig, ManagementAuthSource,
         ProxyRuntimeStatus, RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
     };
@@ -934,8 +935,7 @@ mod tests {
         impl ChannelKeyRuntimeSource for StubServices {
             fn load_channel_key_candidate(
                 &self,
-                _channel_id: &str,
-                _key_ref: &str,
+                _input: management::ChannelKeyRuntimeLookupInput<'_>,
             ) -> ProxyCoreResult<Option<management::ChannelKeyRuntimeCandidate>> {
                 Ok(None)
             }

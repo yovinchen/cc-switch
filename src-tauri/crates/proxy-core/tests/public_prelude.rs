@@ -606,8 +606,7 @@ impl AuthProvider for ExternalRelayServices {
 impl ChannelKeyRuntimeSource for ExternalRelayServices {
     fn load_channel_key_candidate(
         &self,
-        _channel_id: &str,
-        _key_ref: &str,
+        _input: ChannelKeyRuntimeLookupInput<'_>,
     ) -> ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>> {
         Ok(None)
     }

@@ -554,12 +554,11 @@ impl AuthProvider for DemoRelayHost {
 impl ChannelKeyRuntimeSource for DemoRelayHost {
     fn load_channel_key_candidate(
         &self,
-        channel_id: &str,
-        key_ref: &str,
+        input: ChannelKeyRuntimeLookupInput<'_>,
     ) -> ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>> {
         Ok(Some(ChannelKeyRuntimeCandidate {
-            channel_id: channel_id.to_string(),
-            key_ref: key_ref.to_string(),
+            channel_id: input.channel_id.to_string(),
+            key_ref: input.key_ref.to_string(),
             key_value: "sk-relay".to_string(),
             status: "enabled".to_string(),
             priority: 100,

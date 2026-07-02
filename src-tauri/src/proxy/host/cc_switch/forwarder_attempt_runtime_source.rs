@@ -295,9 +295,16 @@ mod tests {
     use crate::proxy_core::api::management::{
         ProxyChannelKeyWriteRequest, ProxyChannelWriteRequest,
     };
-    use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
+    use crate::proxy_core::api::ports::{ChannelKeyRuntimeLookupInput, ChannelKeyRuntimeSource};
     use crate::proxy_core::api::routing::ChannelRouteCandidate;
     use serde_json::json;
+
+    fn lookup<'a>(channel_id: &'a str, key_ref: &'a str) -> ChannelKeyRuntimeLookupInput<'a> {
+        ChannelKeyRuntimeLookupInput {
+            channel_id,
+            key_ref,
+        }
+    }
 
     fn candidate(channel_id: &str) -> ChannelRouteCandidate {
         ChannelRouteCandidate {
@@ -514,7 +521,7 @@ mod tests {
                 db.clone(),
             );
         let selected = key_source
-            .load_channel_key_candidate("runtime-key-wildcard", "*")
+            .load_channel_key_candidate(lookup("runtime-key-wildcard", "*"))
             .expect("load wildcard key")
             .expect("selected wildcard key");
         assert_eq!(selected.key_ref, "backup");
@@ -540,7 +547,7 @@ mod tests {
             .await;
 
         let fallback = key_source
-            .load_channel_key_candidate("runtime-key-wildcard", "*")
+            .load_channel_key_candidate(lookup("runtime-key-wildcard", "*"))
             .expect("load fallback wildcard key")
             .expect("selected fallback key");
         assert_eq!(fallback.key_ref, "primary");

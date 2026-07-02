@@ -7,7 +7,7 @@ use crate::proxy_core::api::domain::{
     channel_auth_profile_provider_application, ChannelAuthProfileProviderApplication,
 };
 use crate::proxy_core::api::errors::ProxyCoreResult;
-use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
+use crate::proxy_core::api::ports::{ChannelKeyRuntimeLookupInput, ChannelKeyRuntimeSource};
 use crate::proxy_core::api::routing::{
     route_plan_no_matching_host_providers_error, route_plan_provider_match,
     route_plan_providers_unconfigured_error, RoutePlan,
@@ -84,8 +84,12 @@ pub(crate) fn apply_channel_auth_profile_providers_from_source(
                 channel_id,
                 key_ref,
             } => {
-                let Some(key_candidate) =
-                    channel_key_runtime_source.load_channel_key_candidate(&channel_id, &key_ref)?
+                let Some(key_candidate) = channel_key_runtime_source.load_channel_key_candidate(
+                    ChannelKeyRuntimeLookupInput {
+                        channel_id: &channel_id,
+                        key_ref: &key_ref,
+                    },
+                )?
                 else {
                     return Err(channel_auth_profile_missing_key_error(
                         &channel_id,

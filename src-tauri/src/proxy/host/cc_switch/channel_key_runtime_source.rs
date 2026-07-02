@@ -8,7 +8,7 @@ use crate::proxy_core::api::management::{
     ChannelKeyRuntimeSelectionPolicy, ChannelKeyRuntimeSelectionStrategy,
     DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
 };
-use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
+use crate::proxy_core::api::ports::{ChannelKeyRuntimeLookupInput, ChannelKeyRuntimeSource};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -144,14 +144,13 @@ fn channel_key_runtime_selection_clock() -> (i64, u64) {
 impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource {
     fn load_channel_key_candidate(
         &self,
-        channel_id: &str,
-        key_ref: &str,
+        input: ChannelKeyRuntimeLookupInput<'_>,
     ) -> ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>> {
         load_channel_key_candidate_from_database(
             self.db.as_ref(),
             self.round_robin_cursors.as_ref(),
-            channel_id,
-            key_ref,
+            input.channel_id,
+            input.key_ref,
         )
     }
 }
@@ -165,6 +164,13 @@ mod tests {
         ProxyChannelWriteRequest,
     };
     use serde_json::json;
+
+    fn lookup<'a>(channel_id: &'a str, key_ref: &'a str) -> ChannelKeyRuntimeLookupInput<'a> {
+        ChannelKeyRuntimeLookupInput {
+            channel_id,
+            key_ref,
+        }
+    }
 
     fn proxy_channel_key_record(
         key_ref: &str,
@@ -356,15 +362,15 @@ mod tests {
 
         let source = channel_key_runtime_source_from_database(db);
         let first = source
-            .load_channel_key_candidate("channel-key-round-robin", "*")
+            .load_channel_key_candidate(lookup("channel-key-round-robin", "*"))
             .expect("load first wildcard key")
             .expect("selected first key");
         let second = source
-            .load_channel_key_candidate("channel-key-round-robin", "*")
+            .load_channel_key_candidate(lookup("channel-key-round-robin", "*"))
             .expect("load second wildcard key")
             .expect("selected second key");
         let third = source
-            .load_channel_key_candidate("channel-key-round-robin", "*")
+            .load_channel_key_candidate(lookup("channel-key-round-robin", "*"))
             .expect("load third wildcard key")
             .expect("selected third key");
 
@@ -419,7 +425,7 @@ mod tests {
 
         let source = channel_key_runtime_source_from_database(db.clone());
         let candidate = source
-            .load_channel_key_candidate("channel-key-candidate", "primary")
+            .load_channel_key_candidate(lookup("channel-key-candidate", "primary"))
             .expect("load channel key")
             .expect("selected candidate");
 
@@ -432,7 +438,7 @@ mod tests {
         assert_eq!(candidate.last_failure_at, None);
 
         let backup = source
-            .load_channel_key_candidate("channel-key-candidate", "backup")
+            .load_channel_key_candidate(lookup("channel-key-candidate", "backup"))
             .expect("load backup channel key")
             .expect("selected backup candidate");
         assert_eq!(backup.key_ref, "backup");
@@ -440,7 +446,7 @@ mod tests {
         assert_eq!(backup.priority, 100);
 
         let wildcard = source
-            .load_channel_key_candidate("channel-key-candidate", "*")
+            .load_channel_key_candidate(lookup("channel-key-candidate", "*"))
             .expect("load wildcard channel key")
             .expect("selected wildcard candidate");
         assert_eq!(wildcard.key_ref, "backup");
@@ -460,7 +466,7 @@ mod tests {
         }
 
         let fallback = source
-            .load_channel_key_candidate("channel-key-candidate", "*")
+            .load_channel_key_candidate(lookup("channel-key-candidate", "*"))
             .expect("load wildcard channel key after failure")
             .expect("selected healthy fallback candidate");
         assert_eq!(fallback.key_ref, "primary");
@@ -479,7 +485,7 @@ mod tests {
         }
 
         let recovered = source
-            .load_channel_key_candidate("channel-key-candidate", "*")
+            .load_channel_key_candidate(lookup("channel-key-candidate", "*"))
             .expect("load wildcard channel key after cooldown")
             .expect("selected recovered candidate");
         assert_eq!(recovered.key_ref, "backup");
@@ -506,7 +512,7 @@ mod tests {
         }
 
         let custom_cooldown_recovered = source
-            .load_channel_key_candidate("channel-key-candidate", "*")
+            .load_channel_key_candidate(lookup("channel-key-candidate", "*"))
             .expect("load wildcard channel key after custom cooldown")
             .expect("selected custom cooldown candidate");
         assert_eq!(custom_cooldown_recovered.key_ref, "backup");
@@ -526,14 +532,14 @@ mod tests {
 
         assert!(
             source
-                .load_channel_key_candidate("channel-key-candidate", "primary")
+                .load_channel_key_candidate(lookup("channel-key-candidate", "primary"))
                 .expect("load disabled channel key")
                 .is_none(),
             "disabled keys should not produce runtime candidates"
         );
         assert!(
             source
-                .load_channel_key_candidate("channel-key-candidate", "missing")
+                .load_channel_key_candidate(lookup("channel-key-candidate", "missing"))
                 .expect("load missing channel key")
                 .is_none(),
             "missing key refs should not fall back to another channel key"

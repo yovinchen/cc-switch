@@ -4031,6 +4031,11 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
             && runtime_source.contains("DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS"),
         "channel key runtime source should import pure candidate projection/selection policy directly from proxy_core::api"
     );
+    assert!(
+        runtime_source.contains("ChannelKeyRuntimeLookupInput")
+            && runtime_source.contains("input: ChannelKeyRuntimeLookupInput<'_>"),
+        "channel-key runtime source should consume a structured lookup input, not loose channel/key arguments"
+    );
     for marker in [
         "core_select_channel_key_runtime_candidate",
         "core_select_enabled_channel_key_runtime_candidate",
@@ -17603,6 +17608,11 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "fn load_channel_key_candidate_from_database",
         "impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource",
     );
+    let core_channel_key_runtime_trait = function_slice(
+        &core_ports_source,
+        "pub trait ChannelKeyRuntimeSource",
+        "pub trait ModelCatalogProvider",
+    );
     let source_function = function_slice(
         &attempt_source,
         "pub(crate) fn apply_channel_auth_profile_providers_from_source",
@@ -17619,8 +17629,12 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         "proxy-core ports should expose channel key lookup behind a runtime source trait"
     );
     assert!(
-        core_ports_source.contains("fn load_channel_key_candidate(")
+        core_channel_key_runtime_trait.contains("fn load_channel_key_candidate(")
+            && core_channel_key_runtime_trait.contains("input: ChannelKeyRuntimeLookupInput<'_>")
+            && !core_channel_key_runtime_trait.contains("channel_id: &str")
+            && !core_channel_key_runtime_trait.contains("key_ref: &str")
             && core_ports_source.contains("ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>>")
+            && core_ports_source.contains("pub struct ChannelKeyRuntimeLookupInput")
             && core_ports_source.contains("pub fn select_channel_key_runtime_candidate")
             && core_ports_source
                 .contains("pub fn select_channel_key_runtime_candidate_with_failure_cooldown")
@@ -17659,10 +17673,11 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         runtime_source.contains("use crate::proxy_core::api::errors::{")
             && runtime_source.contains("config_error_with_context")
             && runtime_source.contains("ProxyCoreResult")
-            && runtime_source
-                .contains("use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;")
+            && runtime_source.contains("ChannelKeyRuntimeLookupInput")
+            && runtime_source.contains("ChannelKeyRuntimeSource")
             && attempt_source.contains("use crate::proxy_core::api::errors::ProxyCoreResult;")
-            && attempt_source.contains("use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;"),
+            && attempt_source.contains("ChannelKeyRuntimeLookupInput")
+            && attempt_source.contains("ChannelKeyRuntimeSource"),
         "channel-key runtime and auth-profile host sources should import core result/port contracts directly"
     );
     assert!(
@@ -17699,6 +17714,7 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
             && !source.contains("fn required_forward_attempts_from_sources(")
             && source_function.contains("dyn ChannelKeyRuntimeSource")
             && source_function.contains(".load_channel_key_candidate(")
+            && source_function.contains("ChannelKeyRuntimeLookupInput {")
             && source_function.contains("key_candidate.key_value"),
         "host auth-profile attempt source should consume the channel key runtime source contract"
     );
