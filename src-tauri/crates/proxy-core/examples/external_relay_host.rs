@@ -464,11 +464,11 @@ impl ChannelHealthStore for DemoRelayHost {
 
     fn reset_channel<'a>(
         &'a self,
-        channel_id: &'a str,
+        input: ChannelHealthLookupInput<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>> {
         Box::pin(async move {
             Ok(ChannelHealthReset {
-                channel_id: channel_id.to_string(),
+                channel_id: input.channel_id.to_string(),
                 app: AppKind::Claude,
             })
         })

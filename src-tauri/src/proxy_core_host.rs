@@ -41,7 +41,9 @@ use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_ra
 #[cfg(test)]
 use crate::proxy_core::api::ports::{AuthProvider, ProxyServices};
 #[cfg(test)]
-use crate::proxy_core::api::ports::{ChannelAttemptResult, ProxyConfig, ProxyRuntimeStatus};
+use crate::proxy_core::api::ports::{
+    ChannelAttemptResult, ChannelHealthLookupInput, ProxyConfig, ProxyRuntimeStatus,
+};
 #[cfg(test)]
 use crate::proxy_core::api::routing::{
     ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteRequest,
@@ -1049,7 +1051,9 @@ mod tests {
 
         let reset = services
             .health_store()
-            .reset_channel(&channel_id)
+            .reset_channel(ChannelHealthLookupInput {
+                channel_id: &channel_id,
+            })
             .await
             .expect("reset channel health");
 

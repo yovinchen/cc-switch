@@ -22717,6 +22717,13 @@ fn proxy_core_adapter_delegates_channel_health_store_to_host_module() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/channel_health_store.rs");
     let source = fs::read_to_string(&source_path).expect("read channel_health_store.rs");
+    let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
+        .expect("read proxy-core ports.rs");
+    let health_store_trait = function_slice(
+        &core_ports_source,
+        "pub trait ChannelHealthStore",
+        "pub trait ProviderHealthStore",
+    );
 
     assert!(
         source.contains("pub(crate) struct CcSwitchChannelHealthStore")
@@ -22725,6 +22732,19 @@ fn proxy_core_adapter_delegates_channel_health_store_to_host_module() {
             && source.contains("reset_channel_health_with_router_source")
             && source.contains("channel_breaker_stats_with_router_source"),
         "CC Switch channel health store should live in host/cc_switch/channel_health_store.rs"
+    );
+    assert!(
+        health_store_trait.contains("fn reset_channel<'a>(")
+            && health_store_trait.contains("input: ChannelHealthLookupInput<'a>")
+            && health_store_trait.contains("fn channel_breaker_stats<'a>(")
+            && !health_store_trait.contains("channel_id: &'a str"),
+        "ChannelHealthStore reset/stats lookups should use structured input instead of bare channel_id arguments"
+    );
+    assert!(
+        source.contains("ChannelHealthLookupInput")
+            && source.contains("input: ChannelHealthLookupInput<'a>")
+            && source.contains("input.channel_id"),
+        "CC Switch channel health store should consume structured lookup input at the port boundary"
     );
     assert!(
         !adapter_source.contains(
@@ -24200,7 +24220,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         ) && host_source.contains(
             "use crate::proxy_core::api::management::{\n        ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,\n        RouteResolveRequest,\n    };"
         ) && host_source.contains(
-            "use crate::proxy_core::api::ports::{ChannelAttemptResult, ProxyConfig, ProxyRuntimeStatus};"
+            "use crate::proxy_core::api::ports::{\n    ChannelAttemptResult, ChannelHealthLookupInput, ProxyConfig, ProxyRuntimeStatus,\n};"
         ) && host_source.contains(
             "use crate::proxy_core::api::ports::{AuthProvider, ProxyServices};"
         ) && host_source.contains(
@@ -24229,6 +24249,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "ProxyCoreUpstreamEndpoint",
         "ChannelQuery",
         "ChannelAttemptResult",
+        "ChannelHealthLookupInput",
         "AppKind",
         "ChannelSpec",
         "ChannelStatus",
@@ -25853,12 +25874,21 @@ fn production_channel_health_store_reads_channel_breaker_stats_through_core_port
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let store_path = manifest_dir.join("src/proxy/host/cc_switch/channel_health_store.rs");
     let store_source = fs::read_to_string(&store_path).expect("read channel_health_store.rs");
+    let engine_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/engine.rs"))
+        .expect("read proxy-core engine.rs");
     assert!(
         store_source.contains("fn channel_breaker_stats<'a>(")
+            && store_source.contains("input: ChannelHealthLookupInput<'a>")
             && store_source.contains(".get_proxy_channel_app_type(channel_id)")
             && store_source.contains(".get_channel_circuit_breaker_stats(channel_id, &app_type)")
             && store_source.contains("channel_breaker_stats_from_parts("),
         "ChannelHealthStore host source must own breaker stats lookup and project it through a core stats fact"
+    );
+    assert!(
+        engine_source.contains("reset_channel(ChannelHealthLookupInput { channel_id })")
+            && engine_source
+                .contains("channel_breaker_stats(ChannelHealthLookupInput { channel_id })"),
+        "ProxyEngine must call ChannelHealthStore reset/stats through structured lookup input"
     );
     assert!(
         store_source.contains("use crate::proxy_core::api::errors::{")
@@ -25880,6 +25910,7 @@ fn production_channel_health_store_reads_channel_breaker_stats_through_core_port
     for adapter_type in [
         "ChannelAttemptResult",
         "ChannelBreakerStats",
+        "ChannelHealthLookupInput",
         "ChannelHealthReset",
         "ChannelHealthStore",
         "ProxyCoreResult",

@@ -519,9 +519,9 @@ impl ChannelHealthStore for ExternalRelayServices {
 
     fn reset_channel<'a>(
         &'a self,
-        channel_id: &'a str,
+        input: ChannelHealthLookupInput<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>> {
-        let channel_id = channel_id.to_string();
+        let channel_id = input.channel_id.to_string();
         Box::pin(async move {
             Ok(ChannelHealthReset {
                 channel_id,
@@ -532,9 +532,9 @@ impl ChannelHealthStore for ExternalRelayServices {
 
     fn channel_breaker_stats<'a>(
         &'a self,
-        channel_id: &'a str,
+        input: ChannelHealthLookupInput<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelBreakerStats>> {
-        let channel_id = channel_id.to_string();
+        let channel_id = input.channel_id.to_string();
         Box::pin(async move {
             Ok(ChannelBreakerStats {
                 channel_id,

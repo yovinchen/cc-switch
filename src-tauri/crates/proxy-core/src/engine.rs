@@ -23,7 +23,7 @@ use super::management_auth::{
 };
 use super::ports::{
     AppChannelResponse, AppListResponse, ChannelBreakerStats, ChannelBreakerStatsResponse,
-    ChannelDeleteResponse, ChannelHealthReset, ChannelHealthResetResponse,
+    ChannelDeleteResponse, ChannelHealthLookupInput, ChannelHealthReset, ChannelHealthResetResponse,
     ChannelKeyDeleteResponse, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
     ChannelModelRecord, ChannelModelsResponse, ChannelRecord, ChannelRecordResponse,
@@ -602,7 +602,10 @@ where
         &self,
         channel_id: &str,
     ) -> ProxyCoreResult<ChannelHealthReset> {
-        self.services.health_store().reset_channel(channel_id).await
+        self.services
+            .health_store()
+            .reset_channel(ChannelHealthLookupInput { channel_id })
+            .await
     }
 
     pub async fn channel_breaker_stats(
@@ -611,7 +614,7 @@ where
     ) -> ProxyCoreResult<ChannelBreakerStats> {
         self.services
             .health_store()
-            .channel_breaker_stats(channel_id)
+            .channel_breaker_stats(ChannelHealthLookupInput { channel_id })
             .await
     }
 
@@ -756,8 +759,8 @@ mod tests {
     use crate::ports::{
         auth_info_from_profile_ref, channel_key_record_from_input, channel_model_record_from_input,
         channel_record_from_input, AppChannelListResponse, AuthInfo, AuthProvider,
-        ChannelHealthStore, ChannelKeyRecordInput, ChannelKeyRuntimeCandidate,
-        ChannelKeyRuntimeLookupInput, ChannelKeyRuntimeSource,
+        ChannelHealthLookupInput, ChannelHealthStore, ChannelKeyRecordInput,
+        ChannelKeyRuntimeCandidate, ChannelKeyRuntimeLookupInput, ChannelKeyRuntimeSource,
         ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelModelRecordInput,
         ChannelReachabilityProbe, ChannelReachabilityResult, ChannelRecordInput,
         ChannelRouteSource, ChannelSource, ChannelTestProbeRequest, ClaudeDesktopGatewayAuthSource,
@@ -1374,11 +1377,11 @@ mod tests {
 
         fn reset_channel<'a>(
             &'a self,
-            channel_id: &'a str,
+            input: ChannelHealthLookupInput<'a>,
         ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>> {
             Box::pin(async move {
                 Ok(ChannelHealthReset {
-                    channel_id: channel_id.to_string(),
+                    channel_id: input.channel_id.to_string(),
                     app: AppKind::Claude,
                 })
             })
@@ -1386,11 +1389,11 @@ mod tests {
 
         fn channel_breaker_stats<'a>(
             &'a self,
-            channel_id: &'a str,
+            input: ChannelHealthLookupInput<'a>,
         ) -> BoxFuture<'a, ProxyCoreResult<ChannelBreakerStats>> {
             Box::pin(async move {
                 Ok(ChannelBreakerStats {
-                    channel_id: channel_id.to_string(),
+                    channel_id: input.channel_id.to_string(),
                     app: AppKind::Claude,
                     stats: None,
                 })

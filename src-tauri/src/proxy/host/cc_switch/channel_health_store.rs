@@ -6,7 +6,7 @@ use crate::proxy_core::api::errors::{config_error_with_context, ProxyCoreResult}
 use crate::proxy_core::api::management::channel_not_found_error;
 use crate::proxy_core::api::ports::{
     channel_breaker_stats_from_parts, channel_health_reset_from_parts, ChannelAttemptResult,
-    ChannelBreakerStats, ChannelHealthReset, ChannelHealthStore,
+    ChannelBreakerStats, ChannelHealthLookupInput, ChannelHealthReset, ChannelHealthStore,
     DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
 };
 use futures::future::BoxFuture;
@@ -125,19 +125,19 @@ impl ChannelHealthStore for CcSwitchChannelHealthStore {
 
     fn reset_channel<'a>(
         &'a self,
-        channel_id: &'a str,
+        input: ChannelHealthLookupInput<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>> {
         Box::pin(async move {
-            reset_channel_health_with_router_source(&self.db, &self.router, channel_id).await
+            reset_channel_health_with_router_source(&self.db, &self.router, input.channel_id).await
         })
     }
 
     fn channel_breaker_stats<'a>(
         &'a self,
-        channel_id: &'a str,
+        input: ChannelHealthLookupInput<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelBreakerStats>> {
         Box::pin(async move {
-            channel_breaker_stats_with_router_source(&self.db, &self.router, channel_id).await
+            channel_breaker_stats_with_router_source(&self.db, &self.router, input.channel_id).await
         })
     }
 }

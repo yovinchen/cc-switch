@@ -316,14 +316,14 @@ pub trait ChannelHealthStore: Send + Sync {
 
     fn reset_channel<'a>(
         &'a self,
-        channel_id: &'a str,
+        input: ChannelHealthLookupInput<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>>;
 
     fn channel_breaker_stats<'a>(
         &'a self,
-        channel_id: &'a str,
+        input: ChannelHealthLookupInput<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelBreakerStats>> {
-        let channel_id = channel_id.to_string();
+        let channel_id = input.channel_id.to_string();
         Box::pin(async move {
             Err(ProxyCoreError::Unavailable(format!(
                 "channel breaker stats source is not configured for {channel_id}"
@@ -4147,6 +4147,11 @@ pub struct ChannelBreakerStats {
     pub channel_id: String,
     pub app: AppKind,
     pub stats: Option<CircuitBreakerStats>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChannelHealthLookupInput<'a> {
+    pub channel_id: &'a str,
 }
 
 pub fn channel_health_reset_from_parts(

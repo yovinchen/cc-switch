@@ -123,9 +123,10 @@ pub mod ports {
     pub use crate::ports::{
         app_proxy_config_defaults_for_app, auth_info_from_profile_ref,
         auth_info_from_route_context, AppProxyConfig, AppSummaryConfig, AuthInfo, AuthProvider,
-        ChannelBreakerStats, ChannelBreakerStatsResponse, ChannelHealthReset,
-        ChannelHealthResetResponse, ChannelHealthStore, ChannelKeyRuntimeLookupInput,
-        ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelModelRecord, ChannelSource,
+        ChannelBreakerStats, ChannelBreakerStatsResponse, ChannelHealthLookupInput,
+        ChannelHealthReset, ChannelHealthResetResponse, ChannelHealthStore,
+        ChannelKeyRuntimeLookupInput, ChannelKeyRuntimeSource, ChannelReachabilityProbe,
+        ChannelModelRecord, ChannelSource,
         CopilotOptimizerConfig, CopilotOptimizerConfigSpec, CurrentRouteChannelTargetInput,
         CurrentRouteTarget, CurrentRouteTargetInput, ForwardCurrentProviderStatusInput,
         ForwardFailureStatusInput, ForwardPipeline, ForwardProviderFailureStatusInput,
@@ -448,12 +449,13 @@ pub mod prelude {
         CurrentRouteTargetInput,
     };
     pub use super::ports::{
-        AppProxyConfig, AuthInfo, AuthProvider, ChannelBreakerStats, ChannelHealthReset,
-        ChannelHealthStore, ChannelKeyRuntimeSource, ChannelReachabilityProbe, ChannelSource,
-        ForwardPipeline, ModelCatalogProvider, ProviderAttemptResult, ProviderHealthStore,
-        ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
-        ClaudeDesktopGatewayAuthSource, ManagementAuthRuntimeConfig, ManagementAuthSource,
-        ProxyRuntimeStatus, RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
+        AppProxyConfig, AuthInfo, AuthProvider, ChannelBreakerStats, ChannelHealthLookupInput,
+        ChannelHealthReset, ChannelHealthStore, ChannelKeyRuntimeSource,
+        ChannelReachabilityProbe, ChannelSource, ForwardPipeline, ModelCatalogProvider,
+        ProviderAttemptResult, ProviderHealthStore, ProviderSource, ProxyConfigSource,
+        ProxyEventSink, ProxyServices, ClaudeDesktopGatewayAuthSource,
+        ManagementAuthRuntimeConfig, ManagementAuthSource, ProxyRuntimeStatus,
+        RoutePolicySource, RouteResolver, RuntimeStatusSource, UsageSink,
     };
     pub use super::routing::{ChannelQuery, ChannelSpec, DEFAULT_ROUTE_GROUP};
     pub use super::transport::{
@@ -870,9 +872,9 @@ mod tests {
 
             fn reset_channel<'a>(
                 &'a self,
-                channel_id: &'a str,
+                input: ChannelHealthLookupInput<'a>,
             ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>> {
-                let channel_id = channel_id.to_string();
+                let channel_id = input.channel_id.to_string();
                 Box::pin(async move {
                     Ok(ChannelHealthReset {
                         channel_id,
@@ -883,9 +885,9 @@ mod tests {
 
             fn channel_breaker_stats<'a>(
                 &'a self,
-                channel_id: &'a str,
+                input: ChannelHealthLookupInput<'a>,
             ) -> BoxFuture<'a, ProxyCoreResult<ChannelBreakerStats>> {
-                let channel_id = channel_id.to_string();
+                let channel_id = input.channel_id.to_string();
                 Box::pin(async move {
                     Ok(ChannelBreakerStats {
                         channel_id,
