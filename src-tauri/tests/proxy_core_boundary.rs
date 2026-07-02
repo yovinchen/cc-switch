@@ -4029,16 +4029,16 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
             && runtime_source.contains("ProxyCoreResult")
             && runtime_source.contains("use crate::proxy_core::api::management::{")
             && runtime_source.contains("effective_channel_key_runtime_selection_policy")
-            && runtime_source.contains("channel_key_runtime_candidate_from_input")
+            && runtime_source.contains("channel_key_runtime_candidate_from_parts")
             && runtime_source.contains("select_channel_key_runtime_candidate_with_policy")
-            && runtime_source.contains("ChannelKeyRuntimeCandidateInput")
+            && !runtime_source.contains("ChannelKeyRuntimeCandidateInput")
             && runtime_source.contains("ChannelKeyRuntimeSelectionInput")
             && runtime_source.contains("ChannelKeyRuntimeSelectionPolicy")
             && runtime_source.contains("fn channel_key_runtime_selection_policy_from_database(")
             && runtime_source.contains(".get_proxy_channel(")
             && runtime_source.contains("effective_channel_key_runtime_selection_policy(")
             && runtime_source.contains("DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS"),
-        "channel key runtime source should import pure candidate projection/selection policy directly from proxy_core::api"
+        "channel key runtime source should import pure candidate parts projection/selection policy directly from proxy_core::api"
     );
     assert!(
         runtime_source.contains("ChannelKeyRuntimeLookupInput")
@@ -4049,6 +4049,7 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
         "core_select_channel_key_runtime_candidate",
         "core_select_enabled_channel_key_runtime_candidate",
         "channel_key_runtime_candidate_from_input",
+        "channel_key_runtime_candidate_from_parts",
         "select_channel_key_runtime_candidate_with_failure_cooldown",
         "select_enabled_channel_key_runtime_candidate_with_failure_cooldown",
         "select_channel_key_runtime_candidate_with_weighted_roll",

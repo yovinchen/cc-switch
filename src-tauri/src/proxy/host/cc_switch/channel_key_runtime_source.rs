@@ -1,12 +1,11 @@
 use crate::database::{Database, ProxyChannelKeyRecord};
 use crate::proxy_core::api::errors::{config_error_with_context, ProxyCoreResult};
 use crate::proxy_core::api::management::{
-    channel_key_runtime_candidate_from_input, channel_key_runtime_round_robin_cursor_key,
+    channel_key_runtime_candidate_from_parts, channel_key_runtime_round_robin_cursor_key,
     effective_channel_key_runtime_selection_policy,
     select_channel_key_runtime_candidate_with_policy, ChannelKeyRuntimeCandidate,
-    ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeSelectionInput,
-    ChannelKeyRuntimeSelectionPolicy, ChannelKeyRuntimeSelectionStrategy,
-    DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+    ChannelKeyRuntimeSelectionInput, ChannelKeyRuntimeSelectionPolicy,
+    ChannelKeyRuntimeSelectionStrategy, DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
 };
 use crate::proxy_core::api::ports::{ChannelKeyRuntimeLookupInput, ChannelKeyRuntimeSource};
 use std::collections::HashMap;
@@ -15,15 +14,15 @@ use std::sync::{Arc, Mutex};
 pub(crate) fn proxy_channel_key_record_to_runtime_candidate(
     key: ProxyChannelKeyRecord,
 ) -> ChannelKeyRuntimeCandidate {
-    channel_key_runtime_candidate_from_input(ChannelKeyRuntimeCandidateInput {
-        channel_id: key.channel_id,
-        key_ref: key.key_ref,
-        key_value: key.key_value,
-        status: key.status,
-        priority: key.priority,
-        weight: key.weight,
-        last_failure_at: key.last_failure_at,
-    })
+    channel_key_runtime_candidate_from_parts(
+        key.channel_id,
+        key.key_ref,
+        key.key_value,
+        key.status,
+        key.priority,
+        key.weight,
+        key.last_failure_at,
+    )
 }
 
 fn select_proxy_channel_key_runtime_candidate<I>(

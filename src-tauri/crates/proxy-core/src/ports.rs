@@ -5996,6 +5996,26 @@ pub fn channel_key_runtime_candidate_from_input(
     }
 }
 
+pub fn channel_key_runtime_candidate_from_parts(
+    channel_id: impl Into<String>,
+    key_ref: impl Into<String>,
+    key_value: impl Into<String>,
+    status: impl Into<String>,
+    priority: i64,
+    weight: u32,
+    last_failure_at: Option<i64>,
+) -> ChannelKeyRuntimeCandidate {
+    channel_key_runtime_candidate_from_input(ChannelKeyRuntimeCandidateInput {
+        channel_id: channel_id.into(),
+        key_ref: key_ref.into(),
+        key_value: key_value.into(),
+        status: status.into(),
+        priority,
+        weight,
+        last_failure_at,
+    })
+}
+
 pub const DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS: i64 = 60_000;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -6820,7 +6840,8 @@ mod tests {
         apply_proxy_runtime_uptime, auth_info_from_profile_ref, auth_info_from_route_context,
         channel_health_reset_from_parts, channel_health_update_from_input,
         channel_key_record_from_input, channel_key_runtime_candidate_from_input,
-        channel_model_record_from_input, channel_reachability_probe_error,
+        channel_key_runtime_candidate_from_parts, channel_model_record_from_input,
+        channel_reachability_probe_error,
         channel_reachability_result_from_stream_check_result,
         channel_reachability_status_from_latency, channel_record_from_input,
         channel_route_source_for_materialized_count, channel_test_app_type_error,
@@ -11777,6 +11798,30 @@ GEMINI_API_KEY=sk-test123
         assert_eq!(record.priority, 5);
         assert_eq!(record.weight, 60);
         assert_eq!(record.last_failure_at, Some(1_771_000_003));
+    }
+
+    #[test]
+    fn channel_key_runtime_candidate_parts_helper_builds_runtime_contract() {
+        let from_parts = channel_key_runtime_candidate_from_parts(
+            "ch-1",
+            "primary",
+            "sk-primary",
+            "enabled",
+            5,
+            60,
+            Some(1_771_000_003),
+        );
+        let from_input = channel_key_runtime_candidate_from_input(ChannelKeyRuntimeCandidateInput {
+            channel_id: "ch-1".to_string(),
+            key_ref: "primary".to_string(),
+            key_value: "sk-primary".to_string(),
+            status: "enabled".to_string(),
+            priority: 5,
+            weight: 60,
+            last_failure_at: Some(1_771_000_003),
+        });
+
+        assert_eq!(from_parts, from_input);
     }
 
     #[test]
