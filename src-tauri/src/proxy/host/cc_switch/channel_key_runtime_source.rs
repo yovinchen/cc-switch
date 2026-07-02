@@ -220,6 +220,27 @@ mod tests {
     }
 
     #[test]
+    fn channel_key_runtime_source_passes_random_roll_to_core_selector() {
+        let now_ms = 1_771_000_120_000;
+        let selected = select_proxy_channel_key_runtime_candidate(
+            vec![
+                proxy_channel_key_record("alpha", 20, 1_000, None),
+                proxy_channel_key_record("beta", 20, 1, None),
+                proxy_channel_key_record("gamma", 20, 1, None),
+                proxy_channel_key_record("lower-priority", 10, 1, None),
+            ],
+            "*",
+            now_ms,
+            ChannelKeyRuntimeSelectionPolicy::random(DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS),
+            2,
+            0,
+        )
+        .expect("selected random candidate");
+
+        assert_eq!(selected.key_ref, "gamma");
+    }
+
+    #[test]
     fn channel_key_runtime_source_reads_selection_policy_from_channel_health_policy() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let provider = Provider::with_id(
@@ -253,6 +274,27 @@ mod tests {
             ChannelKeyRuntimeSelectionStrategy::Priority
         );
         assert_eq!(policy.failure_cooldown_ms, 5_000);
+
+        let _ = db
+            .update_proxy_channel(
+                "channel-key-policy",
+                ProxyChannelPatchRequest {
+                    health_policy: Some(json!({
+                        "channelKeySelectionStrategy": "random",
+                        "keyFailureCooldownMs": 5_000
+                    })),
+                    ..Default::default()
+                },
+            )
+            .expect("patch random key selection policy");
+        let random_policy =
+            channel_key_runtime_selection_policy_from_database(db.as_ref(), "channel-key-policy")
+                .expect("load random channel key selection policy");
+        assert_eq!(
+            random_policy.strategy,
+            ChannelKeyRuntimeSelectionStrategy::Random
+        );
+        assert_eq!(random_policy.failure_cooldown_ms, 5_000);
 
         let selected = select_proxy_channel_key_runtime_candidate(
             vec![

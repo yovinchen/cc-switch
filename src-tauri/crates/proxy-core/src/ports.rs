@@ -5994,6 +5994,7 @@ pub enum ChannelKeyRuntimeSelectionStrategy {
     Priority,
     #[default]
     Weighted,
+    Random,
     RoundRobin,
 }
 
@@ -6015,6 +6016,13 @@ impl ChannelKeyRuntimeSelectionPolicy {
     pub fn weighted(failure_cooldown_ms: i64) -> Self {
         Self {
             strategy: ChannelKeyRuntimeSelectionStrategy::Weighted,
+            failure_cooldown_ms,
+        }
+    }
+
+    pub fn random(failure_cooldown_ms: i64) -> Self {
+        Self {
+            strategy: ChannelKeyRuntimeSelectionStrategy::Random,
             failure_cooldown_ms,
         }
     }
@@ -6043,7 +6051,10 @@ fn channel_key_runtime_selection_strategy_from_value(
             Some(ChannelKeyRuntimeSelectionStrategy::RoundRobin)
         }
         "weighted" | "weight" | "weighted_random" | "weighted-random" | "weightedrandom"
-        | "random" => Some(ChannelKeyRuntimeSelectionStrategy::Weighted),
+        | "weighted-rand" => Some(ChannelKeyRuntimeSelectionStrategy::Weighted),
+        "random" | "rand" | "uniform_random" | "uniform-random" | "uniformrandom" => {
+            Some(ChannelKeyRuntimeSelectionStrategy::Random)
+        }
         _ => None,
     }
 }
@@ -6074,6 +6085,9 @@ pub fn effective_channel_key_runtime_selection_policy(
         }
         ChannelKeyRuntimeSelectionStrategy::Weighted => {
             ChannelKeyRuntimeSelectionPolicy::weighted(failure_cooldown_ms)
+        }
+        ChannelKeyRuntimeSelectionStrategy::Random => {
+            ChannelKeyRuntimeSelectionPolicy::random(failure_cooldown_ms)
         }
         ChannelKeyRuntimeSelectionStrategy::RoundRobin => {
             ChannelKeyRuntimeSelectionPolicy::round_robin(failure_cooldown_ms)
@@ -6166,6 +6180,31 @@ where
     }
 
     let index = usize::try_from(round_robin_offset % candidate_count).unwrap_or_default();
+    Some(candidates.remove(index))
+}
+
+fn select_enabled_channel_key_runtime_candidate_with_random_roll<I>(
+    candidates: I,
+    now_ms: i64,
+    failure_cooldown_ms: i64,
+    random_roll: u64,
+) -> Option<ChannelKeyRuntimeCandidate>
+where
+    I: IntoIterator<Item = ChannelKeyRuntimeCandidate>,
+{
+    let mut candidates =
+        channel_key_runtime_best_candidate_tier(candidates, now_ms, failure_cooldown_ms);
+    candidates.sort_by(|left, right| {
+        left.key_ref
+            .cmp(&right.key_ref)
+            .then_with(|| left.key_value.cmp(&right.key_value))
+    });
+    let candidate_count = u64::try_from(candidates.len()).ok()?;
+    if candidate_count == 0 {
+        return None;
+    }
+
+    let index = usize::try_from(random_roll % candidate_count).unwrap_or_default();
     Some(candidates.remove(index))
 }
 
@@ -6359,6 +6398,39 @@ where
     )
 }
 
+pub fn select_channel_key_runtime_candidate_with_random_roll<I>(
+    candidates: I,
+    key_ref: &str,
+    now_ms: i64,
+    failure_cooldown_ms: i64,
+    random_roll: u64,
+) -> Option<ChannelKeyRuntimeCandidate>
+where
+    I: IntoIterator<Item = ChannelKeyRuntimeCandidate>,
+{
+    let key_ref = key_ref.trim();
+    if key_ref.is_empty() {
+        return None;
+    }
+
+    if key_ref == "*" {
+        return select_enabled_channel_key_runtime_candidate_with_random_roll(
+            candidates,
+            now_ms,
+            failure_cooldown_ms,
+            random_roll,
+        );
+    }
+
+    select_enabled_channel_key_runtime_candidate_with_failure_cooldown(
+        candidates
+            .into_iter()
+            .filter(|candidate| candidate.key_ref == key_ref),
+        now_ms,
+        failure_cooldown_ms,
+    )
+}
+
 pub fn select_channel_key_runtime_candidate_with_policy<I>(
     candidates: I,
     input: ChannelKeyRuntimeSelectionInput<'_>,
@@ -6377,6 +6449,15 @@ where
         }
         ChannelKeyRuntimeSelectionStrategy::Weighted => {
             select_channel_key_runtime_candidate_with_weighted_roll(
+                candidates,
+                input.key_ref,
+                input.now_ms,
+                input.policy.failure_cooldown_ms,
+                input.weighted_roll,
+            )
+        }
+        ChannelKeyRuntimeSelectionStrategy::Random => {
+            select_channel_key_runtime_candidate_with_random_roll(
                 candidates,
                 input.key_ref,
                 input.now_ms,
@@ -6800,6 +6881,7 @@ mod tests {
         select_channel_key_runtime_candidate,
         select_channel_key_runtime_candidate_with_failure_cooldown,
         select_channel_key_runtime_candidate_with_policy,
+        select_channel_key_runtime_candidate_with_random_roll,
         select_channel_key_runtime_candidate_with_weighted_roll,
         select_enabled_channel_key_runtime_candidate,
         select_enabled_channel_key_runtime_candidate_with_failure_cooldown,
@@ -11961,6 +12043,68 @@ GEMINI_API_KEY=sk-test123
     }
 
     #[test]
+    fn channel_key_runtime_candidate_random_roll_ignores_weight_inside_best_runtime_tier() {
+        fn candidate(
+            key_ref: &str,
+            priority: i64,
+            weight: u32,
+            last_failure_at: Option<i64>,
+        ) -> super::ChannelKeyRuntimeCandidate {
+            channel_key_runtime_candidate_from_input(ChannelKeyRuntimeCandidateInput {
+                channel_id: "ch-1".to_string(),
+                key_ref: key_ref.to_string(),
+                key_value: format!("sk-{key_ref}"),
+                status: "enabled".to_string(),
+                priority,
+                weight,
+                last_failure_at,
+            })
+        }
+
+        let now_ms = 1_771_000_120_000;
+        let random_third = select_channel_key_runtime_candidate_with_random_roll(
+            vec![
+                candidate("alpha", 20, 1_000, None),
+                candidate("beta", 20, 1, None),
+                candidate("gamma", 20, 1, None),
+                candidate("lower-priority", 10, 1, None),
+            ],
+            "*",
+            now_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+            2,
+        )
+        .expect("selected random third candidate");
+        assert_eq!(random_third.key_ref, "gamma");
+
+        let healthy_fallback = select_channel_key_runtime_candidate_with_random_roll(
+            vec![
+                candidate("cooling-high", 200, 1, Some(now_ms - 1_000)),
+                candidate("healthy-low", 10, 1, None),
+            ],
+            "*",
+            now_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+            0,
+        )
+        .expect("selected healthy fallback");
+        assert_eq!(healthy_fallback.key_ref, "healthy-low");
+
+        let explicit_key = select_channel_key_runtime_candidate_with_random_roll(
+            vec![
+                candidate("primary", 10, 1, Some(now_ms - 1_000)),
+                candidate("backup", 200, 1, None),
+            ],
+            "primary",
+            now_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+            1,
+        )
+        .expect("selected explicitly requested key");
+        assert_eq!(explicit_key.key_ref, "primary");
+    }
+
+    #[test]
     fn channel_key_runtime_selection_policy_selects_strategy_explicitly() {
         fn candidate(key_ref: &str) -> super::ChannelKeyRuntimeCandidate {
             channel_key_runtime_candidate_from_input(ChannelKeyRuntimeCandidateInput {
@@ -12004,6 +12148,21 @@ GEMINI_API_KEY=sk-test123
         )
         .expect("selected by weighted roll");
         assert_eq!(weighted_selected.key_ref, "beta");
+
+        let random_selected = select_channel_key_runtime_candidate_with_policy(
+            vec![candidate("alpha"), candidate("beta"), candidate("gamma")],
+            ChannelKeyRuntimeSelectionInput {
+                key_ref: "*",
+                now_ms,
+                weighted_roll: 2,
+                round_robin_offset: 0,
+                policy: ChannelKeyRuntimeSelectionPolicy::random(
+                    DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+                ),
+            },
+        )
+        .expect("selected by random roll");
+        assert_eq!(random_selected.key_ref, "gamma");
 
         let round_robin_first = select_channel_key_runtime_candidate_with_policy(
             vec![candidate("alpha"), candidate("beta")],
@@ -12072,7 +12231,13 @@ GEMINI_API_KEY=sk-test123
             super::health_policy_channel_key_selection_strategy(
                 &json!({"key_selection_strategy": "random"})
             ),
-            Some(super::ChannelKeyRuntimeSelectionStrategy::Weighted)
+            Some(super::ChannelKeyRuntimeSelectionStrategy::Random)
+        );
+        assert_eq!(
+            super::health_policy_channel_key_selection_strategy(
+                &json!({"key_selection_strategy": "uniformRandom"})
+            ),
+            Some(super::ChannelKeyRuntimeSelectionStrategy::Random)
         );
 
         let round_robin = super::effective_channel_key_runtime_selection_policy(
@@ -12085,6 +12250,19 @@ GEMINI_API_KEY=sk-test123
         );
         assert_eq!(
             round_robin.failure_cooldown_ms,
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS
+        );
+
+        let random = super::effective_channel_key_runtime_selection_policy(
+            DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+            &json!({"channelKeySelectionStrategy": "random"}),
+        );
+        assert_eq!(
+            random.strategy,
+            super::ChannelKeyRuntimeSelectionStrategy::Random
+        );
+        assert_eq!(
+            random.failure_cooldown_ms,
             DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS
         );
 

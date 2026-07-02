@@ -4038,6 +4038,7 @@ fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
         "select_channel_key_runtime_candidate_with_failure_cooldown",
         "select_enabled_channel_key_runtime_candidate_with_failure_cooldown",
         "select_channel_key_runtime_candidate_with_weighted_roll",
+        "select_channel_key_runtime_candidate_with_random_roll",
         "select_channel_key_runtime_candidate_with_policy",
         "DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS",
         "ChannelKeyRuntimeCandidateInput",
@@ -17583,6 +17584,8 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
                 .contains("pub fn select_channel_key_runtime_candidate_with_failure_cooldown")
             && core_ports_source
                 .contains("pub fn select_channel_key_runtime_candidate_with_weighted_roll")
+            && core_ports_source
+                .contains("pub fn select_channel_key_runtime_candidate_with_random_roll")
             && core_ports_source.contains("pub fn select_channel_key_runtime_candidate_with_policy")
             && core_ports_source.contains("pub struct ChannelKeyRuntimeSelectionInput")
             && core_ports_source.contains("pub struct ChannelKeyRuntimeSelectionPolicy")

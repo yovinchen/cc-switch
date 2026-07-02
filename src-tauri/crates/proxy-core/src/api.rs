@@ -71,6 +71,7 @@ pub mod management {
         provider_health_update_from_input, select_channel_key_runtime_candidate,
         select_channel_key_runtime_candidate_with_failure_cooldown,
         select_channel_key_runtime_candidate_with_policy,
+        select_channel_key_runtime_candidate_with_random_roll,
         select_channel_key_runtime_candidate_with_weighted_roll,
         select_enabled_channel_key_runtime_candidate,
         select_enabled_channel_key_runtime_candidate_with_failure_cooldown,
