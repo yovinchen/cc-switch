@@ -444,14 +444,14 @@ pub(crate) trait ForwarderRuntimeStateSource {
         request_id: &'a str,
         app_type: &'a str,
     ) -> BoxFuture<'a, ()>;
-    fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
+    fn record_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
     fn record_successful_attempt<'a>(
         &'a self,
         request_id: &'a str,
         app_type: &'a str,
         attempt: &'a ForwardAttempt,
     ) -> BoxFuture<'a, ()>;
-    fn emit_attempt_failed_for_error(
+    fn record_failed_attempt(
         &self,
         request_id: &str,
         app_type: &str,
@@ -777,7 +777,7 @@ impl RequestForwarder {
             .record_failure(attempt, app_type, used_half_open_permit, error)
             .await;
         self.runtime_state_source
-            .emit_attempt_failed_for_error(request_id, app_type, attempt, error);
+            .record_failed_attempt(request_id, app_type, attempt, error);
     }
 
     async fn release_attempt_permit_neutral(
@@ -933,7 +933,7 @@ impl RequestForwarder {
                 } => used_half_open_permit,
             };
             self.runtime_state_source
-                .emit_attempt_started(request_id, app_type_str, attempt);
+                .record_attempt_started(request_id, app_type_str, attempt);
 
             let mut provider_body =
                 self.request_source

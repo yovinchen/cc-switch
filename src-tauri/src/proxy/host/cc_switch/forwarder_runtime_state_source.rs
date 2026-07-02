@@ -351,7 +351,7 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         })
     }
 
-    fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
+    fn record_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
         emit_attempt_event_source(
             self.events.as_ref(),
             request_id,
@@ -388,7 +388,7 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         })
     }
 
-    fn emit_attempt_failed_for_error(
+    fn record_failed_attempt(
         &self,
         request_id: &str,
         app_type: &str,

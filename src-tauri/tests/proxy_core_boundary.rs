@@ -19647,8 +19647,9 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "ForwarderRectifierRetryFailureDecision must not carry formatted error messages back to RequestForwarder"
     );
     assert!(
-        runtime_trait_slice.contains("emit_attempt_failed_for_error")
-            && runtime_trait_slice.contains("error: &ProxyError"),
+        runtime_trait_slice.contains("fn record_failed_attempt(")
+            && runtime_trait_slice.contains("error: &ProxyError")
+            && !runtime_trait_slice.contains("fn emit_attempt_failed_for_error("),
         "ForwarderRuntimeStateSource must own attempt-failed error message projection"
     );
     assert!(
@@ -19656,6 +19657,11 @@ fn production_forwarder_uses_runtime_state_source_resource() {
             && !runtime_trait_slice.contains("fn emit_request_started(")
             && !runtime_trait_slice.contains("fn record_request_started_now"),
         "ForwarderRuntimeStateSource must expose request-start lifecycle as one behavior, not split event/status helpers"
+    );
+    assert!(
+        runtime_trait_slice.contains("fn record_attempt_started(")
+            && !runtime_trait_slice.contains("fn emit_attempt_started("),
+        "ForwarderRuntimeStateSource must expose attempt-started lifecycle as a record behavior, not an event-emitter surface"
     );
     assert!(
         runtime_trait_slice.contains("fn record_successful_attempt<'a>(")
@@ -19886,6 +19892,13 @@ fn production_forwarder_attempt_events_use_runtime_state_source() {
         violations.is_empty(),
         "attempt lifecycle event emission must use runtime state source methods:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        impl_slice.contains(".record_attempt_started(request_id, app_type_str, attempt)")
+            && impl_slice.contains(".record_failed_attempt(request_id, app_type, attempt, error)")
+            && !impl_slice.contains(".emit_attempt_started(")
+            && !impl_slice.contains(".emit_attempt_failed_for_error("),
+        "RequestForwarder must record attempt lifecycle through semantic runtime state source methods"
     );
 }
 

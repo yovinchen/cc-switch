@@ -2807,7 +2807,7 @@ base_url = "https://api.openai.com/v1"
             events,
         );
 
-        source.emit_attempt_started("req-1", "claude", &attempt);
+        source.record_attempt_started("req-1", "claude", &attempt);
         let started = subscriber.recv().await.expect("started event");
         assert_eq!(started.event, "channel_attempt");
         assert_eq!(started.payload["requestId"], "req-1");
@@ -2826,7 +2826,7 @@ base_url = "https://api.openai.com/v1"
         let route_selected = subscriber.recv().await.expect("route selected event");
         assert_eq!(route_selected.event, "route_selected");
 
-        source.emit_attempt_failed_for_error(
+        source.record_failed_attempt(
             "req-1",
             "claude",
             &attempt,
