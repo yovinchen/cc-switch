@@ -42,7 +42,7 @@ pub(crate) fn provider_claude_auth_key(
     extract_claude_auth_key_from_settings(&provider.settings_config)
 }
 
-fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
+pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
     provider
         .meta
         .as_ref()
@@ -50,7 +50,9 @@ fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
         .map(ProviderKind::from)
 }
 
-fn provider_is_codex_oauth(provider: &Provider) -> bool {
+pub(crate) fn provider_managed_auth_classification(
+    provider: &Provider,
+) -> crate::proxy_core::api::auth::ProviderManagedAuthClassification {
     let provider_kind = provider_kind_from_provider(provider);
     classify_provider_managed_auth(ProviderManagedAuthFacts {
         provider_kind: provider_kind.as_ref(),
@@ -59,7 +61,10 @@ fn provider_is_codex_oauth(provider: &Provider) -> bool {
             .pointer("/env/ANTHROPIC_BASE_URL")
             .and_then(serde_json::Value::as_str),
     })
-    .is_codex_oauth
+}
+
+pub(crate) fn provider_is_codex_oauth(provider: &Provider) -> bool {
+    provider_managed_auth_classification(provider).is_codex_oauth
 }
 
 pub(crate) fn provider_claude_base_url(provider: &Provider) -> Option<String> {

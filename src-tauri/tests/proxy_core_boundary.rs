@@ -9720,6 +9720,9 @@ fn response_pipeline_owns_usage_provider_facts_projection() {
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let projection_path = manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
+    let projection_source =
+        fs::read_to_string(&projection_path).expect("read provider_projection.rs");
     let function = function_slice(
         &source,
         "pub(crate) struct ResponseUsageProviderFacts",
@@ -9732,12 +9735,15 @@ fn response_pipeline_owns_usage_provider_facts_projection() {
             && function.contains("pub(crate) fn fallback_response_usage_provider_facts")
             && function.contains("pub(crate) fn response_usage_provider_facts_from_optional")
             && function.contains("provider_kind_from_provider(provider)")
-            && function.contains("fn provider_kind_from_provider(provider: &Provider)")
-            && function.contains("meta.provider_type.as_deref()")
-            && function.contains(".map(ProviderKind::from)")
+            && source.contains(
+                "use crate::proxy::host::cc_switch::provider_projection::provider_kind_from_provider;"
+            )
+            && projection_source.contains("pub(crate) fn provider_kind_from_provider(provider: &Provider)")
+            && projection_source.contains("meta.provider_type.as_deref()")
+            && projection_source.contains(".map(ProviderKind::from)")
             && function.contains("AppKind::from(app_type)")
             && function.contains("usage_selected_provider_missing_log_message("),
-        "response pipeline should own response usage provider facts projection"
+        "response pipeline should own usage facts while delegating provider-kind projection to provider_projection"
     );
     for marker in FORBIDDEN_RESPONSE_PIPELINE_USAGE_RECORD_HELPER_MARKERS {
         assert!(
@@ -11811,22 +11817,36 @@ fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let projection_path = manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
+    let projection_source =
+        fs::read_to_string(&projection_path).expect("read provider_projection.rs");
     let classification_slice = function_slice(
-        &source,
-        "fn provider_kind_from_provider(",
-        "#[cfg(test)]\nmod tests",
+        &projection_source,
+        "pub(crate) fn provider_kind_from_provider(",
+        "pub(crate) fn provider_claude_base_url",
     );
 
     assert!(
         !source.contains("pub(crate) fn provider_uses_anthropic_rectifiers"),
         "proxy_core_adapter should not keep an Anthropic rectifier provider fact facade"
     );
+    for marker in [
+        "fn provider_kind_from_provider(",
+        "fn provider_managed_auth_classification(",
+        "fn provider_is_codex_oauth(",
+        "fn provider_is_github_copilot(",
+        "fn provider_uses_managed_account_auth(",
+    ] {
+        assert!(
+            !source.contains(marker),
+            "proxy_core_adapter should not keep provider classification helper `{marker}`"
+        );
+    }
     assert!(
-        classification_slice
-            .contains("crate::proxy_core::api::auth::classify_provider_managed_auth(")
-            && classification_slice
-                .contains("crate::proxy_core::api::auth::ProviderManagedAuthFacts"),
-        "proxy_core_adapter must delegate managed-provider classification to proxy-core"
+        classification_slice.contains("classify_provider_managed_auth(")
+            && classification_slice.contains("ProviderManagedAuthFacts")
+            && classification_slice.contains("pub(crate) fn provider_managed_auth_classification("),
+        "provider_projection must delegate managed-provider classification to proxy-core"
     );
     for marker in [
         "classify_provider_managed_auth",

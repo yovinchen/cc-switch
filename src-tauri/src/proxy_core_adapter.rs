@@ -67,48 +67,6 @@ use crate::proxy::host::cc_switch::forwarder_request_source::{
 use crate::proxy::host::cc_switch::forwarder_response_source::CcSwitchForwarderResponseSource;
 
 #[cfg(test)]
-fn provider_kind_from_provider(
-    provider: &Provider,
-) -> Option<crate::proxy_core::api::domain::ProviderKind> {
-    provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.provider_type.as_deref())
-        .map(crate::proxy_core::api::domain::ProviderKind::from)
-}
-
-#[cfg(test)]
-fn provider_managed_auth_classification(
-    provider: &Provider,
-) -> crate::proxy_core::api::auth::ProviderManagedAuthClassification {
-    let provider_kind = provider_kind_from_provider(provider);
-    crate::proxy_core::api::auth::classify_provider_managed_auth(
-        crate::proxy_core::api::auth::ProviderManagedAuthFacts {
-            provider_kind: provider_kind.as_ref(),
-            anthropic_base_url: provider
-                .settings_config
-                .pointer("/env/ANTHROPIC_BASE_URL")
-                .and_then(Value::as_str),
-        },
-    )
-}
-
-#[cfg(test)]
-fn provider_is_codex_oauth(provider: &Provider) -> bool {
-    provider_managed_auth_classification(provider).is_codex_oauth
-}
-
-#[cfg(test)]
-fn provider_is_github_copilot(provider: &Provider) -> bool {
-    provider_managed_auth_classification(provider).is_github_copilot
-}
-
-#[cfg(test)]
-fn provider_uses_managed_account_auth(provider: &Provider) -> bool {
-    provider_managed_auth_classification(provider).uses_managed_account
-}
-
-#[cfg(test)]
 mod tests {
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source;
@@ -210,10 +168,11 @@ mod tests {
     use crate::proxy::host::cc_switch::provider_projection::{
         provider_claude_auth_key, provider_claude_base_url, provider_claude_kind,
         provider_claude_transform_streaming_decision, provider_gemini_kind,
-        provider_github_copilot_managed_account_id, provider_kind_from_app_type_and_config,
-        provider_managed_account_binding_context, provider_needs_claude_transform,
-        provider_spec_from_source, provider_specs_from_source, provider_uses_anthropic_rectifiers,
-        proxy_provider_to_core_spec,
+        provider_github_copilot_managed_account_id, provider_is_codex_oauth,
+        provider_kind_from_app_type_and_config, provider_kind_from_provider,
+        provider_managed_account_binding_context, provider_managed_auth_classification,
+        provider_needs_claude_transform, provider_spec_from_source, provider_specs_from_source,
+        provider_uses_anthropic_rectifiers, proxy_provider_to_core_spec,
     };
     use crate::proxy::provider::ProviderAdapter;
     use crate::proxy::provider::{
@@ -7990,9 +7949,11 @@ wire_api = "chat"
         });
 
         let usage_provider_kind = provider_kind_from_provider(&provider);
-        let usage_provider_is_codex_oauth = provider_is_codex_oauth(&provider);
-        let usage_provider_is_github_copilot = provider_is_github_copilot(&provider);
-        let usage_provider_uses_managed_account = provider_uses_managed_account_auth(&provider);
+        let usage_provider_classification = provider_managed_auth_classification(&provider);
+        let usage_provider_is_codex_oauth = usage_provider_classification.is_codex_oauth;
+        let usage_provider_is_github_copilot = usage_provider_classification.is_github_copilot;
+        let usage_provider_uses_managed_account =
+            usage_provider_classification.uses_managed_account;
         let usage_provider_needs_claude_transform = provider_needs_claude_transform(&provider);
         let copilot_account_id = provider_github_copilot_managed_account_id(&provider);
         let models_are_claude_safe =

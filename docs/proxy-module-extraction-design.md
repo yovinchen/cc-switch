@@ -1994,6 +1994,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1404. `/proxy/v1/events` SSE keep-alive interval/text contract 已迁入 `proxy-core::event_payload::proxy_events_sse_keep_alive_spec`：host-owned `response_adapter` 仍负责 Axum `KeepAlive` 构造和 broadcast stream 桥接，但对外事件流心跳语义由 core 维护。
 1405. HTTP URI path/query 到 `ProxyRequest.endpoint` 的桥接规则已迁入 `proxy-core::request_url::endpoint_from_path_and_query`：host-owned `response_adapter` 仍负责从 Axum/HTTP `Uri` 取出 path/query，但 endpoint 字符串拼接语义由 core 维护。
 1406. HTTP URI path/query 与可选 protocol prefix strip 的组合桥接已迁入 `proxy-core::request_url::endpoint_from_path_query_stripping_prefix`：host-owned `response_adapter` 只传入 transport path/query/prefix facts，Claude Desktop 等入口的 endpoint prefix 剥离顺序由 core 维护。
+1407. Provider meta 到 `ProviderKind` 与 managed-account classification 的 host 投影已收敛到 `proxy/host/cc_switch/provider_projection.rs`：`response_pipeline` 只消费 owning provider projection 构造 usage facts，test-only `proxy_core_adapter` 不再维护重复 Provider 分类 helper。
 
 ## 背景
 

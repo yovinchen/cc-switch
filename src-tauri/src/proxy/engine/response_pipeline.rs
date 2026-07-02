@@ -8,6 +8,7 @@ use crate::proxy::codex_chat_history::{
     transform_codex_chat_response_with_history, transform_codex_chat_sse_with_history,
 };
 use crate::proxy::engine::forward_pipeline::ActiveConnectionGuard;
+use crate::proxy::host::cc_switch::provider_projection::provider_kind_from_provider;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
@@ -239,14 +240,6 @@ pub(crate) fn response_usage_provider_facts(
         provider_kind: provider_kind_from_provider(provider),
         app: AppKind::from(app_type),
     }
-}
-
-fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
-    provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.provider_type.as_deref())
-        .map(ProviderKind::from)
 }
 
 pub(crate) fn fallback_response_usage_provider_facts(
