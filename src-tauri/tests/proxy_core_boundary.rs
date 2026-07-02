@@ -21467,9 +21467,8 @@ fn production_forwarder_uses_response_source_resource() {
         "};\n\npub(crate) struct CcSwitchForwarderResponseSource",
     );
     for marker in [
-        "apply_channel_response_header_overrides",
+        "apply_channel_response_policy",
         "non_streaming_body_timeout_message",
-        "resolve_channel_response_status_mapping",
         "streaming_body_ended_before_first_chunk_message",
         "streaming_body_first_chunk_read_error_message",
         "streaming_body_first_chunk_timeout_message",
@@ -21483,6 +21482,12 @@ fn production_forwarder_uses_response_source_resource() {
             "proxy_core_adapter should not re-export pure response helper `{marker}` once response source owns the call site"
         );
     }
+    assert!(
+        !response_core_transport_import_slice.contains("apply_channel_response_header_overrides")
+            && !response_core_transport_import_slice
+                .contains("resolve_channel_response_status_mapping"),
+        "default ForwarderResponseSource should consume the combined core channel response policy helper instead of re-composing status/header policy locally"
+    );
     assert!(
         source.contains("response: ProxyResponse")
             && source.contains("request_is_streaming: bool")

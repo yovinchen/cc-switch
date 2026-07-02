@@ -1,6 +1,10 @@
 use http::{header, HeaderMap, HeaderName, HeaderValue};
 use serde_json::Value;
 
+use crate::request_transport::{
+    resolve_channel_response_status_mapping, ChannelResponseStatusMapping,
+};
+
 /// RFC 2616 / RFC 7230 hop-by-hop response headers that must not be forwarded.
 const HOP_BY_HOP_RESPONSE_HEADERS: &[&str] = &[
     "connection",
@@ -104,6 +108,31 @@ pub fn apply_channel_response_header_overrides(
     applied_headers.sort();
 
     (!applied_headers.is_empty()).then_some(applied_headers)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelResponsePolicyApplication {
+    pub status_mapping: Option<ChannelResponseStatusMapping>,
+    pub applied_headers: Option<Vec<String>>,
+}
+
+pub fn apply_channel_response_policy(
+    status: &mut http::StatusCode,
+    headers: &mut HeaderMap,
+    status_code_mapping: &Value,
+    response_overrides: &Value,
+) -> ChannelResponsePolicyApplication {
+    let status_mapping = resolve_channel_response_status_mapping(*status, status_code_mapping);
+    if let Some(mapping) = status_mapping {
+        *status = mapping.mapped_status;
+    }
+
+    let applied_headers = apply_channel_response_header_overrides(headers, response_overrides);
+
+    ChannelResponsePolicyApplication {
+        status_mapping,
+        applied_headers,
+    }
 }
 
 #[cfg(test)]
@@ -267,5 +296,45 @@ mod tests {
             &serde_json::json!({"body": {"strip": ["metadata"]}})
         )
         .is_none());
+    }
+
+    #[test]
+    fn applies_channel_response_policy_status_and_headers_together() {
+        let mut status = http::StatusCode::TOO_MANY_REQUESTS;
+        let mut headers = HeaderMap::new();
+        headers.insert("x-relay-tier", HeaderValue::from_static("old"));
+
+        let application = apply_channel_response_policy(
+            &mut status,
+            &mut headers,
+            &serde_json::json!([{"from": 429, "to": 200}]),
+            &serde_json::json!({
+                "headers": {
+                    "x-relay-tier": "paid",
+                    "x-relay-model": "sonnet"
+                }
+            }),
+        );
+
+        assert_eq!(status, http::StatusCode::OK);
+        assert_eq!(
+            application
+                .status_mapping
+                .expect("status mapping")
+                .mapped_status,
+            http::StatusCode::OK
+        );
+        assert_eq!(
+            application.applied_headers.as_deref(),
+            Some(&["x-relay-model".to_string(), "x-relay-tier".to_string()][..])
+        );
+        assert_eq!(
+            headers.get("x-relay-tier"),
+            Some(&HeaderValue::from_static("paid"))
+        );
+        assert_eq!(
+            headers.get("x-relay-model"),
+            Some(&HeaderValue::from_static("sonnet"))
+        );
     }
 }

@@ -8,9 +8,9 @@ use crate::proxy::engine::forward_pipeline::{
 use crate::proxy::error::ProxyError;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy_core::api::transport::{
-    apply_channel_response_header_overrides, non_streaming_body_timeout_message,
-    resolve_channel_response_status_mapping, streaming_body_ended_before_first_chunk_message,
-    streaming_body_first_chunk_read_error_message, streaming_body_first_chunk_timeout_message,
+    apply_channel_response_policy, non_streaming_body_timeout_message,
+    streaming_body_ended_before_first_chunk_message, streaming_body_first_chunk_read_error_message,
+    streaming_body_first_chunk_timeout_message,
 };
 
 pub(crate) struct CcSwitchForwarderResponseSource;
@@ -55,16 +55,24 @@ impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
         &self,
         input: ForwarderChannelResponseStatusInput<'_>,
     ) -> Result<ProxyResponse, ProxyError> {
-        let ForwarderChannelResponseStatusInput { response, channel } = input;
+        let ForwarderChannelResponseStatusInput {
+            mut response,
+            channel,
+        } = input;
         let Some(channel) = channel else {
             return Ok(response);
         };
 
-        let status_mapping = resolve_channel_response_status_mapping(
-            response.status(),
+        let mut status = response.status();
+        let mut headers = response.headers().clone();
+        let policy = apply_channel_response_policy(
+            &mut status,
+            &mut headers,
             &channel.status_code_mapping,
+            &channel.response_overrides,
         );
-        let mut response = if let Some(status_mapping) = status_mapping {
+
+        if let Some(status_mapping) = policy.status_mapping {
             if status_mapping.changed() {
                 log::debug!(
                     "[ChannelRoute] response status mapped via channel {}: {} -> {}",
@@ -73,15 +81,10 @@ impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
                     status_mapping.mapped_status.as_u16()
                 );
             }
-            response.with_status(status_mapping.mapped_status)
-        } else {
-            response
-        };
+            response = response.with_status(status);
+        }
 
-        let mut headers = response.headers().clone();
-        if let Some(applied_headers) =
-            apply_channel_response_header_overrides(&mut headers, &channel.response_overrides)
-        {
+        if let Some(applied_headers) = policy.applied_headers {
             log::debug!(
                 "[ChannelRoute] response headers overridden via channel {}: {:?}",
                 channel.channel_id,
