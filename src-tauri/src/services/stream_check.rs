@@ -31,11 +31,9 @@ use crate::proxy_core::api::domain::{
 use crate::proxy_core::api::management::{
     merge_stream_check_config, should_retry_channel_reachability_failure,
     stream_check_failed_result_with_retry_count, stream_check_result_from_probe_result,
-    StreamCheckConfigOverride,
+    StreamCheckConfig, StreamCheckConfigOverride, StreamCheckResult,
 };
 use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;
-
-pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};
 
 /// 连通性检查服务
 pub struct StreamCheckService;

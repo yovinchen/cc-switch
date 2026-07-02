@@ -2347,7 +2347,9 @@ fn is_allowed_channel_write_dao_core_import(relative: &str, code: &str) -> bool 
 fn is_allowed_stream_check_core_import(relative: &str, code: &str) -> bool {
     matches!(
         relative,
-        "src/services/stream_check.rs" | "src/commands/stream_check.rs"
+        "src/services/stream_check.rs"
+            | "src/commands/stream_check.rs"
+            | "src/database/dao/stream_check.rs"
     ) && matches!(
         code.trim(),
         "use crate::proxy_core::api::domain::{"
@@ -2355,6 +2357,7 @@ fn is_allowed_stream_check_core_import(relative: &str, code: &str) -> bool {
             | "additive_stream_check_base_url_missing_error_spec, AppKind,"
             | "};"
             | "use crate::proxy_core::api::management::{"
+            | "use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};"
             | "stream_check_failed_result, stream_check_proxy_target_ids_from_sources,"
             | "use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;"
             | "use crate::proxy_core::api::transport::is_github_copilot_upstream as core_is_github_copilot_upstream;"
@@ -14787,7 +14790,6 @@ fn stream_check_service_owns_core_dto_and_user_agent_policy_imports() {
     let service_source = fs::read_to_string(&service_path).expect("read stream_check.rs");
     let required_direct_core_imports = [
         "use crate::proxy_core::api::domain::{",
-        "pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};",
         "use crate::proxy_core::api::management::{",
         "use crate::proxy_core::api::transport::provider_custom_user_agent_header as core_provider_custom_user_agent_header;",
     ];
@@ -14833,6 +14835,12 @@ fn stream_check_service_owns_core_dto_and_user_agent_policy_imports() {
             "stream_check service must import `{required_import}` directly from proxy_core"
         );
     }
+    assert!(
+        !service_source.contains(
+            "pub use crate::proxy_core::api::management::{StreamCheckConfig, StreamCheckResult};"
+        ),
+        "stream_check service should use core DTOs internally instead of re-exporting them"
+    );
     let adapter_management_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::management::{")
         .skip(1)
