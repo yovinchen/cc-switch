@@ -26019,6 +26019,22 @@ fn http_handlers_route_signature_dtos_through_response_adapter() {
 }
 
 #[test]
+fn claude_desktop_config_uses_core_model_list_contract_directly() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/claude_desktop_config.rs");
+    let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+
+    assert!(
+        source.contains("ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput"),
+        "Claude Desktop config tests should import the model-list DTO from proxy-core auth"
+    );
+    assert!(
+        !source.contains("response_adapter::ClaudeDesktopModelListResponse"),
+        "Claude Desktop config tests should not depend on the response_adapter DTO re-export"
+    );
+}
+
+#[test]
 fn proxy_events_uses_grouped_api_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/events.rs");

@@ -690,7 +690,8 @@ mod tests {
     use crate::database::Database;
     use crate::provider::{ClaudeDesktopModelRoute, ProviderMeta};
     use crate::proxy_core::api::auth::{
-        ClaudeDesktopModelRouteInput, ClaudeDesktopResolvedProxyRoute,
+        ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
+        ClaudeDesktopResolvedProxyRoute,
     };
     use crate::proxy_core::api::ports::ProxyConfig;
     use serde_json::json;
@@ -997,13 +998,11 @@ mod tests {
         .expect("map route");
         assert_eq!(mapped["model"], json!("kimi-k2"));
 
-        let models = serde_json::to_value(
-            crate::proxy::response_adapter::ClaudeDesktopModelListResponse::from_routes(
-                model_routes_to_core_inputs(
-                    provider_claude_desktop_proxy_model_routes(&provider).expect("model routes"),
-                ),
+        let models = serde_json::to_value(ClaudeDesktopModelListResponse::from_routes(
+            model_routes_to_core_inputs(
+                provider_claude_desktop_proxy_model_routes(&provider).expect("model routes"),
             ),
-        )
+        ))
         .unwrap();
         assert_eq!(models["data"][0]["id"], json!("claude-sonnet-4-6"));
         assert_eq!(models["data"][0]["supports1m"], json!(true));
