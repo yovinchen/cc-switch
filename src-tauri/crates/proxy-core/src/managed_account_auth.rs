@@ -1131,6 +1131,25 @@ pub fn managed_account_token_failure_fallback_log_message(
     )
 }
 
+impl ManagedAccountTokenFailureFallbackDecision {
+    pub fn cached_token_age_ms_or_default(self) -> i64 {
+        self.cached_token_age_ms.unwrap_or_default()
+    }
+
+    pub fn fallback_log_message(
+        self,
+        key: &ManagedAccountTokenCacheKey,
+        error: &str,
+    ) -> String {
+        managed_account_token_failure_fallback_log_message(
+            key.runtime(),
+            key.account_id(),
+            self.cached_token_age_ms_or_default(),
+            error,
+        )
+    }
+}
+
 pub fn validate_managed_account_upstream_auth(
     url: &str,
     headers: &HeaderMap,
@@ -2143,6 +2162,15 @@ mod tests {
 
     #[test]
     fn managed_account_token_failure_fallback_message_identifies_snapshot_age() {
+        let key = ManagedAccountTokenCacheKey::new(
+            ManagedAccountAuthRuntime::GitHubCopilot,
+            Some("acct-1"),
+        );
+        let decision = ManagedAccountTokenFailureFallbackDecision {
+            should_use_cached_token: true,
+            cached_token_age_ms: Some(1_500),
+        };
+
         assert_eq!(
             managed_account_token_failure_fallback_log_message(
                 ManagedAccountAuthRuntime::GitHubCopilot,
@@ -2150,6 +2178,11 @@ mod tests {
                 1_500,
                 "network timeout",
             ),
+            "[Copilot] 获取 Copilot token 失败，使用最近成功 token 快照回退 (account=acct-1, ageMs=1500): network timeout"
+        );
+        assert_eq!(decision.cached_token_age_ms_or_default(), 1_500);
+        assert_eq!(
+            decision.fallback_log_message(&key, "network timeout"),
             "[Copilot] 获取 Copilot token 失败，使用最近成功 token 快照回退 (account=acct-1, ageMs=1500): network timeout"
         );
     }

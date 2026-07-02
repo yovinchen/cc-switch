@@ -18116,11 +18116,20 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         !host_source.contains("struct ManagedAccountTokenSnapshot"),
         "ManagedAccountTokenSnapshot shape should live in proxy-core, not host runtime source"
     );
+    let snapshot_fallback_slice = function_slice(
+        &host_source,
+        "async fn token_snapshot_for_refresh_failure",
+        "pub(crate) fn managed_account_runtime_source_from_app_handle",
+    );
     assert!(
-        host_source.contains(".fallback_decision(chrono::Utc::now().timestamp_millis(), failure_kind)")
-            && !host_source.contains("managed_account_token_failure_fallback_decision(")
-            && !host_source.contains("Some(snapshot.cached_at_ms)"),
-        "host runtime source should delegate snapshot fallback-age policy to ManagedAccountTokenSnapshot"
+        snapshot_fallback_slice.contains(
+            ".fallback_decision(chrono::Utc::now().timestamp_millis(), failure_kind)"
+        ) && snapshot_fallback_slice.contains("decision.fallback_log_message(key, error)")
+            && !snapshot_fallback_slice.contains("managed_account_token_failure_fallback_decision(")
+            && !snapshot_fallback_slice.contains("managed_account_token_failure_fallback_log_message(")
+            && !snapshot_fallback_slice.contains("Some(snapshot.cached_at_ms)")
+            && !snapshot_fallback_slice.contains("account_id: Option<&str>"),
+        "host runtime source should delegate snapshot fallback policy and log context to core token-cache contracts"
     );
     for marker in [
         "managed_account_app_handle_unavailable_error_message",

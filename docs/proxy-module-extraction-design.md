@@ -1986,6 +1986,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1396. managed-account token refresh 失败分类已迁入 `proxy-core::managed_account_auth::ManagedAccountTokenRefreshFailureKind`：host-owned runtime source 只把 Copilot/Codex OAuth 具体错误映射成 `Retryable` 或 `Terminal`，core fallback decision 不再接收语义不清的 bool；短窗口缓存回退仍只允许 retryable refresh failure，终止类账号错误继续直接暴露。
 1397. managed-account token 快照 payload 已迁入 `proxy-core::managed_account_auth::ManagedAccountTokenSnapshot`：core 固化缓存中的 `ProviderAuthInfo`、Codex OAuth resolved account id 和 cached_at_ms 字段 contract，host-owned runtime source 只维护 HashMap 存储、时间戳注入和 Tauri auth manager 调用；边界测试防止 snapshot 形状重新落回 host 或 adapter。
 1398. managed-account token snapshot 的 fallback-age 决策已下沉到 `ManagedAccountTokenSnapshot::fallback_decision`：host-owned runtime source 不再直接读取 `cached_at_ms` 调用 fallback helper，而是只取出 snapshot、传入当前时间和 refresh failure kind，由 core 解释缓存年龄、retryable/terminal 和 30 秒窗口。
+1399. managed-account token fallback 日志上下文已下沉到 `ManagedAccountTokenFailureFallbackDecision::fallback_log_message`：host-owned runtime source 不再手动拼 `runtime/account/age/error` 或单独传 account id 给 snapshot fallback，core 通过 `ManagedAccountTokenCacheKey` 与 decision 生成保持兼容的日志文案。
 
 ## 背景
 

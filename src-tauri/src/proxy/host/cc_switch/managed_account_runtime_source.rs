@@ -16,8 +16,7 @@ use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy_core::api::auth::{
     managed_account_app_handle_unavailable_error_message,
     managed_account_app_handle_unavailable_log_message,
-    managed_account_token_failure_error_message,
-    managed_account_token_failure_fallback_log_message, managed_account_token_failure_log_message,
+    managed_account_token_failure_error_message, managed_account_token_failure_log_message,
     managed_account_token_request_log_message, managed_account_token_success_log_message,
     resolve_copilot_dynamic_base_url_for_binding_with_runtime_source as resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source,
     resolve_copilot_live_model_for_binding_with_runtime_source as resolve_core_copilot_live_model_for_binding_with_runtime_source,
@@ -65,7 +64,6 @@ impl CcSwitchManagedAccountRuntimeSource {
     async fn token_snapshot_for_refresh_failure(
         &self,
         key: &ManagedAccountTokenCacheKey,
-        account_id: Option<&str>,
         error: &str,
         failure_kind: ManagedAccountTokenRefreshFailureKind,
     ) -> Option<ManagedAccountTokenSnapshot> {
@@ -79,15 +77,7 @@ impl CcSwitchManagedAccountRuntimeSource {
             return None;
         }
 
-        log::warn!(
-            "{}",
-            managed_account_token_failure_fallback_log_message(
-                key.runtime(),
-                account_id,
-                decision.cached_token_age_ms.unwrap_or_default(),
-                error,
-            )
-        );
+        log::warn!("{}", decision.fallback_log_message(key, error));
         Some(snapshot)
     }
 }
@@ -480,12 +470,7 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                     let failure_kind = copilot_token_failure_kind(&error);
                     let error = error.to_string();
                     if let Some(snapshot) = self
-                        .token_snapshot_for_refresh_failure(
-                            &cache_key,
-                            account_id,
-                            &error,
-                            failure_kind,
-                        )
+                        .token_snapshot_for_refresh_failure(&cache_key, &error, failure_kind)
                         .await
                     {
                         return Ok(snapshot.auth);
@@ -547,12 +532,7 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                     let failure_kind = codex_oauth_token_failure_kind(&error);
                     let error = error.to_string();
                     if let Some(snapshot) = self
-                        .token_snapshot_for_refresh_failure(
-                            &cache_key,
-                            account_id.as_deref(),
-                            &error,
-                            failure_kind,
-                        )
+                        .token_snapshot_for_refresh_failure(&cache_key, &error, failure_kind)
                         .await
                     {
                         return Ok((snapshot.auth, snapshot.codex_oauth_account_id));
@@ -637,7 +617,6 @@ mod tests {
         let snapshot = source
             .token_snapshot_for_refresh_failure(
                 &key,
-                Some("acct"),
                 "network timeout",
                 ManagedAccountTokenRefreshFailureKind::Retryable,
             )
@@ -677,7 +656,6 @@ mod tests {
         assert!(source
             .token_snapshot_for_refresh_failure(
                 &codex_same_account,
-                Some("acct-a"),
                 "network timeout",
                 ManagedAccountTokenRefreshFailureKind::Retryable,
             )
@@ -686,7 +664,6 @@ mod tests {
         assert!(source
             .token_snapshot_for_refresh_failure(
                 &copilot_other_account,
-                Some("acct-b"),
                 "network timeout",
                 ManagedAccountTokenRefreshFailureKind::Retryable,
             )
@@ -696,7 +673,6 @@ mod tests {
         let snapshot = source
             .token_snapshot_for_refresh_failure(
                 &copilot_account,
-                Some("acct-a"),
                 "network timeout",
                 ManagedAccountTokenRefreshFailureKind::Retryable,
             )
@@ -725,7 +701,6 @@ mod tests {
         assert!(source
             .token_snapshot_for_refresh_failure(
                 &key,
-                Some("acct"),
                 "network timeout",
                 ManagedAccountTokenRefreshFailureKind::Retryable,
             )
@@ -743,7 +718,6 @@ mod tests {
         assert!(source
             .token_snapshot_for_refresh_failure(
                 &key,
-                Some("acct"),
                 "refresh token revoked",
                 ManagedAccountTokenRefreshFailureKind::Terminal,
             )
