@@ -4,10 +4,12 @@ use crate::proxy_core::api::management::{
     channel_key_runtime_candidate_from_input, effective_channel_key_runtime_selection_policy,
     select_channel_key_runtime_candidate_with_policy, ChannelKeyRuntimeCandidate,
     ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeSelectionInput,
-    ChannelKeyRuntimeSelectionPolicy, DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+    ChannelKeyRuntimeSelectionPolicy, ChannelKeyRuntimeSelectionStrategy,
+    DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
 };
 use crate::proxy_core::api::ports::ChannelKeyRuntimeSource;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 pub(crate) fn proxy_channel_key_record_to_runtime_candidate(
     key: ProxyChannelKeyRecord,
@@ -29,6 +31,7 @@ fn select_proxy_channel_key_runtime_candidate<I>(
     now_ms: i64,
     policy: ChannelKeyRuntimeSelectionPolicy,
     weighted_roll: u64,
+    round_robin_offset: u64,
 ) -> Option<ChannelKeyRuntimeCandidate>
 where
     I: IntoIterator<Item = ProxyChannelKeyRecord>,
@@ -40,6 +43,7 @@ where
             key_ref,
             now_ms,
             weighted_roll,
+            round_robin_offset,
             policy,
         },
     )
@@ -48,27 +52,42 @@ where
 #[derive(Clone)]
 pub(crate) struct CcSwitchChannelKeyRuntimeSource {
     db: Arc<Database>,
+    round_robin_cursors: Arc<Mutex<HashMap<String, u64>>>,
 }
 
 pub(crate) fn channel_key_runtime_source_from_database(
     db: Arc<Database>,
 ) -> CcSwitchChannelKeyRuntimeSource {
-    CcSwitchChannelKeyRuntimeSource { db }
+    CcSwitchChannelKeyRuntimeSource {
+        db,
+        round_robin_cursors: Arc::new(Mutex::new(HashMap::new())),
+    }
 }
 
 fn load_channel_key_candidate_from_database(
     db: &Database,
+    round_robin_cursors: &Mutex<HashMap<String, u64>>,
     channel_id: &str,
     key_ref: &str,
 ) -> ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>> {
     let keys = db
         .list_proxy_channel_key_runtime_candidates(channel_id)
         .map_err(|error| config_error_with_context("load channel auth key", error))?;
+    let Some(keys) = keys else {
+        return Ok(None);
+    };
     let policy = channel_key_runtime_selection_policy_from_database(db, channel_id)?;
+    let round_robin_offset =
+        channel_key_round_robin_offset(round_robin_cursors, channel_id, key_ref, policy.strategy)?;
     let (now_ms, weighted_roll) = channel_key_runtime_selection_clock();
-    Ok(keys.and_then(|keys| {
-        select_proxy_channel_key_runtime_candidate(keys, key_ref, now_ms, policy, weighted_roll)
-    }))
+    Ok(select_proxy_channel_key_runtime_candidate(
+        keys,
+        key_ref,
+        now_ms,
+        policy,
+        weighted_roll,
+        round_robin_offset,
+    ))
 }
 
 fn channel_key_runtime_selection_policy_from_database(
@@ -89,6 +108,30 @@ fn channel_key_runtime_selection_policy_from_database(
         .unwrap_or_default())
 }
 
+fn channel_key_round_robin_offset(
+    round_robin_cursors: &Mutex<HashMap<String, u64>>,
+    channel_id: &str,
+    key_ref: &str,
+    strategy: ChannelKeyRuntimeSelectionStrategy,
+) -> ProxyCoreResult<u64> {
+    if strategy != ChannelKeyRuntimeSelectionStrategy::RoundRobin || key_ref.trim() != "*" {
+        return Ok(0);
+    }
+
+    let cursor_key = channel_key_round_robin_cursor_key(channel_id, key_ref);
+    let mut cursors = round_robin_cursors.lock().map_err(|error| {
+        config_error_with_context("advance channel key round-robin cursor", error)
+    })?;
+    let offset = cursors.entry(cursor_key).or_insert(0);
+    let current = *offset;
+    *offset = (*offset).wrapping_add(1);
+    Ok(current)
+}
+
+fn channel_key_round_robin_cursor_key(channel_id: &str, key_ref: &str) -> String {
+    format!("{}:{key_ref}", channel_id.trim())
+}
+
 fn channel_key_runtime_selection_clock() -> (i64, u64) {
     let now = chrono::Utc::now();
     let now_ms = now.timestamp_millis();
@@ -106,7 +149,12 @@ impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource {
         channel_id: &str,
         key_ref: &str,
     ) -> ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>> {
-        load_channel_key_candidate_from_database(self.db.as_ref(), channel_id, key_ref)
+        load_channel_key_candidate_from_database(
+            self.db.as_ref(),
+            self.round_robin_cursors.as_ref(),
+            channel_id,
+            key_ref,
+        )
     }
 }
 
@@ -150,6 +198,7 @@ mod tests {
             now_ms,
             ChannelKeyRuntimeSelectionPolicy::weighted(DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS),
             0,
+            0,
         )
         .expect("selected first weighted candidate");
         assert_eq!(first.key_ref, "alpha");
@@ -164,6 +213,7 @@ mod tests {
             now_ms,
             ChannelKeyRuntimeSelectionPolicy::weighted(DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS),
             1,
+            0,
         )
         .expect("selected second weighted candidate");
         assert_eq!(second.key_ref, "beta");
@@ -213,9 +263,74 @@ mod tests {
             1_771_000_120_000,
             policy,
             1,
+            0,
         )
         .expect("selected priority candidate from configured policy");
         assert_eq!(selected.key_ref, "alpha");
+    }
+
+    #[test]
+    fn db_backed_channel_key_runtime_source_round_robins_wildcard_keys() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "provider-key" } }),
+            None,
+        );
+        db.save_provider("claude", &provider)
+            .expect("save provider");
+        db.create_proxy_channel(ProxyChannelWriteRequest {
+            id: Some("channel-key-round-robin".to_string()),
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            name: "Channel Key Round Robin".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            health_policy: json!({"channelKeySelectionStrategy": "roundRobin"}),
+            ..Default::default()
+        })
+        .expect("create channel");
+        db.upsert_proxy_channel_key(
+            "channel-key-round-robin",
+            "alpha",
+            ProxyChannelKeyWriteRequest {
+                key_value: "sk-alpha".to_string(),
+                status: "enabled".to_string(),
+                priority: 20,
+                weight: 1,
+            },
+        )
+        .expect("upsert alpha key");
+        db.upsert_proxy_channel_key(
+            "channel-key-round-robin",
+            "beta",
+            ProxyChannelKeyWriteRequest {
+                key_value: "sk-beta".to_string(),
+                status: "enabled".to_string(),
+                priority: 20,
+                weight: 1,
+            },
+        )
+        .expect("upsert beta key");
+
+        let source = channel_key_runtime_source_from_database(db);
+        let first = source
+            .load_channel_key_candidate("channel-key-round-robin", "*")
+            .expect("load first wildcard key")
+            .expect("selected first key");
+        let second = source
+            .load_channel_key_candidate("channel-key-round-robin", "*")
+            .expect("load second wildcard key")
+            .expect("selected second key");
+        let third = source
+            .load_channel_key_candidate("channel-key-round-robin", "*")
+            .expect("load third wildcard key")
+            .expect("selected third key");
+
+        assert_eq!(first.key_ref, "alpha");
+        assert_eq!(second.key_ref, "beta");
+        assert_eq!(third.key_ref, "alpha");
     }
 
     #[test]
