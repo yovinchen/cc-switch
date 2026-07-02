@@ -43,20 +43,23 @@ use crate::proxy::{
         dispatch_update_proxy_channel_request_to_axum_json_response,
         dispatch_upsert_proxy_channel_key_request_to_axum_json_response,
         proxy_events_request_to_axum_sse_response, proxy_health_check_to_axum_json_response,
-        AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery,
-        ChannelBreakerStatsResponse, ChannelDeleteResponse, ChannelHealthResetResponse,
-        ChannelKeyDeleteResponse, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
-        ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeResponse,
-        ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelRecord,
-        ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
-        ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
-        CurrentRouteTarget, GroupListQuery, HealthCheckResponse, ProviderListResponse,
-        ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
-        ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
-        ProxyRuntimeStatus, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
-        RouteResolveRequest, RouteResolveResponse,
     },
 };
+use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
+use crate::proxy_core::api::management::{
+    AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery,
+    ChannelBreakerStatsResponse, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelKeyDeleteResponse, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
+    ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelRecord,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
+    CurrentRouteResponse, GroupListQuery, HealthCheckResponse, ProviderListResponse,
+    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
+    ProxyStatusResponse, RouteGroupListResponse, RouteResolveRequest, RouteResolveResponse,
+};
+use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};
+use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,

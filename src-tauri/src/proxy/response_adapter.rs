@@ -28,10 +28,10 @@ use crate::proxy::host::cc_switch::provider_projection::{
 };
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy::provider::codex_provider_should_convert_responses_to_chat;
-pub(crate) use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
+use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::events::ProxyEventEnvelope;
-pub(crate) use crate::proxy_core::api::management::{
+use crate::proxy_core::api::management::{
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
     ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
@@ -47,10 +47,8 @@ pub(crate) use crate::proxy_core::api::management::{
     RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
     RouteResolveResponse,
 };
-pub(crate) use crate::proxy_core::api::model_catalog::{
-    ClientModelCatalogResponse, RoutableModelList,
-};
-pub(crate) use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
+use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};
+use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
 use crate::proxy_core::api::routing::InterfaceKind;
 use crate::proxy_core::api::transforms::{
     build_codex_tool_context_from_request, codex_chat_transform_streaming_decision,

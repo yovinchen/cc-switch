@@ -2486,6 +2486,17 @@ fn is_allowed_gemini_shadow_transform_core_import(relative: &str, code: &str) ->
     ) && code.trim() == "use crate::proxy_core::api::transforms::GeminiShadowStore;"
 }
 
+fn is_allowed_http_handlers_signature_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/transport/http/handlers.rs"
+        && matches!(
+            code.trim(),
+            "use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;"
+                | "use crate::proxy_core::api::management::{"
+                | "use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};"
+                | "use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};"
+        )
+}
+
 #[test]
 fn host_code_uses_proxy_core_through_adapter_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -2567,6 +2578,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_circuit_breaker_config_core_import(&relative, code)
                     && !is_allowed_codex_chat_history_transform_core_import(&relative, code)
                     && !is_allowed_gemini_shadow_transform_core_import(&relative, code)
+                    && !is_allowed_http_handlers_signature_core_import(&relative, code)
                 {
                     violations.push(format!(
                         "{}:{} contains direct proxy-core marker `{}`",
@@ -26019,22 +26031,44 @@ fn proxy_response_adapter_owns_core_transport_imports() {
 }
 
 #[test]
-fn http_handlers_route_signature_dtos_through_response_adapter() {
+fn http_handlers_import_signature_dtos_directly_from_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read proxy/transport/http/handlers.rs");
-    let response_adapter_import = function_slice(&source, "response_adapter::{", "};\nuse axum::");
+    let response_adapter_import = function_slice(
+        &source,
+        "response_adapter::{",
+        "    },\n};\nuse crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;",
+    );
     let response_adapter_import_identifiers: Vec<&str> = response_adapter_import
         .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
         .filter(|identifier| !identifier.is_empty())
         .collect();
+    let core_import_slice = function_slice(
+        &source,
+        "use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;",
+        "use axum::",
+    );
     let proxy_core_adapter_imports: Vec<String> = production_lines(&source)
         .map(|(_, line)| line.split("//").next().unwrap_or_default().trim())
         .filter(|line| line.contains("proxy_core_adapter"))
         .map(str::to_string)
         .collect();
 
-    let mut missing = Vec::new();
+    let mut violations = Vec::new();
+    for required_import in [
+        "use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;",
+        "use crate::proxy_core::api::management::{",
+        "use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};",
+        "use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};",
+    ] {
+        if !core_import_slice.contains(required_import) {
+            violations.push(format!(
+                "handlers.rs should import `{required_import}` directly from proxy_core"
+            ));
+        }
+    }
+
     for marker in [
         "AppChannelListQuery",
         "AppChannelResponse",
@@ -26078,20 +26112,25 @@ fn http_handlers_route_signature_dtos_through_response_adapter() {
         "RouteResolveRequest",
         "RouteResolveResponse",
     ] {
-        if !response_adapter_import_identifiers
+        if response_adapter_import_identifiers
             .iter()
             .any(|identifier| identifier == &marker)
         {
-            missing.push(format!(
-                "handlers.rs response_adapter import is missing signature DTO `{marker}`"
+            violations.push(format!(
+                "handlers.rs imports signature DTO `{marker}` through response_adapter"
+            ));
+        }
+        if !core_import_slice.contains(marker) {
+            violations.push(format!(
+                "handlers.rs core import slice is missing signature DTO `{marker}`"
             ));
         }
     }
 
     assert!(
-        missing.is_empty(),
-        "HTTP handler signature DTOs should come through response_adapter:\n{}",
-        missing.join("\n")
+        violations.is_empty(),
+        "HTTP handler signature DTOs should come directly from proxy_core::api, not response_adapter:\n{}",
+        violations.join("\n")
     );
     assert_eq!(
         proxy_core_adapter_imports,
