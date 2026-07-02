@@ -6,15 +6,10 @@ use crate::proxy_core::api::management::{RouteResolveRequest, RouteResolveRespon
 use crate::proxy_core::api::ports::RouteResolver;
 use crate::proxy_core::api::routing::{
     apply_route_candidate_circuit_availability, build_route_plan_with_weighted_roll,
-    resolve_channel_route, route_candidate_channel_circuit_keys, RoutePlan,
+    resolve_channel_route, route_candidate_channel_circuit_keys, RoutePlan, RouteRequest,
 };
 use futures::future::BoxFuture;
 use std::sync::Arc;
-
-#[cfg(not(test))]
-use crate::proxy_core::api::routing::RouteRequest;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::routing::RouteRequest;
 
 #[derive(Clone)]
 pub(crate) struct CcSwitchRouteResolver {

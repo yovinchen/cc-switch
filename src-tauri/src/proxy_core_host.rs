@@ -24,8 +24,6 @@ use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::route_resolver::management_route_response_from_router_source;
 #[cfg(test)]
-use crate::proxy::host::cc_switch::route_resolver::RouteRequest;
-#[cfg(test)]
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 #[cfg(test)]
 use crate::proxy_core::api::domain::{
@@ -46,8 +44,8 @@ use crate::proxy_core::api::ports::{AuthProvider, ProxyServices};
 use crate::proxy_core::api::ports::{ChannelAttemptResult, ProxyConfig, ProxyRuntimeStatus};
 #[cfg(test)]
 use crate::proxy_core::api::routing::{
-    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteSelection,
-    DEFAULT_ROUTE_GROUP,
+    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteRequest,
+    RouteSelection, DEFAULT_ROUTE_GROUP,
 };
 #[cfg(test)]
 use crate::proxy_core::api::transforms::GeminiShadowStore;

@@ -22104,8 +22104,12 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
             && source.contains("resolve_channel_route")
             && source.contains("build_route_plan_with_weighted_roll")
             && source.contains("RoutePlan")
-            && source.contains("pub(crate) use crate::proxy_core::api::routing::RouteRequest;"),
+            && source.contains("RouteRequest"),
         "CC Switch route resolver should import route contracts directly from proxy_core"
+    );
+    assert!(
+        !source.contains("pub(crate) use crate::proxy_core::api::routing::RouteRequest;"),
+        "CC Switch route resolver should use RouteRequest internally instead of re-exporting the core routing DTO"
     );
     let adapter_import = if source.contains("use crate::proxy_core_adapter::") {
         function_slice(&source, "use crate::proxy_core_adapter::", ";\nuse futures")
@@ -22171,8 +22175,12 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
         "proxy_core_host test harness should not import RouteRequest through proxy_core_adapter"
     );
     assert!(
-        host_source.contains("use crate::proxy::host::cc_switch::route_resolver::RouteRequest;"),
-        "proxy_core_host test harness should import RouteRequest through the host route resolver module"
+        !host_source.contains("use crate::proxy::host::cc_switch::route_resolver::RouteRequest;"),
+        "proxy_core_host test harness should not import RouteRequest through the host route resolver module"
+    );
+    assert!(
+        host_source.contains("RoutePlan, RouteRequest,"),
+        "proxy_core_host test harness should import RouteRequest directly from proxy_core routing"
     );
     assert!(
         host_source.contains(
@@ -23695,7 +23703,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         ) && host_source.contains(
             "use crate::proxy_core::api::ports::{AuthProvider, ProxyServices};"
         ) && host_source.contains(
-            "use crate::proxy_core::api::routing::{\n    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteSelection,\n    DEFAULT_ROUTE_GROUP,\n};"
+            "use crate::proxy_core::api::routing::{\n    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteRequest,\n    RouteSelection, DEFAULT_ROUTE_GROUP,\n};"
         ) && host_source
             .contains("use crate::proxy_core::api::routing::ResolvedChannelAttempt;")
         && host_source.contains(
@@ -23715,6 +23723,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         "ProxyResponseBody",
         "RetryPolicy",
         "RoutePlan",
+        "RouteRequest",
         "RouteSelection",
         "ProxyCoreUpstreamEndpoint",
         "ChannelQuery",
