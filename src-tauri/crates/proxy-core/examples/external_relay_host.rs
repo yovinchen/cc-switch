@@ -113,13 +113,9 @@ async fn run() -> ProxyCoreResult<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn external_relay_host_runtime_smoke_runs() {
-        futures::executor::block_on(run()).expect("external relay host runtime smoke");
-    }
+#[test]
+fn external_relay_host_runtime_smoke_runs() {
+    futures::executor::block_on(run()).expect("external relay host runtime smoke");
 }
 
 fn opencode_app() -> AppKind {

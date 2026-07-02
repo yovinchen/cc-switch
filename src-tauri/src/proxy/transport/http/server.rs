@@ -532,7 +532,7 @@ mod tests {
     };
     use futures::StreamExt;
     use serde_json::{json, Value};
-    use tokio::io::AsyncWriteExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tower::Service;
 
     #[test]
@@ -1828,6 +1828,169 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn proxy_server_runtime_smoke_forwards_materialized_channel_to_upstream() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "runtime-forward-provider".to_string(),
+            "Runtime Forward Provider".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://unused-provider.example.com/v1",
+                    "ANTHROPIC_API_KEY": "provider-secret"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+        db.set_current_provider("claude", "runtime-forward-provider")
+            .unwrap();
+
+        let config = ProxyConfig {
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 0,
+            ..ProxyConfig::default()
+        };
+        let server = ProxyServer::new(config, db, None);
+        let info = server.start().await.expect("start proxy server");
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("reqwest client");
+        let base_url = format!("http://127.0.0.1:{}", info.port);
+        let (upstream_base_url, upstream_handle) = start_forwarding_upstream_server().await;
+
+        let smoke = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let create_response = client
+                .post(format!("{base_url}/proxy/v1/channels"))
+                .json(&json!({
+                    "providerId": "runtime-forward-provider",
+                    "appType": "claude",
+                    "name": "Runtime Forward Relay",
+                    "baseUrl": upstream_base_url,
+                    "interfaceKind": "anthropic_messages",
+                    "authProfileRef": "channel-key:primary",
+                    "models": [{
+                        "publicModel": "runtime-public",
+                        "upstreamModel": "runtime-upstream"
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if create_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected create channel status: {}",
+                    create_response.status()
+                ));
+            }
+            let created = create_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            let channel_id = created["id"]
+                .as_str()
+                .ok_or_else(|| format!("forward channel missing id: {created}"))?
+                .to_string();
+
+            let key_response = client
+                .put(format!(
+                    "{base_url}/proxy/v1/channels/{channel_id}/keys/primary"
+                ))
+                .json(&json!({
+                    "keyValue": "sk-runtime-channel",
+                    "status": "enabled",
+                    "priority": 50,
+                    "weight": 60
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if key_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected channel key status: {}",
+                    key_response.status()
+                ));
+            }
+
+            let response = client
+                .post(format!("{base_url}/v1/messages"))
+                .json(&json!({
+                    "model": "runtime-public",
+                    "max_tokens": 16,
+                    "messages": [{
+                        "role": "user",
+                        "content": "hello"
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected forwarded response status: {}",
+                    response.status()
+                ));
+            }
+            let body = response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if body["id"] != "msg-runtime-forward"
+                || body["model"] != "runtime-upstream"
+                || body["usage"]["input_tokens"] != 3
+                || body["usage"]["output_tokens"] != 5
+            {
+                return Err(format!("unexpected forwarded response body: {body}"));
+            }
+
+            Ok::<String, String>(channel_id)
+        })
+        .await
+        .map_err(|_| "timed out waiting for runtime channel forward smoke".to_string())
+        .and_then(|result| result);
+        let stop = server.stop().await;
+
+        assert!(stop.is_ok(), "stop proxy server: {stop:?}");
+        let channel_id = smoke.expect("runtime channel forward smoke");
+        let captured = tokio::time::timeout(std::time::Duration::from_secs(1), upstream_handle)
+            .await
+            .expect("upstream server should receive forwarded request")
+            .expect("upstream server task")
+            .expect("capture forwarded request");
+
+        assert!(
+            captured.head.starts_with("POST /v1/messages HTTP/1.1"),
+            "unexpected upstream request head: {}",
+            captured.head
+        );
+        assert!(
+            captured
+                .head
+                .to_ascii_lowercase()
+                .contains("x-api-key: sk-runtime-channel"),
+            "channel-key auth header was not forwarded to upstream: {}",
+            captured.head
+        );
+        assert!(
+            !captured.head.contains("provider-secret"),
+            "provider fallback secret leaked into upstream request: {}",
+            captured.head
+        );
+        assert_eq!(captured.body["model"], "runtime-upstream");
+        assert_eq!(
+            captured.body["messages"][0]["content"], "hello",
+            "forwarded request body changed unexpectedly"
+        );
+
+        let current_route = server.state.current_providers.read().await;
+        let active = current_route
+            .get("claude")
+            .expect("forward should set active route target");
+        assert_eq!(active.channel_id.as_deref(), Some(channel_id.as_str()));
+        assert_eq!(active.upstream_model.as_deref(), Some("runtime-upstream"));
+    }
+
+    #[tokio::test]
     async fn proxy_server_runtime_smoke_materializes_channel_migration() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let provider = Provider::with_id(
@@ -2879,6 +3042,100 @@ mod tests {
                     .await;
                 let _ = socket.shutdown().await;
             }
+        });
+
+        (format!("http://{addr}/v1"), handle)
+    }
+
+    struct CapturedUpstreamRequest {
+        head: String,
+        body: Value,
+    }
+
+    async fn start_forwarding_upstream_server() -> (
+        String,
+        tokio::task::JoinHandle<Result<CapturedUpstreamRequest, String>>,
+    ) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind forwarding upstream server");
+        let addr = listener
+            .local_addr()
+            .expect("forwarding upstream server local addr");
+        let handle = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.map_err(|error| error.to_string())?;
+            let mut bytes = Vec::new();
+            let header_end = loop {
+                let mut chunk = [0_u8; 1024];
+                let read = socket
+                    .read(&mut chunk)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                if read == 0 {
+                    return Err("upstream connection closed before headers".to_string());
+                }
+                bytes.extend_from_slice(&chunk[..read]);
+                if let Some(index) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+                    break index + 4;
+                }
+                if bytes.len() > 32 * 1024 {
+                    return Err("upstream request headers too large".to_string());
+                }
+            };
+
+            let head = String::from_utf8_lossy(&bytes[..header_end]).to_string();
+            let content_length = head
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().ok())
+                        .flatten()
+                })
+                .unwrap_or(0);
+            while bytes.len() < header_end + content_length {
+                let mut chunk = [0_u8; 1024];
+                let read = socket
+                    .read(&mut chunk)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                if read == 0 {
+                    return Err("upstream connection closed before body".to_string());
+                }
+                bytes.extend_from_slice(&chunk[..read]);
+            }
+            let body =
+                serde_json::from_slice::<Value>(&bytes[header_end..header_end + content_length])
+                    .map_err(|error| error.to_string())?;
+            let response_body = json!({
+                "id": "msg-runtime-forward",
+                "type": "message",
+                "role": "assistant",
+                "model": "runtime-upstream",
+                "content": [{
+                    "type": "text",
+                    "text": "ok"
+                }],
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "usage": {
+                    "input_tokens": 3,
+                    "output_tokens": 5
+                }
+            })
+            .to_string();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                response_body.len(),
+                response_body
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .map_err(|error| error.to_string())?;
+            let _ = socket.shutdown().await;
+
+            Ok(CapturedUpstreamRequest { head, body })
         });
 
         (format!("http://{addr}/v1"), handle)
