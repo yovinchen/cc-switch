@@ -19676,6 +19676,30 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "RequestForwarder and ForwarderRuntimeStateSource must not pass success status facts as loose parameters"
     );
     assert!(
+        source.contains("pub(crate) struct ForwarderProviderFailureInput<'a>")
+            && source.contains("pub(crate) struct ForwarderProviderRectifierRetryFailureInput<'a>")
+            && runtime_trait_slice.contains("input: ForwarderProviderFailureInput<'a>")
+            && runtime_trait_slice
+                .contains("input: ForwarderProviderRectifierRetryFailureInput<'a>")
+            && impl_slice.contains("record_provider_failure(ForwarderProviderFailureInput {")
+            && impl_slice.contains(
+                "record_provider_rectifier_retry_failure(\n                        ForwarderProviderRectifierRetryFailureInput {"
+            )
+            && runtime_source.contains("ForwarderProviderFailureInput")
+            && runtime_source.contains("ForwarderProviderRectifierRetryFailureInput")
+            && runtime_source.contains("input.provider")
+            && runtime_source.contains("input.error")
+            && runtime_source.contains("input.kind"),
+        "ForwarderRuntimeStateSource must consume provider failure facts as structured inputs"
+    );
+    assert!(
+        !impl_slice.contains("record_provider_failure(provider, &e)")
+            && !impl_slice.contains(
+                "record_provider_rectifier_retry_failure(provider, retry_kind, &retry_err)"
+            ),
+        "RequestForwarder must not pass provider failure facts as loose parameters"
+    );
+    assert!(
         runtime_trait_slice.contains("fn record_attempt_started(")
             && !runtime_trait_slice.contains("fn emit_attempt_started("),
         "ForwarderRuntimeStateSource must expose attempt-started lifecycle as a record behavior, not an event-emitter surface"

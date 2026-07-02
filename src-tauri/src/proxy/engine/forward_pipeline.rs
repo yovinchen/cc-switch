@@ -388,6 +388,17 @@ pub(crate) struct ForwarderSuccessStatusInput<'a> {
     pub(crate) provider: &'a Provider,
 }
 
+pub(crate) struct ForwarderProviderFailureInput<'a> {
+    pub(crate) provider: &'a Provider,
+    pub(crate) error: &'a ProxyError,
+}
+
+pub(crate) struct ForwarderProviderRectifierRetryFailureInput<'a> {
+    pub(crate) provider: &'a Provider,
+    pub(crate) kind: ForwarderRectifierRetryKind,
+    pub(crate) error: &'a ProxyError,
+}
+
 pub(crate) trait FailoverSwitchScheduler {
     fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget);
 }
@@ -470,14 +481,11 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn record_current_provider<'a>(&'a self, provider: &'a Provider) -> BoxFuture<'a, ()>;
     fn record_provider_failure<'a>(
         &'a self,
-        provider: &'a Provider,
-        error: &'a ProxyError,
+        input: ForwarderProviderFailureInput<'a>,
     ) -> BoxFuture<'a, ()>;
     fn record_provider_rectifier_retry_failure<'a>(
         &'a self,
-        provider: &'a Provider,
-        kind: ForwarderRectifierRetryKind,
-        error: &'a ProxyError,
+        input: ForwarderProviderRectifierRetryFailureInput<'a>,
     ) -> BoxFuture<'a, ()>;
     fn forward_failure_decision(&self, error: &ProxyError) -> ForwarderFailureDecision;
     fn log_retryable_forward_failure(
@@ -840,7 +848,13 @@ impl RequestForwarder {
                 )
                 .await;
                 self.runtime_state_source
-                    .record_provider_rectifier_retry_failure(provider, retry_kind, &retry_err)
+                    .record_provider_rectifier_retry_failure(
+                        ForwarderProviderRectifierRetryFailureInput {
+                            provider,
+                            kind: retry_kind,
+                            error: &retry_err,
+                        },
+                    )
                     .await;
                 *last_error = Some(retry_err);
                 None
@@ -1275,7 +1289,10 @@ impl RequestForwarder {
                             .await;
 
                             self.runtime_state_source
-                                .record_provider_failure(provider, &e)
+                                .record_provider_failure(ForwarderProviderFailureInput {
+                                    provider,
+                                    error: &e,
+                                })
                                 .await;
 
                             self.runtime_state_source.log_retryable_forward_failure(

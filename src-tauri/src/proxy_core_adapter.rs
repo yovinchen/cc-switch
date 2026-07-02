@@ -11,7 +11,8 @@ use crate::proxy::engine::forward_pipeline::{
     ForwarderCodexChatProtocolEnrichmentInput, ForwarderCodexResponsesToChatInput,
     ForwarderCopilotRequestOptimizationGateInput, ForwarderCopilotRequestOptimizationInput,
     ForwarderFailoverSwitchTarget, ForwarderMediaRetryPlanInput, ForwarderPreparedRequest,
-    ForwarderProtocolStateSource, ForwarderProviderRequestBodyInput,
+    ForwarderProtocolStateSource, ForwarderProviderFailureInput,
+    ForwarderProviderRectifierRetryFailureInput, ForwarderProviderRequestBodyInput,
     ForwarderProviderTransformInput, ForwarderRectifierRetryFailureDecision,
     ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
     ForwarderRequestPreparationInput, ForwarderRuntimeOptions, ForwarderSuccessStatusInput,
@@ -2714,11 +2715,12 @@ base_url = "https://api.openai.com/v1"
         );
         let provider = Provider::with_id("relay".to_string(), "Relay".to_string(), json!({}), None);
 
+        let timeout_error = ProxyError::Timeout("upstream timed out".to_string());
         source
-            .record_provider_failure(
-                &provider,
-                &ProxyError::Timeout("upstream timed out".to_string()),
-            )
+            .record_provider_failure(ForwarderProviderFailureInput {
+                provider: &provider,
+                error: &timeout_error,
+            })
             .await;
         {
             let status = source.status();
@@ -2729,15 +2731,16 @@ base_url = "https://api.openai.com/v1"
             );
         }
 
+        let upstream_error = ProxyError::UpstreamError {
+            status: 502,
+            body: Some("bad gateway".to_string()),
+        };
         source
-            .record_provider_rectifier_retry_failure(
-                &provider,
-                ForwarderRectifierRetryKind::ThinkingBudget,
-                &ProxyError::UpstreamError {
-                    status: 502,
-                    body: Some("bad gateway".to_string()),
-                },
-            )
+            .record_provider_rectifier_retry_failure(ForwarderProviderRectifierRetryFailureInput {
+                provider: &provider,
+                kind: ForwarderRectifierRetryKind::ThinkingBudget,
+                error: &upstream_error,
+            })
             .await;
         let status = source.status();
         let status = status.read().await;

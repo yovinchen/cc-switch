@@ -6,9 +6,9 @@ use uuid::Uuid;
 
 use crate::provider::Provider;
 use crate::proxy::engine::forward_pipeline::{
-    ForwarderFailoverSwitchTarget, ForwarderFailureDecision,
-    ForwarderRectifierRetryFailureDecision, ForwarderRuntimeStateSource,
-    ForwarderRuntimeStateSourceRef, ForwarderSuccessStatusInput,
+    ForwarderFailoverSwitchTarget, ForwarderFailureDecision, ForwarderProviderFailureInput,
+    ForwarderProviderRectifierRetryFailureInput, ForwarderRectifierRetryFailureDecision,
+    ForwarderRuntimeStateSource, ForwarderRuntimeStateSourceRef, ForwarderSuccessStatusInput,
 };
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::forward_failure_kind_from_proxy_error;
@@ -437,27 +437,28 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
 
     fn record_provider_failure<'a>(
         &'a self,
-        provider: &'a Provider,
-        error: &'a ProxyError,
+        input: ForwarderProviderFailureInput<'a>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            record_forward_provider_failure_runtime_source(self.status.as_ref(), provider, error)
-                .await;
+            record_forward_provider_failure_runtime_source(
+                self.status.as_ref(),
+                input.provider,
+                input.error,
+            )
+            .await;
         })
     }
 
     fn record_provider_rectifier_retry_failure<'a>(
         &'a self,
-        provider: &'a Provider,
-        kind: ForwarderRectifierRetryKind,
-        error: &'a ProxyError,
+        input: ForwarderProviderRectifierRetryFailureInput<'a>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             record_forward_provider_rectifier_retry_failure_runtime_source(
                 self.status.as_ref(),
-                provider,
-                kind,
-                error,
+                input.provider,
+                input.kind,
+                input.error,
             )
             .await;
         })
