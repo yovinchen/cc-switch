@@ -670,6 +670,65 @@ pub(crate) async fn resolve_managed_account_auth_from_runtime_source(
 mod tests {
     use super::*;
 
+    #[test]
+    fn copilot_token_failure_kind_allows_only_transient_refresh_failures() {
+        for error in [
+            CopilotAuthError::CopilotTokenFetchFailed("upstream 502".to_string()),
+            CopilotAuthError::NetworkError("timeout".to_string()),
+            CopilotAuthError::ParseError("bad json".to_string()),
+            CopilotAuthError::IoError("disk busy".to_string()),
+        ] {
+            assert_eq!(
+                copilot_token_failure_kind(&error),
+                ManagedAccountTokenRefreshFailureKind::Retryable
+            );
+        }
+
+        for error in [
+            CopilotAuthError::DeviceFlowNotStarted,
+            CopilotAuthError::AuthorizationPending,
+            CopilotAuthError::AccessDenied,
+            CopilotAuthError::ExpiredToken,
+            CopilotAuthError::GitHubTokenInvalid,
+            CopilotAuthError::NoCopilotSubscription,
+            CopilotAuthError::AccountNotFound("acct".to_string()),
+            CopilotAuthError::InvalidDomain("example.invalid".to_string()),
+        ] {
+            assert_eq!(
+                copilot_token_failure_kind(&error),
+                ManagedAccountTokenRefreshFailureKind::Terminal
+            );
+        }
+    }
+
+    #[test]
+    fn codex_oauth_token_failure_kind_allows_only_transient_refresh_failures() {
+        for error in [
+            CodexOAuthError::TokenFetchFailed("upstream 502".to_string()),
+            CodexOAuthError::NetworkError("timeout".to_string()),
+            CodexOAuthError::ParseError("bad json".to_string()),
+            CodexOAuthError::IoError("disk busy".to_string()),
+        ] {
+            assert_eq!(
+                codex_oauth_token_failure_kind(&error),
+                ManagedAccountTokenRefreshFailureKind::Retryable
+            );
+        }
+
+        for error in [
+            CodexOAuthError::AuthorizationPending,
+            CodexOAuthError::AccessDenied,
+            CodexOAuthError::ExpiredToken,
+            CodexOAuthError::RefreshTokenInvalid,
+            CodexOAuthError::AccountNotFound("acct".to_string()),
+        ] {
+            assert_eq!(
+                codex_oauth_token_failure_kind(&error),
+                ManagedAccountTokenRefreshFailureKind::Terminal
+            );
+        }
+    }
+
     #[tokio::test]
     async fn token_snapshot_falls_back_for_recent_retryable_failure() {
         let source = CcSwitchManagedAccountRuntimeSource::new(None);

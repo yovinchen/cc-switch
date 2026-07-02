@@ -2001,6 +2001,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1407. Provider meta 到 `ProviderKind` 与 managed-account classification 的 host 投影已收敛到 `proxy/host/cc_switch/provider_projection.rs`：`response_pipeline` 只消费 owning provider projection 构造 usage facts，test-only `proxy_core_adapter` 不再维护重复 Provider 分类 helper。
 1408. Provider selection failure 到 `AppError` 的 host 映射与 provider-only active route target 投影已分别收敛到 owning modules：`proxy/engine/routing.rs::provider_router_app_error_from_provider_selection_failure` 与 `proxy/host/cc_switch/forwarder_runtime_state_source.rs::current_route_target_from_provider`；test-only `proxy_core_adapter` 不再维护这两类运行态 helper 的重复实现。
 1409. `ProxyCoreEvent` 到 host `ProxyEventBus` envelope 的投影已收敛到 `proxy::events::ProxyEventBus::emit_core_event`：`CcSwitchEventSink`、forwarder runtime state source、proxy server lifecycle 和 test-only adapter 回归测试都复用同一入口，不再各自展开 event name/payload。
+1410. managed-account token refresh 失败分类已补 host runtime source 回归测试：Copilot/Codex 的网络、解析、IO 和 token 拉取失败才映射为 `Retryable` 并允许进入 core 30 秒 token 快照回退；授权拒绝、账号缺失、过期/失效等 terminal 错误继续直出，防止最近成功 token 快照掩盖真实认证状态。
 
 ## 背景
 
