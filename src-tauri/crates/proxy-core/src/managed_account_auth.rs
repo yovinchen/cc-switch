@@ -1043,6 +1043,18 @@ pub fn managed_account_token_failure_error_message(
 pub const MANAGED_ACCOUNT_TOKEN_FAILURE_FALLBACK_TTL_MS: i64 = 30_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManagedAccountTokenRefreshFailureKind {
+    Retryable,
+    Terminal,
+}
+
+impl ManagedAccountTokenRefreshFailureKind {
+    pub fn allows_cached_token_fallback(self) -> bool {
+        matches!(self, Self::Retryable)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ManagedAccountTokenFailureFallbackDecision {
     pub should_use_cached_token: bool,
     pub cached_token_age_ms: Option<i64>,
@@ -1051,7 +1063,7 @@ pub struct ManagedAccountTokenFailureFallbackDecision {
 pub fn managed_account_token_failure_fallback_decision(
     cached_at_ms: Option<i64>,
     now_ms: i64,
-    is_retryable_failure: bool,
+    failure_kind: ManagedAccountTokenRefreshFailureKind,
 ) -> ManagedAccountTokenFailureFallbackDecision {
     let cached_token_age_ms = cached_at_ms.map(|cached_at_ms| {
         if now_ms >= cached_at_ms {
@@ -1060,7 +1072,7 @@ pub fn managed_account_token_failure_fallback_decision(
             0
         }
     });
-    let should_use_cached_token = is_retryable_failure
+    let should_use_cached_token = failure_kind.allows_cached_token_fallback()
         && cached_token_age_ms
             .map(|age_ms| age_ms <= MANAGED_ACCOUNT_TOKEN_FAILURE_FALLBACK_TTL_MS)
             .unwrap_or(false);
@@ -1166,7 +1178,7 @@ mod tests {
         ManagedAccountAuthPlan, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
         ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAccountRuntimeSource,
         ManagedAccountTokenCacheKey, ManagedAccountTokenFailureFallbackDecision,
-        ProviderManagedAuthFacts,
+        ManagedAccountTokenRefreshFailureKind, ProviderManagedAuthFacts,
         CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PLACEHOLDER,
         GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
     };
@@ -1972,40 +1984,66 @@ mod tests {
         let now = 1_771_000_000_000;
 
         assert_eq!(
-            managed_account_token_failure_fallback_decision(None, now, true),
+            managed_account_token_failure_fallback_decision(
+                None,
+                now,
+                ManagedAccountTokenRefreshFailureKind::Retryable
+            ),
             ManagedAccountTokenFailureFallbackDecision {
                 should_use_cached_token: false,
                 cached_token_age_ms: None,
             }
         );
         assert_eq!(
-            managed_account_token_failure_fallback_decision(Some(now - 1_000), now, false),
+            managed_account_token_failure_fallback_decision(
+                Some(now - 1_000),
+                now,
+                ManagedAccountTokenRefreshFailureKind::Terminal
+            ),
             ManagedAccountTokenFailureFallbackDecision {
                 should_use_cached_token: false,
                 cached_token_age_ms: Some(1_000),
             }
         );
         assert_eq!(
-            managed_account_token_failure_fallback_decision(Some(now - 30_000), now, true),
+            managed_account_token_failure_fallback_decision(
+                Some(now - 30_000),
+                now,
+                ManagedAccountTokenRefreshFailureKind::Retryable
+            ),
             ManagedAccountTokenFailureFallbackDecision {
                 should_use_cached_token: true,
                 cached_token_age_ms: Some(30_000),
             }
         );
         assert_eq!(
-            managed_account_token_failure_fallback_decision(Some(now - 30_001), now, true),
+            managed_account_token_failure_fallback_decision(
+                Some(now - 30_001),
+                now,
+                ManagedAccountTokenRefreshFailureKind::Retryable
+            ),
             ManagedAccountTokenFailureFallbackDecision {
                 should_use_cached_token: false,
                 cached_token_age_ms: Some(30_001),
             }
         );
         assert_eq!(
-            managed_account_token_failure_fallback_decision(Some(now + 5_000), now, true),
+            managed_account_token_failure_fallback_decision(
+                Some(now + 5_000),
+                now,
+                ManagedAccountTokenRefreshFailureKind::Retryable
+            ),
             ManagedAccountTokenFailureFallbackDecision {
                 should_use_cached_token: true,
                 cached_token_age_ms: Some(0),
             }
         );
+    }
+
+    #[test]
+    fn managed_account_token_refresh_failure_kind_controls_fallback_eligibility() {
+        assert!(ManagedAccountTokenRefreshFailureKind::Retryable.allows_cached_token_fallback());
+        assert!(!ManagedAccountTokenRefreshFailureKind::Terminal.allows_cached_token_fallback());
     }
 
     #[test]

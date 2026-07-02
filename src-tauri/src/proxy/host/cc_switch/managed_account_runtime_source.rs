@@ -25,7 +25,7 @@ use crate::proxy_core::api::auth::{
     resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
     ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
     ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagedAccountTokenCacheKey,
-    ProviderAuthInfo,
+    ManagedAccountTokenRefreshFailureKind, ProviderAuthInfo,
 };
 use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
@@ -69,12 +69,12 @@ impl CcSwitchManagedAccountRuntimeSource {
         );
     }
 
-    async fn token_snapshot_for_retryable_failure(
+    async fn token_snapshot_for_refresh_failure(
         &self,
         key: &ManagedAccountTokenCacheKey,
         account_id: Option<&str>,
         error: &str,
-        is_retryable_failure: bool,
+        failure_kind: ManagedAccountTokenRefreshFailureKind,
     ) -> Option<ManagedAccountTokenSnapshot> {
         let snapshot = {
             let snapshots = self.token_snapshots.lock().await;
@@ -83,7 +83,7 @@ impl CcSwitchManagedAccountRuntimeSource {
         let decision = managed_account_token_failure_fallback_decision(
             Some(snapshot.cached_at_ms),
             chrono::Utc::now().timestamp_millis(),
-            is_retryable_failure,
+            failure_kind,
         );
         if !decision.should_use_cached_token {
             return None;
@@ -420,24 +420,34 @@ async fn codex_oauth_token_from_app_handle(
     }
 }
 
-fn copilot_token_failure_is_retryable(error: &CopilotAuthError) -> bool {
-    matches!(
+fn copilot_token_failure_kind(error: &CopilotAuthError) -> ManagedAccountTokenRefreshFailureKind {
+    if matches!(
         error,
         CopilotAuthError::CopilotTokenFetchFailed(_)
             | CopilotAuthError::NetworkError(_)
             | CopilotAuthError::ParseError(_)
             | CopilotAuthError::IoError(_)
-    )
+    ) {
+        ManagedAccountTokenRefreshFailureKind::Retryable
+    } else {
+        ManagedAccountTokenRefreshFailureKind::Terminal
+    }
 }
 
-fn codex_oauth_token_failure_is_retryable(error: &CodexOAuthError) -> bool {
-    matches!(
+fn codex_oauth_token_failure_kind(
+    error: &CodexOAuthError,
+) -> ManagedAccountTokenRefreshFailureKind {
+    if matches!(
         error,
         CodexOAuthError::TokenFetchFailed(_)
             | CodexOAuthError::NetworkError(_)
             | CodexOAuthError::ParseError(_)
             | CodexOAuthError::IoError(_)
-    )
+    ) {
+        ManagedAccountTokenRefreshFailureKind::Retryable
+    } else {
+        ManagedAccountTokenRefreshFailureKind::Terminal
+    }
 }
 
 impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
@@ -477,14 +487,14 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                     Ok(auth)
                 }
                 Err(error) => {
-                    let is_retryable_failure = copilot_token_failure_is_retryable(&error);
+                    let failure_kind = copilot_token_failure_kind(&error);
                     let error = error.to_string();
                     if let Some(snapshot) = self
-                        .token_snapshot_for_retryable_failure(
+                        .token_snapshot_for_refresh_failure(
                             &cache_key,
                             account_id,
                             &error,
-                            is_retryable_failure,
+                            failure_kind,
                         )
                         .await
                     {
@@ -544,14 +554,14 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                     Ok((auth, resolved_account_id))
                 }
                 Err(error) => {
-                    let is_retryable_failure = codex_oauth_token_failure_is_retryable(&error);
+                    let failure_kind = codex_oauth_token_failure_kind(&error);
                     let error = error.to_string();
                     if let Some(snapshot) = self
-                        .token_snapshot_for_retryable_failure(
+                        .token_snapshot_for_refresh_failure(
                             &cache_key,
                             account_id.as_deref(),
                             &error,
-                            is_retryable_failure,
+                            failure_kind,
                         )
                         .await
                     {
@@ -635,7 +645,12 @@ mod tests {
             .await;
 
         let snapshot = source
-            .token_snapshot_for_retryable_failure(&key, Some("acct"), "network timeout", true)
+            .token_snapshot_for_refresh_failure(
+                &key,
+                Some("acct"),
+                "network timeout",
+                ManagedAccountTokenRefreshFailureKind::Retryable,
+            )
             .await
             .expect("recent retryable failure should use cached token");
 
@@ -670,30 +685,30 @@ mod tests {
             .await;
 
         assert!(source
-            .token_snapshot_for_retryable_failure(
+            .token_snapshot_for_refresh_failure(
                 &codex_same_account,
                 Some("acct-a"),
                 "network timeout",
-                true,
+                ManagedAccountTokenRefreshFailureKind::Retryable,
             )
             .await
             .is_none());
         assert!(source
-            .token_snapshot_for_retryable_failure(
+            .token_snapshot_for_refresh_failure(
                 &copilot_other_account,
                 Some("acct-b"),
                 "network timeout",
-                true,
+                ManagedAccountTokenRefreshFailureKind::Retryable,
             )
             .await
             .is_none());
 
         let snapshot = source
-            .token_snapshot_for_retryable_failure(
+            .token_snapshot_for_refresh_failure(
                 &copilot_account,
                 Some("acct-a"),
                 "network timeout",
-                true,
+                ManagedAccountTokenRefreshFailureKind::Retryable,
             )
             .await
             .expect("matching runtime/account should use cached token");
@@ -719,7 +734,12 @@ mod tests {
         }
 
         assert!(source
-            .token_snapshot_for_retryable_failure(&key, Some("acct"), "network timeout", true)
+            .token_snapshot_for_refresh_failure(
+                &key,
+                Some("acct"),
+                "network timeout",
+                ManagedAccountTokenRefreshFailureKind::Retryable,
+            )
             .await
             .is_none());
 
@@ -732,11 +752,11 @@ mod tests {
             .await;
 
         assert!(source
-            .token_snapshot_for_retryable_failure(
+            .token_snapshot_for_refresh_failure(
                 &key,
                 Some("acct"),
                 "refresh token revoked",
-                false
+                ManagedAccountTokenRefreshFailureKind::Terminal,
             )
             .await
             .is_none());

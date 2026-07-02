@@ -18086,6 +18086,8 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "managed_account_token_success_log_message(",
         "managed_account_token_failure_log_message(",
         "managed_account_token_failure_error_message(",
+        "copilot_token_failure_kind(",
+        "codex_oauth_token_failure_kind(",
         "copilot_token_from_app_handle(",
         "codex_oauth_token_from_app_handle(",
         "copilot_api_endpoint_from_app_handle(",
@@ -18104,6 +18106,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && host_source.contains("resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source")
             && host_source.contains("ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource")
             && host_source.contains("ManagedAccountTokenCacheKey")
+            && host_source.contains("ManagedAccountTokenRefreshFailureKind")
             && host_source.contains("ProviderAuthInfo")
             && host_source.contains("use crate::proxy_core::api::model_catalog::CopilotModel;"),
         "managed_account_runtime_source.rs should import pure runtime source contracts and diagnostics directly from proxy_core::api"
@@ -18122,6 +18125,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "ManagedAccountAuthResolution",
         "ManagedAccountAuthRuntime",
         "ManagedAccountTokenCacheKey",
+        "ManagedAccountTokenRefreshFailureKind",
         "CoreManagedAccountRuntimeSource",
         "default_managed_account_runtime_source",
         "resolve_managed_account_auth_from_runtime_source",

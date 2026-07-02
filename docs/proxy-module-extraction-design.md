@@ -1983,6 +1983,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1393. Claude response/SSE api_format transform wrapper 已迁回 `proxy/provider/claude.rs` owning module：Gemini shadow、provider/session id、tool schema hints、随机 tool-call id 和 rectifier 日志回调由 Claude provider helper 本地装配，`response_pipeline` 直接调用 provider helper，`proxy_core_adapter` 不再暴露 `provider_claude_transform_response_for_api_format` / `provider_claude_transform_sse_for_api_format` 或 Gemini UUID wrapper。
 1394. Forwarder attempt runtime 的 ProviderRouter permit、provider/channel health record 与 neutral HalfOpen permit release 副作用 helper 已迁回 `proxy/host/cc_switch/forwarder_attempt_runtime_source.rs` owning module：默认 source 直接拥有 allow/success/failure/release 运行态调用，`proxy_core_adapter` 不再暴露 `allow_forward_attempt_runtime_source`、`record_forward_attempt_*_runtime_source` 或 `release_forward_attempt_permit_neutral_runtime_source`。
 1395. managed-account token 快照缓存 key 语义已迁入 `proxy-core::managed_account_auth::ManagedAccountTokenCacheKey`：core 固化 runtime + account_id 的隔离 contract，host-owned `CcSwitchManagedAccountRuntimeSource` 只负责持有最近成功 token 快照和按 core 30 秒短窗口 fallback 决策读取，避免 Copilot/Codex 或不同账号的 token 快照串用；边界测试防止 key contract 回流到 `proxy_core_adapter`。
+1396. managed-account token refresh 失败分类已迁入 `proxy-core::managed_account_auth::ManagedAccountTokenRefreshFailureKind`：host-owned runtime source 只把 Copilot/Codex OAuth 具体错误映射成 `Retryable` 或 `Terminal`，core fallback decision 不再接收语义不清的 bool；短窗口缓存回退仍只允许 retryable refresh failure，终止类账号错误继续直接暴露。
 
 ## 背景
 
