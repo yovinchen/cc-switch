@@ -1995,6 +1995,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1405. HTTP URI path/query 到 `ProxyRequest.endpoint` 的桥接规则已迁入 `proxy-core::request_url::endpoint_from_path_and_query`：host-owned `response_adapter` 仍负责从 Axum/HTTP `Uri` 取出 path/query，但 endpoint 字符串拼接语义由 core 维护。
 1406. HTTP URI path/query 与可选 protocol prefix strip 的组合桥接已迁入 `proxy-core::request_url::endpoint_from_path_query_stripping_prefix`：host-owned `response_adapter` 只传入 transport path/query/prefix facts，Claude Desktop 等入口的 endpoint prefix 剥离顺序由 core 维护。
 1407. Provider meta 到 `ProviderKind` 与 managed-account classification 的 host 投影已收敛到 `proxy/host/cc_switch/provider_projection.rs`：`response_pipeline` 只消费 owning provider projection 构造 usage facts，test-only `proxy_core_adapter` 不再维护重复 Provider 分类 helper。
+1408. Provider selection failure 到 `AppError` 的 host 映射与 provider-only active route target 投影已分别收敛到 owning modules：`proxy/engine/routing.rs::provider_router_app_error_from_provider_selection_failure` 与 `proxy/host/cc_switch/forwarder_runtime_state_source.rs::current_route_target_from_provider`；test-only `proxy_core_adapter` 不再维护这两类运行态 helper 的重复实现。
 
 ## 背景
 

@@ -243,7 +243,7 @@ fn current_route_target_from_forward_attempt(
     })
 }
 
-fn current_route_target_from_provider(
+pub(crate) fn current_route_target_from_provider(
     app_type: &str,
     provider_id: &str,
     provider_name: &str,

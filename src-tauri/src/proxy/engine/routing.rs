@@ -32,7 +32,7 @@ pub(crate) struct ProviderFailoverRouterSources {
     pub(crate) lookups: Vec<ProviderFailoverCircuitLookup>,
 }
 
-fn provider_router_app_error_from_provider_selection_failure(
+pub(crate) fn provider_router_app_error_from_provider_selection_failure(
     app_type: &str,
     error: ProviderSelectionFailure,
 ) -> AppError {

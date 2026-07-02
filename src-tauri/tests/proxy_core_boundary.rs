@@ -7753,8 +7753,10 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         "pub(crate) fn provider_is_copilot_prompt_cache_provider",
         "pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat",
         "pub(crate) fn app_error_from_provider_selection_failure",
+        "fn app_error_from_provider_selection_failure",
         "pub(crate) fn current_route_target_from_forward_attempt",
         "pub(crate) fn current_route_target_from_provider",
+        "fn current_route_target_from_provider",
         "pub(crate) fn provider_selection_failure_from_app_error",
         "pub(crate) fn record_forward_failure_status",
         "pub(crate) fn record_forward_request_started_status",
@@ -19505,7 +19507,8 @@ fn production_forwarder_uses_runtime_state_source_resource() {
             && runtime_source.contains("forwarder_terminal_failure_status_message")
             && runtime_source.contains("should_failover_after_rectifier_retry_failure")
             && runtime_source.contains("ForwardFailureCategory")
-            && runtime_source.contains("ForwarderRectifierRetryKind"),
+            && runtime_source.contains("ForwarderRectifierRetryKind")
+            && runtime_source.contains("pub(crate) fn current_route_target_from_provider("),
         "default ForwarderRuntimeStateSource should import runtime/event/transport contracts directly from proxy_core"
     );
     let adapter_transport_reexport_slice = optional_function_slice(
@@ -24592,6 +24595,9 @@ fn production_provider_router_owns_failover_provider_selection_projection() {
 
     assert!(
         projection.contains("provider_selection_candidate_from_failover_lookup(lookup, available)")
+            && source.contains(
+                "pub(crate) fn provider_router_app_error_from_provider_selection_failure("
+            )
             && projection
                 .contains("select_provider_ids(ProviderSelectionInput::failover(candidates))")
             && projection.contains(

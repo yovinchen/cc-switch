@@ -69,7 +69,9 @@ use crate::proxy::host::cc_switch::forwarder_response_source::CcSwitchForwarderR
 #[cfg(test)]
 mod tests {
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
+    use crate::proxy::engine::routing::provider_router_app_error_from_provider_selection_failure;
     use crate::proxy::host::cc_switch::forwarder_auth_source::forwarder_auth_source_from_managed_account_runtime_source;
+    use crate::proxy::host::cc_switch::forwarder_runtime_state_source::current_route_target_from_provider;
     use crate::proxy::host::cc_switch::provider_adapter_context::forwarder_provider_adapter_context_for_app;
     use crate::proxy::provider::{
         transform_claude_response_for_api_format, transform_claude_sse_for_api_format,
@@ -216,11 +218,10 @@ mod tests {
     };
     use crate::proxy_core::api::model_catalog::{CopilotModel, DEFAULT_CODEX_MODEL_CONTEXT_WINDOW};
     use crate::proxy_core::api::ports::{
-        codex_restored_live_settings_parts, current_route_target_from_input,
-        gemini_env_json_from_map, gemini_env_string_map_from_settings,
-        gemini_live_config_object_from_settings, ChannelKeyRuntimeSource, CopilotOptimizerConfig,
-        CurrentRouteTarget, CurrentRouteTargetInput, GeminiLiveConfigIssue, OptimizerConfig,
-        ProxyConfig, ProxyRuntimeStatus, RectifierConfig,
+        codex_restored_live_settings_parts, gemini_env_json_from_map,
+        gemini_env_string_map_from_settings, gemini_live_config_object_from_settings,
+        ChannelKeyRuntimeSource, CopilotOptimizerConfig, CurrentRouteTarget, GeminiLiveConfigIssue,
+        OptimizerConfig, ProxyConfig, ProxyRuntimeStatus, RectifierConfig,
     };
     use crate::proxy_core::api::routing::{
         apply_route_candidate_circuit_availability, current_provider_id_from_sources,
@@ -269,32 +270,6 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
-    fn app_error_from_provider_selection_failure(
-        app_type: &str,
-        error: ProviderSelectionFailure,
-    ) -> AppError {
-        match error {
-            ProviderSelectionFailure::AllProvidersCircuitOpen => {
-                log::warn!(
-                    "{}",
-                    crate::proxy_core::api::transport::forwarder_all_providers_circuit_open_log_line(
-                        app_type,
-                    )
-                );
-                AppError::AllProvidersCircuitOpen
-            }
-            ProviderSelectionFailure::NoProvidersConfigured => {
-                log::warn!(
-                    "{}",
-                    crate::proxy_core::api::transport::forwarder_no_providers_configured_log_line(
-                        app_type,
-                    )
-                );
-                AppError::NoProvidersConfigured
-            }
-        }
-    }
-
     struct ProxyEventBusMessage {
         event_name: String,
         payload: Value,
@@ -310,19 +285,6 @@ mod tests {
     fn emit_proxy_core_event(event: ProxyCoreEvent, mut emit: impl FnMut(String, Value)) {
         let message = proxy_core_event_to_bus_message(event);
         emit(message.event_name, message.payload);
-    }
-
-    fn current_route_target_from_provider(
-        app_type: &str,
-        provider_id: &str,
-        provider_name: &str,
-    ) -> CurrentRouteTarget {
-        current_route_target_from_input(CurrentRouteTargetInput {
-            app_type,
-            provider_id,
-            provider_name,
-            channel: None,
-        })
     }
 
     fn attempt_event_payload_input_from_forward_attempt<'a>(
@@ -395,7 +357,9 @@ mod tests {
         let current_provider_id = current.map(|provider| provider.id);
         let selected_ids =
             select_provider_ids(ProviderSelectionInput::current(current_provider_id.clone()))
-                .map_err(|error| app_error_from_provider_selection_failure(app_type, error))?;
+                .map_err(|error| {
+                    provider_router_app_error_from_provider_selection_failure(app_type, error)
+                })?;
 
         Ok(selected_ids
             .into_iter()
@@ -3688,14 +3652,14 @@ base_url = "https://api.openai.com/v1"
             ChannelRouteSource::LegacyProjection
         );
         assert!(matches!(
-            app_error_from_provider_selection_failure(
+            provider_router_app_error_from_provider_selection_failure(
                 "claude",
                 ProviderSelectionFailure::AllProvidersCircuitOpen,
             ),
             AppError::AllProvidersCircuitOpen
         ));
         assert!(matches!(
-            app_error_from_provider_selection_failure(
+            provider_router_app_error_from_provider_selection_failure(
                 "claude",
                 ProviderSelectionFailure::NoProvidersConfigured,
             ),
