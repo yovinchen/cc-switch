@@ -18116,6 +18116,12 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         !host_source.contains("struct ManagedAccountTokenSnapshot"),
         "ManagedAccountTokenSnapshot shape should live in proxy-core, not host runtime source"
     );
+    assert!(
+        host_source.contains(".fallback_decision(chrono::Utc::now().timestamp_millis(), failure_kind)")
+            && !host_source.contains("managed_account_token_failure_fallback_decision(")
+            && !host_source.contains("Some(snapshot.cached_at_ms)"),
+        "host runtime source should delegate snapshot fallback-age policy to ManagedAccountTokenSnapshot"
+    );
     for marker in [
         "managed_account_app_handle_unavailable_error_message",
         "managed_account_app_handle_unavailable_log_message",

@@ -547,6 +547,18 @@ impl ManagedAccountTokenSnapshot {
             cached_at_ms,
         }
     }
+
+    pub fn fallback_decision(
+        &self,
+        now_ms: i64,
+        failure_kind: ManagedAccountTokenRefreshFailureKind,
+    ) -> ManagedAccountTokenFailureFallbackDecision {
+        managed_account_token_failure_fallback_decision(
+            Some(self.cached_at_ms),
+            now_ms,
+            failure_kind,
+        )
+    }
 }
 
 impl ManagedAccountAuthRuntime {
@@ -2097,6 +2109,36 @@ mod tests {
         assert_eq!(snapshot.auth, auth);
         assert_eq!(snapshot.codex_oauth_account_id.as_deref(), Some("acct"));
         assert_eq!(snapshot.cached_at_ms, 1_771);
+    }
+
+    #[test]
+    fn managed_account_token_snapshot_delegates_fallback_decision() {
+        let snapshot = ManagedAccountTokenSnapshot::new(
+            ManagedAccountAuthRuntime::GitHubCopilot.provider_auth_info("token".to_string()),
+            None,
+            1_771_000_000,
+        );
+
+        assert_eq!(
+            snapshot.fallback_decision(
+                1_771_015_000,
+                ManagedAccountTokenRefreshFailureKind::Retryable
+            ),
+            ManagedAccountTokenFailureFallbackDecision {
+                should_use_cached_token: true,
+                cached_token_age_ms: Some(15_000),
+            }
+        );
+        assert_eq!(
+            snapshot.fallback_decision(
+                1_771_015_000,
+                ManagedAccountTokenRefreshFailureKind::Terminal
+            ),
+            ManagedAccountTokenFailureFallbackDecision {
+                should_use_cached_token: false,
+                cached_token_age_ms: Some(15_000),
+            }
+        );
     }
 
     #[test]

@@ -16,7 +16,7 @@ use crate::proxy::provider::claude_provider_api_format;
 use crate::proxy_core::api::auth::{
     managed_account_app_handle_unavailable_error_message,
     managed_account_app_handle_unavailable_log_message,
-    managed_account_token_failure_error_message, managed_account_token_failure_fallback_decision,
+    managed_account_token_failure_error_message,
     managed_account_token_failure_fallback_log_message, managed_account_token_failure_log_message,
     managed_account_token_request_log_message, managed_account_token_success_log_message,
     resolve_copilot_dynamic_base_url_for_binding_with_runtime_source as resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source,
@@ -73,11 +73,8 @@ impl CcSwitchManagedAccountRuntimeSource {
             let snapshots = self.token_snapshots.lock().await;
             snapshots.get(key).cloned()
         }?;
-        let decision = managed_account_token_failure_fallback_decision(
-            Some(snapshot.cached_at_ms),
-            chrono::Utc::now().timestamp_millis(),
-            failure_kind,
-        );
+        let decision =
+            snapshot.fallback_decision(chrono::Utc::now().timestamp_millis(), failure_kind);
         if !decision.should_use_cached_token {
             return None;
         }
