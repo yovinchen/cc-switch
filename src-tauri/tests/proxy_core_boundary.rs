@@ -87,8 +87,12 @@ const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_PRESELECT_MARKERS: &[&str] = &[
     ".select_providers(",
     ".select_provider_ids(",
 ];
-const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_COMPAT_MARKERS: &[&str] =
-    &["providers::", "get_claude_api_format("];
+const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_COMPAT_MARKERS: &[&str] = &[
+    "providers::",
+    "get_claude_api_format(",
+    "state.db",
+    ".get_provider_by_id(",
+];
 const FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS: &[&str] = &[
     "rewrite_codex_responses_endpoint_to_chat(",
     "rewrite_claude_transform_endpoint(",
@@ -473,6 +477,7 @@ const FORBIDDEN_PROXY_STATE_SERVER_COMPAT_PATH_MARKERS: &[&str] = &[
     "use crate::proxy_core_adapter::ProxyState",
 ];
 const FORBIDDEN_PROXY_STATE_HOST_RESOURCE_RETENTION_MARKERS: &[&str] = &[
+    "db: Arc<Database>",
     "app_handle: Option<tauri::AppHandle>",
     "failover_manager: Arc<FailoverSwitchManager>",
 ];
@@ -2848,6 +2853,7 @@ fn request_context_owns_route_update_after_proxy_result() {
     assert!(
         source.contains("fn request_context_route_update_from_proxy_result(")
             && source.contains("fn request_context_route_update_from_proxy_result_source")
+            && source.contains("trait RequestContextProviderSource")
             && source.contains("usage_route_context_from_selection")
             && source.contains("ForwardAttempt::from_core_selection")
             && source.contains("selected_provider_missing_from_source_message"),

@@ -2330,7 +2330,7 @@ mod tests {
             listen_port: 0,
             ..ProxyConfig::default()
         };
-        let server = ProxyServer::new(config, db, None);
+        let server = ProxyServer::new(config, db.clone(), None);
         let info = server.start().await.expect("start proxy server");
         let client = reqwest::Client::builder()
             .no_proxy()
@@ -2497,15 +2497,11 @@ mod tests {
             "second request did not apply channel model override"
         );
 
-        let primary_key = server
-            .state
-            .db
+        let primary_key = db
             .get_proxy_channel_key("runtime-key-cooldown-channel", "primary")
             .expect("read primary key")
             .expect("primary key");
-        let backup_key = server
-            .state
-            .db
+        let backup_key = db
             .get_proxy_channel_key("runtime-key-cooldown-channel", "backup")
             .expect("read backup key")
             .expect("backup key");
@@ -2551,7 +2547,7 @@ mod tests {
             listen_port: 0,
             ..ProxyConfig::default()
         };
-        let server = ProxyServer::new(config, db, None);
+        let server = ProxyServer::new(config, db.clone(), None);
         let info = server.start().await.expect("start proxy server");
         let client = reqwest::Client::builder()
             .no_proxy()
@@ -2671,18 +2667,13 @@ mod tests {
                 ));
             }
 
-            let mut proxy_config = server
-                .state
-                .db
+            let mut proxy_config = db
                 .get_proxy_config_for_app("claude")
                 .await
                 .map_err(|error| error.to_string())?;
             proxy_config.circuit_failure_threshold = 1;
             proxy_config.circuit_timeout_seconds = 60;
-            server
-                .state
-                .db
-                .update_proxy_config_for_app(proxy_config)
+            db.update_proxy_config_for_app(proxy_config)
                 .await
                 .map_err(|error| error.to_string())?;
             server

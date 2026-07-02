@@ -18,6 +18,7 @@ use crate::proxy::host::cc_switch::managed_account_runtime_source::managed_accou
 use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
 use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices;
+use crate::proxy::host::cc_switch::request_context_provider_source::CcSwitchRequestContextProviderSource;
 use crate::proxy_core::api::engine::ProxyEngine;
 use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyConfig, ProxyRuntimeStatus};
 use crate::proxy_core::api::transforms::GeminiShadowStore;
@@ -28,7 +29,6 @@ use tokio::sync::RwLock;
 /// 代理服务器状态（共享）
 #[derive(Clone)]
 pub struct ProxyState {
-    pub db: Arc<Database>,
     pub config: Arc<RwLock<ProxyConfig>>,
     pub status: Arc<RwLock<ProxyRuntimeStatus>>,
     pub start_time: Arc<RwLock<Option<std::time::Instant>>>,
@@ -38,6 +38,8 @@ pub struct ProxyState {
     pub provider_router: Arc<ProviderRouter>,
     /// Host adapter surface for the neutral proxy core contracts.
     pub proxy_core_services: Arc<CcSwitchProxyServices<CcSwitchProxyRuntime>>,
+    /// Host source used when a routed core result must hydrate the selected Provider.
+    pub request_context_provider_source: Arc<CcSwitchRequestContextProviderSource>,
     /// Gemini Native shadow state，用于 thoughtSignature / tool call 回放
     pub gemini_shadow: Arc<GeminiShadowStore>,
     /// Codex Chat bridge history，用于恢复 previous_response_id 指向的 tool call
@@ -66,6 +68,8 @@ pub(crate) fn proxy_state_from_runtime_sources(
     let current_providers = Arc::new(RwLock::new(HashMap::new()));
     let gemini_shadow = Arc::new(GeminiShadowStore::default());
     let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
+    let request_context_provider_source =
+        Arc::new(CcSwitchRequestContextProviderSource::new(db.clone()));
     let attempt_runtime_source =
         forwarder_attempt_runtime_source_from_runtime_sources(provider_router.clone(), db.clone());
     let protocol_state_source = forwarder_protocol_state_source_from_runtime_parts(
@@ -110,13 +114,13 @@ pub(crate) fn proxy_state_from_runtime_sources(
     }));
 
     ProxyState {
-        db,
         config,
         status,
         start_time,
         current_providers,
         provider_router,
         proxy_core_services,
+        request_context_provider_source,
         gemini_shadow,
         codex_chat_history,
         events,

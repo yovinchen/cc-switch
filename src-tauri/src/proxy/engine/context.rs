@@ -117,6 +117,16 @@ pub struct RequestContext {
     pub session_id: String,
 }
 
+pub(crate) trait RequestContextProviderSource: Send + Sync {
+    fn source_name(&self) -> &'static str;
+
+    fn load_provider(
+        &self,
+        app_type: &AppType,
+        provider_id: &str,
+    ) -> Result<Option<Provider>, ProxyError>;
+}
+
 impl RequestContext {
     /// 创建请求上下文
     ///
@@ -213,20 +223,18 @@ impl RequestContext {
 
     pub fn apply_proxy_result(
         &mut self,
-        state: &ProxyState,
+        provider_source: &(dyn RequestContextProviderSource + Send + Sync),
         result: &ProxyResult,
     ) -> Result<(), ProxyError> {
         let update = request_context_route_update_from_proxy_result_source(
             &self.app_type,
             self.app_type_str,
             result,
-            "host database",
-            |provider_id, app_type| state.db.get_provider_by_id(provider_id, app_type),
+            provider_source.source_name(),
+            |provider_id, _app_type| provider_source.load_provider(&self.app_type, provider_id),
         )
         .map_err(|error| match error {
-            RequestContextRouteUpdateError::ProviderLoad(error) => {
-                ProxyError::DatabaseError(error.to_string())
-            }
+            RequestContextRouteUpdateError::ProviderLoad(error) => error,
             RequestContextRouteUpdateError::ProviderMissing(message) => {
                 ProxyError::ConfigError(message)
             }
@@ -526,6 +534,123 @@ mod tests {
         assert!(matches!(
             load_error,
             RequestContextRouteUpdateError::ProviderLoad(message) if message == "db failed"
+        ));
+    }
+
+    enum StaticProviderLoad {
+        Provider(Option<Provider>),
+        Error(&'static str),
+    }
+
+    struct StaticProviderSource {
+        source_name: &'static str,
+        load: StaticProviderLoad,
+    }
+
+    impl RequestContextProviderSource for StaticProviderSource {
+        fn source_name(&self) -> &'static str {
+            self.source_name
+        }
+
+        fn load_provider(
+            &self,
+            app_type: &AppType,
+            provider_id: &str,
+        ) -> Result<Option<Provider>, ProxyError> {
+            assert_eq!(app_type, &AppType::Codex);
+            assert_eq!(provider_id, "provider-b");
+            match &self.load {
+                StaticProviderLoad::Provider(provider) => Ok(provider.clone()),
+                StaticProviderLoad::Error(message) => {
+                    Err(ProxyError::ConfigError((*message).to_string()))
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn apply_proxy_result_hydrates_provider_through_source() {
+        let mut ctx = context_with_provider(None);
+        let result = ProxyResult {
+            response: ProxyCoreResponse::empty(http::StatusCode::OK),
+            selected_route: selection("ch-b", "provider-b"),
+            outbound_model: Some("upstream-codex".to_string()),
+            usage_record: None,
+            metadata: json!({}),
+        };
+        let selected_host_provider = Provider::with_id(
+            "provider-b".to_string(),
+            "Provider B".to_string(),
+            json!({}),
+            None,
+        );
+        let source = StaticProviderSource {
+            source_name: "test source",
+            load: StaticProviderLoad::Provider(Some(selected_host_provider)),
+        };
+
+        ctx.apply_proxy_result(&source, &result)
+            .expect("apply routed provider");
+
+        assert_eq!(ctx.provider().expect("provider").id, "provider-b");
+        assert_eq!(ctx.outbound_model.as_deref(), Some("upstream-codex"));
+        assert_eq!(
+            ctx.usage_route_context
+                .as_ref()
+                .expect("usage route context")
+                .channel_id,
+            "ch-b"
+        );
+    }
+
+    #[test]
+    fn apply_proxy_result_reports_source_missing_provider() {
+        let mut ctx = context_with_provider(None);
+        let result = ProxyResult {
+            response: ProxyCoreResponse::empty(http::StatusCode::OK),
+            selected_route: selection("ch-b", "provider-b"),
+            outbound_model: None,
+            usage_record: None,
+            metadata: json!({}),
+        };
+        let source = StaticProviderSource {
+            source_name: "test source",
+            load: StaticProviderLoad::Provider(None),
+        };
+
+        let error = ctx
+            .apply_proxy_result(&source, &result)
+            .expect_err("missing provider");
+
+        assert!(matches!(
+            error,
+            ProxyError::ConfigError(message)
+                if message == "selected provider is missing from test source: provider-b"
+        ));
+    }
+
+    #[test]
+    fn apply_proxy_result_propagates_provider_source_error() {
+        let mut ctx = context_with_provider(None);
+        let result = ProxyResult {
+            response: ProxyCoreResponse::empty(http::StatusCode::OK),
+            selected_route: selection("ch-b", "provider-b"),
+            outbound_model: None,
+            usage_record: None,
+            metadata: json!({}),
+        };
+        let source = StaticProviderSource {
+            source_name: "test source",
+            load: StaticProviderLoad::Error("source failed"),
+        };
+
+        let error = ctx
+            .apply_proxy_result(&source, &result)
+            .expect_err("source error");
+
+        assert!(matches!(
+            error,
+            ProxyError::ConfigError(message) if message == "source failed"
         ));
     }
 }

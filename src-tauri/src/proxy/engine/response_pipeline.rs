@@ -1612,6 +1612,7 @@ mod tests {
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
     use crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices as GenericCcSwitchProxyServices;
+    use crate::proxy::host::cc_switch::request_context_provider_source::CcSwitchRequestContextProviderSource;
     use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};
     use crate::proxy_core::api::transforms::strip_sse_field;
     use crate::proxy_core::api::transforms::GeminiShadowStore;
@@ -1681,13 +1682,15 @@ mod tests {
 
     fn build_state(db: Arc<Database>) -> ProxyState {
         ProxyState {
-            db: db.clone(),
             config: Arc::new(RwLock::new(ProxyConfig::default())),
             status: Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
             start_time: Arc::new(RwLock::new(None)),
             current_providers: Arc::new(RwLock::new(HashMap::new())),
             provider_router: Arc::new(provider_router_from_database(db.clone())),
             proxy_core_services: Arc::new(CcSwitchProxyServices::new(db.clone())),
+            request_context_provider_source: Arc::new(CcSwitchRequestContextProviderSource::new(
+                db.clone(),
+            )),
             gemini_shadow: Arc::new(GeminiShadowStore::default()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             events: Arc::new(crate::proxy::events::ProxyEventBus::default()),

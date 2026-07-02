@@ -959,7 +959,7 @@ fn proxy_result_to_proxy_response(
     ctx: &mut RequestContext,
     state: &ProxyState,
 ) -> Result<ProxyResponse, ProxyError> {
-    ctx.apply_proxy_result(state, &result)?;
+    ctx.apply_proxy_result(state.request_context_provider_source.as_ref(), &result)?;
     proxy_core_response_to_proxy_response(result.response)
 }
 
@@ -968,7 +968,7 @@ fn claude_proxy_result_to_proxy_response(
     ctx: &mut RequestContext,
     state: &ProxyState,
 ) -> Result<(ProxyResponse, String), ProxyError> {
-    ctx.apply_proxy_result(state, &result)?;
+    ctx.apply_proxy_result(state.request_context_provider_source.as_ref(), &result)?;
     let api_format = ctx.claude_api_format_for_proxy_result(&result)?;
     let response = proxy_core_response_to_proxy_response(result.response)?;
     Ok((response, api_format))

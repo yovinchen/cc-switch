@@ -36,6 +36,7 @@ pub(crate) mod proxy_runtime;
 pub(crate) mod proxy_server;
 pub(crate) mod proxy_services;
 pub(crate) mod proxy_state;
+pub(crate) mod request_context_provider_source;
 pub(crate) mod route_policy_source;
 pub(crate) mod route_resolver;
 pub(crate) mod runtime_status_source;
