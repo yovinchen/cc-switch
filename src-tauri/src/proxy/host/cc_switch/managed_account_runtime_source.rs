@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
@@ -25,7 +24,8 @@ use crate::proxy_core::api::auth::{
     resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
     ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ManagedAccountBindingInput,
     ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagedAccountTokenCacheKey,
-    ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenSnapshot, ProviderAuthInfo,
+    ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenSnapshot,
+    ManagedAccountTokenSnapshotStore, ProviderAuthInfo,
 };
 use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
@@ -102,14 +102,14 @@ pub(crate) struct ManagedAccountAdapterClaudeApiFormatForBindingInput<'a> {
 
 pub(crate) struct CcSwitchManagedAccountRuntimeSource {
     app_handle: Option<tauri::AppHandle>,
-    token_snapshots: Arc<Mutex<HashMap<ManagedAccountTokenCacheKey, ManagedAccountTokenSnapshot>>>,
+    token_snapshots: Arc<Mutex<ManagedAccountTokenSnapshotStore>>,
 }
 
 impl CcSwitchManagedAccountRuntimeSource {
     fn new(app_handle: Option<tauri::AppHandle>) -> Self {
         Self {
             app_handle,
-            token_snapshots: Arc::new(Mutex::new(HashMap::new())),
+            token_snapshots: Arc::new(Mutex::new(ManagedAccountTokenSnapshotStore::new())),
         }
     }
 
@@ -120,13 +120,11 @@ impl CcSwitchManagedAccountRuntimeSource {
         codex_oauth_account_id: Option<String>,
     ) {
         let mut snapshots = self.token_snapshots.lock().await;
-        snapshots.insert(
+        snapshots.record_token_snapshot(
             key,
-            ManagedAccountTokenSnapshot::new(
-                auth,
-                codex_oauth_account_id,
-                chrono::Utc::now().timestamp_millis(),
-            ),
+            auth,
+            codex_oauth_account_id,
+            chrono::Utc::now().timestamp_millis(),
         );
     }
 
@@ -136,18 +134,17 @@ impl CcSwitchManagedAccountRuntimeSource {
         error: &str,
         failure_kind: ManagedAccountTokenRefreshFailureKind,
     ) -> Option<ManagedAccountTokenSnapshot> {
-        let snapshot = {
+        let fallback = {
             let snapshots = self.token_snapshots.lock().await;
-            snapshots.get(key).cloned()
+            snapshots.snapshot_for_refresh_failure(
+                key,
+                chrono::Utc::now().timestamp_millis(),
+                failure_kind,
+            )
         }?;
-        let decision =
-            snapshot.fallback_decision(chrono::Utc::now().timestamp_millis(), failure_kind);
-        if !decision.should_use_cached_token {
-            return None;
-        }
 
-        log::warn!("{}", decision.fallback_log_message(key, error));
-        Some(snapshot)
+        log::warn!("{}", fallback.fallback_log_message(key, error));
+        Some(fallback.snapshot)
     }
 }
 
@@ -818,7 +815,7 @@ mod tests {
             ManagedAccountTokenCacheKey::new(ManagedAccountAuthRuntime::CodexOAuth, Some("acct"));
         {
             let mut snapshots = source.token_snapshots.lock().await;
-            snapshots.insert(
+            snapshots.record_snapshot(
                 key.clone(),
                 ManagedAccountTokenSnapshot::new(
                     ManagedAccountAuthRuntime::CodexOAuth.provider_auth_info("cached".to_string()),

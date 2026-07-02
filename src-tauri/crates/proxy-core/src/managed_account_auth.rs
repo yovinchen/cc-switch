@@ -1,6 +1,7 @@
 use futures::future::BoxFuture;
 use http::{HeaderMap, StatusCode};
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use thiserror::Error;
 
 use crate::copilot_model_map::{resolve_copilot_model_against_ids, CopilotModel};
@@ -558,6 +559,76 @@ impl ManagedAccountTokenSnapshot {
             now_ms,
             failure_kind,
         )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedAccountTokenSnapshotFallback {
+    pub snapshot: ManagedAccountTokenSnapshot,
+    pub decision: ManagedAccountTokenFailureFallbackDecision,
+}
+
+impl ManagedAccountTokenSnapshotFallback {
+    pub fn fallback_log_message(
+        &self,
+        key: &ManagedAccountTokenCacheKey,
+        error: &str,
+    ) -> String {
+        self.decision.fallback_log_message(key, error)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ManagedAccountTokenSnapshotStore {
+    snapshots: HashMap<ManagedAccountTokenCacheKey, ManagedAccountTokenSnapshot>,
+}
+
+impl ManagedAccountTokenSnapshotStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn record_snapshot(
+        &mut self,
+        key: ManagedAccountTokenCacheKey,
+        snapshot: ManagedAccountTokenSnapshot,
+    ) {
+        self.snapshots.insert(key, snapshot);
+    }
+
+    pub fn record_token_snapshot(
+        &mut self,
+        key: ManagedAccountTokenCacheKey,
+        auth: ProviderAuthInfo,
+        codex_oauth_account_id: Option<String>,
+        cached_at_ms: i64,
+    ) {
+        self.record_snapshot(
+            key,
+            ManagedAccountTokenSnapshot::new(auth, codex_oauth_account_id, cached_at_ms),
+        );
+    }
+
+    pub fn snapshot(&self, key: &ManagedAccountTokenCacheKey) -> Option<&ManagedAccountTokenSnapshot> {
+        self.snapshots.get(key)
+    }
+
+    pub fn snapshot_for_refresh_failure(
+        &self,
+        key: &ManagedAccountTokenCacheKey,
+        now_ms: i64,
+        failure_kind: ManagedAccountTokenRefreshFailureKind,
+    ) -> Option<ManagedAccountTokenSnapshotFallback> {
+        let snapshot = self.snapshot(key)?;
+        let decision = snapshot.fallback_decision(now_ms, failure_kind);
+        if !decision.should_use_cached_token {
+            return None;
+        }
+
+        Some(ManagedAccountTokenSnapshotFallback {
+            snapshot: snapshot.clone(),
+            decision,
+        })
     }
 }
 
@@ -1230,9 +1301,10 @@ mod tests {
         ManagedAccountAuthPlan, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
         ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAccountRuntimeSource,
         ManagedAccountTokenCacheKey, ManagedAccountTokenFailureFallbackDecision,
-        ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenSnapshot, ProviderManagedAuthFacts,
-        CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PLACEHOLDER,
-        GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
+        ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenSnapshot,
+        ManagedAccountTokenSnapshotStore, ProviderManagedAuthFacts, CODEX_OAUTH_AUTH_PLACEHOLDER,
+        CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PLACEHOLDER, GITHUB_COPILOT_AUTH_PROVIDER,
+        PROXY_AUTH_PLACEHOLDER,
     };
     use futures::{executor::block_on, future::BoxFuture};
     use http::{HeaderMap, HeaderValue, StatusCode};
@@ -2158,6 +2230,96 @@ mod tests {
                 cached_token_age_ms: Some(15_000),
             }
         );
+    }
+
+    #[test]
+    fn managed_account_token_snapshot_store_scopes_and_falls_back_by_core_key() {
+        let now = 1_771_000_000_000;
+        let mut store = ManagedAccountTokenSnapshotStore::new();
+        let copilot_account = ManagedAccountTokenCacheKey::new(
+            ManagedAccountAuthRuntime::GitHubCopilot,
+            Some("acct-a"),
+        );
+        let codex_same_account =
+            ManagedAccountTokenCacheKey::new(ManagedAccountAuthRuntime::CodexOAuth, Some("acct-a"));
+        let copilot_other_account = ManagedAccountTokenCacheKey::new(
+            ManagedAccountAuthRuntime::GitHubCopilot,
+            Some("acct-b"),
+        );
+
+        store.record_token_snapshot(
+            copilot_account.clone(),
+            ManagedAccountAuthRuntime::GitHubCopilot.provider_auth_info("copilot-a".to_string()),
+            None,
+            now - 10_000,
+        );
+
+        assert!(store
+            .snapshot_for_refresh_failure(
+                &codex_same_account,
+                now,
+                ManagedAccountTokenRefreshFailureKind::Retryable,
+            )
+            .is_none());
+        assert!(store
+            .snapshot_for_refresh_failure(
+                &copilot_other_account,
+                now,
+                ManagedAccountTokenRefreshFailureKind::Retryable,
+            )
+            .is_none());
+
+        let fallback = store
+            .snapshot_for_refresh_failure(
+                &copilot_account,
+                now,
+                ManagedAccountTokenRefreshFailureKind::Retryable,
+            )
+            .expect("matching runtime/account should use cached token");
+        assert_eq!(fallback.snapshot.auth.api_key, "copilot-a");
+        assert_eq!(fallback.decision.cached_token_age_ms, Some(10_000));
+        assert_eq!(
+            fallback.fallback_log_message(&copilot_account, "network timeout"),
+            "[Copilot] 获取 Copilot token 失败，使用最近成功 token 快照回退 (account=acct-a, ageMs=10000): network timeout"
+        );
+    }
+
+    #[test]
+    fn managed_account_token_snapshot_store_rejects_stale_or_terminal_fallbacks() {
+        let now = 1_771_000_000_000;
+        let mut store = ManagedAccountTokenSnapshotStore::new();
+        let key =
+            ManagedAccountTokenCacheKey::new(ManagedAccountAuthRuntime::CodexOAuth, Some("acct"));
+
+        store.record_snapshot(
+            key.clone(),
+            ManagedAccountTokenSnapshot::new(
+                ManagedAccountAuthRuntime::CodexOAuth.provider_auth_info("stale".to_string()),
+                Some("acct".to_string()),
+                now - 30_001,
+            ),
+        );
+        assert!(store
+            .snapshot_for_refresh_failure(
+                &key,
+                now,
+                ManagedAccountTokenRefreshFailureKind::Retryable,
+            )
+            .is_none());
+
+        store.record_token_snapshot(
+            key.clone(),
+            ManagedAccountAuthRuntime::CodexOAuth.provider_auth_info("fresh".to_string()),
+            Some("acct".to_string()),
+            now - 1_000,
+        );
+        assert!(store
+            .snapshot_for_refresh_failure(
+                &key,
+                now,
+                ManagedAccountTokenRefreshFailureKind::Terminal,
+            )
+            .is_none());
     }
 
     #[test]
