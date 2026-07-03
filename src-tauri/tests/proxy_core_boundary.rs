@@ -18238,6 +18238,8 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && host_source.contains("ManagedAccountTokenSnapshot")
             && host_source.contains("ManagedAccountTokenSnapshotStore")
             && host_source.contains("ProviderAuthInfo")
+            && host_source.contains("token_cache_clock: Arc<dyn Fn() -> i64 + Send + Sync>")
+            && host_source.contains("fn current_time_ms(&self) -> i64")
             && host_source.contains("use crate::proxy_core::api::model_catalog::CopilotModel;"),
         "managed_account_runtime_source.rs should import pure runtime source contracts and diagnostics directly from proxy_core::api"
     );
@@ -18258,8 +18260,10 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
     assert!(
         refresh_success_slice.contains(".record_refresh_success(")
             && refresh_success_slice.contains("ManagedAccountTokenRefreshSuccessInput")
+            && refresh_success_slice.contains("self.current_time_ms()")
             && !refresh_success_slice.contains("record_token_snapshot(")
             && !refresh_success_slice.contains("managed_account_token_success_log_message(")
+            && !refresh_success_slice.contains("chrono::Utc::now().timestamp_millis()")
             && !refresh_success_slice.contains("runtime.provider_auth_info("),
         "host runtime source should delegate token auth creation, snapshot write, and success log contract to core"
     );
@@ -18279,6 +18283,8 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && !refresh_failure_slice.contains("fallback.fallback_log_message(")
             && !refresh_failure_slice.contains("managed_account_token_failure_fallback_decision(")
             && !refresh_failure_slice.contains("managed_account_token_failure_fallback_log_message(")
+            && refresh_failure_slice.contains("self.current_time_ms()")
+            && !refresh_failure_slice.contains("chrono::Utc::now().timestamp_millis()")
             && !refresh_failure_slice.contains("Some(snapshot.cached_at_ms)")
             && !refresh_failure_slice.contains("account_id: Option<&str>"),
         "host runtime source should delegate refresh-failure fallback/reject decisions and messages to core token-cache contracts"

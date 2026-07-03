@@ -103,14 +103,30 @@ pub(crate) struct ManagedAccountAdapterClaudeApiFormatForBindingInput<'a> {
 pub(crate) struct CcSwitchManagedAccountRuntimeSource {
     app_handle: Option<tauri::AppHandle>,
     token_snapshots: Arc<Mutex<ManagedAccountTokenSnapshotStore>>,
+    token_cache_clock: Arc<dyn Fn() -> i64 + Send + Sync>,
 }
 
 impl CcSwitchManagedAccountRuntimeSource {
     fn new(app_handle: Option<tauri::AppHandle>) -> Self {
+        Self::new_with_token_cache_clock(
+            app_handle,
+            Arc::new(|| chrono::Utc::now().timestamp_millis()),
+        )
+    }
+
+    fn new_with_token_cache_clock(
+        app_handle: Option<tauri::AppHandle>,
+        token_cache_clock: Arc<dyn Fn() -> i64 + Send + Sync>,
+    ) -> Self {
         Self {
             app_handle,
             token_snapshots: Arc::new(Mutex::new(ManagedAccountTokenSnapshotStore::new())),
+            token_cache_clock,
         }
+    }
+
+    fn current_time_ms(&self) -> i64 {
+        (self.token_cache_clock)()
     }
 
     async fn record_token_refresh_success(
@@ -118,8 +134,9 @@ impl CcSwitchManagedAccountRuntimeSource {
         key: ManagedAccountTokenCacheKey,
         input: ManagedAccountTokenRefreshSuccessInput,
     ) -> ManagedAccountTokenRefreshSuccess {
+        let now_ms = self.current_time_ms();
         let mut snapshots = self.token_snapshots.lock().await;
-        snapshots.record_refresh_success(key, input, chrono::Utc::now().timestamp_millis())
+        snapshots.record_refresh_success(key, input, now_ms)
     }
 
     async fn resolve_token_refresh_failure(
@@ -129,13 +146,9 @@ impl CcSwitchManagedAccountRuntimeSource {
         failure_kind: ManagedAccountTokenRefreshFailureKind,
     ) -> Result<ManagedAccountTokenSnapshot, ProxyError> {
         let resolution = {
+            let now_ms = self.current_time_ms();
             let snapshots = self.token_snapshots.lock().await;
-            snapshots.resolve_refresh_failure(
-                key,
-                chrono::Utc::now().timestamp_millis(),
-                failure_kind,
-                error,
-            )
+            snapshots.resolve_refresh_failure(key, now_ms, failure_kind, error)
         };
 
         match resolution {
@@ -644,6 +657,13 @@ pub(crate) async fn resolve_managed_account_auth_from_runtime_source(
 mod tests {
     use super::*;
 
+    fn runtime_source_with_fixed_token_clock(now_ms: i64) -> CcSwitchManagedAccountRuntimeSource {
+        CcSwitchManagedAccountRuntimeSource::new_with_token_cache_clock(
+            None,
+            Arc::new(move || now_ms),
+        )
+    }
+
     #[test]
     fn copilot_token_failure_kind_allows_only_transient_refresh_failures() {
         for error in [
@@ -705,7 +725,7 @@ mod tests {
 
     #[tokio::test]
     async fn token_snapshot_falls_back_for_recent_retryable_failure() {
-        let source = CcSwitchManagedAccountRuntimeSource::new(None);
+        let source = runtime_source_with_fixed_token_clock(42_000);
         let key = ManagedAccountTokenCacheKey::new(
             ManagedAccountAuthRuntime::GitHubCopilot,
             Some("acct"),
@@ -727,6 +747,7 @@ mod tests {
             .expect("recent retryable failure should use cached token");
 
         assert_eq!(snapshot.auth.api_key, "cached");
+        assert_eq!(snapshot.cached_at_ms, 42_000);
         assert_eq!(
             snapshot.auth.strategy,
             ManagedAccountAuthRuntime::GitHubCopilot.provider_auth_strategy()
@@ -735,7 +756,7 @@ mod tests {
 
     #[tokio::test]
     async fn token_snapshot_cache_is_scoped_by_runtime_and_account() {
-        let source = CcSwitchManagedAccountRuntimeSource::new(None);
+        let source = runtime_source_with_fixed_token_clock(42_000);
         let copilot_account = ManagedAccountTokenCacheKey::new(
             ManagedAccountAuthRuntime::GitHubCopilot,
             Some("acct-a"),
@@ -787,7 +808,7 @@ mod tests {
 
     #[tokio::test]
     async fn token_snapshot_does_not_hide_non_retryable_or_stale_failures() {
-        let source = CcSwitchManagedAccountRuntimeSource::new(None);
+        let source = runtime_source_with_fixed_token_clock(42_000);
         let key =
             ManagedAccountTokenCacheKey::new(ManagedAccountAuthRuntime::CodexOAuth, Some("acct"));
         {
@@ -797,7 +818,7 @@ mod tests {
                 ManagedAccountTokenSnapshot::new(
                     ManagedAccountAuthRuntime::CodexOAuth.provider_auth_info("cached".to_string()),
                     Some("acct".to_string()),
-                    chrono::Utc::now().timestamp_millis() - 30_001,
+                    11_999,
                 ),
             );
         }
