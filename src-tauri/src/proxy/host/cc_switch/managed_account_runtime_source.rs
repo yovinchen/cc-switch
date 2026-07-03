@@ -23,9 +23,9 @@ use crate::proxy_core::api::auth::{
     CodexOAuthResolution, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
     ManagedAccountBindingInput, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
     ManagedAccountTokenCacheKey, ManagedAccountTokenRefreshFailureInput,
-    ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenRefreshFailureResolution,
-    ManagedAccountTokenRefreshSuccess, ManagedAccountTokenRefreshSuccessInput,
-    ManagedAccountTokenSnapshot, ManagedAccountTokenSnapshotStore, ProviderAuthInfo,
+    ManagedAccountTokenRefreshFailureResolution, ManagedAccountTokenRefreshSuccess,
+    ManagedAccountTokenRefreshSuccessInput, ManagedAccountTokenSnapshot,
+    ManagedAccountTokenSnapshotStore, ProviderAuthInfo,
 };
 use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
@@ -490,35 +490,33 @@ async fn codex_oauth_refresh_success_from_app_handle(
 fn copilot_token_refresh_failure_input(
     error: &CopilotAuthError,
 ) -> ManagedAccountTokenRefreshFailureInput {
-    let failure_kind = if matches!(
+    if matches!(
         error,
         CopilotAuthError::CopilotTokenFetchFailed(_)
             | CopilotAuthError::NetworkError(_)
             | CopilotAuthError::ParseError(_)
             | CopilotAuthError::IoError(_)
     ) {
-        ManagedAccountTokenRefreshFailureKind::Retryable
+        ManagedAccountTokenRefreshFailureInput::retryable(error.to_string())
     } else {
-        ManagedAccountTokenRefreshFailureKind::Terminal
-    };
-    ManagedAccountTokenRefreshFailureInput::new(failure_kind, error.to_string())
+        ManagedAccountTokenRefreshFailureInput::terminal(error.to_string())
+    }
 }
 
 fn codex_oauth_token_refresh_failure_input(
     error: &CodexOAuthError,
 ) -> ManagedAccountTokenRefreshFailureInput {
-    let failure_kind = if matches!(
+    if matches!(
         error,
         CodexOAuthError::TokenFetchFailed(_)
             | CodexOAuthError::NetworkError(_)
             | CodexOAuthError::ParseError(_)
             | CodexOAuthError::IoError(_)
     ) {
-        ManagedAccountTokenRefreshFailureKind::Retryable
+        ManagedAccountTokenRefreshFailureInput::retryable(error.to_string())
     } else {
-        ManagedAccountTokenRefreshFailureKind::Terminal
-    };
-    ManagedAccountTokenRefreshFailureInput::new(failure_kind, error.to_string())
+        ManagedAccountTokenRefreshFailureInput::terminal(error.to_string())
+    }
 }
 
 impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
@@ -798,7 +796,9 @@ pub(crate) fn managed_account_test_provider_with_binding(
 mod tests {
     use super::*;
     use crate::proxy::provider::claude_provider_api_format;
-    use crate::proxy_core::api::auth::ProviderAuthStrategy;
+    use crate::proxy_core::api::auth::{
+        ManagedAccountTokenRefreshFailureKind, ProviderAuthStrategy,
+    };
 
     fn runtime_source_with_fixed_token_clock(now_ms: i64) -> CcSwitchManagedAccountRuntimeSource {
         CcSwitchManagedAccountRuntimeSource::new_with_token_cache_clock(

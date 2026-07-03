@@ -667,6 +667,14 @@ impl ManagedAccountTokenRefreshFailureInput {
             error: error.into(),
         }
     }
+
+    pub fn retryable(error: impl Into<String>) -> Self {
+        Self::new(ManagedAccountTokenRefreshFailureKind::Retryable, error)
+    }
+
+    pub fn terminal(error: impl Into<String>) -> Self {
+        Self::new(ManagedAccountTokenRefreshFailureKind::Terminal, error)
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -2541,6 +2549,20 @@ mod tests {
             ManagedAccountTokenRefreshFailureInput {
                 failure_kind: ManagedAccountTokenRefreshFailureKind::Retryable,
                 error: "network timeout".to_string(),
+            }
+        );
+        assert_eq!(
+            ManagedAccountTokenRefreshFailureInput::retryable("network timeout"),
+            ManagedAccountTokenRefreshFailureInput {
+                failure_kind: ManagedAccountTokenRefreshFailureKind::Retryable,
+                error: "network timeout".to_string(),
+            }
+        );
+        assert_eq!(
+            ManagedAccountTokenRefreshFailureInput::terminal("refresh token revoked"),
+            ManagedAccountTokenRefreshFailureInput {
+                failure_kind: ManagedAccountTokenRefreshFailureKind::Terminal,
+                error: "refresh token revoked".to_string(),
             }
         );
     }
