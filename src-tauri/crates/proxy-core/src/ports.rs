@@ -10247,6 +10247,47 @@ GEMINI_API_KEY=sk-test123
             Some("kept")
         );
 
+        let mut claude_real_config = json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "real-token",
+                "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+            }
+        });
+        assert_eq!(
+            remove_claude_takeover_env_fields_if_present(
+                &mut claude_real_config,
+                placeholder,
+                |url| url.starts_with("http://localhost")
+            ),
+            Some(false)
+        );
+        let claude_real_env = claude_real_config
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("claude env");
+        assert_eq!(
+            claude_real_env
+                .get("ANTHROPIC_AUTH_TOKEN")
+                .and_then(Value::as_str),
+            Some("real-token")
+        );
+        assert_eq!(
+            claude_real_env
+                .get("ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str),
+            Some("https://api.anthropic.com")
+        );
+
+        let mut claude_missing_env = json!({});
+        assert_eq!(
+            remove_claude_takeover_env_fields_if_present(
+                &mut claude_missing_env,
+                placeholder,
+                |url| url.starts_with("http://localhost")
+            ),
+            None
+        );
+
         let mut codex_live = json!({"auth": {"OPENAI_API_KEY": "real-key"}});
         assert!(apply_codex_takeover_auth_placeholder_if_present(
             &mut codex_live,
@@ -10268,11 +10309,25 @@ GEMINI_API_KEY=sk-test123
             .and_then(|auth| auth.get("OPENAI_API_KEY"))
             .is_none());
 
+        let mut codex_live_with_real_auth = json!({"auth": {"OPENAI_API_KEY": "real-key"}});
+        assert!(!remove_codex_takeover_auth_placeholder_if_present(
+            &mut codex_live_with_real_auth,
+            placeholder
+        ));
+        assert_eq!(
+            codex_live_with_real_auth
+                .get("auth")
+                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+                .and_then(Value::as_str),
+            Some("real-key")
+        );
+
         let mut codex_live_without_auth = json!({"config": ""});
         assert!(!apply_codex_takeover_auth_placeholder_if_present(
             &mut codex_live_without_auth,
             placeholder
         ));
+        assert!(codex_live_without_auth.get("auth").is_none());
         assert!(ensure_codex_takeover_auth_placeholder(
             &mut codex_live_without_auth,
             placeholder
@@ -10326,6 +10381,52 @@ GEMINI_API_KEY=sk-test123
         assert_eq!(
             gemini_env.get("OTHER").and_then(Value::as_str),
             Some("kept")
+        );
+
+        let mut gemini_real_config = json!({
+            "env": {
+                "GOOGLE_GEMINI_BASE_URL": "https://gemini.example",
+                "GEMINI_API_KEY": "real-key"
+            }
+        });
+        assert_eq!(
+            remove_gemini_takeover_env_fields_if_present(
+                &mut gemini_real_config,
+                placeholder,
+                |url| url.starts_with("http://127.0.0.1")
+            ),
+            Some(false)
+        );
+        let gemini_real_env = gemini_real_config
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("gemini env");
+        assert_eq!(
+            gemini_real_env
+                .get("GOOGLE_GEMINI_BASE_URL")
+                .and_then(Value::as_str),
+            Some("https://gemini.example")
+        );
+        assert_eq!(
+            gemini_real_env
+                .get("GEMINI_API_KEY")
+                .and_then(Value::as_str),
+            Some("real-key")
+        );
+
+        let mut missing_env = json!({});
+        assert_eq!(
+            remove_gemini_takeover_env_fields_if_present(&mut missing_env, placeholder, |url| url
+                .starts_with("http://127.0.0.1")),
+            None
+        );
+        apply_gemini_takeover_env_fields(&mut missing_env, "http://127.0.0.1:15721", placeholder);
+        assert_eq!(
+            missing_env
+                .get("env")
+                .and_then(|env| env.get("GEMINI_API_KEY"))
+                .and_then(Value::as_str),
+            Some(placeholder)
         );
     }
 

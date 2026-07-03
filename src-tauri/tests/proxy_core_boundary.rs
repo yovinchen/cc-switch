@@ -7648,6 +7648,8 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
     let core_request_headers_source =
         fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_headers.rs"))
             .expect("read proxy-core request_headers.rs");
+    let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
+        .expect("read proxy-core ports.rs");
     let config_reexport_blocks: Vec<&str> = source
         .split("pub(crate) use crate::proxy_core::api::config::{")
         .skip(1)
@@ -7951,6 +7953,12 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
             && core_request_headers_source
                 .contains("fn detects_official_codex_client_user_agent_prefixes()"),
         "Codex official client User-Agent fixtures should live in proxy-core request_headers, not proxy_core_adapter"
+    );
+    assert!(
+        !source.contains("proxy_placeholder_adapter_projects_app_specific_live_detection")
+            && core_ports_source
+                .contains("fn takeover_placeholder_mutations_update_app_specific_live_config()"),
+        "live takeover placeholder mutation fixtures should live in proxy-core ports, not proxy_core_adapter"
     );
 }
 
