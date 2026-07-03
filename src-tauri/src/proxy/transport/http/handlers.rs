@@ -10,7 +10,7 @@ use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy::{
     auth_adapter::{validate_claude_desktop_gateway_auth, validate_proxy_management_auth},
     error::ProxyError,
-    error_mapper::proxy_core_error_to_proxy_error,
+    error_mapper::{management_api_error_to_proxy_error, proxy_core_error_to_proxy_error},
     response_adapter::{
         dispatch_claude_desktop_messages_request_to_axum_response,
         dispatch_claude_request_to_axum_response, dispatch_codex_chat_request_to_axum_response,
@@ -33,7 +33,6 @@ use crate::proxy::{
         dispatch_proxy_channel_test_request_to_axum_json_response,
         dispatch_proxy_channels_request_to_axum_json_response,
         dispatch_proxy_groups_request_to_axum_json_response,
-        dispatch_proxy_providers_request_to_axum_json_response,
         dispatch_proxy_route_resolve_request_to_axum_json_response,
         dispatch_replace_proxy_channel_models_request_to_axum_json_response,
         dispatch_reset_proxy_channel_breaker_request_to_axum_json_response,
@@ -52,10 +51,10 @@ use crate::proxy_core::api::management::{
     ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelRecord,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
     CurrentRouteResponse, GroupListQuery, HealthCheckRequest, HealthCheckResponse,
-    ProviderListResponse, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-    ProxyChannelWriteRequest, ProxyStatusRequest, ProxyStatusResponse, RouteGroupListResponse,
-    RouteResolveRequest, RouteResolveResponse,
+    ManagementAppPathRequest, ProviderListResponse, ProxyChannelKeyPatchRequest,
+    ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyStatusRequest, ProxyStatusResponse,
+    RouteGroupListResponse, RouteResolveRequest, RouteResolveResponse,
 };
 use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};
 use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
@@ -173,7 +172,15 @@ pub async fn list_proxy_providers(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
 ) -> Result<Json<ProviderListResponse>, ProxyError> {
-    dispatch_proxy_providers_request_to_axum_json_response(&state, app_type).await
+    let request = ManagementAppPathRequest::from_path(app_type)
+        .map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .provider_list_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
 }
 
 /// GET /proxy/v1/apps/{app}/models

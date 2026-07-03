@@ -5341,7 +5341,7 @@ fn production_proxy_events_handler_owns_http_sse_orchestration() {
 }
 
 #[test]
-fn production_management_read_handlers_delegate_json_bridge_to_response_adapter() {
+fn production_management_read_handlers_keep_json_bridges_on_expected_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
@@ -5352,16 +5352,12 @@ fn production_management_read_handlers_delegate_json_bridge_to_response_adapter(
         "pub async fn list_proxy_apps(",
         "/// GET /proxy/v1/apps/{app}/providers",
     );
+    let providers_handler = function_slice(
+        &source,
+        "pub async fn list_proxy_providers(",
+        "/// GET /proxy/v1/apps/{app}/models",
+    );
     let handlers = [
-        (
-            "list_proxy_providers",
-            function_slice(
-                &source,
-                "pub async fn list_proxy_providers(",
-                "/// GET /proxy/v1/apps/{app}/models",
-            ),
-            "dispatch_proxy_providers_request_to_axum_json_response(",
-        ),
         (
             "list_proxy_app_models",
             function_slice(
@@ -5422,6 +5418,43 @@ fn production_management_read_handlers_delegate_json_bridge_to_response_adapter(
                 .to_string(),
         );
     }
+    if !(providers_handler.contains("ManagementAppPathRequest::from_path(app_type)")
+        && providers_handler.contains(".map_err(management_api_error_to_proxy_error)?")
+        && providers_handler.contains(".proxy_engine()")
+        && providers_handler.contains(".provider_list_response(request)")
+        && providers_handler.contains(".map_err(proxy_core_error_to_proxy_error)?"))
+    {
+        violations.push(
+            "src/proxy/transport/http/handlers.rs list_proxy_providers should validate app path and build the provider-list JSON bridge through ProxyEngine"
+                .to_string(),
+        );
+    }
+    for (line_index, line) in production_lines(providers_handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in [
+            "dispatch_proxy_providers_request_to_axum_json_response(",
+            "AppModelCatalogRequest::from_parts(",
+            ".list_model_catalog_for_request(",
+            ".client_model_catalog_response(",
+            "AppKind::Codex",
+        ] {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/transport/http/handlers.rs list_proxy_providers:{} contains provider-list boundary marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+    if adapter_source.contains("dispatch_proxy_providers_request_to_axum_json_response")
+        || adapter_source.contains("ProviderListResponse")
+    {
+        violations.push(
+            "src/proxy/response_adapter.rs should not own the provider-list JSON bridge"
+                .to_string(),
+        );
+    }
 
     for (handler_name, handler, adapter_marker) in handlers {
         if !handler.contains(adapter_marker) {
@@ -5446,7 +5479,7 @@ fn production_management_read_handlers_delegate_json_bridge_to_response_adapter(
 
     assert!(
         violations.is_empty(),
-        "management read handlers must delegate request construction, engine calls, route metadata, and JSON wrapping to response_adapter:\n{}",
+        "management read handlers must keep request construction, engine calls, route metadata, and JSON wrapping on their expected boundaries:\n{}",
         violations.join("\n")
     );
 }
@@ -27847,7 +27880,6 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         "GroupListRequest",
         "HealthCheckResponse",
         "ManagementAppPathRequest",
-        "ProviderListResponse",
         "ProxyChannelKeyPatchRequest",
         "ProxyChannelKeyWriteRequest",
         "ProxyChannelModelsReplaceRequest",
