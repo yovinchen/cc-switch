@@ -8162,6 +8162,10 @@ fn production_provider_endpoint_service_delegates_projection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/services/provider/endpoints.rs");
     let source = fs::read_to_string(&path).expect("read provider endpoint service");
+    let provider_path = manifest_dir.join("src/provider.rs");
+    let provider_source = fs::read_to_string(&provider_path).expect("read provider.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8191,6 +8195,14 @@ fn production_provider_endpoint_service_delegates_projection_to_adapter() {
             && source.contains(".mark_custom_endpoint_last_used(")
             && !source.contains("use crate::proxy_core_adapter::normalize_custom_endpoint_url"),
         "provider endpoint service should consume custom endpoint URL policy directly from proxy-core and read/mutate endpoint metadata through Provider"
+    );
+    assert!(
+        !adapter_source.contains("provider_endpoint_adapter_projects_list_and_last_used")
+            && provider_source
+                .contains("fn provider_custom_endpoint_list_and_last_used_mutation_stay_with_provider()")
+            && provider_source.contains("pub fn custom_endpoint_list(")
+            && provider_source.contains("pub fn mark_custom_endpoint_last_used("),
+        "provider custom endpoint list/last-used fixtures should live with Provider, not proxy_core_adapter"
     );
 }
 

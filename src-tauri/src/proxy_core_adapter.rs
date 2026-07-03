@@ -212,10 +212,8 @@ mod tests {
         UsageRecord, UsageRecordFailureLogContext, UsageRouteContext,
         UsageSelectedProviderMissingPhase,
     };
-    use crate::settings::CustomEndpoint;
     use bytes::Bytes;
     use indexmap::IndexMap;
-    use std::collections::HashMap;
     use std::sync::Arc;
 
     #[tokio::test]
@@ -719,63 +717,6 @@ mod tests {
         assert!(claude_desktop_model_id_is_profile_safe(
             "anthropic/claude-opus-4-8"
         ));
-    }
-
-    #[test]
-    fn provider_endpoint_adapter_projects_list_and_last_used() {
-        let mut endpoints = HashMap::new();
-        endpoints.insert(
-            "https://old.example".to_string(),
-            CustomEndpoint {
-                url: "https://old.example".to_string(),
-                added_at: 10,
-                last_used: None,
-            },
-        );
-        endpoints.insert(
-            "https://new.example".to_string(),
-            CustomEndpoint {
-                url: "https://new.example".to_string(),
-                added_at: 20,
-                last_used: Some(1),
-            },
-        );
-        let mut provider = Provider::with_id(
-            "provider-a".to_string(),
-            "Provider A".to_string(),
-            json!({}),
-            None,
-        );
-        provider.meta = Some(ProviderMeta {
-            custom_endpoints: endpoints,
-            ..ProviderMeta::default()
-        });
-
-        let listed = provider.custom_endpoint_list();
-        assert_eq!(
-            listed
-                .iter()
-                .map(|endpoint| endpoint.url.as_str())
-                .collect::<Vec<_>>(),
-            vec!["https://new.example", "https://old.example"]
-        );
-        assert!(Provider::with_id(
-            "provider-empty".to_string(),
-            "Provider Empty".to_string(),
-            json!({}),
-            None,
-        )
-        .custom_endpoint_list()
-        .is_empty());
-
-        assert!(provider.mark_custom_endpoint_last_used("https://old.example", 1234));
-        let old_last_used = provider
-            .meta
-            .as_ref()
-            .and_then(|meta| meta.custom_endpoints.get("https://old.example"))
-            .and_then(|endpoint| endpoint.last_used);
-        assert_eq!(old_last_used, Some(1234));
-        assert!(!provider.mark_custom_endpoint_last_used("https://missing.example", 5678));
     }
 
     #[test]
