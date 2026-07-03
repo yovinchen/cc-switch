@@ -2073,6 +2073,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1447. `proxy_core_host` 已收敛为跨 source 集成壳：仅保留 ProxyEngine 通过 CC Switch services 规划路由、materialized route 不回退 legacy projection、management dry-run 与 materialized plan 顺序一致这 3 组集成 fixture；边界测试锁定不得回流 owner fixture。
 1448. 独立 `proxy-core` crate 验收已补强：`cargo test --manifest-path src-tauri/crates/proxy-core/Cargo.toml --all-targets` 独立通过，crate 内 boundary test 扩展禁止 Tauri/SQLite ORM 依赖以及 CC Switch `app_config`/commands/provider/config/service 等宿主模块入口回流。
 1449. 空 `proxy_core_adapter` tombstone 已从 `src/lib.rs` test 编译模块图下线；边界测试改为禁止重新声明 adapter 兼容模块，同时保留 `proxy_core_host` 仅作为 test-only ProxyEngine 跨 source 集成壳。
+1450. channel-key DB-backed runtime source 已补齐 round-robin 游标隔离测试：同一 provider 下不同 channel 的 wildcard key 轮询各自从首个 key 开始推进，锁定每个中转地址/通道独立 key 选择状态，避免跨 channel 串用 cursor。
 
 ## 背景
 

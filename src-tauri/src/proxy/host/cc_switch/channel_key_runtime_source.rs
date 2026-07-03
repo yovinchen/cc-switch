@@ -379,6 +379,70 @@ mod tests {
     }
 
     #[test]
+    fn db_backed_channel_key_runtime_source_scopes_round_robin_cursor_by_channel() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "provider-key" } }),
+            None,
+        );
+        db.save_provider("claude", &provider)
+            .expect("save provider");
+        for channel_id in ["channel-key-round-robin-a", "channel-key-round-robin-b"] {
+            db.create_proxy_channel(ProxyChannelWriteRequest {
+                id: Some(channel_id.to_string()),
+                provider_id: "provider-a".to_string(),
+                app_type: "claude".to_string(),
+                name: format!("Channel Key Round Robin {channel_id}"),
+                base_url: format!("https://{channel_id}.relay.example.com/v1"),
+                interface_kind: "anthropic_messages".to_string(),
+                health_policy: json!({"channelKeySelectionStrategy": "roundRobin"}),
+                ..Default::default()
+            })
+            .expect("create channel");
+            for key_ref in ["alpha", "beta"] {
+                db.upsert_proxy_channel_key(
+                    channel_id,
+                    key_ref,
+                    ProxyChannelKeyWriteRequest {
+                        key_value: format!("sk-{channel_id}-{key_ref}"),
+                        status: "enabled".to_string(),
+                        priority: 20,
+                        weight: 1,
+                    },
+                )
+                .expect("upsert channel key");
+            }
+        }
+
+        let source = channel_key_runtime_source_from_database(db);
+        let first_a = source
+            .load_channel_key_candidate(lookup("channel-key-round-robin-a", "*"))
+            .expect("load first channel a wildcard key")
+            .expect("selected first channel a key");
+        let first_b = source
+            .load_channel_key_candidate(lookup("channel-key-round-robin-b", "*"))
+            .expect("load first channel b wildcard key")
+            .expect("selected first channel b key");
+        let second_a = source
+            .load_channel_key_candidate(lookup("channel-key-round-robin-a", "*"))
+            .expect("load second channel a wildcard key")
+            .expect("selected second channel a key");
+        let second_b = source
+            .load_channel_key_candidate(lookup("channel-key-round-robin-b", "*"))
+            .expect("load second channel b wildcard key")
+            .expect("selected second channel b key");
+
+        assert_eq!(first_a.key_ref, "alpha");
+        assert_eq!(first_b.key_ref, "alpha");
+        assert_eq!(second_a.key_ref, "beta");
+        assert_eq!(second_b.key_ref, "beta");
+        assert_eq!(first_a.key_value, "sk-channel-key-round-robin-a-alpha");
+        assert_eq!(first_b.key_value, "sk-channel-key-round-robin-b-alpha");
+    }
+
+    #[test]
     fn db_backed_channel_key_runtime_source_returns_selected_candidate_metadata() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let provider = Provider::with_id(
