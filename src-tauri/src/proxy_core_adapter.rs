@@ -51,11 +51,10 @@ mod tests {
         claude_env_credentials_from_settings, codex_auth_object_value_from_settings,
         codex_provider_live_write_parts_from_settings, gemini_env_map_from_settings,
         gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
-        gemini_live_settings_to_write, json_deep_merge, json_deep_remove, json_remove_array_items,
-        json_value_is_subset, live_takeover_app_kinds, provider_settings_validation_issue_spec,
-        provider_settings_validation_parts_from_settings, proxy_runtime_status_stopped,
-        sanitize_claude_settings_for_live, CodexProviderLiveWriteIssue,
-        CodexProviderValidationIssue, ProviderSettingsValidationIssue,
+        gemini_live_settings_to_write, live_takeover_app_kinds,
+        provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
+        proxy_runtime_status_stopped, CodexProviderLiveWriteIssue, CodexProviderValidationIssue,
+        ProviderSettingsValidationIssue,
     };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
@@ -2428,97 +2427,6 @@ wire_api = "chat"
         assert!(provider_only.channel_id.is_none());
         assert!(provider_only.interface_kind.is_none());
         assert!(provider_only.pricing_model.is_none());
-    }
-
-    #[test]
-    fn sanitize_claude_settings_for_live_strips_host_only_fields() {
-        let sanitized = sanitize_claude_settings_for_live(&json!({
-            "api_format": "anthropic",
-            "apiFormat": "openai",
-            "openrouter_compat_mode": true,
-            "openrouterCompatMode": true,
-            "env": {
-                "ANTHROPIC_API_KEY": "sk-test"
-            },
-            "includeCoAuthoredBy": false
-        }));
-
-        assert_eq!(
-            sanitized,
-            json!({
-                "env": {
-                    "ANTHROPIC_API_KEY": "sk-test"
-                },
-                "includeCoAuthoredBy": false
-            })
-        );
-    }
-
-    #[test]
-    fn json_subset_helpers_match_and_remove_array_items_once() {
-        let target = json!({
-            "allowedTools": [
-                { "name": "tool-a", "scope": "global" },
-                { "name": "tool-b", "scope": "local" },
-                { "name": "tool-a", "scope": "project" }
-            ],
-            "env": {
-                "A": "1",
-                "B": "2"
-            }
-        });
-        let source = json!({
-            "allowedTools": [
-                { "name": "tool-a" },
-                { "name": "tool-b", "scope": "local" }
-            ],
-            "env": {
-                "A": "1"
-            }
-        });
-        assert!(json_value_is_subset(&target, &source));
-
-        let mut target_arr = target["allowedTools"].as_array().cloned().unwrap();
-        let source_arr = source["allowedTools"].as_array().unwrap();
-        json_remove_array_items(&mut target_arr, source_arr);
-        assert_eq!(
-            target_arr,
-            vec![json!({ "name": "tool-a", "scope": "project" })]
-        );
-    }
-
-    #[test]
-    fn json_deep_merge_and_remove_preserve_unrelated_fields() {
-        let mut target = json!({
-            "env": {
-                "ANTHROPIC_API_KEY": "sk-test"
-            },
-            "allowedTools": ["tool-a", "tool-b"],
-            "includeCoAuthoredBy": true
-        });
-        let source = json!({
-            "env": {
-                "CLAUDE_CODE_USE_BEDROCK": "1"
-            },
-            "allowedTools": ["tool-a"],
-            "includeCoAuthoredBy": false
-        });
-
-        json_deep_merge(&mut target, &source);
-        assert_eq!(target["env"]["ANTHROPIC_API_KEY"], json!("sk-test"));
-        assert_eq!(target["env"]["CLAUDE_CODE_USE_BEDROCK"], json!("1"));
-        assert_eq!(target["allowedTools"], json!(["tool-a"]));
-        assert_eq!(target["includeCoAuthoredBy"], json!(false));
-
-        json_deep_remove(&mut target, &source);
-        assert_eq!(
-            target,
-            json!({
-                "env": {
-                    "ANTHROPIC_API_KEY": "sk-test"
-                }
-            })
-        );
     }
 
     #[test]

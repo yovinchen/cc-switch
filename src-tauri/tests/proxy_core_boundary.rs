@@ -9360,6 +9360,24 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
             && core_ports_source.contains("fn live_token_sync_app_label_only_covers_switch_mode_live_apps()"),
         "provider switch dispatch/lock/label policy fixtures should live in proxy-core ports while adapter keeps only AppType compatibility"
     );
+    assert!(
+        !adapter_source.contains("fn sanitize_claude_settings_for_live_strips_host_only_fields()")
+            && core_ports_source
+                .contains("fn sanitize_claude_settings_for_live_strips_host_only_fields()"),
+        "Claude live settings sanitization fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
+    assert!(
+        !adapter_source.contains("fn json_subset_helpers_match_and_remove_array_items_once()")
+            && core_ports_source
+                .contains("fn json_subset_helpers_match_and_remove_array_items_once()"),
+        "JSON subset/removal helper fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
+    assert!(
+        !adapter_source.contains("fn json_deep_merge_and_remove_preserve_unrelated_fields()")
+            && core_ports_source
+                .contains("fn json_deep_merge_and_remove_preserve_unrelated_fields()"),
+        "JSON deep merge/remove helper fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
 
     let provider_service_source =
         fs::read_to_string(manifest_dir.join("src/services/provider/mod.rs"))
