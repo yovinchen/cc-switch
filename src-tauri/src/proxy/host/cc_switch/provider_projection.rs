@@ -348,7 +348,9 @@ pub(crate) fn provider_spec_from_db_source(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::{AuthBinding, AuthBindingSource};
+    use crate::provider::{AuthBinding, AuthBindingSource, ProviderTestConfig, UsageScript};
+    use crate::proxy_core::api::auth::claude_desktop_provider_models_are_profile_safe;
+    use crate::proxy_core::api::transport::bedrock_env_flag_from_provider_settings;
 
     #[test]
     fn managed_account_binding_projection_uses_core_policy() {
@@ -597,5 +599,154 @@ mod tests {
             provider_gemini_kind(&gemini_api_key_provider),
             ProviderKind::Gemini
         );
+    }
+
+    #[test]
+    fn provider_spec_projection_redacts_settings_and_projects_managed_facts() {
+        let mut provider = Provider::with_id(
+            "copilot".to_string(),
+            "Copilot".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": "secret-token",
+                    "ANTHROPIC_BASE_URL": "https://api.githubcopilot.com",
+                    "CLAUDE_CODE_USE_BEDROCK": "1"
+                }
+            }),
+            Some("https://github.com/features/copilot".to_string()),
+        );
+        provider.meta = Some(ProviderMeta {
+            provider_type: Some("github_copilot".to_string()),
+            is_full_url: Some(true),
+            custom_user_agent: Some("cc-switch-test/1.0".to_string()),
+            auth_binding: Some(AuthBinding {
+                source: AuthBindingSource::ManagedAccount,
+                auth_provider: Some("github_copilot".to_string()),
+                account_id: Some("acct-1".to_string()),
+            }),
+            usage_script: Some(UsageScript {
+                enabled: true,
+                language: "javascript".to_string(),
+                code: String::new(),
+                timeout: None,
+                api_key: None,
+                base_url: None,
+                access_token: None,
+                user_id: None,
+                template_type: Some("github_copilot".to_string()),
+                auto_query_interval: None,
+                coding_plan_provider: None,
+            }),
+            test_config: Some(ProviderTestConfig {
+                enabled: true,
+                timeout_secs: Some(20),
+                degraded_threshold_ms: Some(3000),
+                max_retries: None,
+            }),
+            ..ProviderMeta::default()
+        });
+
+        let usage_provider_kind = provider_kind_from_provider(&provider);
+        let usage_provider_classification = provider_managed_auth_classification(&provider);
+        let usage_provider_is_codex_oauth = usage_provider_classification.is_codex_oauth;
+        let usage_provider_is_github_copilot = usage_provider_classification.is_github_copilot;
+        let usage_provider_uses_managed_account =
+            usage_provider_classification.uses_managed_account;
+        let usage_provider_needs_claude_transform = provider_needs_claude_transform(&provider);
+        let copilot_account_id = provider_github_copilot_managed_account_id(&provider);
+        let models_are_claude_safe =
+            claude_desktop_provider_models_are_profile_safe(&provider.settings_config);
+        let stream_check_timeout_secs = provider
+            .enabled_test_config()
+            .and_then(|config| config.timeout_secs);
+        assert_eq!(
+            provider
+                .usage_script()
+                .and_then(|script| script.template_type.as_deref()),
+            Some("github_copilot")
+        );
+        assert!(Provider::with_id(
+            "without-usage".to_string(),
+            "Without Usage".to_string(),
+            json!({}),
+            None,
+        )
+        .usage_script()
+        .is_none());
+        let usage_provider_is_full_url = provider.is_full_url();
+        assert_eq!(
+            bedrock_env_flag_from_provider_settings(&provider.settings_config),
+            Some("1")
+        );
+
+        let mut codex_provider = Provider::with_id(
+            "codex-oauth".to_string(),
+            "Codex OAuth".to_string(),
+            json!({}),
+            None,
+        );
+        codex_provider.meta = Some(ProviderMeta {
+            provider_type: Some("codex_oauth".to_string()),
+            auth_binding: Some(AuthBinding {
+                source: AuthBindingSource::ManagedAccount,
+                auth_provider: Some("codex_oauth".to_string()),
+                account_id: Some("codex-acct-1".to_string()),
+            }),
+            ..ProviderMeta::default()
+        });
+        let mut claude_auth_provider = Provider::with_id(
+            "claude-auth".to_string(),
+            "Claude Auth".to_string(),
+            json!({}),
+            None,
+        );
+        claude_auth_provider.meta = Some(ProviderMeta {
+            provider_type: Some("claude_auth".to_string()),
+            ..ProviderMeta::default()
+        });
+
+        let spec = proxy_provider_to_core_spec(&provider, &AppType::Claude);
+        let source_spec = provider_spec_from_source(&AppKind::Claude, Some(provider.clone()))
+            .expect("provider spec")
+            .expect("provider");
+        let source_specs =
+            provider_specs_from_source(&AppKind::Claude, vec![provider]).expect("provider specs");
+
+        assert_eq!(spec.kind, ProviderKind::GitHubCopilot);
+        assert_eq!(source_spec.kind, ProviderKind::GitHubCopilot);
+        assert_eq!(source_specs[0].kind, ProviderKind::GitHubCopilot);
+        assert_eq!(usage_provider_kind, Some(ProviderKind::GitHubCopilot));
+        assert!(!usage_provider_is_codex_oauth);
+        assert!(usage_provider_is_github_copilot);
+        assert!(usage_provider_uses_managed_account);
+        assert!(usage_provider_needs_claude_transform);
+        assert_eq!(copilot_account_id.as_deref(), Some("acct-1"));
+        assert!(models_are_claude_safe);
+        assert_eq!(stream_check_timeout_secs, Some(20));
+        assert!(usage_provider_is_full_url);
+        assert!(provider_is_codex_oauth(&codex_provider));
+        let codex_context = provider_managed_account_binding_context(&codex_provider);
+        let codex_binding = codex_context
+            .binding
+            .expect("codex managed account binding");
+        assert_eq!(
+            codex_binding.source,
+            ManagedAccountBindingSource::ManagedAccount
+        );
+        assert_eq!(codex_binding.auth_provider, Some("codex_oauth"));
+        assert_eq!(codex_binding.account_id, Some("codex-acct-1"));
+        assert!(provider_uses_anthropic_rectifiers(
+            &AppType::Claude,
+            &claude_auth_provider
+        ));
+        assert!(!provider_uses_anthropic_rectifiers(
+            &AppType::Codex,
+            &claude_auth_provider
+        ));
+        assert_eq!(spec.account_ref.as_deref(), Some("github_copilot:acct-1"));
+        let serialized = serde_json::to_string(&spec).expect("serialize spec");
+        assert!(!serialized.contains("secret-token"));
+        assert!(!serialized.contains("ANTHROPIC_AUTH_TOKEN"));
+        assert!(!serialized.contains("settingsConfig"));
     }
 }

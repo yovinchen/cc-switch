@@ -12237,6 +12237,19 @@ fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
         !source.contains("fn provider_kind_adapter_projects_inference_helpers()"),
         "proxy_core_adapter should not carry provider kind inference fixture"
     );
+    assert!(
+        projection_source
+            .contains("fn provider_spec_projection_redacts_settings_and_projects_managed_facts()")
+            && projection_source.contains("proxy_provider_to_core_spec(")
+            && projection_source.contains("provider_specs_from_source(")
+            && projection_source.contains("!serialized.contains(\"settingsConfig\")"),
+        "provider_projection tests should own provider spec projection and redaction fixtures"
+    );
+    assert!(
+        !source
+            .contains("fn provider_conversion_uses_inferred_provider_kind_without_settings_leak()"),
+        "proxy_core_adapter should not carry provider conversion/redaction fixture"
+    );
     for marker in [
         "classify_provider_managed_auth",
         "managed_account_id_for_auth_provider",
