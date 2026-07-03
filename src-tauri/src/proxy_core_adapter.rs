@@ -57,9 +57,8 @@ mod tests {
         provider_app_has_current_provider, provider_initial_live_config_managed_marker,
         provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
         provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
-        provider_live_sync_scope_for_app, provider_omo_switch_pair_for_app_category,
-        provider_omo_variant_for_app_category, provider_settings_validation_issue_spec,
-        provider_settings_validation_parts_from_settings,
+        provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
+        provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         provider_switch_dispatch_for_app, provider_switch_requires_takeover_lock,
         provider_switch_should_mark_live_config_managed,
@@ -67,9 +66,9 @@ mod tests {
         sanitize_claude_settings_for_live, should_skip_provider_legacy_common_config_migration,
         CodexProviderLiveWriteIssue, CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction,
         ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
-        ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
-        ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
-        ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+        ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderOmoSwitchPair,
+        ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
+        ProviderTakeoverLiveSyncTarget,
     };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
@@ -3608,26 +3607,6 @@ wire_api = "chat"
         assert_eq!(
             send_policy.streaming_header_timeout,
             Some(std::time::Duration::from_secs(1))
-        );
-    }
-
-    #[test]
-    fn provider_live_sync_scope_uses_all_only_for_additive_apps() {
-        assert_eq!(
-            provider_live_sync_scope_for_app(&AppKind::from(&AppType::OpenCode)),
-            ProviderLiveSyncScope::AllProviders
-        );
-        assert_eq!(
-            provider_live_sync_scope_for_app(&AppKind::from(&AppType::OpenClaw)),
-            ProviderLiveSyncScope::AllProviders
-        );
-        assert_eq!(
-            provider_live_sync_scope_for_app(&AppKind::from(&AppType::Claude)),
-            ProviderLiveSyncScope::CurrentProvider
-        );
-        assert_eq!(
-            provider_live_sync_scope_for_app(&AppKind::from(&AppType::ClaudeDesktop)),
-            ProviderLiveSyncScope::CurrentProvider
         );
     }
 

@@ -9269,6 +9269,11 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
             ),
         "default live import skip fixtures should live in proxy-core ports, not proxy_core_adapter"
     );
+    assert!(
+        !adapter_source.contains("fn provider_live_sync_scope_uses_all_only_for_additive_apps()")
+            && core_ports_source.contains("fn provider_live_sync_scope_uses_additive_app_policy()"),
+        "provider live sync scope fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
 
     let provider_service_source =
         fs::read_to_string(manifest_dir.join("src/services/provider/mod.rs"))
