@@ -530,7 +530,7 @@
 502. channel test 的 requested model/interface 预检、模型可用性判定和探测结果 response 组装已迁入 `proxy-core::{plan_channel_test, ChannelTestContext, ChannelReachabilityResult}`；host handler 只保留 DB/StreamCheck 适配。
 503. 非流式响应体解码后的日志 level 与消息投影已迁入 `proxy-core::ResponseBodyDecodeStatus::log_event`；host `response_processor` 只负责输出 core 返回的事件。
 504. SSE passthrough 事件的 debug 日志消息投影已迁入 `proxy-core::SsePassthroughEvent::log_message`；host 流式透传只保留 usage 收集和 stream transport 编排。
-505. `ProxyCoreResponse`/`ProxyResponseBody` 的 JSON body 序列化与 transport-ready body 规范化已迁入 core；host response adapter 只把 `Empty`/`Bytes`/`Stream` 接到具体 Axum/`ProxyResponse` transport。
+505. `ProxyCoreResponse`/`ProxyResponseBody` 的 JSON body 序列化与 transport-ready body 规范化已迁入 core；host response adapter 只把 core response 接到 Axum transport，上游 `ProxyResponse` transport bridge 由 `proxy::transport::upstream` 拥有。
 506. response usage 缺失/非 JSON body 的诊断日志投影已迁入 `proxy-core::{StreamingResponseUsageRecord, NonStreamingResponseUsageRecord}`；host `response_processor` 只负责输出 core 返回的日志消息并调度 `UsageSink`。
 507. channel test reachability 的外部状态字符串 contract 已迁入 `proxy-core::ChannelReachabilityStatus` 与 `ChannelReachabilityResult::from_input`；host handler 只把本地 `HealthStatus` 适配为 core 状态枚举。
 508. `/proxy/v1/events` 的 SSE `id`/`event`/`data` 字段投影已迁入 `proxy-core::ProxyEventSseSpec`；host handler 只把 neutral spec 接到 Axum `Event` 并保留广播与 keepalive transport。
@@ -539,7 +539,7 @@
 511. Codex Chat 上游错误体归一化后的非 JSON body 诊断文案与 Responses 错误体 neutral response 构造已迁入 `proxy-core::{CodexChatErrorNormalization::non_json_body_log_message,codex_chat_error_proxy_response}`，host warn 输出、上游错误 body read 与 Axum bridge 已收敛到 `proxy::response_adapter::codex_chat_upstream_error_response_to_axum_response`。
 512. channel test 的 `StreamCheckResult` 到 `ChannelReachabilityResult` 适配已迁入 `proxy-core::api::management::channel_reachability_result_from_stream_check_result`；host reachability probe 直接消费 core helper，只负责执行 DB 查询、StreamCheck 探测和输出 core response。
 513. `/proxy/v1/events` 的 `ProxyEventEnvelope` 到 Axum `Event` transport 适配已迁入 `proxy::response_adapter::proxy_event_envelope_to_axum_sse_event`；host handler 只负责订阅事件流和 keepalive 编排。
-514. `ProxyResult` 回填 host `RequestContext` 的 outbound model、selected provider hydration、Claude api_format fallback 与 `ProxyCoreResponse -> hyper_client::ProxyResponse` transport bridge 已收敛到 `proxy::response_adapter::{dispatch_proxy_request_to_proxy_response,dispatch_claude_proxy_request_to_proxy_response,dispatch_codex_proxy_request_to_proxy_response}`；各协议 handler 只消费 adapter 返回的 host `ProxyResponse`/Claude api_format/Codex error response outcome，不再直接消费 `ProxyResult`。
+514. `ProxyResult` 回填 host `RequestContext` 的 outbound model、selected provider hydration、Claude api_format fallback 已收敛到 `proxy::response_adapter::{dispatch_proxy_request_to_proxy_response,dispatch_claude_proxy_request_to_proxy_response,dispatch_codex_proxy_request_to_proxy_response}`；`ProxyCoreResponse -> hyper_client::ProxyResponse` bridge 已迁入 `proxy::transport::upstream::proxy_core_response_to_proxy_response`，各协议 handler 只消费 adapter 返回的 host `ProxyResponse`/Claude api_format/Codex error response outcome，不再直接消费 `ProxyResult`。
 515. Claude Desktop gateway 的宿主 token 读取、core bearer 校验和 `ProxyError` 映射已迁入 `proxy::auth_adapter::validate_claude_desktop_gateway_auth`；handler 只负责传入请求 headers。
 516. forward error 的失败请求 usage record 构造与 `UsageSink` 异步调度已从 `proxy::usage_sink_bridge::record_forward_error_usage` 继续上移到 `proxy/engine/response_pipeline.rs`；协议 handler 的 `ProxyEngine::handle` dispatch、`ProxyCoreError -> ProxyError` 映射与 forward error usage 记录已继续收敛到 `proxy::response_adapter::dispatch_proxy_request`，adapter 不再 re-export response pipeline usage helper。
 517. Claude/Codex 转换响应的非流式 usage 落库调度与流式 `SseUsageCollector` 构造已从 `proxy::usage_sink_bridge` 继续上移到 `proxy_core_adapter`；handler 不再直接拼装 transformed usage record 或调用 `UsageSink`。
@@ -3016,6 +3016,8 @@ ProxyRequest
 更新：上段中提到的 `proxy_core_adapter::provider_claude_transform_streaming_decision` 已过期；Claude transform gate 与 streaming decision 的 provider fact 投影现在由 host-owned `provider_projection` 承接，response adapter 直接导入，adapter 不再保留这组 façade。
 
 更新：上段中提到的 `proxy_core_adapter::provider_claude_transform_response_for_api_format` 与 `proxy_core_adapter::provider_claude_transform_sse_for_api_format` 已过期；Claude response/SSE api_format wrapper 现在由 `proxy::provider::{transform_claude_response_for_api_format,transform_claude_sse_for_api_format}` 承接，response pipeline 直接导入，adapter 不再保留这组 façade 或 Gemini UUID 注入 helper。
+
+更新：上段中提到的 `proxy::response_adapter` 集中承接旧 `hyper_client::ProxyResponse` transport bridge 已过期；`ProxyCoreResponse -> ProxyResponse` 现在由 `proxy::transport::upstream::proxy_core_response_to_proxy_response` 拥有，response adapter 只在 `ProxyResult` 回填 `RequestContext` 后调用上游 transport bridge。
 
 更新：response usage facts、forward-error usage、passthrough/transformed streaming/non-streaming usage record 的综合行为 fixture 已迁入 `proxy/engine/response_pipeline.rs` owning tests，`proxy_core_adapter` 不再承载 `response_usage_helpers_project_provider_and_app_facts` 这类 response pipeline fixture；边界测试同步固定该 fixture 不得回流。
 

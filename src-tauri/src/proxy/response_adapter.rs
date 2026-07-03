@@ -19,6 +19,7 @@ use super::{
         response_build_error_to_proxy_error,
     },
     transport::upstream::hyper_client::ProxyResponse,
+    transport::upstream::proxy_core_response_to_proxy_response,
 };
 use crate::app_config::AppType;
 use crate::provider::Provider;
@@ -259,29 +260,6 @@ pub(crate) async fn collect_json_or_null_proxy_request(
         body: parsed.body,
         is_stream: parsed.is_stream,
     })
-}
-
-pub(crate) fn proxy_core_response_to_proxy_response(
-    response: ProxyCoreResponse,
-) -> Result<ProxyResponse, ProxyError> {
-    let response = response
-        .into_transport_response()
-        .map_err(ProxyError::Internal)?;
-    let ProxyTransportResponse {
-        status,
-        headers,
-        body,
-    } = response;
-
-    let response = match body {
-        ProxyTransportResponseBody::Empty => ProxyResponse::buffered(status, headers, Bytes::new()),
-        ProxyTransportResponseBody::Bytes(body) => ProxyResponse::buffered(status, headers, body),
-        ProxyTransportResponseBody::Stream(stream) => {
-            ProxyResponse::streamed(status, headers, stream)
-        }
-    };
-
-    Ok(response)
 }
 
 pub(crate) fn proxy_health_check_to_axum_json_response() -> (StatusCode, Json<HealthCheckResponse>)
@@ -1386,23 +1364,6 @@ mod tests {
     use http::StatusCode;
     use serde_json::json;
     use std::convert::Infallible;
-
-    #[tokio::test]
-    async fn proxy_core_response_bridge_preserves_stream_body() {
-        let response = ProxyCoreResponse::with_body(
-            StatusCode::OK,
-            http::HeaderMap::new(),
-            ProxyResponseBody::stream(futures::stream::once(async {
-                Ok(Bytes::from_static(b"chunk"))
-            })),
-        );
-
-        let proxy_response = proxy_core_response_to_proxy_response(response).expect("bridge");
-
-        assert_eq!(proxy_response.status(), StatusCode::OK);
-        let body = proxy_response.bytes().await.expect("body");
-        assert_eq!(body, Bytes::from_static(b"chunk"));
-    }
 
     #[tokio::test]
     async fn proxy_core_response_to_axum_response_preserves_buffered_body_and_headers() {

@@ -12830,6 +12830,37 @@ fn production_proxy_hyper_client_legacy_module_removed_after_transport_split() {
 }
 
 #[test]
+fn upstream_transport_owns_proxy_core_response_bridge() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let upstream_transport =
+        fs::read_to_string(manifest_dir.join("src/proxy/transport/upstream/mod.rs"))
+            .expect("read transport/upstream/mod.rs");
+    let response_adapter = fs::read_to_string(manifest_dir.join("src/proxy/response_adapter.rs"))
+        .expect("read response_adapter.rs");
+
+    assert!(
+        upstream_transport.contains("pub(crate) fn proxy_core_response_to_proxy_response(")
+            && upstream_transport.contains("ProxyTransportResponseBody::Stream(stream)")
+            && upstream_transport.contains("ProxyResponse::streamed(status, headers, stream)"),
+        "ProxyCoreResponse -> host ProxyResponse bridge should live with upstream transport"
+    );
+    assert!(
+        upstream_transport.contains("async fn proxy_core_response_bridge_preserves_stream_body()")
+            && !response_adapter.contains(
+                "async fn proxy_core_response_bridge_preserves_stream_body()"
+            ),
+        "ProxyResponse stream-body bridge fixture should live beside upstream transport"
+    );
+    assert!(
+        !response_adapter.contains("pub(crate) fn proxy_core_response_to_proxy_response(")
+            && response_adapter.contains(
+                "transport::upstream::proxy_core_response_to_proxy_response,"
+            ),
+        "response_adapter should call the upstream transport bridge instead of owning it"
+    );
+}
+
+#[test]
 fn response_pipeline_uses_core_sse_header_decision() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let hyper_client =

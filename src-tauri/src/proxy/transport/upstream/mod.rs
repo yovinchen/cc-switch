@@ -6,8 +6,33 @@ use crate::proxy::error::ProxyError;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy_core::api::transport::{
     invalid_upstream_url_error_message, is_socks_proxy_url, resolve_upstream_send_policy,
+    ProxyCoreResponse, ProxyTransportResponse, ProxyTransportResponseBody,
     UpstreamSendPolicyInput, UpstreamTransportKind,
 };
+use bytes::Bytes;
+
+pub(crate) fn proxy_core_response_to_proxy_response(
+    response: ProxyCoreResponse,
+) -> Result<ProxyResponse, ProxyError> {
+    let response = response
+        .into_transport_response()
+        .map_err(ProxyError::Internal)?;
+    let ProxyTransportResponse {
+        status,
+        headers,
+        body,
+    } = response;
+
+    let response = match body {
+        ProxyTransportResponseBody::Empty => ProxyResponse::buffered(status, headers, Bytes::new()),
+        ProxyTransportResponseBody::Bytes(body) => ProxyResponse::buffered(status, headers, body),
+        ProxyTransportResponseBody::Stream(stream) => {
+            ProxyResponse::streamed(status, headers, stream)
+        }
+    };
+
+    Ok(response)
+}
 
 pub(crate) async fn send_request(
     request: ForwarderUpstreamTransportRequest,
@@ -54,4 +79,28 @@ pub(crate) async fn send_request(
         upstream_proxy_url.as_deref(),
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::proxy_core::api::transport::ProxyResponseBody;
+    use http::StatusCode;
+
+    #[tokio::test]
+    async fn proxy_core_response_bridge_preserves_stream_body() {
+        let response = ProxyCoreResponse::with_body(
+            StatusCode::OK,
+            http::HeaderMap::new(),
+            ProxyResponseBody::stream(futures::stream::once(async {
+                Ok(Bytes::from_static(b"chunk"))
+            })),
+        );
+
+        let proxy_response = proxy_core_response_to_proxy_response(response).expect("bridge");
+
+        assert_eq!(proxy_response.status(), StatusCode::OK);
+        let body = proxy_response.bytes().await.expect("body");
+        assert_eq!(body, Bytes::from_static(b"chunk"));
+    }
 }
