@@ -21583,6 +21583,9 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
     let upstream_source =
         fs::read_to_string(manifest_dir.join("src/proxy/transport/upstream/mod.rs"))
             .expect("read transport/upstream/mod.rs");
+    let core_request_transport_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_transport.rs"))
+            .expect("read request_transport.rs");
     let reqwest_source =
         fs::read_to_string(manifest_dir.join("src/proxy/transport/upstream/reqwest_client.rs"))
             .expect("read transport/upstream/reqwest_client.rs");
@@ -21647,6 +21650,21 @@ fn production_forwarder_transport_source_delegates_to_upstream_transport_module(
             && upstream_source.contains("reqwest_client::send_request(")
             && upstream_source.contains("hyper_client::send_request("),
         "transport/upstream/mod.rs must own upstream transport policy dispatch"
+    );
+    assert!(
+        core_request_transport_source.contains("fn sse_accept_header_marks_request_as_streaming()")
+            && core_request_transport_source
+                .contains("fn gemini_sse_endpoint_marks_request_as_streaming()")
+            && core_request_transport_source
+                .contains("fn socks_proxy_detection_requires_socks5_prefix()")
+            && core_request_transport_source
+                .contains("fn streaming_reqwest_policy_uses_long_request_timeout_and_header_timeout()"),
+        "proxy-core request_transport tests should own upstream request/send transport policy fixtures"
+    );
+    assert!(
+        !adapter_source
+            .contains("fn upstream_transport_adapter_projects_request_and_send_policy()"),
+        "proxy_core_adapter should not carry upstream request/send transport policy fixture"
     );
     assert!(
         upstream_source.contains("use crate::proxy_core::api::transport::{")

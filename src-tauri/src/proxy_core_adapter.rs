@@ -17,8 +17,6 @@ use crate::proxy::host::cc_switch::proxy_runtime::{
 #[cfg(test)]
 use crate::proxy::provider::claude_provider_api_format;
 #[cfg(test)]
-use http::HeaderMap;
-#[cfg(test)]
 use serde_json::Value;
 
 #[cfg(test)]
@@ -113,9 +111,8 @@ mod tests {
     use crate::proxy_core::api::transport::resolve_response_runtime_policy;
     use crate::proxy_core::api::transport::{
         build_claude_auth_headers, build_codex_bearer_auth_headers, build_copilot_auth_headers,
-        build_gemini_auth_headers, is_socks_proxy_url, resolve_upstream_send_policy,
-        ClaudeAuthHeaderKind, CopilotAuthHeadersInput, ForwardFailureKind, UpstreamSendPolicyInput,
-        UpstreamTransportKind,
+        build_gemini_auth_headers, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
+        ForwardFailureKind,
     };
     use bytes::Bytes;
     use indexmap::IndexMap;
@@ -1901,48 +1898,6 @@ wire_api = "chat"
         assert_eq!(
             ManagementAuthError::MissingBearerToken.message(),
             "Missing management bearer token"
-        );
-    }
-
-    #[test]
-    fn upstream_transport_adapter_projects_request_and_send_policy() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            http::header::ACCEPT,
-            http::HeaderValue::from_static("text/event-stream"),
-        );
-
-        let request_policy =
-            crate::proxy_core::api::transport::resolve_upstream_request_transport_policy(
-                false,
-                false,
-                "/v1/responses",
-                &json!({"model": "gpt-5"}),
-                &headers,
-            );
-        assert!(request_policy.is_streaming_request);
-        assert!(request_policy.force_identity_encoding);
-        assert!(
-            crate::proxy_core::api::transport::is_streaming_upstream_request(
-                "/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse",
-                &json!({"model": "gemini-2.5-pro"}),
-                &HeaderMap::new()
-            )
-        );
-        assert!(is_socks_proxy_url(Some("socks5://127.0.0.1:1080")));
-
-        let send_policy = resolve_upstream_send_policy(UpstreamSendPolicyInput {
-            is_socks_proxy: true,
-            preserve_exact_header_case: true,
-            request_is_streaming: true,
-            non_streaming_timeout: std::time::Duration::from_secs(5),
-            streaming_first_byte_timeout: std::time::Duration::from_secs(1),
-        });
-
-        assert_eq!(send_policy.transport, UpstreamTransportKind::PooledReqwest);
-        assert_eq!(
-            send_policy.streaming_header_timeout,
-            Some(std::time::Duration::from_secs(1))
         );
     }
 }
