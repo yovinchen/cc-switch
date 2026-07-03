@@ -7960,6 +7960,13 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
                 .contains("fn takeover_placeholder_mutations_update_app_specific_live_config()"),
         "live takeover placeholder mutation fixtures should live in proxy-core ports, not proxy_core_adapter"
     );
+    assert!(
+        !source.contains("claude_model_normalization_adapter_backfills_default_model_keys")
+            && core_ports_source.contains(
+                "fn claude_model_normalization_backfills_defaults_and_removes_legacy_key()"
+            ),
+        "Claude model normalization fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
 }
 
 #[test]
@@ -8319,7 +8326,7 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
     let slice = function_slice(
         &source,
         "fn provider_credentials_adapter_extracts_app_specific_values",
-        "    #[test]\n    fn claude_model_normalization_adapter_backfills_default_model_keys",
+        "    #[test]\n    fn default_live_import_skip_policy_distinguishes_manual_and_startup",
     );
     assert!(
         slice.contains("provider_codex_credential_values_from_parts(CodexCredentialParts")
