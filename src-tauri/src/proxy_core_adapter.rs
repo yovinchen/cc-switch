@@ -11,21 +11,17 @@ use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
     forward_attempts_from_plan, required_forward_attempts_from_plan,
 };
 use crate::proxy::host::cc_switch::proxy_runtime::{
-    app_type_from_proxy_core_app, app_type_option_from_proxy_core_app,
-    forward_current_provider_id_from_source, forward_runtime_request_from_proxy_request,
-    forwarder_runtime_config_from_sources, forwarder_runtime_options_from_app_proxy_config,
-    response_runtime_policy_from_app_proxy_config,
+    forward_current_provider_id_from_source, forwarder_runtime_config_from_sources,
+    forwarder_runtime_options_from_app_proxy_config, response_runtime_policy_from_app_proxy_config,
 };
 #[cfg(test)]
 use crate::proxy::provider::claude_provider_api_format;
 #[cfg(test)]
 use crate::proxy::route_attempt::ForwardAttempt;
 #[cfg(test)]
-use http::{HeaderMap, Method};
+use http::HeaderMap;
 #[cfg(test)]
 use serde_json::Value;
-#[cfg(test)]
-use uuid::Uuid;
 
 #[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_request_source::forwarder_rectifier_error_message;
@@ -145,7 +141,6 @@ mod tests {
         ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput, RoutePlan,
         RouteResolveChannelInput, RouteResolveModelInput, RouteSelection,
     };
-    use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::{
         normalize_anthropic_tool_thinking_history, normalize_claude_anthropic_messages,
         normalize_deepseek_thinking_disabled_strip_effort,
@@ -163,9 +158,9 @@ mod tests {
         build_upstream_request_headers, forward_upstream_url_plan, is_socks_proxy_url,
         resolve_upstream_send_policy, serialize_upstream_request_body, ClaudeAuthHeaderKind,
         CopilotAuthHeadersInput, ForwardFailureKind, ForwardUpstreamUrlPlanInput,
-        ForwarderMediaPreventionFacts, ProxyBody, ProxyCoreResponse, ProxyRequest,
-        ProxyResponseBody, ProxyTransportResponseBody, UpstreamRequestHeadersInput,
-        UpstreamSendPolicyInput, UpstreamSseAggregationKind, UpstreamTransportKind,
+        ForwarderMediaPreventionFacts, ProxyCoreResponse, ProxyResponseBody,
+        ProxyTransportResponseBody, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
+        UpstreamSseAggregationKind, UpstreamTransportKind,
     };
     use crate::proxy_core::api::usage::{
         usage_selected_provider_missing_log_message, TokenUsage, TransformedResponseUsageFormat,
@@ -174,75 +169,6 @@ mod tests {
     use bytes::Bytes;
     use indexmap::IndexMap;
     use std::sync::Arc;
-
-    #[test]
-    fn app_type_conversion_preserves_known_and_custom_names() {
-        assert_eq!(AppKind::from(&AppType::Claude), AppKind::Claude);
-        assert_eq!(
-            AppKind::from(&AppType::ClaudeDesktop),
-            AppKind::ClaudeDesktop
-        );
-        assert_eq!(AppKind::from(&AppType::Codex), AppKind::Codex);
-        assert_eq!(
-            AppKind::from(&AppType::OpenClaw),
-            AppKind::Custom("openclaw".to_string())
-        );
-        assert_eq!(
-            app_type_from_proxy_core_app(&AppKind::Claude).expect("claude app"),
-            AppType::Claude
-        );
-        assert_eq!(
-            app_type_option_from_proxy_core_app(&AppKind::Custom("openclaw".to_string())),
-            Some(AppType::OpenClaw)
-        );
-        assert!(matches!(
-            app_type_from_proxy_core_app(&AppKind::Custom("unknown-app".to_string())),
-            Err(ProxyCoreError::Config(message))
-                if message.starts_with("unsupported app kind:")
-                    && message.contains("unknown-app")
-        ));
-        assert_eq!(
-            crate::proxy_core::api::domain::unsupported_app_kind_error_message(
-                "invalid app: openclaw"
-            ),
-            "unsupported app kind: invalid app: openclaw"
-        );
-
-        let forward_request = forward_runtime_request_from_proxy_request(ProxyRequest::new(
-            AppKind::Claude,
-            Method::POST,
-            "/v1/messages",
-            InterfaceKind::AnthropicMessages,
-            ProxyBody::Bytes(Bytes::from_static(br#"{"ok":true}"#)),
-        ))
-        .expect("forward request");
-        assert_eq!(forward_request.app_type, AppType::Claude);
-        assert_eq!(forward_request.method, Method::POST);
-        assert_eq!(forward_request.endpoint, "/v1/messages");
-        assert_eq!(forward_request.body, json!({"ok": true}));
-        assert_eq!(
-            forward_request.session_result.source,
-            SessionIdSource::Generated
-        );
-        assert!(!forward_request.session_result.client_provided);
-        Uuid::parse_str(&forward_request.session_result.session_id)
-            .expect("generated forward session id should be a UUID");
-
-        let invalid_request = match forward_runtime_request_from_proxy_request(ProxyRequest::new(
-            AppKind::Claude,
-            Method::POST,
-            "/v1/messages",
-            InterfaceKind::AnthropicMessages,
-            ProxyBody::Bytes(Bytes::from_static(b"{bad-json")),
-        )) {
-            Ok(_) => panic!("invalid JSON body should fail"),
-            Err(error) => error,
-        };
-        assert!(matches!(
-            invalid_request,
-            ProxyCoreError::InvalidRequest(message) if message.contains("invalid JSON body")
-        ));
-    }
 
     #[test]
     fn response_usage_helpers_project_provider_and_app_facts() {

@@ -18351,6 +18351,11 @@ fn proxy_core_adapter_delegates_proxy_runtime_to_host_module() {
         "host session UUID fixture should live with proxy_runtime, not proxy_core_adapter"
     );
     assert!(
+        runtime_source.contains("fn app_type_conversion_preserves_known_and_custom_names()")
+            && !adapter_source.contains("fn app_type_conversion_preserves_known_and_custom_names()"),
+        "AppKind/AppType and ProxyRequest host-forward conversion fixture should live with proxy_runtime, not proxy_core_adapter"
+    );
+    assert!(
         !adapter_source.contains("forward_proxy_request_with_cc_switch_runtime")
             && !adapter_source.contains("async fn forward_proxy_request_with_host_runtime")
             && !adapter_source.contains("async fn forward_with_preplanned_host_runtime")

@@ -411,8 +411,80 @@ pub(crate) fn extract_proxy_session_id(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core::api::routing::InterfaceKind;
     use crate::proxy_core::api::session::SessionIdSource;
+    use crate::proxy_core::api::transport::ProxyBody;
+    use bytes::Bytes;
     use serde_json::json;
+
+    #[test]
+    fn app_type_conversion_preserves_known_and_custom_names() {
+        assert_eq!(AppKind::from(&AppType::Claude), AppKind::Claude);
+        assert_eq!(
+            AppKind::from(&AppType::ClaudeDesktop),
+            AppKind::ClaudeDesktop
+        );
+        assert_eq!(AppKind::from(&AppType::Codex), AppKind::Codex);
+        assert_eq!(
+            AppKind::from(&AppType::OpenClaw),
+            AppKind::Custom("openclaw".to_string())
+        );
+        assert_eq!(
+            app_type_from_proxy_core_app(&AppKind::Claude).expect("claude app"),
+            AppType::Claude
+        );
+        assert_eq!(
+            app_type_option_from_proxy_core_app(&AppKind::Custom("openclaw".to_string())),
+            Some(AppType::OpenClaw)
+        );
+        assert!(matches!(
+            app_type_from_proxy_core_app(&AppKind::Custom("unknown-app".to_string())),
+            Err(ProxyCoreError::Config(message))
+                if message.starts_with("unsupported app kind:")
+                    && message.contains("unknown-app")
+        ));
+        assert_eq!(
+            crate::proxy_core::api::domain::unsupported_app_kind_error_message(
+                "invalid app: openclaw"
+            ),
+            "unsupported app kind: invalid app: openclaw"
+        );
+
+        let forward_request = forward_runtime_request_from_proxy_request(ProxyRequest::new(
+            AppKind::Claude,
+            Method::POST,
+            "/v1/messages",
+            InterfaceKind::AnthropicMessages,
+            ProxyBody::Bytes(Bytes::from_static(br#"{"ok":true}"#)),
+        ))
+        .expect("forward request");
+        assert_eq!(forward_request.app_type, AppType::Claude);
+        assert_eq!(forward_request.method, Method::POST);
+        assert_eq!(forward_request.endpoint, "/v1/messages");
+        assert_eq!(forward_request.body, json!({"ok": true}));
+        assert_eq!(
+            forward_request.session_result.source,
+            SessionIdSource::Generated
+        );
+        assert!(!forward_request.session_result.client_provided);
+        Uuid::parse_str(&forward_request.session_result.session_id)
+            .expect("generated forward session id should be a UUID");
+
+        let invalid_request = match forward_runtime_request_from_proxy_request(ProxyRequest::new(
+            AppKind::Claude,
+            Method::POST,
+            "/v1/messages",
+            InterfaceKind::AnthropicMessages,
+            ProxyBody::Bytes(Bytes::from_static(b"{bad-json")),
+        )) {
+            Ok(_) => panic!("invalid JSON body should fail"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            invalid_request,
+            ProxyCoreError::InvalidRequest(message) if message.contains("invalid JSON body")
+        ));
+    }
 
     #[test]
     fn extract_proxy_session_id_generates_uuid_when_core_needs_new_session_id() {
