@@ -145,7 +145,29 @@ impl ChannelHealthStore for CcSwitchChannelHealthStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::Provider;
+    use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
     use crate::proxy_core::api::domain::AppKind;
+    use http::StatusCode;
+    use serde_json::json;
+
+    fn save_claude_provider(db: &Database) {
+        let provider = Provider::with_id(
+            "anthropic-main".to_string(),
+            "Anthropic Main".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://relay-a.example.com/v1/",
+                    "ANTHROPIC_MODEL": "claude-sonnet-4"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider)
+            .expect("save provider");
+        db.set_current_provider("claude", "anthropic-main")
+            .expect("set current provider");
+    }
 
     #[test]
     fn channel_health_store_projects_attempt_db_update() {
@@ -191,5 +213,84 @@ mod tests {
 
         assert_eq!(override_update.failure_threshold, 7);
         assert_eq!(override_update.response_time_ms, None);
+    }
+
+    #[tokio::test]
+    async fn health_store_records_channel_attempts_in_database() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        save_claude_provider(&db);
+        db.materialize_legacy_proxy_channels("claude")
+            .expect("materialize channels");
+        let channel_id = db
+            .list_proxy_channels_for_app("claude")
+            .expect("list channels")
+            .first()
+            .expect("channel")
+            .id
+            .clone();
+        let store = CcSwitchChannelHealthStore::new(
+            db.clone(),
+            Arc::new(provider_router_from_database(db.clone())),
+        );
+
+        store
+            .record_attempt(ChannelAttemptResult {
+                channel_id: channel_id.clone(),
+                success: false,
+                status_code: Some(StatusCode::TOO_MANY_REQUESTS.as_u16()),
+                latency_ms: Some(123),
+                failure_threshold: None,
+                error_code: Some("rate_limited".to_string()),
+            })
+            .await
+            .expect("record attempt");
+
+        let health = db
+            .get_proxy_channel_health(&channel_id)
+            .expect("read channel health");
+        assert_eq!(health.status, "degraded");
+        assert_eq!(health.consecutive_failures, 1);
+        assert_eq!(health.response_time_ms, Some(123));
+    }
+
+    #[tokio::test]
+    async fn health_store_resets_channel_health_through_router() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        save_claude_provider(&db);
+        db.materialize_legacy_proxy_channels("claude")
+            .expect("materialize channels");
+        let channel_id = db
+            .list_proxy_channels_for_app("claude")
+            .expect("list channels")
+            .first()
+            .expect("channel")
+            .id
+            .clone();
+        db.update_proxy_channel_health_with_threshold(
+            &channel_id,
+            false,
+            Some("rate_limited".to_string()),
+            1,
+            Some(99),
+        )
+        .expect("mark unhealthy");
+        let store = CcSwitchChannelHealthStore::new(
+            db.clone(),
+            Arc::new(provider_router_from_database(db.clone())),
+        );
+
+        let reset = store
+            .reset_channel(ChannelHealthLookupInput {
+                channel_id: &channel_id,
+            })
+            .await
+            .expect("reset channel health");
+
+        assert_eq!(reset.channel_id, channel_id);
+        assert_eq!(reset.app, AppKind::Claude);
+        let health = db
+            .get_proxy_channel_health(&reset.channel_id)
+            .expect("read channel health");
+        assert_eq!(health.status, "unknown");
     }
 }

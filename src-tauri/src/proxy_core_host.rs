@@ -26,9 +26,7 @@ use crate::proxy_core::api::errors::ProxyCoreError;
 #[cfg(test)]
 use crate::proxy_core::api::ports::{AuthProvider, ProxyServices};
 #[cfg(test)]
-use crate::proxy_core::api::ports::{
-    ChannelAttemptResult, ChannelHealthLookupInput, ProxyConfig, ProxyRuntimeStatus,
-};
+use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};
 #[cfg(test)]
 use crate::proxy_core::api::routing::{
     ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteRequest,
@@ -52,7 +50,7 @@ mod tests {
     use crate::proxy_core::api::management::{
         ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, RouteResolveRequest,
     };
-    use http::{Method, StatusCode};
+    use http::Method;
     use serde_json::json;
     use std::ffi::OsString;
 
@@ -460,81 +458,6 @@ mod tests {
         );
         assert_eq!(plan.attempts.len(), 2);
         assert_eq!(plan.selections.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn health_store_records_channel_attempts_in_database() {
-        let db = Arc::new(Database::memory().expect("memory db"));
-        save_claude_provider(&db);
-        db.materialize_legacy_proxy_channels("claude")
-            .expect("materialize channels");
-        let channel_id = db
-            .list_proxy_channels_for_app("claude")
-            .expect("list channels")
-            .first()
-            .expect("channel")
-            .id
-            .clone();
-        let services = CcSwitchProxyServices::new(db.clone());
-
-        services
-            .health_store()
-            .record_attempt(ChannelAttemptResult {
-                channel_id: channel_id.clone(),
-                success: false,
-                status_code: Some(StatusCode::TOO_MANY_REQUESTS.as_u16()),
-                latency_ms: Some(123),
-                failure_threshold: None,
-                error_code: Some("rate_limited".to_string()),
-            })
-            .await
-            .expect("record attempt");
-
-        let health = db
-            .get_proxy_channel_health(&channel_id)
-            .expect("read channel health");
-        assert_eq!(health.status, "degraded");
-        assert_eq!(health.consecutive_failures, 1);
-        assert_eq!(health.response_time_ms, Some(123));
-    }
-
-    #[tokio::test]
-    async fn health_store_resets_channel_health_through_router() {
-        let db = Arc::new(Database::memory().expect("memory db"));
-        save_claude_provider(&db);
-        db.materialize_legacy_proxy_channels("claude")
-            .expect("materialize channels");
-        let channel_id = db
-            .list_proxy_channels_for_app("claude")
-            .expect("list channels")
-            .first()
-            .expect("channel")
-            .id
-            .clone();
-        db.update_proxy_channel_health_with_threshold(
-            &channel_id,
-            false,
-            Some("rate_limited".to_string()),
-            1,
-            Some(99),
-        )
-        .expect("mark unhealthy");
-        let services = CcSwitchProxyServices::new(db.clone());
-
-        let reset = services
-            .health_store()
-            .reset_channel(ChannelHealthLookupInput {
-                channel_id: &channel_id,
-            })
-            .await
-            .expect("reset channel health");
-
-        assert_eq!(reset.channel_id, channel_id);
-        assert_eq!(reset.app, AppKind::Claude);
-        let health = db
-            .get_proxy_channel_health(&reset.channel_id)
-            .expect("read channel health");
-        assert_eq!(health.status, "unknown");
     }
 
     #[tokio::test]

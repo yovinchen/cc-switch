@@ -23866,6 +23866,8 @@ fn proxy_core_adapter_delegates_channel_health_store_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/channel_health_store.rs");
     let source = fs::read_to_string(&source_path).expect("read channel_health_store.rs");
     let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
@@ -23883,6 +23885,13 @@ fn proxy_core_adapter_delegates_channel_health_store_to_host_module() {
             && source.contains("reset_channel_health_with_router_source")
             && source.contains("channel_breaker_stats_with_router_source"),
         "CC Switch channel health store should live in host/cc_switch/channel_health_store.rs"
+    );
+    assert!(
+        source.contains("fn health_store_records_channel_attempts_in_database()")
+            && source.contains("fn health_store_resets_channel_health_through_router()")
+            && !host_harness_source.contains("fn health_store_records_channel_attempts_in_database")
+            && !host_harness_source.contains("fn health_store_resets_channel_health_through_router"),
+        "channel health DB/router fixtures should live beside channel_health_store, not proxy_core_host"
     );
     assert!(
         health_store_trait.contains("fn reset_channel<'a>(")
@@ -25442,7 +25451,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
             && host_source.contains(
             "use crate::proxy_core::api::management::{\n        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, RouteResolveRequest,\n    };"
         ) && host_source.contains(
-            "use crate::proxy_core::api::ports::{\n    ChannelAttemptResult, ChannelHealthLookupInput, ProxyConfig, ProxyRuntimeStatus,\n};"
+            "use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};"
         ) && host_source.contains(
             "use crate::proxy_core::api::ports::{AuthProvider, ProxyServices};"
         ) && host_source.contains(

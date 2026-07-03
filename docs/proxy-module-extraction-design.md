@@ -2060,6 +2060,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1434. model catalog provider/client catalog fixture 已拆回 owner：provider settings 到模型目录、Codex 生成 catalog 文件读取、用户自定义 catalog stale guard 和非 Codex 空 catalog 默认值覆盖已迁入 `proxy/host/cc_switch/model_catalog_provider.rs`；raw catalog 字段提取继续由 `proxy-core::model_fetch` owning tests 覆盖，`proxy_core_host` 不再承载这组模型目录 fixture。
 1435. host forward bridge fixture 已拆回 owner：buffered/streamed `ProxyResponse` 到 core response 的桥接、`ForwardResult` metadata/outbound model/selected channel 投影覆盖已迁入 `proxy/host/cc_switch/forward_pipeline.rs`；`proxy_core_host` 不再承载这组 forward bridge fixture。
 1436. event sink bridge fixture 已拆回 owner：`ProxyCoreEvent` 经 `CcSwitchEventSink` 投递到 `ProxyEventBus` envelope 的覆盖已迁入 `proxy/host/cc_switch/event_sink.rs`；`proxy_core_host` 不再承载这组事件桥接 fixture。
+1437. channel health store DB/router fixture 已拆回 owner：channel attempt 落库、健康状态降级、router reset 后健康状态复位的覆盖已迁入 `proxy/host/cc_switch/channel_health_store.rs`；`proxy_core_host` 不再承载这组健康存储 fixture。
 
 ## 背景
 
