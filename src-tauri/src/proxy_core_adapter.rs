@@ -93,11 +93,6 @@ mod tests {
         channel_route_records_from_sources, channel_spec_from_source,
         proxy_channel_record_to_core_spec,
     };
-    use crate::proxy::host::cc_switch::managed_account_runtime_source::{
-        copilot_api_endpoint_from_app_handle, copilot_live_models_from_app_handle,
-        copilot_model_vendor_from_app_handle, default_managed_account_runtime_source,
-        resolve_managed_account_auth_from_runtime_source,
-    };
     use crate::proxy::host::cc_switch::provider_projection::{
         provider_claude_auth_key, provider_claude_base_url, provider_claude_kind,
         provider_claude_transform_streaming_decision, provider_gemini_kind,
@@ -179,88 +174,6 @@ mod tests {
     use bytes::Bytes;
     use indexmap::IndexMap;
     use std::sync::Arc;
-
-    #[tokio::test]
-    async fn non_managed_auth_passes_through_without_app_handle() {
-        let auth = ProviderAuthInfo::new("sk-test".to_string(), ProviderAuthStrategy::Bearer);
-        let provider = Provider::with_id(
-            "provider-a".to_string(),
-            "Provider A".to_string(),
-            serde_json::json!({}),
-            None,
-        );
-
-        let runtime_source = default_managed_account_runtime_source();
-        let resolved = resolve_managed_account_auth_from_runtime_source(
-            runtime_source.as_ref(),
-            &provider,
-            auth.clone(),
-        )
-        .await
-        .expect("non managed auth");
-
-        assert_eq!(resolved.auth, auth);
-        assert_eq!(resolved.codex_oauth_account_id, None);
-        assert!(!resolved.should_send_codex_oauth_session_headers);
-    }
-
-    #[tokio::test]
-    async fn managed_auth_requires_app_handle() {
-        let provider = Provider::with_id(
-            "provider-a".to_string(),
-            "Provider A".to_string(),
-            serde_json::json!({}),
-            None,
-        );
-
-        let runtime_source = default_managed_account_runtime_source();
-        let copilot = resolve_managed_account_auth_from_runtime_source(
-            runtime_source.as_ref(),
-            &provider,
-            ProviderAuthInfo::new(
-                "PROXY_MANAGED".to_string(),
-                ProviderAuthStrategy::GitHubCopilot,
-            ),
-        )
-        .await
-        .expect_err("copilot app handle error");
-        assert!(matches!(
-            copilot,
-            ProxyError::AuthError(message)
-                if message == "GitHub Copilot 认证不可用（无 AppHandle）"
-        ));
-
-        let codex = resolve_managed_account_auth_from_runtime_source(
-            runtime_source.as_ref(),
-            &provider,
-            ProviderAuthInfo::new(
-                "PROXY_MANAGED".to_string(),
-                ProviderAuthStrategy::CodexOAuth,
-            ),
-        )
-        .await
-        .expect_err("codex app handle error");
-        assert!(matches!(
-            codex,
-            ProxyError::AuthError(message)
-                if message == "Codex OAuth 认证不可用（无 AppHandle）"
-        ));
-    }
-
-    #[tokio::test]
-    async fn copilot_runtime_helpers_skip_without_app_handle() {
-        assert_eq!(copilot_api_endpoint_from_app_handle(None, None).await, None);
-        assert_eq!(
-            copilot_live_models_from_app_handle(None, None)
-                .await
-                .expect("skip"),
-            None
-        );
-        assert_eq!(
-            copilot_model_vendor_from_app_handle(None, None, "gpt-5").await,
-            None
-        );
-    }
 
     #[test]
     fn app_type_conversion_preserves_known_and_custom_names() {

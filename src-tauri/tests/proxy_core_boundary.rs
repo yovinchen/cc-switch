@@ -18705,7 +18705,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         );
     }
     assert!(
-        adapter_source.contains(
+        !adapter_source.contains(
             "use crate::proxy::host::cc_switch::managed_account_runtime_source::{"
         ) && !adapter_source.contains(
             "pub(crate) use crate::proxy::host::cc_switch::managed_account_runtime_source::{"
@@ -18716,18 +18716,31 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && !adapter_source.contains("fn copilot_refresh_success_from_app_handle(")
             && !adapter_source.contains("fn copilot_token_from_app_handle(")
             && !adapter_source.contains("fn codex_oauth_token_from_app_handle("),
-        "proxy_core_adapter should only use, not re-export, test-implement, or own, the managed-account Tauri runtime source"
+        "proxy_core_adapter should not use, re-export, test-implement, or own the managed-account Tauri runtime source"
     );
     assert!(
         host_source.contains("pub(crate) struct StaticCopilotModelsSource")
             && host_source.contains("pub(crate) struct StaticManagedAuthResolutionSource")
             && host_source.contains("pub(crate) fn managed_account_test_provider_with_binding")
+            && host_source.contains("async fn non_managed_auth_passes_through_without_app_handle")
+            && host_source.contains("async fn managed_auth_requires_app_handle")
+            && host_source.contains("async fn copilot_runtime_helpers_skip_without_app_handle")
             && host_source.contains("async fn runtime_source_resolves_provider_account_bindings")
             && host_source.contains("async fn runtime_source_gates_copilot_live_model_by_adapter")
             && host_source.contains("async fn runtime_source_applies_copilot_dynamic_base_url")
             && host_source.contains("async fn runtime_source_gates_claude_api_format_by_adapter"),
         "managed-account runtime test fixtures and behavior tests should live with the host runtime source owning module"
     );
+    for marker in [
+        "async fn non_managed_auth_passes_through_without_app_handle",
+        "async fn managed_auth_requires_app_handle",
+        "async fn copilot_runtime_helpers_skip_without_app_handle",
+    ] {
+        assert!(
+            !adapter_source.contains(marker),
+            "proxy_core_adapter should not own managed-account runtime fixture `{marker}`"
+        );
+    }
 
     let forbidden_markers = ["crate::proxy::managed_account_auth"];
     let mut violations = Vec::new();
