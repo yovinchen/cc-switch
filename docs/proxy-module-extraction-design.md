@@ -2018,6 +2018,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1423. CC Switch Copilot token helper 已与 Codex OAuth 对齐，从裸 token 返回值收敛为 `ManagedAccountTokenRefreshSuccessInput`：`copilot_refresh_success_from_app_handle` 仍负责 Tauri `CopilotAuthState` token 获取，但返回值直接携带 core token refresh 成功输入，runtime source 调用点不再把 token 和 account label 散参拼回 core cache contract。
 1424. CC Switch managed-account runtime source 的 token cache 时间来源已从成功/失败路径内直接读取系统时间，收敛为 source 构造时注入的 `token_cache_clock`：默认桌面宿主仍使用当前毫秒时间，测试与后续宿主替换可以提供固定 clock，core `ManagedAccountTokenSnapshotStore` 继续拥有 cached-at、短窗口 fallback 和 terminal/retryable 解释规则。
 1425. managed-account token refresh 失败输入已与成功输入对称收敛为 `ManagedAccountTokenRefreshFailureInput`：CC Switch host 仍把 Copilot/Codex OAuth 具体错误分类为 retryable/terminal 并保留错误文本，但 `ManagedAccountTokenSnapshotStore::resolve_refresh_failure` 不再接收散开的 failure kind 与 error 字符串，core 统一消费结构化失败事实来生成缓存回退或拒绝结果。
+1426. managed-account runtime source 的 test-only fixture 与 binding/live-model/dynamic-endpoint/api-format 行为测试已从 `proxy_core_adapter` 下沉到 `proxy/host/cc_switch/managed_account_runtime_source.rs`：adapter 测试只复用 host 提供的静态 runtime source，不再自己实现 `CoreManagedAccountRuntimeSource` 或承载 runtime-source 行为归属。
 
 ## 背景
 

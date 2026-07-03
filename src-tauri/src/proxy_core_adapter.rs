@@ -170,11 +170,8 @@ mod tests {
     use crate::proxy::host::cc_switch::managed_account_runtime_source::{
         copilot_api_endpoint_from_app_handle, copilot_live_models_from_app_handle,
         copilot_model_vendor_from_app_handle, default_managed_account_runtime_source,
-        resolve_managed_account_auth_from_runtime_source,
-        ManagedAccountAdapterClaudeApiFormatForBindingInput,
-        ManagedAccountAdapterCopilotLiveModelForBindingInput,
-        ManagedAccountApplyCopilotDynamicBaseUrlForBindingInput, ManagedAccountAuthForBindingInput,
-        ManagedAccountRuntimeBindingFacts, ManagedAccountRuntimeSource,
+        managed_account_test_provider_with_binding,
+        resolve_managed_account_auth_from_runtime_source, StaticManagedAuthResolutionSource,
     };
     use crate::proxy::host::cc_switch::provider_projection::{
         provider_claude_auth_key, provider_claude_base_url, provider_claude_kind,
@@ -195,9 +192,7 @@ mod tests {
     use crate::proxy_core::api::auth::{
         claude_desktop_model_id_is_profile_safe, extract_gemini_base_url_from_settings,
         validate_claude_desktop_gateway_bearer_header, ClaudeAuthKeySource,
-        ClaudeDesktopGatewayAuthError, CodexOAuthResolution, ManagedAccountAuthRuntime,
-        ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource, ManagementAuthError,
-        ProviderAuthInfo, ProviderAuthStrategy,
+        ClaudeDesktopGatewayAuthError, ManagementAuthError, ProviderAuthInfo, ProviderAuthStrategy,
     };
     use crate::proxy_core::api::auth::{
         extract_claude_auth_key_from_settings, extract_gemini_api_key_from_settings,
@@ -225,7 +220,7 @@ mod tests {
         ChannelKeyRuntimeCandidate, ChannelRouteSource, ChannelTestProbeRequest,
         RouteResolveRequest, StreamCheckResult,
     };
-    use crate::proxy_core::api::model_catalog::{CopilotModel, DEFAULT_CODEX_MODEL_CONTEXT_WINDOW};
+    use crate::proxy_core::api::model_catalog::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW;
     use crate::proxy_core::api::ports::{
         codex_restored_live_settings_parts, gemini_env_json_from_map,
         gemini_env_string_map_from_settings, gemini_live_config_object_from_settings,
@@ -1902,7 +1897,7 @@ base_url = "https://api.openai.com/v1"
             StaticManagedAuthResolutionSource,
         ));
         let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
-        let provider = provider_with_managed_account_binding("codex_oauth", "codex-acct");
+        let provider = managed_account_test_provider_with_binding("codex_oauth", "codex-acct");
         let attempt = ForwardAttempt::from_provider(provider);
         let method = Method::POST;
         let body = json!({ "model": "gpt-5" });
@@ -1977,7 +1972,7 @@ base_url = "https://api.openai.com/v1"
             StaticManagedAuthResolutionSource,
         ));
         let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
-        let provider = provider_with_managed_account_binding("github_copilot", "copilot-acct");
+        let provider = managed_account_test_provider_with_binding("github_copilot", "copilot-acct");
         let attempt = ForwardAttempt::from_provider(provider);
         let method = Method::POST;
         let body = json!({ "model": "claude-sonnet-4" });
@@ -2884,321 +2879,6 @@ base_url = "https://api.openai.com/v1"
             }
             other => panic!("expected upstream error, got {other:?}"),
         }
-    }
-
-    struct StaticCopilotModelsSource {
-        endpoint: Option<String>,
-        models: Option<Vec<CopilotModel>>,
-    }
-
-    impl CoreManagedAccountRuntimeSource for StaticCopilotModelsSource {
-        type Error = ProxyError;
-
-        fn resolve_copilot_auth<'a>(
-            &'a self,
-            _account_id: Option<&'a str>,
-            _runtime: ManagedAccountAuthRuntime,
-        ) -> BoxFuture<'a, Result<ProviderAuthInfo, ProxyError>> {
-            Box::pin(async move {
-                Err(ProxyError::AuthError(
-                    "test source does not resolve auth".to_string(),
-                ))
-            })
-        }
-
-        fn resolve_codex_oauth<'a>(
-            &'a self,
-            _account_id: Option<String>,
-            _runtime: ManagedAccountAuthRuntime,
-        ) -> BoxFuture<'a, Result<CodexOAuthResolution, ProxyError>> {
-            Box::pin(async move {
-                Err(ProxyError::AuthError(
-                    "test source does not resolve oauth".to_string(),
-                ))
-            })
-        }
-
-        fn resolve_copilot_api_endpoint<'a>(
-            &'a self,
-            _account_id: Option<&'a str>,
-        ) -> BoxFuture<'a, Option<String>> {
-            Box::pin(async move { self.endpoint.clone() })
-        }
-
-        fn fetch_copilot_live_models<'a>(
-            &'a self,
-            _account_id: Option<&'a str>,
-        ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
-            Box::pin(async move { Ok(self.models.clone()) })
-        }
-
-        fn resolve_copilot_model_vendor<'a>(
-            &'a self,
-            _account_id: Option<&'a str>,
-            _model_id: &'a str,
-        ) -> BoxFuture<'a, Option<String>> {
-            Box::pin(async move { None })
-        }
-    }
-
-    struct StaticManagedAuthResolutionSource;
-
-    impl CoreManagedAccountRuntimeSource for StaticManagedAuthResolutionSource {
-        type Error = ProxyError;
-
-        fn resolve_copilot_auth<'a>(
-            &'a self,
-            account_id: Option<&'a str>,
-            runtime: ManagedAccountAuthRuntime,
-        ) -> BoxFuture<'a, Result<ProviderAuthInfo, ProxyError>> {
-            Box::pin(async move {
-                Ok(ProviderAuthInfo::new(
-                    format!("copilot-token:{}", account_id.unwrap_or("default")),
-                    runtime.provider_auth_strategy(),
-                ))
-            })
-        }
-
-        fn resolve_codex_oauth<'a>(
-            &'a self,
-            account_id: Option<String>,
-            runtime: ManagedAccountAuthRuntime,
-        ) -> BoxFuture<'a, Result<CodexOAuthResolution, ProxyError>> {
-            Box::pin(async move {
-                let resolved_account_id = account_id.unwrap_or_else(|| "codex-default".to_string());
-                Ok(CodexOAuthResolution::new(
-                    ProviderAuthInfo::new(
-                        format!("codex-token:{resolved_account_id}"),
-                        runtime.provider_auth_strategy(),
-                    ),
-                    Some(resolved_account_id),
-                ))
-            })
-        }
-
-        fn resolve_copilot_api_endpoint<'a>(
-            &'a self,
-            _account_id: Option<&'a str>,
-        ) -> BoxFuture<'a, Option<String>> {
-            Box::pin(async move { None })
-        }
-
-        fn fetch_copilot_live_models<'a>(
-            &'a self,
-            _account_id: Option<&'a str>,
-        ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
-            Box::pin(async move { Ok(None) })
-        }
-
-        fn resolve_copilot_model_vendor<'a>(
-            &'a self,
-            _account_id: Option<&'a str>,
-            _model_id: &'a str,
-        ) -> BoxFuture<'a, Option<String>> {
-            Box::pin(async move { None })
-        }
-    }
-
-    fn provider_with_managed_account_binding(auth_provider: &str, account_id: &str) -> Provider {
-        let mut provider = Provider::with_id(
-            format!("{auth_provider}-provider"),
-            "Managed Account Provider".to_string(),
-            json!({}),
-            None,
-        );
-        provider.meta = Some(ProviderMeta {
-            provider_type: Some(auth_provider.to_string()),
-            auth_binding: Some(AuthBinding {
-                source: AuthBindingSource::ManagedAccount,
-                auth_provider: Some(auth_provider.to_string()),
-                account_id: Some(account_id.to_string()),
-            }),
-            ..ProviderMeta::default()
-        });
-        provider
-    }
-
-    #[tokio::test]
-    async fn managed_account_runtime_source_resolves_provider_account_bindings() {
-        let source = StaticManagedAuthResolutionSource;
-        let copilot_provider =
-            provider_with_managed_account_binding("github_copilot", "copilot-acct");
-        let codex_provider = provider_with_managed_account_binding("codex_oauth", "codex-acct");
-        let copilot_binding_context = provider_managed_account_binding_context(&copilot_provider);
-        let codex_binding_context = provider_managed_account_binding_context(&codex_provider);
-
-        let copilot = source
-            .resolve_auth_for_binding(ManagedAccountAuthForBindingInput {
-                binding_facts: ManagedAccountRuntimeBindingFacts::new(
-                    copilot_binding_context.binding,
-                    copilot_binding_context.legacy_github_copilot_account_id,
-                ),
-                auth: ProviderAuthInfo::new(
-                    "PROXY_MANAGED".to_string(),
-                    ProviderAuthStrategy::GitHubCopilot,
-                ),
-            })
-            .await
-            .expect("copilot managed auth");
-        assert_eq!(copilot.auth.api_key, "copilot-token:copilot-acct");
-        assert_eq!(copilot.auth.strategy, ProviderAuthStrategy::GitHubCopilot);
-        assert_eq!(copilot.codex_oauth_account_id, None);
-        assert!(!copilot.should_send_codex_oauth_session_headers);
-
-        let codex = source
-            .resolve_auth_for_binding(ManagedAccountAuthForBindingInput {
-                binding_facts: ManagedAccountRuntimeBindingFacts::new(
-                    codex_binding_context.binding,
-                    codex_binding_context.legacy_github_copilot_account_id,
-                ),
-                auth: ProviderAuthInfo::new(
-                    "PROXY_MANAGED".to_string(),
-                    ProviderAuthStrategy::CodexOAuth,
-                ),
-            })
-            .await
-            .expect("codex managed auth");
-        assert_eq!(codex.auth.api_key, "codex-token:codex-acct");
-        assert_eq!(codex.auth.strategy, ProviderAuthStrategy::CodexOAuth);
-        assert_eq!(codex.codex_oauth_account_id.as_deref(), Some("codex-acct"));
-        assert!(codex.should_send_codex_oauth_session_headers);
-    }
-
-    #[tokio::test]
-    async fn managed_account_runtime_source_gates_copilot_live_model_by_adapter() {
-        let source = StaticCopilotModelsSource {
-            endpoint: None,
-            models: Some(vec![CopilotModel {
-                id: "claude-sonnet-4.6".to_string(),
-                name: "Claude Sonnet 4.6".to_string(),
-                vendor: "Anthropic".to_string(),
-                model_picker_enabled: true,
-            }]),
-        };
-        let provider = Provider::with_id(
-            "copilot".to_string(),
-            "Copilot".to_string(),
-            json!({}),
-            None,
-        );
-        let mut body = json!({ "model": "claude-sonnet-4-6" });
-        let binding_context = provider_managed_account_binding_context(&provider);
-
-        source
-            .apply_copilot_live_model_for_binding_adapter(
-                ManagedAccountAdapterCopilotLiveModelForBindingInput {
-                    binding_facts: ManagedAccountRuntimeBindingFacts::new(
-                        binding_context.binding,
-                        binding_context.legacy_github_copilot_account_id,
-                    ),
-                    body: &mut body,
-                    is_copilot: false,
-                },
-            )
-            .await;
-
-        assert_eq!(body["model"], "claude-sonnet-4-6");
-
-        source
-            .apply_copilot_live_model_for_binding_adapter(
-                ManagedAccountAdapterCopilotLiveModelForBindingInput {
-                    binding_facts: ManagedAccountRuntimeBindingFacts::new(
-                        binding_context.binding,
-                        binding_context.legacy_github_copilot_account_id,
-                    ),
-                    body: &mut body,
-                    is_copilot: true,
-                },
-            )
-            .await;
-
-        assert_eq!(body["model"], "claude-sonnet-4.6");
-    }
-
-    #[tokio::test]
-    async fn managed_account_runtime_source_applies_copilot_dynamic_base_url() {
-        let source = StaticCopilotModelsSource {
-            endpoint: Some("https://api.enterprise.githubcopilot.com".to_string()),
-            models: None,
-        };
-        let provider = Provider::with_id(
-            "copilot".to_string(),
-            "Copilot".to_string(),
-            json!({}),
-            None,
-        );
-        let mut base_url = "https://api.githubcopilot.com".to_string();
-        let binding_context = provider_managed_account_binding_context(&provider);
-
-        source
-            .apply_copilot_dynamic_base_url_for_binding(
-                ManagedAccountApplyCopilotDynamicBaseUrlForBindingInput {
-                    binding_facts: ManagedAccountRuntimeBindingFacts::new(
-                        binding_context.binding,
-                        binding_context.legacy_github_copilot_account_id,
-                    ),
-                    base_url: &mut base_url,
-                    is_copilot: true,
-                    is_full_url: false,
-                },
-            )
-            .await;
-
-        assert_eq!(base_url, "https://api.enterprise.githubcopilot.com");
-    }
-
-    #[tokio::test]
-    async fn managed_account_runtime_source_gates_claude_api_format_by_adapter() {
-        let source = StaticCopilotModelsSource {
-            endpoint: None,
-            models: None,
-        };
-        let provider = Provider::with_id(
-            "claude".to_string(),
-            "Claude".to_string(),
-            json!({
-                "api_format": "openai_chat"
-            }),
-            None,
-        );
-        let body = json!({ "model": "claude-sonnet-4" });
-        let binding_context = provider_managed_account_binding_context(&provider);
-
-        assert_eq!(
-            source
-                .resolve_claude_api_format_for_binding_adapter(
-                    ManagedAccountAdapterClaudeApiFormatForBindingInput {
-                        binding_facts: ManagedAccountRuntimeBindingFacts::new(
-                            binding_context.binding,
-                            binding_context.legacy_github_copilot_account_id,
-                        ),
-                        provider_api_format: claude_provider_api_format(&provider),
-                        body: &body,
-                        is_copilot: false,
-                        is_claude_adapter: false,
-                    },
-                )
-                .await,
-            None
-        );
-        assert_eq!(
-            source
-                .resolve_claude_api_format_for_binding_adapter(
-                    ManagedAccountAdapterClaudeApiFormatForBindingInput {
-                        binding_facts: ManagedAccountRuntimeBindingFacts::new(
-                            binding_context.binding,
-                            binding_context.legacy_github_copilot_account_id,
-                        ),
-                        provider_api_format: claude_provider_api_format(&provider),
-                        body: &body,
-                        is_copilot: false,
-                        is_claude_adapter: true,
-                    },
-                )
-                .await
-                .as_deref(),
-            Some("openai_chat")
-        );
     }
 
     #[test]
