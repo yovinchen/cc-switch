@@ -49,31 +49,29 @@ mod tests {
     use crate::proxy_core::api::ports::{
         app_proxy_config_with_enabled as proxy_app_config_with_enabled,
         claude_env_credentials_from_settings, codex_auth_object_value_from_settings,
-        codex_config_text_from_settings, codex_provider_live_write_parts_from_settings,
-        gemini_env_map_from_settings, gemini_live_backup_from_effective_settings,
-        gemini_live_settings_from_env_json_and_config, gemini_live_settings_to_write,
-        json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
-        live_takeover_app_kinds, live_token_sync_app_label,
+        codex_provider_live_write_parts_from_settings, gemini_env_map_from_settings,
+        gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
+        gemini_live_settings_to_write, json_deep_merge, json_deep_remove, json_remove_array_items,
+        json_value_is_subset, live_takeover_app_kinds, live_token_sync_app_label,
         provider_additive_live_write_action_for_app, provider_additive_update_route_for_app,
-        provider_app_has_current_provider, provider_codex_credential_values_from_parts,
-        provider_credential_issue_spec, provider_initial_live_config_managed_marker,
+        provider_app_has_current_provider, provider_initial_live_config_managed_marker,
         provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
         provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
-        provider_live_sync_scope_for_app, provider_non_codex_credential_values_from_settings,
-        provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
-        provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
+        provider_live_sync_scope_for_app, provider_omo_switch_pair_for_app_category,
+        provider_omo_variant_for_app_category, provider_settings_validation_issue_spec,
+        provider_settings_validation_parts_from_settings,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         provider_switch_dispatch_for_app, provider_switch_requires_takeover_lock,
         provider_switch_should_mark_live_config_managed,
         provider_takeover_live_sync_target_for_app, proxy_runtime_status_stopped,
         sanitize_claude_settings_for_live, should_skip_manual_default_live_import,
         should_skip_provider_legacy_common_config_migration,
-        should_skip_startup_default_live_import, CodexCredentialParts, CodexProviderLiveWriteIssue,
+        should_skip_startup_default_live_import, CodexProviderLiveWriteIssue,
         CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
-        ProviderCredentialIssue, ProviderKeyChangePolicyIssue,
-        ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
-        ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
-        ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+        ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy,
+        ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderOmoSwitchPair,
+        ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
+        ProviderTakeoverLiveSyncTarget,
     };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
@@ -3612,167 +3610,6 @@ wire_api = "chat"
         assert_eq!(
             send_policy.streaming_header_timeout,
             Some(std::time::Duration::from_secs(1))
-        );
-    }
-
-    #[test]
-    fn provider_credentials_adapter_extracts_app_specific_values() {
-        let claude = Provider::with_id(
-            "claude".to_string(),
-            "Claude".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_AUTH_TOKEN": "token",
-                    "ANTHROPIC_BASE_URL": "https://claude.example"
-                }
-            }),
-            None,
-        );
-        let claude_credentials = provider_non_codex_credential_values_from_settings(
-            &AppKind::from(&AppType::Claude),
-            &claude.settings_config,
-        )
-        .expect("claude credential extraction")
-        .expect("claude credentials");
-        assert_eq!(claude_credentials.api_key, "token");
-        assert_eq!(claude_credentials.base_url, "https://claude.example");
-
-        let codex = Provider::with_id(
-            "codex".to_string(),
-            "Codex".to_string(),
-            json!({
-                "auth": {"OPENAI_API_KEY": "sk-test"},
-                "config": "base_url = \"https://codex.example/v1\"\n"
-            }),
-            None,
-        );
-        let codex_auth =
-            codex_auth_object_value_from_settings(&codex.settings_config).expect("codex auth");
-        let codex_config_toml =
-            codex_config_text_from_settings(&codex.settings_config).unwrap_or("");
-        let codex_credentials = provider_codex_credential_values_from_parts(CodexCredentialParts {
-            api_key: crate::codex_config::extract_codex_api_key(
-                Some(codex_auth),
-                Some(codex_config_toml),
-            ),
-            config_toml: Some(codex_config_toml.to_string()),
-        })
-        .expect("codex credentials");
-        assert_eq!(codex_credentials.api_key, "sk-test");
-        assert_eq!(codex_credentials.base_url, "https://codex.example/v1");
-
-        let gemini = Provider::with_id(
-            "gemini".to_string(),
-            "Gemini".to_string(),
-            json!({"env": {"GEMINI_API_KEY": "AIza-test"}}),
-            None,
-        );
-        let gemini_credentials = provider_non_codex_credential_values_from_settings(
-            &AppKind::from(&AppType::Gemini),
-            &gemini.settings_config,
-        )
-        .expect("gemini credential extraction")
-        .expect("gemini credentials");
-        assert_eq!(gemini_credentials.api_key, "AIza-test");
-        assert_eq!(
-            gemini_credentials.base_url,
-            "https://generativelanguage.googleapis.com"
-        );
-
-        let gemini_custom = Provider::with_id(
-            "gemini-custom".to_string(),
-            "Gemini Custom".to_string(),
-            json!({
-                "env": {
-                    "GEMINI_API_KEY": "AIza-test",
-                    "GOOGLE_GEMINI_BASE_URL": "https://gemini.example"
-                }
-            }),
-            None,
-        );
-        let gemini_custom_credentials = provider_non_codex_credential_values_from_settings(
-            &AppKind::from(&AppType::Gemini),
-            &gemini_custom.settings_config,
-        )
-        .expect("custom gemini credential extraction")
-        .expect("custom gemini credentials");
-        assert_eq!(gemini_custom_credentials.api_key, "AIza-test");
-        assert_eq!(gemini_custom_credentials.base_url, "https://gemini.example");
-
-        let opencode = Provider::with_id(
-            "opencode".to_string(),
-            "OpenCode".to_string(),
-            json!({
-                "options": {
-                    "apiKey": "sk-opencode",
-                    "baseURL": "https://opencode.example"
-                }
-            }),
-            None,
-        );
-        let opencode_credentials = provider_non_codex_credential_values_from_settings(
-            &AppKind::from(&AppType::OpenCode),
-            &opencode.settings_config,
-        )
-        .expect("opencode credential extraction")
-        .expect("opencode credentials");
-        assert_eq!(opencode_credentials.api_key, "sk-opencode");
-        assert_eq!(opencode_credentials.base_url, "https://opencode.example");
-
-        let openclaw = Provider::with_id(
-            "openclaw".to_string(),
-            "OpenClaw".to_string(),
-            json!({
-                "apiKey": "sk-openclaw",
-                "baseUrl": "https://openclaw.example"
-            }),
-            None,
-        );
-        let openclaw_credentials = provider_non_codex_credential_values_from_settings(
-            &AppKind::from(&AppType::OpenClaw),
-            &openclaw.settings_config,
-        )
-        .expect("openclaw credential extraction")
-        .expect("openclaw credentials");
-        assert_eq!(openclaw_credentials.api_key, "sk-openclaw");
-        assert_eq!(openclaw_credentials.base_url, "https://openclaw.example");
-
-        let missing_codex_base_url = Provider::with_id(
-            "codex-missing-base-url".to_string(),
-            "Codex Missing Base URL".to_string(),
-            json!({"auth": {"OPENAI_API_KEY": "sk-test"}, "config": ""}),
-            None,
-        );
-        let missing_codex_auth =
-            codex_auth_object_value_from_settings(&missing_codex_base_url.settings_config)
-                .expect("missing codex auth");
-        let missing_codex_config_toml =
-            codex_config_text_from_settings(&missing_codex_base_url.settings_config).unwrap_or("");
-        let missing_base_url_issue =
-            provider_codex_credential_values_from_parts(CodexCredentialParts {
-                api_key: crate::codex_config::extract_codex_api_key(
-                    Some(missing_codex_auth),
-                    Some(missing_codex_config_toml),
-                ),
-                config_toml: Some(missing_codex_config_toml.to_string()),
-            })
-            .expect_err("missing codex base URL should be reported by core credential policy");
-        let missing_base_url_spec = provider_credential_issue_spec(missing_base_url_issue);
-        assert_eq!(missing_base_url_spec.key, "provider.codex.base_url.missing");
-        assert_eq!(missing_base_url_spec.zh, "config.toml 中缺少 base_url 配置");
-        assert_eq!(
-            missing_base_url_spec.en,
-            "base_url is missing from config.toml"
-        );
-        let missing_options_spec =
-            provider_credential_issue_spec(ProviderCredentialIssue::OpenCodeOptionsMissing);
-        assert_eq!(
-            missing_options_spec.key,
-            "provider.opencode.options.missing"
-        );
-        assert_eq!(
-            missing_options_spec.en,
-            "Invalid configuration: missing options section"
         );
     }
 

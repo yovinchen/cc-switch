@@ -8304,6 +8304,8 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
+        .expect("read proxy-core ports.rs");
 
     assert!(
         !source.contains("#[cfg(test)]\npub(crate) fn provider_credential_values"),
@@ -8342,21 +8344,18 @@ fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
         "proxy_core_adapter tests should call credential extraction contracts directly instead of keeping a private provider credential facade"
     );
 
-    let slice = function_slice(
-        &source,
-        "fn provider_credentials_adapter_extracts_app_specific_values",
-        "    #[test]\n    fn default_live_import_skip_policy_distinguishes_manual_and_startup",
-    );
     assert!(
-        slice.contains("provider_codex_credential_values_from_parts(CodexCredentialParts")
-            && slice.contains("provider_non_codex_credential_values_from_settings(")
-            && slice.contains("crate::codex_config::extract_codex_api_key("),
-        "proxy_core_adapter credential tests should call core credential value contracts and the owning Codex API-key extractor directly"
+        ports_source.contains("fn provider_credential_shapes_extract_host_neutral_settings()")
+            && ports_source.contains("fn codex_provider_credential_values_parse_config_toml_base_url()")
+            && ports_source.contains("provider_credential_issue_spec(ProviderCredentialIssue::CodexBaseUrlMissing)")
+            && ports_source.contains("provider_credential_issue_spec(ProviderCredentialIssue::OpenCodeOptionsMissing)")
+            && !source.contains("fn provider_credentials_adapter_extracts_app_specific_values()"),
+        "provider credential extraction fixtures should live in proxy-core ports tests, not proxy_core_adapter"
     );
 
     let mut violations = Vec::new();
     for marker in FORBIDDEN_PROXY_CORE_ADAPTER_CODEX_CREDENTIAL_POLICY_MARKERS {
-        if slice.contains(marker) {
+        if source.contains(marker) {
             violations.push(*marker);
         }
     }
