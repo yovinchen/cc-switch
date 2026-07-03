@@ -34,8 +34,8 @@ use crate::proxy::host::cc_switch::provider_projection::{
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::management::{
-    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppModelCatalogRequest,
-    AppModelListQuery, ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
+    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse,
+    ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
     ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord,
     ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
@@ -47,7 +47,6 @@ use crate::proxy_core::api::management::{
     RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
     RouteResolveResponse,
 };
-use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};
 use crate::proxy_core::api::ports::CurrentRouteTarget;
 use crate::proxy_core::api::routing::InterfaceKind;
 use crate::proxy_core::api::transforms::{
@@ -249,34 +248,6 @@ pub(crate) async fn collect_json_or_null_proxy_request(
         body: parsed.body,
         is_stream: parsed.is_stream,
     })
-}
-
-pub(crate) async fn dispatch_proxy_app_models_request_to_axum_json_response(
-    state: &ProxyState,
-    app_type: String,
-    query: AppModelListQuery,
-) -> Result<Json<RoutableModelList>, ProxyError> {
-    let request = AppModelCatalogRequest::from_parts(app_type, query)
-        .map_err(management_api_error_to_proxy_error)?;
-    let catalog = state
-        .proxy_engine()
-        .list_model_catalog_for_request(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(catalog))
-}
-
-pub(crate) async fn dispatch_codex_client_model_catalog_request_to_axum_json_response(
-    state: &ProxyState,
-) -> Result<Json<ClientModelCatalogResponse>, ProxyError> {
-    let response = state
-        .proxy_engine()
-        .client_model_catalog_response(&AppKind::Codex)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
 }
 
 pub(crate) async fn dispatch_proxy_channels_request_to_axum_json_response(

@@ -1087,17 +1087,6 @@ const FORBIDDEN_RESPONSE_ADAPTER_PROXY_EVENTS_SSE_ORCHESTRATION_MARKERS: &[&str]
     "Duration::from_secs(",
     "Sse::new(",
 ];
-const FORBIDDEN_MANAGEMENT_READ_HANDLER_ENGINE_MARKERS: &[&str] = &[
-    "AppListRequest::new(",
-    "ManagementAppPathRequest::from_path(",
-    "AppModelCatalogRequest::from_parts(",
-    ".proxy_engine()",
-    ".app_list_response(",
-    ".provider_list_response(",
-    ".list_model_catalog_for_request(",
-    ".client_model_catalog_response(",
-    "AppKind::Codex",
-];
 const FORBIDDEN_ROUTE_INSPECTION_HANDLER_ENGINE_MARKERS: &[&str] = &[
     "ChannelListRequest::from_query(",
     "AppChannelManagementRequest::from_parts(",
@@ -2484,11 +2473,12 @@ fn is_allowed_gemini_shadow_transform_core_import(relative: &str, code: &str) ->
     ) && code.trim() == "use crate::proxy_core::api::transforms::GeminiShadowStore;"
 }
 
-fn is_allowed_http_handlers_signature_core_import(relative: &str, code: &str) -> bool {
+fn is_allowed_http_handlers_core_contract_import(relative: &str, code: &str) -> bool {
     relative == "src/proxy/transport/http/handlers.rs"
         && matches!(
             code.trim(),
             "use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;"
+                | "use crate::proxy_core::api::domain::AppKind;"
                 | "use crate::proxy_core::api::events::{proxy_events_sse_keep_alive_spec, ProxyEventEnvelope};"
                 | "use crate::proxy_core::api::management::{"
                 | "use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};"
@@ -2577,7 +2567,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_circuit_breaker_config_core_import(&relative, code)
                     && !is_allowed_codex_chat_history_transform_core_import(&relative, code)
                     && !is_allowed_gemini_shadow_transform_core_import(&relative, code)
-                    && !is_allowed_http_handlers_signature_core_import(&relative, code)
+                    && !is_allowed_http_handlers_core_contract_import(&relative, code)
                 {
                     violations.push(format!(
                         "{}:{} contains direct proxy-core marker `{}`",
@@ -5357,26 +5347,16 @@ fn production_management_read_handlers_keep_json_bridges_on_expected_boundary() 
         "pub async fn list_proxy_providers(",
         "/// GET /proxy/v1/apps/{app}/models",
     );
-    let handlers = [
-        (
-            "list_proxy_app_models",
-            function_slice(
-                &source,
-                "pub async fn list_proxy_app_models(",
-                "/// GET /proxy/v1/channels",
-            ),
-            "dispatch_proxy_app_models_request_to_axum_json_response(",
-        ),
-        (
-            "handle_models",
-            function_slice(
-                &source,
-                "pub async fn handle_models(",
-                "// ============================================================================\n// Claude API",
-            ),
-            "dispatch_codex_client_model_catalog_request_to_axum_json_response(",
-        ),
-    ];
+    let app_models_handler = function_slice(
+        &source,
+        "pub async fn list_proxy_app_models(",
+        "/// GET /proxy/v1/channels",
+    );
+    let client_models_handler = function_slice(
+        &source,
+        "pub async fn handle_models(",
+        "// ============================================================================\n// Claude API",
+    );
 
     let mut violations = Vec::new();
     if !(apps_handler.contains("AppListRequest::new()")
@@ -5455,26 +5435,82 @@ fn production_management_read_handlers_keep_json_bridges_on_expected_boundary() 
                 .to_string(),
         );
     }
-
-    for (handler_name, handler, adapter_marker) in handlers {
-        if !handler.contains(adapter_marker) {
-            violations.push(format!(
-                "src/proxy/transport/http/handlers.rs {handler_name} should call `{adapter_marker}`"
-            ));
-        }
-
-        for (line_index, line) in production_lines(handler) {
-            let code = line.split("//").next().unwrap_or_default();
-            for marker in FORBIDDEN_MANAGEMENT_READ_HANDLER_ENGINE_MARKERS {
-                if code.contains(marker) {
-                    violations.push(format!(
-                        "src/proxy/transport/http/handlers.rs {handler_name}:{} contains management read engine marker `{}`",
-                        line_index + 1,
-                        marker
-                    ));
-                }
+    if !(app_models_handler.contains("AppModelCatalogRequest::from_parts(app_type, query)")
+        && app_models_handler.contains(".map_err(management_api_error_to_proxy_error)?")
+        && app_models_handler.contains(".proxy_engine()")
+        && app_models_handler.contains(".list_model_catalog_for_request(request)")
+        && app_models_handler.contains(".map_err(proxy_core_error_to_proxy_error)?"))
+    {
+        violations.push(
+            "src/proxy/transport/http/handlers.rs list_proxy_app_models should build the app model catalog JSON bridge through ProxyEngine"
+                .to_string(),
+        );
+    }
+    for (line_index, line) in production_lines(app_models_handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in [
+            "dispatch_proxy_app_models_request_to_axum_json_response(",
+            "AppListRequest::new(",
+            "ManagementAppPathRequest::from_path(",
+            ".app_list_response(",
+            ".provider_list_response(",
+            ".client_model_catalog_response(",
+            "AppKind::Codex",
+        ] {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/transport/http/handlers.rs list_proxy_app_models:{} contains app-model boundary marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
             }
         }
+    }
+    if adapter_source.contains("dispatch_proxy_app_models_request_to_axum_json_response")
+        || adapter_source.contains("AppModelCatalogRequest")
+        || adapter_source.contains("RoutableModelList")
+    {
+        violations.push(
+            "src/proxy/response_adapter.rs should not own the app model catalog JSON bridge"
+                .to_string(),
+        );
+    }
+    if !(client_models_handler.contains(".proxy_engine()")
+        && client_models_handler.contains(".client_model_catalog_response(&AppKind::Codex)")
+        && client_models_handler.contains(".map_err(proxy_core_error_to_proxy_error)?"))
+    {
+        violations.push(
+            "src/proxy/transport/http/handlers.rs handle_models should build the Codex client model catalog JSON bridge through ProxyEngine"
+                .to_string(),
+        );
+    }
+    for (line_index, line) in production_lines(client_models_handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in [
+            "dispatch_codex_client_model_catalog_request_to_axum_json_response(",
+            "AppListRequest::new(",
+            "ManagementAppPathRequest::from_path(",
+            "AppModelCatalogRequest::from_parts(",
+            ".app_list_response(",
+            ".provider_list_response(",
+            ".list_model_catalog_for_request(",
+        ] {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/transport/http/handlers.rs handle_models:{} contains Codex client model catalog boundary marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+    if adapter_source.contains("dispatch_codex_client_model_catalog_request_to_axum_json_response")
+        || adapter_source.contains("ClientModelCatalogResponse")
+    {
+        violations.push(
+            "src/proxy/response_adapter.rs should not own the Codex client model catalog JSON bridge"
+                .to_string(),
+        );
     }
 
     assert!(
@@ -27788,14 +27824,13 @@ fn proxy_response_adapter_owns_core_transport_imports() {
             && source.contains("parse_json_proxy_request_body_or_null")
             && source.contains("ProxyBody")
             && source.contains("crate::proxy_core::api::management::{")
-            && source.contains("crate::proxy_core::api::model_catalog::{")
             && (source.contains("crate::proxy_core::api::ports::{")
                 || source.contains("crate::proxy_core::api::ports::CurrentRouteTarget"))
             && source.contains("crate::proxy_core::api::routing::InterfaceKind")
             && source.contains("crate::proxy_core::api::transforms::{")
             && source.contains("build_codex_tool_context_from_request")
             && source.contains("crate::proxy_core::api::usage::{"),
-        "response_adapter should import core auth/domain/transport/management/model_catalog/ports/routing/transforms/usage contracts directly"
+        "response_adapter should import core domain/transport/management/ports/routing/transforms/usage contracts directly"
     );
     assert!(
         !source.contains("dispatch_proxy_status_request_to_axum_json_response")
@@ -27810,6 +27845,16 @@ fn proxy_response_adapter_owns_core_transport_imports() {
     assert!(
         !source.contains("strip_endpoint_prefix"),
         "response_adapter should use the core endpoint_from_path_query_stripping_prefix bridge instead of composing prefix stripping locally"
+    );
+    assert!(
+        !source.contains("dispatch_proxy_app_models_request_to_axum_json_response")
+            && !source.contains("AppModelCatalogRequest")
+            && !source.contains("AppModelListQuery")
+            && !source.contains("RoutableModelList")
+            && !source
+                .contains("dispatch_codex_client_model_catalog_request_to_axum_json_response")
+            && !source.contains("ClientModelCatalogResponse"),
+        "response_adapter should not own app-model or Codex client model catalog JSON bridges"
     );
 
     let mut violations = Vec::new();
@@ -27963,7 +28008,7 @@ fn proxy_core_adapter_does_not_own_codex_tool_context_or_chat_error_fixtures() {
 }
 
 #[test]
-fn http_handlers_import_signature_dtos_directly_from_core() {
+fn http_handlers_import_core_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read proxy/transport/http/handlers.rs");
@@ -27990,6 +28035,7 @@ fn http_handlers_import_signature_dtos_directly_from_core() {
     let mut violations = Vec::new();
     for required_import in [
         "use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;",
+        "use crate::proxy_core::api::domain::AppKind;",
         "use crate::proxy_core::api::events::{proxy_events_sse_keep_alive_spec, ProxyEventEnvelope};",
         "use crate::proxy_core::api::management::{",
         "use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};",
@@ -28007,6 +28053,7 @@ fn http_handlers_import_signature_dtos_directly_from_core() {
         "AppChannelResponse",
         "AppListRequest",
         "AppListResponse",
+        "AppModelCatalogRequest",
         "AppModelListQuery",
         "ChannelBreakerStatsResponse",
         "ChannelDeleteResponse",
@@ -28051,19 +28098,19 @@ fn http_handlers_import_signature_dtos_directly_from_core() {
             .any(|identifier| identifier == &marker)
         {
             violations.push(format!(
-                "handlers.rs imports signature DTO `{marker}` through response_adapter"
+                "handlers.rs imports core contract `{marker}` through response_adapter"
             ));
         }
         if !core_import_slice.contains(marker) {
             violations.push(format!(
-                "handlers.rs core import slice is missing signature DTO `{marker}`"
+                "handlers.rs core import slice is missing core contract `{marker}`"
             ));
         }
     }
 
     assert!(
         violations.is_empty(),
-        "HTTP handler signature DTOs should come directly from proxy_core::api, not response_adapter:\n{}",
+        "HTTP handler core contracts should come directly from proxy_core::api, not response_adapter:\n{}",
         violations.join("\n")
     );
     assert_eq!(
