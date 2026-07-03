@@ -25498,6 +25498,32 @@ fn proxy_core_host_compat_surface_stays_test_only() {
 }
 
 #[test]
+fn proxy_core_host_retains_only_engine_integration_fixtures() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
+    let test_names = source
+        .lines()
+        .filter_map(|line| {
+            line.trim()
+                .strip_prefix("async fn ")
+                .and_then(|tail| tail.split_once('('))
+                .map(|(name, _)| name.to_string())
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        test_names,
+        vec![
+            "proxy_engine_plans_routes_through_cc_switch_services",
+            "proxy_engine_materialized_plan_does_not_fallback_to_legacy_projection",
+            "route_dry_run_matches_proxy_engine_materialized_plan_order",
+        ],
+        "proxy_core_host should only retain cross-source ProxyEngine/dry-run integration fixtures"
+    );
+}
+
+#[test]
 fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
