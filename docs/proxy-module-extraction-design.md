@@ -2058,6 +2058,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1432. channel auth profile provider/ref fixture 已拆回 owner：provider auth 替换、cross-app provider ref 忽略和带空格 provider id 不误匹配已迁入 `proxy/host/cc_switch/channel_auth_profile_attempts.rs`，`proxy_core_host` 不再承载这组非 DB 行为 fixture。
 1433. DB-backed channel-key auth profile fixture 已拆回 owner：缺失 key fails-closed、启用/禁用 key 注入、同 key_ref 按 channel 隔离和 wildcard 选择最佳 enabled key 的覆盖已迁入 `proxy/host/cc_switch/channel_auth_profile_attempts.rs`，继续复用 `channel_key_runtime_source_from_database` 验证 DB runtime source；`proxy_core_host` 不再承载这组 channel-key auth fixture。
 1434. model catalog provider/client catalog fixture 已拆回 owner：provider settings 到模型目录、Codex 生成 catalog 文件读取、用户自定义 catalog stale guard 和非 Codex 空 catalog 默认值覆盖已迁入 `proxy/host/cc_switch/model_catalog_provider.rs`；raw catalog 字段提取继续由 `proxy-core::model_fetch` owning tests 覆盖，`proxy_core_host` 不再承载这组模型目录 fixture。
+1435. host forward bridge fixture 已拆回 owner：buffered/streamed `ProxyResponse` 到 core response 的桥接、`ForwardResult` metadata/outbound model/selected channel 投影覆盖已迁入 `proxy/host/cc_switch/forward_pipeline.rs`；`proxy_core_host` 不再承载这组 forward bridge fixture。
 
 ## 背景
 

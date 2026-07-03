@@ -6469,8 +6469,8 @@ fn proxy_core_adapter_does_not_export_response_transport_aliases() {
     }
 
     assert!(
-        host_source.contains("use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest, ProxyResponseBody};"),
-        "proxy_core_host test harness should import ProxyRequest/ProxyResponseBody directly from proxy_core transport"
+        host_source.contains("use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest};"),
+        "proxy_core_host test harness should import request transport contracts directly from proxy_core transport"
     );
     assert!(
         core_domain_source.contains("fn proxy_core_response_serializes_json_for_transport()")
@@ -7120,7 +7120,6 @@ fn engine_and_host_test_fixtures_import_core_contracts_directly() {
                 "use crate::proxy_core::api::management::{",
                 "ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, RouteResolveRequest,",
                 "RouteResolveRequest",
-                "use crate::proxy_core::api::routing::ResolvedChannelAttempt;",
             ],
             &[
                 "ProxyChannelKeyWriteRequest",
@@ -18603,6 +18602,8 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
     let pipeline_path = manifest_dir.join("src/proxy/host/cc_switch/forward_pipeline.rs");
     let pipeline_source = fs::read_to_string(&pipeline_path).expect("read forward_pipeline.rs");
     let runtime_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs");
@@ -18686,6 +18687,17 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
             && pipeline_impl.contains("pub(crate) fn forward_result_to_proxy_result")
             && pipeline_impl.contains("pub(crate) fn proxy_result_from_forward_parts"),
         "host forward pipeline should own forward-result response bridge and core route selection without adapter facades"
+    );
+    assert!(
+        pipeline_impl.contains("fn proxy_response_bridge_preserves_buffered_body()")
+            && pipeline_impl
+                .contains("fn forward_result_bridge_projects_metadata_and_successful_channel()")
+            && pipeline_impl.contains("async fn proxy_response_bridge_wraps_streamed_body()")
+            && !host_harness_source.contains("fn proxy_response_bridge_preserves_buffered_body")
+            && !host_harness_source
+                .contains("fn forward_result_bridge_projects_metadata_and_successful_channel")
+            && !host_harness_source.contains("fn proxy_response_bridge_wraps_streamed_body"),
+        "forward bridge fixtures should live beside host forward_pipeline, not proxy_core_host"
     );
     assert!(
         !source.contains("route_plan_provider_match;")
@@ -25423,10 +25435,8 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
             "use crate::proxy_core::api::ports::{AuthProvider, ProxyServices};"
         ) && host_source.contains(
             "use crate::proxy_core::api::routing::{\n    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteRequest,\n    RouteSelection, DEFAULT_ROUTE_GROUP,\n};"
-        ) && host_source
-            .contains("use crate::proxy_core::api::routing::ResolvedChannelAttempt;")
-        && host_source.contains(
-            "use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest, ProxyResponseBody};"
+        ) && host_source.contains(
+            "use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest};"
         )
         ,
         "proxy_core_host test harness should import pure core contracts directly"
@@ -25522,15 +25532,6 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
             && !host_tests_adapter_import.contains("ProxyRuntimeStatus"),
         "proxy_core_host tests must not import pure core contracts through proxy_core_adapter"
     );
-    assert!(
-        host_source.contains(
-            "use crate::proxy::host::cc_switch::forward_pipeline::proxy_response_to_core_response;"
-        ) && host_source.contains(
-            "use crate::proxy::host::cc_switch::forward_pipeline::forward_result_to_proxy_result;"
-        ),
-        "proxy_core_host test harness should import forward result/response bridge helpers through the host forward pipeline module"
-    );
-
     for adapter_facade in [
         "pub(crate) use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw",
         "pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP",

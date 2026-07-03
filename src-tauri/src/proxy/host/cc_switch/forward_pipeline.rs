@@ -187,3 +187,212 @@ pub(crate) fn proxy_result_from_forward_parts(
         metadata: Value::Object(metadata),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::proxy_core::api::domain::{
+        AppKind, ChannelOverrides, ModelCapabilities, ModelRoute, ProviderKind, ProviderSpec,
+        RetryPolicy, UpstreamEndpoint,
+    };
+    use crate::proxy_core::api::routing::{
+        ChannelSpec, ChannelStatus, InterfaceKind, ResolvedChannelAttempt, RouteSelection,
+        DEFAULT_ROUTE_GROUP,
+    };
+    use http::StatusCode;
+
+    fn provider_spec(id: &str) -> ProviderSpec {
+        ProviderSpec {
+            id: id.to_string(),
+            name: id.to_string(),
+            kind: ProviderKind::Claude,
+            account_ref: None,
+            metadata: Default::default(),
+        }
+    }
+
+    fn channel_spec(id: &str, priority: i64, model: &str) -> ChannelSpec {
+        ChannelSpec {
+            id: id.to_string(),
+            provider_id: "provider-a".to_string(),
+            app: AppKind::Claude,
+            name: id.to_string(),
+            status: ChannelStatus::Enabled,
+            endpoint: UpstreamEndpoint {
+                base_url: format!("https://{id}.example.com/v1"),
+                path_template: None,
+                api_version: None,
+                timeout_profile: None,
+            },
+            interface: InterfaceKind::OpenAiResponses,
+            auth_profile: None,
+            models: vec![ModelRoute {
+                public_model: model.to_string(),
+                upstream_model: format!("upstream-{model}"),
+                capabilities: ModelCapabilities::default(),
+                pricing_model: None,
+                request_overrides: json!({}),
+                response_overrides: json!({}),
+            }],
+            groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
+            priority,
+            weight: 100,
+            retry_policy: RetryPolicy::default(),
+            health_policy: Default::default(),
+            overrides: ChannelOverrides::default(),
+            tags: Vec::new(),
+            metadata: json!({}),
+            source_ref: None,
+            needs_review: false,
+            review_reasons: Vec::new(),
+        }
+    }
+
+    fn route_plan(provider_id: &str, channel_id: &str) -> RoutePlan {
+        let mut channel = channel_spec(channel_id, 100, "sonnet");
+        channel.provider_id = provider_id.to_string();
+        let model_route = channel.models.first().cloned();
+        let selection = RouteSelection {
+            provider: provider_spec(provider_id),
+            channel,
+            model_route,
+            inbound_interface: InterfaceKind::AnthropicMessages,
+            outbound_interface: InterfaceKind::OpenAiResponses,
+        };
+        RoutePlan {
+            selection,
+            selections: Vec::new(),
+            attempts: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn proxy_response_bridge_preserves_buffered_body() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("application/json"),
+        );
+        let response = ProxyResponse::buffered(
+            StatusCode::CREATED,
+            headers,
+            Bytes::from_static(br#"{"ok":true}"#),
+        );
+
+        let core_response = proxy_response_to_core_response(response, Option::<()>::None);
+
+        assert_eq!(core_response.status, StatusCode::CREATED);
+        assert_eq!(
+            core_response
+                .headers
+                .get(http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/json")
+        );
+        match core_response.body {
+            ProxyResponseBody::Bytes(body) => {
+                assert_eq!(body, Bytes::from_static(br#"{"ok":true}"#))
+            }
+            other => panic!("expected bytes body, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn forward_result_bridge_projects_metadata_and_successful_channel() {
+        let primary = route_plan("provider-a", "channel-a").selection;
+        let fallback = route_plan("provider-a", "channel-b").selection;
+        let plan = RoutePlan {
+            selection: primary.clone(),
+            selections: vec![primary, fallback],
+            attempts: Vec::new(),
+        };
+        let result = ForwardResult {
+            response: ProxyResponse::buffered(
+                StatusCode::OK,
+                http::HeaderMap::new(),
+                Bytes::from_static(b"{}"),
+            ),
+            provider: Provider::with_id(
+                "provider-a".to_string(),
+                "Provider A".to_string(),
+                json!({}),
+                None,
+            ),
+            claude_api_format: Some("messages".to_string()),
+            outbound_model: Some("upstream-sonnet".to_string()),
+            selected_channel: Some(ResolvedChannelAttempt {
+                channel_id: "channel-b".to_string(),
+                channel_name: "Channel B".to_string(),
+                base_url: "https://fallback.example.com/v1".to_string(),
+                interface_kind: "openai_responses".to_string(),
+                auth_profile_ref: None,
+                public_model: Some("sonnet".to_string()),
+                upstream_model: Some("upstream-sonnet".to_string()),
+                pricing_model: None,
+                header_overrides: json!({}),
+                param_overrides: json!({}),
+                status_code_mapping: json!([]),
+                request_overrides: json!({}),
+                response_overrides: json!({}),
+                retry_policy: json!({}),
+            }),
+            connection_guard: None,
+        };
+
+        let proxy_result = forward_result_to_proxy_result(result, plan);
+
+        assert_eq!(proxy_result.selected_route.channel.id, "channel-b");
+        assert_eq!(
+            proxy_result.outbound_model.as_deref(),
+            Some("upstream-sonnet")
+        );
+        assert_eq!(
+            proxy_result
+                .metadata
+                .get("hostProviderId")
+                .and_then(Value::as_str),
+            Some("provider-a")
+        );
+        assert_eq!(
+            proxy_result
+                .metadata
+                .get("hostProviderName")
+                .and_then(Value::as_str),
+            Some("Provider A")
+        );
+        assert_eq!(
+            proxy_result
+                .metadata
+                .get("claudeApiFormat")
+                .and_then(Value::as_str),
+            Some("messages")
+        );
+        assert_eq!(
+            proxy_result
+                .metadata
+                .get("selectedChannelId")
+                .and_then(Value::as_str),
+            Some("channel-b")
+        );
+    }
+
+    #[tokio::test]
+    async fn proxy_response_bridge_wraps_streamed_body() {
+        let response = ProxyResponse::streamed(
+            StatusCode::OK,
+            http::HeaderMap::new(),
+            futures::stream::once(async { Ok(Bytes::from_static(b"chunk")) }),
+        );
+
+        let core_response = proxy_response_to_core_response(response, Option::<()>::None);
+
+        match core_response.body {
+            ProxyResponseBody::Stream(mut stream) => {
+                let chunk = stream.next().await.expect("chunk").expect("stream item");
+                assert_eq!(chunk, Bytes::from_static(b"chunk"));
+                assert!(stream.next().await.is_none());
+            }
+            other => panic!("expected stream body, got {other:?}"),
+        }
+    }
+}
