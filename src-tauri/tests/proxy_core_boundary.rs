@@ -12095,6 +12095,9 @@ fn proxy_core_adapter_excludes_mimo_thinking_normalization_test_facade() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let core_response_transform_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/response_transform.rs"))
+            .expect("read proxy-core response_transform.rs");
 
     assert!(
         !source.contains("#[cfg(test)]\npub(crate) fn provider_should_normalize_mimo_anthropic_thinking_history"),
@@ -12102,9 +12105,12 @@ fn proxy_core_adapter_excludes_mimo_thinking_normalization_test_facade() {
     );
 
     assert!(
-        source.contains("should_normalize_mimo_anthropic_thinking_history(")
-            && source.contains("MimoAnthropicThinkingNormalizationInput"),
-        "proxy_core_adapter self-tests should call the core MiMo thinking normalization gate directly"
+        !source.contains("claude_desktop_mimo_gate_adapter_requires_anthropic_format")
+            && !source.contains("MimoAnthropicThinkingNormalizationInput")
+            && core_response_transform_source.contains(
+                "fn mimo_thinking_history_normalization_gate_uses_anthropic_format_and_mimo_facts()"
+            ),
+        "MiMo thinking normalization fixtures should live in proxy-core response_transform, not proxy_core_adapter"
     );
 }
 

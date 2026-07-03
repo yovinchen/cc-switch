@@ -186,10 +186,8 @@ mod tests {
     use crate::proxy_core::api::transforms::{
         normalize_anthropic_tool_thinking_history, normalize_claude_anthropic_messages,
         normalize_deepseek_thinking_disabled_strip_effort,
-        should_normalize_anthropic_tool_thinking_history,
-        should_normalize_mimo_anthropic_thinking_history, CodexProxyErrorContext,
-        CodexProxyErrorKind, MimoAnthropicThinkingNormalizationInput,
-        ANTHROPIC_TOOL_THINKING_PLACEHOLDER,
+        should_normalize_anthropic_tool_thinking_history, CodexProxyErrorContext,
+        CodexProxyErrorKind, ANTHROPIC_TOOL_THINKING_PLACEHOLDER,
     };
     use crate::proxy_core::api::transforms::{
         CodexChatReasoningOptions, CodexChatReasoningProfile,
@@ -2776,51 +2774,6 @@ wire_api = "chat"
             provider_gemini_kind(&gemini_api_key_provider),
             ProviderKind::Gemini
         );
-    }
-
-    #[test]
-    fn claude_desktop_mimo_gate_adapter_requires_anthropic_format() {
-        let should_normalize = |provider: &Provider, upstream_model: &str| {
-            should_normalize_mimo_anthropic_thinking_history(
-                MimoAnthropicThinkingNormalizationInput {
-                    settings_config: &provider.settings_config,
-                    api_format: provider
-                        .meta
-                        .as_ref()
-                        .and_then(|meta| meta.api_format.as_deref()),
-                    upstream_model,
-                },
-            )
-        };
-
-        let anthropic_provider = Provider::with_id(
-            "anthropic-mimo".to_string(),
-            "Anthropic MiMo".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_BASE_URL": "https://relay.example.com"
-                }
-            }),
-            None,
-        );
-        assert!(should_normalize(&anthropic_provider, "mimo-v2.5-pro"));
-
-        let endpoint_provider = Provider::with_id(
-            "mimo-endpoint".to_string(),
-            "MiMo Endpoint".to_string(),
-            json!({
-                "baseURL": "https://api.xiaomimimo.com/anthropic"
-            }),
-            None,
-        );
-        assert!(should_normalize(&endpoint_provider, "claude-sonnet-4-6"));
-
-        let mut openai_provider = endpoint_provider.clone();
-        openai_provider.meta = Some(ProviderMeta {
-            api_format: Some("openai_chat".to_string()),
-            ..Default::default()
-        });
-        assert!(!should_normalize(&openai_provider, "mimo-v2.5-pro"));
     }
 
     #[test]
