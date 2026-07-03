@@ -1879,7 +1879,8 @@ fn external_host_can_use_channel_key_runtime_selection_contracts_from_prelude() 
         })
     }
 
-    let now_ms = 1_771_000_120_000;
+    let tick = channel_key_runtime_selection_tick_from_time_parts(1_771_000_120_000, Some(1));
+    let now_ms = tick.now_ms;
     let alpha = channel_key_runtime_candidate_from_parts(
         "channel-a",
         "alpha",
@@ -1930,9 +1931,9 @@ fn external_host_can_use_channel_key_runtime_selection_contracts_from_prelude() 
             candidate("cooling", 200, 1, Some(now_ms - 1_000)),
         ],
         "*",
-        now_ms,
+        tick.now_ms,
         random_policy.failure_cooldown_ms,
-        1,
+        tick.weighted_roll,
     )
     .expect("random selection");
     assert_eq!(random_selected.key_ref, "beta");
@@ -1944,14 +1945,17 @@ fn external_host_can_use_channel_key_runtime_selection_contracts_from_prelude() 
         ],
         ChannelKeyRuntimeSelectionInput {
             key_ref: "primary",
-            now_ms,
-            weighted_roll: 1,
+            now_ms: tick.now_ms,
+            weighted_roll: tick.weighted_roll,
             round_robin_offset: 0,
             policy: random_policy,
         },
     )
     .expect("explicit key selection");
     assert_eq!(explicit_key.key_ref, "primary");
+
+    let fallback_tick = ChannelKeyRuntimeSelectionTick::from_unix_time_parts(now_ms, Some(-1));
+    assert_eq!(fallback_tick.weighted_roll, u64::try_from(now_ms).unwrap());
 }
 
 #[test]

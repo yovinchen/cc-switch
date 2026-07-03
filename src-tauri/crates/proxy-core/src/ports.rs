@@ -6134,6 +6134,38 @@ pub struct ChannelKeyRuntimeSelectionInput<'a> {
     pub policy: ChannelKeyRuntimeSelectionPolicy,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChannelKeyRuntimeSelectionTick {
+    pub now_ms: i64,
+    pub weighted_roll: u64,
+}
+
+impl ChannelKeyRuntimeSelectionTick {
+    pub fn new(now_ms: i64, weighted_roll: u64) -> Self {
+        Self {
+            now_ms,
+            weighted_roll,
+        }
+    }
+
+    pub fn from_unix_time_parts(now_ms: i64, timestamp_nanos: Option<i64>) -> Self {
+        let weighted_roll = timestamp_nanos
+            .and_then(|value| u64::try_from(value).ok())
+            .unwrap_or_else(|| u64::try_from(now_ms).unwrap_or_default());
+        Self {
+            now_ms,
+            weighted_roll,
+        }
+    }
+}
+
+pub fn channel_key_runtime_selection_tick_from_time_parts(
+    now_ms: i64,
+    timestamp_nanos: Option<i64>,
+) -> ChannelKeyRuntimeSelectionTick {
+    ChannelKeyRuntimeSelectionTick::from_unix_time_parts(now_ms, timestamp_nanos)
+}
+
 pub fn channel_key_runtime_round_robin_cursor_key(
     channel_id: &str,
     key_ref: &str,
@@ -6840,7 +6872,8 @@ mod tests {
         apply_proxy_runtime_uptime, auth_info_from_profile_ref, auth_info_from_route_context,
         channel_health_reset_from_parts, channel_health_update_from_input,
         channel_key_record_from_input, channel_key_runtime_candidate_from_input,
-        channel_key_runtime_candidate_from_parts, channel_model_record_from_input,
+        channel_key_runtime_candidate_from_parts,
+        channel_key_runtime_selection_tick_from_time_parts, channel_model_record_from_input,
         channel_reachability_probe_error,
         channel_reachability_result_from_stream_check_result,
         channel_reachability_status_from_latency, channel_record_from_input,
@@ -6941,7 +6974,7 @@ mod tests {
         AppChannelResponse, AppChannelRouteResponse, AppListResponse, AppModelListQuery,
         AppProxyConfig, AppSummaryInput, ChannelDeleteResponse, ChannelHealthUpdateInput,
         ChannelKeyRecordInput, ChannelKeyRuntimeCandidateInput, ChannelKeyRuntimeSelectionInput,
-        ChannelKeyRuntimeSelectionPolicy, ChannelListQuery,
+        ChannelKeyRuntimeSelectionPolicy, ChannelKeyRuntimeSelectionTick, ChannelListQuery,
         ChannelListResponse, ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
         ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelRecord,
         ChannelModelRecordInput, ChannelModelsResponse, ChannelReachabilityInput,
@@ -12385,6 +12418,32 @@ GEMINI_API_KEY=sk-test123
         )
         .expect("selected second round-robin candidate");
         assert_eq!(round_robin_second.key_ref, "beta");
+    }
+
+    #[test]
+    fn channel_key_runtime_selection_tick_uses_timestamp_nanos_or_ms_fallback() {
+        let tick =
+            channel_key_runtime_selection_tick_from_time_parts(1_771_000_120_000, Some(42));
+        assert_eq!(
+            tick,
+            ChannelKeyRuntimeSelectionTick {
+                now_ms: 1_771_000_120_000,
+                weighted_roll: 42
+            }
+        );
+
+        let fallback =
+            ChannelKeyRuntimeSelectionTick::from_unix_time_parts(1_771_000_120_000, Some(-1));
+        assert_eq!(fallback.now_ms, 1_771_000_120_000);
+        assert_eq!(fallback.weighted_roll, 1_771_000_120_000);
+
+        assert_eq!(
+            ChannelKeyRuntimeSelectionTick::new(123, 7),
+            ChannelKeyRuntimeSelectionTick {
+                now_ms: 123,
+                weighted_roll: 7
+            }
+        );
     }
 
     #[test]
