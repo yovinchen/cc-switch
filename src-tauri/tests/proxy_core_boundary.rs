@@ -2412,8 +2412,10 @@ fn is_allowed_forwarder_runtime_state_core_import(relative: &str, code: &str) ->
     relative == "src/proxy/host/cc_switch/forwarder_runtime_state_source.rs"
         && matches!(
             code.trim(),
-            "use crate::proxy_core::api::events::{"
+            "use crate::proxy_core::api::domain::{"
+                | "use crate::proxy_core::api::events::{"
                 | "use crate::proxy_core::api::ports::{"
+                | "use crate::proxy_core::api::routing::{"
                 | "use crate::proxy_core::api::transport::{"
         )
 }
@@ -19832,6 +19834,28 @@ fn production_forwarder_uses_runtime_state_source_resource() {
             && !adapter_runtime_source.contains("forwarder_runtime_state_source_from_runtime_parts")
             && !adapter_runtime_source.contains("struct CcSwitchForwarderRuntimeStateSource"),
         "host proxy_state should use the default forwarder runtime state source without routing it through proxy_core_adapter"
+    );
+    for marker in [
+        "forwarder_runtime_state_source_projects_success_switch_target",
+        "forwarder_runtime_state_source_records_current_provider_from_provider",
+        "forwarder_runtime_state_source_classifies_rectifier_retry_failover",
+        "forwarder_runtime_state_source_records_terminal_statuses",
+        "forwarder_runtime_state_source_records_request_started_timestamp",
+        "forwarder_runtime_state_source_generates_request_ids",
+        "forwarder_runtime_state_source_records_forward_error_status",
+        "forwarder_runtime_state_source_records_provider_failure_from_provider",
+        "forwarder_runtime_state_source_emits_attempt_phase_events",
+        "forwarder_runtime_state_source_records_active_route_target_event",
+    ] {
+        assert!(
+            runtime_source.contains(marker) && !adapter_source.contains(marker),
+            "ForwarderRuntimeStateSource behavior fixture `{marker}` should live beside the owning host source, not proxy_core_adapter"
+        );
+    }
+    assert!(
+        !adapter_source
+            .contains("forwarder_runtime_state_source::CcSwitchForwarderRuntimeStateSource"),
+        "proxy_core_adapter should not import the host ForwarderRuntimeStateSource implementation for migrated behavior tests"
     );
     for marker in [
         "pub(crate) type ForwarderRuntimeStateSourceRef",

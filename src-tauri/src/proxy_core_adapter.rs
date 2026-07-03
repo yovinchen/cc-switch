@@ -7,16 +7,11 @@ use crate::provider::Provider;
 #[cfg(test)]
 use crate::proxy::engine::forward_pipeline::{
     ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
-    ForwarderAttemptBodyInput, ForwarderAttemptFailedInput, ForwarderAttemptStartedInput,
-    ForwarderClaudeBodyPolicyInput, ForwarderCodexResponsesToChatInput,
+    ForwarderAttemptBodyInput, ForwarderClaudeBodyPolicyInput, ForwarderCodexResponsesToChatInput,
     ForwarderCopilotRequestOptimizationGateInput, ForwarderCopilotRequestOptimizationInput,
-    ForwarderCurrentProviderInput, ForwarderFailoverSwitchTarget, ForwarderForwardErrorStatusInput,
-    ForwarderMediaRetryPlanInput, ForwarderPreparedRequest, ForwarderProviderFailureInput,
-    ForwarderProviderRectifierRetryFailureInput, ForwarderProviderRequestBodyInput,
-    ForwarderProviderTransformInput, ForwarderRectifierRetryFailureDecision,
-    ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
-    ForwarderRequestPreparationInput, ForwarderRequestStartedInput, ForwarderRuntimeOptions,
-    ForwarderSuccessStatusInput, ForwarderSuccessfulAttemptInput,
+    ForwarderMediaRetryPlanInput, ForwarderPreparedRequest, ForwarderProviderRequestBodyInput,
+    ForwarderProviderTransformInput, ForwarderRequestBodyTransformInput,
+    ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRuntimeOptions,
     ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
     ForwarderTransformPlanInput, ForwarderUpstreamUrlInput,
 };
@@ -24,9 +19,6 @@ use crate::proxy::engine::forward_pipeline::{
 use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
     forward_attempts_from_plan, required_forward_attempts_from_plan,
 };
-#[cfg(test)]
-use crate::proxy::host::cc_switch::forwarder_runtime_state_source::CcSwitchForwarderRuntimeStateSource;
-#[cfg(test)]
 use crate::proxy::host::cc_switch::proxy_runtime::{
     app_type_from_proxy_core_app, app_type_option_from_proxy_core_app, extract_proxy_session_id,
     forward_current_provider_id_from_source, forward_runtime_request_from_proxy_request,
@@ -113,7 +105,7 @@ mod tests {
     };
     use crate::proxy_core::api::transport::{
         apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
-        resolve_codex_provider_upstream_model, ForwarderRectifierRetryKind,
+        resolve_codex_provider_upstream_model,
     };
     use serde_json::json;
 
@@ -125,9 +117,7 @@ mod tests {
     use crate::provider::{
         AuthBinding, AuthBindingSource, ProviderMeta, ProviderTestConfig, UsageScript,
     };
-    use crate::proxy::engine::forward_pipeline::{
-        ForwarderRequestRectifierPlan, ForwarderRuntimeStateSource,
-    };
+    use crate::proxy::engine::forward_pipeline::ForwarderRequestRectifierPlan;
     use crate::proxy::engine::response_pipeline::{
         forward_error_usage_record_from_response_context,
         non_streaming_response_usage_record_from_response_context, response_usage_provider_facts,
@@ -177,8 +167,7 @@ mod tests {
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
         channel_spec_from_input, infer_claude_provider_kind, ChannelHealthPolicy, ChannelOverrides,
-        ChannelSpecInput, ModelCapabilities, ModelRoute, ProviderMetadata, ProviderSpec,
-        RetryPolicy, UpstreamEndpoint,
+        ChannelSpecInput, ProviderMetadata, ProviderSpec, RetryPolicy, UpstreamEndpoint,
     };
     use crate::proxy_core::api::errors::{
         proxy_error_http_status_code, proxy_error_response_body,
@@ -199,7 +188,7 @@ mod tests {
         codex_restored_live_settings_parts, gemini_env_json_from_map,
         gemini_env_string_map_from_settings, gemini_live_config_object_from_settings,
         CopilotOptimizerConfig, CurrentRouteTarget, GeminiLiveConfigIssue, OptimizerConfig,
-        ProxyConfig, ProxyRuntimeStatus, RectifierConfig,
+        ProxyConfig, RectifierConfig,
     };
     use crate::proxy_core::api::routing::{
         apply_route_candidate_circuit_availability, current_provider_id_from_sources,
@@ -244,7 +233,6 @@ mod tests {
     use indexmap::IndexMap;
     use std::collections::HashMap;
     use std::sync::Arc;
-    use tokio::sync::RwLock;
 
     #[tokio::test]
     async fn non_managed_auth_passes_through_without_app_handle() {
@@ -1855,398 +1843,6 @@ base_url = "https://api.openai.com/v1"
                 provider: &default_claude_provider,
             },)
         );
-    }
-
-    #[tokio::test]
-    async fn forwarder_runtime_state_source_projects_success_switch_target() {
-        let provider = Provider::with_id(
-            "provider-b".to_string(),
-            "Provider B".to_string(),
-            json!({}),
-            None,
-        );
-        let source = CcSwitchForwarderRuntimeStateSource::new(
-            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            Arc::new(RwLock::new(HashMap::new())),
-            Arc::new(ProxyEventBus::default()),
-        );
-
-        assert_eq!(
-            source
-                .record_success_status(ForwarderSuccessStatusInput {
-                    current_provider_id_at_start: "provider-b",
-                    provider: &provider,
-                })
-                .await,
-            None
-        );
-
-        let source = CcSwitchForwarderRuntimeStateSource::new(
-            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            Arc::new(RwLock::new(HashMap::new())),
-            Arc::new(ProxyEventBus::default()),
-        );
-        let target = source
-            .record_success_status(ForwarderSuccessStatusInput {
-                current_provider_id_at_start: "provider-a",
-                provider: &provider,
-            })
-            .await
-            .expect("alternate provider success should schedule switch target");
-
-        assert_eq!(
-            target,
-            ForwarderFailoverSwitchTarget {
-                provider_id: "provider-b".to_string(),
-                provider_name: "Provider B".to_string(),
-            }
-        );
-    }
-
-    #[tokio::test]
-    async fn forwarder_runtime_state_source_records_current_provider_from_provider() {
-        let source = CcSwitchForwarderRuntimeStateSource::new(
-            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            Arc::new(RwLock::new(HashMap::new())),
-            Arc::new(ProxyEventBus::default()),
-        );
-        let provider = Provider::with_id(
-            "provider-a".to_string(),
-            "Provider A".to_string(),
-            json!({}),
-            None,
-        );
-
-        source
-            .record_current_provider(ForwarderCurrentProviderInput {
-                provider: &provider,
-            })
-            .await;
-
-        let status = source.status();
-        let status = status.read().await;
-        assert_eq!(status.current_provider_id.as_deref(), Some("provider-a"));
-        assert_eq!(status.current_provider.as_deref(), Some("Provider A"));
-    }
-
-    #[test]
-    fn forwarder_runtime_state_source_classifies_rectifier_retry_failover() {
-        let source = CcSwitchForwarderRuntimeStateSource::new(
-            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            Arc::new(RwLock::new(HashMap::new())),
-            Arc::new(ProxyEventBus::default()),
-        );
-
-        match source.rectifier_retry_failure_decision(&ProxyError::Timeout(
-            "upstream timed out".to_string(),
-        )) {
-            ForwarderRectifierRetryFailureDecision::ProviderFailure => {}
-            ForwarderRectifierRetryFailureDecision::ClientFailure => {
-                panic!("timeout should fail over to the next provider")
-            }
-        }
-
-        match source.rectifier_retry_failure_decision(&ProxyError::UpstreamError {
-            status: 502,
-            body: Some("bad gateway".to_string()),
-        }) {
-            ForwarderRectifierRetryFailureDecision::ProviderFailure => {}
-            ForwarderRectifierRetryFailureDecision::ClientFailure => {
-                panic!("5xx upstream error should fail over to the next provider")
-            }
-        }
-
-        match source.rectifier_retry_failure_decision(&ProxyError::UpstreamError {
-            status: 400,
-            body: Some("invalid request".to_string()),
-        }) {
-            ForwarderRectifierRetryFailureDecision::ProviderFailure => {
-                panic!("client 400 should not fail over after rectifier retry")
-            }
-            ForwarderRectifierRetryFailureDecision::ClientFailure => {}
-        }
-    }
-
-    #[tokio::test]
-    async fn forwarder_runtime_state_source_records_terminal_statuses() {
-        let source = CcSwitchForwarderRuntimeStateSource::new(
-            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            Arc::new(RwLock::new(HashMap::new())),
-            Arc::new(ProxyEventBus::default()),
-        );
-
-        source.record_no_available_provider_status().await;
-        {
-            let status = source.status();
-            let status = status.read().await;
-            assert_eq!(status.failed_requests, 1);
-            assert_eq!(
-                status.last_error.as_deref(),
-                Some("所有供应商暂时不可用（熔断器限制）")
-            );
-        }
-
-        source.record_terminal_failure_status().await;
-        let status = source.status();
-        let status = status.read().await;
-        assert_eq!(status.failed_requests, 2);
-        assert_eq!(status.last_error.as_deref(), Some("所有供应商都失败"));
-    }
-
-    #[tokio::test]
-    async fn forwarder_runtime_state_source_records_request_started_timestamp() {
-        let source = CcSwitchForwarderRuntimeStateSource::new(
-            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            Arc::new(RwLock::new(HashMap::new())),
-            Arc::new(ProxyEventBus::default()),
-        );
-
-        source
-            .record_request_started(ForwarderRequestStartedInput {
-                request_id: "req-1",
-                app_type: "claude",
-            })
-            .await;
-
-        let status = source.status();
-        let status = status.read().await;
-        assert_eq!(status.total_requests, 1);
-        assert!(status.last_request_at.is_some());
-    }
-
-    #[test]
-    fn forwarder_runtime_state_source_generates_request_ids() {
-        let source = CcSwitchForwarderRuntimeStateSource::new(
-            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            Arc::new(RwLock::new(HashMap::new())),
-            Arc::new(ProxyEventBus::default()),
-        );
-
-        let request_id = source.next_request_id();
-
-        Uuid::parse_str(&request_id).expect("request id should be a UUID");
-    }
-
-    #[tokio::test]
-    async fn forwarder_runtime_state_source_records_forward_error_status() {
-        let source = CcSwitchForwarderRuntimeStateSource::new(
-            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            Arc::new(RwLock::new(HashMap::new())),
-            Arc::new(ProxyEventBus::default()),
-        );
-
-        let timeout_error = ProxyError::Timeout("upstream timed out".to_string());
-        source
-            .record_forward_error_status(ForwarderForwardErrorStatusInput {
-                error: &timeout_error,
-            })
-            .await;
-
-        let status = source.status();
-        let status = status.read().await;
-        assert_eq!(status.failed_requests, 1);
-        assert_eq!(
-            status.last_error.as_deref(),
-            Some("超时: upstream timed out")
-        );
-    }
-
-    #[tokio::test]
-    async fn forwarder_runtime_state_source_records_provider_failure_from_provider() {
-        let source = CcSwitchForwarderRuntimeStateSource::new(
-            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            Arc::new(RwLock::new(HashMap::new())),
-            Arc::new(ProxyEventBus::default()),
-        );
-        let provider = Provider::with_id("relay".to_string(), "Relay".to_string(), json!({}), None);
-
-        let timeout_error = ProxyError::Timeout("upstream timed out".to_string());
-        source
-            .record_provider_failure(ForwarderProviderFailureInput {
-                provider: &provider,
-                error: &timeout_error,
-            })
-            .await;
-        {
-            let status = source.status();
-            let status = status.read().await;
-            assert_eq!(
-                status.last_error.as_deref(),
-                Some("Provider Relay 失败: 超时: upstream timed out")
-            );
-        }
-
-        let upstream_error = ProxyError::UpstreamError {
-            status: 502,
-            body: Some("bad gateway".to_string()),
-        };
-        source
-            .record_provider_rectifier_retry_failure(ForwarderProviderRectifierRetryFailureInput {
-                provider: &provider,
-                kind: ForwarderRectifierRetryKind::ThinkingBudget,
-                error: &upstream_error,
-            })
-            .await;
-        let status = source.status();
-        let status = status.read().await;
-        assert_eq!(
-            status.last_error.as_deref(),
-            Some(
-                "Provider Relay budget 整流重试失败: 上游错误 (状态码 502): Some(\"bad gateway\")"
-            )
-        );
-    }
-
-    fn runtime_route_selection(provider_id: &str, channel_id: &str) -> RouteSelection {
-        let provider = ProviderSpec {
-            id: provider_id.to_string(),
-            name: "Relay".to_string(),
-            kind: ProviderKind::Claude,
-            account_ref: None,
-            metadata: ProviderMetadata::default(),
-        };
-        let channel = ChannelSpec {
-            id: channel_id.to_string(),
-            provider_id: provider_id.to_string(),
-            app: AppKind::Claude,
-            name: "Relay A".to_string(),
-            status: ChannelStatus::Enabled,
-            endpoint: UpstreamEndpoint {
-                base_url: "https://relay.example.com/v1".to_string(),
-                path_template: None,
-                api_version: None,
-                timeout_profile: None,
-            },
-            interface: InterfaceKind::OpenAiResponses,
-            auth_profile: None,
-            models: Vec::new(),
-            groups: vec!["default".to_string()],
-            priority: 100,
-            weight: 50,
-            retry_policy: RetryPolicy::default(),
-            health_policy: ChannelHealthPolicy::default(),
-            overrides: ChannelOverrides::default(),
-            tags: Vec::new(),
-            metadata: json!({}),
-            source_ref: None,
-            needs_review: false,
-            review_reasons: Vec::new(),
-        };
-        let model_route = ModelRoute {
-            public_model: "public-sonnet".to_string(),
-            upstream_model: "upstream-sonnet".to_string(),
-            capabilities: ModelCapabilities::default(),
-            pricing_model: Some("sonnet-price".to_string()),
-            request_overrides: json!({}),
-            response_overrides: json!({}),
-        };
-
-        RouteSelection {
-            provider,
-            channel,
-            model_route: Some(model_route),
-            inbound_interface: InterfaceKind::AnthropicMessages,
-            outbound_interface: InterfaceKind::OpenAiResponses,
-        }
-    }
-
-    #[tokio::test]
-    async fn forwarder_runtime_state_source_emits_attempt_phase_events() {
-        let provider = Provider::with_id("relay".to_string(), "Relay".to_string(), json!({}), None);
-        let selection = runtime_route_selection(&provider.id, "channel-a");
-        let attempt = ForwardAttempt::from_core_selection(&AppType::Claude, &provider, &selection);
-        let events = Arc::new(ProxyEventBus::default());
-        let mut subscriber = events.subscribe();
-        let source = CcSwitchForwarderRuntimeStateSource::new(
-            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            Arc::new(RwLock::new(HashMap::new())),
-            events,
-        );
-
-        source.record_attempt_started(ForwarderAttemptStartedInput {
-            request_id: "req-1",
-            app_type: "claude",
-            attempt: &attempt,
-        });
-        let started = subscriber.recv().await.expect("started event");
-        assert_eq!(started.event, "channel_attempt");
-        assert_eq!(started.payload["requestId"], "req-1");
-        assert_eq!(started.payload["channelId"], "channel-a");
-        assert_eq!(started.payload["pricingModel"], "sonnet-price");
-        assert!(started.payload.get("error").is_none());
-
-        source
-            .record_successful_attempt(ForwarderSuccessfulAttemptInput {
-                request_id: "req-1",
-                app_type: "claude",
-                attempt: &attempt,
-            })
-            .await;
-        let succeeded = subscriber.recv().await.expect("succeeded event");
-        assert_eq!(succeeded.event, "channel_succeeded");
-        assert_eq!(succeeded.payload["channelId"], "channel-a");
-        assert_eq!(succeeded.payload["pricingModel"], "sonnet-price");
-        assert!(succeeded.payload.get("error").is_none());
-        let route_selected = subscriber.recv().await.expect("route selected event");
-        assert_eq!(route_selected.event, "route_selected");
-
-        let forward_error = ProxyError::ForwardFailed("upstream failed".to_string());
-        source.record_failed_attempt(ForwarderAttemptFailedInput {
-            request_id: "req-1",
-            app_type: "claude",
-            attempt: &attempt,
-            error: &forward_error,
-        });
-        let failed = subscriber.recv().await.expect("failed event");
-        assert_eq!(failed.event, "channel_failed");
-        assert_eq!(failed.payload["channelId"], "channel-a");
-        assert_eq!(failed.payload["pricingModel"], "sonnet-price");
-        assert_eq!(failed.payload["error"], "请求转发失败: upstream failed");
-    }
-
-    #[tokio::test]
-    async fn forwarder_runtime_state_source_records_active_route_target_event() {
-        let provider = Provider::with_id("relay".to_string(), "Relay".to_string(), json!({}), None);
-        let selection = runtime_route_selection(&provider.id, "channel-a");
-        let attempt = ForwardAttempt::from_core_selection(&AppType::Claude, &provider, &selection);
-        let current_providers = Arc::new(RwLock::new(HashMap::new()));
-        let events = Arc::new(ProxyEventBus::default());
-        let mut subscriber = events.subscribe();
-        let source = CcSwitchForwarderRuntimeStateSource::new(
-            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            current_providers.clone(),
-            events,
-        );
-
-        source
-            .record_successful_attempt(ForwarderSuccessfulAttemptInput {
-                request_id: "req-route",
-                app_type: "claude",
-                attempt: &attempt,
-            })
-            .await;
-
-        let current_providers = current_providers.read().await;
-        let target = current_providers
-            .get("claude")
-            .expect("active route target");
-        assert_eq!(target.provider_id, "relay");
-        assert_eq!(target.channel_id.as_deref(), Some("channel-a"));
-        assert_eq!(target.interface_kind.as_deref(), Some("openai_responses"));
-        assert_eq!(target.upstream_model.as_deref(), Some("upstream-sonnet"));
-        assert_eq!(target.pricing_model.as_deref(), Some("sonnet-price"));
-
-        let succeeded = subscriber.recv().await.expect("succeeded event");
-        assert_eq!(succeeded.event, "channel_succeeded");
-        assert_eq!(succeeded.payload["channelId"], "channel-a");
-
-        let route_event = subscriber.recv().await.expect("route selected event");
-        assert_eq!(route_event.event, "route_selected");
-        assert_eq!(route_event.payload["requestId"], "req-route");
-        assert_eq!(route_event.payload["providerId"], "relay");
-        assert_eq!(route_event.payload["channelId"], "channel-a");
-        assert_eq!(route_event.payload["interfaceKind"], "openai_responses");
-        assert_eq!(route_event.payload["pricingModel"], "sonnet-price");
     }
 
     #[test]
