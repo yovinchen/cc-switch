@@ -9309,6 +9309,8 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
 
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
+        .expect("read proxy-core ports.rs");
     let port_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::ports::{")
         .skip(1)
@@ -9359,6 +9361,12 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
     assert!(
         !adapter_source.contains("fn live_takeover_app_types()"),
         "proxy_core_adapter tests should project live takeover app kinds directly instead of keeping a private app-type list facade"
+    );
+    assert!(
+        !adapter_source.contains("proxy_adapter_classifies_local_proxy_urls_for_takeover_cleanup")
+            && core_ports_source
+                .contains("fn local_proxy_url_probe_accepts_http_loopback_forms_only()"),
+        "local proxy URL cleanup fixtures should live in proxy-core ports, not proxy_core_adapter"
     );
 }
 

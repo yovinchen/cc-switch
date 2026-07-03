@@ -921,7 +921,7 @@
 853. ProxyService live backup snapshot 的代理占位符跳过判定已改为 `proxy_core_adapter::live_backup_snapshot_from_live_config`：服务层继续负责读取 live 文件、日志、序列化和 DB 保存，Claude/Codex/Gemini app-specific proxy placeholder 检测与 clean snapshot 投影集中在 adapter。
 854. ProxyService restore fallback 的 live backup 可恢复判定已复用 `proxy_core_adapter::live_backup_snapshot_from_live_config`：服务层继续负责读取 backup row、JSON 解析、落盘与 SSOT fallback，备份值是否包含代理占位符以及 clean restore value 选择集中在 adapter。
 855. ProxyService live takeover 检测入口已直接复用 `proxy_core_adapter::live_config_has_proxy_placeholder_for_app`：服务层继续负责读取 Claude/Codex/Gemini live 文件与兜底入口编排，Claude env、Codex auth/config、Gemini env 的占位符识别规则集中在 adapter。
-856. ProxyService takeover cleanup 的本地代理 URL 判定已改为 `proxy_core_adapter::is_local_proxy_url`：服务层继续负责读取/写回 live 文件与调用 app-specific cleanup，`http://127.0.0.1`、`localhost`、`0.0.0.0`、IPv6 loopback/unspecified 前缀分类规则集中在 adapter。
+856. ProxyService takeover cleanup 的本地代理 URL 判定已改为直接引用 `proxy_core::api::ports::is_local_proxy_url`：服务层继续负责读取/写回 live 文件与调用 app-specific cleanup，`http://127.0.0.1`、`localhost`、`0.0.0.0`、IPv6 loopback/unspecified 前缀分类规则集中在 proxy-core ports。
 857. ProxyService Codex takeover TOML 写入路径已迁回 `live_takeover.rs` 本地 helper；生产调用与回归测试通过本地 `apply_codex_takeover_fields_for_provider` 覆盖 TOML 投影：服务层继续负责 live 文件读取、provider 查找与写回，base_url/wire_api/model 恢复策略由 core patch helper + host `codex_config` 写入共同完成。
 858. ProxyService Codex takeover 模型目录 attachment 已迁回 `live_takeover.rs` 本地 `apply_codex_takeover_fields_for_provider`：服务层继续负责决定何时执行 Codex 接管字段投影，catalog pointer/inline catalog 写入规则由 owning module 直接读取 provider settings 并合并。
 859. ProxyService Claude takeover provider 策略已迁回 `proxy/host/cc_switch/live_takeover.rs`：服务层继续负责读取 live、构建 effective provider、选择有无 provider 的接管路径与写回，并在 owning module 内把 host `Provider` 投影为 core `ClaudeTakeoverProviderFacts`；受管账号 token 策略、Copilot/Codex 例外、模型字段来源选择和 Claude env 字段写入继续由 `proxy-core::ports::apply_claude_takeover_fields_for_provider_facts` 维护，adapter 不再暴露 Claude takeover provider wrapper。
@@ -1583,7 +1583,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1001. Codex settings 中 `auth` object 与 config text 读取的纯 accessor facade 已从 adapter 移除；adapter 继续 re-export core ports，Provider 级 API key/base URL 投影仍留在宿主边界。
 1002. takeover/hot-switch 的纯 bool 状态策略 facade 已从 adapter 移除；带 `AppType` 的 hot-switch helper 仍留在 adapter 负责 `AppKind` 投影。
 1003. Codex restored live settings parts、provider validation issue spec、live-config presence policy、delete-current-provider 判断的值级 facade 已从 adapter 移除，改为 re-export core ports。
-1004. local proxy URL 判断与 Codex takeover auth placeholder 的同签名值级 facade 已从 adapter 移除；带配置文本和 provider 投影的 takeover helper 也已迁回 `proxy/host/cc_switch/live_takeover.rs`。
+1004. local proxy URL 判断与 Codex takeover auth placeholder 的同签名值级 facade 已从 adapter 移除；local proxy URL cleanup fixture 已归 `proxy-core::ports` owning tests，带配置文本和 provider 投影的 takeover helper 也已迁回 `proxy/host/cc_switch/live_takeover.rs`。
 1005. Claude/Gemini takeover env 字段应用与清理的同签名值级 facade 已从 adapter 移除，改为 re-export core ports；按 app/provider 组合 live takeover 的 helper 仍留在 adapter。
 1006. Claude takeover policy 写入 helper 的同签名 facade 已从 adapter 移除，live takeover 直接引用 core ports；Provider facts 组装也已迁回 `proxy/host/cc_switch/live_takeover.rs`。
 1007. Channel key runtime lookup 已从 DAO enabled-key convenience selector 改为 adapter-owned source：adapter 读取 raw key record，投影为 core runtime candidate 并调用 core selection policy，DAO 的 enabled selector 降为测试便捷入口。

@@ -2798,30 +2798,6 @@ wire_api = "chat"
     }
 
     #[test]
-    fn proxy_adapter_classifies_local_proxy_urls_for_takeover_cleanup() {
-        for url in [
-            " http://127.0.0.1:15721 ",
-            "http://localhost:15721",
-            "http://0.0.0.0:15721",
-            "http://[::1]:15721",
-            "http://[::]:15721",
-            "http://::1:15721",
-            "http://:::15721",
-        ] {
-            assert!(is_local_proxy_url(url), "{url} should be local");
-        }
-
-        for url in [
-            "https://127.0.0.1:15721",
-            "socks5://localhost:15721",
-            "http://relay.example/v1",
-            "",
-        ] {
-            assert!(!is_local_proxy_url(url), "{url} should not be local");
-        }
-    }
-
-    #[test]
     fn proxy_placeholder_adapter_projects_app_specific_live_detection() {
         let placeholder = "PROXY_MANAGED";
 
