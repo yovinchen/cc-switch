@@ -160,6 +160,51 @@ mod tests {
     use super::*;
     use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
     use serde_json::json;
+    use std::ffi::OsString;
+
+    struct IsolatedTestHome {
+        _dir: tempfile::TempDir,
+        original_test_home: Option<OsString>,
+    }
+
+    impl IsolatedTestHome {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().expect("temp home");
+            let original_test_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+            std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+            Self {
+                _dir: dir,
+                original_test_home,
+            }
+        }
+    }
+
+    impl Drop for IsolatedTestHome {
+        fn drop(&mut self) {
+            match &self.original_test_home {
+                Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+                None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+            }
+        }
+    }
+
+    fn save_claude_provider(db: &Database) {
+        let provider = Provider::with_id(
+            "anthropic-main".to_string(),
+            "Anthropic Main".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://relay-a.example.com/v1/",
+                    "ANTHROPIC_MODEL": "claude-sonnet-4"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider)
+            .expect("save provider");
+        db.set_current_provider("claude", "anthropic-main")
+            .expect("set current provider");
+    }
 
     #[test]
     fn claude_desktop_model_routes_to_core_inputs_preserve_route_contract() {
@@ -256,5 +301,83 @@ mod tests {
             client_catalog.models,
             vec!["gpt-5".to_string(), "o4-mini".to_string()]
         );
+    }
+
+    #[test]
+    fn model_catalog_provider_loads_provider_catalog_from_db_source() {
+        let db = Database::memory().expect("memory db");
+        save_claude_provider(&db);
+
+        let catalog =
+            provider_model_catalog_from_db_source(&db, &AppKind::Claude, "anthropic-main")
+                .expect("load provider catalog");
+
+        assert_eq!(catalog.provider_id, "anthropic-main");
+        assert_eq!(catalog.models, vec!["claude-sonnet-4".to_string()]);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn model_catalog_provider_loads_codex_client_catalog_file() {
+        let _home = IsolatedTestHome::new();
+        let codex_dir = crate::codex_config::get_codex_config_dir();
+        std::fs::create_dir_all(&codex_dir).expect("create codex dir");
+        std::fs::write(
+            crate::codex_config::get_codex_config_path(),
+            "model_catalog_json = \"cc-switch-model-catalog.json\"\n",
+        )
+        .expect("write codex config");
+        std::fs::write(
+            crate::codex_config::get_codex_model_catalog_path(),
+            r#"{"models":[{"id":"gpt-5"},{"model":"o4-mini"}]}"#,
+        )
+        .expect("write codex model catalog");
+
+        let catalog =
+            client_model_catalog_from_app_source(&AppKind::Codex).expect("load client catalog");
+
+        assert_eq!(catalog.provider_id, "codex");
+        assert_eq!(
+            catalog.models,
+            vec!["gpt-5".to_string(), "o4-mini".to_string()]
+        );
+        assert_eq!(
+            catalog.raw,
+            json!({"models": [{"id": "gpt-5"}, {"model": "o4-mini"}]})
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn model_catalog_provider_ignores_user_owned_codex_catalog_file() {
+        let _home = IsolatedTestHome::new();
+        let codex_dir = crate::codex_config::get_codex_config_dir();
+        std::fs::create_dir_all(&codex_dir).expect("create codex dir");
+        std::fs::write(
+            crate::codex_config::get_codex_config_path(),
+            "model_catalog_json = \"my-custom-catalog.json\"\n",
+        )
+        .expect("write codex config");
+        std::fs::write(
+            codex_dir.join("my-custom-catalog.json"),
+            r#"{"models":[{"id":"user-model"}]}"#,
+        )
+        .expect("write user catalog");
+
+        let catalog =
+            client_model_catalog_from_app_source(&AppKind::Codex).expect("load client catalog");
+
+        assert_eq!(catalog.models, Vec::<String>::new());
+        assert_eq!(catalog.raw, json!({"models": []}));
+    }
+
+    #[test]
+    fn model_catalog_provider_uses_core_empty_client_catalog_default() {
+        let catalog =
+            client_model_catalog_from_app_source(&AppKind::Gemini).expect("load client catalog");
+
+        assert_eq!(catalog.provider_id, "gemini");
+        assert_eq!(catalog.models, Vec::<String>::new());
+        assert_eq!(catalog.raw, json!({"models": []}));
     }
 }

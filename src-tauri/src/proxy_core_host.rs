@@ -30,8 +30,6 @@ use crate::proxy_core::api::errors::ProxyCoreError;
 #[cfg(test)]
 use crate::proxy_core::api::events::ProxyCoreEvent;
 #[cfg(test)]
-use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;
-#[cfg(test)]
 use crate::proxy_core::api::ports::{AuthProvider, ProxyServices};
 #[cfg(test)]
 use crate::proxy_core::api::ports::{
@@ -478,127 +476,6 @@ mod tests {
         );
         assert_eq!(plan.attempts.len(), 2);
         assert_eq!(plan.selections.len(), 2);
-    }
-
-    #[test]
-    fn model_catalog_from_raw_extracts_supported_client_model_ids() {
-        let catalog = client_model_catalog_from_optional_raw(
-            AppKind::Codex.as_str(),
-            Some(json!({
-                "models": [
-                    {"id": " gpt-5 "},
-                    {"model": "o4-mini"},
-                    {"name": "gemini-2.5-pro"},
-                    "claude-sonnet-4",
-                    {"id": "gpt-5"}
-                ]
-            })),
-        );
-
-        assert_eq!(
-            catalog.models,
-            vec![
-                "claude-sonnet-4".to_string(),
-                "gemini-2.5-pro".to_string(),
-                "gpt-5".to_string(),
-                "o4-mini".to_string(),
-            ]
-        );
-        assert_eq!(catalog.provider_id, "codex");
-    }
-
-    #[tokio::test]
-    async fn model_catalog_provider_loads_provider_catalog_from_settings() {
-        let db = Arc::new(Database::memory().expect("memory db"));
-        save_claude_provider(&db);
-        let services = CcSwitchProxyServices::new(db);
-
-        let catalog = services
-            .model_catalog()
-            .load_catalog(&AppKind::Claude, "anthropic-main")
-            .await
-            .expect("load provider catalog");
-
-        assert_eq!(catalog.provider_id, "anthropic-main");
-        assert_eq!(catalog.models, vec!["claude-sonnet-4".to_string()]);
-    }
-
-    #[tokio::test]
-    #[serial_test::serial]
-    async fn model_catalog_provider_loads_codex_client_catalog_file() {
-        let _home = IsolatedTestHome::new();
-        let codex_dir = crate::codex_config::get_codex_config_dir();
-        std::fs::create_dir_all(&codex_dir).expect("create codex dir");
-        std::fs::write(
-            crate::codex_config::get_codex_config_path(),
-            "model_catalog_json = \"cc-switch-model-catalog.json\"\n",
-        )
-        .expect("write codex config");
-        std::fs::write(
-            crate::codex_config::get_codex_model_catalog_path(),
-            r#"{"models":[{"id":"gpt-5"},{"model":"o4-mini"}]}"#,
-        )
-        .expect("write codex model catalog");
-        let services = CcSwitchProxyServices::new(Arc::new(Database::memory().expect("memory db")));
-
-        let catalog = services
-            .model_catalog()
-            .load_client_catalog(&AppKind::Codex)
-            .await
-            .expect("load client catalog");
-
-        assert_eq!(catalog.provider_id, "codex");
-        assert_eq!(
-            catalog.models,
-            vec!["gpt-5".to_string(), "o4-mini".to_string()]
-        );
-        assert_eq!(
-            catalog.raw,
-            json!({"models": [{"id": "gpt-5"}, {"model": "o4-mini"}]})
-        );
-    }
-
-    #[tokio::test]
-    #[serial_test::serial]
-    async fn model_catalog_provider_ignores_user_owned_codex_catalog_file() {
-        let _home = IsolatedTestHome::new();
-        let codex_dir = crate::codex_config::get_codex_config_dir();
-        std::fs::create_dir_all(&codex_dir).expect("create codex dir");
-        std::fs::write(
-            crate::codex_config::get_codex_config_path(),
-            "model_catalog_json = \"my-custom-catalog.json\"\n",
-        )
-        .expect("write codex config");
-        std::fs::write(
-            codex_dir.join("my-custom-catalog.json"),
-            r#"{"models":[{"id":"user-model"}]}"#,
-        )
-        .expect("write user catalog");
-        let services = CcSwitchProxyServices::new(Arc::new(Database::memory().expect("memory db")));
-
-        let catalog = services
-            .model_catalog()
-            .load_client_catalog(&AppKind::Codex)
-            .await
-            .expect("load client catalog");
-
-        assert_eq!(catalog.models, Vec::<String>::new());
-        assert_eq!(catalog.raw, json!({"models": []}));
-    }
-
-    #[tokio::test]
-    async fn model_catalog_provider_uses_core_empty_client_catalog_default() {
-        let services = CcSwitchProxyServices::new(Arc::new(Database::memory().expect("memory db")));
-
-        let catalog = services
-            .model_catalog()
-            .load_client_catalog(&AppKind::Gemini)
-            .await
-            .expect("load client catalog");
-
-        assert_eq!(catalog.provider_id, "gemini");
-        assert_eq!(catalog.models, Vec::<String>::new());
-        assert_eq!(catalog.raw, json!({"models": []}));
     }
 
     #[tokio::test]

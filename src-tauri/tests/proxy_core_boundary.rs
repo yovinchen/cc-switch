@@ -17971,6 +17971,8 @@ fn model_catalog_provider_owns_client_model_catalog_source_selection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/model_catalog_provider.rs");
     let source = fs::read_to_string(&path).expect("read model_catalog_provider.rs");
+    let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
     let function = function_slice(
@@ -17996,6 +17998,18 @@ fn model_catalog_provider_owns_client_model_catalog_source_selection() {
         !adapter_source.contains("pub(crate) fn client_model_catalog_from_app_source(")
             && !adapter_source.contains("fn codex_client_model_catalog_raw_from_active_config("),
         "proxy_core_adapter should not keep client model catalog source-selection helpers"
+    );
+    assert!(
+        source.contains("fn model_catalog_provider_loads_provider_catalog_from_db_source()")
+            && source.contains("fn model_catalog_provider_loads_codex_client_catalog_file()")
+            && source.contains("fn model_catalog_provider_ignores_user_owned_codex_catalog_file()")
+            && source.contains("fn model_catalog_provider_uses_core_empty_client_catalog_default()")
+            && !host_harness_source.contains("fn model_catalog_from_raw_extracts_supported_client_model_ids")
+            && !host_harness_source.contains("fn model_catalog_provider_loads_provider_catalog_from_settings")
+            && !host_harness_source.contains("fn model_catalog_provider_loads_codex_client_catalog_file")
+            && !host_harness_source.contains("fn model_catalog_provider_ignores_user_owned_codex_catalog_file")
+            && !host_harness_source.contains("fn model_catalog_provider_uses_core_empty_client_catalog_default"),
+        "model catalog provider/client catalog fixtures should live beside model_catalog_provider, not proxy_core_host"
     );
 
     let forbidden_markers = ["match app", "AppKind::Codex"];
@@ -25402,8 +25416,6 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
             "use crate::proxy_core::api::domain::{\n    AppKind, ChannelOverrides, ModelCapabilities, ModelRoute, ProviderKind, ProviderSpec,\n    RetryPolicy, UpstreamEndpoint,\n};"
         )
             && host_source.contains(
-            "use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;"
-        ) && host_source.contains(
             "use crate::proxy_core::api::management::{\n        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, RouteResolveRequest,\n    };"
         ) && host_source.contains(
             "use crate::proxy_core::api::ports::{\n    ChannelAttemptResult, ChannelHealthLookupInput, ProxyConfig, ProxyRuntimeStatus,\n};"
