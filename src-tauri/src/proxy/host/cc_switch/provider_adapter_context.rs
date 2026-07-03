@@ -102,3 +102,50 @@ impl ForwarderAdapterFacts {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::ProviderMeta;
+    use serde_json::json;
+
+    #[test]
+    fn forwarder_adapter_context_projects_provider_url_facts() {
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
+        let mut provider = Provider::with_id(
+            "copilot-provider".to_string(),
+            "Copilot Provider".to_string(),
+            json!({
+                "base_url": "https://api.githubcopilot.com"
+            }),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            provider_type: Some("github_copilot".to_string()),
+            is_full_url: Some(true),
+            ..Default::default()
+        });
+
+        let facts = adapter
+            .provider_url_facts(&provider)
+            .expect("provider URL facts");
+
+        assert_eq!(facts.base_url, "https://api.githubcopilot.com");
+        assert!(facts.is_full_url);
+        assert!(facts.is_copilot);
+    }
+
+    #[test]
+    fn forwarder_adapter_context_projects_adapter_facts() {
+        let claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let codex_adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
+
+        let claude_facts = claude_adapter.facts();
+        let codex_facts = codex_adapter.facts();
+
+        assert_eq!(claude_facts.adapter_name, "Claude");
+        assert!(claude_facts.is_claude_adapter);
+        assert_eq!(codex_facts.adapter_name, "Codex");
+        assert!(!codex_facts.is_claude_adapter);
+    }
+}

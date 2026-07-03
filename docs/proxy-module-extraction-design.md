@@ -457,6 +457,7 @@
 437. `CcSwitchProxyRuntime` 显式持有 current route target map 并供 provider/app summary source 装配使用；`ForwarderRuntimeStateSource` 不再暴露 `current_providers()` 读出口，只保留 active route target 写入语义方法。
 438. `ForwarderAuthSource` 现在持有 managed-account runtime source 并负责托管账号 auth 解析；`RequestForwarder` 在上游 auth headers 阶段不再把 `ManagedAccountRuntimeSource` 作为 input 字段转手传递。
 439. request-side 托管账号运行态决策已收进 `ForwarderRequestSource`：Copilot live model 覆写、Copilot dynamic base URL 和 Claude API format runtime resolution 不再由 `RequestForwarder` 直连 `ManagedAccountRuntimeSource`。
+439a. `ForwarderRequestSource` 的 request body transform、Codex Responses→Chat、Copilot optimizer、media/rectifier retry、upstream request parts 与 final body model 归因行为测试已从 `proxy_core_adapter` 迁到 owning `proxy/host/cc_switch/forwarder_request_source.rs`；`ForwarderAdapterContext` 的 provider URL/adapter facts 行为测试迁到 `provider_adapter_context.rs`，边界测试继续约束这些 fixture 不再回流到 adapter。
 440. response finalization 的 response、streaming mode 与 timeout facts 已收敛为 `ForwarderResponseFinalizationInput`；`RequestForwarder` 不再以散参形式把响应读取/首包预读策略转手传给 `ForwarderResponseSource`。
 441. host forward bridge 不再拆 `ForwarderRuntimeConfig` 的 timeout/retry/rectifier/optimizer 字段来构造 `RequestForwarder`；runtime config 作为整体进入 forwarder，由 forwarder 构造器在边界内完成 options 与三类 optimizer/rectifier config 投影。
 442. channel response status mapping 的 response 与 selected channel facts 已收敛为 `ForwarderChannelResponseStatusInput`；`RequestForwarder` 不再以散参形式把 statusCodeMapping 所需事实转手传给 `ForwarderResponseSource`。

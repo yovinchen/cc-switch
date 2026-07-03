@@ -837,7 +837,11 @@ pub(crate) fn default_forwarder_request_source() -> ForwarderRequestSourceRef {
 mod tests {
     use super::*;
     use crate::provider::{ClaudeDesktopMode, ClaudeDesktopModelRoute, Provider, ProviderMeta};
-    use crate::proxy_core::api::routing::ResolvedChannelAttempt;
+    use crate::proxy_core::api::ports::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
+    use crate::proxy_core::api::routing::{
+        resolved_channel_attempt_from_candidate, ChannelRouteCandidate, ResolvedChannelAttempt,
+    };
+    use http::HeaderMap;
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -859,6 +863,946 @@ mod tests {
 
         assert_eq!(header, http::HeaderValue::from_static("cc-switch-test/1.0"));
         assert!(custom_user_agent_header_for_provider(&provider, true).is_none());
+    }
+
+    #[test]
+    fn forwarder_request_source_selects_adapter_for_app() {
+        let source = default_forwarder_request_source();
+
+        let claude_adapter = source.adapter_context_for_app(&AppType::Claude);
+        let fallback_adapter = source.adapter_context_for_app(&AppType::Hermes);
+
+        assert_eq!(claude_adapter.facts().adapter_name, "Claude");
+        assert_eq!(fallback_adapter.facts().adapter_name, "Codex");
+    }
+
+    #[test]
+    fn forwarder_request_source_prepares_bedrock_attempt_body() {
+        let source = default_forwarder_request_source();
+        let provider = Provider::with_id(
+            "bedrock-provider".to_string(),
+            "Bedrock Provider".to_string(),
+            json!({
+                "env": {
+                    "CLAUDE_CODE_USE_BEDROCK": "1"
+                }
+            }),
+            None,
+        );
+        let body = json!({
+            "model": "anthropic.claude-opus-4-6-20250514-v1:0",
+            "max_tokens": 16384,
+            "tools": [{"name": "tool1"}],
+            "system": [{"type": "text", "text": "sys prompt"}],
+            "messages": [
+                {"role": "user", "content": [{"type": "text", "text": "hi"}]},
+                {"role": "assistant", "content": [
+                    {"type": "text", "text": "hello"}
+                ]}
+            ]
+        });
+        let config = OptimizerConfig {
+            enabled: true,
+            thinking_optimizer: true,
+            cache_injection: true,
+            cache_ttl: "1h".to_string(),
+        };
+
+        let prepared = source.prepare_attempt_body(ForwarderAttemptBodyInput {
+            body: &body,
+            provider: &provider,
+            config: &config,
+        });
+
+        assert_eq!(body.get("thinking"), None);
+        assert_eq!(prepared["thinking"]["type"], "adaptive");
+        assert_eq!(prepared["output_config"]["effort"], "max");
+        assert!(prepared["tools"][0].get("cache_control").is_some());
+        assert!(prepared["system"][0].get("cache_control").is_some());
+        assert!(prepared["messages"][1]["content"][0]
+            .get("cache_control")
+            .is_some());
+    }
+
+    #[test]
+    fn forwarder_request_source_converts_codex_responses_to_chat_body() {
+        let source = CcSwitchForwarderRequestSource::new(default_managed_account_runtime_source());
+        let provider = Provider::with_id(
+            "codex-chat".to_string(),
+            "Codex Chat".to_string(),
+            json!({
+                "config": r#"model_provider = "openai"
+model = " upstream-model "
+
+[model_providers.openai]
+wire_api = "chat"
+base_url = "https://api.openai.com/v1"
+"#,
+                "modelCatalog": {
+                    "models": [{"model": "catalog-model"}]
+                }
+            }),
+            None,
+        );
+
+        let body =
+            source.convert_codex_responses_to_chat_body(ForwarderCodexResponsesToChatInput {
+                body: json!({
+                    "model": "client-model",
+                    "instructions": "Stay concise.",
+                    "input": "Hello",
+                    "max_output_tokens": 64,
+                    "stream": true
+                }),
+                provider: &provider,
+            });
+
+        assert_eq!(body["model"], "upstream-model");
+        assert_eq!(body["messages"][0]["role"], "system");
+        assert_eq!(body["messages"][1]["content"], "Hello");
+        assert_eq!(body["max_tokens"], 64);
+        assert_eq!(body["stream"], true);
+    }
+
+    #[test]
+    fn forwarder_request_source_projects_codex_responses_to_chat_gate() {
+        let source = default_forwarder_request_source();
+        let codex_adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
+        let claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let provider = Provider::with_id(
+            "codex-chat".to_string(),
+            "Codex Chat".to_string(),
+            json!({
+                "config": r#"model_provider = "openai"
+model = " upstream-model "
+
+[model_providers.openai]
+wire_api = "chat"
+base_url = "https://api.openai.com/v1"
+"#,
+            }),
+            None,
+        );
+
+        assert!(
+            source
+                .transform_plan(ForwarderTransformPlanInput {
+                    app_type: &AppType::Codex,
+                    adapter: &codex_adapter,
+                    endpoint: "/responses",
+                    provider: &provider,
+                    resolved_claude_api_format: None,
+                })
+                .codex_responses_to_chat
+        );
+        assert!(
+            !source
+                .transform_plan(ForwarderTransformPlanInput {
+                    app_type: &AppType::Claude,
+                    adapter: &claude_adapter,
+                    endpoint: "/responses",
+                    provider: &provider,
+                    resolved_claude_api_format: None,
+                })
+                .codex_responses_to_chat
+        );
+        assert!(
+            !source
+                .transform_plan(ForwarderTransformPlanInput {
+                    app_type: &AppType::Codex,
+                    adapter: &codex_adapter,
+                    endpoint: "/chat/completions",
+                    provider: &provider,
+                    resolved_claude_api_format: None,
+                })
+                .codex_responses_to_chat
+        );
+    }
+
+    #[test]
+    fn forwarder_request_source_wraps_provider_transform_request() {
+        let source = CcSwitchForwarderRequestSource::new(default_managed_account_runtime_source());
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
+        let provider = Provider::with_id(
+            "codex-provider".to_string(),
+            "Codex Provider".to_string(),
+            json!({}),
+            None,
+        );
+        let body = json!({"model": "gpt-5", "messages": []});
+
+        let transformed = source
+            .transform_provider_request_body(ForwarderProviderTransformInput {
+                adapter: &adapter,
+                body: body.clone(),
+                provider: &provider,
+            })
+            .expect("provider transform");
+
+        assert_eq!(transformed, body);
+    }
+
+    #[test]
+    fn forwarder_request_source_transforms_request_body_and_tracks_outbound_model() {
+        let source = default_forwarder_request_source();
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+        let no_transform_plan = ForwarderTransformPlan {
+            needs_transform: false,
+            use_claude_transform: false,
+            use_provider_transform: false,
+            claude_api_format_for_url: None,
+            claude_api_format_for_transform: None,
+            codex_responses_to_chat: false,
+        };
+
+        let passthrough = source
+            .transform_request_body(ForwarderRequestBodyTransformInput {
+                adapter: &adapter,
+                body: json!({"model": "mapped-model", "messages": []}),
+                provider: &provider,
+                transform_plan: &no_transform_plan,
+                claude_transformed_body: None,
+            })
+            .expect("passthrough request body");
+        assert_eq!(passthrough.body["model"], "mapped-model");
+        assert_eq!(passthrough.outbound_model.as_deref(), Some("mapped-model"));
+
+        let claude_transform_plan = ForwarderTransformPlan {
+            needs_transform: true,
+            use_claude_transform: true,
+            use_provider_transform: false,
+            claude_api_format_for_url: Some("openai_chat".to_string()),
+            claude_api_format_for_transform: Some("openai_chat".to_string()),
+            codex_responses_to_chat: false,
+        };
+        let claude_transformed = source
+            .transform_request_body(ForwarderRequestBodyTransformInput {
+                adapter: &adapter,
+                body: json!({"model": "mapped-model", "messages": []}),
+                provider: &provider,
+                transform_plan: &claude_transform_plan,
+                claude_transformed_body: Some(json!({
+                    "model": "chat-model",
+                    "messages": []
+                })),
+            })
+            .expect("Claude transformed request body");
+        assert_eq!(claude_transformed.body["model"], "chat-model");
+        assert_eq!(
+            claude_transformed.outbound_model.as_deref(),
+            Some("mapped-model")
+        );
+    }
+
+    #[test]
+    fn forwarder_request_source_prefers_codex_chat_bridge_over_claude_body() {
+        let source = default_forwarder_request_source();
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let provider = Provider::with_id(
+            "codex-chat".to_string(),
+            "Codex Chat".to_string(),
+            json!({
+                "config": r#"model_provider = "openai"
+model = " upstream-model "
+
+[model_providers.openai]
+wire_api = "chat"
+base_url = "https://api.openai.com/v1"
+"#,
+            }),
+            None,
+        );
+        let transform_plan = ForwarderTransformPlan {
+            needs_transform: true,
+            use_claude_transform: true,
+            use_provider_transform: false,
+            claude_api_format_for_url: Some("openai_chat".to_string()),
+            claude_api_format_for_transform: Some("openai_chat".to_string()),
+            codex_responses_to_chat: true,
+        };
+
+        let transformed = source
+            .transform_request_body(ForwarderRequestBodyTransformInput {
+                adapter: &adapter,
+                body: json!({
+                    "model": "client-model",
+                    "instructions": "Stay concise.",
+                    "input": "Hello"
+                }),
+                provider: &provider,
+                transform_plan: &transform_plan,
+                claude_transformed_body: Some(json!({"model": "should-not-win"})),
+            })
+            .expect("Codex chat bridge body");
+
+        assert_eq!(transformed.body["model"], "upstream-model");
+        assert_eq!(transformed.body["messages"][0]["role"], "system");
+        assert_eq!(transformed.body["messages"][1]["content"], "Hello");
+        assert_eq!(transformed.outbound_model.as_deref(), Some("client-model"));
+    }
+
+    #[test]
+    fn forwarder_request_source_projects_transform_plan() {
+        let source = default_forwarder_request_source();
+        let claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let codex_adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
+        let mut claude_provider = Provider::with_id(
+            "claude-provider".to_string(),
+            "Claude Provider".to_string(),
+            json!({}),
+            None,
+        );
+        claude_provider.meta = Some(ProviderMeta {
+            api_format: Some("openai_chat".to_string()),
+            ..Default::default()
+        });
+
+        let resolved_plan = source.transform_plan(ForwarderTransformPlanInput {
+            app_type: &AppType::Claude,
+            adapter: &claude_adapter,
+            endpoint: "/v1/messages",
+            provider: &claude_provider,
+            resolved_claude_api_format: Some("gemini_native"),
+        });
+        assert!(resolved_plan.needs_transform);
+        assert!(resolved_plan.use_claude_transform);
+        assert!(!resolved_plan.use_provider_transform);
+        assert_eq!(
+            resolved_plan.claude_api_format_for_url.as_deref(),
+            Some("gemini_native")
+        );
+        assert_eq!(
+            resolved_plan.claude_api_format_for_transform.as_deref(),
+            Some("gemini_native")
+        );
+        assert!(!resolved_plan.codex_responses_to_chat);
+
+        let fallback_plan = source.transform_plan(ForwarderTransformPlanInput {
+            app_type: &AppType::Claude,
+            adapter: &claude_adapter,
+            endpoint: "/v1/messages",
+            provider: &claude_provider,
+            resolved_claude_api_format: None,
+        });
+        assert!(fallback_plan.needs_transform);
+        assert!(fallback_plan.use_claude_transform);
+        assert!(!fallback_plan.use_provider_transform);
+        assert_eq!(
+            fallback_plan.claude_api_format_for_url.as_deref(),
+            Some("openai_chat")
+        );
+        assert_eq!(
+            fallback_plan.claude_api_format_for_transform.as_deref(),
+            Some("openai_chat")
+        );
+        assert!(!fallback_plan.codex_responses_to_chat);
+
+        let codex_plan = source.transform_plan(ForwarderTransformPlanInput {
+            app_type: &AppType::Codex,
+            adapter: &codex_adapter,
+            endpoint: "/v1/chat/completions",
+            provider: &claude_provider,
+            resolved_claude_api_format: None,
+        });
+        assert!(!codex_plan.needs_transform);
+        assert!(!codex_plan.use_claude_transform);
+        assert!(!codex_plan.use_provider_transform);
+        assert!(codex_plan.claude_api_format_for_url.is_none());
+        assert!(codex_plan.claude_api_format_for_transform.is_none());
+        assert!(!codex_plan.codex_responses_to_chat);
+    }
+
+    #[test]
+    fn forwarder_request_source_projects_protocol_preparation() {
+        let source = default_forwarder_request_source();
+        let claude_transform_plan = ForwarderTransformPlan {
+            needs_transform: true,
+            use_claude_transform: true,
+            use_provider_transform: false,
+            claude_api_format_for_url: Some("openai_chat".to_string()),
+            claude_api_format_for_transform: Some("openai_chat".to_string()),
+            codex_responses_to_chat: false,
+        };
+        let claude_preparation = source.protocol_preparation(ForwarderProtocolPreparationInput {
+            transform_plan: &claude_transform_plan,
+        });
+        assert!(claude_preparation.should_transform_claude_request);
+        assert_eq!(
+            claude_preparation
+                .claude_api_format_for_transform
+                .as_deref(),
+            Some("openai_chat")
+        );
+        assert!(!claude_preparation.codex_chat_enrichment_enabled);
+
+        let codex_bridge_plan = ForwarderTransformPlan {
+            needs_transform: true,
+            use_claude_transform: true,
+            use_provider_transform: false,
+            claude_api_format_for_url: Some("openai_chat".to_string()),
+            claude_api_format_for_transform: Some("openai_chat".to_string()),
+            codex_responses_to_chat: true,
+        };
+        let codex_preparation = source.protocol_preparation(ForwarderProtocolPreparationInput {
+            transform_plan: &codex_bridge_plan,
+        });
+        assert!(!codex_preparation.should_transform_claude_request);
+        assert!(codex_preparation.claude_api_format_for_transform.is_none());
+        assert!(codex_preparation.codex_chat_enrichment_enabled);
+    }
+
+    #[test]
+    fn forwarder_request_source_plans_codex_upstream_url() {
+        let source = default_forwarder_request_source();
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
+        let body = json!({});
+        let param_overrides = json!({"api-version": "2026-06-21"});
+        let transform_plan = ForwarderTransformPlan {
+            needs_transform: false,
+            use_claude_transform: false,
+            use_provider_transform: false,
+            claude_api_format_for_url: None,
+            claude_api_format_for_transform: None,
+            codex_responses_to_chat: true,
+        };
+
+        let plan = source.plan_upstream_url(ForwarderUpstreamUrlInput {
+            adapter: &adapter,
+            base_url: "https://api.openai.com/v1/chat/completions",
+            endpoint: "/v1/responses?foo=bar&api-version=old",
+            is_full_url: false,
+            transform_plan: &transform_plan,
+            is_copilot: false,
+            body: &body,
+            channel_param_overrides: Some(&param_overrides),
+        });
+
+        assert_eq!(
+            plan.effective_endpoint,
+            "/chat/completions?foo=bar&api-version=old"
+        );
+        assert_eq!(
+            plan.passthrough_query.as_deref(),
+            Some("foo=bar&api-version=old")
+        );
+        assert_eq!(
+            plan.url,
+            "https://api.openai.com/v1/chat/completions?foo=bar&api-version=2026-06-21"
+        );
+    }
+
+    #[test]
+    fn forwarder_request_source_wraps_copilot_optimizer_sequence() {
+        let source = CcSwitchForwarderRequestSource::new(default_managed_account_runtime_source());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "anthropic-beta",
+            "tools-2024-04-04".parse().expect("header value"),
+        );
+
+        let optimized = source.optimize_copilot_request(ForwarderCopilotRequestOptimizationInput {
+            body: json!({
+                "model": "claude-sonnet-4",
+                "messages": [{"role": "user", "content": "Hello"}]
+            }),
+            headers: &headers,
+            config: &CopilotOptimizerConfig::default(),
+        });
+
+        assert_eq!(optimized.classification.initiator, "user");
+        assert!(optimized.classification.is_warmup);
+        assert_eq!(optimized.body["model"], "gpt-5-mini");
+    }
+
+    #[test]
+    fn forwarder_request_source_gates_copilot_optimizer_sequence() {
+        let source = default_forwarder_request_source();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "anthropic-beta",
+            "tools-2024-04-04".parse().expect("header value"),
+        );
+        let disabled_config = CopilotOptimizerConfig {
+            enabled: false,
+            ..Default::default()
+        };
+
+        let disabled = source.prepare_copilot_request_optimization(
+            ForwarderCopilotRequestOptimizationGateInput {
+                body: json!({ "model": "claude-sonnet-4" }),
+                headers: &headers,
+                config: &disabled_config,
+                is_copilot: true,
+            },
+        );
+        assert!(disabled.classification.is_none());
+        assert_eq!(disabled.body["model"], "claude-sonnet-4");
+
+        let non_copilot = source.prepare_copilot_request_optimization(
+            ForwarderCopilotRequestOptimizationGateInput {
+                body: json!({ "model": "claude-sonnet-4" }),
+                headers: &headers,
+                config: &CopilotOptimizerConfig::default(),
+                is_copilot: false,
+            },
+        );
+        assert!(non_copilot.classification.is_none());
+        assert_eq!(non_copilot.body["model"], "claude-sonnet-4");
+
+        let enabled = source.prepare_copilot_request_optimization(
+            ForwarderCopilotRequestOptimizationGateInput {
+                body: json!({
+                    "model": "claude-sonnet-4",
+                    "messages": [{"role": "user", "content": "Hello"}]
+                }),
+                headers: &headers,
+                config: &CopilotOptimizerConfig::default(),
+                is_copilot: true,
+            },
+        );
+        assert!(enabled.classification.is_some());
+        assert_eq!(enabled.body["model"], "gpt-5-mini");
+    }
+
+    #[test]
+    fn forwarder_request_source_prepares_provider_request_body() {
+        let source = default_forwarder_request_source();
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "sonnet-mapped"
+                }
+            }),
+            None,
+        );
+        let channel = resolved_channel_attempt_from_candidate(ChannelRouteCandidate {
+            channel_id: "ch_1".to_string(),
+            provider_id: "provider-a".to_string(),
+            channel_name: "Relay".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            public_model: Some("sonnet-mapped".to_string()),
+            upstream_model: Some("upstream-sonnet[1M]".to_string()),
+            route_group: "default".to_string(),
+            priority: 100,
+            weight: 1,
+            source_kind: "manual".to_string(),
+        });
+
+        let body = source
+            .prepare_provider_request_body(ForwarderProviderRequestBodyInput {
+                app_type: &AppType::Claude,
+                body: json!({"model": "claude-sonnet", "messages": []}),
+                provider: &provider,
+                channel: Some(&channel),
+                is_copilot: false,
+            })
+            .expect("prepared body");
+
+        assert_eq!(body["model"], "upstream-sonnet");
+    }
+
+    #[test]
+    fn forwarder_request_source_normalizes_copilot_model_body() {
+        let source = default_forwarder_request_source();
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+
+        let body = source
+            .prepare_provider_request_body(ForwarderProviderRequestBodyInput {
+                app_type: &AppType::Claude,
+                body: json!({"model": "claude-sonnet-4-6[1m]", "messages": []}),
+                provider: &provider,
+                channel: None,
+                is_copilot: true,
+            })
+            .expect("prepared body");
+
+        assert_eq!(body["model"], "claude-sonnet-4.6-1m");
+    }
+
+    #[test]
+    fn forwarder_request_source_applies_claude_body_policies() {
+        let source = default_forwarder_request_source();
+        let mut provider = Provider::with_id(
+            "claude-normalize".to_string(),
+            "Claude Normalize".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic"
+                }
+            }),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            api_format: Some("anthropic".to_string()),
+            ..Default::default()
+        });
+        let mut body = json!({
+            "model": "deepseek-v4-pro",
+            "thinking": { "type": "disabled" },
+            "output_config": { "effort": "max" },
+            "messages": [{ "role": "user", "content": "hello" }]
+        });
+        let claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let codex_adapter = forwarder_provider_adapter_context_for_app(&AppType::Codex);
+        let media_disabled_config = RectifierConfig {
+            request_media_fallback: false,
+            request_media_heuristic: false,
+            ..RectifierConfig::default()
+        };
+
+        source.apply_claude_body_policies(ForwarderClaudeBodyPolicyInput {
+            adapter: &claude_adapter,
+            body: &mut body,
+            provider: &provider,
+            api_format: Some("anthropic"),
+            config: &media_disabled_config,
+        });
+
+        assert!(body.get("output_config").is_none());
+
+        let mut skipped_body = json!({
+            "model": "deepseek-v4-pro",
+            "output_config": { "effort": "max" },
+            "messages": [{ "role": "user", "content": "hello" }]
+        });
+        source.apply_claude_body_policies(ForwarderClaudeBodyPolicyInput {
+            adapter: &codex_adapter,
+            body: &mut skipped_body,
+            provider: &provider,
+            api_format: Some("anthropic"),
+            config: &media_disabled_config,
+        });
+
+        assert!(skipped_body.get("output_config").is_some());
+    }
+
+    #[test]
+    fn forwarder_request_source_gates_app_media_prevention() {
+        let source = default_forwarder_request_source();
+        let provider = Provider::with_id("media".to_string(), "Media".to_string(), json!({}), None);
+        let default_config = RectifierConfig::default();
+        let mut non_codex_body = json!({
+            "model": "deepseek-v4-pro",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+        assert_eq!(
+            source.apply_app_media_prevention(ForwarderAppMediaPreventionInput {
+                app_type: &AppType::Claude,
+                body: &mut non_codex_body,
+                provider: &provider,
+                config: &default_config,
+            }),
+            0
+        );
+        assert_eq!(non_codex_body["messages"][0]["content"][0]["type"], "image");
+
+        let mut codex_body = json!({
+            "model": "deepseek-v4-pro",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+        assert_eq!(
+            source.apply_app_media_prevention(ForwarderAppMediaPreventionInput {
+                app_type: &AppType::Codex,
+                body: &mut codex_body,
+                provider: &provider,
+                config: &default_config,
+            }),
+            1
+        );
+        assert_eq!(codex_body["messages"][0]["content"][0]["type"], "text");
+    }
+
+    #[test]
+    fn forwarder_request_source_projects_media_retry_plan() {
+        let source = default_forwarder_request_source();
+        let provider = Provider::with_id("media".to_string(), "Media".to_string(), json!({}), None);
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let config = RectifierConfig::default();
+        let provider_body = json!({
+            "model": "vision-rejecting-model",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+        let unsupported_image_error = ProxyError::UpstreamError {
+            status: 400,
+            body: Some(
+                r#"{"error":{"message":"This model cannot process image inputs"}}"#.to_string(),
+            ),
+        };
+
+        let plan = source
+            .media_retry_plan(ForwarderMediaRetryPlanInput {
+                app: "claude",
+                adapter: &adapter,
+                provider: &provider,
+                already_retried: false,
+                provider_body: &provider_body,
+                error: &unsupported_image_error,
+                config: &config,
+            })
+            .expect("media retry plan");
+        assert_eq!(plan.body["messages"][0]["content"][0]["type"], "text");
+        assert_eq!(
+            plan.body["messages"][0]["content"][0]["text"],
+            UNSUPPORTED_IMAGE_MARKER
+        );
+
+        let ordinary_error = ProxyError::UpstreamError {
+            status: 400,
+            body: Some(r#"{"error":{"message":"bad request"}}"#.to_string()),
+        };
+        assert!(source
+            .media_retry_plan(ForwarderMediaRetryPlanInput {
+                app: "claude",
+                adapter: &adapter,
+                provider: &provider,
+                already_retried: false,
+                provider_body: &provider_body,
+                error: &ordinary_error,
+                config: &config,
+            })
+            .is_none());
+    }
+
+    #[test]
+    fn forwarder_request_source_builds_upstream_parts_from_adapter_context() {
+        let source = default_forwarder_request_source();
+        let mut provider = Provider::with_id(
+            "headers".to_string(),
+            "Headers".to_string(),
+            json!({}),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            custom_user_agent: Some("cc-switch-test/2.0".to_string()),
+            ..ProviderMeta::default()
+        });
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let mut inbound_headers = HeaderMap::new();
+        inbound_headers.insert(
+            "anthropic-beta",
+            http::HeaderValue::from_static("other-beta"),
+        );
+        let prepared_request = ForwarderPreparedRequest {
+            body: json!({ "model": "claude-3", "messages": [] }),
+            request_is_streaming: false,
+            force_identity_encoding: false,
+            body_model_label: "claude-3".to_string(),
+            outbound_model: None,
+        };
+
+        let request_parts = source
+            .build_upstream_request_parts(ForwarderRequestPartsInput {
+                method: &http::Method::POST,
+                url: "https://upstream.example/v1/messages",
+                inbound_headers: &inbound_headers,
+                provider: &provider,
+                prepared_request: &prepared_request,
+                auth_headers: &[],
+                channel_header_overrides: None,
+                is_copilot: false,
+                adapter: &adapter,
+                resolved_claude_api_format: Some("anthropic"),
+                codex_oauth_session_headers: &[],
+            })
+            .expect("request parts");
+
+        assert!(request_parts.preserve_exact_header_case);
+        assert_eq!(
+            request_parts
+                .ordered_headers
+                .get("anthropic-beta")
+                .and_then(|value| value.to_str().ok()),
+            Some("claude-code-20250219,other-beta")
+        );
+        assert_eq!(
+            request_parts
+                .ordered_headers
+                .get(http::header::USER_AGENT)
+                .and_then(|value| value.to_str().ok()),
+            Some("cc-switch-test/2.0")
+        );
+        let serialized_body: Value =
+            serde_json::from_slice(&request_parts.body).expect("serialized body");
+        assert_eq!(serialized_body, prepared_request.body);
+    }
+
+    #[test]
+    fn forwarder_request_source_prepares_final_body_model_facts() {
+        let source = default_forwarder_request_source();
+        let headers = HeaderMap::new();
+        let transform_plan = ForwarderTransformPlan {
+            needs_transform: false,
+            use_claude_transform: false,
+            use_provider_transform: false,
+            claude_api_format_for_url: None,
+            claude_api_format_for_transform: None,
+            codex_responses_to_chat: false,
+        };
+
+        let prepared = source.prepare_upstream_body(ForwarderRequestPreparationInput {
+            app: "codex",
+            provider_id: "provider-a",
+            endpoint: "/v1/chat/completions",
+            api_format: None,
+            body: json!({ "model": "upstream-sonnet", "messages": [] }),
+            session_client_provided: false,
+            transform_plan: &transform_plan,
+            initial_outbound_model: Some("initial-model".to_string()),
+            headers: &headers,
+        });
+
+        assert_eq!(prepared.body_model_label, "upstream-sonnet");
+        assert_eq!(prepared.outbound_model.as_deref(), Some("upstream-sonnet"));
+
+        let prepared_without_model =
+            source.prepare_upstream_body(ForwarderRequestPreparationInput {
+                app: "codex",
+                provider_id: "provider-a",
+                endpoint: "/v1/chat/completions",
+                api_format: None,
+                body: json!({ "messages": [] }),
+                session_client_provided: false,
+                transform_plan: &transform_plan,
+                initial_outbound_model: Some("initial-model".to_string()),
+                headers: &headers,
+            });
+
+        assert_eq!(prepared_without_model.body_model_label, "<none>");
+        assert_eq!(
+            prepared_without_model.outbound_model.as_deref(),
+            Some("initial-model")
+        );
+    }
+
+    #[test]
+    fn forwarder_request_source_projects_anthropic_rectifier_gate() {
+        let source = default_forwarder_request_source();
+        let mut claude_auth_provider = Provider::with_id(
+            "claude-auth".to_string(),
+            "Claude Auth".to_string(),
+            json!({}),
+            None,
+        );
+        claude_auth_provider.meta = Some(ProviderMeta {
+            provider_type: Some("claude_auth".to_string()),
+            ..Default::default()
+        });
+        let default_claude_provider = Provider::with_id(
+            "default-provider".to_string(),
+            "Default Provider".to_string(),
+            json!({}),
+            None,
+        );
+
+        assert!(
+            source.anthropic_rectifiers_enabled(ForwarderAnthropicRectifierGateInput {
+                app_type: &AppType::Claude,
+                provider: &claude_auth_provider,
+            },)
+        );
+        assert!(
+            !source.anthropic_rectifiers_enabled(ForwarderAnthropicRectifierGateInput {
+                app_type: &AppType::Codex,
+                provider: &claude_auth_provider,
+            },)
+        );
+        assert!(
+            source.anthropic_rectifiers_enabled(ForwarderAnthropicRectifierGateInput {
+                app_type: &AppType::Claude,
+                provider: &default_claude_provider,
+            },)
+        );
+    }
+
+    #[test]
+    fn forwarder_request_source_plans_signature_rectifier_retry() {
+        let source = default_forwarder_request_source();
+        let mut body = json!({
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "private", "signature": "bad"},
+                    {"type": "text", "text": "visible", "signature": "bad"}
+                ]
+            }]
+        });
+        let error = ProxyError::UpstreamError {
+            status: 400,
+            body: Some("invalid signature in thinking block".to_string()),
+        };
+
+        let plan =
+            source.thinking_signature_rectifier_plan(ForwarderThinkingSignatureRectifierInput {
+                app: "claude",
+                body: &mut body,
+                error: &error,
+                already_retried: false,
+                config: &RectifierConfig::default(),
+            });
+
+        assert_eq!(plan, ForwarderRequestRectifierPlan::Retry);
+        let content = body["messages"][0]["content"].as_array().unwrap();
+        assert_eq!(content.len(), 1);
+        assert_eq!(content[0]["type"], "text");
+        assert!(content[0].get("signature").is_none());
+    }
+
+    #[test]
+    fn forwarder_request_source_plans_budget_rectifier_retry() {
+        let source = default_forwarder_request_source();
+        let mut body = json!({
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 1024,
+            "thinking": {"type": "enabled", "budget_tokens": 512}
+        });
+        let error = ProxyError::UpstreamError {
+            status: 400,
+            body: Some(
+                "thinking.budget_tokens: Input should be greater than or equal to 1024".to_string(),
+            ),
+        };
+
+        let plan = source.thinking_budget_rectifier_plan(ForwarderThinkingBudgetRectifierInput {
+            app: "claude",
+            body: &mut body,
+            error: &error,
+            already_retried: false,
+            config: &RectifierConfig::default(),
+        });
+
+        assert_eq!(plan, ForwarderRequestRectifierPlan::Retry);
+        assert_eq!(body["thinking"]["type"], "enabled");
+        assert_eq!(body["thinking"]["budget_tokens"], 32000);
+        assert_eq!(body["max_tokens"], 64000);
     }
 
     #[test]

@@ -18991,15 +18991,16 @@ fn production_forwarder_delegates_claude_transform_gate_to_request_source() {
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let forwarder_source =
         fs::read_to_string(&forwarder_path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let core_transport_path = manifest_dir.join("crates/proxy-core/src/request_transport.rs");
+    let core_transport_source =
+        fs::read_to_string(&core_transport_path).expect("read request_transport.rs");
 
     assert!(
-        adapter_source.contains("use_claude_transform"),
+        core_transport_source.contains("use_claude_transform"),
         "ForwarderTransformPlan must expose the Claude transform execution gate"
     );
     assert!(
-        adapter_source.contains("use_provider_transform"),
+        core_transport_source.contains("use_provider_transform"),
         "ForwarderTransformPlan must expose the provider transform execution gate"
     );
 
@@ -21225,6 +21226,10 @@ fn production_forwarder_uses_request_source_resource() {
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
     let request_source =
         fs::read_to_string(&request_source_path).expect("read forwarder_request_source.rs");
+    let adapter_context_source = fs::read_to_string(
+        manifest_dir.join("src/proxy/host/cc_switch/provider_adapter_context.rs"),
+    )
+    .expect("read provider_adapter_context.rs");
     let state_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs"))
             .expect("read proxy_state.rs");
@@ -21781,6 +21786,44 @@ fn production_forwarder_uses_request_source_resource() {
             && !adapter_runtime_source.contains("struct CcSwitchForwarderRequestSource"),
         "host proxy_state should use the default forwarder request source without routing it through proxy_core_adapter"
     );
+    for marker in [
+        "forwarder_request_source_selects_adapter_for_app",
+        "forwarder_request_source_prepares_bedrock_attempt_body",
+        "forwarder_request_source_converts_codex_responses_to_chat_body",
+        "forwarder_request_source_projects_codex_responses_to_chat_gate",
+        "forwarder_request_source_wraps_provider_transform_request",
+        "forwarder_request_source_transforms_request_body_and_tracks_outbound_model",
+        "forwarder_request_source_prefers_codex_chat_bridge_over_claude_body",
+        "forwarder_request_source_projects_transform_plan",
+        "forwarder_request_source_projects_protocol_preparation",
+        "forwarder_request_source_plans_codex_upstream_url",
+        "forwarder_request_source_wraps_copilot_optimizer_sequence",
+        "forwarder_request_source_gates_copilot_optimizer_sequence",
+        "forwarder_request_source_prepares_provider_request_body",
+        "forwarder_request_source_normalizes_copilot_model_body",
+        "forwarder_request_source_applies_claude_body_policies",
+        "forwarder_request_source_gates_app_media_prevention",
+        "forwarder_request_source_projects_media_retry_plan",
+        "forwarder_request_source_builds_upstream_parts_from_adapter_context",
+        "forwarder_request_source_prepares_final_body_model_facts",
+        "forwarder_request_source_projects_anthropic_rectifier_gate",
+        "forwarder_request_source_plans_signature_rectifier_retry",
+        "forwarder_request_source_plans_budget_rectifier_retry",
+    ] {
+        assert!(
+            request_source.contains(marker) && !adapter_source.contains(marker),
+            "ForwarderRequestSource behavior fixture `{marker}` should live beside the owning host source, not proxy_core_adapter"
+        );
+    }
+    for marker in [
+        "forwarder_adapter_context_projects_provider_url_facts",
+        "forwarder_adapter_context_projects_adapter_facts",
+    ] {
+        assert!(
+            adapter_context_source.contains(marker) && !adapter_source.contains(marker),
+            "ForwarderAdapterContext behavior fixture `{marker}` should live beside the owning host source, not proxy_core_adapter"
+        );
+    }
 
     let impl_forbidden_markers = [
         "prepare_upstream_request_body_with_report(",
