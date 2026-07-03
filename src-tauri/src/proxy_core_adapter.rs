@@ -64,14 +64,12 @@ mod tests {
         provider_switch_dispatch_for_app, provider_switch_requires_takeover_lock,
         provider_switch_should_mark_live_config_managed,
         provider_takeover_live_sync_target_for_app, proxy_runtime_status_stopped,
-        sanitize_claude_settings_for_live, should_skip_manual_default_live_import,
-        should_skip_provider_legacy_common_config_migration,
-        should_skip_startup_default_live_import, CodexProviderLiveWriteIssue,
-        CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
-        ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy,
-        ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderOmoSwitchPair,
-        ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
-        ProviderTakeoverLiveSyncTarget,
+        sanitize_claude_settings_for_live, should_skip_provider_legacy_common_config_migration,
+        CodexProviderLiveWriteIssue, CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction,
+        ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
+        ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
+        ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
+        ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
     };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
@@ -3611,36 +3609,6 @@ wire_api = "chat"
             send_policy.streaming_header_timeout,
             Some(std::time::Duration::from_secs(1))
         );
-    }
-
-    #[test]
-    fn default_live_import_skip_policy_distinguishes_manual_and_startup() {
-        assert!(should_skip_manual_default_live_import(
-            &AppKind::from(&AppType::OpenCode),
-            false
-        ));
-        assert!(should_skip_startup_default_live_import(
-            &AppKind::from(&AppType::OpenCode),
-            false
-        ));
-
-        assert!(!should_skip_manual_default_live_import(
-            &AppKind::from(&AppType::Claude),
-            false
-        ));
-        assert!(should_skip_manual_default_live_import(
-            &AppKind::from(&AppType::Claude),
-            true
-        ));
-
-        assert!(!should_skip_startup_default_live_import(
-            &AppKind::from(&AppType::Claude),
-            false
-        ));
-        assert!(should_skip_startup_default_live_import(
-            &AppKind::from(&AppType::Claude),
-            true
-        ));
     }
 
     #[test]

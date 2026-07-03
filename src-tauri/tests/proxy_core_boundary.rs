@@ -9198,6 +9198,8 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
 
     let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
         .expect("read proxy_core_adapter.rs");
+    let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
+        .expect("read proxy-core ports.rs");
     let port_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::ports::{")
         .skip(1)
@@ -9258,6 +9260,15 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
             "proxy_core_adapter should not re-export live/provider policy contract `{symbol}`"
         );
     }
+
+    assert!(
+        !adapter_source
+            .contains("fn default_live_import_skip_policy_distinguishes_manual_and_startup()")
+            && core_ports_source.contains(
+                "fn provider_default_live_import_skips_additive_or_existing_seed_state()"
+            ),
+        "default live import skip fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
 
     let provider_service_source =
         fs::read_to_string(manifest_dir.join("src/services/provider/mod.rs"))
