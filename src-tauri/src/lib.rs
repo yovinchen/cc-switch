@@ -28,8 +28,6 @@ mod provider;
 mod provider_defaults;
 mod proxy;
 #[cfg(test)]
-mod proxy_core_adapter;
-#[cfg(test)]
 mod proxy_core_host;
 mod services;
 mod session_manager;

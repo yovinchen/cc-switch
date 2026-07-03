@@ -55,7 +55,6 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/response_adapter.rs",
     "src/proxy/transport/upstream/mod.rs",
     "src/proxy/transport/upstream/reqwest_client.rs",
-    "src/proxy_core_adapter.rs",
     "src/services/model_fetch_transport.rs",
     "src/services/provider/endpoints.rs",
     "src/services/provider/gemini_auth.rs",
@@ -25363,7 +25362,7 @@ fn production_proxy_state_does_not_retain_injected_host_resources() {
 }
 
 #[test]
-fn production_lib_does_not_compile_proxy_core_host_compat_module() {
+fn production_lib_does_not_compile_proxy_core_adapter_and_keeps_host_compat_test_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/lib.rs");
     let source = fs::read_to_string(&path).expect("read lib.rs");
@@ -25372,8 +25371,14 @@ fn production_lib_does_not_compile_proxy_core_host_compat_module() {
     let mut violations = Vec::new();
     for (line_index, line) in lines.iter().enumerate() {
         let module_name = match line.trim() {
-            "mod proxy_core_adapter;" => "proxy_core_adapter",
             "mod proxy_core_host;" => "proxy_core_host",
+            "mod proxy_core_adapter;" => {
+                violations.push(format!(
+                    "src/lib.rs:{} still declares empty proxy_core_adapter tombstone",
+                    line_index + 1,
+                ));
+                continue;
+            }
             _ => continue,
         };
 
@@ -25392,7 +25397,7 @@ fn production_lib_does_not_compile_proxy_core_host_compat_module() {
 
     assert!(
         violations.is_empty(),
-        "production lib.rs must keep proxy_core_adapter and proxy_core_host as test-only compatibility modules:\n{}",
+        "production lib.rs must not compile proxy_core_adapter and must keep proxy_core_host test-only:\n{}",
         violations.join("\n")
     );
 }
