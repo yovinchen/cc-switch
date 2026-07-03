@@ -53,19 +53,16 @@ mod tests {
         gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
         gemini_live_settings_to_write, json_deep_merge, json_deep_remove, json_remove_array_items,
         json_value_is_subset, live_takeover_app_kinds, live_token_sync_app_label,
-        provider_additive_live_write_action_for_app, provider_additive_update_route_for_app,
-        provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
-        provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
+        provider_additive_update_route_for_app, provider_live_removal_target_for_app,
         provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
         provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
         provider_switch_dispatch_for_app, provider_switch_requires_takeover_lock,
         provider_switch_should_mark_live_config_managed,
         provider_takeover_live_sync_target_for_app, proxy_runtime_status_stopped,
         sanitize_claude_settings_for_live, CodexProviderLiveWriteIssue,
-        CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
-        ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy,
-        ProviderLiveRemovalTarget, ProviderOmoSwitchPair, ProviderOmoVariant,
-        ProviderSettingsValidationIssue, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+        CodexProviderValidationIssue, ProviderAdditiveUpdateRoute, ProviderLiveRemovalTarget,
+        ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
+        ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
     };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
@@ -3604,112 +3601,6 @@ wire_api = "chat"
         assert_eq!(
             send_policy.streaming_header_timeout,
             Some(std::time::Duration::from_secs(1))
-        );
-    }
-
-    #[test]
-    fn provider_live_config_presence_error_policy_tolerates_db_only_providers() {
-        assert_eq!(
-            provider_live_config_presence_error_policy(None),
-            ProviderLiveConfigPresenceErrorPolicy::Strict
-        );
-        assert_eq!(
-            provider_live_config_presence_error_policy(Some(true)),
-            ProviderLiveConfigPresenceErrorPolicy::Strict
-        );
-        assert_eq!(
-            provider_live_config_presence_error_policy(Some(false)),
-            ProviderLiveConfigPresenceErrorPolicy::TreatErrorAsMissing
-        );
-    }
-
-    #[test]
-    fn provider_key_change_policy_blocks_non_additive_and_omo_providers() {
-        assert_eq!(
-            provider_key_change_policy_issue_for_app(&AppKind::from(&AppType::Claude), None),
-            Some(ProviderKeyChangePolicyIssue::UnsupportedAppMode)
-        );
-
-        let mut omo_provider = Provider::with_id(
-            "omo-provider".to_string(),
-            "OMO Provider".to_string(),
-            json!({}),
-            None,
-        );
-        omo_provider.category = Some("omo".to_string());
-        assert_eq!(
-            provider_key_change_policy_issue_for_app(
-                &AppKind::from(&AppType::OpenCode),
-                omo_provider.category.as_deref(),
-            ),
-            Some(ProviderKeyChangePolicyIssue::ExclusiveCurrentStateProvider)
-        );
-
-        let mut custom_provider = Provider::with_id(
-            "custom-provider".to_string(),
-            "Custom Provider".to_string(),
-            json!({}),
-            None,
-        );
-        custom_provider.category = Some("custom".to_string());
-        assert_eq!(
-            provider_key_change_policy_issue_for_app(
-                &AppKind::from(&AppType::OpenCode),
-                custom_provider.category.as_deref(),
-            ),
-            None
-        );
-        assert_eq!(
-            provider_key_change_policy_issue_for_app(&AppKind::from(&AppType::OpenClaw), None),
-            None
-        );
-        assert_eq!(
-            provider_key_change_policy_issue_message(
-                ProviderKeyChangePolicyIssue::UnsupportedAppMode
-            ),
-            "Only additive-mode providers support changing provider key"
-        );
-    }
-
-    #[test]
-    fn provider_additive_live_write_action_skips_omo_and_unrequested_writes() {
-        let mut omo_provider = Provider::with_id(
-            "omo-provider".to_string(),
-            "OMO Provider".to_string(),
-            json!({}),
-            None,
-        );
-        omo_provider.category = Some("omo-slim".to_string());
-        assert_eq!(
-            provider_additive_live_write_action_for_app(
-                &AppKind::from(&AppType::OpenCode),
-                omo_provider.category.as_deref(),
-                true,
-            ),
-            ProviderAdditiveLiveWriteAction::SkipExclusiveCurrentStateProvider
-        );
-
-        let custom_provider = Provider::with_id(
-            "custom-provider".to_string(),
-            "Custom Provider".to_string(),
-            json!({}),
-            None,
-        );
-        assert_eq!(
-            provider_additive_live_write_action_for_app(
-                &AppKind::from(&AppType::OpenCode),
-                custom_provider.category.as_deref(),
-                false,
-            ),
-            ProviderAdditiveLiveWriteAction::SkipNotRequested
-        );
-        assert_eq!(
-            provider_additive_live_write_action_for_app(
-                &AppKind::from(&AppType::OpenClaw),
-                custom_provider.category.as_deref(),
-                true,
-            ),
-            ProviderAdditiveLiveWriteAction::Write
         );
     }
 

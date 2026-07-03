@@ -9295,6 +9295,27 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
             ),
         "provider legacy common-config migration fixtures should live in proxy-core ports, not proxy_core_adapter"
     );
+    assert!(
+        !adapter_source
+            .contains("fn provider_live_config_presence_error_policy_tolerates_db_only_providers()")
+            && core_ports_source
+                .contains("fn provider_live_config_presence_error_policy_tolerates_db_only_providers()"),
+        "provider live-config presence error policy fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
+    assert!(
+        !adapter_source
+            .contains("fn provider_key_change_policy_blocks_non_additive_and_omo_providers()")
+            && core_ports_source
+                .contains("fn provider_key_change_policy_blocks_non_additive_and_omo_providers()"),
+        "provider key-change policy fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
+    assert!(
+        !adapter_source
+            .contains("fn provider_additive_live_write_action_skips_omo_and_unrequested_writes()")
+            && core_ports_source
+                .contains("fn provider_additive_live_write_action_skips_omo_and_unrequested_writes()"),
+        "provider additive live-write action fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
 
     let provider_service_source =
         fs::read_to_string(manifest_dir.join("src/services/provider/mod.rs"))
