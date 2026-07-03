@@ -21719,6 +21719,12 @@ fn production_forwarder_uses_request_source_resource() {
     let core_request_media_source =
         fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_media.rs"))
             .expect("read request_media.rs");
+    let core_request_headers_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_headers.rs"))
+            .expect("read request_headers.rs");
+    let core_request_body_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_body.rs"))
+            .expect("read request_body.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -22081,6 +22087,20 @@ fn production_forwarder_uses_request_source_resource() {
     assert!(
         !request_source.contains("use crate::proxy_core_adapter::*;"),
         "default ForwarderRequestSource must import proxy_core_adapter items explicitly, not through wildcard facades"
+    );
+    assert!(
+        core_request_headers_source
+            .contains("fn builds_upstream_headers_with_auth_replacement_and_stripping()")
+            && core_request_headers_source
+                .contains("fn builds_upstream_headers_with_identity_user_agent_and_anthropic_defaults()")
+            && core_request_body_source.contains("fn get_and_head_do_not_send_upstream_request_body()")
+            && core_request_body_source.contains("fn non_safe_methods_serialize_json_body()"),
+        "proxy-core request_headers/request_body tests should own upstream request header/body serialization fixtures"
+    );
+    assert!(
+        !adapter_source
+            .contains("fn upstream_request_adapter_projects_headers_and_body_serialization()"),
+        "proxy_core_adapter should not carry upstream request header/body serialization fixture"
     );
     for marker in [
         "classify_copilot_request",

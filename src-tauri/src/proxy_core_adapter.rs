@@ -112,11 +112,10 @@ mod tests {
     };
     use crate::proxy_core::api::transport::resolve_response_runtime_policy;
     use crate::proxy_core::api::transport::{
-        anthropic_beta_header_value, build_claude_auth_headers, build_codex_bearer_auth_headers,
-        build_copilot_auth_headers, build_gemini_auth_headers, build_upstream_request_headers,
-        is_socks_proxy_url, resolve_upstream_send_policy, serialize_upstream_request_body,
-        ClaudeAuthHeaderKind, CopilotAuthHeadersInput, ForwardFailureKind,
-        UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
+        build_claude_auth_headers, build_codex_bearer_auth_headers, build_copilot_auth_headers,
+        build_gemini_auth_headers, is_socks_proxy_url, resolve_upstream_send_policy,
+        ClaudeAuthHeaderKind, CopilotAuthHeadersInput, ForwardFailureKind, UpstreamSendPolicyInput,
+        UpstreamTransportKind,
     };
     use bytes::Bytes;
     use indexmap::IndexMap;
@@ -1902,76 +1901,6 @@ wire_api = "chat"
         assert_eq!(
             ManagementAuthError::MissingBearerToken.message(),
             "Missing management bearer token"
-        );
-    }
-
-    #[test]
-    fn upstream_request_adapter_projects_headers_and_body_serialization() {
-        let mut inbound_headers = HeaderMap::new();
-        inbound_headers.insert(http::header::HOST, http::HeaderValue::from_static("local"));
-        inbound_headers.insert(
-            http::header::ACCEPT_ENCODING,
-            http::HeaderValue::from_static("gzip"),
-        );
-
-        let auth_headers = [(
-            http::header::AUTHORIZATION,
-            http::HeaderValue::from_static("Bearer token"),
-        )];
-        let anthropic_beta = anthropic_beta_header_value(Some("other-beta"));
-        let headers = build_upstream_request_headers(UpstreamRequestHeadersInput {
-            inbound_headers: &inbound_headers,
-            upstream_host: Some("upstream.example"),
-            auth_headers: &auth_headers,
-            channel_header_overrides: None,
-            force_identity_encoding: true,
-            custom_user_agent: None,
-            is_copilot: false,
-            should_send_anthropic_headers: true,
-            anthropic_beta_value: Some(&anthropic_beta),
-            codex_oauth_session_headers: &[],
-            ensure_json_content_type: true,
-        });
-
-        assert_eq!(
-            headers
-                .get(http::header::HOST)
-                .and_then(|value| value.to_str().ok()),
-            Some("upstream.example")
-        );
-        assert_eq!(
-            headers
-                .get(http::header::AUTHORIZATION)
-                .and_then(|value| value.to_str().ok()),
-            Some("Bearer token")
-        );
-        assert_eq!(
-            headers
-                .get(http::header::ACCEPT_ENCODING)
-                .and_then(|value| value.to_str().ok()),
-            Some("identity")
-        );
-        assert_eq!(
-            headers
-                .get("anthropic-beta")
-                .and_then(|value| value.to_str().ok()),
-            Some("claude-code-20250219,other-beta")
-        );
-        assert_eq!(
-            headers
-                .get(http::header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok()),
-            Some("application/json")
-        );
-
-        assert!(
-            serialize_upstream_request_body(&http::Method::GET, &json!({"model": "x"}))
-                .unwrap()
-                .is_empty()
-        );
-        assert_eq!(
-            serialize_upstream_request_body(&http::Method::POST, &json!({"model": "x"})).unwrap(),
-            br#"{"model":"x"}"#
         );
     }
 
