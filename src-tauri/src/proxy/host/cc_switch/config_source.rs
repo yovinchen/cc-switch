@@ -117,3 +117,80 @@ impl ProxyConfigSource for CcSwitchConfigSource {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
+    use serde_json::json;
+    use std::ffi::OsString;
+
+    struct IsolatedTestHome {
+        _dir: tempfile::TempDir,
+        original_test_home: Option<OsString>,
+    }
+
+    impl IsolatedTestHome {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().expect("temp home");
+            let original_test_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+            std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+            Self {
+                _dir: dir,
+                original_test_home,
+            }
+        }
+    }
+
+    impl Drop for IsolatedTestHome {
+        fn drop(&mut self) {
+            match &self.original_test_home {
+                Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+                None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn config_source_projects_proxy_configs_through_core() {
+        let _home = IsolatedTestHome::new();
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let source = CcSwitchConfigSource::new(db);
+
+        let global = source.load_global().await.expect("load global config");
+        assert_eq!(global.bind_host.as_deref(), Some("127.0.0.1"));
+        assert_eq!(global.bind_port, Some(15721));
+        assert_eq!(global.raw["listenAddress"], json!("127.0.0.1"));
+
+        let app = source
+            .load_app(&AppKind::Claude)
+            .await
+            .expect("load app config");
+        assert_eq!(app.app, Some(AppKind::Claude));
+        assert_eq!(app.default_group.as_deref(), Some(DEFAULT_ROUTE_GROUP));
+        assert_eq!(app.raw["appType"], json!("claude"));
+        assert!(app.raw["currentProviderId"].is_null());
+        assert!(app.rectifier.enabled);
+        assert_eq!(app.rectifier.raw["enabled"], json!(true));
+        assert_eq!(app.optimizer.raw["cacheTtl"], json!("1h"));
+        assert_eq!(
+            app.copilot_optimizer.raw["warmupModel"],
+            json!("gpt-5-mini")
+        );
+
+        let summary = source
+            .load_app_summary(&AppKind::Claude)
+            .await
+            .expect("load app summary config");
+        assert_eq!(summary.enabled, app.enabled);
+        assert_eq!(
+            summary.auto_failover_enabled,
+            app.raw["autoFailoverEnabled"].as_bool().unwrap_or_default()
+        );
+
+        let runtime = source.load_runtime().await.expect("load runtime config");
+        assert!(!runtime.privacy_filter_enabled);
+        assert!(runtime.route_events_enabled);
+        assert_eq!(runtime.raw["enable_logging"], json!(true));
+    }
+}

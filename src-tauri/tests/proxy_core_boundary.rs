@@ -23227,6 +23227,8 @@ fn proxy_core_adapter_delegates_config_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/config_source.rs");
     let source = fs::read_to_string(&source_path).expect("read config_source.rs");
     let adapter_core_ports_import = optional_function_slice(
@@ -23255,6 +23257,12 @@ fn proxy_core_adapter_delegates_config_source_to_host_module() {
             && source.contains(".get_proxy_config()")
             && source.contains("proxy_runtime_config_from_proxy_config(config, false)"),
         "CC Switch config source should own DB-backed config reads in host/cc_switch/config_source.rs"
+    );
+    assert!(
+        source.contains("fn config_source_projects_proxy_configs_through_core()")
+            && !host_harness_source
+                .contains("fn config_source_projects_proxy_configs_through_core"),
+        "config source projection fixture should live beside config_source, not proxy_core_host"
     );
     assert!(
         !adapter_source.contains(
