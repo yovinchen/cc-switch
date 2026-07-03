@@ -6513,8 +6513,8 @@ fn proxy_core_adapter_does_not_export_error_contract_aliases() {
     }
 
     assert!(
-        host_source.contains("use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};"),
-        "proxy_core_host test harness should import ProxyCoreError and ProxyCoreResult directly from proxy_core errors"
+        host_source.contains("use crate::proxy_core::api::errors::ProxyCoreError;"),
+        "proxy_core_host test harness should import ProxyCoreError directly from proxy_core errors"
     );
     let host_adapter_import = proxy_core_adapter_import_identifiers(&host_source);
     for adapter_type in ["ProxyCoreError", "ProxyCoreResult"] {
@@ -7118,7 +7118,7 @@ fn engine_and_host_test_fixtures_import_core_contracts_directly() {
             "src/proxy_core_host.rs",
             &[
                 "use crate::proxy_core::api::management::{",
-                "ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,",
+                "ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, RouteResolveRequest,",
                 "RouteResolveRequest",
                 "use crate::proxy_core::api::routing::ResolvedChannelAttempt;",
             ],
@@ -18403,6 +18403,8 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         manifest_dir.join("src/proxy/host/cc_switch/channel_key_runtime_source.rs");
     let runtime_source =
         fs::read_to_string(&runtime_source_path).expect("read channel_key_runtime_source.rs");
+    let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
     let attempt_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/channel_auth_profile_attempts.rs");
     let attempt_source =
@@ -18560,6 +18562,25 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
         runtime_source.contains("impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource")
             && runtime_source.contains("load_channel_key_candidate_from_database("),
         "owned CC Switch channel key runtime source should delegate through the shared lookup helper"
+    );
+    assert!(
+        attempt_source
+            .contains("fn channel_key_auth_profile_fails_closed_for_missing_key()")
+            && attempt_source
+                .contains("fn db_channel_key_auth_profile_sets_auth_key_without_changing_route_provider()")
+            && attempt_source
+                .contains("fn db_channel_key_auth_profile_keeps_same_key_ref_scoped_per_channel()")
+            && attempt_source
+                .contains("fn db_channel_key_wildcard_auth_profile_selects_best_enabled_key_for_channel()")
+            && !host_harness_source
+                .contains("fn channel_key_auth_profile_fails_closed_for_missing_key")
+            && !host_harness_source
+                .contains("fn channel_key_auth_profile_sets_auth_key_without_changing_route_provider")
+            && !host_harness_source
+                .contains("fn channel_key_auth_profile_keeps_same_key_ref_scoped_per_channel")
+            && !host_harness_source
+                .contains("fn channel_key_wildcard_auth_profile_selects_best_enabled_key_for_channel"),
+        "DB-backed channel-key auth-profile fixtures should live beside channel_auth_profile_attempts, not proxy_core_host"
     );
 }
 
@@ -25383,7 +25404,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
             && host_source.contains(
             "use crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw;"
         ) && host_source.contains(
-            "use crate::proxy_core::api::management::{\n        ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,\n        RouteResolveRequest,\n    };"
+            "use crate::proxy_core::api::management::{\n        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, RouteResolveRequest,\n    };"
         ) && host_source.contains(
             "use crate::proxy_core::api::ports::{\n    ChannelAttemptResult, ChannelHealthLookupInput, ProxyConfig, ProxyRuntimeStatus,\n};"
         ) && host_source.contains(

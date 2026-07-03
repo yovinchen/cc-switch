@@ -9,13 +9,6 @@ use crate::proxy::events::ProxyEventBus;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::auth_provider::CcSwitchAuthProvider;
 #[cfg(test)]
-use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
-    apply_channel_auth_profile_providers_from_source, forward_attempts_from_plan,
-    host_providers_for_plan,
-};
-#[cfg(test)]
-use crate::proxy::host::cc_switch::channel_key_runtime_source::channel_key_runtime_source_from_database;
-#[cfg(test)]
 use crate::proxy::host::cc_switch::forward_pipeline::forward_result_to_proxy_result;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
@@ -33,7 +26,7 @@ use crate::proxy_core::api::domain::{
 #[cfg(test)]
 use crate::proxy_core::api::engine::ProxyEngine;
 #[cfg(test)]
-use crate::proxy_core::api::errors::{ProxyCoreError, ProxyCoreResult};
+use crate::proxy_core::api::errors::ProxyCoreError;
 #[cfg(test)]
 use crate::proxy_core::api::events::ProxyCoreEvent;
 #[cfg(test)]
@@ -65,18 +58,15 @@ use tokio::sync::RwLock;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app_config::AppType;
     use crate::provider::Provider;
     use crate::proxy::host::cc_switch::forward_pipeline::proxy_response_to_core_response;
     use crate::proxy_core::api::management::{
-        ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,
-        RouteResolveRequest,
+        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, RouteResolveRequest,
     };
     use crate::proxy_core::api::routing::ResolvedChannelAttempt;
     use bytes::Bytes;
     use futures::StreamExt;
     use http::{Method, StatusCode};
-    use indexmap::IndexMap;
     use serde_json::json;
     use std::ffi::OsString;
 
@@ -226,275 +216,6 @@ mod tests {
             selections: Vec::new(),
             attempts: Vec::new(),
         }
-    }
-
-    fn apply_channel_auth_profile_providers_with_runtime_source(
-        db: &Arc<Database>,
-        app_type: &AppType,
-        providers: &IndexMap<String, Provider>,
-        attempts: &mut [crate::proxy::route_attempt::ForwardAttempt],
-    ) -> ProxyCoreResult<()> {
-        let channel_key_runtime_source = channel_key_runtime_source_from_database(db.clone());
-        apply_channel_auth_profile_providers_from_source(
-            app_type,
-            providers,
-            attempts,
-            &channel_key_runtime_source,
-        )
-    }
-
-    #[test]
-    fn channel_key_auth_profile_fails_closed_for_missing_key() {
-        let route_provider = Provider::with_id(
-            "route-provider".to_string(),
-            "Route Provider".to_string(),
-            json!({ "env": { "ANTHROPIC_API_KEY": "route-key" } }),
-            None,
-        );
-        let mut providers = IndexMap::new();
-        providers.insert(route_provider.id.clone(), route_provider);
-        let mut plan = route_plan("route-provider", "channel-auth");
-        plan.selection.channel.auth_profile = Some(auth_profile_ref("channel-key:manual"));
-        let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
-        let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
-        let db = Arc::new(Database::memory().expect("memory db"));
-        let error = apply_channel_auth_profile_providers_with_runtime_source(
-            &db,
-            &AppType::Claude,
-            &providers,
-            &mut attempts,
-        )
-        .unwrap_err();
-
-        assert!(matches!(
-            error,
-            ProxyCoreError::Auth(message)
-                if message.contains("channel_id=channel-auth")
-                    && message.contains("key_ref=manual")
-        ));
-    }
-
-    #[test]
-    fn channel_key_auth_profile_sets_auth_key_without_changing_route_provider() {
-        let db = Arc::new(Database::memory().expect("memory db"));
-        save_claude_provider(&db);
-        db.create_proxy_channel(ProxyChannelWriteRequest {
-            id: Some("channel-auth-key".to_string()),
-            provider_id: "anthropic-main".to_string(),
-            app_type: "claude".to_string(),
-            name: "Channel Key Relay".to_string(),
-            base_url: "https://channel-key.example.com/v1".to_string(),
-            interface_kind: "anthropic_messages".to_string(),
-            auth_profile_ref: Some("channel-key:primary".to_string()),
-            ..Default::default()
-        })
-        .expect("create channel");
-        db.upsert_proxy_channel_key(
-            "channel-auth-key",
-            "primary",
-            ProxyChannelKeyWriteRequest {
-                key_value: "sk-channel-key".to_string(),
-                status: "enabled".to_string(),
-                priority: 10,
-                weight: 100,
-            },
-        )
-        .expect("upsert channel key");
-        let providers = db.get_all_providers("claude").expect("load providers");
-        let mut plan = route_plan("anthropic-main", "channel-auth-key");
-        plan.selection.channel.auth_profile = Some(auth_profile_ref("channel-key:primary"));
-
-        let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
-        let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
-        apply_channel_auth_profile_providers_with_runtime_source(
-            &db,
-            &AppType::Claude,
-            &providers,
-            &mut attempts,
-        )
-        .expect("apply channel key auth profile");
-
-        assert_eq!(attempts.len(), 1);
-        assert_eq!(attempts[0].provider().id, "anthropic-main");
-        assert_eq!(attempts[0].auth_provider().id, "anthropic-main");
-        assert_eq!(
-            attempts[0]
-                .provider()
-                .settings_config
-                .pointer("/env/ANTHROPIC_API_KEY")
-                .and_then(Value::as_str),
-            None
-        );
-        assert_eq!(
-            attempts[0]
-                .auth_provider()
-                .settings_config
-                .pointer("/env/ANTHROPIC_API_KEY")
-                .and_then(Value::as_str),
-            Some("sk-channel-key")
-        );
-        assert_eq!(attempts[0].channel_auth_key_ref(), Some("primary"));
-
-        db.upsert_proxy_channel_key(
-            "channel-auth-key",
-            "primary",
-            ProxyChannelKeyWriteRequest {
-                key_value: "sk-channel-key".to_string(),
-                status: "disabled".to_string(),
-                priority: 10,
-                weight: 100,
-            },
-        )
-        .expect("disable channel key");
-        let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
-        let error = apply_channel_auth_profile_providers_with_runtime_source(
-            &db,
-            &AppType::Claude,
-            &providers,
-            &mut attempts,
-        )
-        .unwrap_err();
-        assert!(matches!(
-            error,
-            ProxyCoreError::Auth(message)
-                if message.contains("channel_id=channel-auth-key")
-                    && message.contains("key_ref=primary")
-        ));
-    }
-
-    #[test]
-    fn channel_key_auth_profile_keeps_same_key_ref_scoped_per_channel() {
-        let db = Arc::new(Database::memory().expect("memory db"));
-        save_claude_provider(&db);
-
-        for (channel_id, key_value) in [
-            ("channel-auth-a", "sk-channel-a"),
-            ("channel-auth-b", "sk-channel-b"),
-        ] {
-            db.create_proxy_channel(ProxyChannelWriteRequest {
-                id: Some(channel_id.to_string()),
-                provider_id: "anthropic-main".to_string(),
-                app_type: "claude".to_string(),
-                name: channel_id.to_string(),
-                base_url: format!("https://{channel_id}.example.com/v1"),
-                interface_kind: "anthropic_messages".to_string(),
-                auth_profile_ref: Some("channel-key:primary".to_string()),
-                ..ProxyChannelWriteRequest::default()
-            })
-            .expect("create channel");
-            db.upsert_proxy_channel_key(
-                channel_id,
-                "primary",
-                ProxyChannelKeyWriteRequest {
-                    key_value: key_value.to_string(),
-                    status: "enabled".to_string(),
-                    priority: 10,
-                    weight: 100,
-                },
-            )
-            .expect("upsert channel key");
-        }
-
-        let providers = db.get_all_providers("claude").expect("load providers");
-        let mut attempts = Vec::new();
-        for channel_id in ["channel-auth-a", "channel-auth-b"] {
-            let mut plan = route_plan("anthropic-main", channel_id);
-            plan.selection.channel.auth_profile = Some(auth_profile_ref("channel-key:primary"));
-            let route_providers =
-                host_providers_for_plan(&providers, &plan).expect("route providers");
-            attempts.extend(forward_attempts_from_plan(
-                &AppType::Claude,
-                &route_providers,
-                &plan,
-            ));
-        }
-
-        apply_channel_auth_profile_providers_with_runtime_source(
-            &db,
-            &AppType::Claude,
-            &providers,
-            &mut attempts,
-        )
-        .expect("apply channel key auth profiles");
-
-        let auth_keys: Vec<_> = attempts
-            .iter()
-            .map(|attempt| {
-                attempt
-                    .auth_provider()
-                    .settings_config
-                    .pointer("/env/ANTHROPIC_API_KEY")
-                    .and_then(Value::as_str)
-                    .expect("channel auth key")
-                    .to_string()
-            })
-            .collect();
-        assert_eq!(auth_keys, vec!["sk-channel-a", "sk-channel-b"]);
-        assert_eq!(
-            attempts
-                .iter()
-                .map(|attempt| attempt.channel_auth_key_ref())
-                .collect::<Vec<_>>(),
-            vec![Some("primary"), Some("primary")]
-        );
-    }
-
-    #[test]
-    fn channel_key_wildcard_auth_profile_selects_best_enabled_key_for_channel() {
-        let db = Arc::new(Database::memory().expect("memory db"));
-        save_claude_provider(&db);
-        db.create_proxy_channel(ProxyChannelWriteRequest {
-            id: Some("channel-auth-wildcard".to_string()),
-            provider_id: "anthropic-main".to_string(),
-            app_type: "claude".to_string(),
-            name: "Wildcard Channel Key Relay".to_string(),
-            base_url: "https://channel-key.example.com/v1".to_string(),
-            interface_kind: "anthropic_messages".to_string(),
-            auth_profile_ref: Some("channel-key:*".to_string()),
-            ..ProxyChannelWriteRequest::default()
-        })
-        .expect("create wildcard channel");
-        for (key_ref, key_value, status, priority, weight) in [
-            ("disabled-best", "sk-disabled", "disabled", 200, 100),
-            ("primary", "sk-primary", "enabled", 10, 100),
-            ("backup", "sk-backup", "enabled", 100, 50),
-        ] {
-            db.upsert_proxy_channel_key(
-                "channel-auth-wildcard",
-                key_ref,
-                ProxyChannelKeyWriteRequest {
-                    key_value: key_value.to_string(),
-                    status: status.to_string(),
-                    priority,
-                    weight,
-                },
-            )
-            .expect("upsert wildcard channel key");
-        }
-
-        let providers = db.get_all_providers("claude").expect("load providers");
-        let mut plan = route_plan("anthropic-main", "channel-auth-wildcard");
-        plan.selection.channel.auth_profile = Some(auth_profile_ref("channel-key:*"));
-        let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
-        let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
-
-        apply_channel_auth_profile_providers_with_runtime_source(
-            &db,
-            &AppType::Claude,
-            &providers,
-            &mut attempts,
-        )
-        .expect("apply wildcard channel key auth profile");
-
-        assert_eq!(
-            attempts[0]
-                .auth_provider()
-                .settings_config
-                .pointer("/env/ANTHROPIC_API_KEY")
-                .and_then(Value::as_str),
-            Some("sk-backup")
-        );
-        assert_eq!(attempts[0].channel_auth_key_ref(), Some("backup"));
     }
 
     fn proxy_request() -> ProxyRequest {
