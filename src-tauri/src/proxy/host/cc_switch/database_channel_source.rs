@@ -554,3 +554,86 @@ impl ChannelSource for CcSwitchChannelSource {
         Box::pin(async move { channel_migration_materialize_from_db_source(&self.db, app) })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::database::ProxyChannelSourceKind;
+    use crate::proxy_core::api::routing::InterfaceKind;
+    use serde_json::json;
+
+    #[test]
+    fn channel_conversion_preserves_endpoint_interface_models_and_groups() {
+        let channel = ProxyChannelRecord {
+            id: "ch-1".to_string(),
+            provider_id: "provider-1".to_string(),
+            app_type: "claude".to_string(),
+            name: "Relay A".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "openai_chat_completions".to_string(),
+            auth_profile_ref: Some("provider:claude:provider-1".to_string()),
+            groups: vec!["default".to_string(), "paid".to_string()],
+            priority: 50,
+            weight: 80,
+            retry_policy: json!({"maxAttempts": 2}),
+            health_policy: json!({"breaker": "standard"}),
+            header_overrides: json!({"x-test": "1"}),
+            param_overrides: json!({"stream": true}),
+            status_code_mapping: json!([{"from": 429, "to": 503}]),
+            tags: vec!["manual".to_string()],
+            metadata: json!({"owner": "ops"}),
+            source_kind: ProxyChannelSourceKind::Manual,
+            source_endpoint_url: Some("https://relay.example.com/v1".to_string()),
+            models: vec![ProxyChannelModelRecord {
+                channel_id: "ch-1".to_string(),
+                public_model: "sonnet".to_string(),
+                upstream_model: "anthropic/sonnet".to_string(),
+                capabilities: json!({"tools": true}),
+                pricing_model: Some("standard".to_string()),
+                request_overrides: json!({"temperature": 0.2}),
+                response_overrides: json!({}),
+            }],
+            needs_review: false,
+            review_reasons: Vec::new(),
+        };
+
+        let spec = proxy_channel_record_to_core_spec(&channel);
+        let source_spec = channel_spec_from_source(Some(channel.clone())).expect("channel spec");
+        let (materialized_channels, materialized_source) =
+            channel_route_records_from_sources(vec![channel.clone()], || {
+                panic!("materialized channels must not load legacy projection")
+            })
+            .expect("materialized route records");
+        let (legacy_channels, legacy_source) =
+            channel_route_records_from_sources(Vec::new(), || {
+                Ok(ProxyChannelMigrationPreview {
+                    app_type: "claude".to_string(),
+                    channels: vec![channel.clone()],
+                    duplicate_count: 0,
+                    needs_review_count: 0,
+                })
+            })
+            .expect("legacy route records");
+
+        assert_eq!(source_spec.id, "ch-1");
+        assert_eq!(
+            materialized_source,
+            ChannelRouteSource::MaterializedChannels
+        );
+        assert_eq!(materialized_channels[0].id, "ch-1");
+        assert_eq!(legacy_source, ChannelRouteSource::LegacyProjection);
+        assert_eq!(legacy_channels[0].id, "ch-1");
+        assert_eq!(spec.app, AppKind::Claude);
+        assert_eq!(spec.endpoint.base_url, "https://relay.example.com/v1");
+        assert_eq!(spec.interface, InterfaceKind::OpenAiChatCompletions);
+        assert_eq!(spec.groups, vec!["default".to_string(), "paid".to_string()]);
+        assert_eq!(spec.models.len(), 1);
+        assert_eq!(spec.models[0].public_model, "sonnet");
+        assert_eq!(spec.models[0].upstream_model, "anthropic/sonnet");
+        assert_eq!(
+            spec.auth_profile.as_ref().map(|value| value.0.as_str()),
+            Some("provider:claude:provider-1")
+        );
+    }
+}

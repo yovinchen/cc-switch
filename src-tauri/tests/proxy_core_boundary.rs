@@ -26483,6 +26483,18 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
         !source.contains("use crate::proxy_core_adapter::"),
         "database channel source should own DB error mapping without proxy_core_adapter"
     );
+    assert!(
+        source.contains("fn channel_conversion_preserves_endpoint_interface_models_and_groups()")
+            && source.contains("proxy_channel_record_to_core_spec(&channel)")
+            && source.contains("channel_route_records_from_sources(vec![channel.clone()]")
+            && source.contains("ChannelRouteSource::LegacyProjection"),
+        "database channel source tests should own channel conversion and source fallback fixtures"
+    );
+    assert!(
+        !adapter_source
+            .contains("fn channel_conversion_preserves_endpoint_interface_models_and_groups()"),
+        "proxy_core_adapter should not carry channel conversion/source fallback fixture"
+    );
 }
 
 #[test]
