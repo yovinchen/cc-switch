@@ -2614,8 +2614,7 @@ fn session_usage_services_direct_core_access_stays_in_usage_api() {
         "src/services/session_usage_opencode.rs",
         "src/services/usage_stats.rs",
     ];
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_production = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -2864,8 +2863,7 @@ fn request_context_owns_route_update_after_proxy_result() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/context.rs");
     let source = fs::read_to_string(&path).expect("read engine/context.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -2940,8 +2938,7 @@ fn request_context_owns_core_context_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/context.rs");
     let source = fs::read_to_string(&path).expect("read engine/context.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let core_response_timeout_source =
         fs::read_to_string(manifest_dir.join("crates/proxy-core/src/response_timeout.rs"))
             .expect("read response_timeout.rs");
@@ -3097,8 +3094,7 @@ fn proxy_error_mapper_owns_codex_error_projection() {
 #[test]
 fn proxy_core_adapter_excludes_codex_error_projection_reexports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     for marker in [
         "pub(crate) use crate::proxy::error_mapper::codex_proxy_error_response",
@@ -3122,8 +3118,7 @@ fn proxy_error_mapper_owns_forward_failure_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/error_mapper.rs");
     let source = fs::read_to_string(&path).expect("read error_mapper.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         source.contains("pub(crate) fn forward_failure_kind_from_proxy_error")
@@ -3168,8 +3163,7 @@ fn proxy_error_mapper_excludes_legacy_status_and_display_facades() {
 #[test]
 fn proxy_error_mapper_delegates_forward_failure_message_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let path = manifest_dir.join("src/proxy/error_mapper.rs");
     let source = fs::read_to_string(&path).expect("read proxy/error_mapper.rs");
     let function = function_slice(
@@ -3247,8 +3241,7 @@ fn proxy_error_mapper_delegates_proxy_error_display_message_policy_to_core() {
 #[test]
 fn proxy_error_status_projection_lives_in_error_mapper() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let proxy_error_path = manifest_dir.join("src/proxy/error.rs");
     let proxy_error_source = fs::read_to_string(&proxy_error_path).expect("read proxy/error.rs");
     let error_mapper_path = manifest_dir.join("src/proxy/error_mapper.rs");
@@ -3318,8 +3311,7 @@ fn proxy_error_owns_core_error_response_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/error.rs");
     let source = fs::read_to_string(&path).expect("read proxy/error.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_production = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -3607,8 +3599,7 @@ fn proxy_server_claude_desktop_gateway_smoke_uses_host_token_source() {
 #[test]
 fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let auth_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/claude_desktop_gateway_auth_source.rs");
     let auth_source =
@@ -4070,8 +4061,7 @@ fn channel_key_and_model_handlers_delegate_sources_to_proxy_engine() {
 #[test]
 fn proxy_channel_runtime_source_delegates_key_selection_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -4262,8 +4252,7 @@ fn channel_test_handler_delegates_probe_to_proxy_engine() {
 #[test]
 fn proxy_core_adapter_uses_host_reachability_probe_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let services_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_services.rs");
     let services_source = fs::read_to_string(&services_path).expect("read proxy_services.rs");
     let probe_source_path =
@@ -4538,8 +4527,7 @@ fn channel_migration_handlers_delegate_sources_to_proxy_engine() {
 #[test]
 fn proxy_core_adapter_keeps_legacy_channel_projection_helpers_in_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     for marker in [
         "build_legacy_channel_projection",
@@ -4565,8 +4553,7 @@ fn proxy_core_adapter_keeps_legacy_channel_projection_helpers_in_core() {
 #[test]
 fn proxy_core_adapter_does_not_reexport_copilot_model_catalog_helpers() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let core_copilot_source =
         fs::read_to_string(manifest_dir.join("crates/proxy-core/src/copilot_model_map.rs"))
             .expect("read proxy-core copilot_model_map.rs");
@@ -5825,8 +5812,7 @@ fn production_provider_adapter_registry_uses_core_app_policy() {
 #[test]
 fn proxy_core_adapter_excludes_provider_adapter_selection_facade() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         !source.contains("pub(crate) fn provider_adapter_kind_for_app_type("),
@@ -5886,8 +5872,7 @@ fn production_provider_adapter_registry_imports_adapter_kind_directly() {
 #[test]
 fn proxy_core_adapter_does_not_export_provider_kind_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     assert!(
         !adapter_source.contains("pub(crate) type ProviderKind ="),
         "proxy_core_adapter should not expose ProviderKind as a type alias; callers and adapter internals should use proxy_core::api::domain::ProviderKind"
@@ -5897,8 +5882,7 @@ fn proxy_core_adapter_does_not_export_provider_kind_alias() {
 #[test]
 fn proxy_core_adapter_does_not_export_domain_or_model_catalog_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let runtime_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs"))
             .expect("read proxy_runtime.rs");
@@ -6067,8 +6051,7 @@ fn provider_adapter_auth_contracts_import_core_types_directly() {
 #[test]
 fn proxy_core_adapter_does_not_export_provider_auth_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     for alias in [
         "pub(crate) type ProviderAuthInfo =",
@@ -6084,8 +6067,7 @@ fn proxy_core_adapter_does_not_export_provider_auth_aliases() {
 #[test]
 fn proxy_core_adapter_does_not_reexport_gemini_settings_extraction_helpers() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let auth_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::auth::{")
         .skip(1)
@@ -6112,8 +6094,7 @@ fn proxy_core_adapter_does_not_reexport_gemini_settings_extraction_helpers() {
 #[test]
 fn proxy_core_adapter_does_not_export_attempt_event_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     for alias in [
         "pub(crate) type AttemptEventChannel",
@@ -6130,8 +6111,7 @@ fn proxy_core_adapter_does_not_export_attempt_event_aliases() {
 #[test]
 fn proxy_core_adapter_does_not_export_attempt_result_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     for alias in [
         "pub(crate) type ChannelAttemptResult =",
@@ -6147,8 +6127,7 @@ fn proxy_core_adapter_does_not_export_attempt_result_aliases() {
 #[test]
 fn proxy_core_adapter_does_not_export_circuit_breaker_failure_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         !adapter_source.contains("pub(crate) type CircuitBreakerFailureDecision ="),
@@ -6159,8 +6138,7 @@ fn proxy_core_adapter_does_not_export_circuit_breaker_failure_alias() {
 #[test]
 fn proxy_core_adapter_does_not_reexport_circuit_breaker_config_helpers() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     for helper in [
         "circuit_breaker_failure_decision",
@@ -6181,8 +6159,7 @@ fn proxy_core_adapter_does_not_reexport_circuit_breaker_config_helpers() {
 #[test]
 fn proxy_core_adapter_does_not_export_forwarder_rectifier_retry_kind_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         !adapter_source.contains("pub(crate) type ForwarderRectifierRetryKind ="),
@@ -6193,8 +6170,7 @@ fn proxy_core_adapter_does_not_export_forwarder_rectifier_retry_kind_alias() {
 #[test]
 fn proxy_core_adapter_does_not_export_forward_failure_kind_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         !adapter_source.contains("pub(crate) type ForwardFailureKind ="),
@@ -6205,8 +6181,7 @@ fn proxy_core_adapter_does_not_export_forward_failure_kind_alias() {
 #[test]
 fn proxy_core_adapter_does_not_export_claude_auth_helper_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     for alias in [
         "pub(crate) type ClaudeAuthKey =",
@@ -6234,8 +6209,7 @@ fn proxy_core_adapter_does_not_export_claude_auth_helper_aliases() {
 #[test]
 fn proxy_core_adapter_does_not_export_codex_transform_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let history_source = fs::read_to_string(manifest_dir.join("src/proxy/codex_chat_history.rs"))
         .expect("read codex_chat_history.rs");
 
@@ -6310,8 +6284,7 @@ fn proxy_core_adapter_does_not_export_codex_transform_aliases() {
 #[test]
 fn proxy_core_adapter_does_not_export_copilot_classification_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         !adapter_source.contains(
@@ -6324,8 +6297,7 @@ fn proxy_core_adapter_does_not_export_copilot_classification_alias() {
 #[test]
 fn proxy_core_adapter_does_not_export_gemini_shadow_store_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let provider_source = fs::read_to_string(manifest_dir.join("src/proxy/provider/claude.rs"))
         .expect("read provider/claude.rs");
     let protocol_source = fs::read_to_string(
@@ -6364,8 +6336,7 @@ fn proxy_core_adapter_does_not_export_gemini_shadow_store_alias() {
 #[test]
 fn proxy_core_adapter_does_not_export_usage_contract_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
     let context_source = fs::read_to_string(manifest_dir.join("src/proxy/engine/context.rs"))
@@ -6425,8 +6396,7 @@ fn proxy_core_adapter_does_not_export_usage_contract_aliases() {
 #[test]
 fn proxy_core_adapter_does_not_export_proxy_core_event_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
     let event_sink_source =
@@ -6459,8 +6429,7 @@ fn proxy_core_adapter_does_not_export_proxy_core_event_alias() {
 #[test]
 fn proxy_core_adapter_does_not_export_response_transport_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
     let core_domain_source =
@@ -6508,8 +6477,7 @@ fn proxy_core_adapter_does_not_export_response_transport_aliases() {
 #[test]
 fn proxy_core_adapter_does_not_export_error_contract_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
 
@@ -6541,8 +6509,7 @@ fn proxy_core_adapter_does_not_export_error_contract_aliases() {
 #[test]
 fn proxy_core_adapter_does_not_reexport_channel_not_found_error_helper() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let management_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::management::{")
         .skip(1)
@@ -6569,8 +6536,7 @@ fn proxy_core_adapter_does_not_reexport_channel_not_found_error_helper() {
 #[test]
 fn proxy_core_adapter_does_not_reexport_codex_upstream_model_helper() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let provider_source = fs::read_to_string(manifest_dir.join("src/proxy/provider/codex.rs"))
         .expect("read proxy/provider/codex.rs");
     let transport_reexport_blocks: Vec<&str> = adapter_source
@@ -6621,8 +6587,7 @@ fn proxy_core_adapter_does_not_reexport_codex_upstream_model_helper() {
 #[test]
 fn proxy_core_adapter_does_not_reexport_codex_reasoning_profile_helpers() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let transform_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::transforms::{")
         .skip(1)
@@ -6645,8 +6610,7 @@ fn proxy_core_adapter_does_not_reexport_codex_reasoning_profile_helpers() {
 #[test]
 fn proxy_core_adapter_does_not_export_proxy_engine_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
 
@@ -6672,8 +6636,7 @@ fn proxy_core_adapter_does_not_export_proxy_engine_alias() {
 #[test]
 fn proxy_core_adapter_does_not_export_current_route_target_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         !adapter_source.contains(
@@ -6690,8 +6653,7 @@ fn proxy_core_adapter_does_not_export_current_route_target_alias() {
 #[test]
 fn proxy_core_adapter_does_not_export_proxy_runtime_status_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
     let runtime_source = fs::read_to_string(
@@ -6773,8 +6735,7 @@ fn proxy_core_adapter_does_not_export_proxy_runtime_status_alias() {
 #[test]
 fn proxy_core_adapter_does_not_export_proxy_config_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
     let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
@@ -6809,8 +6770,7 @@ fn proxy_core_adapter_does_not_export_proxy_config_alias() {
 #[test]
 fn proxy_core_adapter_does_not_export_proxy_server_info_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -6869,8 +6829,7 @@ fn proxy_core_adapter_does_not_export_proxy_server_info_alias() {
 #[test]
 fn proxy_core_adapter_does_not_export_proxy_takeover_status_alias() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let live_takeover_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
             .expect("read host/cc_switch/live_takeover.rs");
@@ -6920,8 +6879,7 @@ fn proxy_core_adapter_does_not_export_proxy_takeover_status_alias() {
 #[test]
 fn proxy_core_adapter_does_not_export_proxy_config_contract_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_config_import = optional_function_slice(
         &adapter_source,
         "use crate::proxy_core::api::config::{",
@@ -6952,8 +6910,7 @@ fn proxy_core_adapter_does_not_export_proxy_config_contract_aliases() {
 #[test]
 fn proxy_core_adapter_does_not_export_runtime_policy_or_breaker_config_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let runtime_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs"))
             .expect("read proxy_runtime.rs");
@@ -6991,8 +6948,7 @@ fn proxy_core_adapter_does_not_export_runtime_policy_or_breaker_config_aliases()
 #[test]
 fn proxy_core_adapter_does_not_export_channel_write_request_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -7181,8 +7137,7 @@ fn production_gemini_provider_adapter_imports_auth_policy_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider/gemini.rs");
     let source = fs::read_to_string(&path).expect("read gemini provider adapter source");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     let mut violations = Vec::new();
     for required in [
@@ -7306,8 +7261,7 @@ fn production_codex_provider_adapter_delegates_auth_info_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider/codex.rs");
     let source = fs::read_to_string(&path).expect("read codex provider adapter source");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let core_provider_auth =
         fs::read_to_string(manifest_dir.join("crates/proxy-core/src/provider_auth.rs"))
             .expect("read provider_auth.rs");
@@ -7360,8 +7314,7 @@ fn production_claude_provider_adapter_owns_auth_info_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let extract_auth = function_slice(
         &source,
         "    fn extract_auth(&self, provider: &Provider)",
@@ -7406,8 +7359,7 @@ fn production_claude_provider_adapter_owns_auth_info_projection() {
 fn production_simple_provider_adapters_delegate_auth_headers_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let provider_paths = ["src/proxy/provider/codex.rs"];
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_transport_reexport_slice = optional_function_slice(
         &adapter_source,
         "pub(crate) use crate::proxy_core::api::transport::{",
@@ -7457,8 +7409,7 @@ fn production_claude_provider_adapter_owns_auth_headers_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_transport_reexport_slice = optional_function_slice(
         &adapter_source,
         "pub(crate) use crate::proxy_core::api::transport::{",
@@ -7533,8 +7484,7 @@ fn production_provider_adapters_import_url_builders_from_core_api() {
             "build_gemini_upstream_url",
         ),
     ];
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_transport_reexport_slice = optional_function_slice(
         &adapter_source,
         "pub(crate) use crate::proxy_core::api::transport::{",
@@ -7597,8 +7547,7 @@ fn production_provider_adapters_import_url_builders_from_core_api() {
 #[test]
 fn proxy_core_adapter_excludes_provider_url_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -7624,8 +7573,7 @@ fn proxy_core_adapter_excludes_provider_url_facades() {
 #[test]
 fn proxy_core_adapter_excludes_transport_reexport_group() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         !source.contains("pub(crate) use crate::proxy_core::api::transport::{"),
@@ -7636,8 +7584,7 @@ fn proxy_core_adapter_excludes_transport_reexport_group() {
 #[test]
 fn proxy_core_adapter_excludes_transforms_reexport_group() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         !source.contains("pub(crate) use crate::proxy_core::api::transforms::{"),
@@ -7648,8 +7595,7 @@ fn proxy_core_adapter_excludes_transforms_reexport_group() {
 #[test]
 fn proxy_core_adapter_excludes_router_channel_dto_bridge() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -7675,8 +7621,7 @@ fn proxy_core_adapter_excludes_router_channel_dto_bridge() {
 #[test]
 fn proxy_core_adapter_excludes_dto_trait_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -7702,8 +7647,7 @@ fn proxy_core_adapter_excludes_dto_trait_facades() {
 #[test]
 fn proxy_core_adapter_keeps_test_core_imports_inside_tests_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let lines: Vec<&str> = source.lines().collect();
     let test_module_start = lines
         .windows(2)
@@ -7749,8 +7693,7 @@ fn proxy_core_adapter_keeps_test_core_imports_inside_tests_module() {
 #[test]
 fn proxy_core_adapter_excludes_small_helper_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let core_request_headers_source =
         fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_headers.rs"))
             .expect("read proxy-core request_headers.rs");
@@ -8078,8 +8021,7 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
 #[test]
 fn proxy_core_adapter_delegates_generic_error_construction_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     for marker in [
         "config_error_with_context",
@@ -8191,8 +8133,7 @@ fn production_proxy_http_client_legacy_module_removed_after_host_split() {
 #[test]
 fn proxy_core_adapter_delegates_explicit_proxy_url_validation_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let core_transport_path = manifest_dir.join("crates/proxy-core/src/request_transport.rs");
     let core_transport =
         fs::read_to_string(&core_transport_path).expect("read proxy-core request_transport.rs");
@@ -8277,8 +8218,7 @@ fn proxy_error_mapper_delegates_response_parse_failure_log_policy_to_core() {
 #[test]
 fn proxy_core_adapter_excludes_error_mapper_transport_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     let mut violations = Vec::new();
     for marker in [
@@ -8314,8 +8254,7 @@ fn production_provider_endpoint_service_delegates_projection_to_adapter() {
     let source = fs::read_to_string(&path).expect("read provider endpoint service");
     let provider_path = manifest_dir.join("src/provider.rs");
     let provider_source = fs::read_to_string(&provider_path).expect("read provider.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8359,8 +8298,7 @@ fn production_provider_endpoint_service_delegates_projection_to_adapter() {
 #[test]
 fn proxy_core_adapter_excludes_custom_endpoint_url_policy_facade() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         !source
@@ -8389,8 +8327,7 @@ fn proxy_core_adapter_excludes_custom_endpoint_url_policy_facade() {
 #[test]
 fn proxy_core_adapter_delegates_codex_credential_value_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
         .expect("read proxy-core ports.rs");
 
@@ -8535,8 +8472,7 @@ fn provider_services_import_common_config_issue_contracts_directly() {
 #[test]
 fn proxy_core_adapter_does_not_reexport_common_config_issue_contracts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let port_reexport_blocks: Vec<&str> = source
         .split("pub(crate) use crate::proxy_core::api::ports::{")
         .skip(1)
@@ -8773,8 +8709,7 @@ fn production_engine_routing_imports_route_contracts_directly() {
 #[test]
 fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let runtime_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs"))
             .expect("read proxy_runtime.rs");
@@ -8888,8 +8823,7 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
 #[test]
 fn proxy_core_adapter_does_not_export_legacy_channel_projection_aliases() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let dao_source = fs::read_to_string(manifest_dir.join("src/database/dao/proxy_channels.rs"))
         .expect("read proxy_channels DAO source");
     let adapter_runtime_source = adapter_source
@@ -9013,8 +8947,7 @@ fn http_server_tests_import_route_contracts_directly() {
 #[test]
 fn codex_provider_adapter_owns_codex_base_url_policy_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let provider_source = fs::read_to_string(manifest_dir.join("src/proxy/provider/codex.rs"))
         .expect("read proxy/provider/codex.rs");
     let base_url_slice = function_slice(
@@ -9051,8 +8984,7 @@ fn codex_provider_adapter_owns_codex_base_url_policy_projection() {
 #[test]
 fn proxy_core_adapter_delegates_codex_config_toml_projection_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let dao_source = fs::read_to_string(manifest_dir.join("src/database/dao/proxy_channels.rs"))
         .expect("read proxy_channels DAO source");
     let dao_production = dao_source
@@ -9087,8 +9019,7 @@ fn proxy_core_adapter_delegates_codex_config_toml_projection_to_core() {
 #[test]
 fn proxy_core_adapter_delegates_codex_live_settings_shape_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let config_service_source = fs::read_to_string(manifest_dir.join("src/services/config.rs"))
         .expect("read services/config.rs");
     let live_takeover_source =
@@ -9208,8 +9139,7 @@ fn provider_service_imports_provider_settings_validation_policy_from_core() {
         }
     }
 
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     if adapter_source.contains("pub(crate) fn provider_settings_validation_parts(") {
         violations.push("pub(crate) fn provider_settings_validation_parts(");
     }
@@ -9337,8 +9267,7 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         violations.join("\n")
     );
 
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
         .expect("read proxy-core ports.rs");
     let live_takeover_source =
@@ -9635,8 +9564,7 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
         violations.join("\n")
     );
 
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
         .expect("read proxy-core ports.rs");
     let port_reexport_blocks: Vec<&str> = adapter_source
@@ -9708,8 +9636,7 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
 #[test]
 fn proxy_core_adapter_delegates_default_live_import_category_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let live_source = fs::read_to_string(manifest_dir.join("src/services/provider/live.rs"))
         .expect("read services/provider/live.rs");
     let live_production_source = production_lines(&live_source)
@@ -9747,8 +9674,7 @@ fn proxy_core_adapter_delegates_default_live_import_category_to_core() {
 #[test]
 fn proxy_core_adapter_delegates_codex_backfill_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let config_source = fs::read_to_string(manifest_dir.join("src/services/config.rs"))
         .expect("read services/config.rs");
     let live_source = fs::read_to_string(manifest_dir.join("src/services/provider/live.rs"))
@@ -9796,8 +9722,7 @@ fn proxy_core_adapter_delegates_codex_backfill_policy_to_core() {
 #[test]
 fn provider_adapters_own_required_provider_base_url_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let codex_source = fs::read_to_string(manifest_dir.join("src/proxy/provider/codex.rs"))
         .expect("read proxy/provider/codex.rs");
     let claude_source = fs::read_to_string(manifest_dir.join("src/proxy/provider/claude.rs"))
@@ -9837,8 +9762,7 @@ fn provider_adapters_own_required_provider_base_url_projection() {
 #[test]
 fn proxy_core_adapter_delegates_gemini_live_json_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let production_source = production_lines(&source)
         .map(|(_, line)| line)
         .collect::<Vec<_>>()
@@ -9960,8 +9884,7 @@ fn proxy_core_adapter_delegates_gemini_live_json_policy_to_core() {
 #[test]
 fn proxy_core_adapter_delegates_gemini_live_config_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let production_source = production_lines(&source)
         .map(|(_, line)| line)
         .collect::<Vec<_>>()
@@ -10076,8 +9999,7 @@ fn production_claude_provider_adapter_owns_request_transform_projection() {
         "pub(crate) fn transform_claude_request_for_api_format(",
         "/// Claude 适配器",
     );
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         !adapter_source.contains("pub(crate) fn provider_claude_transform_request_for_api_format("),
@@ -10214,8 +10136,7 @@ fn response_pipeline_owns_usage_provider_facts_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let projection_path = manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
     let projection_source =
         fs::read_to_string(&projection_path).expect("read provider_projection.rs");
@@ -10267,8 +10188,7 @@ fn response_pipeline_owns_logged_stream_runtime_loop() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub(crate) struct SseUsageCollector",
@@ -10306,8 +10226,7 @@ fn response_pipeline_owns_passthrough_stream_response_construction() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub(crate) fn passthrough_stream_proxy_response_from_context",
@@ -10341,8 +10260,7 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let usage_slice = function_slice(
         &source,
         "pub(crate) struct StreamingResponseUsageContext",
@@ -10425,8 +10343,7 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub(crate) struct TransformedResponseUsageContext",
@@ -10504,8 +10421,7 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
     let response_adapter_source =
         fs::read_to_string(&response_adapter_path).expect("read proxy/response_adapter.rs");
@@ -10600,8 +10516,7 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
     let response_adapter_source =
         fs::read_to_string(&response_adapter_path).expect("read proxy/response_adapter.rs");
@@ -10678,8 +10593,7 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
     let response_adapter_source =
         fs::read_to_string(&response_adapter_path).expect("read proxy/response_adapter.rs");
@@ -10762,8 +10676,7 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
     let response_adapter_source =
         fs::read_to_string(&response_adapter_path).expect("read proxy/response_adapter.rs");
@@ -10846,8 +10759,7 @@ fn response_pipeline_owns_core_usage_transport_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_import = optional_function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
@@ -11114,8 +11026,7 @@ fn response_adapter_delegates_build_error_message_policy_to_core() {
 #[test]
 fn proxy_core_adapter_excludes_response_build_context_facade() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         !source.contains("AxumResponseBuildErrorContext")
@@ -11230,8 +11141,7 @@ fn error_mapper_delegates_response_transform_failure_context_policy_to_core() {
 #[test]
 fn host_claude_desktop_provider_owns_provider_projection_and_adapter_has_no_facade() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source = fs::read_to_string(
         manifest_dir.join("src/proxy/host/cc_switch/claude_desktop_provider.rs"),
     )
@@ -11726,8 +11636,7 @@ fn claude_desktop_config_delegates_proxy_gateway_origin_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/claude_desktop_config.rs");
     let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_auth_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::auth::{")
         .skip(1)
@@ -11858,8 +11767,7 @@ fn claude_desktop_config_delegates_profile_stale_model_detection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/claude_desktop_config.rs");
     let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let core_auth_path = manifest_dir.join("crates/proxy-core/src/claude_desktop_gateway_auth.rs");
     let core_auth_source =
         fs::read_to_string(&core_auth_path).expect("read claude_desktop_gateway_auth.rs");
@@ -12326,8 +12234,7 @@ fn claude_desktop_config_delegates_meta_json_policy_to_adapter() {
 #[test]
 fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let projection_path = manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
     let projection_source =
         fs::read_to_string(&projection_path).expect("read provider_projection.rs");
@@ -12442,8 +12349,7 @@ fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
 #[test]
 fn proxy_core_adapter_excludes_mimo_thinking_normalization_test_facade() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let core_response_transform_source =
         fs::read_to_string(manifest_dir.join("crates/proxy-core/src/response_transform.rs"))
             .expect("read proxy-core response_transform.rs");
@@ -12576,8 +12482,7 @@ fn response_pipeline_owns_non_stream_passthrough_response_construction() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub(crate) fn passthrough_non_stream_proxy_response_from_context",
@@ -12850,8 +12755,7 @@ fn handlers_delegate_passthrough_response_processing_to_response_adapter() {
 #[test]
 fn provider_projection_delegates_claude_transform_streaming_decision_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let projection_path = manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
     let projection =
         fs::read_to_string(&projection_path).expect("read host provider_projection.rs");
@@ -12936,8 +12840,7 @@ fn response_pipeline_uses_core_sse_header_decision() {
             .expect("read engine/response_pipeline.rs");
     let response_adapter = fs::read_to_string(manifest_dir.join("src/proxy/response_adapter.rs"))
         .expect("read response_adapter.rs");
-    let adapter = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter = proxy_core_adapter_source(&manifest_dir);
     let provider_projection =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs"))
             .expect("read provider_projection.rs");
@@ -13054,8 +12957,7 @@ fn claude_provider_owns_request_format_dispatch() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&path).expect("read claude provider source");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let request_slice = function_slice(
         &source,
         "pub(crate) fn transform_claude_request_for_api_format",
@@ -13120,8 +13022,7 @@ fn claude_provider_owns_request_format_dispatch() {
 #[test]
 fn provider_projection_delegates_claude_transform_gate_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let projection_path = manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
     let projection =
         fs::read_to_string(&projection_path).expect("read host provider_projection.rs");
@@ -13281,8 +13182,7 @@ fn provider_projection_delegates_claude_transform_gate_to_core() {
 #[test]
 fn proxy_core_adapter_delegates_codex_responses_to_chat_gate_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let provider_path = manifest_dir.join("src/proxy/provider/codex.rs");
     let provider_source = fs::read_to_string(&provider_path).expect("read proxy/provider/codex.rs");
     let codex_config_source =
@@ -13447,8 +13347,7 @@ fn proxy_core_adapter_delegates_codex_responses_to_chat_gate_to_core() {
 #[test]
 fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let request_body =
         fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_body.rs"))
             .expect("read proxy-core request_body.rs");
@@ -13533,8 +13432,7 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
 #[test]
 fn forwarder_request_source_owns_provider_model_mapping_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source = fs::read_to_string(
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs"),
     )
@@ -13577,8 +13475,7 @@ fn claude_provider_delegates_response_format_dispatch_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let provider_path = manifest_dir.join("src/proxy/provider/claude.rs");
     let source = fs::read_to_string(&provider_path).expect("read proxy/provider/claude.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let response_slice = function_slice(
         &source,
         "pub(crate) fn transform_claude_response_for_api_format",
@@ -13677,8 +13574,7 @@ fn claude_provider_delegates_response_format_dispatch_to_core() {
 #[test]
 fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let request_url_source =
         fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_url.rs"))
             .expect("read proxy-core request_url.rs");
@@ -13817,8 +13713,7 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
 #[test]
 fn proxy_core_adapter_delegates_provider_url_facts_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -14495,8 +14390,7 @@ fn production_sources_do_not_import_managed_auth_through_providers() {
 #[test]
 fn proxy_core_adapter_excludes_model_fetch_transport_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -14522,8 +14416,7 @@ fn proxy_core_adapter_excludes_model_fetch_transport_facades() {
 #[test]
 fn model_fetch_commands_use_core_dto_entrypoint() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let command_paths = ["src/commands/model_fetch.rs", "src/commands/codex_oauth.rs"];
 
     let mut violations = Vec::new();
@@ -14595,8 +14488,7 @@ fn model_fetch_commands_use_core_dto_entrypoint() {
 #[test]
 fn copilot_model_callers_use_core_dto_entrypoint() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let caller_paths = ["src/commands/copilot.rs", "src/proxy/copilot_auth.rs"];
 
     let mut violations = Vec::new();
@@ -14666,8 +14558,7 @@ fn copilot_model_callers_use_core_dto_entrypoint() {
 #[test]
 fn settings_runtime_config_callers_use_core_dto_entrypoint() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let core_ports_path = manifest_dir.join("crates/proxy-core/src/ports.rs");
     let core_ports = fs::read_to_string(&core_ports_path).expect("read proxy-core ports.rs");
     let caller_paths = [
@@ -14750,9 +14641,8 @@ fn settings_runtime_config_callers_use_core_dto_entrypoint() {
 #[test]
 fn codex_config_uses_core_model_context_window_constant() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let codex_config_path = manifest_dir.join("src/codex_config.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let codex_config_source = fs::read_to_string(&codex_config_path).expect("read codex_config.rs");
     let legacy_required_import =
         "use crate::proxy_core::api::model_catalog::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW;";
@@ -14815,9 +14705,8 @@ fn codex_config_uses_core_model_context_window_constant() {
 #[test]
 fn codex_config_imports_model_catalog_helpers_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let codex_config_path = manifest_dir.join("src/codex_config.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let codex_config_source = fs::read_to_string(&codex_config_path).expect("read codex_config.rs");
     let core_model_fetch_source =
         fs::read_to_string(manifest_dir.join("crates/proxy-core/src/model_fetch.rs"))
@@ -14887,8 +14776,7 @@ fn codex_config_imports_model_catalog_helpers_directly() {
 #[test]
 fn proxy_management_dto_callers_use_core_entrypoints() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let caller_specs = [
         (
             "src/commands/proxy.rs",
@@ -15075,8 +14963,7 @@ fn proxy_dao_imports_config_contracts_directly() {
         violations.join("\n")
     );
 
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     assert!(
         !adapter_source.contains(
             "pub(crate) use crate::proxy_core::api::config::app_proxy_config_defaults_for_app;"
@@ -15091,8 +14978,7 @@ fn proxy_dao_imports_provider_health_update_directly() {
     let relative = "src/database/dao/proxy.rs";
     let source =
         fs::read_to_string(manifest_dir.join(relative)).expect("read database/dao/proxy.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let import_slice = function_slice(
         &source,
         "use crate::error::AppError;",
@@ -15138,8 +15024,7 @@ fn proxy_dao_imports_usage_pricing_contracts_directly() {
     let relative = "src/database/dao/proxy.rs";
     let source =
         fs::read_to_string(manifest_dir.join(relative)).expect("read database/dao/proxy.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let import_slice = function_slice(
         &source,
         "use crate::error::AppError;",
@@ -15243,8 +15128,7 @@ fn managed_auth_commands_delegate_provider_validation_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/commands/auth.rs");
     let source = fs::read_to_string(&path).expect("read commands/auth.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_auth_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::auth::{")
         .skip(1)
@@ -15351,8 +15235,7 @@ fn production_managed_auth_legacy_command_dtos_delegate_to_core() {
     let copilot_source = fs::read_to_string(&copilot_path).expect("read copilot_auth.rs");
     let codex_path = manifest_dir.join("src/proxy/codex_oauth_auth.rs");
     let codex_source = fs::read_to_string(&codex_path).expect("read codex_oauth_auth.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_auth_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::auth::{")
         .skip(1)
@@ -15544,8 +15427,7 @@ fn model_fetch_command_imports_user_agent_parser_from_core() {
 #[test]
 fn provider_custom_user_agent_policy_lives_at_owning_call_sites() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let forwarder_request_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
     let forwarder_request_source = fs::read_to_string(&forwarder_request_source_path)
@@ -15693,9 +15575,8 @@ fn production_stream_check_delegates_provider_adapters_to_adapter() {
 #[test]
 fn stream_check_service_owns_core_dto_and_user_agent_policy_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let service_path = manifest_dir.join("src/services/stream_check.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let service_source = fs::read_to_string(&service_path).expect("read stream_check.rs");
     let required_direct_core_imports = [
         "use crate::proxy_core::api::domain::{",
@@ -15789,9 +15670,8 @@ fn stream_check_service_owns_core_dto_and_user_agent_policy_imports() {
 #[test]
 fn gemini_auth_service_uses_core_auth_type_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let service_path = manifest_dir.join("src/services/provider/gemini_auth.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let service_source = fs::read_to_string(&service_path).expect("read gemini_auth.rs");
     let required_import = "use crate::proxy_core::api::ports::{";
     let required_detector_import = "detect_gemini_auth_type as core_detect_gemini_auth_type";
@@ -15868,8 +15748,7 @@ fn stream_check_command_owns_proxy_target_db_reads() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let command_path = manifest_dir.join("src/commands/stream_check.rs");
     let source = fs::read_to_string(&command_path).expect("read commands/stream_check.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub async fn stream_check_all_providers",
@@ -15918,8 +15797,7 @@ fn stream_check_command_owns_copilot_target_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let command_path = manifest_dir.join("src/commands/stream_check.rs");
     let command_source = fs::read_to_string(&command_path).expect("read commands/stream_check.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &command_source,
         "fn provider_is_github_copilot_stream_check_target",
@@ -15945,8 +15823,7 @@ fn stream_check_command_owns_copilot_target_projection() {
 #[test]
 fn stream_check_service_delegates_additive_base_url_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let service_path = manifest_dir.join("src/services/stream_check.rs");
     let service_source = fs::read_to_string(&service_path).expect("read stream_check.rs");
     let function = function_slice(
@@ -16083,8 +15960,7 @@ fn production_proxy_service_owns_takeover_status_sources() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub async fn get_takeover_status",
@@ -16164,8 +16040,7 @@ fn production_proxy_service_owns_official_warning_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -16231,8 +16106,7 @@ fn production_proxy_service_owns_current_provider_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let functions = [
         (
             "get_current_provider_for_app",
@@ -16312,8 +16186,7 @@ fn production_proxy_service_owns_live_token_sync_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "async fn sync_live_config_to_provider",
@@ -16374,8 +16247,7 @@ fn production_proxy_service_owns_takeover_enabled_config_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -16433,8 +16305,7 @@ fn production_proxy_service_owns_takeover_backup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -16466,8 +16337,7 @@ fn production_proxy_service_owns_takeover_backup_delete_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -16519,8 +16389,7 @@ fn production_proxy_service_owns_takeover_any_enabled_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -16577,8 +16446,7 @@ fn production_proxy_service_owns_takeover_health_cleanup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub async fn set_takeover_for_app",
@@ -16628,8 +16496,7 @@ fn production_proxy_service_owns_all_backup_cleanup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub async fn start_with_takeover",
@@ -16684,8 +16551,7 @@ fn production_proxy_service_owns_start_takeover_active_flag_write_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub async fn start_with_takeover",
@@ -16740,8 +16606,7 @@ fn production_proxy_service_owns_stop_restore_enabled_cleanup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub async fn stop_with_restore",
@@ -16794,8 +16659,7 @@ fn production_proxy_service_owns_simple_restore_backup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "async fn restore_live_config_for_app_inner",
@@ -16846,8 +16710,7 @@ fn production_proxy_service_owns_fallback_restore_backup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "async fn restore_live_config_for_app_with_fallback_inner",
@@ -16899,8 +16762,7 @@ fn production_proxy_service_owns_ssot_restore_provider_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "fn restore_live_from_ssot_for_app",
@@ -16961,8 +16823,7 @@ fn production_proxy_service_owns_ssot_restore_live_write() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "fn restore_live_from_ssot_for_app",
@@ -17016,8 +16877,7 @@ fn production_proxy_service_owns_live_backup_save_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let functions = [
         (
             "backup_live_configs",
@@ -17092,8 +16952,7 @@ fn production_proxy_service_owns_update_backup_existing_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "async fn update_live_backup_from_provider_inner",
@@ -17145,8 +17004,7 @@ fn production_proxy_service_owns_update_backup_save_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "async fn update_live_backup_from_provider_inner",
@@ -17201,8 +17059,7 @@ fn production_proxy_service_owns_hot_switch_target_state_and_persistence() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub(crate) async fn hot_switch_provider_inner",
@@ -17286,8 +17143,7 @@ fn production_proxy_service_owns_keep_state_active_flag_cleanup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub async fn stop_with_restore_keep_state",
@@ -17338,8 +17194,7 @@ fn production_proxy_service_owns_stop_restore_active_flag_cleanup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let functions = [
         (
             "stop_with_restore",
@@ -17423,8 +17278,7 @@ fn production_proxy_service_owns_crash_recovery_active_flag_cleanup_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "pub async fn recover_from_crash",
@@ -17478,8 +17332,7 @@ fn production_proxy_service_owns_global_proxy_enabled_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let functions = [
         (
             "start",
@@ -17555,8 +17408,7 @@ fn production_proxy_service_owns_proxy_config_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let functions = [
         (
             "start",
@@ -17704,8 +17556,7 @@ fn production_proxy_service_delegates_server_factory_to_host_module() {
     let factory_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_server.rs"))
             .expect("read host/cc_switch/proxy_server.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source_adapter_imports = proxy_core_adapter_import_identifiers(&source);
     let functions = [
         (
@@ -17782,8 +17633,7 @@ fn production_proxy_service_imports_server_type_from_http_transport() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source_adapter_imports = proxy_core_adapter_import_identifiers(&source);
 
     let mut violations = Vec::new();
@@ -17830,8 +17680,7 @@ fn production_proxy_service_owns_effective_settings_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/live_takeover.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let functions = [
         (
             "claude_provider_with_effective_settings",
@@ -17973,8 +17822,7 @@ fn model_catalog_provider_owns_client_model_catalog_source_selection() {
     let source = fs::read_to_string(&path).expect("read model_catalog_provider.rs");
     let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
         "fn client_model_catalog_from_app_source",
@@ -18103,8 +17951,7 @@ fn production_live_takeover_owns_live_config_projection_helpers() {
     let host_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
             .expect("read host/cc_switch/live_takeover.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     for marker in [
         "fn live_config_has_proxy_placeholder_for_app(",
@@ -18145,8 +17992,7 @@ fn production_live_takeover_owns_live_config_projection_helpers() {
 #[test]
 fn proxy_core_adapter_excludes_hot_switch_takeover_policy_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     for marker in [
         "pub(crate) fn proxy_hot_switch_should_refresh_codex_live_from_backup",
@@ -18166,8 +18012,7 @@ fn proxy_core_adapter_excludes_hot_switch_takeover_policy_facades() {
 #[test]
 fn live_takeover_owns_claude_takeover_provider_facts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let live_takeover_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
             .expect("read live_takeover.rs");
@@ -18228,8 +18073,7 @@ fn live_takeover_owns_claude_takeover_provider_facts() {
 #[test]
 fn live_takeover_owns_codex_takeover_fields() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let live_takeover_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
             .expect("read live_takeover.rs");
@@ -18260,8 +18104,7 @@ fn live_takeover_owns_codex_takeover_fields() {
 #[test]
 fn proxy_core_adapter_delegates_channel_key_settings_policy_to_typed_core_helper() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -18315,8 +18158,7 @@ fn proxy_core_adapter_delegates_channel_key_settings_policy_to_typed_core_helper
 #[test]
 fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -18404,8 +18246,7 @@ fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
 #[test]
 fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -18601,8 +18442,7 @@ fn proxy_core_adapter_uses_channel_key_runtime_source_for_auth_profile_lookup() 
 #[test]
 fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
     let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
     let pipeline_path = manifest_dir.join("src/proxy/host/cc_switch/forward_pipeline.rs");
@@ -18803,8 +18643,7 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
 #[test]
 fn proxy_core_adapter_delegates_proxy_runtime_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
     let runtime_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs");
@@ -18860,8 +18699,7 @@ fn proxy_core_adapter_delegates_proxy_runtime_to_host_module() {
 #[test]
 fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -18924,8 +18762,7 @@ fn proxy_core_adapter_delegates_proxy_state_to_host_module() {
 #[test]
 fn proxy_core_adapter_delegates_proxy_services_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let services_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_services.rs");
     let services_source = fs::read_to_string(&services_path).expect("read proxy_services.rs");
 
@@ -18949,8 +18786,7 @@ fn proxy_core_adapter_delegates_proxy_services_to_host_module() {
 #[test]
 fn proxy_core_adapter_delegates_http_server_lifecycle_to_transport_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let server_path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let server_source = fs::read_to_string(&server_path).expect("read transport/http/server.rs");
 
@@ -19029,8 +18865,7 @@ fn production_proxy_module_excludes_managed_account_auth_module() {
 #[test]
 fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -19311,8 +19146,7 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
 #[test]
 fn production_adapter_managed_auth_runtime_source_is_trait() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -19459,8 +19293,7 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -20267,8 +20100,7 @@ fn production_forwarder_uses_auth_source_resource() {
         "RequestForwarder must receive upstream auth header assembly as an injected source"
     );
 
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -20515,8 +20347,7 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "impl RequestForwarder",
     );
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -21263,8 +21094,7 @@ fn production_forwarder_uses_protocol_state_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -21387,8 +21217,7 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -21656,8 +21485,7 @@ fn production_failover_switch_uses_host_proxy_config_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/host/cc_switch/failover_switch.rs");
     let source = fs::read_to_string(&path).expect("read host/cc_switch/failover_switch.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         source.contains("async fn failover_switch_app_enabled_from_host_db(")
@@ -21817,8 +21645,7 @@ fn production_forwarder_uses_transport_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -21908,8 +21735,7 @@ fn production_forwarder_uses_transport_source_resource() {
 #[test]
 fn production_forwarder_transport_source_delegates_to_upstream_transport_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -22055,8 +21881,7 @@ fn production_forwarder_uses_request_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -22806,8 +22631,7 @@ fn production_forwarder_uses_request_source_resource() {
 #[test]
 fn forwarder_request_source_model_mapping_uses_adapter_claude_desktop_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source = fs::read_to_string(
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs"),
     )
@@ -22858,8 +22682,7 @@ fn production_forwarder_uses_response_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/forward_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -23238,8 +23061,7 @@ fn production_proxy_core_host_delegates_config_source_to_adapter() {
 #[test]
 fn proxy_core_adapter_delegates_config_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/config_source.rs");
@@ -23358,8 +23180,7 @@ fn production_proxy_core_host_delegates_provider_source_to_adapter() {
 #[test]
 fn proxy_core_adapter_delegates_provider_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_source.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_source.rs");
     let host_harness_path = manifest_dir.join("src/proxy_core_host.rs");
@@ -23620,8 +23441,7 @@ fn production_proxy_core_host_delegates_route_policy_source_to_adapter() {
 #[test]
 fn proxy_core_adapter_delegates_route_policy_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/route_policy_source.rs");
     let source = fs::read_to_string(&source_path).expect("read route_policy_source.rs");
     let host_harness_path = manifest_dir.join("src/proxy_core_host.rs");
@@ -23754,8 +23574,7 @@ fn production_proxy_core_host_delegates_route_resolver_source_to_adapter() {
 #[test]
 fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/route_resolver.rs");
     let source = fs::read_to_string(&source_path).expect("read route_resolver.rs");
     let host_path = manifest_dir.join("src/proxy_core_host.rs");
@@ -23911,8 +23730,7 @@ fn production_proxy_core_host_delegates_health_store_sources_to_adapter() {
 #[test]
 fn proxy_core_adapter_delegates_channel_health_store_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/channel_health_store.rs");
@@ -24033,8 +23851,7 @@ fn production_proxy_core_host_delegates_model_catalog_source_to_host_module() {
 #[test]
 fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/model_catalog_provider.rs");
     let source = fs::read_to_string(&source_path).expect("read model_catalog_provider.rs");
     let adapter_runtime_source = adapter_source
@@ -24122,8 +23939,7 @@ fn proxy_core_adapter_delegates_model_catalog_provider_to_host_module() {
 #[test]
 fn model_catalog_provider_owns_claude_desktop_model_route_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -24205,8 +24021,7 @@ fn production_proxy_core_host_delegates_usage_sink_source_to_adapter() {
 #[test]
 fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
     let usage_sink_path = manifest_dir.join("src/proxy/host/cc_switch/database_usage_sink.rs");
@@ -24277,8 +24092,7 @@ fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
 #[test]
 fn proxy_core_adapter_delegates_management_auth_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/management_auth_source.rs");
     let source = fs::read_to_string(&source_path).expect("read management_auth_source.rs");
 
@@ -24337,8 +24151,7 @@ fn proxy_core_adapter_delegates_management_auth_source_to_host_module() {
 #[test]
 fn proxy_core_adapter_delegates_runtime_status_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/runtime_status_source.rs");
     let source = fs::read_to_string(&source_path).expect("read runtime_status_source.rs");
 
@@ -24426,8 +24239,7 @@ fn production_proxy_core_host_delegates_event_sink_source_to_adapter() {
 #[test]
 fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
     let event_sink_path = manifest_dir.join("src/proxy/host/cc_switch/event_sink.rs");
@@ -24538,8 +24350,7 @@ fn production_proxy_core_host_delegates_auth_provider_source_to_adapter() {
 #[test]
 fn proxy_core_adapter_delegates_auth_provider_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -24925,8 +24736,7 @@ fn production_proxy_core_host_delegates_forward_runtime_config_source_to_adapter
 #[test]
 fn production_forwarder_runtime_config_reaches_forwarder_as_single_input() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let runtime_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs");
     let runtime_source = fs::read_to_string(&runtime_path).expect("read proxy_runtime.rs");
     let forwarder_path = manifest_dir.join("src/proxy/engine/forward_pipeline.rs");
@@ -25111,8 +24921,7 @@ fn production_proxy_server_delegates_circuit_runtime_to_host_module() {
         manifest_dir.join("src/proxy/host/cc_switch/provider_router_circuit_runtime.rs"),
     )
     .expect("read provider_router_circuit_runtime.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let circuit_runtime =
         function_slice(&source, "    /// 热更新熔断器配置", "\n}\n\n#[cfg(test)]");
 
@@ -25370,8 +25179,16 @@ fn production_lib_does_not_compile_proxy_core_adapter_and_keeps_host_compat_test
     let path = manifest_dir.join("src/lib.rs");
     let source = fs::read_to_string(&path).expect("read lib.rs");
     let lines: Vec<&str> = source.lines().collect();
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
 
     let mut violations = Vec::new();
+    if adapter_path.exists() {
+        violations.push(
+            "src/proxy_core_adapter.rs still exists; delete the empty tombstone and add boundary coverage to the owning module instead"
+                .to_string(),
+        );
+    }
+
     for (line_index, line) in lines.iter().enumerate() {
         let module_name = match line.trim() {
             "mod proxy_core_host;" => "proxy_core_host",
@@ -25536,8 +25353,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         host_source.contains("use crate::proxy_core::api::domain::AppKind;")
@@ -25680,8 +25496,7 @@ fn production_proxy_server_delegates_runtime_state_to_host_server_module() {
         "pub(crate) async fn start_proxy_http_server",
         "pub(crate) async fn bind_proxy_http_listener",
     );
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -26004,8 +25819,7 @@ fn production_proxy_server_delegates_stop_wait_to_transport_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let stop_slice = function_slice(
         &source,
         "    pub async fn stop",
@@ -26219,8 +26033,7 @@ fn production_provider_router_owns_failover_provider_selection_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/routing.rs");
     let source = fs::read_to_string(&path).expect("read engine/routing.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let projection = function_slice(
         &source,
         "fn select_failover_provider_ids_from_router_lookup_availability",
@@ -26370,8 +26183,7 @@ fn production_circuit_breaker_imports_config_contracts_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let relative = "src/proxy/circuit_breaker.rs";
     let source = fs::read_to_string(manifest_dir.join(relative)).expect("read circuit_breaker.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let import_slice = function_slice(&source, "use crate::", "use std::sync::atomic");
 
     let required_imports = [
@@ -26566,8 +26378,7 @@ fn production_provider_router_uses_split_source_ports() {
 #[test]
 fn proxy_core_adapter_delegates_provider_router_sources_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_router_sources.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_router_sources.rs");
 
@@ -26623,8 +26434,7 @@ fn production_provider_router_uses_route_channel_inputs() {
 #[test]
 fn production_provider_router_config_source_uses_core_config_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source_path =
         manifest_dir.join("src/proxy/host/cc_switch/provider_router_config_source.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_router_config_source.rs");
@@ -26699,8 +26509,7 @@ fn production_provider_router_config_source_uses_core_config_source() {
 #[test]
 fn production_provider_router_provider_source_uses_core_provider_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source_path =
         manifest_dir.join("src/proxy/host/cc_switch/provider_router_provider_source.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_router_provider_source.rs");
@@ -26815,8 +26624,7 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
 #[test]
 fn production_provider_router_channel_source_uses_core_channel_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source_path =
         manifest_dir.join("src/proxy/host/cc_switch/provider_router_channel_source.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_router_channel_source.rs");
@@ -26886,8 +26694,7 @@ fn production_provider_router_channel_source_uses_core_channel_source() {
 #[test]
 fn production_cc_switch_channel_source_lives_in_host_database_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let services_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_services.rs");
     let services_source = fs::read_to_string(&services_path).expect("read proxy_services.rs");
     let host_harness_path = manifest_dir.join("src/proxy_core_host.rs");
@@ -27017,8 +26824,7 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
 #[test]
 fn production_provider_router_health_store_uses_core_attempt_facts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_router_health_store.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_router_health_store.rs");
     let direct_core_imports = [
@@ -27180,8 +26986,7 @@ fn production_provider_router_resets_channel_health_with_core_reset_fact() {
         "ProviderRouter must not reset channel health through a bare channel_id"
     );
 
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::")
         .skip(1)
@@ -27202,8 +27007,7 @@ fn production_provider_router_resets_channel_health_with_core_reset_fact() {
 #[test]
 fn production_channel_health_store_reads_channel_breaker_stats_through_core_port() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let store_path = manifest_dir.join("src/proxy/host/cc_switch/channel_health_store.rs");
     let store_source = fs::read_to_string(&store_path).expect("read channel_health_store.rs");
     let engine_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/engine.rs"))
@@ -27355,8 +27159,7 @@ fn proxy_channel_health_auto_disable_policy_stays_core_owned() {
         .split("\n#[cfg(test)]\nmod tests")
         .next()
         .unwrap_or(&dao_source);
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         dao_production.contains("channel_status_after_health_attempt(")
@@ -27522,8 +27325,7 @@ fn production_host_constructs_proxy_engine_through_host_proxy_state() {
 #[test]
 fn proxy_core_adapter_excludes_proxy_engine_constructor_facade() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         !source.contains("fn proxy_engine_from_services"),
@@ -27600,8 +27402,7 @@ fn production_forward_error_excludes_host_provider_payload() {
 #[test]
 fn proxy_core_adapter_uses_grouped_api_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     let mut violations = Vec::new();
     for (line_index, line) in source.lines().enumerate() {
@@ -27688,9 +27489,7 @@ fn response_adapter_delegates_codex_chat_conversion_gate_to_provider_projection(
         manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
     let provider_projection =
         fs::read_to_string(&provider_projection_path).expect("read provider_projection.rs");
-    let proxy_core_adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let proxy_core_adapter =
-        fs::read_to_string(&proxy_core_adapter_path).expect("read proxy_core_adapter.rs");
+    let proxy_core_adapter = proxy_core_adapter_source(&manifest_dir);
 
     let response_gate_slice = function_slice(
         &response_adapter,
@@ -27743,8 +27542,7 @@ fn proxy_response_adapter_owns_core_transport_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/response_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy/response_adapter.rs");
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_import = optional_function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
@@ -27913,8 +27711,7 @@ fn proxy_response_adapter_owns_core_transport_imports() {
 #[test]
 fn proxy_core_adapter_does_not_own_codex_tool_context_or_chat_error_fixtures() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
-        .expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let response_transform =
         fs::read_to_string(manifest_dir.join("crates/proxy-core/src/response_transform.rs"))
             .expect("read proxy-core response_transform.rs");
@@ -28097,8 +27894,7 @@ fn proxy_events_owns_core_event_stream_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/events.rs");
     let source = fs::read_to_string(&path).expect("read proxy/events.rs");
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let adapter_source = proxy_core_adapter_source(&manifest_dir);
 
     assert!(
         source.contains("use crate::proxy_core::api::events::{")
@@ -28127,8 +27923,7 @@ fn proxy_events_owns_core_event_stream_imports() {
 #[test]
 fn proxy_core_adapter_does_not_export_copilot_header_constants() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
-    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let source = proxy_core_adapter_source(&manifest_dir);
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -28251,6 +28046,15 @@ fn assert_proxy_core_adapter_no_response_pipeline_reexport(adapter_source: &str)
         !adapter_source.contains("pub(crate) use crate::proxy::engine::response_pipeline::{"),
         "proxy_core_adapter should not re-export response_pipeline helpers; tests and callers must import the owning module directly"
     );
+}
+
+fn proxy_core_adapter_source(manifest_dir: &Path) -> String {
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    match fs::read_to_string(&path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => panic!("read proxy_core_adapter.rs: {error}"),
+    }
 }
 
 fn proxy_core_adapter_import_identifiers(source: &str) -> Vec<String> {
