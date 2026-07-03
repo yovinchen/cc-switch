@@ -5345,16 +5345,14 @@ fn production_management_read_handlers_delegate_json_bridge_to_response_adapter(
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read response_adapter.rs");
+    let apps_handler = function_slice(
+        &source,
+        "pub async fn list_proxy_apps(",
+        "/// GET /proxy/v1/apps/{app}/providers",
+    );
     let handlers = [
-        (
-            "list_proxy_apps",
-            function_slice(
-                &source,
-                "pub async fn list_proxy_apps(",
-                "/// GET /proxy/v1/apps/{app}/providers",
-            ),
-            "dispatch_proxy_apps_request_to_axum_json_response(",
-        ),
         (
             "list_proxy_providers",
             function_slice(
@@ -5385,6 +5383,46 @@ fn production_management_read_handlers_delegate_json_bridge_to_response_adapter(
     ];
 
     let mut violations = Vec::new();
+    if !(apps_handler.contains("AppListRequest::new()")
+        && apps_handler.contains(".proxy_engine()")
+        && apps_handler.contains(".app_list_response(request)")
+        && apps_handler.contains(".map_err(proxy_core_error_to_proxy_error)?"))
+    {
+        violations.push(
+            "src/proxy/transport/http/handlers.rs list_proxy_apps should build the simple app-list JSON bridge through ProxyEngine"
+                .to_string(),
+        );
+    }
+    for (line_index, line) in production_lines(apps_handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in [
+            "dispatch_proxy_apps_request_to_axum_json_response(",
+            "ManagementAppPathRequest::from_path(",
+            "AppModelCatalogRequest::from_parts(",
+            ".provider_list_response(",
+            ".list_model_catalog_for_request(",
+            ".client_model_catalog_response(",
+            "AppKind::Codex",
+        ] {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/transport/http/handlers.rs list_proxy_apps:{} contains app-list boundary marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+    if adapter_source.contains("dispatch_proxy_apps_request_to_axum_json_response")
+        || adapter_source.contains("AppListRequest")
+        || adapter_source.contains("AppListResponse")
+    {
+        violations.push(
+            "src/proxy/response_adapter.rs should not own the basic app-list JSON bridge"
+                .to_string(),
+        );
+    }
+
     for (handler_name, handler, adapter_marker) in handlers {
         if !handler.contains(adapter_marker) {
             violations.push(format!(
@@ -27780,8 +27818,6 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         "AppChannelListQuery",
         "AppChannelManagementRequest",
         "AppChannelResponse",
-        "AppListRequest",
-        "AppListResponse",
         "AppModelCatalogRequest",
         "AppModelListQuery",
         "ChannelBreakerStatsResponse",
@@ -27937,6 +27973,7 @@ fn http_handlers_import_signature_dtos_directly_from_core() {
     for marker in [
         "AppChannelListQuery",
         "AppChannelResponse",
+        "AppListRequest",
         "AppListResponse",
         "AppModelListQuery",
         "ChannelBreakerStatsResponse",

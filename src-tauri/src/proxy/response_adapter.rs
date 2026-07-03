@@ -34,19 +34,18 @@ use crate::proxy::host::cc_switch::provider_projection::{
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::management::{
-    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppListRequest,
-    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
-    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
-    ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
-    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse, CurrentRouteResponse,
-    GroupListQuery, GroupListRequest, ManagementAppPathRequest, ProviderListResponse,
-    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
-    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse,
+    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppModelCatalogRequest,
+    AppModelListQuery, ChannelBreakerStatsResponse, ChannelCreateRequest, ChannelDeleteResponse,
+    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord,
+    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
+    CurrentRouteResponse, GroupListQuery, GroupListRequest, ManagementAppPathRequest,
+    ProviderListResponse, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
+    ProxyChannelWriteRequest, RouteGroupListResponse, RouteResolveManagementRequest,
+    RouteResolveRequest, RouteResolveResponse,
 };
 use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};
 use crate::proxy_core::api::ports::CurrentRouteTarget;
@@ -250,19 +249,6 @@ pub(crate) async fn collect_json_or_null_proxy_request(
         body: parsed.body,
         is_stream: parsed.is_stream,
     })
-}
-
-pub(crate) async fn dispatch_proxy_apps_request_to_axum_json_response(
-    state: &ProxyState,
-) -> Result<Json<AppListResponse>, ProxyError> {
-    let request = AppListRequest::new();
-    let response = state
-        .proxy_engine()
-        .app_list_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
 }
 
 pub(crate) async fn dispatch_proxy_providers_request_to_axum_json_response(

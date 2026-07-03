@@ -27,7 +27,6 @@ use crate::proxy::{
         dispatch_preview_proxy_channel_migration_request_to_axum_json_response,
         dispatch_proxy_app_channels_request_to_axum_json_response,
         dispatch_proxy_app_models_request_to_axum_json_response,
-        dispatch_proxy_apps_request_to_axum_json_response,
         dispatch_proxy_channel_breaker_stats_request_to_axum_json_response,
         dispatch_proxy_channel_keys_request_to_axum_json_response,
         dispatch_proxy_channel_models_request_to_axum_json_response,
@@ -46,7 +45,7 @@ use crate::proxy::{
 use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
 use crate::proxy_core::api::events::{proxy_events_sse_keep_alive_spec, ProxyEventEnvelope};
 use crate::proxy_core::api::management::{
-    AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery,
+    AppChannelListQuery, AppChannelResponse, AppListRequest, AppListResponse, AppModelListQuery,
     ChannelBreakerStatsResponse, ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelKeyDeleteResponse, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
     ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeResponse,
@@ -159,7 +158,14 @@ pub async fn require_proxy_management_auth(
 pub async fn list_proxy_apps(
     State(state): State<ProxyState>,
 ) -> Result<Json<AppListResponse>, ProxyError> {
-    dispatch_proxy_apps_request_to_axum_json_response(&state).await
+    let request = AppListRequest::new();
+    let response = state
+        .proxy_engine()
+        .app_list_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
 }
 
 /// GET /proxy/v1/apps/{app}/providers
