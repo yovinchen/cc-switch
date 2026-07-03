@@ -13,7 +13,6 @@ use crate::proxy::{
     error_mapper::proxy_core_error_to_proxy_error,
     response_adapter::{
         dispatch_claude_desktop_messages_request_to_axum_response,
-        dispatch_claude_desktop_models_request_to_axum_json_response,
         dispatch_claude_request_to_axum_response, dispatch_codex_chat_request_to_axum_response,
         dispatch_codex_client_model_catalog_request_to_axum_json_response,
         dispatch_codex_responses_compact_request_to_axum_response,
@@ -403,7 +402,13 @@ pub async fn handle_claude_desktop_models(
     headers: axum::http::HeaderMap,
 ) -> Result<Json<ClaudeDesktopModelListResponse>, ProxyError> {
     validate_claude_desktop_gateway_auth(&state, &headers).await?;
-    dispatch_claude_desktop_models_request_to_axum_json_response(&state).await
+    let response = state
+        .proxy_engine()
+        .claude_desktop_model_list_response()
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
 }
 
 // ============================================================================

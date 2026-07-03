@@ -1137,14 +1137,6 @@ const FORBIDDEN_MIGRATION_BREAKER_HANDLER_ENGINE_MARKERS: &[&str] = &[
     ".channel_breaker_stats_response(",
     ".reset_channel_health_response(",
 ];
-const FORBIDDEN_STATUS_MODEL_HANDLER_ENGINE_MARKERS: &[&str] = &[
-    "HealthCheckRequest::new(",
-    "ProxyStatusRequest::new(",
-    "chrono::Utc::now()",
-    ".proxy_engine()",
-    ".proxy_status_response(",
-    ".claude_desktop_model_list_response(",
-];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
 const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
@@ -5713,25 +5705,23 @@ fn production_migration_and_breaker_handlers_delegate_json_bridge_to_response_ad
 }
 
 #[test]
-fn production_status_handler_owns_local_json_bridge_and_desktop_model_delegates() {
+fn production_basic_status_and_desktop_model_handlers_own_local_json_bridges() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read response_adapter.rs");
     let health_handler = function_slice(&source, "pub async fn health_check(", "/// 获取服务状态");
     let status_handler = function_slice(
         &source,
         "pub async fn get_status(",
         "/// GET /proxy/v1/events",
     );
-    let delegated_handlers = [(
-        "handle_claude_desktop_models",
-        function_slice(
-            &source,
-            "pub async fn handle_claude_desktop_models(",
-            "\n}\n\n// ============================================================================\n// Codex API",
-        ),
-        "dispatch_claude_desktop_models_request_to_axum_json_response(",
-    )];
+    let desktop_models_handler = function_slice(
+        &source,
+        "pub async fn handle_claude_desktop_models(",
+        "\n}\n\n// ============================================================================\n// Codex API",
+    );
 
     let mut violations = Vec::new();
     if !(health_handler.contains("HealthCheckRequest::new()")
@@ -5787,30 +5777,48 @@ fn production_status_handler_owns_local_json_bridge_and_desktop_model_delegates(
         }
     }
 
-    for (handler_name, handler, adapter_marker) in delegated_handlers {
-        if !handler.contains(adapter_marker) {
-            violations.push(format!(
-                "src/proxy/transport/http/handlers.rs {handler_name} should call `{adapter_marker}`"
-            ));
-        }
-
-        for (line_index, line) in production_lines(handler) {
-            let code = line.split("//").next().unwrap_or_default();
-            for marker in FORBIDDEN_STATUS_MODEL_HANDLER_ENGINE_MARKERS {
-                if code.contains(marker) {
-                    violations.push(format!(
-                        "src/proxy/transport/http/handlers.rs {handler_name}:{} contains status/model engine marker `{}`",
-                        line_index + 1,
-                        marker
-                    ));
-                }
+    if !(desktop_models_handler
+        .contains("validate_claude_desktop_gateway_auth(&state, &headers).await?")
+        && desktop_models_handler.contains(".proxy_engine()")
+        && desktop_models_handler.contains(".claude_desktop_model_list_response()")
+        && desktop_models_handler.contains(".map_err(proxy_core_error_to_proxy_error)?"))
+    {
+        violations.push(
+            "src/proxy/transport/http/handlers.rs handle_claude_desktop_models should authenticate, then build the model-list JSON bridge through ProxyEngine"
+                .to_string(),
+        );
+    }
+    for (line_index, line) in production_lines(desktop_models_handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in [
+            "dispatch_claude_desktop_models_request_to_axum_json_response(",
+            "provider_router",
+            ".select_providers(",
+            ".select_provider_ids(",
+            "claude_desktop_config::model_list_response",
+            "ProxyError::NoAvailableProvider",
+        ] {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/transport/http/handlers.rs handle_claude_desktop_models:{} contains model-list boundary marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
             }
         }
+    }
+    if adapter_source.contains("dispatch_claude_desktop_models_request_to_axum_json_response")
+        || adapter_source.contains("ClaudeDesktopModelListResponse")
+    {
+        violations.push(
+            "src/proxy/response_adapter.rs should not own the basic Claude Desktop model-list JSON bridge"
+                .to_string(),
+        );
     }
 
     assert!(
         violations.is_empty(),
-        "status handler must own the simple status JSON bridge while Claude Desktop model handler delegates response construction to response_adapter:\n{}",
+        "status and Claude Desktop model-list handlers must own simple JSON bridges while leaving runtime/provider decisions behind ProxyEngine:\n{}",
         violations.join("\n")
     );
 }
@@ -27700,8 +27708,7 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         .collect();
 
     assert!(
-        source.contains("crate::proxy_core::api::auth::ClaudeDesktopModelListResponse")
-            && source.contains("crate::proxy_core::api::domain::AppKind")
+        source.contains("crate::proxy_core::api::domain::AppKind")
             && source.contains("crate::proxy_core::api::transport::{")
             && source.contains("endpoint_from_path_and_query")
             && source.contains("endpoint_from_path_query_stripping_prefix")
@@ -27756,7 +27763,6 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         "ProxyTransportResponseBody",
         "AxumResponseBuildErrorContext",
         "CoreResponseBuildFailureContext",
-        "ClaudeDesktopModelListResponse",
         "ClaudeTransformStreamingDecision",
         "CodexChatTransformStreamingDecision",
         "CodexToolContext",
