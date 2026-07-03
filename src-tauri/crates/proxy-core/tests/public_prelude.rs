@@ -1393,6 +1393,50 @@ fn external_host_can_use_health_check_contracts_from_prelude() {
 }
 
 #[test]
+fn external_host_can_use_provider_health_update_contracts_from_prelude() {
+    let first_failure: ProviderHealthUpdate =
+        provider_health_update_from_input(ProviderHealthUpdateInput {
+            current_consecutive_failures: 0,
+            success: false,
+            error_msg: Some("upstream timeout".to_string()),
+            failure_threshold: 2,
+            timestamp: "2026-06-26T00:00:00Z".to_string(),
+        });
+    assert!(first_failure.is_healthy);
+    assert_eq!(first_failure.consecutive_failures, 1);
+    assert_eq!(
+        first_failure.last_failure_at.as_deref(),
+        Some("2026-06-26T00:00:00Z")
+    );
+    assert_eq!(first_failure.last_error.as_deref(), Some("upstream timeout"));
+
+    let threshold_failure = provider_health_update_from_input(ProviderHealthUpdateInput {
+        current_consecutive_failures: first_failure.consecutive_failures,
+        success: false,
+        error_msg: Some("upstream 502".to_string()),
+        failure_threshold: 2,
+        timestamp: "2026-06-26T00:01:00Z".to_string(),
+    });
+    assert!(!threshold_failure.is_healthy);
+    assert_eq!(threshold_failure.consecutive_failures, 2);
+
+    let recovered = provider_health_update_from_input(ProviderHealthUpdateInput {
+        current_consecutive_failures: threshold_failure.consecutive_failures,
+        success: true,
+        error_msg: None,
+        failure_threshold: 2,
+        timestamp: "2026-06-26T00:02:00Z".to_string(),
+    });
+    assert!(recovered.is_healthy);
+    assert_eq!(recovered.consecutive_failures, 0);
+    assert_eq!(
+        recovered.last_success_at.as_deref(),
+        Some("2026-06-26T00:02:00Z")
+    );
+    assert_eq!(recovered.last_failure_at, None);
+}
+
+#[test]
 fn external_host_can_use_runtime_status_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
