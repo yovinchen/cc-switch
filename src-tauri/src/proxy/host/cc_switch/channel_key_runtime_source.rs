@@ -53,20 +53,33 @@ where
 pub(crate) struct CcSwitchChannelKeyRuntimeSource {
     db: Arc<Database>,
     round_robin_cursors: Arc<Mutex<HashMap<String, u64>>>,
+    selection_clock: Arc<dyn Fn() -> (i64, u64) + Send + Sync>,
 }
 
 pub(crate) fn channel_key_runtime_source_from_database(
     db: Arc<Database>,
 ) -> CcSwitchChannelKeyRuntimeSource {
+    channel_key_runtime_source_from_database_with_selection_clock(
+        db,
+        Arc::new(channel_key_runtime_selection_clock),
+    )
+}
+
+fn channel_key_runtime_source_from_database_with_selection_clock(
+    db: Arc<Database>,
+    selection_clock: Arc<dyn Fn() -> (i64, u64) + Send + Sync>,
+) -> CcSwitchChannelKeyRuntimeSource {
     CcSwitchChannelKeyRuntimeSource {
         db,
         round_robin_cursors: Arc::new(Mutex::new(HashMap::new())),
+        selection_clock,
     }
 }
 
 fn load_channel_key_candidate_from_database(
     db: &Database,
     round_robin_cursors: &Mutex<HashMap<String, u64>>,
+    selection_clock: &(dyn Fn() -> (i64, u64) + Send + Sync),
     channel_id: &str,
     key_ref: &str,
 ) -> ProxyCoreResult<Option<ChannelKeyRuntimeCandidate>> {
@@ -79,7 +92,7 @@ fn load_channel_key_candidate_from_database(
     let policy = channel_key_runtime_selection_policy_from_database(db, channel_id)?;
     let round_robin_offset =
         channel_key_round_robin_offset(round_robin_cursors, channel_id, key_ref, policy.strategy)?;
-    let (now_ms, weighted_roll) = channel_key_runtime_selection_clock();
+    let (now_ms, weighted_roll) = selection_clock();
     Ok(select_proxy_channel_key_runtime_candidate(
         keys,
         key_ref,
@@ -148,6 +161,7 @@ impl ChannelKeyRuntimeSource for CcSwitchChannelKeyRuntimeSource {
         load_channel_key_candidate_from_database(
             self.db.as_ref(),
             self.round_robin_cursors.as_ref(),
+            self.selection_clock.as_ref(),
             input.channel_id,
             input.key_ref,
         )
@@ -440,6 +454,64 @@ mod tests {
         assert_eq!(second_b.key_ref, "beta");
         assert_eq!(first_a.key_value, "sk-channel-key-round-robin-a-alpha");
         assert_eq!(first_b.key_value, "sk-channel-key-round-robin-b-alpha");
+    }
+
+    #[test]
+    fn db_backed_channel_key_runtime_source_uses_injected_weighted_roll() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "provider-key" } }),
+            None,
+        );
+        db.save_provider("claude", &provider)
+            .expect("save provider");
+        db.create_proxy_channel(ProxyChannelWriteRequest {
+            id: Some("channel-key-weighted".to_string()),
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            name: "Channel Key Weighted".to_string(),
+            base_url: "https://weighted.relay.example.com/v1".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            health_policy: json!({"channelKeySelectionStrategy": "weightedRandom"}),
+            ..Default::default()
+        })
+        .expect("create channel");
+        db.upsert_proxy_channel_key(
+            "channel-key-weighted",
+            "alpha",
+            ProxyChannelKeyWriteRequest {
+                key_value: "sk-alpha".to_string(),
+                status: "enabled".to_string(),
+                priority: 20,
+                weight: 1,
+            },
+        )
+        .expect("upsert alpha key");
+        db.upsert_proxy_channel_key(
+            "channel-key-weighted",
+            "beta",
+            ProxyChannelKeyWriteRequest {
+                key_value: "sk-beta".to_string(),
+                status: "enabled".to_string(),
+                priority: 20,
+                weight: 3,
+            },
+        )
+        .expect("upsert beta key");
+
+        let source = channel_key_runtime_source_from_database_with_selection_clock(
+            db,
+            Arc::new(|| (1_771_000_120_000, 1)),
+        );
+        let selected = source
+            .load_channel_key_candidate(lookup("channel-key-weighted", "*"))
+            .expect("load weighted wildcard key")
+            .expect("selected weighted key");
+
+        assert_eq!(selected.key_ref, "beta");
+        assert_eq!(selected.key_value, "sk-beta");
     }
 
     #[test]
