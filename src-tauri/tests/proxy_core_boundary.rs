@@ -11694,6 +11694,11 @@ fn claude_desktop_config_delegates_profile_stale_model_detection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/claude_desktop_config.rs");
     let source = fs::read_to_string(&path).expect("read claude_desktop_config.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let core_auth_path = manifest_dir.join("crates/proxy-core/src/claude_desktop_gateway_auth.rs");
+    let core_auth_source =
+        fs::read_to_string(&core_auth_path).expect("read claude_desktop_gateway_auth.rs");
     let status_slice = function_slice(
         &source,
         "pub fn get_status(",
@@ -11733,6 +11738,13 @@ fn claude_desktop_config_delegates_profile_stale_model_detection_to_adapter() {
         violations.is_empty(),
         "claude_desktop_config must keep profile stale-model detection in proxy-core:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        core_auth_source.contains("fn profile_safe_model_id_rejects_unsafe_claude_desktop_routes()")
+            && !adapter_source.contains(
+                "fn claude_desktop_profile_model_id_policy_rejects_unsafe_aliases()"
+            ),
+        "Claude Desktop profile-safe model id fixture should live in proxy-core gateway auth, not proxy_core_adapter"
     );
 }
 

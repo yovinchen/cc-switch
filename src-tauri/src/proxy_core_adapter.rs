@@ -105,12 +105,12 @@ mod tests {
         codex_provider_upstream_model, codex_provider_uses_chat_completions,
     };
     use crate::proxy_core::api::auth::{
-        claude_desktop_model_id_is_profile_safe, extract_gemini_base_url_from_settings,
-        ClaudeAuthKeySource, ManagementAuthError, ProviderAuthInfo, ProviderAuthStrategy,
-    };
-    use crate::proxy_core::api::auth::{
         extract_claude_auth_key_from_settings, extract_gemini_api_key_from_settings,
         is_gemini_oauth_key_shape, ManagedAccountBindingSource,
+    };
+    use crate::proxy_core::api::auth::{
+        extract_gemini_base_url_from_settings, ClaudeAuthKeySource, ManagementAuthError,
+        ProviderAuthInfo, ProviderAuthStrategy,
     };
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
@@ -485,41 +485,6 @@ mod tests {
             missing,
             selected_provider_not_applied_message(AppType::ClaudeDesktop.as_str())
         );
-    }
-
-    #[test]
-    fn claude_desktop_profile_model_id_policy_rejects_unsafe_aliases() {
-        assert!(!claude_desktop_model_id_is_profile_safe(
-            "claude-sonnet-4-6 [1m]"
-        ));
-        assert!(!claude_desktop_model_id_is_profile_safe(
-            "  claude-sonnet-4-6  [1M]  "
-        ));
-        assert!(!claude_desktop_model_id_is_profile_safe("claude-old"));
-        assert!(!claude_desktop_model_id_is_profile_safe(
-            "claude-3-5-sonnet-20241022"
-        ));
-        assert!(!claude_desktop_model_id_is_profile_safe(
-            "claude-deepseek-v4-pro"
-        ));
-        assert!(!claude_desktop_model_id_is_profile_safe("claude-gpt-5-4"));
-        assert!(!claude_desktop_model_id_is_profile_safe("claude-"));
-        assert!(!claude_desktop_model_id_is_profile_safe(
-            "anthropic/claude-"
-        ));
-        assert!(!claude_desktop_model_id_is_profile_safe("sonnet"));
-        assert!(!claude_desktop_model_id_is_profile_safe("sonnet-"));
-        assert!(!claude_desktop_model_id_is_profile_safe("claude-sonnet-"));
-        assert!(!claude_desktop_model_id_is_profile_safe("claude-opus-"));
-        assert!(!claude_desktop_model_id_is_profile_safe(
-            "anthropic/claude-haiku-"
-        ));
-        assert!(claude_desktop_model_id_is_profile_safe(
-            "  claude-sonnet-4-6  "
-        ));
-        assert!(claude_desktop_model_id_is_profile_safe(
-            "anthropic/claude-opus-4-8"
-        ));
     }
 
     #[test]
