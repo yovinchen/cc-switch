@@ -23870,7 +23870,8 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
     assert!(
         event_bus_source.contains("pub fn emit_core_event(&self, event: ProxyCoreEvent)")
             && event_bus_source.contains("event.event_type.event_name()")
-            && event_bus_source.contains("event.into_event_payload()"),
+            && event_bus_source.contains("event.into_event_payload()")
+            && event_bus_source.contains("fn event_bus_projects_event_stream_contracts()"),
         "ProxyEventBus should own ProxyCoreEvent to event bus envelope projection"
     );
     assert!(
@@ -23905,7 +23906,8 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
             && !adapter_source.contains("pub(crate) fn emit_proxy_core_event(")
             && !adapter_source.contains("pub(crate) fn emit_proxy_core_event_bus_source(")
             && !adapter_source.contains("pub(crate) struct ProxyEventBusMessage")
-            && !adapter_source.contains("fn attempt_event_payload_input_from_forward_attempt("),
+            && !adapter_source.contains("fn attempt_event_payload_input_from_forward_attempt(")
+            && !adapter_source.contains("fn proxy_event_adapter_projects_event_stream_contracts()"),
         "proxy_core_adapter should not expose generic event bus dispatch facades"
     );
     assert!(
