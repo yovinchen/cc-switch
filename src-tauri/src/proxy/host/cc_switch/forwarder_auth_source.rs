@@ -338,6 +338,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn forwarder_auth_source_prefers_explicit_auth_provider_headers_before_managed_fallback()
+    {
+        let source = forwarder_auth_source_from_sources(
+            default_managed_account_runtime_source(),
+            Arc::new(ChannelHeaderAuthProvider),
+        );
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let provider = managed_account_test_provider_with_binding("codex_oauth", "codex-acct");
+        let attempt = ForwardAttempt::from_provider(provider);
+        let method = Method::POST;
+        let body = json!({ "model": "gpt-5" });
+        let headers = HeaderMap::new();
+
+        let resolved = source
+            .resolve_upstream_auth_headers(ForwarderAuthHeadersInput {
+                adapter: &adapter,
+                app_type: &AppType::Claude,
+                method: &method,
+                endpoint: "/v1/messages",
+                request_body: &body,
+                request_headers: &headers,
+                attempt: &attempt,
+                session_id: "session-a",
+                session_client_provided: true,
+                copilot_optimization: None,
+            })
+            .await
+            .expect("resolve explicit managed-account provider headers");
+
+        assert_eq!(resolved.codex_oauth_session_headers.len(), 0);
+        assert_eq!(resolved.auth_headers.len(), 1);
+        assert_eq!(
+            resolved.auth_headers[0].0,
+            http::HeaderName::from_static("x-core-auth-channel")
+        );
+        assert_eq!(
+            resolved.auth_headers[0].1.to_str().expect("header value"),
+            "codex_oauth-provider"
+        );
+        assert!(!resolved
+            .auth_headers
+            .iter()
+            .any(|(name, _)| name == http::header::AUTHORIZATION));
+    }
+
+    #[tokio::test]
     async fn forwarder_auth_source_uses_core_codex_oauth_session_header_gate() {
         let source = forwarder_auth_source_from_managed_account_runtime_source(Arc::new(
             StaticManagedAuthResolutionSource,

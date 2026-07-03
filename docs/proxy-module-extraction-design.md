@@ -2076,6 +2076,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1450. channel-key DB-backed runtime source 已补齐 round-robin 游标隔离测试：同一 provider 下不同 channel 的 wildcard key 轮询各自从首个 key 开始推进，锁定每个中转地址/通道独立 key 选择状态，避免跨 channel 串用 cursor。
 1451. channel-key DB-backed runtime source 的时间/roll 输入已变为可注入依赖：生产默认仍使用 `chrono::Utc`，测试可固定 `(now_ms, weighted_roll)`，并新增 weightedRandom DB-backed 验证，锁定 host source 读取 channel health policy 后把 roll 传入 core selector。
 1452. managed-account token refresh failure input 增加 core `retryable`/`terminal` 构造器；CC Switch host runtime source 只负责把 Copilot/Codex OAuth 具体错误枚举分类后调用 core helper，不再在生产路径直接构造 failure kind，短窗口缓存/拒绝策略继续由 core snapshot store 决定。
+1453. ForwarderAuthSource owner fixture 已补齐 AuthProvider 显式 header 优先级：即使 provider 带 managed-account binding，只要 core AuthProvider 返回显式 header，就不会进入 CC Switch provider adapter fallback 或 managed-account runtime，保护外部中转宿主接管鉴权的接口语义。
 
 ## 背景
 

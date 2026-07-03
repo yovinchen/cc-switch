@@ -20432,11 +20432,13 @@ fn production_forwarder_uses_auth_source_resource() {
         auth_source.contains("struct ChannelHeaderAuthProvider")
             && auth_source.contains("forwarder_auth_source_prepares_optional_copilot_auth_optimization")
             && auth_source.contains("forwarder_auth_source_uses_core_auth_provider_route_context_headers")
+            && auth_source.contains("forwarder_auth_source_prefers_explicit_auth_provider_headers_before_managed_fallback")
             && auth_source.contains("forwarder_auth_source_uses_core_codex_oauth_session_header_gate")
             && auth_source.contains("forwarder_auth_source_uses_core_copilot_auth_override_facts")
             && !adapter_source.contains("struct ChannelHeaderAuthProvider")
             && !adapter_source.contains("forwarder_auth_source_prepares_optional_copilot_auth_optimization")
             && !adapter_source.contains("forwarder_auth_source_uses_core_auth_provider_route_context_headers")
+            && !adapter_source.contains("forwarder_auth_source_prefers_explicit_auth_provider_headers_before_managed_fallback")
             && !adapter_source.contains("forwarder_auth_source_uses_core_codex_oauth_session_header_gate")
             && !adapter_source.contains("forwarder_auth_source_uses_core_copilot_auth_override_facts"),
         "ForwarderAuthSource behavior fixtures should live beside the host auth source, not in proxy_core_adapter"
