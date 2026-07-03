@@ -3421,15 +3421,19 @@ fn basic_health_status_handlers_use_management_contracts() {
     assert!(
         health_handler.contains("HealthCheckRequest::new()")
             && health_handler.contains("request.response(chrono::Utc::now().to_rfc3339())")
-            && status_handler.contains("dispatch_proxy_status_request_to_axum_json_response("),
-        "health should own its local HTTP JSON bridge while status delegates response assembly to response_adapter"
+            && status_handler.contains("ProxyStatusRequest::new()")
+            && status_handler.contains(".proxy_engine()")
+            && status_handler.contains(".proxy_status_response(request)")
+            && status_handler.contains(".map_err(proxy_core_error_to_proxy_error)?"),
+        "health and status should own their simple local HTTP JSON bridges while status still reads runtime state through ProxyEngine"
     );
     assert!(
         !adapter_source.contains("HealthCheckRequest::new()")
             && !adapter_source.contains("proxy_health_check_to_axum_json_response")
-            && adapter_source.contains("ProxyStatusRequest::new()")
-            && adapter_source.contains(".proxy_status_response(request)"),
-        "response_adapter must not own health JSON bridge, but should own ProxyEngine status call"
+            && !adapter_source.contains("dispatch_proxy_status_request_to_axum_json_response")
+            && !adapter_source.contains("ProxyStatusRequest::new()")
+            && !adapter_source.contains(".proxy_status_response(request)"),
+        "response_adapter must not own basic health/status JSON bridges"
     );
 
     let forbidden_markers = [
@@ -5709,31 +5713,25 @@ fn production_migration_and_breaker_handlers_delegate_json_bridge_to_response_ad
 }
 
 #[test]
-fn production_status_and_desktop_model_handlers_delegate_json_bridge_to_response_adapter() {
+fn production_status_handler_owns_local_json_bridge_and_desktop_model_delegates() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
     let health_handler = function_slice(&source, "pub async fn health_check(", "/// 获取服务状态");
-    let delegated_handlers = [
-        (
-            "get_status",
-            function_slice(
-                &source,
-                "pub async fn get_status(",
-                "/// GET /proxy/v1/events",
-            ),
-            "dispatch_proxy_status_request_to_axum_json_response(",
+    let status_handler = function_slice(
+        &source,
+        "pub async fn get_status(",
+        "/// GET /proxy/v1/events",
+    );
+    let delegated_handlers = [(
+        "handle_claude_desktop_models",
+        function_slice(
+            &source,
+            "pub async fn handle_claude_desktop_models(",
+            "\n}\n\n// ============================================================================\n// Codex API",
         ),
-        (
-            "handle_claude_desktop_models",
-            function_slice(
-                &source,
-                "pub async fn handle_claude_desktop_models(",
-                "\n}\n\n// ============================================================================\n// Codex API",
-            ),
-            "dispatch_claude_desktop_models_request_to_axum_json_response(",
-        ),
-    ];
+        "dispatch_claude_desktop_models_request_to_axum_json_response(",
+    )];
 
     let mut violations = Vec::new();
     if !(health_handler.contains("HealthCheckRequest::new()")
@@ -5755,6 +5753,33 @@ fn production_status_and_desktop_model_handlers_delegate_json_bridge_to_response
             if code.contains(marker) {
                 violations.push(format!(
                     "src/proxy/transport/http/handlers.rs health_check:{} contains status/model engine marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    if !(status_handler.contains("ProxyStatusRequest::new()")
+        && status_handler.contains(".proxy_engine()")
+        && status_handler.contains(".proxy_status_response(request)")
+        && status_handler.contains(".map_err(proxy_core_error_to_proxy_error)?"))
+    {
+        violations.push(
+            "src/proxy/transport/http/handlers.rs get_status should build the local status JSON bridge through ProxyEngine"
+                .to_string(),
+        );
+    }
+    for (line_index, line) in production_lines(status_handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in [
+            ".claude_desktop_model_list_response(",
+            "state.status",
+            ".status.read()",
+        ] {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/transport/http/handlers.rs get_status:{} contains status/model boundary marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5785,7 +5810,7 @@ fn production_status_and_desktop_model_handlers_delegate_json_bridge_to_response
 
     assert!(
         violations.is_empty(),
-        "status and Claude Desktop model handlers must delegate response construction, engine calls, and JSON wrapping to response_adapter:\n{}",
+        "status handler must own the simple status JSON bridge while Claude Desktop model handler delegates response construction to response_adapter:\n{}",
         violations.join("\n")
     );
 }
@@ -27686,12 +27711,19 @@ fn proxy_response_adapter_owns_core_transport_imports() {
             && source.contains("ProxyBody")
             && source.contains("crate::proxy_core::api::management::{")
             && source.contains("crate::proxy_core::api::model_catalog::{")
-            && source.contains("crate::proxy_core::api::ports::{")
+            && (source.contains("crate::proxy_core::api::ports::{")
+                || source.contains("crate::proxy_core::api::ports::CurrentRouteTarget"))
             && source.contains("crate::proxy_core::api::routing::InterfaceKind")
             && source.contains("crate::proxy_core::api::transforms::{")
             && source.contains("build_codex_tool_context_from_request")
             && source.contains("crate::proxy_core::api::usage::{"),
         "response_adapter should import core auth/domain/transport/management/model_catalog/ports/routing/transforms/usage contracts directly"
+    );
+    assert!(
+        !source.contains("dispatch_proxy_status_request_to_axum_json_response")
+            && !source.contains("ProxyStatusRequest")
+            && !source.contains("ProxyStatusResponse"),
+        "response_adapter should not own the basic status JSON bridge after it moved to HTTP handlers"
     );
     assert!(
         !source.contains("append_query_to_endpoint_path"),

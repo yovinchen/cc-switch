@@ -46,11 +46,11 @@ use crate::proxy_core::api::management::{
     GroupListQuery, GroupListRequest, ManagementAppPathRequest, ProviderListResponse,
     ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
     ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
-    ProxyStatusRequest, ProxyStatusResponse, RouteGroupListResponse, RouteResolveManagementRequest,
-    RouteResolveRequest, RouteResolveResponse,
+    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
+    RouteResolveResponse,
 };
 use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};
-use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
+use crate::proxy_core::api::ports::CurrentRouteTarget;
 use crate::proxy_core::api::routing::InterfaceKind;
 use crate::proxy_core::api::transforms::{
     build_codex_tool_context_from_request, codex_chat_transform_streaming_decision,
@@ -251,19 +251,6 @@ pub(crate) async fn collect_json_or_null_proxy_request(
         body: parsed.body,
         is_stream: parsed.is_stream,
     })
-}
-
-pub(crate) async fn dispatch_proxy_status_request_to_axum_json_response(
-    state: &ProxyState,
-) -> Result<Json<ProxyStatusResponse<ProxyRuntimeStatus>>, ProxyError> {
-    let request = ProxyStatusRequest::new();
-    let response = state
-        .proxy_engine()
-        .proxy_status_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
 }
 
 pub(crate) async fn dispatch_claude_desktop_models_request_to_axum_json_response(
