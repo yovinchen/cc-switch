@@ -383,6 +383,13 @@ experimental_bearer_token = "sk-config-key"
     }
 
     #[test]
+    fn test_build_chat_url() {
+        let adapter = CodexAdapter::new();
+        let url = adapter.build_url("https://api.openai.com/v1", "/chat/completions");
+        assert_eq!(url, "https://api.openai.com/v1/chat/completions");
+    }
+
+    #[test]
     fn test_build_url_origin_adds_v1() {
         let adapter = CodexAdapter::new();
         let url = adapter.build_url("https://api.openai.com", "/responses");

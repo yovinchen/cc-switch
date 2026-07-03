@@ -114,10 +114,9 @@ mod tests {
     use crate::proxy_core::api::transport::{
         anthropic_beta_header_value, build_claude_auth_headers, build_codex_bearer_auth_headers,
         build_copilot_auth_headers, build_gemini_auth_headers, build_upstream_request_headers,
-        forward_upstream_url_plan, is_socks_proxy_url, resolve_upstream_send_policy,
-        serialize_upstream_request_body, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
-        ForwardFailureKind, ForwardUpstreamUrlPlanInput, UpstreamRequestHeadersInput,
-        UpstreamSendPolicyInput, UpstreamTransportKind,
+        is_socks_proxy_url, resolve_upstream_send_policy, serialize_upstream_request_body,
+        ClaudeAuthHeaderKind, CopilotAuthHeadersInput, ForwardFailureKind,
+        UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
     };
     use bytes::Bytes;
     use indexmap::IndexMap;
@@ -1903,90 +1902,6 @@ wire_api = "chat"
         assert_eq!(
             ManagementAuthError::MissingBearerToken.message(),
             "Missing management bearer token"
-        );
-    }
-
-    #[test]
-    fn upstream_url_adapter_projects_codex_and_gemini_url_rules() {
-        let codex_adapter = crate::proxy::provider::CodexAdapter::new();
-        assert_eq!(
-            codex_adapter.build_url("https://api.openai.com/v1", "/chat/completions"),
-            "https://api.openai.com/v1/chat/completions"
-        );
-
-        let (endpoint, passthrough_query) =
-            crate::proxy_core::api::transport::rewrite_codex_responses_endpoint_to_chat(
-                "/v1/responses?foo=bar",
-            )
-            .into_parts();
-        assert_eq!(endpoint, "/chat/completions?foo=bar");
-        assert_eq!(passthrough_query.as_deref(), Some("foo=bar"));
-
-        let codex_plan = forward_upstream_url_plan(
-            ForwardUpstreamUrlPlanInput {
-                base_url: "https://api.openai.com/v1/chat/completions",
-                endpoint: "/v1/responses?foo=bar&api-version=old",
-                is_full_url: false,
-                codex_responses_to_chat: true,
-                use_claude_transform: false,
-                is_copilot: false,
-                claude_api_format: None,
-                body: &json!({}),
-                channel_param_overrides: Some(&json!({"api-version": "2026-06-21"})),
-            },
-            |base_url, effective_endpoint| format!("{base_url}{effective_endpoint}"),
-        );
-        assert_eq!(
-            codex_plan.effective_endpoint,
-            "/chat/completions?foo=bar&api-version=old"
-        );
-        assert_eq!(
-            codex_plan.passthrough_query.as_deref(),
-            Some("foo=bar&api-version=old")
-        );
-        assert_eq!(
-            codex_plan.url,
-            "https://api.openai.com/v1/chat/completions?foo=bar&api-version=2026-06-21"
-        );
-
-        assert_eq!(
-            crate::proxy_core::api::transforms::build_gemini_native_url(
-                "https://generativelanguage.googleapis.com/v1beta",
-                "/v1beta/models/gemini-2.5-pro:generateContent",
-            ),
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
-        );
-        assert_eq!(
-            crate::proxy_core::api::transforms::resolve_gemini_native_url(
-                "https://relay.example/custom/generate-content",
-                "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
-                true,
-            ),
-            "https://relay.example/custom/generate-content?alt=sse"
-        );
-
-        let gemini_plan = forward_upstream_url_plan(
-            ForwardUpstreamUrlPlanInput {
-                base_url: "https://relay.example/custom/generate-content",
-                endpoint: "/v1/messages?beta=true",
-                is_full_url: true,
-                codex_responses_to_chat: false,
-                use_claude_transform: true,
-                is_copilot: false,
-                claude_api_format: Some("gemini_native"),
-                body: &json!({"model": "gemini-2.5-flash", "stream": true}),
-                channel_param_overrides: None,
-            },
-            |base_url, effective_endpoint| format!("{base_url}{effective_endpoint}"),
-        );
-        assert_eq!(
-            gemini_plan.effective_endpoint,
-            "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
-        );
-        assert_eq!(gemini_plan.passthrough_query.as_deref(), Some("alt=sse"));
-        assert_eq!(
-            gemini_plan.url,
-            "https://relay.example/custom/generate-content?alt=sse"
         );
     }
 

@@ -13427,6 +13427,9 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let request_url_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_url.rs"))
+            .expect("read proxy-core request_url.rs");
     let request_source_path =
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_request_source.rs");
     let request_source =
@@ -13445,6 +13448,18 @@ fn proxy_core_adapter_delegates_upstream_url_plan_policy_to_core() {
     assert!(
         function.contains("forward_upstream_url_plan("),
         "ForwarderRequestSource should delegate upstream URL planning to proxy-core"
+    );
+    assert!(
+        request_url_source
+            .contains("fn rewrites_codex_responses_endpoint_to_chat_and_preserves_query()")
+            && request_url_source
+                .contains("fn plans_codex_chat_full_endpoint_url_with_channel_param_overrides()")
+            && request_url_source.contains("fn plans_gemini_native_full_url_with_stream_query()"),
+        "proxy-core request_url tests should own Codex/Gemini upstream URL planning fixtures"
+    );
+    assert!(
+        !adapter_source.contains("fn upstream_url_adapter_projects_codex_and_gemini_url_rules()"),
+        "proxy_core_adapter should not carry Codex/Gemini upstream URL planning fixture"
     );
 
     for marker in [
