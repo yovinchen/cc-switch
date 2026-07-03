@@ -378,6 +378,67 @@ mod tests {
     }
 
     #[test]
+    fn provider_delete_is_current_provider_checks_local_and_db_sources() {
+        assert!(provider_delete_is_current_provider(
+            "provider-a",
+            Some("provider-a"),
+            None
+        ));
+        assert!(provider_delete_is_current_provider(
+            "provider-a",
+            None,
+            Some("provider-a")
+        ));
+        assert!(provider_delete_is_current_provider(
+            "provider-a",
+            Some("provider-a"),
+            Some("provider-a")
+        ));
+        assert!(!provider_delete_is_current_provider(
+            "provider-a",
+            Some("provider-b"),
+            Some("provider-c")
+        ));
+        assert!(!provider_delete_is_current_provider(
+            "provider-a",
+            None,
+            None
+        ));
+    }
+
+    #[test]
+    fn provider_switch_backfill_source_id_requires_exclusive_different_current() {
+        assert_eq!(
+            provider_switch_backfill_source_id(
+                &AppKind::from(&AppType::Claude),
+                Some("current"),
+                "target"
+            ),
+            Some("current")
+        );
+        assert_eq!(
+            provider_switch_backfill_source_id(
+                &AppKind::from(&AppType::Claude),
+                Some("target"),
+                "target"
+            ),
+            None
+        );
+        assert_eq!(
+            provider_switch_backfill_source_id(&AppKind::from(&AppType::Claude), None, "target"),
+            None
+        );
+        assert_eq!(
+            provider_switch_backfill_source_id(
+                &AppKind::from(&AppType::OpenCode),
+                Some("current"),
+                "target"
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn validate_provider_settings_rejects_missing_auth() {
         let provider = Provider::with_id(
             "codex".into(),

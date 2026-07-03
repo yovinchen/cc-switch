@@ -60,15 +60,15 @@ mod tests {
         provider_additive_live_write_action_for_app, provider_additive_update_route_for_app,
         provider_app_has_current_provider, provider_codex_credential_values_from_parts,
         provider_credential_issue_spec, provider_default_live_import_settings,
-        provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
-        provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
-        provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
-        provider_live_sync_scope_for_app, provider_non_codex_credential_values_from_settings,
+        provider_initial_live_config_managed_marker, provider_key_change_policy_issue_for_app,
+        provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
+        provider_live_removal_target_for_app, provider_live_sync_scope_for_app,
+        provider_non_codex_credential_values_from_settings,
         provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
         provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
-        provider_switch_backfill_source_id, provider_switch_dispatch_for_app,
-        provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
+        provider_switch_dispatch_for_app, provider_switch_requires_takeover_lock,
+        provider_switch_should_mark_live_config_managed,
         provider_takeover_live_sync_target_for_app, proxy_live_config_owned_by_takeover,
         proxy_runtime_status_stopped, proxy_switch_should_hot_switch,
         proxy_takeover_marked_state_is_reusable,
@@ -5353,35 +5353,6 @@ wire_api = "chat"
     }
 
     #[test]
-    fn provider_delete_is_current_provider_checks_local_and_db_sources() {
-        assert!(provider_delete_is_current_provider(
-            "provider-a",
-            Some("provider-a"),
-            None
-        ));
-        assert!(provider_delete_is_current_provider(
-            "provider-a",
-            None,
-            Some("provider-a")
-        ));
-        assert!(provider_delete_is_current_provider(
-            "provider-a",
-            Some("provider-a"),
-            Some("provider-a")
-        ));
-        assert!(!provider_delete_is_current_provider(
-            "provider-a",
-            Some("provider-b"),
-            Some("provider-c")
-        ));
-        assert!(!provider_delete_is_current_provider(
-            "provider-a",
-            None,
-            None
-        ));
-    }
-
-    #[test]
     fn provider_additive_update_route_keeps_omo_separate_from_live_presence() {
         assert_eq!(
             provider_additive_update_route_for_app(&AppKind::from(&AppType::OpenCode), Some("omo")),
@@ -5415,38 +5386,6 @@ wire_api = "chat"
         );
         assert_eq!(
             provider_additive_update_route_for_app(&AppKind::from(&AppType::Claude), Some("omo")),
-            None
-        );
-    }
-
-    #[test]
-    fn provider_switch_backfill_source_id_requires_exclusive_different_current() {
-        assert_eq!(
-            provider_switch_backfill_source_id(
-                &AppKind::from(&AppType::Claude),
-                Some("current"),
-                "target"
-            ),
-            Some("current")
-        );
-        assert_eq!(
-            provider_switch_backfill_source_id(
-                &AppKind::from(&AppType::Claude),
-                Some("target"),
-                "target"
-            ),
-            None
-        );
-        assert_eq!(
-            provider_switch_backfill_source_id(&AppKind::from(&AppType::Claude), None, "target"),
-            None
-        );
-        assert_eq!(
-            provider_switch_backfill_source_id(
-                &AppKind::from(&AppType::OpenCode),
-                Some("current"),
-                "target"
-            ),
             None
         );
     }

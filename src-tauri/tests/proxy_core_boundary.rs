@@ -9151,6 +9151,19 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         );
     }
 
+    let provider_service_source =
+        fs::read_to_string(manifest_dir.join("src/services/provider/mod.rs"))
+            .expect("read provider service");
+    for marker in [
+        "provider_delete_is_current_provider_checks_local_and_db_sources",
+        "provider_switch_backfill_source_id_requires_exclusive_different_current",
+    ] {
+        assert!(
+            provider_service_source.contains(marker) && !adapter_source.contains(marker),
+            "provider service policy fixture `{marker}` should live beside the owning provider service, not proxy_core_adapter"
+        );
+    }
+
     for facade in [
         "fn provider_additive_live_write_action(",
         "fn provider_key_change_policy_issue(",
