@@ -2028,6 +2028,48 @@ fn external_host_can_use_channel_health_contracts_from_prelude() {
 }
 
 #[test]
+fn external_host_can_use_channel_health_update_contracts_from_prelude() {
+    assert_eq!(CHANNEL_HEALTH_UNKNOWN_STATUS, "unknown");
+
+    let first_failure: ChannelHealthUpdate =
+        channel_health_update_from_input(ChannelHealthUpdateInput {
+            current_consecutive_failures: 0,
+            success: false,
+            error_msg: Some("slow relay".to_string()),
+            failure_threshold: 2,
+            timestamp_ms: 1_771_000_000_000,
+        });
+    assert_eq!(first_failure.status, "degraded");
+    assert_eq!(first_failure.consecutive_failures, 1);
+    assert_eq!(first_failure.last_failure_at, Some(1_771_000_000_000));
+    assert_eq!(first_failure.disabled_reason.as_deref(), Some("slow relay"));
+
+    let threshold_failure = channel_health_update_from_input(ChannelHealthUpdateInput {
+        current_consecutive_failures: first_failure.consecutive_failures,
+        success: false,
+        error_msg: Some("relay unavailable".to_string()),
+        failure_threshold: 2,
+        timestamp_ms: 1_771_000_000_100,
+    });
+    assert_eq!(threshold_failure.status, "unhealthy");
+    assert_eq!(threshold_failure.consecutive_failures, 2);
+    assert_eq!(threshold_failure.last_failure_at, Some(1_771_000_000_100));
+
+    let recovered = channel_health_update_from_input(ChannelHealthUpdateInput {
+        current_consecutive_failures: threshold_failure.consecutive_failures,
+        success: true,
+        error_msg: Some("ignored on success".to_string()),
+        failure_threshold: 2,
+        timestamp_ms: 1_771_000_000_200,
+    });
+    assert_eq!(recovered.status, "healthy");
+    assert_eq!(recovered.consecutive_failures, 0);
+    assert_eq!(recovered.last_success_at, Some(1_771_000_000_200));
+    assert_eq!(recovered.last_failure_at, None);
+    assert_eq!(recovered.disabled_reason, None);
+}
+
+#[test]
 fn external_host_can_use_channel_test_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     *services.clock.lock().expect("clock mutex") = 1_771_000_000;
