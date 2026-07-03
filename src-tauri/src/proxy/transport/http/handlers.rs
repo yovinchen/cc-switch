@@ -42,10 +42,11 @@ use crate::proxy::{
         dispatch_update_proxy_channel_key_request_to_axum_json_response,
         dispatch_update_proxy_channel_request_to_axum_json_response,
         dispatch_upsert_proxy_channel_key_request_to_axum_json_response,
-        proxy_events_request_to_axum_sse_response, proxy_health_check_to_axum_json_response,
+        proxy_health_check_to_axum_json_response,
     },
 };
 use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
+use crate::proxy_core::api::events::{proxy_events_sse_keep_alive_spec, ProxyEventEnvelope};
 use crate::proxy_core::api::management::{
     AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery,
     ChannelBreakerStatsResponse, ChannelDeleteResponse, ChannelHealthResetResponse,
@@ -63,8 +64,12 @@ use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
+    response::sse::{Event, KeepAlive, Sse},
     Json,
 };
+use futures::Stream;
+use std::convert::Infallible;
+use std::time::Duration;
 
 // ============================================================================
 // 健康检查和状态查询（简单端点）
@@ -87,6 +92,42 @@ pub async fn stream_proxy_events(
     State(state): State<ProxyState>,
 ) -> impl axum::response::IntoResponse {
     proxy_events_request_to_axum_sse_response(&state)
+}
+
+fn proxy_event_envelope_to_axum_sse_event(event: ProxyEventEnvelope) -> Event {
+    let spec = event.to_sse_spec();
+    Event::default()
+        .id(spec.id)
+        .event(spec.event)
+        .data(spec.data)
+}
+
+fn proxy_events_request_to_axum_sse_response(
+    state: &ProxyState,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let mut receiver = state.events.subscribe();
+    let events = state.events.clone();
+
+    let stream = async_stream::stream! {
+        yield Ok(proxy_event_envelope_to_axum_sse_event(events.connected_event()));
+
+        loop {
+            match receiver.recv().await {
+                Ok(event) => yield Ok(proxy_event_envelope_to_axum_sse_event(event)),
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    yield Ok(proxy_event_envelope_to_axum_sse_event(events.lagged_event(skipped)));
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    };
+
+    let keep_alive = proxy_events_sse_keep_alive_spec();
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(keep_alive.interval_secs))
+            .text(keep_alive.text),
+    )
 }
 
 /// Management API auth middleware.
@@ -397,8 +438,12 @@ pub async fn handle_gemini(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::proxy::error::ProxyError;
     use crate::proxy::error_mapper::codex_proxy_error_json;
+    use axum::response::{sse::Sse, IntoResponse};
+    use http_body_util::BodyExt;
+    use serde_json::json;
 
     #[test]
     fn codex_proxy_forward_error_includes_context_and_cause() {
@@ -458,5 +503,25 @@ mod tests {
         assert_eq!(body["error"]["provider"], "HCAI");
         assert_eq!(body["error"]["model"], "gpt-5.5");
         assert_eq!(body["error"]["endpoint"], "/responses");
+    }
+
+    #[tokio::test]
+    async fn proxy_event_envelope_bridge_serializes_sse_fields() {
+        let event = proxy_event_envelope_to_axum_sse_event(ProxyEventEnvelope::new(
+            42,
+            "request_started",
+            "2026-06-20T00:00:00Z",
+            json!({"provider": "relay-a"}),
+        ));
+
+        let response =
+            Sse::new(futures::stream::once(async { Ok::<_, Infallible>(event) })).into_response();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let text = String::from_utf8(body.to_vec()).expect("sse body");
+
+        assert!(text.contains("id: 42\n"), "{text}");
+        assert!(text.contains("event: request_started\n"), "{text}");
+        assert!(text.contains("\"provider\":\"relay-a\""), "{text}");
+        assert!(text.ends_with("\n\n"), "{text}");
     }
 }

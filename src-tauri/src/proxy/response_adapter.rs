@@ -31,7 +31,6 @@ use crate::proxy::host::cc_switch::provider_projection::{
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
 use crate::proxy_core::api::domain::AppKind;
-use crate::proxy_core::api::events::{proxy_events_sse_keep_alive_spec, ProxyEventEnvelope};
 use crate::proxy_core::api::management::{
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelBreakerStatsResponse,
@@ -68,17 +67,12 @@ use crate::proxy_core::api::transport::{
 use crate::proxy_core::api::usage::{
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
-use axum::{
-    response::sse::{Event, KeepAlive, Sse},
-    Json,
-};
+use axum::Json;
 use bytes::Bytes;
 use futures::Stream;
 use http::{HeaderMap, Method, StatusCode, Uri};
 use http_body_util::BodyExt;
 use serde_json::Value;
-use std::convert::Infallible;
-use std::time::Duration;
 
 pub(crate) struct ParsedAxumJsonProxyRequest {
     pub(crate) method: Method,
@@ -1319,51 +1313,12 @@ pub(crate) fn codex_proxy_error_to_axum_response(
     proxy_core_response_to_axum_response(response, AxumResponseBuildErrorContext::CodexProxyError)
 }
 
-pub(crate) fn proxy_event_envelope_to_axum_sse_event(event: ProxyEventEnvelope) -> Event {
-    let spec = event.to_sse_spec();
-    Event::default()
-        .id(spec.id)
-        .event(spec.event)
-        .data(spec.data)
-}
-
-pub(crate) fn proxy_events_request_to_axum_sse_response(
-    state: &ProxyState,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let mut receiver = state.events.subscribe();
-    let events = state.events.clone();
-
-    let stream = async_stream::stream! {
-        yield Ok(proxy_event_envelope_to_axum_sse_event(events.connected_event()));
-
-        loop {
-            match receiver.recv().await {
-                Ok(event) => yield Ok(proxy_event_envelope_to_axum_sse_event(event)),
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    yield Ok(proxy_event_envelope_to_axum_sse_event(events.lagged_event(skipped)));
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-            }
-        }
-    };
-
-    let keep_alive = proxy_events_sse_keep_alive_spec();
-    Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(keep_alive.interval_secs))
-            .text(keep_alive.text),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core::api::events::ProxyEventEnvelope;
     use crate::proxy_core::api::transport::ProxyResponseBody;
-    use axum::response::{sse::Sse, IntoResponse};
     use http::StatusCode;
     use serde_json::json;
-    use std::convert::Infallible;
 
     #[tokio::test]
     async fn proxy_core_response_to_axum_response_preserves_buffered_body_and_headers() {
@@ -1509,25 +1464,5 @@ mod tests {
         assert_eq!(value["error"]["provider"], "DeepSeek");
         assert_eq!(value["error"]["model"], "deepseek-chat");
         assert_eq!(value["error"]["endpoint"], "/responses");
-    }
-
-    #[tokio::test]
-    async fn proxy_event_envelope_bridge_serializes_sse_fields() {
-        let event = proxy_event_envelope_to_axum_sse_event(ProxyEventEnvelope::new(
-            42,
-            "request_started",
-            "2026-06-20T00:00:00Z",
-            json!({"provider": "relay-a"}),
-        ));
-
-        let response =
-            Sse::new(futures::stream::once(async { Ok::<_, Infallible>(event) })).into_response();
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        let text = String::from_utf8(body.to_vec()).expect("sse body");
-
-        assert!(text.contains("id: 42\n"), "{text}");
-        assert!(text.contains("event: request_started\n"), "{text}");
-        assert!(text.contains("\"provider\":\"relay-a\""), "{text}");
-        assert!(text.ends_with("\n\n"), "{text}");
     }
 }

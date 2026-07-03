@@ -1074,7 +1074,7 @@ const FORBIDDEN_PROTOCOL_HANDLER_ROUTE_METADATA_MARKERS: &[&str] = &[
     "\"/responses\"",
     "\"/responses/compact\"",
 ];
-const FORBIDDEN_PROXY_EVENTS_HANDLER_SSE_ORCHESTRATION_MARKERS: &[&str] = &[
+const FORBIDDEN_RESPONSE_ADAPTER_PROXY_EVENTS_SSE_ORCHESTRATION_MARKERS: &[&str] = &[
     ".events.subscribe(",
     ".subscribe()",
     "connected_event(",
@@ -2497,6 +2497,7 @@ fn is_allowed_http_handlers_signature_core_import(relative: &str, code: &str) ->
         && matches!(
             code.trim(),
             "use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;"
+                | "use crate::proxy_core::api::events::{proxy_events_sse_keep_alive_spec, ProxyEventEnvelope};"
                 | "use crate::proxy_core::api::management::{"
                 | "use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};"
                 | "use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};"
@@ -5286,7 +5287,7 @@ fn production_protocol_handlers_delegate_route_metadata_to_response_adapter() {
 }
 
 #[test]
-fn production_proxy_events_handler_delegates_sse_orchestration_to_response_adapter() {
+fn production_proxy_events_handler_owns_http_sse_orchestration() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
@@ -5298,24 +5299,35 @@ fn production_proxy_events_handler_delegates_sse_orchestration_to_response_adapt
         "pub async fn stream_proxy_events(",
         "/// Management API auth middleware.",
     );
-    let response_adapter_events_slice = function_slice(
-        &response_adapter,
-        "pub(crate) fn proxy_events_request_to_axum_sse_response",
-        "#[cfg(test)]",
-    );
 
     assert!(
         handler.contains("proxy_events_request_to_axum_sse_response("),
-        "proxy events handler should delegate SSE response construction to response_adapter"
+        "proxy events handler should delegate only to its local HTTP SSE helper"
+    );
+    assert!(
+        handler.contains("proxy_event_envelope_to_axum_sse_event(")
+            && handler.contains("proxy_events_sse_keep_alive_spec()")
+            && handler.contains("keep_alive.interval_secs")
+            && handler.contains("keep_alive.text")
+            && handler.contains("KeepAlive::new(")
+            && handler.contains("Sse::new(stream)")
+            && !handler.contains("Duration::from_secs(15)")
+            && !handler.contains(".text(\"keep-alive\")"),
+        "HTTP event handler should own Axum SSE transport while keeping keep-alive semantics in proxy-core"
+    );
+    assert!(
+        !response_adapter.contains("proxy_events_request_to_axum_sse_response")
+            && !response_adapter.contains("proxy_event_envelope_to_axum_sse_event"),
+        "response_adapter should not own HTTP event SSE bridge functions"
     );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(handler) {
+    for (line_index, line) in production_lines(&response_adapter) {
         let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_PROXY_EVENTS_HANDLER_SSE_ORCHESTRATION_MARKERS {
+        for marker in FORBIDDEN_RESPONSE_ADAPTER_PROXY_EVENTS_SSE_ORCHESTRATION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/transport/http/handlers.rs stream_proxy_events:{} contains SSE orchestration marker `{}`",
+                    "src/proxy/response_adapter.rs:{} contains SSE orchestration marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5325,17 +5337,8 @@ fn production_proxy_events_handler_delegates_sse_orchestration_to_response_adapt
 
     assert!(
         violations.is_empty(),
-        "proxy events handler must delegate event subscription and SSE keep-alive construction to response_adapter:\n{}",
+        "response_adapter must not own event subscription or SSE keep-alive construction:\n{}",
         violations.join("\n")
-    );
-
-    assert!(
-        response_adapter_events_slice.contains("proxy_events_sse_keep_alive_spec()")
-            && response_adapter_events_slice.contains("keep_alive.interval_secs")
-            && response_adapter_events_slice.contains("keep_alive.text")
-            && !response_adapter_events_slice.contains("Duration::from_secs(15)")
-            && !response_adapter_events_slice.contains(".text(\"keep-alive\")"),
-        "response_adapter should build Axum SSE keep-alive from proxy-core event stream contract"
     );
 }
 
@@ -27620,7 +27623,6 @@ fn proxy_response_adapter_owns_core_transport_imports() {
             && source.contains("parse_json_proxy_request_body")
             && source.contains("parse_json_proxy_request_body_or_null")
             && source.contains("ProxyBody")
-            && source.contains("crate::proxy_core::api::events::ProxyEventEnvelope")
             && source.contains("crate::proxy_core::api::management::{")
             && source.contains("crate::proxy_core::api::model_catalog::{")
             && source.contains("crate::proxy_core::api::ports::{")
@@ -27628,7 +27630,7 @@ fn proxy_response_adapter_owns_core_transport_imports() {
             && source.contains("crate::proxy_core::api::transforms::{")
             && source.contains("build_codex_tool_context_from_request")
             && source.contains("crate::proxy_core::api::usage::{"),
-        "response_adapter should import core auth/domain/transport/event/management/model_catalog/ports/routing/transforms/usage contracts directly"
+        "response_adapter should import core auth/domain/transport/management/model_catalog/ports/routing/transforms/usage contracts directly"
     );
     assert!(
         !source.contains("append_query_to_endpoint_path"),
@@ -27822,6 +27824,7 @@ fn http_handlers_import_signature_dtos_directly_from_core() {
     let mut violations = Vec::new();
     for required_import in [
         "use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;",
+        "use crate::proxy_core::api::events::{proxy_events_sse_keep_alive_spec, ProxyEventEnvelope};",
         "use crate::proxy_core::api::management::{",
         "use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};",
         "use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};",
