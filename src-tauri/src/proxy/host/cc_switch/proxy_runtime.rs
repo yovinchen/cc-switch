@@ -407,3 +407,25 @@ pub(crate) fn extract_proxy_session_id(
         || Uuid::new_v4().to_string(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::proxy_core::api::session::SessionIdSource;
+    use serde_json::json;
+
+    #[test]
+    fn extract_proxy_session_id_generates_uuid_when_core_needs_new_session_id() {
+        let headers = HeaderMap::new();
+        let body = json!({
+            "model": "claude-3-5-sonnet",
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let result = extract_proxy_session_id(&headers, &body, "claude");
+
+        uuid::Uuid::parse_str(&result.session_id).expect("generated session id should be a UUID");
+        assert_eq!(result.source, SessionIdSource::Generated);
+        assert!(!result.client_provided);
+    }
+}

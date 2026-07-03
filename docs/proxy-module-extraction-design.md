@@ -495,7 +495,7 @@
 470. `LiveBackup` 已从 `proxy::types` 移到 `database::LiveBackup`；Live 接管备份记录归属数据库持久化边界，proxy host types 只保留运行态 status。
 471. host `ProxyStatus` 已收敛为 `proxy-core::ProxyRuntimeStatus`，并删除 host status 到 core status 的字段拷贝适配器；运行态 status 结构只在 core 维护。
 472. `proxy::types` 兼容壳模块已删除；调用点不再依赖代理 host 本地 DTO 模块。
-473. `proxy::session` host UUID adapter 已迁入 `proxy_core_adapter` 内部私有 helper；session 提取策略继续由 `proxy-core::session` 维护，proxy host 模块不再保留 session 壳文件，adapter 也不再把 `extract_proxy_session_id` 暴露为 crate-wide API。
+473. `proxy::session` host UUID adapter 已迁入 `proxy/host/cc_switch/proxy_runtime.rs::extract_proxy_session_id` 内部 helper；session 提取策略继续由 `proxy-core::session` 维护，host runtime 只负责注入 UUID 生成器，adapter 不再保留 session 壳文件或 crate-wide API。
 474. provider auth key/token 遮蔽算法已迁入 `proxy-core::mask_secret`；日志安全展示规则由 core 维护。
 475. 全局代理 URL 日志遮蔽规则已迁入 `proxy-core::mask_url_for_log`；外部中转集成可复用同一 URL 脱敏规则。
 476. `proxy-core::ProviderKind` 已补齐 Display 与 known-only FromStr 契约；host provider adapter 不再复制字符串别名规则。
@@ -1427,7 +1427,7 @@ forwarder provider adapter registry 的一跳 wrapper `forwarder_provider_adapte
 本轮继续移除 `proxy_core_adapter` 对 Codex unified-session bucket 注入的一跳 wrapper：`live_takeover` 在 provider-derived backup 写入路径直接调用 `codex_config::apply_codex_unified_session_bucket_to_settings` 并传入 provider category，adapter 不再为该 owning-module 调用暴露 `Provider` 包装入口。
 本轮继续移除 `proxy_core_adapter` 对 provider settings 基础校验的一跳 wrapper：`ProviderService` 在写入校验路径直接调用 `proxy-core::ports::provider_settings_validation_parts_from_settings`，adapter 不再为 `Provider.settings_config` 到 core validation parts 的字段投影暴露出口。
 本轮继续移除 `proxy_core_adapter` 对 Codex provider live write parts 的一跳 wrapper：`live_takeover` 在刷新 Codex live 与 provider-aware 写入路径直接调用 `proxy-core::ports::codex_provider_live_write_parts_from_settings`，adapter 不再为 provider category/auth/config_text 拆解暴露 `Provider` 包装入口。
-本轮继续收窄 `proxy_core_adapter` 的 session 提取 helper：`extract_proxy_session_id` 仅由 adapter 内部 request projection 与 adapter 单测使用，已改为私有函数；session 策略仍由 `proxy-core::session::extract_session_id_with_generator` 维护。
+本轮继续收窄 `proxy_core_adapter` 的 session 提取 helper：host UUID 注入入口已归到 `proxy/host/cc_switch/proxy_runtime.rs` 并由 owning test 覆盖，session 策略仍由 `proxy-core::session::extract_session_id_with_generator` 维护，adapter 不再承载 session UUID fixture。
 本轮继续收窄 `proxy_core_adapter` 的 Copilot fingerprint 常量：`COPILOT_INTEGRATION_ID` 仅由 adapter 内部构造 GitHub Copilot auth headers 使用，Claude provider 测试改为断言实际 header 值，不再把该常量作为 crate-wide 出口。
 本轮继续把 Copilot fingerprint 版本/UA 常量移回 owning module：`COPILOT_EDITOR_VERSION`、`COPILOT_PLUGIN_VERSION`、`COPILOT_USER_AGENT` 和 `COPILOT_API_VERSION` 改由 `proxy::copilot_auth` 定义，`proxy_core_adapter` 只作为 GitHub Copilot auth header 构造调用方消费这些常量，不再作为 Copilot 常量出口。
 本轮继续移除 `proxy_core_adapter` 对 Codex Chat reasoning profile helper 的 re-export：`provider_codex_chat_reasoning_profile` 与 `provider_codex_chat_reasoning_options` 继续作为 host `Provider` 包装入口，底层 `infer_codex_chat_reasoning_profile` 与 `normalize_codex_chat_reasoning_profile` 只在 adapter 内私有引用。

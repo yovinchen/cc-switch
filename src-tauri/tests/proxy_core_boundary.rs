@@ -18192,6 +18192,13 @@ fn proxy_core_adapter_delegates_proxy_runtime_to_host_module() {
         "CC Switch proxy runtime data shape, runtime trait impls, and forward bridge should live in host/cc_switch/proxy_runtime.rs"
     );
     assert!(
+        runtime_source.contains(
+            "fn extract_proxy_session_id_generates_uuid_when_core_needs_new_session_id()"
+        ) && !adapter_source
+            .contains("host_session_adapter_generates_uuid_when_core_needs_new_session_id"),
+        "host session UUID fixture should live with proxy_runtime, not proxy_core_adapter"
+    );
+    assert!(
         !adapter_source.contains("forward_proxy_request_with_cc_switch_runtime")
             && !adapter_source.contains("async fn forward_proxy_request_with_host_runtime")
             && !adapter_source.contains("async fn forward_with_preplanned_host_runtime")

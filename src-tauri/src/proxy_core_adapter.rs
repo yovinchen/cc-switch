@@ -11,7 +11,7 @@ use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
     forward_attempts_from_plan, required_forward_attempts_from_plan,
 };
 use crate::proxy::host::cc_switch::proxy_runtime::{
-    app_type_from_proxy_core_app, app_type_option_from_proxy_core_app, extract_proxy_session_id,
+    app_type_from_proxy_core_app, app_type_option_from_proxy_core_app,
     forward_current_provider_id_from_source, forward_runtime_request_from_proxy_request,
     forwarder_runtime_config_from_sources, forwarder_runtime_options_from_app_proxy_config,
     response_runtime_policy_from_app_proxy_config,
@@ -48,35 +48,25 @@ mod tests {
     };
     use crate::proxy_core::api::ports::{
         app_proxy_config_with_enabled as proxy_app_config_with_enabled,
-        apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
         claude_env_credentials_from_settings, claude_takeover_model_fields_from_settings,
         codex_auth_object_value_from_settings, codex_config_text_from_settings,
-        codex_provider_live_write_parts_from_settings, ensure_codex_takeover_auth_placeholder,
-        gemini_env_map_from_settings, gemini_live_backup_from_effective_settings,
-        gemini_live_settings_from_env_json_and_config, gemini_live_settings_to_write,
-        is_local_proxy_url, json_deep_merge, json_deep_remove, json_remove_array_items,
+        codex_provider_live_write_parts_from_settings, gemini_env_map_from_settings,
+        gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
+        gemini_live_settings_to_write, json_deep_merge, json_deep_remove, json_remove_array_items,
         json_value_is_subset, live_takeover_app_kinds, live_token_sync_app_label,
-        normalize_claude_models_in_value, normalize_provider_settings_for_storage,
         provider_additive_live_write_action_for_app, provider_additive_update_route_for_app,
         provider_app_has_current_provider, provider_codex_credential_values_from_parts,
-        provider_credential_issue_spec, provider_default_live_import_settings,
-        provider_initial_live_config_managed_marker, provider_key_change_policy_issue_for_app,
-        provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
-        provider_live_removal_target_for_app, provider_live_sync_scope_for_app,
-        provider_non_codex_credential_values_from_settings,
+        provider_credential_issue_spec, provider_initial_live_config_managed_marker,
+        provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
+        provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
+        provider_live_sync_scope_for_app, provider_non_codex_credential_values_from_settings,
         provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
         provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         provider_switch_dispatch_for_app, provider_switch_requires_takeover_lock,
         provider_switch_should_mark_live_config_managed,
-        provider_takeover_live_sync_target_for_app, proxy_live_config_owned_by_takeover,
-        proxy_runtime_status_stopped, proxy_switch_should_hot_switch,
-        proxy_takeover_marked_state_is_reusable,
-        proxy_takeover_should_restore_existing_backup_before_retakeover,
-        remove_claude_takeover_env_fields_if_present,
-        remove_codex_takeover_auth_placeholder_if_present,
-        remove_gemini_takeover_env_fields_if_present, sanitize_claude_settings_for_live,
-        should_skip_manual_default_live_import,
+        provider_takeover_live_sync_target_for_app, proxy_runtime_status_stopped,
+        sanitize_claude_settings_for_live, should_skip_manual_default_live_import,
         should_skip_provider_legacy_common_config_migration,
         should_skip_startup_default_live_import, ClaudeTakeoverAuthPolicy, CodexCredentialParts,
         CodexProviderLiveWriteIssue, CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction,
@@ -168,7 +158,6 @@ mod tests {
     use crate::proxy_core::api::management::{
         ChannelRouteSource, ChannelTestProbeRequest, RouteResolveRequest, StreamCheckResult,
     };
-    use crate::proxy_core::api::model_catalog::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW;
     use crate::proxy_core::api::ports::{
         codex_restored_live_settings_parts, gemini_env_json_from_map,
         gemini_env_string_map_from_settings, gemini_live_config_object_from_settings,
@@ -197,13 +186,12 @@ mod tests {
         anthropic_beta_header_value, apply_forwarder_media_prevention_from_facts,
         bedrock_env_flag_from_provider_settings, build_claude_auth_headers,
         build_codex_bearer_auth_headers, build_copilot_auth_headers, build_gemini_auth_headers,
-        build_upstream_request_headers, forward_upstream_url_plan,
-        is_official_codex_client_user_agent, is_socks_proxy_url, resolve_upstream_send_policy,
-        serialize_upstream_request_body, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
-        ForwardFailureKind, ForwardUpstreamUrlPlanInput, ForwarderMediaPreventionFacts, ProxyBody,
-        ProxyCoreResponse, ProxyRequest, ProxyResponseBody, ProxyTransportResponseBody,
-        UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamSseAggregationKind,
-        UpstreamTransportKind,
+        build_upstream_request_headers, forward_upstream_url_plan, is_socks_proxy_url,
+        resolve_upstream_send_policy, serialize_upstream_request_body, ClaudeAuthHeaderKind,
+        CopilotAuthHeadersInput, ForwardFailureKind, ForwardUpstreamUrlPlanInput,
+        ForwarderMediaPreventionFacts, ProxyBody, ProxyCoreResponse, ProxyRequest,
+        ProxyResponseBody, ProxyTransportResponseBody, UpstreamRequestHeadersInput,
+        UpstreamSendPolicyInput, UpstreamSseAggregationKind, UpstreamTransportKind,
     };
     use crate::proxy_core::api::usage::{
         usage_selected_provider_missing_log_message, TokenUsage, TransformedResponseUsageFormat,
@@ -3815,21 +3803,6 @@ wire_api = "chat"
             Some("claude-sonnet-4-6")
         );
         assert_eq!(env.get("OTHER").and_then(Value::as_str), Some("kept"));
-    }
-
-    #[test]
-    fn host_session_adapter_generates_uuid_when_core_needs_new_session_id() {
-        let headers = HeaderMap::new();
-        let body = json!({
-            "model": "claude-3-5-sonnet",
-            "messages": [{"role": "user", "content": "Hello"}]
-        });
-
-        let result = extract_proxy_session_id(&headers, &body, "claude");
-
-        uuid::Uuid::parse_str(&result.session_id).expect("generated session id should be a UUID");
-        assert_eq!(result.source, SessionIdSource::Generated);
-        assert!(!result.client_provided);
     }
 
     #[test]
