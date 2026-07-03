@@ -232,37 +232,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn provider_source_projects_db_providers_through_adapter() {
-        let db = Arc::new(Database::memory().expect("memory db"));
-        save_claude_provider(&db);
-        let services = CcSwitchProxyServices::new(db);
-
-        let providers = services
-            .providers()
-            .list_providers(&AppKind::Claude)
-            .await
-            .expect("list providers");
-
-        assert_eq!(providers.len(), 1);
-        assert_eq!(providers[0].id, "anthropic-main");
-        assert_eq!(providers[0].name, "Anthropic Main");
-        assert_eq!(providers[0].kind, ProviderKind::Claude);
-        assert_eq!(providers[0].account_ref, None);
-        assert!(providers[0].metadata.raw.get("env").is_none());
-
-        let provider = services
-            .providers()
-            .get_provider(&AppKind::Claude, "anthropic-main")
-            .await
-            .expect("get provider")
-            .expect("provider");
-
-        assert_eq!(provider.id, "anthropic-main");
-        assert_eq!(provider.kind, ProviderKind::Claude);
-        assert!(provider.metadata.raw.get("env").is_none());
-    }
-
-    #[tokio::test]
     async fn auth_provider_projects_profile_ref_through_core() {
         let provider = CcSwitchAuthProvider;
         let request = proxy_request();

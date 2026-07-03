@@ -142,6 +142,65 @@ impl ProviderSource for CcSwitchProviderSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::Provider;
+    use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
+    use crate::proxy_core::api::domain::ProviderKind;
+    use serde_json::json;
+
+    fn save_claude_provider(db: &Database) {
+        let provider = Provider::with_id(
+            "anthropic-main".to_string(),
+            "Anthropic Main".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://relay-a.example.com/v1/",
+                    "ANTHROPIC_MODEL": "claude-sonnet-4"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider)
+            .expect("save provider");
+        db.set_current_provider("claude", "anthropic-main")
+            .expect("set current provider");
+    }
+
+    fn provider_source(db: Arc<Database>) -> CcSwitchProviderSource {
+        CcSwitchProviderSource::new(
+            db.clone(),
+            Arc::new(provider_router_from_database(db)),
+            Arc::new(RwLock::new(HashMap::new())),
+        )
+    }
+
+    #[tokio::test]
+    async fn provider_source_projects_db_providers_through_core() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        save_claude_provider(&db);
+        let source = provider_source(db);
+
+        let providers = source
+            .list_providers(&AppKind::Claude)
+            .await
+            .expect("list providers");
+
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].id, "anthropic-main");
+        assert_eq!(providers[0].name, "Anthropic Main");
+        assert_eq!(providers[0].kind, ProviderKind::Claude);
+        assert_eq!(providers[0].account_ref, None);
+        assert!(providers[0].metadata.raw.get("env").is_none());
+
+        let provider = source
+            .get_provider(&AppKind::Claude, "anthropic-main")
+            .await
+            .expect("get provider")
+            .expect("provider");
+
+        assert_eq!(provider.id, "anthropic-main");
+        assert_eq!(provider.kind, ProviderKind::Claude);
+        assert!(provider.metadata.raw.get("env").is_none());
+    }
 
     #[test]
     fn route_candidate_provider_ids_from_router_result_keeps_core_empty_policy() {

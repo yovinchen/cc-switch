@@ -23349,6 +23349,9 @@ fn proxy_core_adapter_delegates_provider_source_to_host_module() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/provider_source.rs");
     let source = fs::read_to_string(&source_path).expect("read provider_source.rs");
+    let host_harness_path = manifest_dir.join("src/proxy_core_host.rs");
+    let host_harness_source =
+        fs::read_to_string(&host_harness_path).expect("read proxy_core_host.rs");
     let projection_path = manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
     let projection = fs::read_to_string(&projection_path).expect("read provider_projection.rs");
     let adapter_core_ports_import = optional_function_slice(
@@ -23412,6 +23415,14 @@ fn proxy_core_adapter_delegates_provider_source_to_host_module() {
                 "crate::proxy_core::api::routing::route_candidate_provider_ids_from_selection_result"
             ),
         "CC Switch provider source should own DB/runtime/router source helpers and import core provider/source contracts directly"
+    );
+    assert!(
+        source.contains("async fn provider_source_projects_db_providers_through_core()")
+            && !host_harness_source
+                .contains("async fn provider_source_projects_db_providers_through_adapter()")
+            && !host_harness_source
+                .contains("async fn provider_source_projects_db_providers_through_core()"),
+        "provider source DB projection fixture should live with CcSwitchProviderSource, not proxy_core_host"
     );
     for adapter_type in [
         "CurrentRouteTarget",
