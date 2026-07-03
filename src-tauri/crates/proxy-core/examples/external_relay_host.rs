@@ -88,6 +88,18 @@ async fn run() -> ProxyCoreResult<()> {
             "missing auth header resolution".to_string(),
         ));
     }
+    let managed_runtime_header_seen = services
+        .auth_headers
+        .lock()
+        .expect("auth headers mutex")
+        .iter()
+        .flatten()
+        .any(|header| header == "authorization=Bearer demo-runtime-copilot-token:demo-copilot");
+    if !managed_runtime_header_seen {
+        return Err(ProxyCoreError::Unavailable(
+            "missing managed-account runtime auth header".to_string(),
+        ));
+    }
     if usage_count == 0 {
         return Err(ProxyCoreError::Unavailable(
             "missing usage record".to_string(),
@@ -214,8 +226,8 @@ fn provider_specs(app: &AppKind) -> Vec<ProviderSpec> {
         AppKind::Claude => vec![ProviderSpec {
             id: "relay-east".to_string(),
             name: "Relay East".to_string(),
-            kind: ProviderKind::Claude,
-            account_ref: None,
+            kind: ProviderKind::GitHubCopilot,
+            account_ref: Some("demo-copilot".to_string()),
             metadata: Default::default(),
         }],
         AppKind::Codex => vec![ProviderSpec {
@@ -593,15 +605,39 @@ impl AuthProvider for DemoRelayHost {
     ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
         Box::pin(async move {
             let requested_model = request.requested_model.as_deref().unwrap_or("unknown");
-            let route_group = request.route_group.as_deref().unwrap_or(DEFAULT_ROUTE_GROUP);
+            let route_group = request
+                .route_group
+                .as_deref()
+                .unwrap_or(DEFAULT_ROUTE_GROUP);
             let mut headers = match channel.id.as_str() {
-                "claude-premium" => vec![
-                    (
-                        header::AUTHORIZATION.as_str().to_string(),
-                        "Bearer sk-claude-premium".to_string(),
-                    ),
-                    ("anthropic-beta".to_string(), "claude-code-20250219".to_string()),
-                ],
+                "claude-premium" => {
+                    let resolved = resolve_managed_account_auth_with_runtime_source(
+                        self,
+                        ProviderAuthInfo::new(
+                            "runtime-placeholder".to_string(),
+                            ProviderAuthStrategy::GitHubCopilot,
+                        ),
+                        provider.account_ref.clone(),
+                        None,
+                    )
+                    .await?;
+                    vec![
+                        (
+                            header::AUTHORIZATION.as_str().to_string(),
+                            format!("Bearer {}", resolved.auth.api_key),
+                        ),
+                        (
+                            "anthropic-beta".to_string(),
+                            "claude-code-20250219".to_string(),
+                        ),
+                        (
+                            "x-managed-runtime".to_string(),
+                            ManagedAccountAuthRuntime::GitHubCopilot
+                                .token_label()
+                                .to_string(),
+                        ),
+                    ]
+                }
                 "codex-responses" => vec![
                     (
                         header::AUTHORIZATION.as_str().to_string(),
@@ -635,6 +671,58 @@ impl AuthProvider for DemoRelayHost {
                 }),
             })
         })
+    }
+}
+
+impl ManagedAccountRuntimeSource for DemoRelayHost {
+    type Error = ProxyCoreError;
+
+    fn resolve_copilot_auth<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
+        runtime: ManagedAccountAuthRuntime,
+    ) -> BoxFuture<'a, Result<ProviderAuthInfo, Self::Error>> {
+        Box::pin(async move {
+            let account_id = account_id.unwrap_or("default");
+            Ok(runtime.provider_auth_info(format!("demo-runtime-copilot-token:{account_id}")))
+        })
+    }
+
+    fn resolve_codex_oauth<'a>(
+        &'a self,
+        account_id: Option<String>,
+        runtime: ManagedAccountAuthRuntime,
+    ) -> BoxFuture<'a, Result<CodexOAuthResolution, Self::Error>> {
+        Box::pin(async move {
+            let resolved_account_id = account_id.unwrap_or_else(|| "codex-default".to_string());
+            Ok(CodexOAuthResolution::new(
+                runtime
+                    .provider_auth_info(format!("demo-runtime-codex-token:{resolved_account_id}")),
+                Some(resolved_account_id),
+            ))
+        })
+    }
+
+    fn resolve_copilot_api_endpoint<'a>(
+        &'a self,
+        _account_id: Option<&'a str>,
+    ) -> BoxFuture<'a, Option<String>> {
+        Box::pin(async { None })
+    }
+
+    fn fetch_copilot_live_models<'a>(
+        &'a self,
+        _account_id: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn resolve_copilot_model_vendor<'a>(
+        &'a self,
+        _account_id: Option<&'a str>,
+        _model_id: &'a str,
+    ) -> BoxFuture<'a, Option<String>> {
+        Box::pin(async { None })
     }
 }
 

@@ -371,12 +371,15 @@ pub mod prelude {
     pub use serde_json::{from_str, json, Value};
 
     pub use super::auth::{
-        CodexOAuthResolution, ManagedAccountAuthError, ManagedAccountAuthResolution,
-        ManagedAccountAuthRuntime, ManagedAccountRuntimeSource, ManagedAccountTokenCacheKey,
-        ManagedAccountTokenFailureFallbackDecision, ManagedAccountTokenRefreshFailureInput,
-        ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenRefreshFailureResolution,
-        ManagedAccountTokenRefreshSuccess, ManagedAccountTokenRefreshSuccessInput,
-        ManagedAccountTokenSnapshot, ManagedAccountTokenSnapshotStore,
+        resolve_managed_account_auth_for_binding_with_runtime_source,
+        resolve_managed_account_auth_with_runtime_source, CodexOAuthResolution,
+        ManagedAccountAuthError, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
+        ManagedAccountBindingInput, ManagedAccountBindingSource, ManagedAccountRuntimeSource,
+        ManagedAccountTokenCacheKey, ManagedAccountTokenFailureFallbackDecision,
+        ManagedAccountTokenRefreshFailureInput, ManagedAccountTokenRefreshFailureKind,
+        ManagedAccountTokenRefreshFailureResolution, ManagedAccountTokenRefreshSuccess,
+        ManagedAccountTokenRefreshSuccessInput, ManagedAccountTokenSnapshot,
+        ManagedAccountTokenSnapshotStore,
         ClaudeDesktopModelListItem, ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
         ProviderAuthInfo, ProviderAuthStrategy,
     };
@@ -448,7 +451,8 @@ pub mod prelude {
         RouteResolveResponse,
     };
     pub use super::model_catalog::{
-        client_model_catalog_from_routable_models, ClientModelCatalogResponse, FetchedModel,
+        client_model_catalog_from_routable_models, ClientModelCatalogResponse, CopilotModel,
+        FetchedModel,
         ModelCapabilities, ModelCatalog, RoutableModel, RoutableModelList,
     };
     pub use super::ports::{

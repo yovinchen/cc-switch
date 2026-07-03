@@ -614,7 +614,46 @@ impl AuthProvider for ExternalRelayServices {
     ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
         Box::pin(async move {
             let requested_model = request.requested_model.as_deref().unwrap_or("unknown");
-            let route_group = request.route_group.as_deref().unwrap_or(DEFAULT_ROUTE_GROUP);
+            let route_group = request
+                .route_group
+                .as_deref()
+                .unwrap_or(DEFAULT_ROUTE_GROUP);
+            if provider.kind == ProviderKind::GitHubCopilot {
+                let resolved = resolve_managed_account_auth_with_runtime_source(
+                    self,
+                    ProviderAuthInfo::new(
+                        "runtime-placeholder".to_string(),
+                        ProviderAuthStrategy::GitHubCopilot,
+                    ),
+                    provider.account_ref.clone(),
+                    None,
+                )
+                .await?;
+                return Ok(AuthInfo {
+                    headers: vec![
+                        (
+                            header::AUTHORIZATION.as_str().to_string(),
+                            format!("Bearer {}", resolved.auth.api_key),
+                        ),
+                        ("x-relay-channel".to_string(), channel.id.clone()),
+                        (
+                            "x-managed-runtime".to_string(),
+                            ManagedAccountAuthRuntime::GitHubCopilot
+                                .token_label()
+                                .to_string(),
+                        ),
+                    ],
+                    account_ref: provider.account_ref.clone(),
+                    metadata: json!({
+                        "app": app.as_str(),
+                        "providerId": provider.id,
+                        "channelId": channel.id,
+                        "managedRuntime": "github_copilot",
+                        "requestedModel": requested_model,
+                        "routeGroup": route_group,
+                    }),
+                });
+            }
 
             Ok(AuthInfo {
                 headers: vec![
@@ -638,6 +677,57 @@ impl AuthProvider for ExternalRelayServices {
                 }),
             })
         })
+    }
+}
+
+impl ManagedAccountRuntimeSource for ExternalRelayServices {
+    type Error = ProxyCoreError;
+
+    fn resolve_copilot_auth<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
+        runtime: ManagedAccountAuthRuntime,
+    ) -> BoxFuture<'a, Result<ProviderAuthInfo, Self::Error>> {
+        Box::pin(async move {
+            let account_id = account_id.unwrap_or("default");
+            Ok(runtime.provider_auth_info(format!("managed-copilot-{account_id}")))
+        })
+    }
+
+    fn resolve_codex_oauth<'a>(
+        &'a self,
+        account_id: Option<String>,
+        runtime: ManagedAccountAuthRuntime,
+    ) -> BoxFuture<'a, Result<CodexOAuthResolution, Self::Error>> {
+        Box::pin(async move {
+            let resolved_account_id = account_id.unwrap_or_else(|| "codex-default".to_string());
+            Ok(CodexOAuthResolution::new(
+                runtime.provider_auth_info(format!("managed-codex-{resolved_account_id}")),
+                Some(resolved_account_id),
+            ))
+        })
+    }
+
+    fn resolve_copilot_api_endpoint<'a>(
+        &'a self,
+        _account_id: Option<&'a str>,
+    ) -> BoxFuture<'a, Option<String>> {
+        Box::pin(async { None })
+    }
+
+    fn fetch_copilot_live_models<'a>(
+        &'a self,
+        _account_id: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn resolve_copilot_model_vendor<'a>(
+        &'a self,
+        _account_id: Option<&'a str>,
+        _model_id: &'a str,
+    ) -> BoxFuture<'a, Option<String>> {
+        Box::pin(async { None })
     }
 }
 
@@ -1025,6 +1115,63 @@ fn external_host_can_resolve_auth_provider_headers_from_prelude() {
         resolve_auth_provider_headers(&AuthInfo::default()).expect("fallback auth"),
         AuthProviderHeaderResolution::Fallback
     ));
+}
+
+#[test]
+fn external_host_can_use_managed_account_runtime_in_auth_provider_from_prelude() {
+    let services = ExternalRelayServices::default();
+    let provider = ProviderSpec {
+        id: "relay-managed".to_string(),
+        name: "Relay Managed".to_string(),
+        kind: ProviderKind::GitHubCopilot,
+        account_ref: Some("acct-a".to_string()),
+        metadata: Default::default(),
+    };
+    let channel = channel_spec();
+    let mut request = ProxyRequest::new(
+        AppKind::Claude,
+        Method::POST,
+        "/v1/messages",
+        InterfaceKind::AnthropicMessages,
+        ProxyBody::Json(json!({ "model": "sonnet", "messages": [] })),
+    );
+    request.requested_model = Some("sonnet".to_string());
+
+    let auth = futures::executor::block_on(services.resolve_auth(
+        &AppKind::Claude,
+        &provider,
+        &channel,
+        &request,
+    ))
+    .expect("resolve managed auth");
+    assert_eq!(auth.account_ref.as_deref(), Some("acct-a"));
+    assert_eq!(auth.metadata["managedRuntime"], "github_copilot");
+
+    match resolve_auth_provider_headers(&auth).expect("managed auth provider headers") {
+        AuthProviderHeaderResolution::Explicit(headers) => {
+            let pairs: Vec<(String, String)> = headers
+                .iter()
+                .map(|(name, value)| {
+                    (
+                        name.as_str().to_string(),
+                        value.to_str().expect("utf8 header").to_string(),
+                    )
+                })
+                .collect();
+            assert_eq!(
+                pairs,
+                vec![
+                    (
+                        "authorization".to_string(),
+                        "Bearer managed-copilot-acct-a".to_string(),
+                    ),
+                    ("x-relay-channel".to_string(), "channel-a".to_string()),
+                    ("x-managed-runtime".to_string(), "Copilot token".to_string()),
+                ]
+            );
+        }
+        AuthProviderHeaderResolution::Fallback => panic!("expected managed auth headers"),
+    }
 }
 
 #[test]
