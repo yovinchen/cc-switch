@@ -2943,6 +2943,15 @@ fn request_context_owns_core_context_imports() {
     let source = fs::read_to_string(&path).expect("read engine/context.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let core_response_timeout_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/response_timeout.rs"))
+            .expect("read response_timeout.rs");
+    let core_request_url_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_url.rs"))
+            .expect("read request_url.rs");
+    let core_response_transform_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/response_transform.rs"))
+            .expect("read response_transform.rs");
     let adapter_import = optional_function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
@@ -3044,6 +3053,22 @@ fn request_context_owns_core_context_imports() {
             "pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig"
         ),
         "proxy_core_adapter should not re-export ResponseTimeoutConfig"
+    );
+    assert!(
+        core_response_timeout_source
+            .contains("fn resolve_response_runtime_policy_uses_failover_values_when_enabled")
+            && core_response_timeout_source
+                .contains("fn resolve_response_runtime_policy_disables_retry_and_timeout_when_failover_disabled")
+            && core_request_url_source.contains("fn extracts_gemini_model_from_path_variants")
+            && core_request_url_source
+                .contains("fn infers_forward_request_model_from_body_or_gemini_path")
+            && core_response_transform_source
+                .contains("fn claude_api_format_from_metadata_uses_non_empty_metadata_value")
+            && core_response_transform_source
+                .contains("fn claude_api_format_from_metadata_falls_back_for_missing_or_blank_values")
+            && !adapter_source
+                .contains("fn handler_context_adapter_projects_runtime_and_model_helpers"),
+        "core owner tests should cover request context pure helper contracts without adapter aggregation"
     );
 }
 

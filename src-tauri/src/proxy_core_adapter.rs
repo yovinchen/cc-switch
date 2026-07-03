@@ -85,7 +85,6 @@ mod tests {
     use crate::proxy_core::api::transforms::{
         CodexChatReasoningOptions, CodexChatReasoningProfile,
     };
-    use crate::proxy_core::api::transport::resolve_response_runtime_policy;
     use crate::proxy_core::api::transport::{
         build_claude_auth_headers, build_codex_bearer_auth_headers, build_copilot_auth_headers,
         build_gemini_auth_headers, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
@@ -834,67 +833,6 @@ wire_api = "chat"
             .expect("deepseek reasoning profile")
             .supports_effort,
             Some(true)
-        );
-    }
-
-    #[test]
-    fn handler_context_adapter_projects_runtime_and_model_helpers() {
-        let disabled_policy = resolve_response_runtime_policy(false, 3, 600, 60, 120);
-        assert_eq!(disabled_policy.max_retries, 0);
-        assert_eq!(disabled_policy.timeout, ResponseTimeoutConfig::default());
-
-        let enabled_policy = resolve_response_runtime_policy(true, 3, 600, 60, 120);
-        assert_eq!(enabled_policy.max_retries, 3);
-        assert_eq!(enabled_policy.timeout.non_streaming_timeout, 600);
-        assert_eq!(enabled_policy.timeout.streaming.first_byte_timeout, 60);
-        assert_eq!(enabled_policy.timeout.streaming.idle_timeout, 120);
-
-        assert_eq!(
-            crate::proxy_core::api::transport::extract_gemini_model_from_path(
-                "/v1beta/models/gemini-pro:generateContent"
-            )
-            .as_deref(),
-            Some("gemini-pro")
-        );
-        assert_eq!(
-            crate::proxy_core::api::transport::request_model_for_forward(
-                &AppKind::Codex,
-                "",
-                &json!({"model": " gpt-5 "})
-            )
-            .as_deref(),
-            Some("gpt-5")
-        );
-        assert_eq!(
-            crate::proxy_core::api::transport::request_model_for_forward(
-                &AppKind::Claude,
-                "",
-                &json!({"model": "  "})
-            ),
-            None
-        );
-        assert_eq!(
-            crate::proxy_core::api::transport::request_model_for_forward(
-                &AppKind::Gemini,
-                "/v1beta/models/gemini-pro:generateContent",
-                &Value::Null,
-            )
-            .as_deref(),
-            Some("gemini-pro")
-        );
-        assert_eq!(
-            crate::proxy_core::api::transforms::claude_api_format_from_metadata(
-                &json!({"claudeApiFormat": "openai_chat"}),
-                "anthropic"
-            ),
-            "openai_chat"
-        );
-        assert_eq!(
-            crate::proxy_core::api::transforms::claude_api_format_from_metadata(
-                &json!({"apiFormat": " "}),
-                "anthropic"
-            ),
-            "anthropic"
         );
     }
 
