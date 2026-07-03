@@ -9199,6 +9199,9 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
         .expect("read proxy_core_adapter.rs");
     let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
         .expect("read proxy-core ports.rs");
+    let live_takeover_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
+            .expect("read host/cc_switch/live_takeover.rs");
     let port_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::ports::{")
         .skip(1)
@@ -9352,12 +9355,14 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
     assert!(
         !adapter_source
             .contains("fn provider_switch_dispatch_routes_exclusive_and_desktop_to_normal_flow()")
-            && adapter_source.contains("fn live_takeover_app_kinds_parse_to_cc_switch_app_types()")
+            && !adapter_source.contains("fn live_takeover_app_kinds_parse_to_cc_switch_app_types()")
+            && live_takeover_source
+                .contains("fn live_takeover_app_types_project_core_catalog_to_cc_switch_apps()")
             && core_ports_source
                 .contains("fn provider_switch_dispatch_keeps_host_side_effects_out_of_policy()")
             && core_ports_source.contains("fn provider_switch_takeover_lock_uses_live_takeover_catalog()")
             && core_ports_source.contains("fn live_token_sync_app_label_only_covers_switch_mode_live_apps()"),
-        "provider switch dispatch/lock/label policy fixtures should live in proxy-core ports while adapter keeps only AppType compatibility"
+        "provider switch dispatch/lock/label policy fixtures should live in proxy-core ports while AppType compatibility lives with live_takeover"
     );
     assert!(
         !adapter_source.contains("fn sanitize_claude_settings_for_live_strips_host_only_fields()")

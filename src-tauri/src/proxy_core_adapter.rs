@@ -46,9 +46,9 @@ mod tests {
         claude_env_credentials_from_settings, codex_auth_object_value_from_settings,
         codex_provider_live_write_parts_from_settings, gemini_env_map_from_settings,
         gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
-        gemini_live_settings_to_write, live_takeover_app_kinds,
-        provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
-        CodexProviderLiveWriteIssue, CodexProviderValidationIssue, ProviderSettingsValidationIssue,
+        gemini_live_settings_to_write, provider_settings_validation_issue_spec,
+        provider_settings_validation_parts_from_settings, CodexProviderLiveWriteIssue,
+        CodexProviderValidationIssue, ProviderSettingsValidationIssue,
     };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
@@ -3182,19 +3182,6 @@ wire_api = "chat"
         assert_eq!(
             send_policy.streaming_header_timeout,
             Some(std::time::Duration::from_secs(1))
-        );
-    }
-
-    #[test]
-    fn live_takeover_app_kinds_parse_to_cc_switch_app_types() {
-        let live_takeover_apps = live_takeover_app_kinds().map(|app| {
-            app.as_str()
-                .parse::<AppType>()
-                .expect("proxy-core live takeover app kind must be supported by cc-switch")
-        });
-        assert_eq!(
-            live_takeover_apps,
-            [AppType::Claude, AppType::Codex, AppType::Gemini]
         );
     }
 

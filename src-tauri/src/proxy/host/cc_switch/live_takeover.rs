@@ -2715,6 +2715,14 @@ mod tests {
     }
 
     #[test]
+    fn live_takeover_app_types_project_core_catalog_to_cc_switch_apps() {
+        assert_eq!(
+            live_takeover_app_types(),
+            [AppType::Claude, AppType::Codex, AppType::Gemini]
+        );
+    }
+
+    #[test]
     fn managed_account_claude_takeover_uses_api_key_placeholder() {
         let mut provider = Provider::with_id(
             "copilot".to_string(),
