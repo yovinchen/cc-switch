@@ -9316,6 +9316,33 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
                 .contains("fn provider_additive_live_write_action_skips_omo_and_unrequested_writes()"),
         "provider additive live-write action fixtures should live in proxy-core ports, not proxy_core_adapter"
     );
+    assert!(
+        !adapter_source.contains("fn provider_omo_switch_pair_maps_enable_and_disable_variants()")
+            && core_ports_source
+                .contains("fn provider_omo_switch_pair_maps_enable_and_disable_variants()"),
+        "provider OMO switch-pair fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
+    assert!(
+        !adapter_source
+            .contains("fn provider_takeover_live_sync_target_keeps_desktop_on_live_config()")
+            && core_ports_source
+                .contains("fn provider_takeover_live_sync_target_keeps_desktop_on_live_config()"),
+        "provider takeover live-sync target fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
+    assert!(
+        !adapter_source
+            .contains("fn provider_live_removal_target_only_covers_additive_live_configs()")
+            && core_ports_source
+                .contains("fn provider_live_removal_target_maps_additive_custom_apps_only()"),
+        "provider live removal target fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
+    assert!(
+        !adapter_source
+            .contains("fn provider_additive_update_route_keeps_omo_separate_from_live_presence()")
+            && core_ports_source
+                .contains("fn provider_additive_update_route_keeps_omo_separate_from_live_presence()"),
+        "provider additive update route fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
 
     let provider_service_source =
         fs::read_to_string(manifest_dir.join("src/services/provider/mod.rs"))

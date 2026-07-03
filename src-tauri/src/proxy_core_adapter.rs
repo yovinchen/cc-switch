@@ -53,16 +53,11 @@ mod tests {
         gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
         gemini_live_settings_to_write, json_deep_merge, json_deep_remove, json_remove_array_items,
         json_value_is_subset, live_takeover_app_kinds, live_token_sync_app_label,
-        provider_additive_update_route_for_app, provider_live_removal_target_for_app,
-        provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
         provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
         provider_switch_dispatch_for_app, provider_switch_requires_takeover_lock,
-        provider_switch_should_mark_live_config_managed,
-        provider_takeover_live_sync_target_for_app, proxy_runtime_status_stopped,
+        provider_switch_should_mark_live_config_managed, proxy_runtime_status_stopped,
         sanitize_claude_settings_for_live, CodexProviderLiveWriteIssue,
-        CodexProviderValidationIssue, ProviderAdditiveUpdateRoute, ProviderLiveRemovalTarget,
-        ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
-        ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+        CodexProviderValidationIssue, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
     };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
@@ -3605,83 +3600,6 @@ wire_api = "chat"
     }
 
     #[test]
-    fn provider_omo_switch_pair_maps_enable_and_disable_variants() {
-        let mut standard_provider = Provider::with_id(
-            "omo-provider".to_string(),
-            "OMO Provider".to_string(),
-            json!({}),
-            None,
-        );
-        standard_provider.category = Some("omo".to_string());
-        assert_eq!(
-            provider_omo_variant_for_app_category(&AppKind::from(&AppType::OpenCode), Some("omo")),
-            Some(ProviderOmoVariant::Standard)
-        );
-        assert_eq!(
-            provider_omo_switch_pair_for_app_category(
-                &AppKind::from(&AppType::OpenCode),
-                standard_provider.category.as_deref()
-            ),
-            Some(ProviderOmoSwitchPair {
-                enable: ProviderOmoVariant::Standard,
-                disable: ProviderOmoVariant::Slim,
-            })
-        );
-
-        let mut slim_provider = standard_provider.clone();
-        slim_provider.category = Some("omo-slim".to_string());
-        assert_eq!(
-            provider_omo_variant_for_app_category(
-                &AppKind::from(&AppType::OpenCode),
-                Some("omo-slim")
-            ),
-            Some(ProviderOmoVariant::Slim)
-        );
-        assert_eq!(
-            provider_omo_switch_pair_for_app_category(
-                &AppKind::from(&AppType::OpenCode),
-                slim_provider.category.as_deref()
-            ),
-            Some(ProviderOmoSwitchPair {
-                enable: ProviderOmoVariant::Slim,
-                disable: ProviderOmoVariant::Standard,
-            })
-        );
-
-        let custom_provider = Provider::with_id(
-            "custom-provider".to_string(),
-            "Custom Provider".to_string(),
-            json!({}),
-            None,
-        );
-        assert_eq!(
-            provider_omo_switch_pair_for_app_category(
-                &AppKind::from(&AppType::OpenCode),
-                custom_provider.category.as_deref()
-            ),
-            None
-        );
-        assert_eq!(
-            provider_omo_variant_for_app_category(
-                &AppKind::from(&AppType::OpenCode),
-                Some("custom")
-            ),
-            None
-        );
-        assert_eq!(
-            provider_omo_switch_pair_for_app_category(
-                &AppKind::from(&AppType::Claude),
-                standard_provider.category.as_deref()
-            ),
-            None
-        );
-        assert_eq!(
-            provider_omo_variant_for_app_category(&AppKind::from(&AppType::Claude), Some("omo")),
-            None
-        );
-    }
-
-    #[test]
     fn provider_switch_dispatch_routes_exclusive_and_desktop_to_normal_flow() {
         let mut omo_provider = Provider::with_id(
             "omo-provider".to_string(),
@@ -3775,100 +3693,6 @@ wire_api = "chat"
         );
         assert_eq!(
             live_token_sync_app_label(&AppKind::from(&AppType::OpenCode)),
-            None
-        );
-    }
-
-    #[test]
-    fn provider_takeover_live_sync_target_keeps_desktop_on_live_config() {
-        assert_eq!(
-            provider_takeover_live_sync_target_for_app(&AppKind::from(&AppType::ClaudeDesktop)),
-            ProviderTakeoverLiveSyncTarget::LiveConfig
-        );
-        assert_eq!(
-            provider_takeover_live_sync_target_for_app(&AppKind::from(&AppType::Claude)),
-            ProviderTakeoverLiveSyncTarget::LiveBackup
-        );
-        assert_eq!(
-            provider_takeover_live_sync_target_for_app(&AppKind::from(&AppType::Codex)),
-            ProviderTakeoverLiveSyncTarget::LiveBackup
-        );
-        assert_eq!(
-            provider_takeover_live_sync_target_for_app(&AppKind::from(&AppType::Gemini)),
-            ProviderTakeoverLiveSyncTarget::LiveBackup
-        );
-        assert_eq!(
-            provider_takeover_live_sync_target_for_app(&AppKind::from(&AppType::OpenCode)),
-            ProviderTakeoverLiveSyncTarget::LiveBackup
-        );
-    }
-
-    #[test]
-    fn provider_live_removal_target_only_covers_additive_live_configs() {
-        assert_eq!(
-            provider_live_removal_target_for_app(&AppKind::from(&AppType::OpenCode)),
-            Some(ProviderLiveRemovalTarget::OpenCode)
-        );
-        assert_eq!(
-            provider_live_removal_target_for_app(&AppKind::from(&AppType::OpenClaw)),
-            Some(ProviderLiveRemovalTarget::OpenClaw)
-        );
-        assert_eq!(
-            provider_live_removal_target_for_app(&AppKind::from(&AppType::Hermes)),
-            Some(ProviderLiveRemovalTarget::Hermes)
-        );
-        assert_eq!(
-            provider_live_removal_target_for_app(&AppKind::from(&AppType::Claude)),
-            None
-        );
-        assert_eq!(
-            provider_live_removal_target_for_app(&AppKind::from(&AppType::ClaudeDesktop)),
-            None
-        );
-        assert_eq!(
-            provider_live_removal_target_for_app(&AppKind::from(&AppType::Codex)),
-            None
-        );
-        assert_eq!(
-            provider_live_removal_target_for_app(&AppKind::from(&AppType::Gemini)),
-            None
-        );
-    }
-
-    #[test]
-    fn provider_additive_update_route_keeps_omo_separate_from_live_presence() {
-        assert_eq!(
-            provider_additive_update_route_for_app(&AppKind::from(&AppType::OpenCode), Some("omo")),
-            Some(ProviderAdditiveUpdateRoute::OmoVariant(
-                ProviderOmoVariant::Standard
-            ))
-        );
-        assert_eq!(
-            provider_additive_update_route_for_app(
-                &AppKind::from(&AppType::OpenCode),
-                Some("omo-slim")
-            ),
-            Some(ProviderAdditiveUpdateRoute::OmoVariant(
-                ProviderOmoVariant::Slim
-            ))
-        );
-        assert_eq!(
-            provider_additive_update_route_for_app(
-                &AppKind::from(&AppType::OpenCode),
-                Some("custom")
-            ),
-            Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
-        );
-        assert_eq!(
-            provider_additive_update_route_for_app(&AppKind::from(&AppType::OpenClaw), None),
-            Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
-        );
-        assert_eq!(
-            provider_additive_update_route_for_app(&AppKind::from(&AppType::Hermes), None),
-            Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
-        );
-        assert_eq!(
-            provider_additive_update_route_for_app(&AppKind::from(&AppType::Claude), Some("omo")),
             None
         );
     }
