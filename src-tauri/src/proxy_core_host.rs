@@ -27,8 +27,7 @@ use crate::proxy_core::api::ports::ProxyServices;
 use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};
 #[cfg(test)]
 use crate::proxy_core::api::routing::{
-    ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteRequest, RouteSelection,
-    DEFAULT_ROUTE_GROUP,
+    ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteSelection, DEFAULT_ROUTE_GROUP,
 };
 #[cfg(test)]
 use crate::proxy_core::api::transforms::GeminiShadowStore;
@@ -223,46 +222,6 @@ mod tests {
             failover_switch_scheduler:
                 crate::proxy::host::cc_switch::failover_switch::noop_failover_switch_scheduler(),
         }
-    }
-
-    #[tokio::test]
-    async fn route_resolver_selects_highest_priority_matching_channel() {
-        let services = CcSwitchProxyServices::new(Arc::new(Database::memory().expect("memory db")));
-        let providers = vec![provider_spec("provider-a")];
-        let channels = vec![
-            channel_spec("low", 1, "sonnet"),
-            channel_spec("high", 10, "sonnet"),
-        ];
-        let mut request = ProxyRequest::new(
-            AppKind::Claude,
-            Method::POST,
-            "/v1/messages",
-            InterfaceKind::AnthropicMessages,
-            ProxyBody::Json(json!({})),
-        );
-        request.requested_model = Some("sonnet".to_string());
-
-        let plan = services
-            .route_resolver()
-            .resolve(RouteRequest {
-                request: &request,
-                providers: &providers,
-                channels: &channels,
-                policy: None,
-            })
-            .await
-            .expect("resolve route");
-
-        assert_eq!(plan.selection.channel.id, "high");
-        assert_eq!(
-            plan.selection
-                .model_route
-                .as_ref()
-                .map(|route| route.upstream_model.as_str()),
-            Some("upstream-sonnet")
-        );
-        assert_eq!(plan.attempts.len(), 2);
-        assert_eq!(plan.selections.len(), 2);
     }
 
     #[tokio::test]

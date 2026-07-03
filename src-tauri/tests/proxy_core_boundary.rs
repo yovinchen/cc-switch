@@ -23783,6 +23783,12 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
         !source.contains("pub(crate) use crate::proxy_core::api::routing::RouteRequest;"),
         "CC Switch route resolver should use RouteRequest internally instead of re-exporting the core routing DTO"
     );
+    assert!(
+        source.contains("async fn route_resolver_selects_highest_priority_matching_channel()")
+            && !host_source
+                .contains("async fn route_resolver_selects_highest_priority_matching_channel()"),
+        "route resolver priority fixture should live with CcSwitchRouteResolver, not proxy_core_host"
+    );
     let adapter_import = if source.contains("use crate::proxy_core_adapter::") {
         function_slice(&source, "use crate::proxy_core_adapter::", ";\nuse futures")
     } else {
@@ -23851,8 +23857,8 @@ fn proxy_core_adapter_delegates_route_resolver_to_host_module() {
         "proxy_core_host test harness should not import RouteRequest through the host route resolver module"
     );
     assert!(
-        host_source.contains("RoutePlan, RouteRequest,"),
-        "proxy_core_host test harness should import RouteRequest directly from proxy_core routing"
+        source.contains("RoutePlan, RouteRequest,"),
+        "route_resolver.rs should import RouteRequest directly from proxy_core routing"
     );
     assert!(
         host_source.contains(
@@ -25491,7 +25497,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         ) && host_source.contains(
             "use crate::proxy_core::api::ports::ProxyServices;"
         ) && host_source.contains(
-            "use crate::proxy_core::api::routing::{\n    ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteRequest, RouteSelection,\n    DEFAULT_ROUTE_GROUP,\n};"
+            "use crate::proxy_core::api::routing::{\n    ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteSelection, DEFAULT_ROUTE_GROUP,\n};"
         ) && host_source.contains(
             "use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest};"
         )

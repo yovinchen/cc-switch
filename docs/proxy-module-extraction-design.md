@@ -2066,6 +2066,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1440. provider source fixture 已拆回 owner：DB provider list/get 到 core `ProviderSpec` 的投影覆盖已迁入 `proxy/host/cc_switch/provider_source.rs`；`proxy_core_host` 不再承载这组 provider source fixture。
 1441. auth provider fixture 已拆回 owner：profile ref 到 core `AuthInfo` source/app/provider/channel metadata 的 port 覆盖已迁入 `proxy/host/cc_switch/auth_provider.rs`；`proxy_core_host` 不再承载这组 auth provider fixture。
 1442. channel source legacy projection fixture 已拆回 owner：旧 provider 配置经 `CcSwitchChannelSource::list_channels` 投影为 core `ChannelSpec` 的覆盖已迁入 `proxy/host/cc_switch/database_channel_source.rs`；`proxy_core_host` 不再承载这组 channel source fixture。
+1443. route resolver fixture 已拆回 owner：最高优先级匹配 channel、upstream model、attempt/selections 展开的覆盖已迁入 `proxy/host/cc_switch/route_resolver.rs`；`proxy_core_host` 不再承载这组 route resolver fixture。
 
 ## 背景
 
