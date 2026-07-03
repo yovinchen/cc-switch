@@ -25491,7 +25491,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         ) && host_source.contains(
             "use crate::proxy_core::api::ports::ProxyServices;"
         ) && host_source.contains(
-            "use crate::proxy_core::api::routing::{\n    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteRequest,\n    RouteSelection, DEFAULT_ROUTE_GROUP,\n};"
+            "use crate::proxy_core::api::routing::{\n    ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteRequest, RouteSelection,\n    DEFAULT_ROUTE_GROUP,\n};"
         ) && host_source.contains(
             "use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest};"
         )
@@ -26837,6 +26837,9 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let services_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_services.rs");
     let services_source = fs::read_to_string(&services_path).expect("read proxy_services.rs");
+    let host_harness_path = manifest_dir.join("src/proxy_core_host.rs");
+    let host_harness_source =
+        fs::read_to_string(&host_harness_path).expect("read proxy_core_host.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/database_channel_source.rs");
     let source =
         fs::read_to_string(&source_path).expect("read host/cc_switch/database_channel_source.rs");
@@ -26894,6 +26897,13 @@ fn production_cc_switch_channel_source_lives_in_host_database_module() {
             && source.contains("channel_records_from_db_source")
             && source.contains("channel_migration_materialize_from_db_source"),
         "host/cc_switch/database_channel_source.rs must own the DB-backed ChannelSource wrapper"
+    );
+    assert!(
+        source.contains("async fn channel_source_projects_legacy_provider_channels_through_ports()")
+            && !host_harness_source.contains(
+                "async fn channel_source_projects_legacy_provider_channels_through_ports()"
+            ),
+        "channel source legacy provider projection fixture should live with CcSwitchChannelSource, not proxy_core_host"
     );
     assert!(
         source.contains("use crate::proxy_core::api::domain::{")

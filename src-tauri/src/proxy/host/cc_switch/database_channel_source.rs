@@ -559,8 +559,54 @@ impl ChannelSource for CcSwitchChannelSource {
 mod tests {
     use super::*;
     use crate::database::ProxyChannelSourceKind;
-    use crate::proxy_core::api::routing::InterfaceKind;
+    use crate::provider::Provider;
+    use crate::proxy_core::api::routing::{InterfaceKind, DEFAULT_ROUTE_GROUP};
     use serde_json::json;
+
+    fn save_claude_provider(db: &Database) {
+        let provider = Provider::with_id(
+            "anthropic-main".to_string(),
+            "Anthropic Main".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://relay-a.example.com/v1/",
+                    "ANTHROPIC_MODEL": "claude-sonnet-4"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider)
+            .expect("save provider");
+        db.set_current_provider("claude", "anthropic-main")
+            .expect("set current provider");
+    }
+
+    #[tokio::test]
+    async fn channel_source_projects_legacy_provider_channels_through_ports() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        save_claude_provider(&db);
+        let source = CcSwitchChannelSource::new(db);
+
+        let channels = source
+            .list_channels(ChannelQuery {
+                app: &AppKind::Claude,
+                provider_id: Some("anthropic-main"),
+                model: Some("claude-sonnet-4"),
+                group: Some(DEFAULT_ROUTE_GROUP),
+                include_disabled: false,
+                allow_legacy_projection: true,
+            })
+            .await
+            .expect("list channels");
+
+        assert_eq!(channels.len(), 1);
+        assert_eq!(channels[0].provider_id, "anthropic-main");
+        assert_eq!(
+            channels[0].endpoint.base_url,
+            "https://relay-a.example.com/v1"
+        );
+        assert_eq!(channels[0].models[0].public_model, "claude-sonnet-4");
+    }
 
     #[test]
     fn channel_conversion_preserves_endpoint_interface_models_and_groups() {
