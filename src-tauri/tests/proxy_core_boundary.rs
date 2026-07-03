@@ -53,6 +53,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/runtime_status_source.rs",
     "src/proxy/route_attempt.rs",
     "src/proxy/response_adapter.rs",
+    "src/proxy/transport/http/request_body.rs",
     "src/proxy/transport/upstream/mod.rs",
     "src/proxy/transport/upstream/reqwest_client.rs",
     "src/services/model_fetch_transport.rs",
@@ -13346,7 +13347,7 @@ fn upstream_transport_owns_proxy_core_response_bridge() {
     assert!(
         !response_adapter.contains("pub(crate) fn proxy_core_response_to_proxy_response(")
             && response_adapter.contains(
-                "transport::upstream::proxy_core_response_to_proxy_response,"
+                "upstream::proxy_core_response_to_proxy_response,"
             ),
         "response_adapter should call the upstream transport bridge instead of owning it"
     );
@@ -28091,6 +28092,9 @@ fn proxy_response_adapter_owns_core_transport_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/response_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy/response_adapter.rs");
+    let http_request_body =
+        fs::read_to_string(manifest_dir.join("src/proxy/transport/http/request_body.rs"))
+            .expect("read proxy/transport/http/request_body.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_import = optional_function_slice(
         &source,
@@ -28108,14 +28112,31 @@ fn proxy_response_adapter_owns_core_transport_imports() {
             && source.contains("endpoint_from_path_and_query")
             && source.contains("endpoint_from_path_query_stripping_prefix")
             && source.contains("extract_gemini_model_from_path")
-            && source.contains("parse_json_proxy_request_body")
-            && source.contains("parse_json_proxy_request_body_or_null")
             && source.contains("ProxyBody")
             && source.contains("crate::proxy_core::api::routing::InterfaceKind")
             && source.contains("crate::proxy_core::api::transforms::{")
             && source.contains("build_codex_tool_context_from_request")
             && source.contains("crate::proxy_core::api::usage::{"),
         "response_adapter should import core domain/transport/routing/transforms/usage contracts directly"
+    );
+    assert!(
+        source.contains("http::request_body::{")
+            && source.contains("collect_json_proxy_request")
+            && source.contains("collect_json_or_null_proxy_request")
+            && source.contains("ParsedHttpJsonProxyRequest")
+            && !source.contains("http_body_util::BodyExt")
+            && !source.contains("request_body_read_error_message")
+            && !source.contains("parse_json_proxy_request_body")
+            && !source.contains("parse_json_proxy_request_body_or_null"),
+        "response_adapter should consume parsed HTTP request facts instead of owning Axum body collection"
+    );
+    assert!(
+        http_request_body.contains("parse_json_proxy_request_body")
+            && http_request_body.contains("parse_json_proxy_request_body_or_null")
+            && http_request_body.contains("request_body_read_error_message")
+            && http_request_body.contains("collect_axum_request_body(")
+            && http_request_body.contains("endpoint_from_uri("),
+        "HTTP transport request_body helper should own Axum body collection and JSON request parsing"
     );
     assert!(
         !source.contains("dispatch_proxy_status_request_to_axum_json_response")
@@ -28321,6 +28342,9 @@ fn proxy_response_adapter_owns_core_transport_imports() {
     let low_level_body_helpers = [
         "parse_json_request_body(",
         "parse_json_request_body_or_null(",
+        "parse_json_proxy_request_body(",
+        "parse_json_proxy_request_body_or_null(",
+        "request_body_read_error_message(",
         "request_body_stream_flag(",
     ];
     for helper in low_level_body_helpers {

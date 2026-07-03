@@ -21,8 +21,14 @@ use super::{
         parse_claude_transform_upstream_json_or_unlabeled_sse,
         parse_codex_chat_upstream_json_or_unlabeled_sse,
     },
-    transport::upstream::hyper_client::ProxyResponse,
-    transport::upstream::proxy_core_response_to_proxy_response,
+    transport::{
+        http::request_body::{
+            collect_json_or_null_proxy_request, collect_json_proxy_request, endpoint_from_uri,
+            ParsedHttpJsonProxyRequest,
+        },
+        upstream::hyper_client::ProxyResponse,
+        upstream::proxy_core_response_to_proxy_response,
+    },
 };
 use crate::app_config::AppType;
 use crate::provider::Provider;
@@ -40,33 +46,21 @@ use crate::proxy_core::api::transforms::{
 };
 use crate::proxy_core::api::transport::{
     endpoint_from_path_and_query, endpoint_from_path_query_stripping_prefix,
-    extract_gemini_model_from_path, parse_json_proxy_request_body,
-    parse_json_proxy_request_body_or_null, request_body_read_error_message, ProxyBody,
-    ProxyRequest, ProxyResult, UpstreamSseAggregationKind,
+    extract_gemini_model_from_path, ProxyBody, ProxyRequest, ProxyResult,
+    UpstreamSseAggregationKind,
 };
 use crate::proxy_core::api::usage::{
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
-use bytes::Bytes;
-use http::{HeaderMap, Method, Uri};
-use http_body_util::BodyExt;
+use http::{HeaderMap, Uri};
 use serde_json::Value;
-
-pub(crate) struct ParsedAxumJsonProxyRequest {
-    pub(crate) method: Method,
-    pub(crate) uri: Uri,
-    pub(crate) headers: HeaderMap,
-    pub(crate) extensions: http::Extensions,
-    pub(crate) body: Value,
-    pub(crate) is_stream: bool,
-}
 
 pub(crate) struct CodexResponsesProxyRequest {
     pub(crate) request: ProxyRequest,
     pub(crate) tool_context: CodexToolContext,
 }
 
-impl ParsedAxumJsonProxyRequest {
+impl ParsedHttpJsonProxyRequest {
     pub(crate) async fn request_context(
         &self,
         state: &ProxyState,
@@ -185,53 +179,6 @@ impl ParsedAxumJsonProxyRequest {
             requested_model,
         )
     }
-}
-
-pub(crate) fn endpoint_from_uri(uri: &Uri) -> String {
-    endpoint_from_path_and_query(uri.path(), uri.query())
-}
-
-async fn collect_axum_request_body(body: axum::body::Body) -> Result<Bytes, ProxyError> {
-    body.collect()
-        .await
-        .map_err(|error| ProxyError::Internal(request_body_read_error_message(error)))
-        .map(|collected| collected.to_bytes())
-}
-
-pub(crate) async fn collect_json_proxy_request(
-    request: axum::extract::Request,
-) -> Result<ParsedAxumJsonProxyRequest, ProxyError> {
-    let (parts, body) = request.into_parts();
-    let body_bytes = collect_axum_request_body(body).await?;
-    let parsed = parse_json_proxy_request_body(body_bytes.as_ref())
-        .map_err(|error| ProxyError::Internal(error.to_string()))?;
-
-    Ok(ParsedAxumJsonProxyRequest {
-        method: parts.method,
-        uri: parts.uri,
-        headers: parts.headers,
-        extensions: parts.extensions,
-        body: parsed.body,
-        is_stream: parsed.is_stream,
-    })
-}
-
-pub(crate) async fn collect_json_or_null_proxy_request(
-    request: axum::extract::Request,
-) -> Result<ParsedAxumJsonProxyRequest, ProxyError> {
-    let (parts, body) = request.into_parts();
-    let body_bytes = collect_axum_request_body(body).await?;
-    let parsed = parse_json_proxy_request_body_or_null(body_bytes.as_ref())
-        .map_err(|error| ProxyError::Internal(error.to_string()))?;
-
-    Ok(ParsedAxumJsonProxyRequest {
-        method: parts.method,
-        uri: parts.uri,
-        headers: parts.headers,
-        extensions: parts.extensions,
-        body: parsed.body,
-        is_stream: parsed.is_stream,
-    })
 }
 
 async fn dispatch_proxy_request(
