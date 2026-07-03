@@ -2581,6 +2581,249 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn proxy_server_runtime_smoke_round_robins_wildcard_channel_keys() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "runtime-key-round-robin-provider".to_string(),
+            "Runtime Key Round Robin Provider".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://unused-provider.example.com/v1",
+                    "ANTHROPIC_API_KEY": "provider-secret"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+        db.set_current_provider("claude", "runtime-key-round-robin-provider")
+            .unwrap();
+        let mut proxy_config = db.get_proxy_config_for_app("claude").await.unwrap();
+        proxy_config.enabled = true;
+        proxy_config.max_retries = 0;
+        db.update_proxy_config_for_app(proxy_config).await.unwrap();
+
+        let (upstream_base_url, upstream_handle) =
+            start_forwarding_upstream_server_with_response_sequence(vec![
+                (
+                    "200 OK",
+                    json!({
+                        "id": "msg-runtime-key-round-robin-alpha",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "runtime-key-round-robin-upstream",
+                        "content": [{
+                            "type": "text",
+                            "text": "alpha"
+                        }],
+                        "stop_reason": "end_turn",
+                        "stop_sequence": null,
+                        "usage": {
+                            "input_tokens": 19,
+                            "output_tokens": 23
+                        }
+                    }),
+                ),
+                (
+                    "200 OK",
+                    json!({
+                        "id": "msg-runtime-key-round-robin-beta",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "runtime-key-round-robin-upstream",
+                        "content": [{
+                            "type": "text",
+                            "text": "beta"
+                        }],
+                        "stop_reason": "end_turn",
+                        "stop_sequence": null,
+                        "usage": {
+                            "input_tokens": 29,
+                            "output_tokens": 31
+                        }
+                    }),
+                ),
+            ])
+            .await;
+
+        let config = ProxyConfig {
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 0,
+            ..ProxyConfig::default()
+        };
+        let server = ProxyServer::new(config, db.clone(), None);
+        let info = server.start().await.expect("start proxy server");
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("reqwest client");
+        let base_url = format!("http://127.0.0.1:{}", info.port);
+
+        let smoke = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let channel_response = client
+                .post(format!("{base_url}/proxy/v1/channels"))
+                .json(&json!({
+                    "id": "runtime-key-round-robin-channel",
+                    "providerId": "runtime-key-round-robin-provider",
+                    "appType": "claude",
+                    "name": "Runtime Key Round Robin Relay",
+                    "baseUrl": upstream_base_url,
+                    "interfaceKind": "anthropic_messages",
+                    "authProfileRef": "channel-key:*",
+                    "priority": 100,
+                    "healthPolicy": {
+                        "channelKeySelectionStrategy": "roundRobin"
+                    },
+                    "models": [{
+                        "publicModel": "runtime-key-round-robin-public",
+                        "upstreamModel": "runtime-key-round-robin-upstream"
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if channel_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected round-robin channel create status: {}",
+                    channel_response.status()
+                ));
+            }
+
+            for (key_ref, key_value) in [
+                ("alpha", "sk-runtime-key-round-robin-alpha"),
+                ("beta", "sk-runtime-key-round-robin-beta"),
+            ] {
+                let key_response = client
+                    .put(format!(
+                        "{base_url}/proxy/v1/channels/runtime-key-round-robin-channel/keys/{key_ref}"
+                    ))
+                    .json(&json!({
+                        "keyValue": key_value,
+                        "status": "enabled",
+                        "priority": 20,
+                        "weight": 1
+                    }))
+                    .send()
+                    .await
+                    .map_err(|error| error.to_string())?;
+                if key_response.status() != StatusCode::OK {
+                    return Err(format!(
+                        "unexpected round-robin channel key status for {key_ref}: {}",
+                        key_response.status()
+                    ));
+                }
+            }
+
+            for (expected_id, expected_input_tokens, expected_output_tokens, content) in [
+                (
+                    "msg-runtime-key-round-robin-alpha",
+                    19,
+                    23,
+                    "rotate to alpha",
+                ),
+                (
+                    "msg-runtime-key-round-robin-beta",
+                    29,
+                    31,
+                    "rotate to beta",
+                ),
+            ] {
+                let response = client
+                    .post(format!("{base_url}/v1/messages"))
+                    .json(&json!({
+                        "model": "runtime-key-round-robin-public",
+                        "max_tokens": 16,
+                        "messages": [{
+                            "role": "user",
+                            "content": content
+                        }]
+                    }))
+                    .send()
+                    .await
+                    .map_err(|error| error.to_string())?;
+                if response.status() != StatusCode::OK {
+                    return Err(format!(
+                        "unexpected round-robin response status: {}",
+                        response.status()
+                    ));
+                }
+                let body = response
+                    .json::<Value>()
+                    .await
+                    .map_err(|error| error.to_string())?;
+                if body["id"] != expected_id
+                    || body["model"] != "runtime-key-round-robin-upstream"
+                    || body["usage"]["input_tokens"] != expected_input_tokens
+                    || body["usage"]["output_tokens"] != expected_output_tokens
+                {
+                    return Err(format!("unexpected round-robin response body: {body}"));
+                }
+            }
+
+            Ok::<(), String>(())
+        })
+        .await
+        .map_err(|_| "timed out waiting for runtime channel key round-robin smoke".to_string())
+        .and_then(|result| result);
+        let stop = server.stop().await;
+
+        assert!(stop.is_ok(), "stop proxy server: {stop:?}");
+        smoke.expect("runtime channel key round-robin smoke");
+        let captures = tokio::time::timeout(std::time::Duration::from_secs(1), upstream_handle)
+            .await
+            .expect("upstream server should receive round-robin sequence")
+            .expect("upstream server task")
+            .expect("capture round-robin upstream requests");
+        assert_eq!(captures.len(), 2);
+        let first_capture = &captures[0];
+        let second_capture = &captures[1];
+
+        assert!(
+            first_capture
+                .head
+                .to_ascii_lowercase()
+                .contains("x-api-key: sk-runtime-key-round-robin-alpha"),
+            "first request did not use first round-robin key: {}",
+            first_capture.head
+        );
+        assert!(
+            second_capture
+                .head
+                .to_ascii_lowercase()
+                .contains("x-api-key: sk-runtime-key-round-robin-beta"),
+            "second request did not use second round-robin key: {}",
+            second_capture.head
+        );
+        assert!(
+            !first_capture.head.contains("provider-secret")
+                && !second_capture.head.contains("provider-secret"),
+            "provider fallback secret leaked into round-robin upstream request: first={} second={}",
+            first_capture.head,
+            second_capture.head
+        );
+        assert_eq!(
+            first_capture.body["model"], "runtime-key-round-robin-upstream",
+            "first request did not apply channel model override"
+        );
+        assert_eq!(
+            second_capture.body["model"], "runtime-key-round-robin-upstream",
+            "second request did not apply channel model override"
+        );
+
+        let current_route = server.state.current_providers.read().await;
+        let active = current_route
+            .get("claude")
+            .expect("round-robin success should set active route target");
+        assert_eq!(
+            active.channel_id.as_deref(),
+            Some("runtime-key-round-robin-channel")
+        );
+        assert_eq!(
+            active.upstream_model.as_deref(),
+            Some("runtime-key-round-robin-upstream")
+        );
+    }
+
+    #[tokio::test]
     async fn proxy_server_runtime_smoke_materializes_channel_migration() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let provider = Provider::with_id(
