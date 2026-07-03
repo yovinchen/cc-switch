@@ -19,8 +19,8 @@ use crate::proxy::{
     error::ProxyError,
     error_mapper::{
         proxy_core_error_to_proxy_error, proxy_error_display_message, proxy_error_status_code,
+        response_build_error_to_proxy_error,
     },
-    response_adapter::proxy_core_response_to_axum_response,
     transport::upstream::hyper_client::ProxyResponse,
 };
 use crate::proxy_core::api::config::StreamingTimeoutConfig;
@@ -36,9 +36,11 @@ use crate::proxy_core::api::transport::{
     decode_response_body, non_streaming_body_timeout_message,
     non_streaming_response_body_log_event, non_streaming_response_received_log_event,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
-    response_headers_indicate_sse, streaming_response_received_log_events, ProxyCoreResponse,
-    ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext, ResponseBodyDecodeLogLevel,
-    ResponseLogEvent, ResponseLogLevel,
+    rebuilt_json_proxy_response, response_headers_indicate_sse,
+    streaming_response_received_log_events, transformed_sse_proxy_response, ProxyCoreResponse,
+    ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext,
+    ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext, ProxyTransportResponse,
+    ProxyTransportResponseBody, ResponseBodyDecodeLogLevel, ResponseLogEvent, ResponseLogLevel,
 };
 use crate::proxy_core::api::usage::{
     error_usage_record_with_request_id_fallback,
@@ -56,7 +58,7 @@ use crate::proxy_core::api::usage::{
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
-use http::HeaderMap;
+use http::{HeaderMap, StatusCode};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -145,6 +147,103 @@ pub(crate) fn log_non_streaming_proxy_response_body(body: &[u8], tag: &str) {
 #[inline]
 pub fn is_sse_response(response: &ProxyResponse) -> bool {
     response_headers_indicate_sse(response.headers())
+}
+
+pub(crate) fn proxy_core_response_to_axum_response(
+    response: ProxyCoreResponse,
+    build_error_context: AxumResponseBuildErrorContext<'_>,
+) -> Result<axum::response::Response, ProxyError> {
+    let response = response
+        .into_transport_response()
+        .map_err(ProxyError::Internal)?;
+    let ProxyTransportResponse {
+        status,
+        headers,
+        body,
+    } = response;
+    let body = match body {
+        ProxyTransportResponseBody::Empty => axum::body::Body::from(Bytes::new()),
+        ProxyTransportResponseBody::Bytes(body) => axum::body::Body::from(body),
+        ProxyTransportResponseBody::Stream(stream) => axum::body::Body::from_stream(stream),
+    };
+
+    let mut builder = axum::response::Response::builder().status(status);
+    for (key, value) in headers.iter() {
+        builder = builder.header(key, value);
+    }
+
+    let build_error_message = build_error_context.internal_error_prefix();
+    let build_error_context_message = build_error_context.message();
+    builder.body(body).map_err(|error| {
+        log::error!("{build_error_context_message}: {error}");
+        ProxyError::Internal(format!("{build_error_message}: {error}"))
+    })
+}
+
+pub(crate) fn rebuilt_json_proxy_response_to_axum_response(
+    status: StatusCode,
+    headers: HeaderMap,
+    body: Value,
+    response_build_error_context: CoreResponseBuildFailureContext,
+    axum_build_error_context: AxumResponseBuildErrorContext<'_>,
+) -> Result<axum::response::Response, ProxyError> {
+    let response = rebuilt_json_proxy_response(status, headers, body).map_err(|error| {
+        response_build_error_to_proxy_error(response_build_error_context, error)
+    })?;
+    proxy_core_response_to_axum_response(response, axum_build_error_context)
+}
+
+pub(crate) fn transformed_sse_proxy_response_to_axum_response(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    build_error_context: AxumResponseBuildErrorContext<'_>,
+) -> Result<axum::response::Response, ProxyError> {
+    proxy_core_response_to_axum_response(
+        transformed_sse_proxy_response(stream),
+        build_error_context,
+    )
+}
+
+pub(crate) fn claude_transformed_sse_response_to_axum_response(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+) -> Result<axum::response::Response, ProxyError> {
+    transformed_sse_proxy_response_to_axum_response(
+        stream,
+        AxumResponseBuildErrorContext::ClaudeSse,
+    )
+}
+
+pub(crate) fn codex_transformed_sse_response_to_axum_response(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+) -> Result<axum::response::Response, ProxyError> {
+    transformed_sse_proxy_response_to_axum_response(stream, AxumResponseBuildErrorContext::CodexSse)
+}
+
+pub(crate) fn claude_transformed_json_response_to_axum_response(
+    status: StatusCode,
+    headers: HeaderMap,
+    body: Value,
+) -> Result<axum::response::Response, ProxyError> {
+    rebuilt_json_proxy_response_to_axum_response(
+        status,
+        headers,
+        body,
+        CoreResponseBuildFailureContext::ClaudeJson,
+        AxumResponseBuildErrorContext::ClaudeResponse,
+    )
+}
+
+pub(crate) fn codex_transformed_json_response_to_axum_response(
+    status: StatusCode,
+    headers: HeaderMap,
+    body: Value,
+) -> Result<axum::response::Response, ProxyError> {
+    rebuilt_json_proxy_response_to_axum_response(
+        status,
+        headers,
+        body,
+        CoreResponseBuildFailureContext::CodexResponses,
+        AxumResponseBuildErrorContext::CodexResponses,
+    )
 }
 
 /// 处理流式响应

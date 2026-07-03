@@ -11019,23 +11019,40 @@ fn response_pipeline_uses_core_axum_build_context_policy() {
 }
 
 #[test]
-fn response_adapter_delegates_build_error_message_policy_to_core() {
+fn response_pipeline_delegates_build_error_message_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/response_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read response_adapter.rs");
+    let pipeline_path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let pipeline_source =
+        fs::read_to_string(&pipeline_path).expect("read engine/response_pipeline.rs");
+    let adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read response_adapter.rs");
 
     assert!(
-        source.contains(".internal_error_prefix()"),
-        "response_adapter should use proxy-core response build error message prefixes"
+        pipeline_source.contains(".internal_error_prefix()"),
+        "response_pipeline should use proxy-core response build error message prefixes"
+    );
+    assert!(
+        !production_lines(&pipeline_source).any(|(_, line)| line.contains("response_adapter::")
+            || line.contains("response_adapter::proxy_core_response_to_axum_response")),
+        "response_pipeline must not depend on response_adapter for core-to-Axum response bridging"
+    );
+    assert!(
+        !adapter_source.contains("pub(crate) fn proxy_core_response_to_axum_response")
+            && !adapter_source
+                .contains("pub(crate) fn rebuilt_json_proxy_response_to_axum_response")
+            && !adapter_source
+                .contains("pub(crate) fn transformed_sse_proxy_response_to_axum_response")
+            && adapter_source.contains("proxy_core_response_to_axum_response"),
+        "response_adapter should import core-to-Axum response bridges from response_pipeline instead of owning them"
     );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(&source) {
+    for (line_index, line) in production_lines(&pipeline_source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_RESPONSE_ADAPTER_BUILD_ERROR_MESSAGE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/response_adapter.rs:{} contains response build error message marker `{}`",
+                    "src/proxy/engine/response_pipeline.rs:{} contains response build error message marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11045,7 +11062,7 @@ fn response_adapter_delegates_build_error_message_policy_to_core() {
 
     assert!(
         violations.is_empty(),
-        "response_adapter must delegate response build error message policy to proxy-core:\n{}",
+        "response_pipeline must delegate response build error message policy to proxy-core:\n{}",
         violations.join("\n")
     );
 }

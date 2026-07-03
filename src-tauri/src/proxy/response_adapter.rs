@@ -1,12 +1,18 @@
 use super::{
     engine::context::RequestContext,
     engine::response_pipeline::{
-        claude_transformed_json_response_from_context, claude_transformed_sse_stream_from_context,
+        claude_transformed_json_response_from_context,
+        claude_transformed_json_response_to_axum_response,
+        claude_transformed_sse_response_to_axum_response,
+        claude_transformed_sse_stream_from_context,
         codex_auto_transformed_json_response_from_context,
-        codex_auto_transformed_sse_stream_from_context, process_response,
-        read_decoded_proxy_response_body, record_forward_core_error_usage,
-        ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
-        CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
+        codex_auto_transformed_sse_stream_from_context,
+        codex_transformed_json_response_to_axum_response,
+        codex_transformed_sse_response_to_axum_response, process_response,
+        proxy_core_response_to_axum_response, read_decoded_proxy_response_body,
+        record_forward_core_error_usage, ClaudeTransformedJsonResponseContext,
+        ClaudeTransformedSseStreamContext, CodexAutoTransformedJsonResponseContext,
+        CodexAutoTransformedSseStreamContext,
     },
     error::ProxyError,
     error_mapper::{
@@ -16,7 +22,6 @@ use super::{
         codex_responses_error_body_build_error_to_proxy_error, management_api_error_to_proxy_error,
         parse_claude_transform_upstream_json_or_unlabeled_sse,
         parse_codex_chat_upstream_json_or_unlabeled_sse, proxy_core_error_to_proxy_error,
-        response_build_error_to_proxy_error,
     },
     transport::upstream::hyper_client::ProxyResponse,
     transport::upstream::proxy_core_response_to_proxy_response,
@@ -40,12 +45,11 @@ use crate::proxy_core::api::management::{
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
     ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
     ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse, CurrentRouteResponse,
-    GroupListQuery, GroupListRequest,
-    ManagementAppPathRequest, ProviderListResponse, ProxyChannelKeyPatchRequest,
-    ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyStatusRequest, ProxyStatusResponse,
-    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse,
+    GroupListQuery, GroupListRequest, ManagementAppPathRequest, ProviderListResponse,
+    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
+    ProxyStatusRequest, ProxyStatusResponse, RouteGroupListResponse, RouteResolveManagementRequest,
+    RouteResolveRequest, RouteResolveResponse,
 };
 use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};
 use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
@@ -58,18 +62,15 @@ use crate::proxy_core::api::transforms::{
 use crate::proxy_core::api::transport::{
     endpoint_from_path_and_query, endpoint_from_path_query_stripping_prefix,
     extract_gemini_model_from_path, parse_json_proxy_request_body,
-    parse_json_proxy_request_body_or_null, rebuilt_json_proxy_response,
-    request_body_read_error_message, transformed_sse_proxy_response, ProxyBody, ProxyCoreResponse,
-    ProxyRequest, ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext,
-    ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext, ProxyResult,
-    ProxyTransportResponse, ProxyTransportResponseBody, UpstreamSseAggregationKind,
+    parse_json_proxy_request_body_or_null, request_body_read_error_message, ProxyBody,
+    ProxyRequest, ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext, ProxyResult,
+    UpstreamSseAggregationKind,
 };
 use crate::proxy_core::api::usage::{
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::Json;
 use bytes::Bytes;
-use futures::Stream;
 use http::{HeaderMap, Method, StatusCode, Uri};
 use http_body_util::BodyExt;
 use serde_json::Value;
@@ -1097,89 +1098,6 @@ pub(crate) async fn gemini_passthrough_response_to_axum_response(
     process_response(response, ctx, state, &GEMINI_PARSER_CONFIG, None).await
 }
 
-pub(crate) fn proxy_core_response_to_axum_response(
-    response: ProxyCoreResponse,
-    build_error_context: AxumResponseBuildErrorContext<'_>,
-) -> Result<axum::response::Response, ProxyError> {
-    let response = response
-        .into_transport_response()
-        .map_err(ProxyError::Internal)?;
-    let ProxyTransportResponse {
-        status,
-        headers,
-        body,
-    } = response;
-    let body = match body {
-        ProxyTransportResponseBody::Empty => axum::body::Body::from(Bytes::new()),
-        ProxyTransportResponseBody::Bytes(body) => axum::body::Body::from(body),
-        ProxyTransportResponseBody::Stream(stream) => axum::body::Body::from_stream(stream),
-    };
-
-    let mut builder = axum::response::Response::builder().status(status);
-    for (key, value) in headers.iter() {
-        builder = builder.header(key, value);
-    }
-
-    let build_error_message = build_error_context.internal_error_prefix();
-    let build_error_context_message = build_error_context.message();
-    builder.body(body).map_err(|error| {
-        log::error!("{build_error_context_message}: {error}");
-        ProxyError::Internal(format!("{build_error_message}: {error}"))
-    })
-}
-
-pub(crate) fn rebuilt_json_proxy_response_to_axum_response(
-    status: StatusCode,
-    headers: HeaderMap,
-    body: Value,
-    response_build_error_context: CoreResponseBuildFailureContext,
-    axum_build_error_context: AxumResponseBuildErrorContext<'_>,
-) -> Result<axum::response::Response, ProxyError> {
-    let response = rebuilt_json_proxy_response(status, headers, body).map_err(|error| {
-        response_build_error_to_proxy_error(response_build_error_context, error)
-    })?;
-    proxy_core_response_to_axum_response(response, axum_build_error_context)
-}
-
-pub(crate) fn transformed_sse_proxy_response_to_axum_response(
-    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-    build_error_context: AxumResponseBuildErrorContext<'_>,
-) -> Result<axum::response::Response, ProxyError> {
-    proxy_core_response_to_axum_response(
-        transformed_sse_proxy_response(stream),
-        build_error_context,
-    )
-}
-
-pub(crate) fn claude_transformed_sse_response_to_axum_response(
-    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-) -> Result<axum::response::Response, ProxyError> {
-    transformed_sse_proxy_response_to_axum_response(
-        stream,
-        AxumResponseBuildErrorContext::ClaudeSse,
-    )
-}
-
-pub(crate) fn codex_transformed_sse_response_to_axum_response(
-    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-) -> Result<axum::response::Response, ProxyError> {
-    transformed_sse_proxy_response_to_axum_response(stream, AxumResponseBuildErrorContext::CodexSse)
-}
-
-pub(crate) fn claude_transformed_json_response_to_axum_response(
-    status: StatusCode,
-    headers: HeaderMap,
-    body: Value,
-) -> Result<axum::response::Response, ProxyError> {
-    rebuilt_json_proxy_response_to_axum_response(
-        status,
-        headers,
-        body,
-        CoreResponseBuildFailureContext::ClaudeJson,
-        AxumResponseBuildErrorContext::ClaudeResponse,
-    )
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn claude_transformed_upstream_json_response_to_axum_response(
     response: ProxyResponse,
@@ -1219,20 +1137,6 @@ pub(crate) async fn claude_transformed_upstream_json_response_to_axum_response(
     .map_err(claude_response_transform_error_to_proxy_error)?;
 
     claude_transformed_json_response_to_axum_response(status, response_headers, anthropic_response)
-}
-
-pub(crate) fn codex_transformed_json_response_to_axum_response(
-    status: StatusCode,
-    headers: HeaderMap,
-    body: Value,
-) -> Result<axum::response::Response, ProxyError> {
-    rebuilt_json_proxy_response_to_axum_response(
-        status,
-        headers,
-        body,
-        CoreResponseBuildFailureContext::CodexResponses,
-        AxumResponseBuildErrorContext::CodexResponses,
-    )
 }
 
 pub(crate) async fn codex_transformed_upstream_json_response_to_axum_response(
@@ -1307,7 +1211,14 @@ pub(crate) fn codex_proxy_error_to_axum_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core::api::transport::ProxyResponseBody;
+    use crate::proxy::engine::response_pipeline::{
+        rebuilt_json_proxy_response_to_axum_response,
+        transformed_sse_proxy_response_to_axum_response,
+    };
+    use crate::proxy_core::api::transport::{
+        ProxyCoreResponse, ProxyResponseBody,
+        ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext,
+    };
     use http::StatusCode;
     use serde_json::json;
 
