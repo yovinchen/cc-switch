@@ -2,16 +2,21 @@ use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy::host::cc_switch::managed_account_runtime_source::{
-    ManagedAccountAuthForBindingInput, ManagedAccountRuntimeBindingFacts,
-    ManagedAccountRuntimeSourceRef,
+    ManagedAccountAdapterClaudeApiFormatForBindingInput,
+    ManagedAccountAdapterCopilotLiveModelForBindingInput,
+    ManagedAccountApplyCopilotDynamicBaseUrlForBindingInput, ManagedAccountAuthForBindingInput,
+    ManagedAccountRuntimeBindingFacts, ManagedAccountRuntimeSourceRef,
 };
-use crate::proxy::host::cc_switch::provider_projection::provider_managed_account_binding_context;
+use crate::proxy::host::cc_switch::provider_projection::{
+    provider_claude_api_format, provider_managed_account_binding_context,
+};
 use crate::proxy::provider::{get_adapter, ProviderAdapter};
 use crate::proxy_core::api::auth::ProviderAuthInfo;
 use crate::proxy_core::api::transport::{
     forwarder_provider_url_facts, ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
 };
 use futures::future::BoxFuture;
+use serde_json::Value;
 
 type ForwarderAdapterHandle = dyn ProviderAdapter;
 
@@ -45,6 +50,17 @@ impl ForwarderAdapterContext {
         self.adapter().get_auth_headers(auth)
     }
 
+    fn managed_account_binding_facts<'a>(
+        &self,
+        provider: &'a Provider,
+    ) -> ManagedAccountRuntimeBindingFacts<'a> {
+        let binding_context = provider_managed_account_binding_context(provider);
+        ManagedAccountRuntimeBindingFacts::new(
+            binding_context.binding,
+            binding_context.legacy_github_copilot_account_id,
+        )
+    }
+
     pub(crate) fn resolve_provider_fallback_auth_headers<'a>(
         &'a self,
         provider: &'a Provider,
@@ -55,13 +71,9 @@ impl ForwarderAdapterContext {
                 return Ok(ProviderFallbackAuthHeaders::default());
             };
 
-            let binding_context = provider_managed_account_binding_context(provider);
             let managed_auth = managed_account_runtime_source
                 .resolve_auth_for_binding(ManagedAccountAuthForBindingInput {
-                    binding_facts: ManagedAccountRuntimeBindingFacts::new(
-                        binding_context.binding,
-                        binding_context.legacy_github_copilot_account_id,
-                    ),
+                    binding_facts: self.managed_account_binding_facts(provider),
                     auth,
                 })
                 .await?;
@@ -73,6 +85,76 @@ impl ForwarderAdapterContext {
                     .should_send_codex_oauth_session_headers,
                 codex_oauth_account_id: managed_auth.codex_oauth_account_id,
             })
+        })
+    }
+
+    pub(crate) fn apply_copilot_live_model_for_adapter<'a>(
+        &'a self,
+        provider: &'a Provider,
+        managed_account_runtime_source: &'a ManagedAccountRuntimeSourceRef,
+        body: &'a mut Value,
+        is_copilot: bool,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            managed_account_runtime_source
+                .apply_copilot_live_model_for_binding_adapter(
+                    ManagedAccountAdapterCopilotLiveModelForBindingInput {
+                        binding_facts: self.managed_account_binding_facts(provider),
+                        body,
+                        is_copilot,
+                    },
+                )
+                .await;
+        })
+    }
+
+    pub(crate) fn apply_copilot_dynamic_base_url_for_provider<'a>(
+        &'a self,
+        provider: &'a Provider,
+        managed_account_runtime_source: &'a ManagedAccountRuntimeSourceRef,
+        base_url: &'a mut String,
+        is_copilot: bool,
+        is_full_url: bool,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            managed_account_runtime_source
+                .apply_copilot_dynamic_base_url_for_binding(
+                    ManagedAccountApplyCopilotDynamicBaseUrlForBindingInput {
+                        binding_facts: self.managed_account_binding_facts(provider),
+                        base_url,
+                        is_copilot,
+                        is_full_url,
+                    },
+                )
+                .await;
+        })
+    }
+
+    pub(crate) fn fallback_claude_api_format(&self, provider: &Provider) -> Option<&'static str> {
+        self.facts()
+            .is_claude_adapter
+            .then(|| provider_claude_api_format(provider))
+    }
+
+    pub(crate) fn resolve_claude_api_format_for_adapter<'a>(
+        &'a self,
+        provider: &'a Provider,
+        managed_account_runtime_source: &'a ManagedAccountRuntimeSourceRef,
+        body: &'a Value,
+        is_copilot: bool,
+    ) -> BoxFuture<'a, Option<String>> {
+        Box::pin(async move {
+            managed_account_runtime_source
+                .resolve_claude_api_format_for_binding_adapter(
+                    ManagedAccountAdapterClaudeApiFormatForBindingInput {
+                        binding_facts: self.managed_account_binding_facts(provider),
+                        provider_api_format: provider_claude_api_format(provider),
+                        body,
+                        is_copilot,
+                        is_claude_adapter: self.facts().is_claude_adapter,
+                    },
+                )
+                .await
         })
     }
 

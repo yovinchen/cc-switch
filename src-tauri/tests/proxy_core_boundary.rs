@@ -20081,14 +20081,25 @@ fn production_forwarder_uses_request_source_for_managed_account_runtime() {
             "RequestForwarder must call request source method `{marker}`"
         );
     }
+    let adapter_context_path =
+        manifest_dir.join("src/proxy/host/cc_switch/provider_adapter_context.rs");
+    let adapter_context =
+        fs::read_to_string(&adapter_context_path).expect("read provider_adapter_context.rs");
     assert!(
-        request_source_impl_slice.contains("provider_managed_account_binding_context(input.provider)")
-            && request_source_impl_slice.contains("ManagedAccountAdapterCopilotLiveModelForBindingInput {")
-            && request_source_impl_slice
+        !request_source.contains("provider_managed_account_binding_context(")
+            && !request_source.contains("ManagedAccountRuntimeBindingFacts::new(")
+            && request_source_impl_slice.contains("input.adapter")
+            && request_source_impl_slice.contains(".apply_copilot_live_model_for_adapter(")
+            && request_source_impl_slice.contains(".apply_copilot_dynamic_base_url_for_provider(")
+            && request_source_impl_slice.contains(".resolve_claude_api_format_for_adapter(")
+            && adapter_context.contains("fn managed_account_binding_facts")
+            && adapter_context.contains("provider_managed_account_binding_context(provider)")
+            && adapter_context.contains("ManagedAccountAdapterCopilotLiveModelForBindingInput {")
+            && adapter_context
                 .contains("ManagedAccountApplyCopilotDynamicBaseUrlForBindingInput {")
-            && request_source_impl_slice.contains("ManagedAccountAdapterClaudeApiFormatForBindingInput {")
-            && request_source_impl_slice.contains("ManagedAccountRuntimeBindingFacts::new("),
-        "ForwarderRequestSource must project provider binding and pass managed-account runtime facts as structured inputs"
+            && adapter_context.contains("ManagedAccountAdapterClaudeApiFormatForBindingInput {")
+            && adapter_context.contains("ManagedAccountRuntimeBindingFacts::new("),
+        "ForwarderAdapterContext must own provider binding projection for request-side managed-account runtime decisions"
     );
 }
 
@@ -20162,9 +20173,8 @@ fn production_forwarder_uses_auth_source_resource() {
         auth_source.contains(
             "use crate::proxy::host::cc_switch::provider_projection::proxy_provider_to_core_spec;"
         ) && !auth_source.contains("provider_managed_account_binding_context")
-            && adapter_context.contains(
-                "use crate::proxy::host::cc_switch::provider_projection::provider_managed_account_binding_context;"
-            ),
+            && adapter_context.contains("provider_managed_account_binding_context")
+            && adapter_context.contains("provider_claude_api_format"),
         "default ForwarderAuthSource should keep provider spec projection while provider adapter context owns binding projection"
     );
     for marker in [

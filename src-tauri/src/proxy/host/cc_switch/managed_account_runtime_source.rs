@@ -795,7 +795,7 @@ pub(crate) fn managed_account_test_provider_with_binding(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy::provider::claude_provider_api_format;
+    use crate::proxy::host::cc_switch::provider_projection::provider_claude_api_format;
     use crate::proxy_core::api::auth::{
         ManagedAccountTokenRefreshFailureKind, ProviderAuthStrategy,
     };
@@ -1119,7 +1119,7 @@ mod tests {
                             binding_context.binding,
                             binding_context.legacy_github_copilot_account_id,
                         ),
-                        provider_api_format: claude_provider_api_format(&provider),
+                        provider_api_format: provider_claude_api_format(&provider),
                         body: &body,
                         is_copilot: false,
                         is_claude_adapter: false,
@@ -1136,7 +1136,7 @@ mod tests {
                             binding_context.binding,
                             binding_context.legacy_github_copilot_account_id,
                         ),
-                        provider_api_format: claude_provider_api_format(&provider),
+                        provider_api_format: provider_claude_api_format(&provider),
                         body: &body,
                         is_copilot: false,
                         is_claude_adapter: true,

@@ -81,12 +81,14 @@ pub(crate) struct ForwarderCopilotRequestOptimizationGateInput<'a> {
 }
 
 pub(crate) struct ForwarderCopilotLiveModelInput<'a> {
+    pub(crate) adapter: &'a ForwarderAdapterContext,
     pub(crate) provider: &'a Provider,
     pub(crate) body: &'a mut Value,
     pub(crate) is_copilot: bool,
 }
 
 pub(crate) struct ForwarderCopilotDynamicBaseUrlInput<'a> {
+    pub(crate) adapter: &'a ForwarderAdapterContext,
     pub(crate) provider: &'a Provider,
     pub(crate) base_url: &'a mut String,
     pub(crate) is_copilot: bool,
@@ -1471,6 +1473,7 @@ impl RequestForwarder {
         )?;
         self.request_source
             .apply_copilot_live_model_for_adapter(ForwarderCopilotLiveModelInput {
+                adapter,
                 provider,
                 body: &mut mapped_body,
                 is_copilot,
@@ -1503,6 +1506,7 @@ impl RequestForwarder {
 
         self.request_source
             .apply_copilot_dynamic_base_url_for_provider(ForwarderCopilotDynamicBaseUrlInput {
+                adapter,
                 provider,
                 base_url: &mut base_url,
                 is_copilot,

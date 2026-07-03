@@ -26,21 +26,14 @@ use crate::proxy::host::cc_switch::claude_desktop_provider::{
 };
 #[cfg(test)]
 use crate::proxy::host::cc_switch::managed_account_runtime_source::default_managed_account_runtime_source;
-use crate::proxy::host::cc_switch::managed_account_runtime_source::{
-    ManagedAccountAdapterClaudeApiFormatForBindingInput,
-    ManagedAccountAdapterCopilotLiveModelForBindingInput,
-    ManagedAccountApplyCopilotDynamicBaseUrlForBindingInput, ManagedAccountRuntimeBindingFacts,
-    ManagedAccountRuntimeSourceRef,
-};
+use crate::proxy::host::cc_switch::managed_account_runtime_source::ManagedAccountRuntimeSourceRef;
 use crate::proxy::host::cc_switch::provider_adapter_context::{
     forwarder_provider_adapter_context_for_app, ForwarderAdapterContext,
 };
-use crate::proxy::host::cc_switch::provider_projection::{
-    provider_managed_account_binding_context, provider_uses_anthropic_rectifiers,
-};
+use crate::proxy::host::cc_switch::provider_projection::provider_uses_anthropic_rectifiers;
 use crate::proxy::provider::{
-    claude_provider_api_format, codex_provider_apply_chat_upstream_model,
-    codex_provider_chat_reasoning_options, codex_provider_should_convert_responses_to_chat,
+    codex_provider_apply_chat_upstream_model, codex_provider_chat_reasoning_options,
+    codex_provider_should_convert_responses_to_chat,
 };
 use crate::proxy_core::api::auth::{
     validate_managed_account_upstream_auth, ClaudeDesktopProxyRequestBodyIssue,
@@ -407,9 +400,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         let codex_responses_to_chat = matches!(input.app_type, AppType::Codex)
             && codex_provider_should_convert_responses_to_chat(input.provider, input.endpoint);
         let adapter_facts = input.adapter.facts();
-        let fallback_claude_api_format = adapter_facts
-            .is_claude_adapter
-            .then(|| claude_provider_api_format(input.provider));
+        let fallback_claude_api_format = input.adapter.fallback_claude_api_format(input.provider);
         let provider_transform_required = input.resolved_claude_api_format.is_none()
             && input.adapter.provider_transform_required(input.provider);
 
@@ -478,17 +469,13 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         input: ForwarderCopilotLiveModelInput<'a>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            let binding_context = provider_managed_account_binding_context(input.provider);
-            self.managed_account_runtime_source
-                .apply_copilot_live_model_for_binding_adapter(
-                    ManagedAccountAdapterCopilotLiveModelForBindingInput {
-                        binding_facts: ManagedAccountRuntimeBindingFacts::new(
-                            binding_context.binding,
-                            binding_context.legacy_github_copilot_account_id,
-                        ),
-                        body: input.body,
-                        is_copilot: input.is_copilot,
-                    },
+            input
+                .adapter
+                .apply_copilot_live_model_for_adapter(
+                    input.provider,
+                    &self.managed_account_runtime_source,
+                    input.body,
+                    input.is_copilot,
                 )
                 .await;
         })
@@ -499,18 +486,14 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         input: ForwarderCopilotDynamicBaseUrlInput<'a>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            let binding_context = provider_managed_account_binding_context(input.provider);
-            self.managed_account_runtime_source
-                .apply_copilot_dynamic_base_url_for_binding(
-                    ManagedAccountApplyCopilotDynamicBaseUrlForBindingInput {
-                        binding_facts: ManagedAccountRuntimeBindingFacts::new(
-                            binding_context.binding,
-                            binding_context.legacy_github_copilot_account_id,
-                        ),
-                        base_url: input.base_url,
-                        is_copilot: input.is_copilot,
-                        is_full_url: input.is_full_url,
-                    },
+            input
+                .adapter
+                .apply_copilot_dynamic_base_url_for_provider(
+                    input.provider,
+                    &self.managed_account_runtime_source,
+                    input.base_url,
+                    input.is_copilot,
+                    input.is_full_url,
                 )
                 .await;
         })
@@ -521,19 +504,13 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         input: ForwarderClaudeApiFormatInput<'a>,
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
-            let binding_context = provider_managed_account_binding_context(input.provider);
-            self.managed_account_runtime_source
-                .resolve_claude_api_format_for_binding_adapter(
-                    ManagedAccountAdapterClaudeApiFormatForBindingInput {
-                        binding_facts: ManagedAccountRuntimeBindingFacts::new(
-                            binding_context.binding,
-                            binding_context.legacy_github_copilot_account_id,
-                        ),
-                        provider_api_format: claude_provider_api_format(input.provider),
-                        body: input.body,
-                        is_copilot: input.is_copilot,
-                        is_claude_adapter: input.adapter.facts().is_claude_adapter,
-                    },
+            input
+                .adapter
+                .resolve_claude_api_format_for_adapter(
+                    input.provider,
+                    &self.managed_account_runtime_source,
+                    input.body,
+                    input.is_copilot,
                 )
                 .await
         })
