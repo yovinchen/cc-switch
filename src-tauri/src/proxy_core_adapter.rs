@@ -6,10 +6,6 @@ use crate::error::AppError;
 use crate::provider::Provider;
 #[cfg(test)]
 use crate::proxy::engine::forward_pipeline::ForwarderRuntimeOptions;
-#[cfg(test)]
-use crate::proxy::host::cc_switch::channel_auth_profile_attempts::{
-    forward_attempts_from_plan, required_forward_attempts_from_plan,
-};
 use crate::proxy::host::cc_switch::proxy_runtime::{
     forward_current_provider_id_from_source, forwarder_runtime_config_from_sources,
     forwarder_runtime_options_from_app_proxy_config, response_runtime_policy_from_app_proxy_config,
@@ -72,11 +68,6 @@ mod tests {
         extract_gemini_base_url_from_settings, ClaudeAuthKeySource, ManagementAuthError,
     };
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
-    use crate::proxy_core::api::domain::{
-        ChannelHealthPolicy, ChannelOverrides, ProviderMetadata, ProviderSpec, RetryPolicy,
-        UpstreamEndpoint,
-    };
-    use crate::proxy_core::api::errors::ProxyCoreError;
     use crate::proxy_core::api::management::{ChannelRouteSource, RouteResolveRequest};
     use crate::proxy_core::api::ports::{
         codex_restored_live_settings_parts, gemini_env_json_from_map,
@@ -87,9 +78,8 @@ mod tests {
     use crate::proxy_core::api::routing::{
         apply_route_candidate_circuit_availability, current_provider_id_from_sources,
         resolve_channel_route, route_candidate_channel_circuit_keys, select_provider_ids,
-        ChannelSpec, ChannelStatus, InterfaceKind, ProviderSelectionCandidate,
-        ProviderSelectionFailure, ProviderSelectionInput, RoutePlan, RouteResolveChannelInput,
-        RouteResolveModelInput, RouteSelection,
+        ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput,
+        RouteResolveChannelInput, RouteResolveModelInput,
     };
     use crate::proxy_core::api::transforms::normalize_claude_anthropic_messages;
     use crate::proxy_core::api::transforms::{
@@ -1471,178 +1461,5 @@ wire_api = "chat"
         .collect::<String>();
         assert!(gemini_output.contains("event: message_start"));
         assert!(gemini_output.contains("Gemini hi"));
-    }
-
-    #[test]
-    fn route_plan_adapter_projects_provider_ids_and_forward_selection() {
-        fn selection(channel_id: &str, provider_id: &str) -> RouteSelection {
-            let provider = ProviderSpec {
-                id: provider_id.to_string(),
-                name: provider_id.to_string(),
-                kind: ProviderKind::Claude,
-                account_ref: None,
-                metadata: ProviderMetadata::default(),
-            };
-            let channel = ChannelSpec {
-                id: channel_id.to_string(),
-                provider_id: provider_id.to_string(),
-                app: AppKind::Claude,
-                name: channel_id.to_string(),
-                status: ChannelStatus::Enabled,
-                endpoint: UpstreamEndpoint {
-                    base_url: "https://api.example.com".to_string(),
-                    path_template: None,
-                    api_version: None,
-                    timeout_profile: None,
-                },
-                interface: InterfaceKind::OpenAiChatCompletions,
-                auth_profile: None,
-                models: Vec::new(),
-                groups: vec!["default".to_string()],
-                priority: 0,
-                weight: 100,
-                retry_policy: RetryPolicy {
-                    raw: Value::Object(Default::default()),
-                },
-                health_policy: ChannelHealthPolicy {
-                    raw: Value::Object(Default::default()),
-                },
-                overrides: ChannelOverrides {
-                    headers: Value::Object(Default::default()),
-                    params: Value::Object(Default::default()),
-                    status_code_mapping: Value::Array(Vec::new()),
-                    model_mapping: Value::Object(Default::default()),
-                },
-                tags: Vec::new(),
-                metadata: Value::Object(Default::default()),
-                source_ref: None,
-                needs_review: false,
-                review_reasons: Vec::new(),
-            };
-
-            crate::proxy_core::api::routing::route_selection_from_parts(
-                provider,
-                channel,
-                None,
-                InterfaceKind::OpenAiChatCompletions,
-            )
-        }
-
-        let primary = selection("ch-a", "provider-a");
-        let plan = RoutePlan {
-            selection: primary.clone(),
-            selections: vec![
-                primary,
-                selection("ch-b", "provider-b"),
-                selection("ch-c", "provider-a"),
-            ],
-            attempts: Vec::new(),
-        };
-
-        assert_eq!(
-            crate::proxy_core::api::routing::route_plan_provider_ids(&plan),
-            vec!["provider-a".to_string(), "provider-b".to_string()]
-        );
-        assert_eq!(
-            crate::proxy_core::api::routing::select_route_for_forward_result(
-                &plan,
-                Some("ch-b"),
-                "provider-a"
-            )
-            .channel
-            .id,
-            "ch-b"
-        );
-        assert_eq!(
-            crate::proxy_core::api::routing::select_route_for_forward_result(
-                &plan,
-                Some("ch-b"),
-                "provider-a"
-            )
-            .outbound_interface,
-            InterfaceKind::OpenAiChatCompletions
-        );
-        let selected = crate::proxy_core::api::routing::select_route_for_forward_result(
-            &plan,
-            Some("ch-b"),
-            "provider-a",
-        );
-        let candidate =
-            crate::proxy_core::api::routing::default_route_candidate_from_selection(&selected);
-        assert_eq!(candidate.channel_id, "ch-b");
-        assert_eq!(candidate.route_group, "default");
-        assert_eq!(candidate.source_kind, "proxy_core");
-        let resolved =
-            crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate(candidate);
-        assert_eq!(resolved.channel_id, "ch-b");
-        let host_provider = Provider::with_id(
-            "provider-a".to_string(),
-            "Provider A".to_string(),
-            json!({}),
-            None,
-        );
-        let attempts = forward_attempts_from_plan(&AppType::Claude, &[host_provider], &plan);
-        assert_eq!(attempts.len(), 2);
-        assert_eq!(attempts[0].provider().id, "provider-a");
-        assert_eq!(attempts[1].provider().id, "provider-a");
-        let missing_attempts =
-            required_forward_attempts_from_plan(&AppType::Claude, &[], &plan).unwrap_err();
-        assert!(matches!(
-            missing_attempts,
-            ProxyCoreError::Unavailable(message)
-                if message == "route plan has no matching host providers"
-        ));
-        assert_eq!(
-            crate::proxy_core::api::routing::forwarding_requires_runtime_error_message(),
-            "cc-switch forwarding requires a proxy server runtime"
-        );
-        assert!(matches!(
-            crate::proxy_core::api::routing::forwarding_requires_runtime_error(),
-            ProxyCoreError::Unsupported(message)
-                if message == "cc-switch forwarding requires a proxy server runtime"
-        ));
-        assert_eq!(
-            crate::proxy_core::api::routing::route_plan_no_matching_host_providers_error_message(),
-            "route plan has no matching host providers"
-        );
-        assert!(matches!(
-            crate::proxy_core::api::routing::route_plan_no_matching_host_providers_error(),
-            ProxyCoreError::Unavailable(message)
-                if message == "route plan has no matching host providers"
-        ));
-        assert_eq!(
-            crate::proxy_core::api::routing::route_plan_providers_unconfigured_error_message(),
-            "route plan providers are not configured in host database"
-        );
-        let policy = crate::proxy_core::api::routing::route_policy_from_failover_provider_ids(
-            AppKind::Claude,
-            vec!["provider-b".to_string()],
-        );
-        assert_eq!(policy.app, AppKind::Claude);
-        assert_eq!(policy.raw["failoverProviderIds"], json!(["provider-b"]));
-
-        let policy = crate::proxy_core::api::routing::route_policy_from_failover_provider_ids(
-            AppKind::Claude,
-            vec![("provider-b".to_string(), Some(1))]
-                .into_iter()
-                .map(|(provider_id, _sort_index)| provider_id),
-        );
-        assert_eq!(policy.app, AppKind::Claude);
-        assert_eq!(policy.raw["failoverProviderIds"], json!(["provider-b"]));
-
-        let mut body = json!({"model": "sonnet-public"});
-        assert_eq!(
-            crate::proxy_core::api::transport::apply_channel_route_model_override(
-                &mut body,
-                Some("sonnet-public"),
-                Some("upstream-sonnet")
-            )
-            .as_deref(),
-            Some("upstream-sonnet")
-        );
-        assert_eq!(
-            body.get("model").and_then(Value::as_str),
-            Some("upstream-sonnet")
-        );
     }
 }

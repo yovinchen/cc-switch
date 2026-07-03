@@ -18338,6 +18338,9 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
         manifest_dir.join("src/proxy/host/cc_switch/channel_auth_profile_attempts.rs");
     let attempt_source =
         fs::read_to_string(&attempt_source_path).expect("read channel_auth_profile_attempts.rs");
+    let core_domain_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/domain.rs"))
+            .expect("read proxy-core domain.rs");
     let pipeline_struct = function_slice(
         &pipeline_source,
         "pub(crate) struct CcSwitchForwardPipeline",
@@ -18426,8 +18429,9 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     );
     assert!(
         !source.contains("pub(crate) use crate::proxy_core::api::routing::route_plan_provider_ids")
-            && source.contains("crate::proxy_core::api::routing::route_plan_provider_ids("),
-        "proxy_core_adapter tests should call route_plan_provider_ids directly without a cfg(test) re-export"
+            && core_domain_source
+                .contains("fn route_plan_provider_ids_dedupes_in_selection_order"),
+        "proxy-core domain tests should own route_plan_provider_ids coverage without an adapter re-export"
     );
     let route_attempt_source = fs::read_to_string(manifest_dir.join("src/proxy/route_attempt.rs"))
         .expect("read route_attempt.rs");
@@ -18471,9 +18475,9 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
     assert!(
         !source
             .contains("forwarding_requires_runtime_error as forwarding_runtime_unavailable_error")
-            && source
-                .contains("crate::proxy_core::api::routing::forwarding_requires_runtime_error()"),
-        "proxy_core_adapter tests should call forwarding runtime errors directly from proxy-core"
+            && core_domain_source
+                .contains("fn forwarding_route_plan_error_messages_preserve_runtime_contracts"),
+        "proxy-core domain tests should own forwarding route error contracts"
     );
     assert!(
         !source.contains(
@@ -18485,6 +18489,14 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
         host_forward_function.contains("required_forward_attempts_from_sources(")
             && !host_forward_function.contains("required_forward_attempts_from_db_sources("),
         "host forward runtime should build attempts through source-injected auth profile handling"
+    );
+    assert!(
+        attempt_source.contains(
+            "fn required_forward_attempts_from_plan_errors_without_matching_host_provider"
+        ) && route_attempt_source
+            .contains("fn route_plan_mapping_preserves_multiple_channels_for_matching_provider")
+            && !source.contains("fn route_plan_adapter_projects_provider_ids_and_forward_selection"),
+        "route attempt owner tests should cover route-plan host attempt fixtures without proxy_core_adapter aggregation"
     );
     assert!(
         !source.contains("async fn forward_proxy_request_with_host_runtime")

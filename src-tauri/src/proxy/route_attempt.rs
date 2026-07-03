@@ -433,6 +433,27 @@ mod tests {
     }
 
     #[test]
+    fn route_plan_mapping_preserves_multiple_channels_for_matching_provider() {
+        let provider = Provider::with_id("p1".to_string(), "Provider".to_string(), json!({}), None);
+        let first = route_selection("p1", "ch_first");
+        let second = route_selection("missing-provider", "ch_missing");
+        let third = route_selection("p1", "ch_third");
+        let plan = RoutePlan {
+            selection: first.clone(),
+            selections: vec![first, second, third],
+            attempts: Vec::new(),
+        };
+
+        let attempts = forward_attempts_from_route_plan(&AppType::Claude, &[provider], &plan);
+        let channel_ids: Vec<_> = attempts
+            .iter()
+            .filter_map(|attempt| attempt.channel().map(|channel| channel.channel_id.as_str()))
+            .collect();
+
+        assert_eq!(channel_ids, vec!["ch_first", "ch_third"]);
+    }
+
+    #[test]
     fn channel_attempt_carries_header_and_param_overrides() {
         let provider = Provider::with_id("p1".to_string(), "Provider".to_string(), json!({}), None);
         let mut selection = route_selection("p1", "ch_override");

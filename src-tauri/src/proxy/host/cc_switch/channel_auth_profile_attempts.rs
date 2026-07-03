@@ -143,15 +143,16 @@ mod tests {
     use crate::proxy_core::api::management::ChannelKeyRuntimeCandidate;
     use crate::proxy_core::api::ports::{ChannelKeyRuntimeLookupInput, ChannelKeyRuntimeSource};
     use crate::proxy_core::api::routing::{
-        route_selection_from_parts, ChannelSpec, ChannelStatus, InterfaceKind,
+        route_selection_from_parts, ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan,
+        RouteSelection,
     };
     use serde_json::{json, Value};
 
-    fn attempt_with_auth_ref(
+    fn route_selection_with_auth_ref(
         route_provider: &Provider,
         channel_id: &str,
-        auth_profile_ref: &str,
-    ) -> ForwardAttempt {
+        auth_profile_ref: Option<&str>,
+    ) -> RouteSelection {
         let provider = ProviderSpec {
             id: route_provider.id.clone(),
             name: route_provider.name.clone(),
@@ -172,7 +173,7 @@ mod tests {
                 timeout_profile: None,
             },
             interface: InterfaceKind::AnthropicMessages,
-            auth_profile: Some(AuthProfileRef::new(auth_profile_ref)),
+            auth_profile: auth_profile_ref.map(AuthProfileRef::new),
             models: Vec::new(),
             groups: vec!["default".to_string()],
             priority: 0,
@@ -195,8 +196,16 @@ mod tests {
             needs_review: false,
             review_reasons: Vec::new(),
         };
+        route_selection_from_parts(provider, channel, None, InterfaceKind::AnthropicMessages)
+    }
+
+    fn attempt_with_auth_ref(
+        route_provider: &Provider,
+        channel_id: &str,
+        auth_profile_ref: &str,
+    ) -> ForwardAttempt {
         let selection =
-            route_selection_from_parts(provider, channel, None, InterfaceKind::AnthropicMessages);
+            route_selection_with_auth_ref(route_provider, channel_id, Some(auth_profile_ref));
         ForwardAttempt::from_core_selection(&AppType::Claude, route_provider, &selection)
     }
 
@@ -344,5 +353,30 @@ mod tests {
                 .and_then(Value::as_str),
             Some("loaded-channel-key")
         );
+    }
+
+    #[test]
+    fn required_forward_attempts_from_plan_errors_without_matching_host_provider() {
+        let route_provider = Provider::with_id(
+            "route-provider".to_string(),
+            "Route Provider".to_string(),
+            json!({}),
+            None,
+        );
+        let selection = route_selection_with_auth_ref(&route_provider, "channel-a", None);
+        let plan = RoutePlan {
+            selection: selection.clone(),
+            selections: vec![selection],
+            attempts: Vec::new(),
+        };
+
+        let error = required_forward_attempts_from_plan(&AppType::Claude, &[], &plan)
+            .expect_err("missing host providers should fail");
+
+        assert!(matches!(
+            error,
+            ProxyCoreError::Unavailable(message)
+                if message == "route plan has no matching host providers"
+        ));
     }
 }
