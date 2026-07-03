@@ -18,8 +18,8 @@ use super::{
     error_mapper::{
         claude_response_transform_error_to_proxy_error,
         codex_chat_to_responses_transform_error_to_proxy_error,
-        management_api_error_to_proxy_error, parse_claude_transform_upstream_json_or_unlabeled_sse,
-        parse_codex_chat_upstream_json_or_unlabeled_sse, proxy_core_error_to_proxy_error,
+        parse_claude_transform_upstream_json_or_unlabeled_sse,
+        parse_codex_chat_upstream_json_or_unlabeled_sse,
     },
     transport::upstream::hyper_client::ProxyResponse,
     transport::upstream::proxy_core_response_to_proxy_response,
@@ -33,14 +33,6 @@ use crate::proxy::host::cc_switch::provider_projection::{
 };
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy_core::api::domain::AppKind;
-use crate::proxy_core::api::management::{
-    ChannelCreateRequest, ChannelDeleteResponse, ChannelKeyDeleteResponse, ChannelKeyPathRequest,
-    ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse, ChannelModelRecord,
-    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
-    ChannelTestResponse, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-    ProxyChannelWriteRequest,
-};
 use crate::proxy_core::api::routing::InterfaceKind;
 use crate::proxy_core::api::transforms::{
     build_codex_tool_context_from_request, codex_chat_transform_streaming_decision,
@@ -55,7 +47,6 @@ use crate::proxy_core::api::transport::{
 use crate::proxy_core::api::usage::{
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
-use axum::Json;
 use bytes::Bytes;
 use http::{HeaderMap, Method, Uri};
 use http_body_util::BodyExt;
@@ -241,178 +232,6 @@ pub(crate) async fn collect_json_or_null_proxy_request(
         body: parsed.body,
         is_stream: parsed.is_stream,
     })
-}
-
-pub(crate) async fn dispatch_create_proxy_channel_request_to_axum_json_response(
-    state: &ProxyState,
-    request: ProxyChannelWriteRequest,
-) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
-    let request = ChannelCreateRequest::from_body(request);
-    let response = state
-        .proxy_engine()
-        .create_channel_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
-}
-
-pub(crate) async fn dispatch_get_proxy_channel_request_to_axum_json_response(
-    state: &ProxyState,
-    channel_id: String,
-) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
-    let request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .channel_record_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
-}
-
-pub(crate) async fn dispatch_update_proxy_channel_request_to_axum_json_response(
-    state: &ProxyState,
-    channel_id: String,
-    request: ProxyChannelPatchRequest,
-) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
-    let path_request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .update_channel_response(path_request, request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
-}
-
-pub(crate) async fn dispatch_delete_proxy_channel_request_to_axum_json_response(
-    state: &ProxyState,
-    channel_id: String,
-) -> Result<Json<ChannelDeleteResponse>, ProxyError> {
-    let request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .delete_channel_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
-}
-
-pub(crate) async fn dispatch_proxy_channel_keys_request_to_axum_json_response(
-    state: &ProxyState,
-    channel_id: String,
-) -> Result<Json<ChannelKeysResponse<ChannelKeyRecord>>, ProxyError> {
-    let request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .channel_keys_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
-}
-
-pub(crate) async fn dispatch_upsert_proxy_channel_key_request_to_axum_json_response(
-    state: &ProxyState,
-    channel_id: String,
-    key_ref: String,
-    request: ProxyChannelKeyWriteRequest,
-) -> Result<Json<ChannelKeyRecordResponse<ChannelKeyRecord>>, ProxyError> {
-    let path_request = ChannelKeyPathRequest::from_path(channel_id, key_ref)
-        .map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .upsert_channel_key_response(path_request, request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
-}
-
-pub(crate) async fn dispatch_update_proxy_channel_key_request_to_axum_json_response(
-    state: &ProxyState,
-    channel_id: String,
-    key_ref: String,
-    request: ProxyChannelKeyPatchRequest,
-) -> Result<Json<ChannelKeyRecordResponse<ChannelKeyRecord>>, ProxyError> {
-    let path_request = ChannelKeyPathRequest::from_path(channel_id, key_ref)
-        .map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .update_channel_key_response(path_request, request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
-}
-
-pub(crate) async fn dispatch_delete_proxy_channel_key_request_to_axum_json_response(
-    state: &ProxyState,
-    channel_id: String,
-    key_ref: String,
-) -> Result<Json<ChannelKeyDeleteResponse>, ProxyError> {
-    let path_request = ChannelKeyPathRequest::from_path(channel_id, key_ref)
-        .map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .delete_channel_key_response(path_request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
-}
-
-pub(crate) async fn dispatch_proxy_channel_models_request_to_axum_json_response(
-    state: &ProxyState,
-    channel_id: String,
-) -> Result<Json<ChannelModelsResponse<ChannelModelRecord>>, ProxyError> {
-    let request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .channel_models_response(request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
-}
-
-pub(crate) async fn dispatch_replace_proxy_channel_models_request_to_axum_json_response(
-    state: &ProxyState,
-    channel_id: String,
-    request: ProxyChannelModelsReplaceRequest,
-) -> Result<Json<ChannelModelsResponse<ChannelModelRecord>>, ProxyError> {
-    let path_request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .replace_channel_models_response(path_request, request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
-}
-
-pub(crate) async fn dispatch_proxy_channel_test_request_to_axum_json_response(
-    state: &ProxyState,
-    channel_id: String,
-    request: ProxyChannelTestRequest,
-) -> Result<Json<ChannelTestResponse>, ProxyError> {
-    let path_request =
-        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let response = state
-        .proxy_engine()
-        .channel_test_response(path_request, request)
-        .await
-        .map_err(proxy_core_error_to_proxy_error)?;
-
-    Ok(Json(response))
 }
 
 async fn dispatch_proxy_request(
