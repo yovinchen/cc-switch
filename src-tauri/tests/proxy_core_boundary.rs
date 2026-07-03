@@ -8043,6 +8043,11 @@ fn proxy_core_adapter_delegates_explicit_proxy_url_validation_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let core_transport_path = manifest_dir.join("crates/proxy-core/src/request_transport.rs");
+    let core_transport =
+        fs::read_to_string(&core_transport_path).expect("read proxy-core request_transport.rs");
+    let core_secret_path = manifest_dir.join("crates/proxy-core/src/secret.rs");
+    let core_secret = fs::read_to_string(&core_secret_path).expect("read proxy-core secret.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -8074,6 +8079,14 @@ fn proxy_core_adapter_delegates_explicit_proxy_url_validation_to_core() {
                 "pub(crate) use crate::proxy_core::api::transport::{\n    invalid_explicit_proxy_url_message"
             ),
         "proxy_core_adapter should not re-export pure global proxy URL validation constants or helpers"
+    );
+    assert!(
+        !source.contains("global_proxy_adapter_projects_masking_and_loopback_policy")
+            && core_secret.contains("fn mask_url_for_log_strips_userinfo_and_preserves_target()")
+            && core_transport.contains("fn loopback_proxy_detection_requires_matching_local_port()")
+            && core_transport.contains("fn loopback_proxy_detection_scans_trimmed_values()")
+            && core_transport.contains("fn explicit_proxy_url_validation_preserves_host_contract()"),
+        "global proxy masking, loopback, and explicit URL validation fixtures should live in proxy-core, not proxy_core_adapter"
     );
 }
 

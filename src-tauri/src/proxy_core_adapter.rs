@@ -722,60 +722,6 @@ mod tests {
     }
 
     #[test]
-    fn global_proxy_adapter_projects_masking_and_loopback_policy() {
-        use crate::proxy_core::api::transport::{
-            invalid_explicit_proxy_url_message, proxy_values_point_to_loopback_port,
-            validate_explicit_proxy_url, SYSTEM_PROXY_ENV_KEYS,
-        };
-
-        assert_eq!(
-            SYSTEM_PROXY_ENV_KEYS,
-            [
-                "HTTP_PROXY",
-                "http_proxy",
-                "HTTPS_PROXY",
-                "https_proxy",
-                "ALL_PROXY",
-                "all_proxy"
-            ]
-        );
-        assert_eq!(
-            crate::proxy_core::api::security::mask_url_for_log("http://user:pass@127.0.0.1:7890"),
-            "http://127.0.0.1:7890"
-        );
-        assert!(
-            crate::proxy_core::api::transport::proxy_url_points_to_loopback_port(
-                "socks5://localhost:15721",
-                15721
-            )
-        );
-        assert!(
-            !crate::proxy_core::api::transport::proxy_url_points_to_loopback_port(
-                "http://127.0.0.1:7890",
-                15721
-            )
-        );
-        assert!(proxy_values_point_to_loopback_port(
-            ["", " http://127.0.0.1:15721 "],
-            15721
-        ));
-        assert!(validate_explicit_proxy_url("http://127.0.0.1:7890").is_ok());
-        assert!(validate_explicit_proxy_url("socks5h://localhost:1080").is_ok());
-        let invalid_scheme =
-            validate_explicit_proxy_url("ftp://127.0.0.1:7890").expect_err("invalid scheme");
-        assert!(invalid_scheme.contains(
-            "Invalid proxy scheme 'ftp' in URL 'ftp://127.0.0.1:7890'. Supported: http, https, socks5, socks5h"
-        ));
-        let invalid_url = validate_explicit_proxy_url("http://[::1")
-            .expect_err("invalid proxy URL should report parse error");
-        assert!(invalid_url.contains("Invalid proxy URL 'http://[::1':"));
-        assert_eq!(
-            invalid_explicit_proxy_url_message("http://user:pass@127.0.0.1:7890", "bad"),
-            "Invalid proxy URL 'http://127.0.0.1:7890': bad"
-        );
-    }
-
-    #[test]
     fn provider_endpoint_adapter_projects_list_and_last_used() {
         let mut endpoints = HashMap::new();
         endpoints.insert(
