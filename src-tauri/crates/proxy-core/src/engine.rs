@@ -21,6 +21,10 @@ use super::management_api::{
 use super::management_auth::{
     resolve_management_auth_decision, validate_management_bearer_header, ManagementAuthDecision,
 };
+use super::model_fetch::{
+    client_model_catalog_entry_template_from_raw, client_model_catalog_from_routable_models,
+    DEFAULT_CODEX_MODEL_CONTEXT_WINDOW,
+};
 use super::ports::{
     AppChannelResponse, AppListResponse, ChannelBreakerStats, ChannelBreakerStatsResponse,
     ChannelDeleteResponse, ChannelHealthLookupInput, ChannelHealthReset, ChannelHealthResetResponse,
@@ -200,6 +204,9 @@ where
         let mut models = BTreeMap::new();
 
         for channel in channels {
+            if channel.app != *app {
+                continue;
+            }
             if channel.status != ChannelStatus::Enabled {
                 continue;
             }
@@ -575,7 +582,23 @@ where
         &self,
         app: &super::domain::AppKind,
     ) -> ProxyCoreResult<ModelCatalog> {
-        self.services.model_catalog().load_client_catalog(app).await
+        let host_catalog = self.services.model_catalog().load_client_catalog(app).await?;
+        if *app != AppKind::Codex {
+            return Ok(host_catalog);
+        }
+
+        let models = self.list_models(app, None, None).await?;
+        if models.is_empty() {
+            return Ok(host_catalog);
+        }
+
+        let template = client_model_catalog_entry_template_from_raw(&host_catalog.raw);
+        Ok(client_model_catalog_from_routable_models(
+            app.as_str(),
+            &models,
+            DEFAULT_CODEX_MODEL_CONTEXT_WINDOW,
+            &template,
+        ))
     }
 
     pub async fn client_model_catalog_response(

@@ -384,6 +384,14 @@ pub fn client_model_catalog_raw_from_text(catalog_text: &str) -> Value {
     serde_json::from_str(catalog_text).unwrap_or_else(|_| empty_client_model_catalog_raw())
 }
 
+pub fn client_model_catalog_entry_template_from_raw(raw: &Value) -> Value {
+    raw.get("models")
+        .and_then(Value::as_array)
+        .and_then(|models| models.iter().find(|model| model.is_object()))
+        .cloned()
+        .unwrap_or_else(|| json!({}))
+}
+
 pub fn client_model_catalog_from_optional_raw(
     provider_id: impl Into<String>,
     raw: Option<Value>,

@@ -2396,6 +2396,51 @@ fn external_host_can_use_app_model_catalog_contracts_from_prelude() {
 }
 
 #[test]
+fn external_host_codex_client_catalog_prefers_route_visible_models_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    *services.channels.lock().expect("channels mutex") =
+        vec![channel_spec_from_input(ChannelSpecInput {
+            id: "codex-channel".to_string(),
+            provider_id: "relay-a".to_string(),
+            app_type: AppKind::Codex.as_str().to_string(),
+            name: "Codex Channel".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://relay.example/openai".to_string(),
+            interface_kind: InterfaceKind::OpenAiResponses.as_str().to_string(),
+            models: vec![ModelRouteInput {
+                public_model: "gpt-route".to_string(),
+                upstream_model: "upstream-gpt-route".to_string(),
+                capabilities: json!({ "contextWindow": 64000 }),
+                ..ModelRouteInput::default()
+            }],
+            groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
+            priority: 100,
+            weight: 1,
+            ..ChannelSpecInput::default()
+        })];
+    let engine = ProxyEngine::new(services);
+
+    let response: ClientModelCatalogResponse =
+        futures::executor::block_on(engine.client_model_catalog_response(&AppKind::Codex))
+            .expect("codex client catalog");
+    let raw_models = response
+        .raw
+        .get("models")
+        .and_then(Value::as_array)
+        .expect("raw models");
+
+    assert_eq!(raw_models.len(), 1);
+    assert_eq!(
+        raw_models[0].get("slug").and_then(Value::as_str),
+        Some("gpt-route")
+    );
+    assert_eq!(
+        raw_models[0].get("context_window").and_then(Value::as_u64),
+        Some(64_000)
+    );
+}
+
+#[test]
 fn external_host_model_catalog_filters_distinct_channel_interfaces_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     *services.channels.lock().expect("channels mutex") = vec![

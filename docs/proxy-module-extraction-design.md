@@ -25,6 +25,7 @@
 14. Claude 与 Claude Desktop `/v1/messages` handler 已经由 `response_adapter` 进入 `ProxyEngine::handle`；核心 `ProxyResult` 会带回 `claudeApiFormat` 等宿主 metadata，并由 adapter 桥接为 host `ProxyResponse` 与 api_format，host 侧继续复用现有格式转换、SSE/非流式响应处理和用量解析。
 15. `ProxyEngine::list_models` 已提供按 app/group/interface 过滤的可路由模型视图，复用 channel source 的 legacy projection；`ProxyEngine::list_model_catalog` 负责生成 `/proxy/v1/apps/{app}/models` 的管理 API response envelope，返回模型对应的 provider/channel/interface 路由信息。
 16. Codex 兼容 `/v1/models` 已从 handler 直读配置迁到 `ModelCatalogProvider::load_client_catalog` 与 `ProxyEngine::client_model_catalog`；CC Switch host adapter 保留 `model_catalog_json` stale guard 和 raw catalog 返回语义。
+    更新：`ProxyEngine::client_model_catalog` 对 Codex app 会优先使用 route-visible channel model 生成 Codex 兼容 raw catalog，并在没有可路由模型时 fallback 到 host `model_catalog_json` catalog；外部中转宿主可以通过同一 public prelude contract 让 `/v1/models` 反映 channel/provider/interface 路由事实。
 17. `/proxy/v1/channels/{channel_id}/breakers/reset` 已从 handler 直连 DB/router 改为 `ProxyEngine::reset_channel_health`；host-owned `CcSwitchChannelHealthStore` 负责同时清内存 circuit breaker 和持久化健康状态，并拥有 channel attempt/reset/stats DB/router projection helper。
 18. response pipeline 中的 hop-by-hop 响应头清理和重建 body 后实体头清理已迁入 `proxy-core::response_headers`，host `response_processor` 与特殊响应转换分支复用 core helper。
 19. response pipeline 的 body 诊断摘要、content header 诊断后缀、SSE 聚合兜底失败诊断消息和未标记 SSE body 嗅探已迁入 `proxy-core::response_diagnostics`，host 只负责把诊断文本包装成现有 `ProxyError`。
@@ -2917,7 +2918,7 @@ auto failover 开关启用的计划也已收敛：`plan_auto_failover_toggle` �
 
 默认 `CcSwitchProxyServices<R>` 已迁入 `proxy/host/cc_switch/proxy_services.rs`：host services container 直接引用 core `ProxyServices` 与 config/provider/channel/route/health/reachability/auth/model catalog/runtime status/usage/event/forward pipeline port traits，持有对应端口默认实现，并保留 test-only no-runtime fixture；service runtime bound 直接引用 host-owned `ProxyServiceRuntimeResources` / `HostForwardRuntime`，adapter 继续保留 generic `CcSwitchProxyServices` 兼容 re-export，但不再提供 concrete runtime alias。
 
-CC Switch 桌面宿主通过 host-owned `CcSwitchModelCatalogProvider::load_client_catalog` 实现 Codex `model_catalog_json` 文件读取和 stale guard；外部宿主可以返回自己的模型目录。后续如需让 Codex `/v1/models` 完全使用 route-visible 目录，应在 core 内生成 Codex 兼容 raw catalog，而不是让 handler 重新拼装。
+CC Switch 桌面宿主通过 host-owned `CcSwitchModelCatalogProvider::load_client_catalog` 实现 Codex `model_catalog_json` 文件读取和 stale guard；外部宿主可以返回自己的模型目录。Codex `/v1/models` 已开始由 core 优先从 route-visible channel models 生成 Codex 兼容 raw catalog，并在 route-visible 目录为空时 fallback 到 host catalog，handler 不重新拼装 raw JSON。
 
 ## HTTP 对外接口
 
