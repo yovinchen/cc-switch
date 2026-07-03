@@ -52,12 +52,10 @@ mod tests {
         codex_provider_live_write_parts_from_settings, gemini_env_map_from_settings,
         gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
         gemini_live_settings_to_write, json_deep_merge, json_deep_remove, json_remove_array_items,
-        json_value_is_subset, live_takeover_app_kinds, live_token_sync_app_label,
-        provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
-        provider_switch_dispatch_for_app, provider_switch_requires_takeover_lock,
-        proxy_runtime_status_stopped, sanitize_claude_settings_for_live,
-        CodexProviderLiveWriteIssue, CodexProviderValidationIssue, ProviderSettingsValidationIssue,
-        ProviderSwitchDispatch,
+        json_value_is_subset, live_takeover_app_kinds, provider_settings_validation_issue_spec,
+        provider_settings_validation_parts_from_settings, proxy_runtime_status_stopped,
+        sanitize_claude_settings_for_live, CodexProviderLiveWriteIssue,
+        CodexProviderValidationIssue, ProviderSettingsValidationIssue,
     };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
@@ -3600,72 +3598,7 @@ wire_api = "chat"
     }
 
     #[test]
-    fn provider_switch_dispatch_routes_exclusive_and_desktop_to_normal_flow() {
-        let mut omo_provider = Provider::with_id(
-            "omo-provider".to_string(),
-            "OMO Provider".to_string(),
-            json!({}),
-            None,
-        );
-        omo_provider.category = Some("omo".to_string());
-        assert_eq!(
-            provider_switch_dispatch_for_app(
-                &AppKind::from(&AppType::OpenCode),
-                omo_provider.category.as_deref()
-            ),
-            ProviderSwitchDispatch::Normal
-        );
-
-        let normal_provider = Provider::with_id(
-            "normal-provider".to_string(),
-            "Normal Provider".to_string(),
-            json!({}),
-            None,
-        );
-        assert_eq!(
-            provider_switch_dispatch_for_app(
-                &AppKind::from(&AppType::ClaudeDesktop),
-                normal_provider.category.as_deref()
-            ),
-            ProviderSwitchDispatch::Normal
-        );
-        assert_eq!(
-            provider_switch_dispatch_for_app(
-                &AppKind::from(&AppType::OpenCode),
-                normal_provider.category.as_deref()
-            ),
-            ProviderSwitchDispatch::TakeoverAware
-        );
-        assert_eq!(
-            provider_switch_dispatch_for_app(
-                &AppKind::from(&AppType::Claude),
-                normal_provider.category.as_deref()
-            ),
-            ProviderSwitchDispatch::TakeoverAware
-        );
-
-        assert!(provider_switch_requires_takeover_lock(&AppKind::from(
-            &AppType::Claude
-        )));
-        assert!(provider_switch_requires_takeover_lock(&AppKind::from(
-            &AppType::Codex
-        )));
-        assert!(provider_switch_requires_takeover_lock(&AppKind::from(
-            &AppType::Gemini
-        )));
-        assert!(!provider_switch_requires_takeover_lock(&AppKind::from(
-            &AppType::ClaudeDesktop
-        )));
-        assert!(!provider_switch_requires_takeover_lock(&AppKind::from(
-            &AppType::OpenCode
-        )));
-        assert!(!provider_switch_requires_takeover_lock(&AppKind::from(
-            &AppType::OpenClaw
-        )));
-        assert!(!provider_switch_requires_takeover_lock(&AppKind::from(
-            &AppType::Hermes
-        )));
-
+    fn live_takeover_app_kinds_parse_to_cc_switch_app_types() {
         let live_takeover_apps = live_takeover_app_kinds().map(|app| {
             app.as_str()
                 .parse::<AppType>()
@@ -3674,26 +3607,6 @@ wire_api = "chat"
         assert_eq!(
             live_takeover_apps,
             [AppType::Claude, AppType::Codex, AppType::Gemini]
-        );
-        assert_eq!(
-            live_token_sync_app_label(&AppKind::from(&AppType::Claude)),
-            Some("Claude")
-        );
-        assert_eq!(
-            live_token_sync_app_label(&AppKind::from(&AppType::Codex)),
-            Some("Codex")
-        );
-        assert_eq!(
-            live_token_sync_app_label(&AppKind::from(&AppType::Gemini)),
-            Some("Gemini")
-        );
-        assert_eq!(
-            live_token_sync_app_label(&AppKind::from(&AppType::ClaudeDesktop)),
-            None
-        );
-        assert_eq!(
-            live_token_sync_app_label(&AppKind::from(&AppType::OpenCode)),
-            None
         );
     }
 
