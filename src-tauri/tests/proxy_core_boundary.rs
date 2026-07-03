@@ -1087,19 +1087,6 @@ const FORBIDDEN_RESPONSE_ADAPTER_PROXY_EVENTS_SSE_ORCHESTRATION_MARKERS: &[&str]
     "Duration::from_secs(",
     "Sse::new(",
 ];
-const FORBIDDEN_ROUTE_INSPECTION_HANDLER_ENGINE_MARKERS: &[&str] = &[
-    "ChannelListRequest::from_query(",
-    "AppChannelManagementRequest::from_parts(",
-    "GroupListRequest::from_query(",
-    "ManagementAppPathRequest::from_path(",
-    "RouteResolveManagementRequest::from_body(",
-    ".proxy_engine()",
-    ".channel_list_response(",
-    ".app_channel_response(",
-    ".group_list_response(",
-    ".current_route_response(",
-    ".resolve_route_response(",
-];
 const FORBIDDEN_CHANNEL_MUTATION_HANDLER_ENGINE_MARKERS: &[&str] = &[
     "ChannelCreateRequest::from_body(",
     "ChannelPathRequest::from_path(",
@@ -5521,11 +5508,13 @@ fn production_management_read_handlers_keep_json_bridges_on_expected_boundary() 
 }
 
 #[test]
-fn production_route_inspection_handlers_delegate_json_bridge_to_response_adapter() {
+fn production_route_inspection_handlers_keep_json_bridges_on_http_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let handlers = [
+    let adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read response_adapter.rs");
+    let handlers: [(&str, &str, &[&str], &[&str]); 5] = [
         (
             "list_all_proxy_channels",
             function_slice(
@@ -5533,7 +5522,20 @@ fn production_route_inspection_handlers_delegate_json_bridge_to_response_adapter
                 "pub async fn list_all_proxy_channels(",
                 "/// POST /proxy/v1/channels",
             ),
-            "dispatch_proxy_channels_request_to_axum_json_response(",
+            &[
+                "ChannelListRequest::from_query(query)",
+                ".map_err(management_api_error_to_proxy_error)?",
+                ".proxy_engine()",
+                ".channel_list_response(request)",
+                ".map_err(proxy_core_error_to_proxy_error)?",
+            ],
+            &[
+                "dispatch_proxy_channels_request_to_axum_json_response(",
+                "AppChannelManagementRequest::from_parts(",
+                "GroupListRequest::from_query(",
+                "ManagementAppPathRequest::from_path(",
+                "RouteResolveManagementRequest::from_body(",
+            ],
         ),
         (
             "list_proxy_channels",
@@ -5542,7 +5544,20 @@ fn production_route_inspection_handlers_delegate_json_bridge_to_response_adapter
                 "pub async fn list_proxy_channels(",
                 "/// GET /proxy/v1/groups",
             ),
-            "dispatch_proxy_app_channels_request_to_axum_json_response(",
+            &[
+                "AppChannelManagementRequest::from_parts(app_type, query)",
+                ".map_err(management_api_error_to_proxy_error)?",
+                ".proxy_engine()",
+                ".app_channel_response(request)",
+                ".map_err(proxy_core_error_to_proxy_error)?",
+            ],
+            &[
+                "dispatch_proxy_app_channels_request_to_axum_json_response(",
+                "ChannelListRequest::from_query(",
+                "GroupListRequest::from_query(",
+                "ManagementAppPathRequest::from_path(",
+                "RouteResolveManagementRequest::from_body(",
+            ],
         ),
         (
             "list_proxy_groups",
@@ -5551,7 +5566,20 @@ fn production_route_inspection_handlers_delegate_json_bridge_to_response_adapter
                 "pub async fn list_proxy_groups(",
                 "/// GET /proxy/v1/apps/{app}/routes/current",
             ),
-            "dispatch_proxy_groups_request_to_axum_json_response(",
+            &[
+                "GroupListRequest::from_query(query)",
+                ".map_err(management_api_error_to_proxy_error)?",
+                ".proxy_engine()",
+                ".group_list_response(request)",
+                ".map_err(proxy_core_error_to_proxy_error)?",
+            ],
+            &[
+                "dispatch_proxy_groups_request_to_axum_json_response(",
+                "ChannelListRequest::from_query(",
+                "AppChannelManagementRequest::from_parts(",
+                "ManagementAppPathRequest::from_path(",
+                "RouteResolveManagementRequest::from_body(",
+            ],
         ),
         (
             "get_current_proxy_route",
@@ -5560,7 +5588,20 @@ fn production_route_inspection_handlers_delegate_json_bridge_to_response_adapter
                 "pub async fn get_current_proxy_route(",
                 "/// GET /proxy/v1/apps/{app}/channels/migration/preview",
             ),
-            "dispatch_current_proxy_route_request_to_axum_json_response(",
+            &[
+                "ManagementAppPathRequest::from_path(app_type)",
+                ".map_err(management_api_error_to_proxy_error)?",
+                ".proxy_engine()",
+                ".current_route_response(request)",
+                ".map_err(proxy_core_error_to_proxy_error)?",
+            ],
+            &[
+                "dispatch_current_proxy_route_request_to_axum_json_response(",
+                "ChannelListRequest::from_query(",
+                "AppChannelManagementRequest::from_parts(",
+                "GroupListRequest::from_query(",
+                "RouteResolveManagementRequest::from_body(",
+            ],
         ),
         (
             "resolve_proxy_route",
@@ -5569,24 +5610,39 @@ fn production_route_inspection_handlers_delegate_json_bridge_to_response_adapter
                 "pub async fn resolve_proxy_route(",
                 "/// GET /v1/models",
             ),
-            "dispatch_proxy_route_resolve_request_to_axum_json_response(",
+            &[
+                "RouteResolveManagementRequest::from_body(request)",
+                ".map_err(management_api_error_to_proxy_error)?",
+                ".proxy_engine()",
+                ".resolve_route_response(request)",
+                ".map_err(proxy_core_error_to_proxy_error)?",
+            ],
+            &[
+                "dispatch_proxy_route_resolve_request_to_axum_json_response(",
+                "ChannelListRequest::from_query(",
+                "AppChannelManagementRequest::from_parts(",
+                "GroupListRequest::from_query(",
+                "ManagementAppPathRequest::from_path(",
+            ],
         ),
     ];
 
     let mut violations = Vec::new();
-    for (handler_name, handler, adapter_marker) in handlers {
-        if !handler.contains(adapter_marker) {
-            violations.push(format!(
-                "src/proxy/transport/http/handlers.rs {handler_name} should call `{adapter_marker}`"
-            ));
+    for (handler_name, handler, required_markers, forbidden_markers) in handlers {
+        for marker in required_markers {
+            if !handler.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/transport/http/handlers.rs {handler_name} should contain route inspection boundary marker `{marker}`"
+                ));
+            }
         }
 
         for (line_index, line) in production_lines(handler) {
             let code = line.split("//").next().unwrap_or_default();
-            for marker in FORBIDDEN_ROUTE_INSPECTION_HANDLER_ENGINE_MARKERS {
+            for marker in forbidden_markers {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/transport/http/handlers.rs {handler_name}:{} contains route inspection engine marker `{}`",
+                        "src/proxy/transport/http/handlers.rs {handler_name}:{} contains route inspection boundary marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -5594,10 +5650,33 @@ fn production_route_inspection_handlers_delegate_json_bridge_to_response_adapter
             }
         }
     }
+    for marker in [
+        "dispatch_proxy_channels_request_to_axum_json_response",
+        "dispatch_proxy_app_channels_request_to_axum_json_response",
+        "dispatch_proxy_groups_request_to_axum_json_response",
+        "dispatch_current_proxy_route_request_to_axum_json_response",
+        "dispatch_proxy_route_resolve_request_to_axum_json_response",
+        "ChannelListRequest",
+        "AppChannelManagementRequest",
+        "AppChannelResponse",
+        "GroupListRequest",
+        "RouteGroupListResponse",
+        "CurrentRouteResponse",
+        "CurrentRouteTarget",
+        "RouteResolveManagementRequest",
+        "RouteResolveRequest",
+        "RouteResolveResponse",
+    ] {
+        if adapter_source.contains(marker) {
+            violations.push(format!(
+                "src/proxy/response_adapter.rs should not own route inspection marker `{marker}`"
+            ));
+        }
+    }
 
     assert!(
         violations.is_empty(),
-        "route inspection handlers must delegate request construction, dry-run/current-route engine calls, and JSON wrapping to response_adapter:\n{}",
+        "route inspection handlers must keep request construction, dry-run/current-route engine calls, and JSON wrapping on the HTTP boundary:\n{}",
         violations.join("\n")
     );
 }
@@ -27824,13 +27903,11 @@ fn proxy_response_adapter_owns_core_transport_imports() {
             && source.contains("parse_json_proxy_request_body_or_null")
             && source.contains("ProxyBody")
             && source.contains("crate::proxy_core::api::management::{")
-            && (source.contains("crate::proxy_core::api::ports::{")
-                || source.contains("crate::proxy_core::api::ports::CurrentRouteTarget"))
             && source.contains("crate::proxy_core::api::routing::InterfaceKind")
             && source.contains("crate::proxy_core::api::transforms::{")
             && source.contains("build_codex_tool_context_from_request")
             && source.contains("crate::proxy_core::api::usage::{"),
-        "response_adapter should import core domain/transport/management/ports/routing/transforms/usage contracts directly"
+        "response_adapter should import core domain/transport/management/routing/transforms/usage contracts directly"
     );
     assert!(
         !source.contains("dispatch_proxy_status_request_to_axum_json_response")
@@ -27855,6 +27932,24 @@ fn proxy_response_adapter_owns_core_transport_imports() {
                 .contains("dispatch_codex_client_model_catalog_request_to_axum_json_response")
             && !source.contains("ClientModelCatalogResponse"),
         "response_adapter should not own app-model or Codex client model catalog JSON bridges"
+    );
+    assert!(
+        !source.contains("dispatch_proxy_channels_request_to_axum_json_response")
+            && !source.contains("dispatch_proxy_app_channels_request_to_axum_json_response")
+            && !source.contains("dispatch_proxy_groups_request_to_axum_json_response")
+            && !source.contains("dispatch_current_proxy_route_request_to_axum_json_response")
+            && !source.contains("dispatch_proxy_route_resolve_request_to_axum_json_response")
+            && !source.contains("ChannelListRequest")
+            && !source.contains("AppChannelManagementRequest")
+            && !source.contains("AppChannelResponse")
+            && !source.contains("GroupListRequest")
+            && !source.contains("RouteGroupListResponse")
+            && !source.contains("CurrentRouteResponse")
+            && !source.contains("CurrentRouteTarget")
+            && !source.contains("RouteResolveManagementRequest")
+            && !source.contains("RouteResolveRequest")
+            && !source.contains("RouteResolveResponse"),
+        "response_adapter should not own route inspection JSON bridges"
     );
 
     let mut violations = Vec::new();
@@ -28050,6 +28145,7 @@ fn http_handlers_import_core_contracts_directly() {
 
     for marker in [
         "AppChannelListQuery",
+        "AppChannelManagementRequest",
         "AppChannelResponse",
         "AppListRequest",
         "AppListResponse",
@@ -28063,6 +28159,7 @@ fn http_handlers_import_core_contracts_directly() {
         "ChannelKeyRecordResponse",
         "ChannelKeysResponse",
         "ChannelListQuery",
+        "ChannelListRequest",
         "ChannelListResponse",
         "ChannelMigrationMaterializeResponse",
         "ChannelMigrationPreviewResponse",
@@ -28078,6 +28175,7 @@ fn http_handlers_import_core_contracts_directly() {
         "CurrentRouteResponse",
         "CurrentRouteTarget",
         "GroupListQuery",
+        "GroupListRequest",
         "HealthCheckResponse",
         "ProviderListResponse",
         "ProxyChannelKeyPatchRequest",
@@ -28090,6 +28188,7 @@ fn http_handlers_import_core_contracts_directly() {
         "ProxyStatusResponse",
         "RoutableModelList",
         "RouteGroupListResponse",
+        "RouteResolveManagementRequest",
         "RouteResolveRequest",
         "RouteResolveResponse",
     ] {
