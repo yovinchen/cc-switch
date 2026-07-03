@@ -8778,6 +8778,23 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
     let runtime_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs"))
             .expect("read proxy_runtime.rs");
+    let engine_routing_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/routing.rs"))
+            .expect("read engine/routing.rs");
+    let core_circuit_key_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/circuit_breaker_key.rs"))
+            .expect("read proxy-core circuit_breaker_key.rs");
+    let core_circuit_config_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/circuit_breaker_config.rs"))
+            .expect("read proxy-core circuit_breaker_config.rs");
+    let core_provider_selection_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/provider_selection.rs"))
+            .expect("read proxy-core provider_selection.rs");
+    let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
+        .expect("read proxy-core ports.rs");
+    let core_route_resolve_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/route_resolve.rs"))
+            .expect("read proxy-core route_resolve.rs");
     let adapter_runtime_source = adapter_source
         .split("\n#[cfg(test)]\nmod tests")
         .next()
@@ -8829,6 +8846,43 @@ fn proxy_core_adapter_does_not_export_provider_selection_aliases() {
             "proxy_core_adapter should not import management dry-run route DTO `{marker}` after route resolver owns that helper"
         );
     }
+    assert!(
+        !adapter_source.contains("fn circuit_and_route_adapter_projects_provider_router_contracts"),
+        "proxy_core_adapter should not retain the mixed circuit/route fixture"
+    );
+    assert!(
+        core_circuit_key_source.contains("fn provider_keys_preserve_existing_shape")
+            && core_circuit_key_source.contains("fn channel_keys_preserve_existing_shape")
+            && core_circuit_config_source
+                .contains("fn circuit_state_display_and_serde_use_external_labels")
+            && core_circuit_config_source
+                .contains("fn circuit_breaker_stats_serialize_management_shape")
+            && core_circuit_config_source
+                .contains("fn allow_result_preserves_half_open_permit_flag"),
+        "proxy-core circuit owner modules should carry circuit key/state/stat fixtures"
+    );
+    assert!(
+        core_provider_selection_source
+            .contains("fn failover_enabled_uses_queue_order_and_skips_missing_providers")
+            && core_provider_selection_source
+                .contains("fn failover_circuit_lookups_preserve_queue_and_mark_missing_providers")
+            && core_provider_selection_source
+                .contains("fn current_provider_source_resolution_preserves_settings_priority"),
+        "proxy-core provider_selection.rs should own provider selection/current-provider fixtures"
+    );
+    assert!(
+        core_ports_source
+            .contains("fn channel_route_source_falls_back_only_when_materialized_empty")
+            && core_route_resolve_source
+                .contains("fn route_candidate_channel_circuit_keys_project_response_candidates"),
+        "proxy-core route owner modules should carry route source and channel circuit fixtures"
+    );
+    assert!(
+        runtime_source.contains("fn forward_current_provider_source_prefers_settings_without_db_lookup")
+            && engine_routing_source
+                .contains("fn provider_selection_failure_maps_to_existing_app_errors"),
+        "host runtime/routing modules should own host-specific current-provider and error mapping fixtures"
+    );
 }
 
 #[test]

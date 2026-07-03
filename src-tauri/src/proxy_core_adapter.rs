@@ -1,22 +1,14 @@
 #[cfg(test)]
 use crate::app_config::AppType;
 #[cfg(test)]
-use crate::error::AppError;
-#[cfg(test)]
 use crate::provider::Provider;
-use crate::proxy::host::cc_switch::proxy_runtime::forward_current_provider_id_from_source;
 #[cfg(test)]
 use crate::proxy::provider::claude_provider_api_format;
 
 #[cfg(test)]
 mod tests {
-    use crate::proxy::engine::routing::provider_router_app_error_from_provider_selection_failure;
     use crate::proxy::provider::{
         transform_claude_response_for_api_format, transform_claude_sse_for_api_format,
-    };
-    use crate::proxy_core::api::config::{
-        app_type_from_circuit_key, channel_circuit_key, provider_circuit_key, AllowResult,
-        CircuitBreakerStats, CircuitState,
     };
     use crate::proxy_core::api::domain::{
         extract_claude_base_url_from_settings, AppKind, ProviderKind,
@@ -53,14 +45,7 @@ mod tests {
     use crate::proxy_core::api::auth::{
         extract_claude_auth_key_from_settings, ClaudeAuthKeySource,
     };
-    use crate::proxy_core::api::management::{ChannelRouteSource, RouteResolveRequest};
     use crate::proxy_core::api::ports::codex_restored_live_settings_parts;
-    use crate::proxy_core::api::routing::{
-        apply_route_candidate_circuit_availability, current_provider_id_from_sources,
-        resolve_channel_route, route_candidate_channel_circuit_keys, select_provider_ids,
-        ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput,
-        RouteResolveChannelInput, RouteResolveModelInput,
-    };
     use crate::proxy_core::api::transforms::normalize_claude_anthropic_messages;
     use crate::proxy_core::api::transforms::{
         CodexChatReasoningOptions, CodexChatReasoningProfile,
@@ -70,213 +55,7 @@ mod tests {
         ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
     };
     use bytes::Bytes;
-    use indexmap::IndexMap;
     use std::sync::Arc;
-
-    #[test]
-    fn circuit_and_route_adapter_projects_provider_router_contracts() {
-        assert_eq!(
-            crate::proxy_core::api::logging::cb::OPEN_TO_HALF_OPEN,
-            "CB-001"
-        );
-        assert_eq!(
-            crate::proxy_core::api::logging::cb::HALF_OPEN_TO_CLOSED,
-            "CB-002"
-        );
-        assert_eq!(
-            provider_circuit_key("claude", "provider-a"),
-            "claude:provider-a"
-        );
-        assert_eq!(
-            channel_circuit_key("claude", "channel-a"),
-            "channel:claude:channel-a"
-        );
-        assert_eq!(
-            app_type_from_circuit_key("channel:claude:channel-a"),
-            "claude"
-        );
-        assert_eq!(CircuitState::HalfOpen.to_string(), "half_open");
-
-        let allow_result = AllowResult {
-            allowed: true,
-            used_half_open_permit: true,
-        };
-        assert!(allow_result.allowed);
-        assert!(allow_result.used_half_open_permit);
-
-        let stats = CircuitBreakerStats {
-            state: CircuitState::Open,
-            consecutive_failures: 4,
-            consecutive_successes: 0,
-            total_requests: 10,
-            failed_requests: 6,
-        };
-        assert_eq!(
-            serde_json::to_value(stats).expect("serialize circuit stats"),
-            json!({
-                "state": "open",
-                "consecutiveFailures": 4,
-                "consecutiveSuccesses": 0,
-                "totalRequests": 10,
-                "failedRequests": 6
-            })
-        );
-
-        let selected = select_provider_ids(ProviderSelectionInput::failover(vec![
-            ProviderSelectionCandidate::new("missing", false, true),
-            ProviderSelectionCandidate::new("provider-b", true, true),
-            ProviderSelectionCandidate::new("provider-a", true, false),
-        ]))
-        .expect("selected provider ids");
-        assert_eq!(selected, vec!["provider-b"]);
-        let mut failover_providers = IndexMap::new();
-        failover_providers.insert(
-            "provider-a".to_string(),
-            Provider::with_id(
-                "provider-a".to_string(),
-                "Provider A".to_string(),
-                json!({}),
-                None,
-            ),
-        );
-        failover_providers.insert(
-            "provider-b".to_string(),
-            Provider::with_id(
-                "provider-b".to_string(),
-                "Provider B".to_string(),
-                json!({}),
-                None,
-            ),
-        );
-        let failover_lookups = crate::proxy_core::api::routing::provider_failover_circuit_lookups(
-            "claude",
-            vec![
-                "missing".to_string(),
-                "provider-b".to_string(),
-                "provider-a".to_string(),
-            ],
-            failover_providers.keys().cloned().collect::<Vec<_>>(),
-        );
-        assert_eq!(failover_lookups[0].provider_id, "missing");
-        assert!(!failover_lookups[0].configured);
-        assert_eq!(failover_lookups[1].provider_id, "provider-b");
-        assert!(failover_lookups[1].configured);
-        assert_eq!(
-            failover_lookups[1].circuit_key.as_deref(),
-            Some("claude:provider-b")
-        );
-        assert_eq!(
-            crate::proxy_core::api::management::channel_route_source_for_materialized_count(1),
-            ChannelRouteSource::MaterializedChannels
-        );
-        assert_eq!(
-            crate::proxy_core::api::management::channel_route_source_for_materialized_count(0),
-            ChannelRouteSource::LegacyProjection
-        );
-        assert!(matches!(
-            provider_router_app_error_from_provider_selection_failure(
-                "claude",
-                ProviderSelectionFailure::AllProvidersCircuitOpen,
-            ),
-            AppError::AllProvidersCircuitOpen
-        ));
-        assert!(matches!(
-            provider_router_app_error_from_provider_selection_failure(
-                "claude",
-                ProviderSelectionFailure::NoProvidersConfigured,
-            ),
-            AppError::NoProvidersConfigured
-        ));
-        assert_eq!(
-            current_provider_id_from_sources(Some("settings-provider"), Some("db-provider")),
-            "settings-provider"
-        );
-        assert_eq!(
-            crate::proxy_core::api::routing::current_provider_id_option_from_sources(
-                Some("settings-provider"),
-                Some("db-provider"),
-            ),
-            Some("settings-provider".to_string())
-        );
-        assert!(
-            !crate::proxy_core::api::routing::current_provider_db_fallback_required(Some(
-                "settings-provider"
-            ))
-        );
-        assert!(!crate::proxy_core::api::routing::current_provider_db_fallback_required(Some("")));
-        assert!(crate::proxy_core::api::routing::current_provider_db_fallback_required(None));
-        assert_eq!(
-            crate::proxy_core::api::routing::current_provider_id_option_from_sources(None, None),
-            None
-        );
-        let mut db_lookup_called = false;
-        assert_eq!(
-            forward_current_provider_id_from_source(Some("settings-provider"), || {
-                db_lookup_called = true;
-                Some("db-provider".to_string())
-            }),
-            "settings-provider"
-        );
-        assert!(!db_lookup_called);
-        assert_eq!(
-            forward_current_provider_id_from_source(None, || Some("db-provider".to_string())),
-            "db-provider"
-        );
-        assert_eq!(forward_current_provider_id_from_source(None, || None), "");
-        let selected_current = select_provider_ids(ProviderSelectionInput::current(Some(
-            "provider-a".to_string(),
-        )))
-        .map_err(|error| provider_router_app_error_from_provider_selection_failure("claude", error))
-        .expect("selected current provider id");
-        assert_eq!(selected_current, vec!["provider-a"]);
-        assert!(matches!(
-            select_provider_ids(ProviderSelectionInput::current(None)).map_err(|error| {
-                provider_router_app_error_from_provider_selection_failure("claude", error)
-            }),
-            Err(AppError::NoProvidersConfigured)
-        ));
-
-        let mut response = resolve_channel_route(
-            RouteResolveRequest {
-                app_type: "claude".to_string(),
-                requested_model: Some("claude-sonnet-4".to_string()),
-                interface_kind: Some("anthropic_messages".to_string()),
-                route_group: None,
-            },
-            vec![RouteResolveChannelInput {
-                channel_id: "channel-a".to_string(),
-                provider_id: "provider-a".to_string(),
-                channel_name: "Provider A".to_string(),
-                status: "enabled".to_string(),
-                base_url: "https://api.example.com/v1".to_string(),
-                interface_kind: "anthropic_messages".to_string(),
-                groups: vec!["default".to_string()],
-                models: vec![RouteResolveModelInput {
-                    public_model: "claude-sonnet-4".to_string(),
-                    upstream_model: "upstream-sonnet".to_string(),
-                }],
-                priority: 100,
-                weight: 1,
-                health_policy: json!({}),
-                source_kind: "legacy_provider".to_string(),
-            }],
-            ChannelRouteSource::MaterializedChannels,
-        )
-        .expect("route response");
-        assert_eq!(response.candidates.len(), 1);
-
-        let circuit_lookups = route_candidate_channel_circuit_keys(&response);
-        assert_eq!(circuit_lookups.len(), 1);
-        assert_eq!(circuit_lookups[0].channel_id, "channel-a");
-        assert_eq!(circuit_lookups[0].circuit_key, "channel:claude:channel-a");
-        apply_route_candidate_circuit_availability(
-            &mut response,
-            [(circuit_lookups[0].clone(), false)],
-        );
-        assert!(response.candidates.is_empty());
-        assert_eq!(response.rejected.len(), 1);
-        assert_eq!(response.rejected[0].reasons, vec!["circuit_open"]);
-    }
 
     #[test]
     fn codex_provider_adapter_projects_chat_policy_headers_and_reasoning() {

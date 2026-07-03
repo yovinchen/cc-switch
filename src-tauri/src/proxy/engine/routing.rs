@@ -717,6 +717,24 @@ mod tests {
         assert_eq!(selected, vec!["provider-b"]);
     }
 
+    #[test]
+    fn provider_selection_failure_maps_to_existing_app_errors() {
+        assert!(matches!(
+            provider_router_app_error_from_provider_selection_failure(
+                "claude",
+                ProviderSelectionFailure::AllProvidersCircuitOpen,
+            ),
+            AppError::AllProvidersCircuitOpen
+        ));
+        assert!(matches!(
+            provider_router_app_error_from_provider_selection_failure(
+                "claude",
+                ProviderSelectionFailure::NoProvidersConfigured,
+            ),
+            AppError::NoProvidersConfigured
+        ));
+    }
+
     #[tokio::test]
     #[serial]
     async fn test_failover_disabled_uses_current_provider() {

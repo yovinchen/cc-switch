@@ -505,6 +505,25 @@ mod tests {
     }
 
     #[test]
+    fn forward_current_provider_source_prefers_settings_without_db_lookup() {
+        let mut db_lookup_called_for_settings = false;
+        assert_eq!(
+            forward_current_provider_id_from_source(Some("settings-provider"), || {
+                db_lookup_called_for_settings = true;
+                Some("db-provider".to_string())
+            }),
+            "settings-provider"
+        );
+        assert!(!db_lookup_called_for_settings);
+
+        assert_eq!(
+            forward_current_provider_id_from_source(None, || Some("db-provider".to_string())),
+            "db-provider"
+        );
+        assert_eq!(forward_current_provider_id_from_source(None, || None), "");
+    }
+
+    #[test]
     fn runtime_policy_and_options_follow_app_proxy_config() {
         let app_config = app_proxy_config_fixture();
 
