@@ -17655,6 +17655,12 @@ fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
         "adapter should pass provider availability as a fact into the core channel auth plan"
     );
     assert!(
+        attempt_source.contains("struct TestChannelKeyRuntimeSource")
+            && !source.contains("struct TestChannelKeyRuntimeSource")
+            && !source.contains("fn channel_auth_profile_warning_adapter_projects_optional_ref"),
+        "channel auth profile runtime test fixtures should live beside the host attempt source, not in proxy_core_adapter"
+    );
+    assert!(
         !function.contains("channel_auth_profile_action("),
         "adapter must not bypass the core channel auth application plan with the lower-level action helper"
     );
