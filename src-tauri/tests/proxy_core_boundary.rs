@@ -6367,6 +6367,9 @@ fn proxy_core_adapter_does_not_export_usage_contract_aliases() {
         .expect("read proxy_core_host.rs");
     let context_source = fs::read_to_string(manifest_dir.join("src/proxy/engine/context.rs"))
         .expect("read proxy/engine/context.rs");
+    let database_usage_sink_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/database_usage_sink.rs"))
+            .expect("read database_usage_sink.rs");
     let usage_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/usage.rs"))
         .expect("read proxy-core usage.rs");
 
@@ -6394,8 +6397,9 @@ fn proxy_core_adapter_does_not_export_usage_contract_aliases() {
     );
 
     assert!(
-        host_source.contains("use crate::proxy_core::api::usage::UsageRecord;"),
-        "proxy_core_host test harness should import UsageRecord directly from proxy_core usage"
+        !host_source.contains("use crate::proxy_core::api::usage::UsageRecord;")
+            && database_usage_sink_source.contains("UsageRecord"),
+        "UsageRecord fixtures should live with database_usage_sink rather than proxy_core_host"
     );
     let host_adapter_import = proxy_core_adapter_import_identifiers(&host_source);
     assert!(
@@ -24198,6 +24202,8 @@ fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
     let usage_sink_path = manifest_dir.join("src/proxy/host/cc_switch/database_usage_sink.rs");
     let usage_sink_source =
         fs::read_to_string(&usage_sink_path).expect("read database_usage_sink.rs");
@@ -24217,6 +24223,12 @@ fn proxy_core_adapter_delegates_usage_sink_source_to_host_module() {
             && usage_sink_source.contains("fn usage_record_pricing_model(")
             && usage_sink_source.contains("UsageLogger::new("),
         "CC Switch usage sink implementation should live in host/cc_switch/database_usage_sink.rs"
+    );
+    assert!(
+        usage_sink_source.contains("async fn usage_sink_records_complete_usage_records()")
+            && !host_harness_source
+                .contains("async fn usage_sink_records_complete_usage_records()"),
+        "usage sink DB write fixture should live with CcSwitchUsageSink, not proxy_core_host"
     );
     assert!(
         !adapter_source.contains(

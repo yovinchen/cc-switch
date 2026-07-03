@@ -2068,6 +2068,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1442. channel source legacy projection fixture 已拆回 owner：旧 provider 配置经 `CcSwitchChannelSource::list_channels` 投影为 core `ChannelSpec` 的覆盖已迁入 `proxy/host/cc_switch/database_channel_source.rs`；`proxy_core_host` 不再承载这组 channel source fixture。
 1443. route resolver fixture 已拆回 owner：最高优先级匹配 channel、upstream model、attempt/selections 展开的覆盖已迁入 `proxy/host/cc_switch/route_resolver.rs`；`proxy_core_host` 不再承载这组 route resolver fixture。
 1444. forward pipeline no-runtime fixture 已拆回 owner：未注入 host runtime 时 `CcSwitchForwardPipeline` 返回 core unsupported error 的覆盖已迁入 `proxy/host/cc_switch/forward_pipeline.rs`；`proxy_core_host` 不再承载这组 forward pipeline fixture。
+1445. usage sink fixture 已拆回 owner：`UsageRecord` 经 `CcSwitchUsageSink` 计价并写入 `proxy_request_logs` 的完整 DB 覆盖已迁入 `proxy/host/cc_switch/database_usage_sink.rs`；`proxy_core_host` 不再承载这组 usage sink fixture。
 
 ## 背景
 
