@@ -8,11 +8,10 @@ use crate::provider::Provider;
 use crate::proxy::engine::forward_pipeline::{
     ForwarderAnthropicRectifierGateInput, ForwarderAppMediaPreventionInput,
     ForwarderAttemptBodyInput, ForwarderAttemptFailedInput, ForwarderAttemptStartedInput,
-    ForwarderClaudeBodyPolicyInput, ForwarderCodexChatProtocolEnrichmentInput,
-    ForwarderCodexResponsesToChatInput, ForwarderCopilotRequestOptimizationGateInput,
-    ForwarderCopilotRequestOptimizationInput, ForwarderCurrentProviderInput,
-    ForwarderFailoverSwitchTarget, ForwarderForwardErrorStatusInput, ForwarderMediaRetryPlanInput,
-    ForwarderPreparedRequest, ForwarderProtocolStateSource, ForwarderProviderFailureInput,
+    ForwarderClaudeBodyPolicyInput, ForwarderCodexResponsesToChatInput,
+    ForwarderCopilotRequestOptimizationGateInput, ForwarderCopilotRequestOptimizationInput,
+    ForwarderCurrentProviderInput, ForwarderFailoverSwitchTarget, ForwarderForwardErrorStatusInput,
+    ForwarderMediaRetryPlanInput, ForwarderPreparedRequest, ForwarderProviderFailureInput,
     ForwarderProviderRectifierRetryFailureInput, ForwarderProviderRequestBodyInput,
     ForwarderProviderTransformInput, ForwarderRectifierRetryFailureDecision,
     ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
@@ -46,9 +45,6 @@ use serde_json::Value;
 use uuid::Uuid;
 
 #[cfg(test)]
-use crate::proxy::host::cc_switch::forwarder_protocol_state_source::CcSwitchForwarderProtocolStateSource;
-
-#[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_request_source::{
     default_forwarder_request_source, forwarder_rectifier_error_message,
     CcSwitchForwarderRequestSource,
@@ -56,7 +52,6 @@ use crate::proxy::host::cc_switch::forwarder_request_source::{
 
 #[cfg(test)]
 mod tests {
-    use crate::proxy::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy::engine::routing::provider_router_app_error_from_provider_selection_failure;
     use crate::proxy::host::cc_switch::forwarder_runtime_state_source::current_route_target_from_provider;
     use crate::proxy::host::cc_switch::provider_adapter_context::forwarder_provider_adapter_context_for_app;
@@ -951,32 +946,6 @@ mod tests {
 
         assert_eq!(claude_adapter.facts().adapter_name, "Claude");
         assert_eq!(fallback_adapter.facts().adapter_name, "Codex");
-    }
-
-    #[tokio::test]
-    async fn forwarder_protocol_state_source_skips_codex_chat_enrichment_when_disabled() {
-        let source = CcSwitchForwarderProtocolStateSource::new(
-            Arc::new(GeminiShadowStore::default()),
-            Arc::new(CodexChatHistoryStore::default()),
-        );
-        let mut body = json!({
-            "model": "gpt-5",
-            "input": [{
-                "type": "function_call_output",
-                "call_id": "call-1",
-                "output": "{}"
-            }]
-        });
-        let original = body.clone();
-
-        source
-            .enrich_codex_chat_request(ForwarderCodexChatProtocolEnrichmentInput {
-                body: &mut body,
-                enabled: false,
-            })
-            .await;
-
-        assert_eq!(body, original);
     }
 
     #[test]

@@ -72,3 +72,35 @@ pub(crate) fn forwarder_protocol_state_source_from_runtime_parts(
         codex_chat_history,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn forwarder_protocol_state_source_skips_codex_chat_enrichment_when_disabled() {
+        let source = CcSwitchForwarderProtocolStateSource::new(
+            Arc::new(GeminiShadowStore::default()),
+            Arc::new(CodexChatHistoryStore::default()),
+        );
+        let mut body = json!({
+            "model": "gpt-5",
+            "input": [{
+                "type": "function_call_output",
+                "call_id": "call-1",
+                "output": "{}"
+            }]
+        });
+        let original = body.clone();
+
+        source
+            .enrich_codex_chat_request(ForwarderCodexChatProtocolEnrichmentInput {
+                body: &mut body,
+                enabled: false,
+            })
+            .await;
+
+        assert_eq!(body, original);
+    }
+}

@@ -424,6 +424,7 @@
 406. `providers::models::{anthropic, openai}` 未使用 DTO 模块已删除；Anthropic/OpenAI/Codex/Gemini 协议 request/response shape 继续由 `proxy-core` 的转换与端口类型维护，host provider 层不再保留死的协议模型副本。
 407. Forwarder 的转换后请求体选择（Codex Responses→Chat、Claude protocol transform body、provider transform、passthrough）和映射后初始 outbound model 归因已收敛到 `ForwarderRequestSource::transform_request_body`；host forwarder 只保留 Codex history enrichment 与 Claude session/shadow 状态调用。
 408. Codex Chat history enrichment 的启用 gate 已收敛到 `ForwarderProtocolStateSource::enrich_codex_chat_request` 输入；host forwarder 不再本地包裹 `codex_responses_to_chat` 条件，只传入状态源需要的 enabled 事实和可变 body。
+408a. `ForwarderProtocolStateSource` 的 disabled enrichment gate 行为测试已从 `proxy_core_adapter` 迁到 owning `proxy/host/cc_switch/forwarder_protocol_state_source.rs`；边界测试继续约束 protocol-state source 行为 fixture 不再回流到 adapter。
 409. 上游响应的 success/error 判定、成功响应 first-byte/body-read 准备和非成功响应 `ProxyError::UpstreamError` 投影已收敛到 `ForwarderResponseSource::finalize_upstream_response`；host forwarder 不再直接读取 `response.status().is_success()`。
 410. 出站 body 定稿后的最终 outbound model 归因已收敛到 `ForwarderRequestSource::prepare_upstream_body` 输出；host forwarder 不再本地执行 prepared body model 覆盖初始 mapped model 的回退链。
 411. 普通 forward failure 的重试决策、retryable provider 日志和 terminal failure 日志输入已进一步收敛到 `ForwarderRuntimeStateSource::{forward_failure_decision,terminal_forward_failure_log_for_error}`；host forwarder 不再本地串联 `ForwardFailureKind`、retryable 分类和日志 helper，只消费 source 的决策结果并执行 permit/健康状态副作用。

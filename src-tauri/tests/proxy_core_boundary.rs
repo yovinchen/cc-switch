@@ -20474,6 +20474,18 @@ fn production_forwarder_uses_protocol_state_source_resource() {
             && !adapter_runtime_source.contains("struct CcSwitchForwarderProtocolStateSource"),
         "host proxy_state should use the default forwarder protocol state source without routing it through proxy_core_adapter"
     );
+    assert!(
+        protocol_source
+            .contains("forwarder_protocol_state_source_skips_codex_chat_enrichment_when_disabled")
+            && !adapter_source
+                .contains("forwarder_protocol_state_source_skips_codex_chat_enrichment_when_disabled"),
+        "ForwarderProtocolStateSource behavior fixture should live beside the owning host source, not proxy_core_adapter"
+    );
+    assert!(
+        !adapter_source
+            .contains("forwarder_protocol_state_source::CcSwitchForwarderProtocolStateSource"),
+        "proxy_core_adapter should not import the host ForwarderProtocolStateSource implementation for migrated behavior tests"
+    );
 
     let struct_forbidden_markers = [
         "gemini_shadow: Arc<GeminiShadowStore>",
