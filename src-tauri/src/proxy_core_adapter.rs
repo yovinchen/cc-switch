@@ -2466,25 +2466,6 @@ wire_api = "chat"
     }
 
     #[test]
-    fn proxy_switch_policy_adapter_preserves_takeover_state_rules() {
-        assert!(!proxy_live_config_owned_by_takeover(false, false));
-        assert!(proxy_live_config_owned_by_takeover(true, false));
-        assert!(proxy_live_config_owned_by_takeover(false, true));
-        assert!(!proxy_switch_should_hot_switch(false, false));
-        assert!(proxy_switch_should_hot_switch(true, false));
-        assert!(proxy_switch_should_hot_switch(false, true));
-
-        assert!(!proxy_takeover_marked_state_is_reusable(false, false));
-        assert!(!proxy_takeover_marked_state_is_reusable(true, false));
-        assert!(!proxy_takeover_marked_state_is_reusable(false, true));
-        assert!(proxy_takeover_marked_state_is_reusable(true, true));
-        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(false, false));
-        assert!(proxy_takeover_should_restore_existing_backup_before_retakeover(true, false));
-        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(false, true));
-        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(true, true));
-    }
-
-    #[test]
     fn sanitize_claude_settings_for_live_strips_host_only_fields() {
         let sanitized = sanitize_claude_settings_for_live(&json!({
             "api_format": "anthropic",

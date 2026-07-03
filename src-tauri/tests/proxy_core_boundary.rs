@@ -9368,6 +9368,13 @@ fn live_takeover_callers_import_proxy_policy_helpers_directly_from_core_ports() 
                 .contains("fn local_proxy_url_probe_accepts_http_loopback_forms_only()"),
         "local proxy URL cleanup fixtures should live in proxy-core ports, not proxy_core_adapter"
     );
+    assert!(
+        !adapter_source.contains("proxy_switch_policy_adapter_preserves_takeover_state_rules")
+            && core_ports_source.contains(
+                "fn takeover_retakeover_and_official_category_policies_are_host_neutral()"
+            ),
+        "takeover/switch pure policy fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
 }
 
 #[test]
