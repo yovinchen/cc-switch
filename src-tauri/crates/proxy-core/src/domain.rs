@@ -1350,6 +1350,7 @@ pub fn health_policy_key_failure_cooldown_ms(policy: &Value) -> Option<i64> {
     let policy = policy.as_object()?;
     policy
         .get("keyFailureCooldownMs")
+        .or_else(|| policy.get("channelKeyFailureCooldownMs"))
         .or_else(|| policy.get("key_failure_cooldown_ms"))
         .and_then(positive_i64_from_json_value)
 }
@@ -2648,6 +2649,10 @@ mod tests {
         assert_eq!(
             health_policy_key_failure_cooldown_ms(&json!({"keyFailureCooldownMs": 5000})),
             Some(5000)
+        );
+        assert_eq!(
+            health_policy_key_failure_cooldown_ms(&json!({"channelKeyFailureCooldownMs": 5500})),
+            Some(5500)
         );
         assert_eq!(
             health_policy_key_failure_cooldown_ms(&json!({"key_failure_cooldown_ms": 6000})),

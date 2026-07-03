@@ -277,7 +277,7 @@ mod tests {
             interface_kind: "anthropic_messages".to_string(),
             health_policy: json!({
                 "channelKeySelectionStrategy": "priority",
-                "keyFailureCooldownMs": 5_000
+                "channelKeyFailureCooldownMs": 5_000
             }),
             ..Default::default()
         })

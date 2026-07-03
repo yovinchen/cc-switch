@@ -12422,7 +12422,7 @@ GEMINI_API_KEY=sk-test123
             DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
             &json!({
                 "channelKeySelectionStrategy": "priority",
-                "keyFailureCooldownMs": 5_000
+                "channelKeyFailureCooldownMs": 5_000
             }),
         );
         assert_eq!(
