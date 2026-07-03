@@ -14306,6 +14306,14 @@ fn codex_config_imports_model_catalog_helpers_directly() {
                 .contains("fn simplify_codex_model_catalog_round_trips_user_input()"),
         "Codex model catalog build/simplify fixtures should live in proxy-core model_fetch, not proxy_core_adapter"
     );
+    assert!(
+        !adapter_source.contains("model_catalog_adapter_projects_provider_settings_and_client_raw")
+            && core_model_fetch_source
+                .contains("fn provider_model_catalog_from_settings_summarizes_provider_sources()")
+            && core_model_fetch_source
+                .contains("fn client_model_catalog_from_optional_raw_uses_empty_model_list_default()"),
+        "Provider/client model catalog fixtures should live in proxy-core model_fetch, not proxy_core_adapter"
+    );
 }
 
 #[test]

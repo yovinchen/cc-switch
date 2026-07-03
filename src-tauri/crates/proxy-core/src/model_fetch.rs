@@ -1641,6 +1641,22 @@ mod tests {
         assert_eq!(catalog.provider_id, "gemini");
         assert!(catalog.models.is_empty());
         assert_eq!(catalog.raw, json!({"models": []}));
+
+        let codex_catalog = client_model_catalog_from_optional_raw(
+            "codex",
+            Some(json!({
+                "models": [
+                    { "id": " gpt-5 " },
+                    { "model": "o4-mini" },
+                    { "id": "gpt-5" }
+                ]
+            })),
+        );
+        assert_eq!(codex_catalog.provider_id, "codex");
+        assert_eq!(
+            codex_catalog.models,
+            vec!["gpt-5".to_string(), "o4-mini".to_string()]
+        );
     }
 
     #[test]

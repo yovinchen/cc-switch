@@ -3039,68 +3039,6 @@ wire_api = "chat"
     }
 
     #[test]
-    fn model_catalog_adapter_projects_provider_settings_and_client_raw() {
-        let settings = json!({
-            "model": " claude-sonnet-4 ",
-            "env": {
-                "ANTHROPIC_MODEL": "claude-opus-4"
-            },
-            "modelCatalog": {
-                "models": [
-                    {"model": "deepseek-v4"},
-                    {"id": "kimi-k2"}
-                ]
-            }
-        });
-
-        let provider_catalog =
-            crate::proxy_core::api::model_catalog::provider_model_catalog_from_settings(
-                "provider-a",
-                Some(&settings),
-            );
-        assert_eq!(provider_catalog.provider_id, "provider-a");
-        assert_eq!(
-            provider_catalog.models,
-            vec![
-                "claude-opus-4".to_string(),
-                "claude-sonnet-4".to_string(),
-                "deepseek-v4".to_string(),
-                "kimi-k2".to_string()
-            ]
-        );
-        let provider = Provider::with_id(
-            "provider-a".to_string(),
-            "Provider A".to_string(),
-            settings.clone(),
-            None,
-        );
-        assert_eq!(
-            crate::proxy_core::api::model_catalog::provider_model_catalog_from_settings(
-                "provider-a",
-                Some(&provider.settings_config),
-            )
-            .models,
-            provider_catalog.models
-        );
-        let client_catalog =
-            crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw(
-                AppKind::Codex.as_str(),
-                Some(json!({
-                    "models": [
-                        {"id": " gpt-5 "},
-                        {"model": "o4-mini"},
-                        {"id": "gpt-5"}
-                    ]
-                })),
-            );
-        assert_eq!(client_catalog.provider_id, "codex");
-        assert_eq!(
-            client_catalog.models,
-            vec!["gpt-5".to_string(), "o4-mini".to_string()]
-        );
-    }
-
-    #[test]
     fn route_plan_adapter_projects_provider_ids_and_forward_selection() {
         fn selection(channel_id: &str, provider_id: &str) -> RouteSelection {
             let provider = ProviderSpec {
