@@ -12215,6 +12215,17 @@ fn proxy_core_adapter_delegates_managed_provider_classification_to_core() {
             && classification_slice.contains("pub(crate) fn provider_managed_auth_classification("),
         "provider_projection must delegate managed-provider classification to proxy-core"
     );
+    assert!(
+        projection_source.contains("fn managed_account_binding_projection_uses_core_policy()")
+            && projection_source.contains("provider_github_copilot_managed_account_id(")
+            && projection_source.contains("provider_managed_account_binding_context(")
+            && projection_source.contains("proxy_provider_to_core_spec("),
+        "provider_projection tests should own managed-account binding projection fixtures"
+    );
+    assert!(
+        !source.contains("fn provider_managed_account_binding_projection_uses_core_policy()"),
+        "proxy_core_adapter should not carry managed-account binding projection fixture"
+    );
     for marker in [
         "classify_provider_managed_auth",
         "managed_account_id_for_auth_provider",

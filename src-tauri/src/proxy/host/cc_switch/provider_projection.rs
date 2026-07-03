@@ -344,3 +344,73 @@ pub(crate) fn provider_spec_from_db_source(
         .map_err(|error| provider_projection_error("get provider", error))?;
     provider_spec_from_source(app, provider)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::{AuthBinding, AuthBindingSource};
+
+    #[test]
+    fn managed_account_binding_projection_uses_core_policy() {
+        let mut legacy_provider = Provider::with_id(
+            "legacy-copilot".to_string(),
+            "Legacy Copilot".to_string(),
+            json!({}),
+            None,
+        );
+        legacy_provider.meta = Some(ProviderMeta {
+            provider_type: Some("github_copilot".to_string()),
+            github_account_id: Some("legacy-acct".to_string()),
+            ..ProviderMeta::default()
+        });
+
+        assert_eq!(
+            provider_github_copilot_managed_account_id(&legacy_provider).as_deref(),
+            Some("legacy-acct")
+        );
+        let legacy_context = provider_managed_account_binding_context(&legacy_provider);
+        assert_eq!(legacy_context.binding, None);
+        assert_eq!(
+            legacy_context.legacy_github_copilot_account_id,
+            Some("legacy-acct")
+        );
+        let legacy_spec = proxy_provider_to_core_spec(&legacy_provider, &AppType::Claude);
+        assert_eq!(
+            legacy_spec.account_ref.as_deref(),
+            Some("github_copilot:legacy-acct")
+        );
+
+        let mut default_account_provider = Provider::with_id(
+            "default-copilot".to_string(),
+            "Default Copilot".to_string(),
+            json!({}),
+            None,
+        );
+        default_account_provider.meta = Some(ProviderMeta {
+            provider_type: Some("github_copilot".to_string()),
+            github_account_id: Some("legacy-acct".to_string()),
+            auth_binding: Some(AuthBinding {
+                source: AuthBindingSource::ManagedAccount,
+                auth_provider: Some("github_copilot".to_string()),
+                account_id: None,
+            }),
+            ..ProviderMeta::default()
+        });
+
+        assert_eq!(
+            provider_github_copilot_managed_account_id(&default_account_provider),
+            None
+        );
+        let default_context = provider_managed_account_binding_context(&default_account_provider);
+        let binding = default_context.binding.expect("managed account binding");
+        assert_eq!(binding.source, ManagedAccountBindingSource::ManagedAccount);
+        assert_eq!(binding.auth_provider, Some("github_copilot"));
+        assert_eq!(binding.account_id, None);
+        assert_eq!(
+            default_context.legacy_github_copilot_account_id,
+            Some("legacy-acct")
+        );
+        let default_spec = proxy_provider_to_core_spec(&default_account_provider, &AppType::Claude);
+        assert_eq!(default_spec.account_ref, None);
+    }
+}
