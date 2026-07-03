@@ -6771,6 +6771,8 @@ fn proxy_core_adapter_does_not_export_proxy_config_alias() {
         .expect("read proxy_core_adapter.rs");
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
+    let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
+        .expect("read proxy-core ports.rs");
 
     assert!(
         !adapter_source
@@ -6778,9 +6780,16 @@ fn proxy_core_adapter_does_not_export_proxy_config_alias() {
         "proxy_core_adapter should not expose ProxyConfig as a runtime port alias"
     );
     assert!(
-        adapter_source.contains("use crate::proxy_core::api::ports::{")
-            && adapter_source.contains("ProxyConfig"),
-        "proxy_core_adapter internals should import ProxyConfig directly from proxy_core ports"
+        core_ports_source.contains("fn proxy_config_default_preserves_legacy_values")
+            && core_ports_source
+                .contains("fn proxy_config_serde_preserves_legacy_command_contract")
+            && core_ports_source
+                .contains("fn proxy_config_projection_helpers_preserve_raw_contracts"),
+        "proxy-core ports.rs should own ProxyConfig contract fixture coverage"
+    );
+    assert!(
+        !adapter_source.contains("fn proxy_config_adapter_preserves_management_contracts"),
+        "proxy_core_adapter should not keep the mixed ProxyConfig fixture after owner tests exist"
     );
     assert!(
         host_source.contains("ProxyConfig")
@@ -6947,6 +6956,9 @@ fn proxy_core_adapter_does_not_export_runtime_policy_or_breaker_config_aliases()
     let runtime_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs"))
             .expect("read proxy_runtime.rs");
+    let circuit_breaker_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/circuit_breaker_config.rs"))
+            .expect("read proxy-core circuit_breaker_config.rs");
 
     for alias in [
         "pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;",
@@ -6960,20 +6972,19 @@ fn proxy_core_adapter_does_not_export_runtime_policy_or_breaker_config_aliases()
             "proxy_core_adapter should not expose config contract alias `{alias}`"
         );
     }
-    for core_config_type in [
-        "ResponseRuntimePolicy",
-        "AppProxyConfig",
-        "AllowResult",
-        "CircuitBreakerConfig",
-        "CircuitBreakerStats",
-    ] {
+    for core_config_type in ["ResponseRuntimePolicy", "AppProxyConfig"] {
         assert!(
-            (runtime_source.contains(core_config_type)
-                && runtime_source.contains("use crate::proxy_core::api::config::{"))
-                || adapter_source.contains(core_config_type),
-            "host runtime or test code should import {core_config_type} directly from proxy_core config"
+            runtime_source.contains(core_config_type)
+                && runtime_source.contains("use crate::proxy_core::api::config::{"),
+            "host runtime should import {core_config_type} directly from proxy_core config"
         );
     }
+    assert!(
+        circuit_breaker_source.contains("pub struct CircuitBreakerConfig")
+            && circuit_breaker_source.contains("fn maps_app_proxy_config_fields")
+            && circuit_breaker_source.contains("fn missing_app_config_uses_default_or_supplied_fallback"),
+        "proxy-core circuit_breaker_config.rs should own CircuitBreakerConfig mapping fixture coverage"
+    );
 }
 
 #[test]
@@ -24656,6 +24667,15 @@ fn production_forwarder_runtime_config_reaches_forwarder_as_single_input() {
     assert!(
         !forwarder_source.contains("use crate::proxy_core_adapter::ForwarderRuntimeConfig;"),
         "forward_pipeline should not import its runtime config contract through proxy_core_adapter"
+    );
+    assert!(
+        runtime_source.contains("fn runtime_policy_and_options_follow_app_proxy_config")
+            && runtime_source.contains("fn forwarder_runtime_config_preserves_runtime_sources"),
+        "host proxy_runtime.rs should own forward runtime policy/options fixture coverage"
+    );
+    assert!(
+        !adapter_source.contains("fn proxy_config_adapter_preserves_management_contracts"),
+        "proxy_core_adapter should not retain mixed proxy config/runtime fixture coverage"
     );
 
     let bridge_forbidden_markers = [

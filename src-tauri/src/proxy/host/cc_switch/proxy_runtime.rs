@@ -411,11 +411,29 @@ pub(crate) fn extract_proxy_session_id(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::routing::InterfaceKind;
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transport::ProxyBody;
     use bytes::Bytes;
     use serde_json::json;
+
+    fn app_proxy_config_fixture() -> AppProxyConfig {
+        AppProxyConfig {
+            app_type: "claude".to_string(),
+            enabled: true,
+            auto_failover_enabled: true,
+            max_retries: 3,
+            streaming_first_byte_timeout: 60,
+            streaming_idle_timeout: 120,
+            non_streaming_timeout: 600,
+            circuit_failure_threshold: 4,
+            circuit_success_threshold: 2,
+            circuit_timeout_seconds: 60,
+            circuit_error_rate_threshold: 0.6,
+            circuit_min_requests: 10,
+        }
+    }
 
     #[test]
     fn app_type_conversion_preserves_known_and_custom_names() {
@@ -484,6 +502,79 @@ mod tests {
             invalid_request,
             ProxyCoreError::InvalidRequest(message) if message.contains("invalid JSON body")
         ));
+    }
+
+    #[test]
+    fn runtime_policy_and_options_follow_app_proxy_config() {
+        let app_config = app_proxy_config_fixture();
+
+        let enabled_policy = response_runtime_policy_from_app_proxy_config(&app_config);
+        assert_eq!(enabled_policy.max_retries, 3);
+        assert_eq!(enabled_policy.timeout.non_streaming_timeout, 600);
+        assert_eq!(enabled_policy.timeout.streaming.first_byte_timeout, 60);
+        assert_eq!(enabled_policy.timeout.streaming.idle_timeout, 120);
+        assert_eq!(
+            forwarder_runtime_options_from_app_proxy_config(&app_config),
+            ForwarderRuntimeOptions {
+                non_streaming_timeout: 600,
+                streaming_first_byte_timeout: 60,
+                streaming_idle_timeout: 120,
+                max_retries: 3,
+            }
+        );
+
+        let mut disabled_app_config = app_config;
+        disabled_app_config.auto_failover_enabled = false;
+        let disabled_policy = response_runtime_policy_from_app_proxy_config(&disabled_app_config);
+        assert_eq!(disabled_policy.max_retries, 0);
+        assert_eq!(disabled_policy.timeout, ResponseTimeoutConfig::default());
+        assert_eq!(
+            forwarder_runtime_options_from_app_proxy_config(&disabled_app_config),
+            ForwarderRuntimeOptions {
+                non_streaming_timeout: ResponseTimeoutConfig::default().non_streaming_timeout,
+                streaming_first_byte_timeout: ResponseTimeoutConfig::default()
+                    .streaming
+                    .first_byte_timeout,
+                streaming_idle_timeout: ResponseTimeoutConfig::default().streaming.idle_timeout,
+                max_retries: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn forwarder_runtime_config_preserves_runtime_sources() {
+        let app_config = app_proxy_config_fixture();
+
+        let forwarder_config = forwarder_runtime_config_from_sources(
+            &app_config,
+            RectifierConfig {
+                request_media_fallback: false,
+                ..RectifierConfig::default()
+            },
+            OptimizerConfig {
+                enabled: true,
+                cache_ttl: "2h".to_string(),
+                ..OptimizerConfig::default()
+            },
+            CopilotOptimizerConfig {
+                warmup_model: "gpt-5".to_string(),
+                ..CopilotOptimizerConfig::default()
+            },
+        );
+
+        assert_eq!(
+            forwarder_config.options,
+            ForwarderRuntimeOptions {
+                non_streaming_timeout: 600,
+                streaming_first_byte_timeout: 60,
+                streaming_idle_timeout: 120,
+                max_retries: 3,
+            }
+        );
+        assert!(!forwarder_config.rectifier.request_media_fallback);
+        assert!(forwarder_config.optimizer.enabled);
+        assert_eq!(forwarder_config.optimizer.cache_ttl, "2h");
+        assert_eq!(forwarder_config.copilot_optimizer.warmup_model, "gpt-5");
     }
 
     #[test]

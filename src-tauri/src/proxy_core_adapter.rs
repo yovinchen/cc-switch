@@ -4,16 +4,9 @@ use crate::app_config::AppType;
 use crate::error::AppError;
 #[cfg(test)]
 use crate::provider::Provider;
-#[cfg(test)]
-use crate::proxy::engine::forward_pipeline::ForwarderRuntimeOptions;
-use crate::proxy::host::cc_switch::proxy_runtime::{
-    forward_current_provider_id_from_source, forwarder_runtime_config_from_sources,
-    forwarder_runtime_options_from_app_proxy_config, response_runtime_policy_from_app_proxy_config,
-};
+use crate::proxy::host::cc_switch::proxy_runtime::forward_current_provider_id_from_source;
 #[cfg(test)]
 use crate::proxy::provider::claude_provider_api_format;
-#[cfg(test)]
-use serde_json::Value;
 
 #[cfg(test)]
 mod tests {
@@ -22,15 +15,13 @@ mod tests {
         transform_claude_response_for_api_format, transform_claude_sse_for_api_format,
     };
     use crate::proxy_core::api::config::{
-        app_type_from_circuit_key, channel_circuit_key, circuit_breaker_config_from_app_config,
-        circuit_failure_threshold_from_app_config, provider_circuit_key, AllowResult,
-        AppProxyConfig, CircuitBreakerConfig, CircuitBreakerStats, CircuitState,
+        app_type_from_circuit_key, channel_circuit_key, provider_circuit_key, AllowResult,
+        CircuitBreakerStats, CircuitState,
     };
     use crate::proxy_core::api::domain::{
         extract_claude_base_url_from_settings, AppKind, ProviderKind,
     };
     use crate::proxy_core::api::ports::{
-        app_proxy_config_with_enabled as proxy_app_config_with_enabled,
         claude_env_credentials_from_settings, codex_auth_object_value_from_settings,
         codex_provider_live_write_parts_from_settings, provider_settings_validation_issue_spec,
         provider_settings_validation_parts_from_settings, CodexProviderLiveWriteIssue,
@@ -46,7 +37,7 @@ mod tests {
         apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
         resolve_codex_provider_upstream_model,
     };
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     use super::*;
     use crate::provider::ProviderMeta;
@@ -60,14 +51,10 @@ mod tests {
         codex_provider_upstream_model, codex_provider_uses_chat_completions,
     };
     use crate::proxy_core::api::auth::{
-        extract_claude_auth_key_from_settings, ClaudeAuthKeySource, ManagementAuthError,
+        extract_claude_auth_key_from_settings, ClaudeAuthKeySource,
     };
-    use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::management::{ChannelRouteSource, RouteResolveRequest};
-    use crate::proxy_core::api::ports::{
-        codex_restored_live_settings_parts, CopilotOptimizerConfig, OptimizerConfig, ProxyConfig,
-        RectifierConfig,
-    };
+    use crate::proxy_core::api::ports::codex_restored_live_settings_parts;
     use crate::proxy_core::api::routing::{
         apply_route_candidate_circuit_availability, current_provider_id_from_sources,
         resolve_channel_route, route_candidate_channel_circuit_keys, select_provider_ids,
@@ -85,193 +72,6 @@ mod tests {
     use bytes::Bytes;
     use indexmap::IndexMap;
     use std::sync::Arc;
-
-    #[test]
-    fn proxy_config_adapter_preserves_management_contracts() {
-        use crate::proxy_core::api::auth::{
-            resolve_management_auth_decision, ManagementAuthDecision,
-        };
-
-        let proxy_config = serde_json::to_value(ProxyConfig::default()).expect("proxy config");
-        assert_eq!(
-            proxy_config.get("listen_address").and_then(Value::as_str),
-            Some("127.0.0.1")
-        );
-        assert_eq!(
-            proxy_config
-                .get("streaming_first_byte_timeout")
-                .and_then(Value::as_u64),
-            Some(60)
-        );
-
-        let app_config = AppProxyConfig {
-            app_type: "claude".to_string(),
-            enabled: true,
-            auto_failover_enabled: true,
-            max_retries: 3,
-            streaming_first_byte_timeout: 60,
-            streaming_idle_timeout: 120,
-            non_streaming_timeout: 600,
-            circuit_failure_threshold: 4,
-            circuit_success_threshold: 2,
-            circuit_timeout_seconds: 60,
-            circuit_error_rate_threshold: 0.6,
-            circuit_min_requests: 10,
-        };
-        let takeover_disabled_app_config = proxy_app_config_with_enabled(app_config.clone(), false);
-        assert!(!takeover_disabled_app_config.enabled);
-        assert!(takeover_disabled_app_config.auto_failover_enabled);
-        let takeover_enabled_app_config =
-            proxy_app_config_with_enabled(takeover_disabled_app_config, true);
-        assert!(takeover_enabled_app_config.enabled);
-        assert!(takeover_enabled_app_config.auto_failover_enabled);
-        let default_proxy_config = ProxyConfig::default();
-        let loopback_auth = resolve_management_auth_decision(
-            &default_proxy_config.listen_address,
-            default_proxy_config.management_auth_token.as_deref(),
-            None,
-        )
-        .expect("loopback auth decision");
-        assert_eq!(loopback_auth, ManagementAuthDecision::AllowWithoutToken);
-        let mut public_proxy_config = ProxyConfig {
-            listen_address: "0.0.0.0".to_string(),
-            ..ProxyConfig::default()
-        };
-        assert_eq!(
-            resolve_management_auth_decision(
-                &public_proxy_config.listen_address,
-                public_proxy_config.management_auth_token.as_deref(),
-                None,
-            )
-            .unwrap_err(),
-            ManagementAuthError::RequiredTokenMissing
-        );
-        assert_eq!(
-            resolve_management_auth_decision(
-                &public_proxy_config.listen_address,
-                public_proxy_config.management_auth_token.as_deref(),
-                Some("env-token"),
-            )
-            .expect("env fallback token"),
-            ManagementAuthDecision::RequireToken("env-token".to_string())
-        );
-        public_proxy_config.management_auth_token = Some(" config-token ".to_string());
-        assert_eq!(
-            resolve_management_auth_decision(
-                &public_proxy_config.listen_address,
-                public_proxy_config.management_auth_token.as_deref(),
-                Some("env-token"),
-            )
-            .expect("configured token"),
-            ManagementAuthDecision::RequireToken("config-token".to_string())
-        );
-
-        assert_eq!(
-            CircuitBreakerConfig::from(&app_config),
-            CircuitBreakerConfig::default()
-        );
-        let mut custom_breaker_app_config = app_config.clone();
-        custom_breaker_app_config.circuit_failure_threshold = 7;
-        custom_breaker_app_config.circuit_timeout_seconds = 45;
-        let projected_breaker_config =
-            circuit_breaker_config_from_app_config(Some(&custom_breaker_app_config));
-        assert_eq!(projected_breaker_config.failure_threshold, 7);
-        assert_eq!(projected_breaker_config.timeout_seconds, 45);
-        assert_eq!(
-            circuit_breaker_config_from_app_config(None),
-            CircuitBreakerConfig::default()
-        );
-        assert_eq!(
-            circuit_failure_threshold_from_app_config(Some(&custom_breaker_app_config), 9,),
-            7
-        );
-        assert_eq!(circuit_failure_threshold_from_app_config(None, 9), 9);
-        let enabled_policy = response_runtime_policy_from_app_proxy_config(&app_config);
-        assert_eq!(enabled_policy.max_retries, 3);
-        assert_eq!(enabled_policy.timeout.non_streaming_timeout, 600);
-        assert_eq!(enabled_policy.timeout.streaming.first_byte_timeout, 60);
-        assert_eq!(enabled_policy.timeout.streaming.idle_timeout, 120);
-        assert_eq!(
-            forwarder_runtime_options_from_app_proxy_config(&app_config),
-            ForwarderRuntimeOptions {
-                non_streaming_timeout: 600,
-                streaming_first_byte_timeout: 60,
-                streaming_idle_timeout: 120,
-                max_retries: 3,
-            }
-        );
-        let forwarder_config = forwarder_runtime_config_from_sources(
-            &app_config,
-            RectifierConfig {
-                request_media_fallback: false,
-                ..RectifierConfig::default()
-            },
-            OptimizerConfig {
-                enabled: true,
-                cache_ttl: "2h".to_string(),
-                ..OptimizerConfig::default()
-            },
-            CopilotOptimizerConfig {
-                warmup_model: "gpt-5".to_string(),
-                ..CopilotOptimizerConfig::default()
-            },
-        );
-        assert_eq!(
-            forwarder_config.options,
-            ForwarderRuntimeOptions {
-                non_streaming_timeout: 600,
-                streaming_first_byte_timeout: 60,
-                streaming_idle_timeout: 120,
-                max_retries: 3,
-            }
-        );
-        assert!(!forwarder_config.rectifier.request_media_fallback);
-        assert!(forwarder_config.optimizer.enabled);
-        assert_eq!(forwarder_config.optimizer.cache_ttl, "2h");
-        assert_eq!(forwarder_config.copilot_optimizer.warmup_model, "gpt-5");
-        let app_summary = crate::proxy_core::api::ports::AppSummaryConfig::new(
-            app_config.enabled,
-            app_config.auto_failover_enabled,
-        );
-        assert!(app_summary.enabled);
-        assert!(app_summary.auto_failover_enabled);
-
-        let mut disabled_app_config = app_config.clone();
-        disabled_app_config.auto_failover_enabled = false;
-        let disabled_policy = response_runtime_policy_from_app_proxy_config(&disabled_app_config);
-        assert_eq!(disabled_policy.max_retries, 0);
-        assert_eq!(disabled_policy.timeout, ResponseTimeoutConfig::default());
-        assert_eq!(
-            forwarder_runtime_options_from_app_proxy_config(&disabled_app_config),
-            ForwarderRuntimeOptions {
-                non_streaming_timeout: ResponseTimeoutConfig::default().non_streaming_timeout,
-                streaming_first_byte_timeout: ResponseTimeoutConfig::default()
-                    .streaming
-                    .first_byte_timeout,
-                streaming_idle_timeout: ResponseTimeoutConfig::default().streaming.idle_timeout,
-                max_retries: 0,
-            }
-        );
-        assert_eq!(
-            serde_json::to_value(crate::proxy_core::api::ports::GlobalProxyConfig {
-                proxy_enabled: true,
-                listen_address: "127.0.0.1".to_string(),
-                listen_port: crate::proxy_core::api::ports::DEFAULT_PROXY_LISTEN_PORT,
-                enable_logging: true,
-            })
-            .expect("global proxy config")
-            .get("proxyEnabled")
-            .and_then(Value::as_bool),
-            Some(true)
-        );
-        assert!(
-            !crate::proxy_core::api::config::proxy_runtime_config_from_proxy_config(
-                ProxyConfig::default(),
-                false
-            )
-            .privacy_filter_enabled
-        );
-    }
 
     #[test]
     fn circuit_and_route_adapter_projects_provider_router_contracts() {
