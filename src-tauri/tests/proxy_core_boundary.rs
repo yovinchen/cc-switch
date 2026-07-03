@@ -24519,6 +24519,9 @@ fn proxy_core_adapter_delegates_auth_provider_source_to_host_module() {
         .unwrap_or(&adapter_source);
     let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/auth_provider.rs");
     let auth_source = fs::read_to_string(&auth_source_path).expect("read auth_provider.rs");
+    let host_harness_path = manifest_dir.join("src/proxy_core_host.rs");
+    let host_harness_source =
+        fs::read_to_string(&host_harness_path).expect("read proxy_core_host.rs");
 
     assert!(
         auth_source.contains("pub(crate) struct CcSwitchAuthProvider")
@@ -24563,12 +24566,17 @@ fn proxy_core_adapter_delegates_auth_provider_source_to_host_module() {
     for marker in [
         "auth_adapter_projects_cc_switch_provider_config_source",
         "auth_adapter_projects_cc_switch_route_context_source",
+        "auth_provider_projects_profile_ref_through_core",
     ] {
         assert!(
             auth_source.contains(marker) && !adapter_source.contains(marker),
             "CC Switch auth provider fixture `{marker}` should live beside the owning host source, not proxy_core_adapter"
         );
     }
+    assert!(
+        !host_harness_source.contains("async fn auth_provider_projects_profile_ref_through_core()"),
+        "auth provider profile-ref fixture should live with CcSwitchAuthProvider, not proxy_core_host"
+    );
 }
 
 #[test]
@@ -25481,7 +25489,7 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         ) && host_source.contains(
             "use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};"
         ) && host_source.contains(
-            "use crate::proxy_core::api::ports::{AuthProvider, ProxyServices};"
+            "use crate::proxy_core::api::ports::ProxyServices;"
         ) && host_source.contains(
             "use crate::proxy_core::api::routing::{\n    ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteRequest,\n    RouteSelection, DEFAULT_ROUTE_GROUP,\n};"
         ) && host_source.contains(

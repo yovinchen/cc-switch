@@ -7,8 +7,6 @@ use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 #[cfg(test)]
 use crate::proxy::events::ProxyEventBus;
 #[cfg(test)]
-use crate::proxy::host::cc_switch::auth_provider::CcSwitchAuthProvider;
-#[cfg(test)]
 use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 #[cfg(test)]
 use crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime;
@@ -24,7 +22,7 @@ use crate::proxy_core::api::engine::ProxyEngine;
 #[cfg(test)]
 use crate::proxy_core::api::errors::ProxyCoreError;
 #[cfg(test)]
-use crate::proxy_core::api::ports::{AuthProvider, ProxyServices};
+use crate::proxy_core::api::ports::ProxyServices;
 #[cfg(test)]
 use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};
 #[cfg(test)]
@@ -57,10 +55,6 @@ mod tests {
         crate::proxy::host::cc_switch::proxy_services::CcSwitchProxyServices<
             crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime,
         >;
-
-    fn auth_profile_ref<T: serde::de::DeserializeOwned>(value: &str) -> T {
-        serde_json::from_value(json!(value)).expect("auth profile ref")
-    }
 
     fn save_claude_provider(db: &Database) {
         let provider = Provider::with_id(
@@ -229,35 +223,6 @@ mod tests {
             failover_switch_scheduler:
                 crate::proxy::host::cc_switch::failover_switch::noop_failover_switch_scheduler(),
         }
-    }
-
-    #[tokio::test]
-    async fn auth_provider_projects_profile_ref_through_core() {
-        let provider = CcSwitchAuthProvider;
-        let request = proxy_request();
-        let mut plan = route_plan("anthropic-main", "channel-auth");
-        plan.selection.channel.auth_profile =
-            Some(auth_profile_ref("provider:claude:anthropic-main"));
-
-        let auth = provider
-            .resolve_auth(
-                &request.app,
-                &plan.selection.provider,
-                &plan.selection.channel,
-                &request,
-            )
-            .await
-            .expect("resolve auth");
-
-        assert!(auth.headers.is_empty());
-        assert_eq!(
-            auth.account_ref.as_deref(),
-            Some("provider:claude:anthropic-main")
-        );
-        assert_eq!(auth.metadata["source"], json!("cc_switch_provider_config"));
-        assert_eq!(auth.metadata["app"], json!("claude"));
-        assert_eq!(auth.metadata["providerId"], json!("anthropic-main"));
-        assert_eq!(auth.metadata["channelId"], json!("channel-auth"));
     }
 
     #[tokio::test]

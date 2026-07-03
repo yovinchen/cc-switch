@@ -70,7 +70,7 @@ pub(crate) fn provider_with_channel_auth_key(
 mod tests {
     use super::*;
     use crate::proxy_core::api::domain::{
-        channel_spec_from_input, ChannelSpecInput, ProviderKind, ProviderMetadata,
+        channel_spec_from_input, ChannelSpecInput, ProviderKind, ProviderMetadata, ProxyBody,
     };
     use serde_json::{json, Value};
 
@@ -138,5 +138,63 @@ mod tests {
         assert_eq!(auth.metadata["app"], json!("claude"));
         assert_eq!(auth.metadata["providerId"], json!("provider-a"));
         assert_eq!(auth.metadata["channelId"], json!("channel-a"));
+    }
+
+    #[tokio::test]
+    async fn auth_provider_projects_profile_ref_through_core() {
+        let provider = ProviderSpec {
+            id: "anthropic-main".to_string(),
+            name: "Anthropic Main".to_string(),
+            kind: ProviderKind::Claude,
+            account_ref: None,
+            metadata: ProviderMetadata::default(),
+        };
+        let channel = channel_spec_from_input(ChannelSpecInput {
+            id: "channel-auth".to_string(),
+            provider_id: "anthropic-main".to_string(),
+            app_type: "claude".to_string(),
+            name: "Channel Auth".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            auth_profile_ref: Some("provider:claude:anthropic-main".to_string()),
+            models: Vec::new(),
+            groups: Vec::new(),
+            priority: 0,
+            weight: 100,
+            retry_policy: Value::Object(Default::default()),
+            health_policy: Value::Object(Default::default()),
+            header_overrides: Value::Object(Default::default()),
+            param_overrides: Value::Object(Default::default()),
+            status_code_mapping: Value::Array(Vec::new()),
+            tags: Vec::new(),
+            metadata: Value::Object(Default::default()),
+            source_ref: None,
+            needs_review: false,
+            review_reasons: Vec::new(),
+        });
+        let request = ProxyRequest::new(
+            AppKind::Claude,
+            http::Method::POST,
+            "/v1/messages",
+            channel.interface.clone(),
+            ProxyBody::Json(json!({ "model": "sonnet", "messages": [] })),
+        );
+        let auth_provider = CcSwitchAuthProvider;
+
+        let auth = auth_provider
+            .resolve_auth(&AppKind::Claude, &provider, &channel, &request)
+            .await
+            .expect("resolve auth");
+
+        assert!(auth.headers.is_empty());
+        assert_eq!(
+            auth.account_ref.as_deref(),
+            Some("provider:claude:anthropic-main")
+        );
+        assert_eq!(auth.metadata["source"], json!("cc_switch_provider_config"));
+        assert_eq!(auth.metadata["app"], json!("claude"));
+        assert_eq!(auth.metadata["providerId"], json!("anthropic-main"));
+        assert_eq!(auth.metadata["channelId"], json!("channel-auth"));
     }
 }
