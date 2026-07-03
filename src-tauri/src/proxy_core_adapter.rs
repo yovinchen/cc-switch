@@ -3039,28 +3039,6 @@ wire_api = "chat"
     }
 
     #[test]
-    fn copilot_account_adapter_projects_domain_and_composite_id_rules() {
-        use crate::proxy_core::api::model_catalog::{
-            copilot_composite_account_id, default_copilot_github_domain, is_copilot_ghes_domain,
-            normalize_github_domain, COPILOT_PUBLIC_GITHUB_DOMAIN,
-        };
-
-        assert_eq!(COPILOT_PUBLIC_GITHUB_DOMAIN, "github.com");
-        assert_eq!(default_copilot_github_domain(), "github.com");
-        assert_eq!(
-            normalize_github_domain("https://Company.GHE.Com/api/v3?foo=bar").unwrap(),
-            "company.ghe.com"
-        );
-        assert!(!is_copilot_ghes_domain("github.com"));
-        assert!(is_copilot_ghes_domain("company.ghe.com"));
-        assert_eq!(copilot_composite_account_id("github.com", 12345), "12345");
-        assert_eq!(
-            copilot_composite_account_id("company.ghe.com", 12345),
-            "company.ghe.com:12345"
-        );
-    }
-
-    #[test]
     fn copilot_transport_adapter_projects_urls_and_model_parsing() {
         use crate::proxy_core::api::model_catalog::{
             copilot_api_base, copilot_github_client_id, copilot_github_device_code_url,

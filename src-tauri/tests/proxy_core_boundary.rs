@@ -4530,6 +4530,9 @@ fn proxy_core_adapter_does_not_reexport_copilot_model_catalog_helpers() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let core_copilot_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/copilot_model_map.rs"))
+            .expect("read proxy-core copilot_model_map.rs");
     let model_catalog_reexport_blocks: Vec<&str> = source
         .split("pub(crate) use crate::proxy_core::api::model_catalog::{")
         .skip(1)
@@ -4570,6 +4573,16 @@ fn proxy_core_adapter_does_not_reexport_copilot_model_catalog_helpers() {
             "proxy_core_adapter should not re-export pure Copilot model catalog helper `{marker}`"
         );
     }
+    assert!(
+        !source.contains("copilot_account_adapter_projects_domain_and_composite_id_rules")
+            && core_copilot_source.contains("fn github_domain_normalization_handles_ghes_inputs()")
+            && core_copilot_source.contains("fn copilot_github_urls_use_public_and_ghes_bases()")
+            && core_copilot_source
+                .contains("fn copilot_composite_account_id_preserves_public_github_ids()")
+            && core_copilot_source
+                .contains("fn copilot_composite_account_id_namespaces_ghes_ids()"),
+        "Copilot account/domain fixtures should live in proxy-core copilot_model_map, not proxy_core_adapter"
+    );
 }
 
 #[test]
