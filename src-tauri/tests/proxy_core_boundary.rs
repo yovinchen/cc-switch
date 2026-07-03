@@ -4583,6 +4583,13 @@ fn proxy_core_adapter_does_not_reexport_copilot_model_catalog_helpers() {
                 .contains("fn copilot_composite_account_id_namespaces_ghes_ids()"),
         "Copilot account/domain fixtures should live in proxy-core copilot_model_map, not proxy_core_adapter"
     );
+    assert!(
+        !source.contains("copilot_transport_adapter_projects_urls_and_model_parsing")
+            && core_copilot_source.contains("fn copilot_github_urls_use_public_and_ghes_bases()")
+            && core_copilot_source
+                .contains("fn parse_copilot_models_filters_picker_disabled_models()"),
+        "Copilot URL/model parsing fixtures should live in proxy-core copilot_model_map, not proxy_core_adapter"
+    );
 }
 
 #[test]
