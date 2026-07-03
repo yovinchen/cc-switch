@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Default)]
 struct ExternalRelayServices {
     auth_headers: Mutex<Vec<Vec<String>>>,
+    channels: Mutex<Vec<ChannelSpec>>,
     events: Mutex<Vec<ProxyCoreEvent>>,
     forwarded: Mutex<Vec<String>>,
     management_auth: Mutex<ManagementAuthRuntimeConfig>,
@@ -179,9 +180,46 @@ impl ProviderSource for ExternalRelayServices {
 impl ChannelSource for ExternalRelayServices {
     fn list_channels<'a>(
         &'a self,
-        _query: ChannelQuery<'a>,
+        query: ChannelQuery<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<ChannelSpec>>> {
-        Box::pin(async { Ok(vec![channel_spec()]) })
+        Box::pin(async move {
+            let configured_channels = self.channels.lock().expect("channels mutex").clone();
+            let channels = if configured_channels.is_empty() {
+                vec![channel_spec()]
+            } else {
+                configured_channels
+            };
+            let requested_group = query.group.unwrap_or(DEFAULT_ROUTE_GROUP);
+
+            Ok(channels
+                .into_iter()
+                .filter(|channel| channel.app == *query.app)
+                .filter(|channel| {
+                    query
+                        .provider_id
+                        .map(|provider_id| channel.provider_id == provider_id)
+                        .unwrap_or(true)
+                })
+                .filter(|channel| {
+                    query
+                        .model
+                        .map(|requested_model| {
+                            channel.models.iter().any(|model| {
+                                model.public_model == requested_model
+                                    || model.upstream_model == requested_model
+                            })
+                        })
+                        .unwrap_or(true)
+                })
+                .filter(|channel| {
+                    if channel.groups.is_empty() {
+                        requested_group == DEFAULT_ROUTE_GROUP
+                    } else {
+                        channel.groups.iter().any(|group| group == requested_group)
+                    }
+                })
+                .collect())
+        })
     }
 
     fn get_channel<'a>(
@@ -1924,6 +1962,160 @@ fn external_host_can_use_app_model_catalog_contracts_from_prelude() {
             .and_then(Value::as_u64),
         Some(256_000)
     );
+}
+
+#[test]
+fn external_host_model_catalog_filters_distinct_channel_interfaces_from_prelude() {
+    let services = Arc::new(ExternalRelayServices::default());
+    *services.channels.lock().expect("channels mutex") = vec![
+        channel_spec_from_input(ChannelSpecInput {
+            id: "claude-premium".to_string(),
+            provider_id: "relay-a".to_string(),
+            app_type: AppKind::Claude.as_str().to_string(),
+            name: "Claude Premium".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://relay-a.example/anthropic".to_string(),
+            interface_kind: InterfaceKind::AnthropicMessages.as_str().to_string(),
+            models: vec![ModelRouteInput {
+                public_model: "sonnet".to_string(),
+                upstream_model: "anthropic/sonnet-premium".to_string(),
+                pricing_model: Some("premium-anthropic".to_string()),
+                ..ModelRouteInput::default()
+            }],
+            groups: vec!["premium".to_string()],
+            priority: 100,
+            weight: 10,
+            ..ChannelSpecInput::default()
+        }),
+        channel_spec_from_input(ChannelSpecInput {
+            id: "chat-default".to_string(),
+            provider_id: "relay-a".to_string(),
+            app_type: AppKind::Claude.as_str().to_string(),
+            name: "Chat Default".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://relay-a.example/openai-chat".to_string(),
+            interface_kind: InterfaceKind::OpenAiChatCompletions.as_str().to_string(),
+            models: vec![ModelRouteInput {
+                public_model: "sonnet".to_string(),
+                upstream_model: "openai/sonnet-compatible".to_string(),
+                pricing_model: Some("default-chat".to_string()),
+                ..ModelRouteInput::default()
+            }],
+            groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
+            priority: 80,
+            weight: 5,
+            ..ChannelSpecInput::default()
+        }),
+        channel_spec_from_input(ChannelSpecInput {
+            id: "responses-premium".to_string(),
+            provider_id: "relay-a".to_string(),
+            app_type: AppKind::Claude.as_str().to_string(),
+            name: "Responses Premium".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://relay-a.example/responses".to_string(),
+            interface_kind: InterfaceKind::OpenAiResponses.as_str().to_string(),
+            models: vec![ModelRouteInput {
+                public_model: "gpt-5.4".to_string(),
+                upstream_model: "openai/gpt-5.4-premium".to_string(),
+                pricing_model: Some("premium-responses".to_string()),
+                ..ModelRouteInput::default()
+            }],
+            groups: vec!["premium".to_string()],
+            priority: 90,
+            weight: 3,
+            ..ChannelSpecInput::default()
+        }),
+    ];
+    let engine = ProxyEngine::new(services);
+
+    let premium_anthropic: RoutableModelList =
+        futures::executor::block_on(engine.list_model_catalog_for_request(
+            AppModelCatalogRequest::from_parts(
+                "claude",
+                AppModelListQuery::new(
+                    Some(InterfaceKind::AnthropicMessages.as_str().to_string()),
+                    Some("premium".to_string()),
+                ),
+            )
+            .expect("premium anthropic catalog request"),
+        ))
+        .expect("premium anthropic catalog");
+    let default_chat: RoutableModelList =
+        futures::executor::block_on(engine.list_model_catalog_for_request(
+            AppModelCatalogRequest::from_parts(
+                "claude",
+                AppModelListQuery::new(
+                    Some(InterfaceKind::OpenAiChatCompletions.as_str().to_string()),
+                    Some(DEFAULT_ROUTE_GROUP.to_string()),
+                ),
+            )
+            .expect("default chat catalog request"),
+        ))
+        .expect("default chat catalog");
+    let premium_all_interfaces: RoutableModelList =
+        futures::executor::block_on(engine.list_model_catalog_for_request(
+            AppModelCatalogRequest::from_parts(
+                "claude",
+                AppModelListQuery::new(None, Some("premium".to_string())),
+            )
+            .expect("premium catalog request"),
+        ))
+        .expect("premium catalog");
+
+    assert_eq!(premium_anthropic.route_group.as_deref(), Some("premium"));
+    assert_eq!(
+        premium_anthropic.interface_kind.as_deref(),
+        Some("anthropic_messages")
+    );
+    let mut premium_anthropic_channels: Vec<&str> = premium_anthropic
+        .models
+        .iter()
+        .map(|model| model.channel_id.as_str())
+        .collect();
+    premium_anthropic_channels.sort_unstable();
+    assert_eq!(
+        premium_anthropic_channels,
+        vec!["claude-premium", "responses-premium"]
+    );
+    let claude_premium = premium_anthropic
+        .models
+        .iter()
+        .find(|model| model.channel_id == "claude-premium")
+        .expect("claude premium model");
+    assert_eq!(claude_premium.public_model, "sonnet");
+    assert_eq!(claude_premium.upstream_model, "anthropic/sonnet-premium");
+    assert_eq!(
+        claude_premium.pricing_model.as_deref(),
+        Some("premium-anthropic")
+    );
+    assert!(!premium_anthropic
+        .models
+        .iter()
+        .any(|model| model.channel_id == "chat-default"));
+
+    assert_eq!(default_chat.models.len(), 1);
+    assert_eq!(default_chat.models[0].channel_id, "chat-default");
+    assert_eq!(
+        default_chat.models[0].interface,
+        InterfaceKind::OpenAiChatCompletions
+    );
+    assert_eq!(
+        default_chat.models[0].upstream_model,
+        "openai/sonnet-compatible"
+    );
+
+    let mut premium_channels: Vec<&str> = premium_all_interfaces
+        .models
+        .iter()
+        .map(|model| model.channel_id.as_str())
+        .collect();
+    premium_channels.sort_unstable();
+    assert_eq!(premium_channels, vec!["claude-premium", "responses-premium"]);
+    assert!(premium_all_interfaces
+        .models
+        .iter()
+        .any(|model| model.interface == InterfaceKind::OpenAiResponses
+            && model.public_model == "gpt-5.4"));
 }
 
 #[test]
