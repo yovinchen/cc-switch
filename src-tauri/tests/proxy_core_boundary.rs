@@ -1104,15 +1104,6 @@ const FORBIDDEN_CHANNEL_MUTATION_HANDLER_ENGINE_MARKERS: &[&str] = &[
     ".replace_channel_models_response(",
     ".channel_test_response(",
 ];
-const FORBIDDEN_MIGRATION_BREAKER_HANDLER_ENGINE_MARKERS: &[&str] = &[
-    "ManagementAppPathRequest::from_path(",
-    "ChannelPathRequest::from_path(",
-    ".proxy_engine()",
-    ".channel_migration_preview_response(",
-    ".channel_migration_materialize_response(",
-    ".channel_breaker_stats_response(",
-    ".reset_channel_health_response(",
-];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
 const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
@@ -5818,11 +5809,13 @@ fn production_channel_mutation_handlers_delegate_json_bridge_to_response_adapter
 }
 
 #[test]
-fn production_migration_and_breaker_handlers_delegate_json_bridge_to_response_adapter() {
+fn production_migration_and_breaker_handlers_keep_json_bridges_on_http_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let handlers = [
+    let adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read response_adapter.rs");
+    let handlers: [(&str, &str, &[&str], &[&str]); 4] = [
         (
             "preview_proxy_channel_migration",
             function_slice(
@@ -5830,7 +5823,20 @@ fn production_migration_and_breaker_handlers_delegate_json_bridge_to_response_ad
                 "pub async fn preview_proxy_channel_migration(",
                 "/// POST /proxy/v1/apps/{app}/channels/migration/materialize",
             ),
-            "dispatch_preview_proxy_channel_migration_request_to_axum_json_response(",
+            &[
+                "ManagementAppPathRequest::from_path(app_type)",
+                ".map_err(management_api_error_to_proxy_error)?",
+                ".proxy_engine()",
+                ".channel_migration_preview_response(request)",
+                ".map_err(proxy_core_error_to_proxy_error)?",
+            ],
+            &[
+                "dispatch_preview_proxy_channel_migration_request_to_axum_json_response(",
+                "ChannelPathRequest::from_path(",
+                ".channel_migration_materialize_response(",
+                ".channel_breaker_stats_response(",
+                ".reset_channel_health_response(",
+            ],
         ),
         (
             "materialize_proxy_channel_migration",
@@ -5839,7 +5845,20 @@ fn production_migration_and_breaker_handlers_delegate_json_bridge_to_response_ad
                 "pub async fn materialize_proxy_channel_migration(",
                 "/// GET /proxy/v1/channels/{channel_id}/breakers/stats",
             ),
-            "dispatch_materialize_proxy_channel_migration_request_to_axum_json_response(",
+            &[
+                "ManagementAppPathRequest::from_path(app_type)",
+                ".map_err(management_api_error_to_proxy_error)?",
+                ".proxy_engine()",
+                ".channel_migration_materialize_response(request)",
+                ".map_err(proxy_core_error_to_proxy_error)?",
+            ],
+            &[
+                "dispatch_materialize_proxy_channel_migration_request_to_axum_json_response(",
+                "ChannelPathRequest::from_path(",
+                ".channel_migration_preview_response(",
+                ".channel_breaker_stats_response(",
+                ".reset_channel_health_response(",
+            ],
         ),
         (
             "get_proxy_channel_breaker_stats",
@@ -5848,7 +5867,20 @@ fn production_migration_and_breaker_handlers_delegate_json_bridge_to_response_ad
                 "pub async fn get_proxy_channel_breaker_stats(",
                 "/// POST /proxy/v1/channels/{channel_id}/breakers/reset",
             ),
-            "dispatch_proxy_channel_breaker_stats_request_to_axum_json_response(",
+            &[
+                "ChannelPathRequest::from_path(channel_id)",
+                ".map_err(management_api_error_to_proxy_error)?",
+                ".proxy_engine()",
+                ".channel_breaker_stats_response(request)",
+                ".map_err(proxy_core_error_to_proxy_error)?",
+            ],
+            &[
+                "dispatch_proxy_channel_breaker_stats_request_to_axum_json_response(",
+                "ManagementAppPathRequest::from_path(",
+                ".channel_migration_preview_response(",
+                ".channel_migration_materialize_response(",
+                ".reset_channel_health_response(",
+            ],
         ),
         (
             "reset_proxy_channel_breaker",
@@ -5857,24 +5889,39 @@ fn production_migration_and_breaker_handlers_delegate_json_bridge_to_response_ad
                 "pub async fn reset_proxy_channel_breaker(",
                 "/// POST /proxy/v1/route/resolve",
             ),
-            "dispatch_reset_proxy_channel_breaker_request_to_axum_json_response(",
+            &[
+                "ChannelPathRequest::from_path(channel_id)",
+                ".map_err(management_api_error_to_proxy_error)?",
+                ".proxy_engine()",
+                ".reset_channel_health_response(request)",
+                ".map_err(proxy_core_error_to_proxy_error)?",
+            ],
+            &[
+                "dispatch_reset_proxy_channel_breaker_request_to_axum_json_response(",
+                "ManagementAppPathRequest::from_path(",
+                ".channel_migration_preview_response(",
+                ".channel_migration_materialize_response(",
+                ".channel_breaker_stats_response(",
+            ],
         ),
     ];
 
     let mut violations = Vec::new();
-    for (handler_name, handler, adapter_marker) in handlers {
-        if !handler.contains(adapter_marker) {
-            violations.push(format!(
-                "src/proxy/transport/http/handlers.rs {handler_name} should call `{adapter_marker}`"
-            ));
+    for (handler_name, handler, required_markers, forbidden_markers) in handlers {
+        for marker in required_markers {
+            if !handler.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/transport/http/handlers.rs {handler_name} should contain migration/breaker boundary marker `{marker}`"
+                ));
+            }
         }
 
         for (line_index, line) in production_lines(handler) {
             let code = line.split("//").next().unwrap_or_default();
-            for marker in FORBIDDEN_MIGRATION_BREAKER_HANDLER_ENGINE_MARKERS {
+            for marker in forbidden_markers {
                 if code.contains(marker) {
                     violations.push(format!(
-                        "src/proxy/transport/http/handlers.rs {handler_name}:{} contains migration/breaker engine marker `{}`",
+                        "src/proxy/transport/http/handlers.rs {handler_name}:{} contains migration/breaker boundary marker `{}`",
                         line_index + 1,
                         marker
                     ));
@@ -5882,10 +5929,27 @@ fn production_migration_and_breaker_handlers_delegate_json_bridge_to_response_ad
             }
         }
     }
+    for marker in [
+        "dispatch_preview_proxy_channel_migration_request_to_axum_json_response",
+        "dispatch_materialize_proxy_channel_migration_request_to_axum_json_response",
+        "dispatch_proxy_channel_breaker_stats_request_to_axum_json_response",
+        "dispatch_reset_proxy_channel_breaker_request_to_axum_json_response",
+        "ChannelBreakerStatsResponse",
+        "ChannelHealthResetResponse",
+        "ChannelMigrationMaterializeResponse",
+        "ChannelMigrationPreviewResponse",
+        "ManagementAppPathRequest",
+    ] {
+        if adapter_source.contains(marker) {
+            violations.push(format!(
+                "src/proxy/response_adapter.rs should not own migration/breaker marker `{marker}`"
+            ));
+        }
+    }
 
     assert!(
         violations.is_empty(),
-        "migration and breaker handlers must delegate path request construction, engine calls, and JSON wrapping to response_adapter:\n{}",
+        "migration and breaker handlers must keep path request construction, engine calls, and JSON wrapping on the HTTP boundary:\n{}",
         violations.join("\n")
     );
 }
@@ -27951,6 +28015,22 @@ fn proxy_response_adapter_owns_core_transport_imports() {
             && !source.contains("RouteResolveResponse"),
         "response_adapter should not own route inspection JSON bridges"
     );
+    assert!(
+        !source.contains("dispatch_preview_proxy_channel_migration_request_to_axum_json_response")
+            && !source.contains(
+                "dispatch_materialize_proxy_channel_migration_request_to_axum_json_response"
+            )
+            && !source
+                .contains("dispatch_proxy_channel_breaker_stats_request_to_axum_json_response")
+            && !source
+                .contains("dispatch_reset_proxy_channel_breaker_request_to_axum_json_response")
+            && !source.contains("ChannelBreakerStatsResponse")
+            && !source.contains("ChannelHealthResetResponse")
+            && !source.contains("ChannelMigrationMaterializeResponse")
+            && !source.contains("ChannelMigrationPreviewResponse")
+            && !source.contains("ManagementAppPathRequest"),
+        "response_adapter should not own migration or breaker JSON bridges"
+    );
 
     let mut violations = Vec::new();
     for marker in [
@@ -28165,6 +28245,7 @@ fn http_handlers_import_core_contracts_directly() {
         "ChannelMigrationPreviewResponse",
         "ChannelModelRecord",
         "ChannelModelsResponse",
+        "ChannelPathRequest",
         "ChannelRecord",
         "ChannelRecordResponse",
         "ChannelRouteCandidate",
