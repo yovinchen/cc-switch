@@ -10081,7 +10081,8 @@ fn response_pipeline_owns_usage_provider_facts_projection() {
             && projection_source.contains("meta.provider_type.as_deref()")
             && projection_source.contains(".map(ProviderKind::from)")
             && function.contains("AppKind::from(app_type)")
-            && function.contains("usage_selected_provider_missing_log_message("),
+            && function.contains("usage_selected_provider_missing_log_message(")
+            && source.contains("fn response_usage_helpers_project_provider_and_app_facts()"),
         "response pipeline should own usage facts while delegating provider-kind projection to provider_projection"
     );
     for marker in FORBIDDEN_RESPONSE_PIPELINE_USAGE_RECORD_HELPER_MARKERS {
@@ -10097,6 +10098,8 @@ fn response_pipeline_owns_usage_provider_facts_projection() {
             && !adapter_source.contains("pub(crate) fn fallback_response_usage_provider_facts")
             && !adapter_source
                 .contains("pub(crate) fn response_usage_provider_facts_from_optional")
+            && !adapter_source
+                .contains("fn response_usage_helpers_project_provider_and_app_facts()")
             && !adapter_source.contains("pub(crate) fn provider_kind_from_provider("),
         "proxy_core_adapter should not own or re-export response usage provider facts"
     );

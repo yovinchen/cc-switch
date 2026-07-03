@@ -2965,6 +2965,8 @@ ProxyRequest
 
 更新：上段中提到的 `proxy_core_adapter::provider_claude_transform_response_for_api_format` 与 `proxy_core_adapter::provider_claude_transform_sse_for_api_format` 已过期；Claude response/SSE api_format wrapper 现在由 `proxy::provider::{transform_claude_response_for_api_format,transform_claude_sse_for_api_format}` 承接，response pipeline 直接导入，adapter 不再保留这组 façade 或 Gemini UUID 注入 helper。
 
+更新：response usage facts、forward-error usage、passthrough/transformed streaming/non-streaming usage record 的综合行为 fixture 已迁入 `proxy/engine/response_pipeline.rs` owning tests，`proxy_core_adapter` 不再承载 `response_usage_helpers_project_provider_and_app_facts` 这类 response pipeline fixture；边界测试同步固定该 fixture 不得回流。
+
 同一 provider 下多个 channel 的行为必须互相隔离：
 
 更新：`proxy::response_adapter` 现在直接经 `proxy_core::api::{auth,domain,transport,events,management,model_catalog,ports,routing,transforms,usage}` 消费纯 core DTO/context，并只作为 Axum/legacy `ProxyResponse` transport bridge、协议 dispatch 和转换响应编排入口；上方 response pipeline 长段中提到的 `proxy_core_adapter::CoreResponseBuildFailureContext` 与 `proxy_core_adapter::AxumResponseBuildErrorContext` 均已过期，response pipeline、response adapter 和 error mapper 直接从 core transport API 引用 response build context。HTTP handler typed JSON 签名 DTO 与 `ProxyState` 均直接来自 owning core/host module，不再经 `proxy_core_adapter` 或 `response_adapter` 二次出口。

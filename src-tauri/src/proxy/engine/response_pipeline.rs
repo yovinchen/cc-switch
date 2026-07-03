@@ -1606,6 +1606,7 @@ async fn log_usage_internal(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app_config::AppType;
     use crate::database::Database;
     use crate::error::AppError;
     use crate::provider::ProviderMeta;
@@ -1618,6 +1619,7 @@ mod tests {
     use crate::proxy_core::api::transforms::GeminiShadowStore;
     use crate::proxy_core::api::transport::decompress_body;
     use rust_decimal::Decimal;
+    use serde_json::json;
     use std::collections::HashMap;
     use std::str::FromStr;
     use std::sync::Arc;
@@ -1678,6 +1680,323 @@ mod tests {
             Some("message_start")
         );
         assert_eq!(strip_sse_field("id:1", "data"), None);
+    }
+
+    #[test]
+    fn response_usage_helpers_project_provider_and_app_facts() {
+        let mut provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            provider_type: Some("github_copilot".to_string()),
+            ..ProviderMeta::default()
+        });
+
+        let facts = response_usage_provider_facts(&provider, AppType::ClaudeDesktop.as_str());
+        assert_eq!(facts.provider_id, "provider-a");
+        assert_eq!(facts.provider_kind, Some(ProviderKind::GitHubCopilot));
+        assert_eq!(facts.app, AppKind::ClaudeDesktop);
+
+        let optional_facts = response_usage_provider_facts_from_optional(
+            Some(&provider),
+            AppType::ClaudeDesktop.as_str(),
+            "Claude Desktop",
+            UsageSelectedProviderMissingPhase::StreamingPassthrough,
+        )
+        .expect("provider facts");
+        assert_eq!(optional_facts.provider_id, "provider-a");
+
+        let missing_provider = response_usage_provider_facts_from_optional(
+            None,
+            AppType::ClaudeDesktop.as_str(),
+            "Claude Desktop",
+            UsageSelectedProviderMissingPhase::StreamingPassthrough,
+        )
+        .unwrap_err();
+        assert_eq!(
+            missing_provider,
+            usage_selected_provider_missing_log_message(
+                "Claude Desktop",
+                UsageSelectedProviderMissingPhase::StreamingPassthrough
+            )
+        );
+
+        fn parsed_stream_usage(_events: &[Value]) -> Option<TokenUsage> {
+            Some(TokenUsage {
+                input_tokens: 4,
+                output_tokens: 6,
+                cache_read_tokens: 0,
+                cache_creation_tokens: 0,
+                model: None,
+                message_id: None,
+            })
+        }
+
+        fn extracted_stream_model(events: &[Value], fallback: &str) -> String {
+            events
+                .iter()
+                .find_map(|event| event.get("model").and_then(Value::as_str))
+                .unwrap_or(fallback)
+                .to_string()
+        }
+
+        let route_context = UsageRouteContext {
+            channel_id: "channel-1".to_string(),
+            channel_name: "Channel One".to_string(),
+            route_group: "beta".to_string(),
+            pricing_model: Some("route-price-model".to_string()),
+        };
+        let error_record = forward_error_usage_record_from_response_context(
+            ForwardErrorUsageContext {
+                provider: Some(&provider),
+                fallback_provider_id: "fallback-provider",
+                app_type: AppType::ClaudeDesktop.as_str(),
+                request_model: "request-model",
+                outbound_model: Some("outbound-model"),
+                route_context: Some(&route_context),
+                status_code: 502,
+                error_message: "upstream failed".to_string(),
+                latency_ms: 321,
+                is_streaming: false,
+                session_id: "session-error",
+            },
+            || "request-error".to_string(),
+        );
+        assert_eq!(error_record.provider_id, "provider-a");
+        assert_eq!(
+            error_record.provider_kind,
+            Some(ProviderKind::GitHubCopilot)
+        );
+        assert_eq!(error_record.app, AppKind::ClaudeDesktop);
+        assert_eq!(error_record.request_model, "request-model");
+        assert_eq!(error_record.outbound_model, "outbound-model");
+        assert_eq!(error_record.status_code, 502);
+        assert_eq!(
+            error_record.error_message.as_deref(),
+            Some("upstream failed")
+        );
+        assert_eq!(error_record.tokens.input_tokens, 0);
+        assert_eq!(error_record.channel_id.as_deref(), Some("channel-1"));
+
+        let transformed_body = json!({
+            "id": "msg_1",
+            "model": "claude-response-model",
+            "usage": {
+                "input_tokens": 3,
+                "output_tokens": 5
+            }
+        });
+        let transformed_record = transformed_response_usage_record_from_response_context(
+            TransformedResponseUsageContext {
+                body: &transformed_body,
+                format: TransformedResponseUsageFormat::Claude,
+                provider: Some(&provider),
+                tag: "Claude Desktop",
+                app_type: AppType::ClaudeDesktop.as_str(),
+                request_model: "request-model",
+                outbound_model: Some("outbound-model"),
+                route_context: Some(&route_context),
+                latency_ms: 123,
+                status_code: 200,
+                session_id: "session-transformed",
+            },
+            || "request-transformed".to_string(),
+        )
+        .expect("transformed provider facts")
+        .expect("transformed usage record");
+        assert_eq!(transformed_record.provider_id, "provider-a");
+        assert_eq!(
+            transformed_record.provider_kind,
+            Some(ProviderKind::GitHubCopilot)
+        );
+        assert_eq!(transformed_record.app, AppKind::ClaudeDesktop);
+        assert_eq!(
+            transformed_record.response_model.as_deref(),
+            Some("claude-response-model")
+        );
+        assert_eq!(transformed_record.tokens.input_tokens, 3);
+        assert!(!transformed_record.is_streaming);
+        assert_eq!(
+            transformed_record.channel_name.as_deref(),
+            Some("Channel One")
+        );
+
+        let missing_transformed = transformed_response_usage_record_from_response_context(
+            TransformedResponseUsageContext {
+                body: &transformed_body,
+                format: TransformedResponseUsageFormat::Claude,
+                provider: None,
+                tag: "Claude Desktop",
+                app_type: AppType::ClaudeDesktop.as_str(),
+                request_model: "request-model",
+                outbound_model: None,
+                route_context: None,
+                latency_ms: 123,
+                status_code: 200,
+                session_id: "session-transformed",
+            },
+            || "request-missing".to_string(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            missing_transformed,
+            usage_selected_provider_missing_log_message(
+                "Claude Desktop",
+                UsageSelectedProviderMissingPhase::TransformedResponse
+            )
+        );
+
+        let stream_events = vec![json!({"model": "stream-response-model"})];
+        let stream_output = streaming_response_usage_record_from_response_context(
+            StreamingResponseUsageContext {
+                events: &stream_events,
+                stream_parser: parsed_stream_usage,
+                model_extractor: extracted_stream_model,
+                provider_facts: &optional_facts,
+                request_model: "request-model",
+                outbound_model: Some("outbound-model"),
+                route_context: Some(&route_context),
+                latency_ms: 456,
+                first_token_ms: Some(12),
+                status_code: 200,
+                session_id: "session-stream",
+            },
+            || "request-stream".to_string(),
+        );
+        assert_eq!(stream_output.record.provider_id, "provider-a");
+        assert_eq!(
+            stream_output.record.provider_kind,
+            Some(ProviderKind::GitHubCopilot)
+        );
+        assert_eq!(stream_output.record.app, AppKind::ClaudeDesktop);
+        assert_eq!(
+            stream_output.record.response_model.as_deref(),
+            Some("stream-response-model")
+        );
+        assert_eq!(stream_output.record.outbound_model, "outbound-model");
+        assert_eq!(stream_output.record.tokens.input_tokens, 4);
+        assert_eq!(stream_output.record.tokens.output_tokens, 6);
+        assert!(stream_output.record.is_streaming);
+        assert_eq!(stream_output.record.first_token_ms, Some(12));
+        assert_eq!(
+            stream_output.record.channel_id.as_deref(),
+            Some("channel-1")
+        );
+        assert_eq!(
+            stream_output.record.channel_name.as_deref(),
+            Some("Channel One")
+        );
+        assert_eq!(stream_output.record.route_group.as_deref(), Some("beta"));
+
+        let transformed_stream_events = vec![
+            json!({
+                "type": "message_start",
+                "message": {
+                    "id": "msg_stream_1",
+                    "model": "claude-stream-model",
+                    "usage": {
+                        "input_tokens": 7
+                    }
+                }
+            }),
+            json!({
+                "type": "message_delta",
+                "usage": {
+                    "output_tokens": 11
+                }
+            }),
+        ];
+        let transformed_stream_record =
+            transformed_streaming_response_usage_record_from_response_context(
+                TransformedStreamingResponseUsageContext {
+                    events: &transformed_stream_events,
+                    format: TransformedResponseUsageFormat::Claude,
+                    provider_facts: &optional_facts,
+                    request_model: "request-model",
+                    outbound_model: Some("outbound-model"),
+                    route_context: Some(&route_context),
+                    latency_ms: 654,
+                    first_token_ms: Some(34),
+                    status_code: 200,
+                    session_id: "session-transformed-stream",
+                },
+                || "request-transformed-stream".to_string(),
+            )
+            .expect("transformed streaming usage record");
+        assert_eq!(transformed_stream_record.provider_id, "provider-a");
+        assert_eq!(
+            transformed_stream_record.response_model.as_deref(),
+            Some("claude-stream-model")
+        );
+        assert_eq!(transformed_stream_record.tokens.input_tokens, 7);
+        assert_eq!(transformed_stream_record.tokens.output_tokens, 11);
+        assert_eq!(transformed_stream_record.first_token_ms, Some(34));
+        assert!(transformed_stream_record.is_streaming);
+        assert_eq!(
+            transformed_stream_record.route_group.as_deref(),
+            Some("beta")
+        );
+
+        let response_body =
+            br#"{"model":"response-model","usage":{"prompt_tokens":2,"completion_tokens":3}}"#;
+        let output = non_streaming_response_usage_record_from_response_context(
+            NonStreamingResponseUsageContext {
+                body: response_body,
+                response_parser: TokenUsage::from_openai_response,
+                provider: Some(&provider),
+                app_type: AppType::ClaudeDesktop.as_str(),
+                request_model: "request-model",
+                outbound_model: Some("outbound-model"),
+                route_context: Some(&route_context),
+                latency_ms: 123,
+                status_code: 200,
+                session_id: "session-1",
+            },
+            || "request-1".to_string(),
+        )
+        .expect("non-streaming usage record");
+
+        assert!(output.usage_found);
+        assert_eq!(output.record.provider_id, "provider-a");
+        assert_eq!(
+            output.record.provider_kind,
+            Some(ProviderKind::GitHubCopilot)
+        );
+        assert_eq!(output.record.app, AppKind::ClaudeDesktop);
+        assert_eq!(
+            output.record.response_model.as_deref(),
+            Some("response-model")
+        );
+        assert_eq!(output.record.outbound_model, "outbound-model");
+        assert_eq!(output.record.tokens.input_tokens, 2);
+        assert_eq!(output.record.tokens.output_tokens, 3);
+        assert_eq!(output.record.channel_id.as_deref(), Some("channel-1"));
+        assert_eq!(output.record.channel_name.as_deref(), Some("Channel One"));
+        assert_eq!(output.record.route_group.as_deref(), Some("beta"));
+
+        let missing = non_streaming_response_usage_record_from_response_context(
+            NonStreamingResponseUsageContext {
+                body: b"{}",
+                response_parser: TokenUsage::from_openai_response,
+                provider: None,
+                app_type: AppType::ClaudeDesktop.as_str(),
+                request_model: "request-model",
+                outbound_model: None,
+                route_context: None,
+                latency_ms: 123,
+                status_code: 200,
+                session_id: "session-1",
+            },
+            || "request-2".to_string(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            missing,
+            selected_provider_not_applied_message(AppType::ClaudeDesktop.as_str())
+        );
     }
 
     fn build_state(db: Arc<Database>) -> ProxyState {
