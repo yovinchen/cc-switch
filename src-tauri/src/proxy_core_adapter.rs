@@ -148,16 +148,14 @@ mod tests {
     use crate::proxy_core::api::errors::{
         selected_provider_display_name_for_error, selected_provider_missing_from_source_message,
         selected_provider_not_applied_message, unselected_provider_fallback_id, ProxyCoreError,
-        ProxyCoreResult, ProxyErrorStatusKind,
+        ProxyErrorStatusKind,
     };
     use crate::proxy_core::api::events::{
         attempt_event, request_started_event, route_selected_event, server_started_event,
         server_stopped_event, AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase,
         ProxyCoreEvent, ProxyEventEnvelope,
     };
-    use crate::proxy_core::api::management::{
-        ChannelRouteSource, ChannelTestProbeRequest, RouteResolveRequest, StreamCheckResult,
-    };
+    use crate::proxy_core::api::management::{ChannelRouteSource, RouteResolveRequest};
     use crate::proxy_core::api::ports::{
         codex_restored_live_settings_parts, gemini_env_json_from_map,
         gemini_env_string_map_from_settings, gemini_live_config_object_from_settings,
@@ -3803,112 +3801,6 @@ wire_api = "chat"
             Some("claude-sonnet-4-6")
         );
         assert_eq!(env.get("OTHER").and_then(Value::as_str), Some("kept"));
-    }
-
-    #[test]
-    fn stream_check_adapter_preserves_reachability_fields() {
-        use crate::proxy_core::api::management::{
-            channel_reachability_probe_error,
-            channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
-            channel_test_app_type_error, channel_test_provider_not_found_error,
-            ChannelReachabilityStatus,
-        };
-
-        let result = StreamCheckResult {
-            status: ChannelReachabilityStatus::Degraded,
-            success: true,
-            message: "slow but reachable".to_string(),
-            response_time_ms: Some(6100),
-            http_status: Some(200),
-            model_used: String::new(),
-            tested_at: 1_797_000_000,
-            retry_count: 1,
-            error_category: None,
-        };
-
-        let reachability = stream_check_result_to_channel_reachability(result);
-
-        assert!(reachability.success);
-        assert_eq!(
-            reachability.status,
-            ChannelReachabilityStatus::Degraded.as_str()
-        );
-        assert_eq!(reachability.message, "slow but reachable");
-        assert_eq!(reachability.latency_ms, Some(6100));
-        assert_eq!(reachability.http_status, Some(200));
-        assert_eq!(reachability.tested_at, 1_797_000_000);
-        assert_eq!(reachability.retry_count, 1);
-
-        let probe = ChannelTestProbeRequest {
-            channel_id: "channel-a".to_string(),
-            provider_id: "provider-a".to_string(),
-            app_type: "claude".to_string(),
-            base_url: "https://api.example.com/v1".to_string(),
-        };
-        assert_eq!(
-            probe.app_type.parse::<AppType>().expect("app type"),
-            AppType::Claude
-        );
-        let provider = Provider::with_id(
-            "provider-a".to_string(),
-            "Provider A".to_string(),
-            json!({}),
-            None,
-        );
-        assert_eq!(provider.id, "provider-a");
-        let missing_provider: ProxyCoreResult<Provider> =
-            None.ok_or_else(|| channel_test_provider_not_found_error(&probe));
-        let missing_provider = missing_provider.expect_err("missing provider");
-        assert!(matches!(
-            missing_provider,
-            ProxyCoreError::Config(message)
-                if message == "provider not found for channel channel-a: provider-a"
-        ));
-        let invalid_probe = ChannelTestProbeRequest {
-            app_type: "unknown-app".to_string(),
-            ..probe.clone()
-        };
-        let invalid_app_type: ProxyCoreResult<AppType> = invalid_probe
-            .app_type
-            .parse::<AppType>()
-            .map_err(channel_test_app_type_error);
-        assert!(matches!(
-            invalid_app_type,
-            Err(ProxyCoreError::InvalidRequest(message))
-                if message.contains("unknown-app")
-        ));
-        assert!(matches!(
-            channel_reachability_probe_error("probe failed"),
-            ProxyCoreError::Internal(message) if message == "probe failed"
-        ));
-
-        for (health_status, reachability_status) in [
-            (
-                ChannelReachabilityStatus::Operational,
-                ChannelReachabilityStatus::Operational,
-            ),
-            (
-                ChannelReachabilityStatus::Failed,
-                ChannelReachabilityStatus::Failed,
-            ),
-        ] {
-            let result = StreamCheckResult {
-                status: health_status,
-                success: false,
-                message: String::new(),
-                response_time_ms: None,
-                http_status: None,
-                model_used: String::new(),
-                tested_at: 0,
-                retry_count: 0,
-                error_category: None,
-            };
-
-            assert_eq!(
-                stream_check_result_to_channel_reachability(result).status,
-                reachability_status.as_str()
-            );
-        }
     }
 
     #[test]

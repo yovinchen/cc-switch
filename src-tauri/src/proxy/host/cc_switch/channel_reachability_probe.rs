@@ -54,3 +54,117 @@ impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe {
         Box::pin(async move { probe_channel_reachability_from_db_source(&self.db, request).await })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::Provider;
+    use crate::proxy_core::api::errors::ProxyCoreError;
+    use crate::proxy_core::api::management::{ChannelReachabilityStatus, StreamCheckResult};
+    use serde_json::json;
+
+    #[test]
+    fn reachability_probe_preserves_stream_check_projection_fields() {
+        let result = StreamCheckResult {
+            status: ChannelReachabilityStatus::Degraded,
+            success: true,
+            message: "slow but reachable".to_string(),
+            response_time_ms: Some(6100),
+            http_status: Some(200),
+            model_used: String::new(),
+            tested_at: 1_797_000_000,
+            retry_count: 1,
+            error_category: None,
+        };
+
+        let reachability = stream_check_result_to_channel_reachability(result);
+
+        assert!(reachability.success);
+        assert_eq!(
+            reachability.status,
+            ChannelReachabilityStatus::Degraded.as_str()
+        );
+        assert_eq!(reachability.message, "slow but reachable");
+        assert_eq!(reachability.latency_ms, Some(6100));
+        assert_eq!(reachability.http_status, Some(200));
+        assert_eq!(reachability.tested_at, 1_797_000_000);
+        assert_eq!(reachability.retry_count, 1);
+    }
+
+    #[test]
+    fn reachability_probe_preserves_probe_error_contracts() {
+        let probe = ChannelTestProbeRequest {
+            channel_id: "channel-a".to_string(),
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            base_url: "https://api.example.com/v1".to_string(),
+        };
+        assert_eq!(
+            probe.app_type.parse::<AppType>().expect("app type"),
+            AppType::Claude
+        );
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+        assert_eq!(provider.id, "provider-a");
+        let missing_provider: ProxyCoreResult<Provider> =
+            None.ok_or_else(|| channel_test_provider_not_found_error(&probe));
+        let missing_provider = missing_provider.expect_err("missing provider");
+        assert!(matches!(
+            missing_provider,
+            ProxyCoreError::Config(message)
+                if message == "provider not found for channel channel-a: provider-a"
+        ));
+        let invalid_probe = ChannelTestProbeRequest {
+            app_type: "unknown-app".to_string(),
+            ..probe.clone()
+        };
+        let invalid_app_type: ProxyCoreResult<AppType> = invalid_probe
+            .app_type
+            .parse::<AppType>()
+            .map_err(channel_test_app_type_error);
+        assert!(matches!(
+            invalid_app_type,
+            Err(ProxyCoreError::InvalidRequest(message))
+                if message.contains("unknown-app")
+        ));
+        assert!(matches!(
+            channel_reachability_probe_error("probe failed"),
+            ProxyCoreError::Internal(message) if message == "probe failed"
+        ));
+    }
+
+    #[test]
+    fn reachability_probe_preserves_status_string_contracts() {
+        for (health_status, reachability_status) in [
+            (
+                ChannelReachabilityStatus::Operational,
+                ChannelReachabilityStatus::Operational,
+            ),
+            (
+                ChannelReachabilityStatus::Failed,
+                ChannelReachabilityStatus::Failed,
+            ),
+        ] {
+            let result = StreamCheckResult {
+                status: health_status,
+                success: false,
+                message: String::new(),
+                response_time_ms: None,
+                http_status: None,
+                model_used: String::new(),
+                tested_at: 0,
+                retry_count: 0,
+                error_category: None,
+            };
+
+            assert_eq!(
+                stream_check_result_to_channel_reachability(result).status,
+                reachability_status.as_str()
+            );
+        }
+    }
+}

@@ -4271,6 +4271,14 @@ fn proxy_core_adapter_uses_host_reachability_probe_source() {
         "host reachability module should implement the proxy-core reachability probe port"
     );
     assert!(
+        probe_source
+            .contains("fn reachability_probe_preserves_stream_check_projection_fields()")
+            && probe_source.contains("fn reachability_probe_preserves_probe_error_contracts()")
+            && probe_source.contains("fn reachability_probe_preserves_status_string_contracts()")
+            && !adapter_source.contains("fn stream_check_adapter_preserves_reachability_fields()"),
+        "stream-check reachability fixtures should live with the host reachability probe, not proxy_core_adapter"
+    );
+    assert!(
         probe_source.contains("use crate::proxy_core::api::errors::{")
             && probe_source.contains("config_error_with_context")
             && probe_source.contains("ProxyCoreResult")
