@@ -403,6 +403,10 @@ mod tests {
     #[test]
     fn error_message_with_context_preserves_host_adapter_text() {
         assert_eq!(
+            error_message_with_context("load config", "disk failed"),
+            "load config: disk failed"
+        );
+        assert_eq!(
             error_message_with_context("load app proxy config", "database unavailable"),
             "load app proxy config: database unavailable"
         );

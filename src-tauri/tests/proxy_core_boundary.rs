@@ -3295,6 +3295,8 @@ fn proxy_error_owns_core_error_response_imports() {
         .split("\n#[cfg(test)]\nmod tests")
         .next()
         .unwrap_or(&adapter_source);
+    let core_error_path = manifest_dir.join("crates/proxy-core/src/error.rs");
+    let core_error = fs::read_to_string(&core_error_path).expect("read proxy-core error.rs");
 
     assert!(
         source.contains("use crate::proxy_core::api::errors::{")
@@ -3310,6 +3312,14 @@ fn proxy_error_owns_core_error_response_imports() {
             && !adapter_production.contains("proxy_error_response_body")
             && !adapter_production.contains("upstream_proxy_error_response_body"),
         "proxy/error.rs should not route HTTP error response contracts through proxy_core_adapter"
+    );
+    assert!(
+        !adapter_source.contains("proxy_error_status_adapter_projects_http_contract")
+            && core_error.contains("fn proxy_error_http_status_codes_preserve_host_contract()")
+            && core_error
+                .contains("fn upstream_proxy_error_response_body_preserves_json_or_wraps_text()")
+            && core_error.contains("fn error_message_with_context_preserves_host_adapter_text()"),
+        "proxy error HTTP contract fixtures should live in proxy-core error.rs, not proxy_core_adapter"
     );
 }
 

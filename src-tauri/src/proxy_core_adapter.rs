@@ -156,10 +156,9 @@ mod tests {
         ProviderSpec, RetryPolicy, UpstreamEndpoint,
     };
     use crate::proxy_core::api::errors::{
-        proxy_error_http_status_code, proxy_error_response_body,
         selected_provider_display_name_for_error, selected_provider_missing_from_source_message,
-        selected_provider_not_applied_message, unselected_provider_fallback_id,
-        upstream_proxy_error_response_body, ProxyCoreError, ProxyCoreResult, ProxyErrorStatusKind,
+        selected_provider_not_applied_message, unselected_provider_fallback_id, ProxyCoreError,
+        ProxyCoreResult, ProxyErrorStatusKind,
     };
     use crate::proxy_core::api::events::{
         attempt_event, request_started_event, route_selected_event, server_started_event,
@@ -720,37 +719,6 @@ mod tests {
         assert!(claude_desktop_model_id_is_profile_safe(
             "anthropic/claude-opus-4-8"
         ));
-    }
-
-    #[test]
-    fn proxy_error_status_adapter_projects_http_contract() {
-        assert_eq!(
-            proxy_error_http_status_code(ProxyErrorStatusKind::ForwardFailed),
-            502
-        );
-        assert_eq!(
-            proxy_error_http_status_code(ProxyErrorStatusKind::AuthError),
-            401
-        );
-        assert_eq!(
-            proxy_error_http_status_code(ProxyErrorStatusKind::UpstreamError(42)),
-            502
-        );
-        assert_eq!(
-            crate::proxy_core::api::errors::error_message_with_context(
-                "load config",
-                "disk failed"
-            ),
-            "load config: disk failed"
-        );
-        assert_eq!(
-            proxy_error_response_body("bad")["error"]["type"],
-            "proxy_error"
-        );
-        assert_eq!(
-            upstream_proxy_error_response_body(502, Some("bad gateway"))["error"]["message"],
-            "bad gateway"
-        );
     }
 
     #[test]
