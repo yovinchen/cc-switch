@@ -6422,6 +6422,9 @@ fn proxy_core_adapter_does_not_export_proxy_core_event_alias() {
         .expect("read proxy_core_adapter.rs");
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
+    let event_sink_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/event_sink.rs"))
+            .expect("read event_sink.rs");
     assert!(
         !adapter_source.contains(
             "pub(crate) type ProxyCoreEvent = crate::proxy_core::api::events::ProxyCoreEvent;"
@@ -6433,8 +6436,9 @@ fn proxy_core_adapter_does_not_export_proxy_core_event_alias() {
         "proxy_core_adapter should not re-export core event constructors"
     );
     assert!(
-        host_source.contains("use crate::proxy_core::api::events::ProxyCoreEvent;"),
-        "proxy_core_host test harness should import ProxyCoreEvent directly from proxy_core events"
+        event_sink_source.contains("use crate::proxy_core::api::events::ProxyCoreEvent;")
+            && !host_source.contains("use crate::proxy_core::api::events::ProxyCoreEvent;"),
+        "event sink owner should import ProxyCoreEvent directly from proxy_core events"
     );
     let host_adapter_import = proxy_core_adapter_import_identifiers(&host_source);
     assert!(
@@ -24360,6 +24364,8 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
     let event_sink_path = manifest_dir.join("src/proxy/host/cc_switch/event_sink.rs");
     let event_sink_source = fs::read_to_string(&event_sink_path).expect("read event_sink.rs");
     let event_bus_path = manifest_dir.join("src/proxy/events.rs");
@@ -24370,6 +24376,12 @@ fn proxy_core_adapter_delegates_event_sink_source_to_host_module() {
             && event_sink_source.contains("impl ProxyEventSink for CcSwitchEventSink")
             && event_sink_source.contains("events.emit_core_event(event);"),
         "CC Switch event sink implementation should live in host/cc_switch/event_sink.rs and delegate core event projection to ProxyEventBus"
+    );
+    assert!(
+        event_sink_source.contains("fn event_sink_bridges_core_events_to_proxy_event_bus()")
+            && !host_harness_source
+                .contains("fn event_sink_bridges_core_events_to_proxy_event_bus"),
+        "event sink bridge fixture should live beside event_sink, not proxy_core_host"
     );
     assert!(
         event_bus_source.contains("pub fn emit_core_event(&self, event: ProxyCoreEvent)")

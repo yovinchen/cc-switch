@@ -2,8 +2,6 @@
 
 #[cfg(test)]
 use crate::database::Database;
-#[cfg(test)]
-use crate::proxy::events::ProxyEventBus;
 use crate::proxy::host::cc_switch::auth_provider::CcSwitchAuthProvider;
 use crate::proxy::host::cc_switch::channel_health_store::CcSwitchChannelHealthStore;
 use crate::proxy::host::cc_switch::channel_key_runtime_source::{
@@ -79,16 +77,6 @@ pub(crate) struct CcSwitchProxyServices<R> {
 impl<R> CcSwitchProxyServices<R> {
     #[cfg(test)]
     pub(crate) fn new(db: Arc<Database>) -> Self {
-        Self::with_optional_event_bus(db, None)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn with_event_bus(db: Arc<Database>, events: Arc<ProxyEventBus>) -> Self {
-        Self::with_optional_event_bus(db, Some(events))
-    }
-
-    #[cfg(test)]
-    fn with_optional_event_bus(db: Arc<Database>, events: Option<Arc<ProxyEventBus>>) -> Self {
         let router = Arc::new(provider_router_from_database(db.clone()));
         let channel_key_runtime_source = channel_key_runtime_source_from_database(db.clone());
         Self {
@@ -114,7 +102,7 @@ impl<R> CcSwitchProxyServices<R> {
             model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), router.clone()),
             runtime_status_source: Arc::new(DefaultRuntimeStatusSource),
             usage_sink: CcSwitchUsageSink::new(db.clone()),
-            event_sink: CcSwitchEventSink::new(events),
+            event_sink: CcSwitchEventSink::default(),
             forward_pipeline: CcSwitchForwardPipeline::without_runtime(channel_key_runtime_source),
         }
     }
