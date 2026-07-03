@@ -55,9 +55,9 @@ mod tests {
         json_value_is_subset, live_takeover_app_kinds, live_token_sync_app_label,
         provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
         provider_switch_dispatch_for_app, provider_switch_requires_takeover_lock,
-        provider_switch_should_mark_live_config_managed, proxy_runtime_status_stopped,
-        sanitize_claude_settings_for_live, CodexProviderLiveWriteIssue,
-        CodexProviderValidationIssue, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
+        proxy_runtime_status_stopped, sanitize_claude_settings_for_live,
+        CodexProviderLiveWriteIssue, CodexProviderValidationIssue, ProviderSettingsValidationIssue,
+        ProviderSwitchDispatch,
     };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
@@ -3695,26 +3695,6 @@ wire_api = "chat"
             live_token_sync_app_label(&AppKind::from(&AppType::OpenCode)),
             None
         );
-    }
-
-    #[test]
-    fn provider_switch_should_mark_live_config_managed_only_for_unmanaged_additive() {
-        assert!(provider_switch_should_mark_live_config_managed(
-            &AppKind::from(&AppType::OpenCode),
-            None
-        ));
-        assert!(provider_switch_should_mark_live_config_managed(
-            &AppKind::from(&AppType::OpenCode),
-            Some(false)
-        ));
-        assert!(!provider_switch_should_mark_live_config_managed(
-            &AppKind::from(&AppType::OpenCode),
-            Some(true)
-        ));
-        assert!(!provider_switch_should_mark_live_config_managed(
-            &AppKind::from(&AppType::Claude),
-            None
-        ));
     }
 
     #[test]

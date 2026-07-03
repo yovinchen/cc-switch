@@ -9343,6 +9343,13 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
                 .contains("fn provider_additive_update_route_keeps_omo_separate_from_live_presence()"),
         "provider additive update route fixtures should live in proxy-core ports, not proxy_core_adapter"
     );
+    assert!(
+        !adapter_source
+            .contains("fn provider_switch_should_mark_live_config_managed_only_for_unmanaged_additive()")
+            && core_ports_source
+                .contains("fn provider_switch_live_config_managed_mark_only_applies_to_unmanaged_additive()"),
+        "provider live-config managed mark fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
 
     let provider_service_source =
         fs::read_to_string(manifest_dir.join("src/services/provider/mod.rs"))
