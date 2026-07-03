@@ -393,7 +393,8 @@ pub mod prelude {
         provider_adapter_kind_for_app, AppKind, AppProviderAdapterKind, AuthProfileRef,
         ChannelAttemptPlan, ChannelAttemptResult, ChannelSpecInput, InterfaceKind, ModelRoute,
         ModelRouteInput, ProviderKind, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan,
-        RoutePolicy, RouteRequest, RouteSelection, UsageTokens,
+        RoutePolicy, RouteRequest, RouteSelection, UsageTokens, route_policy_failover_provider_ids,
+        route_policy_from_failover_provider_ids,
     };
     pub use super::engine::ProxyEngine;
     pub use super::errors::{ProxyCoreError, ProxyCoreResult};

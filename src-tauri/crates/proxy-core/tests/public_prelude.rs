@@ -1383,6 +1383,30 @@ fn external_host_can_use_custom_app_namespace_contracts_from_prelude() {
 }
 
 #[test]
+fn external_host_can_use_route_policy_failover_contracts_from_prelude() {
+    let policy: RoutePolicy = route_policy_from_failover_provider_ids(
+        AppKind::Custom("opencode".to_string()),
+        vec![
+            "relay-primary".to_string(),
+            "relay-backup".to_string(),
+            "relay-third".to_string(),
+        ],
+    );
+
+    assert_eq!(policy.app, AppKind::Custom("opencode".to_string()));
+    assert!(policy.groups.is_empty());
+    assert_eq!(policy.raw["defaultGroup"], json!(DEFAULT_ROUTE_GROUP));
+    assert_eq!(
+        route_policy_failover_provider_ids(&policy),
+        vec![
+            "relay-primary".to_string(),
+            "relay-backup".to_string(),
+            "relay-third".to_string(),
+        ]
+    );
+}
+
+#[test]
 fn external_host_can_use_health_check_contracts_from_prelude() {
     let request = HealthCheckRequest::new();
     let response: HealthCheckResponse =
