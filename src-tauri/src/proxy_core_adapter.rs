@@ -3893,28 +3893,6 @@ wire_api = "chat"
     }
 
     #[test]
-    fn codex_user_agent_adapter_projects_official_client_policy() {
-        assert!(is_official_codex_client_user_agent("codex_vscode/1.0.0"));
-        assert!(is_official_codex_client_user_agent("codex_vscode/2.3.4"));
-        assert!(is_official_codex_client_user_agent("codex_vscode/0.1"));
-        assert!(is_official_codex_client_user_agent("codex_cli_rs/1.0.0"));
-        assert!(is_official_codex_client_user_agent("codex_cli_rs/0.5.2"));
-        assert!(!is_official_codex_client_user_agent("Mozilla/5.0"));
-        assert!(!is_official_codex_client_user_agent("curl/7.68.0"));
-        assert!(!is_official_codex_client_user_agent(
-            "python-requests/2.25.1"
-        ));
-        assert!(!is_official_codex_client_user_agent("codex_other/1.0.0"));
-        assert!(!is_official_codex_client_user_agent(""));
-        assert!(!is_official_codex_client_user_agent(
-            "some codex_vscode/1.0.0"
-        ));
-        assert!(!is_official_codex_client_user_agent(
-            "prefix_codex_cli_rs/1.0.0"
-        ));
-    }
-
-    #[test]
     fn usage_record_adapter_builds_request_log_and_missing_pricing_signal() {
         let record = UsageRecord {
             request_id: Some("req-usage-1".to_string()),

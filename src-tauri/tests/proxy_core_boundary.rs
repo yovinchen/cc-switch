@@ -7645,6 +7645,9 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let core_request_headers_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_headers.rs"))
+            .expect("read proxy-core request_headers.rs");
     let config_reexport_blocks: Vec<&str> = source
         .split("pub(crate) use crate::proxy_core::api::config::{")
         .skip(1)
@@ -7942,6 +7945,12 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
         violations.is_empty(),
         "proxy_core_adapter should expose small pure core helpers directly instead of local one-line facades:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        !source.contains("codex_user_agent_adapter_projects_official_client_policy")
+            && core_request_headers_source
+                .contains("fn detects_official_codex_client_user_agent_prefixes()"),
+        "Codex official client User-Agent fixtures should live in proxy-core request_headers, not proxy_core_adapter"
     );
 }
 

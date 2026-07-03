@@ -849,6 +849,9 @@ mod tests {
     #[test]
     fn detects_official_codex_client_user_agent_prefixes() {
         assert!(is_official_codex_client_user_agent("codex_vscode/1.0.0"));
+        assert!(is_official_codex_client_user_agent("codex_vscode/2.3.4"));
+        assert!(is_official_codex_client_user_agent("codex_vscode/0.1"));
+        assert!(is_official_codex_client_user_agent("codex_cli_rs/1.0.0"));
         assert!(is_official_codex_client_user_agent("codex_cli_rs/0.5.2"));
         assert!(is_official_codex_client_user_agent(
             "codex_vscode/1.0.0 extra"
@@ -856,6 +859,9 @@ mod tests {
         assert!(!is_official_codex_client_user_agent("Mozilla/5.0"));
         assert!(!is_official_codex_client_user_agent(
             "some codex_vscode/1.0.0"
+        ));
+        assert!(!is_official_codex_client_user_agent(
+            "prefix_codex_cli_rs/1.0.0"
         ));
         assert!(!is_official_codex_client_user_agent("codex_other/1.0.0"));
         assert!(!is_official_codex_client_user_agent("codex_vscode/"));
