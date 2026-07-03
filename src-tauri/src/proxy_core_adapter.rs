@@ -20,9 +20,6 @@ use crate::proxy::provider::claude_provider_api_format;
 use serde_json::Value;
 
 #[cfg(test)]
-use crate::proxy::host::cc_switch::forwarder_request_source::forwarder_rectifier_error_message;
-
-#[cfg(test)]
 mod tests {
     use crate::proxy::engine::routing::provider_router_app_error_from_provider_selection_failure;
     use crate::proxy::provider::{
@@ -59,8 +56,6 @@ mod tests {
 
     use super::*;
     use crate::provider::ProviderMeta;
-    use crate::proxy::error::ProxyError;
-    use crate::proxy::error_mapper::forward_failure_kind_from_proxy_error;
     use crate::proxy::host::cc_switch::provider_projection::{
         provider_claude_auth_key, provider_claude_base_url, provider_claude_kind,
         provider_needs_claude_transform,
@@ -81,11 +76,7 @@ mod tests {
         ChannelHealthPolicy, ChannelOverrides, ProviderMetadata, ProviderSpec, RetryPolicy,
         UpstreamEndpoint,
     };
-    use crate::proxy_core::api::errors::{
-        selected_provider_display_name_for_error, selected_provider_missing_from_source_message,
-        selected_provider_not_applied_message, unselected_provider_fallback_id, ProxyCoreError,
-        ProxyErrorStatusKind,
-    };
+    use crate::proxy_core::api::errors::ProxyCoreError;
     use crate::proxy_core::api::management::{ChannelRouteSource, RouteResolveRequest};
     use crate::proxy_core::api::ports::{
         codex_restored_live_settings_parts, gemini_env_json_from_map,
@@ -100,9 +91,7 @@ mod tests {
         ProviderSelectionFailure, ProviderSelectionInput, RoutePlan, RouteResolveChannelInput,
         RouteResolveModelInput, RouteSelection,
     };
-    use crate::proxy_core::api::transforms::{
-        normalize_claude_anthropic_messages, CodexProxyErrorContext, CodexProxyErrorKind,
-    };
+    use crate::proxy_core::api::transforms::normalize_claude_anthropic_messages;
     use crate::proxy_core::api::transforms::{
         CodexChatReasoningOptions, CodexChatReasoningProfile,
     };
@@ -110,7 +99,6 @@ mod tests {
     use crate::proxy_core::api::transport::{
         build_claude_auth_headers, build_codex_bearer_auth_headers, build_copilot_auth_headers,
         build_gemini_auth_headers, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
-        ForwardFailureKind,
     };
     use bytes::Bytes;
     use indexmap::IndexMap;
@@ -1655,201 +1643,6 @@ wire_api = "chat"
         assert_eq!(
             body.get("model").and_then(Value::as_str),
             Some("upstream-sonnet")
-        );
-    }
-
-    #[test]
-    fn error_mapper_adapter_projects_error_contracts() {
-        assert!(matches!(
-            crate::proxy_core::api::errors::config_error_with_context(
-                "load config",
-                AppError::Message("disk failed".to_string())
-            ),
-            ProxyCoreError::Config(message)
-                if message == "load config: disk failed"
-        ));
-        assert!(matches!(
-            crate::proxy_core::api::errors::internal_error_with_context(
-                "record usage",
-                AppError::Message("db failed".to_string())
-            ),
-            ProxyCoreError::Internal(message)
-                if message == "record usage: db failed"
-        ));
-        assert_eq!(
-            selected_provider_missing_from_source_message("provider-a", "host database"),
-            "selected provider is missing from host database: provider-a"
-        );
-        assert_eq!(
-            selected_provider_not_applied_message("codex"),
-            "selected provider is not available before route result is applied: codex"
-        );
-        assert_eq!(
-            selected_provider_display_name_for_error(Some("Provider A"), "Codex"),
-            "Provider A"
-        );
-        assert_eq!(
-            selected_provider_display_name_for_error(None, "Codex"),
-            "Codex"
-        );
-        assert_eq!(unselected_provider_fallback_id("codex"), "unselected:codex");
-        assert_eq!(
-            crate::proxy_core::api::transforms::codex_proxy_error_code(
-                CodexProxyErrorKind::ForwardFailed
-            ),
-            "cc_switch_forward_failed"
-        );
-        let json_body =
-            crate::proxy_core::api::transforms::codex_proxy_error_json(CodexProxyErrorContext {
-                provider_name: "Relay",
-                request_model: "model-a",
-                endpoint: "/responses",
-                fallback_message: "failed",
-                fallback_code: "cc_switch_forward_failed",
-                upstream_status: None,
-                upstream_body: None,
-            });
-        assert_eq!(json_body["error"]["provider"], "Relay");
-        let facts_body = crate::proxy::error_mapper::codex_proxy_error_json_from_host_facts(
-            "Relay",
-            "model-a",
-            "/responses",
-            crate::proxy::error_mapper::CodexProxyHostErrorFacts {
-                status: ProxyErrorStatusKind::ForwardFailed,
-                message: "failed",
-                kind: CodexProxyErrorKind::ForwardFailed,
-                upstream_status: None,
-                upstream_body: None,
-            },
-        );
-        assert_eq!(facts_body["error"]["code"], "cc_switch_forward_failed");
-        assert_eq!(facts_body["error"]["provider"], "Relay");
-        let proxy_error_body = crate::proxy::error_mapper::codex_proxy_error_json(
-            "Relay",
-            "model-a",
-            "/responses",
-            &ProxyError::Timeout("slow".to_string()),
-        );
-        assert_eq!(proxy_error_body["error"]["code"], "cc_switch_timeout");
-
-        let upstream_error_body = crate::proxy::error_mapper::codex_proxy_error_json(
-            "Relay",
-            "model-a",
-            "/responses",
-            &ProxyError::UpstreamError {
-                status: 429,
-                body: Some("quota exceeded".to_string()),
-            },
-        );
-        assert_eq!(
-            upstream_error_body["error"]["code"],
-            "cc_switch_upstream_error"
-        );
-        assert_eq!(upstream_error_body["error"]["upstream_status"], 429);
-        assert!(upstream_error_body["error"]["message"]
-            .as_str()
-            .expect("upstream error message")
-            .contains("quota exceeded"));
-
-        let response = crate::proxy_core::api::transforms::codex_proxy_error_response(
-            ProxyErrorStatusKind::AuthError,
-            CodexProxyErrorContext {
-                provider_name: "Relay",
-                request_model: "model-a",
-                endpoint: "/responses",
-                fallback_message: "bad token",
-                fallback_code: "cc_switch_auth_error",
-                upstream_status: None,
-                upstream_body: None,
-            },
-        )
-        .expect("codex error response");
-        assert_eq!(response.status.as_u16(), 401);
-        let facts_response =
-            crate::proxy::error_mapper::codex_proxy_error_response_from_host_facts(
-                "Relay",
-                "model-a",
-                "/responses",
-                crate::proxy::error_mapper::CodexProxyHostErrorFacts {
-                    status: ProxyErrorStatusKind::AuthError,
-                    message: "bad token",
-                    kind: CodexProxyErrorKind::AuthError,
-                    upstream_status: None,
-                    upstream_body: None,
-                },
-            )
-            .expect("codex facts error response");
-        assert_eq!(facts_response.status.as_u16(), 401);
-        let proxy_error_response = crate::proxy::error_mapper::codex_proxy_error_response(
-            "Relay",
-            "model-a",
-            "/responses",
-            &ProxyError::AuthError("bad token".to_string()),
-        )
-        .expect("codex proxy error response");
-        assert_eq!(proxy_error_response.status.as_u16(), 401);
-
-        assert!(matches!(
-            forward_failure_kind_from_proxy_error(&ProxyError::Timeout("slow".to_string())),
-            ForwardFailureKind::Timeout(message) if message == "slow"
-        ));
-        assert!(matches!(
-            forward_failure_kind_from_proxy_error(&ProxyError::ForwardFailed(
-                "connection reset".to_string()
-            )),
-            ForwardFailureKind::ForwardFailed(message) if message == "connection reset"
-        ));
-        assert!(matches!(
-            forward_failure_kind_from_proxy_error(&ProxyError::AuthError("bad token".to_string())),
-            ForwardFailureKind::AuthError(message) if message == "bad token"
-        ));
-        assert!(matches!(
-            forward_failure_kind_from_proxy_error(&ProxyError::ProviderUnhealthy(
-                "half-open".to_string()
-            )),
-            ForwardFailureKind::RetryableOther(_)
-        ));
-        assert!(matches!(
-            forward_failure_kind_from_proxy_error(&ProxyError::DatabaseError(
-                "write failed".to_string()
-            )),
-            ForwardFailureKind::Other(_)
-        ));
-        match forward_failure_kind_from_proxy_error(&ProxyError::UpstreamError {
-            status: 429,
-            body: Some(r#"{"error":{"message":"rate limit"}}"#.to_string()),
-        }) {
-            ForwardFailureKind::Upstream { status, body } => {
-                assert_eq!(status, 429);
-                assert_eq!(
-                    body.as_deref(),
-                    Some(r#"{"error":{"message":"rate limit"}}"#)
-                );
-            }
-            other => panic!("expected upstream failure, got {other:?}"),
-        }
-        assert_eq!(
-            forwarder_rectifier_error_message(&ProxyError::UpstreamError {
-                status: 400,
-                body: Some("invalid thinking signature".to_string()),
-            })
-            .as_deref(),
-            Some("invalid thinking signature")
-        );
-        assert_eq!(
-            forwarder_rectifier_error_message(&ProxyError::UpstreamError {
-                status: 400,
-                body: None,
-            }),
-            None
-        );
-        assert_eq!(
-            forwarder_rectifier_error_message(&ProxyError::Timeout("slow".to_string())).as_deref(),
-            Some("超时: slow")
-        );
-        assert_eq!(
-            ManagementAuthError::MissingBearerToken.message(),
-            "Missing management bearer token"
         );
     }
 }

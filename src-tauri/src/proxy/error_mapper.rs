@@ -543,6 +543,49 @@ mod tests {
     }
 
     #[test]
+    fn test_forward_failure_kind_maps_host_proxy_errors() {
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::Timeout("slow".to_string())),
+            ForwardFailureKind::Timeout(message) if message == "slow"
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::ForwardFailed(
+                "connection reset".to_string()
+            )),
+            ForwardFailureKind::ForwardFailed(message) if message == "connection reset"
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::AuthError("bad token".to_string())),
+            ForwardFailureKind::AuthError(message) if message == "bad token"
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::ProviderUnhealthy(
+                "half-open".to_string()
+            )),
+            ForwardFailureKind::RetryableOther(_)
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::DatabaseError(
+                "write failed".to_string()
+            )),
+            ForwardFailureKind::Other(_)
+        ));
+        match forward_failure_kind_from_proxy_error(&ProxyError::UpstreamError {
+            status: 429,
+            body: Some(r#"{"error":{"message":"rate limit"}}"#.to_string()),
+        }) {
+            ForwardFailureKind::Upstream { status, body } => {
+                assert_eq!(status, 429);
+                assert_eq!(
+                    body.as_deref(),
+                    Some(r#"{"error":{"message":"rate limit"}}"#)
+                );
+            }
+            other => panic!("expected upstream failure, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_reqwest_send_error_bridge_maps_non_network_errors_to_forward_failed() {
         let error = reqwest::Client::new()
             .get("https://example.com")
@@ -611,6 +654,27 @@ mod tests {
     }
 
     #[test]
+    fn test_codex_proxy_error_json_from_host_facts_delegates_to_core() {
+        let body = codex_proxy_error_json_from_host_facts(
+            "Relay",
+            "model-a",
+            "/responses",
+            CodexProxyHostErrorFacts {
+                status: ProxyErrorStatusKind::ForwardFailed,
+                message: "failed",
+                kind: CodexProxyErrorKind::ForwardFailed,
+                upstream_status: None,
+                upstream_body: None,
+            },
+        );
+
+        assert_eq!(body["error"]["code"], "cc_switch_forward_failed");
+        assert_eq!(body["error"]["provider"], "Relay");
+        assert_eq!(body["error"]["model"], "model-a");
+        assert_eq!(body["error"]["endpoint"], "/responses");
+    }
+
+    #[test]
     fn test_codex_proxy_error_response_maps_host_status_and_body() {
         let response = codex_proxy_error_response(
             "DeepSeek",
@@ -631,5 +695,24 @@ mod tests {
         assert_eq!(value["error"]["code"], "cc_switch_auth_error");
         assert_eq!(value["error"]["provider"], "DeepSeek");
         assert_eq!(value["error"]["model"], "deepseek-chat");
+    }
+
+    #[test]
+    fn test_codex_proxy_error_response_from_host_facts_preserves_status() {
+        let response = codex_proxy_error_response_from_host_facts(
+            "Relay",
+            "model-a",
+            "/responses",
+            CodexProxyHostErrorFacts {
+                status: ProxyErrorStatusKind::AuthError,
+                message: "bad token",
+                kind: CodexProxyErrorKind::AuthError,
+                upstream_status: None,
+                upstream_body: None,
+            },
+        )
+        .expect("codex facts error response");
+
+        assert_eq!(response.status.as_u16(), 401);
     }
 }

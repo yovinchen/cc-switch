@@ -3057,7 +3057,10 @@ fn proxy_error_mapper_owns_codex_error_projection() {
         source.contains("CodexProxyErrorContext")
             && source.contains("CodexProxyHostErrorFacts")
             && source.contains("CodexProxyErrorKind::ForwardFailed")
-            && source.contains("codex_proxy_error_code("),
+            && source.contains("codex_proxy_error_code(")
+            && source.contains("fn test_codex_proxy_error_json_from_host_facts_delegates_to_core")
+            && source
+                .contains("fn test_codex_proxy_error_response_from_host_facts_preserves_status"),
         "error_mapper should own host ProxyError to Codex proxy error context projection"
     );
     assert!(
@@ -3081,6 +3084,7 @@ fn proxy_core_adapter_excludes_codex_error_projection_reexports() {
         "fn codex_proxy_error_facts_from_proxy_error",
         "fn codex_proxy_error_kind_from_proxy_error",
         "fn codex_proxy_error_context_from_host_facts",
+        "fn error_mapper_adapter_projects_error_contracts",
     ] {
         assert!(
             !source.contains(marker),
@@ -3100,6 +3104,7 @@ fn proxy_error_mapper_owns_forward_failure_projection() {
     assert!(
         source.contains("pub(crate) fn forward_failure_kind_from_proxy_error")
             && source.contains("fn forward_failure_message_from_proxy_error")
+            && source.contains("fn test_forward_failure_kind_maps_host_proxy_errors")
             && source.contains("forward_failure_kind_from_proxy_status(")
             && source.contains("forward_failure_message_from_proxy_status("),
         "Proxy error mapper must own ProxyError to ForwardFailureKind projection through proxy-core"
