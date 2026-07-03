@@ -7710,7 +7710,7 @@ fn proxy_core_adapter_keeps_test_core_imports_inside_tests_module() {
         .position(|window| {
             window[0].trim() == "#[cfg(test)]" && window[1].trim_start().starts_with("mod tests")
         })
-        .expect("proxy_core_adapter.rs should contain a cfg(test) tests module");
+        .unwrap_or(lines.len());
 
     let mut pending_test_cfg = false;
     let mut violations = Vec::new();
@@ -13599,11 +13599,22 @@ fn claude_provider_delegates_response_format_dispatch_to_core() {
         "Claude provider SSE response api_format wrapper must delegate to proxy-core"
     );
     assert!(
+        source.contains("fn test_transform_response_uses_adapter_contract()")
+            && source.contains("fn test_transform_sse_uses_adapter_contract()"),
+        "Claude provider tests should own response/SSE provider-wrapper fixtures"
+    );
+    assert!(
         !adapter_source.contains("pub(crate) fn provider_claude_transform_response_for_api_format")
             && !adapter_source
                 .contains("pub(crate) fn provider_claude_transform_sse_for_api_format")
             && !adapter_source.contains("fn synthesize_gemini_tool_call_id_with_uuid"),
         "proxy_core_adapter should not keep Claude response/SSE provider transform facades"
+    );
+    assert!(
+        !adapter_source.contains("fn claude_provider_projects_response_facades")
+            && !adapter_source
+                .contains("fn claude_stream_transform_provider_dispatches_api_formats"),
+        "proxy_core_adapter should not retain Claude response/SSE provider-wrapper fixtures"
     );
     assert!(
         !adapter_source.contains(
