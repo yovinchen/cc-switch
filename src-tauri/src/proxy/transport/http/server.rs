@@ -1919,6 +1919,27 @@ mod tests {
                 ));
             }
 
+            let events_response = client
+                .get(format!("{base_url}/proxy/v1/events"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if events_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected events status before forwarding: {}",
+                    events_response.status()
+                ));
+            }
+            let mut events_stream = events_response.bytes_stream();
+            let connected_event =
+                next_proxy_events_sse_containing(&mut events_stream, "proxy_events_connected")
+                    .await?;
+            if !connected_event.contains("event: proxy_events_connected") {
+                return Err(format!(
+                    "unexpected connected event before forwarding: {connected_event}"
+                ));
+            }
+
             let response = client
                 .post(format!("{base_url}/v1/messages"))
                 .json(&json!({
@@ -1948,6 +1969,19 @@ mod tests {
                 || body["usage"]["output_tokens"] != 5
             {
                 return Err(format!("unexpected forwarded response body: {body}"));
+            }
+            let route_selected_event =
+                next_proxy_events_sse_containing(&mut events_stream, "event: route_selected")
+                    .await?;
+            if !route_selected_event.contains("\"event\":\"route_selected\"")
+                || !route_selected_event.contains(&format!("\"channelId\":\"{channel_id}\""))
+                || !route_selected_event.contains("\"providerId\":\"runtime-forward-provider\"")
+                || !route_selected_event.contains("\"publicModel\":\"runtime-public\"")
+                || !route_selected_event.contains("\"upstreamModel\":\"runtime-upstream\"")
+            {
+                return Err(format!(
+                    "unexpected route_selected SSE after forwarding: {route_selected_event}"
+                ));
             }
 
             Ok::<String, String>(channel_id)
@@ -3575,6 +3609,40 @@ mod tests {
             .header("content-type", "application/json")
             .body(Body::from(body.to_string()))
             .unwrap()
+    }
+
+    async fn next_proxy_events_sse_containing<S>(
+        stream: &mut S,
+        marker: &str,
+    ) -> Result<String, String>
+    where
+        S: futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Unpin,
+    {
+        let mut text = String::new();
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            let now = tokio::time::Instant::now();
+            if now >= deadline {
+                return Err(format!(
+                    "timed out waiting for proxy events marker `{marker}` in: {text}"
+                ));
+            }
+            let chunk = tokio::time::timeout(deadline - now, stream.next())
+                .await
+                .map_err(|_| {
+                    format!("timed out waiting for proxy events marker `{marker}` in: {text}")
+                })?
+                .ok_or_else(|| {
+                    format!("proxy events stream ended before marker `{marker}` in: {text}")
+                })?
+                .map_err(|error| error.to_string())?;
+            let chunk_text =
+                std::str::from_utf8(chunk.as_ref()).map_err(|error| error.to_string())?;
+            text.push_str(chunk_text);
+            if text.contains(marker) {
+                return Ok(text);
+            }
+        }
     }
 
     async fn start_reachability_probe_server() -> (String, tokio::task::JoinHandle<()>) {
