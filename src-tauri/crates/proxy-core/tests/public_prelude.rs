@@ -1793,6 +1793,100 @@ fn external_host_can_use_channel_key_contracts_from_prelude() {
 }
 
 #[test]
+fn external_host_can_use_channel_key_runtime_selection_contracts_from_prelude() {
+    fn candidate(
+        key_ref: &str,
+        priority: i64,
+        weight: u32,
+        last_failure_at: Option<i64>,
+    ) -> ChannelKeyRuntimeCandidate {
+        channel_key_runtime_candidate_from_input(ChannelKeyRuntimeCandidateInput {
+            channel_id: "channel-a".to_string(),
+            key_ref: key_ref.to_string(),
+            key_value: format!("sk-{key_ref}"),
+            status: "enabled".to_string(),
+            priority,
+            weight,
+            last_failure_at,
+        })
+    }
+
+    let now_ms = 1_771_000_120_000;
+    let alpha = channel_key_runtime_candidate_from_parts(
+        "channel-a",
+        "alpha",
+        "sk-alpha",
+        "enabled",
+        20,
+        1,
+        None,
+    );
+    let beta = candidate("beta", 20, 3, None);
+
+    assert_eq!(alpha.key_value, "sk-alpha");
+    assert_eq!(beta.weight, 3);
+
+    assert_eq!(
+        health_policy_channel_key_selection_strategy(
+            &json!({"channelKeySelectionStrategy": "roundRobin"})
+        ),
+        Some(ChannelKeyRuntimeSelectionStrategy::RoundRobin)
+    );
+    let random_policy = effective_channel_key_runtime_selection_policy(
+        DEFAULT_CHANNEL_KEY_FAILURE_COOLDOWN_MS,
+        &json!({
+            "channelKeySelectionStrategy": "random",
+            "channelKeyFailureCooldownMs": 5_000
+        }),
+    );
+    assert_eq!(
+        random_policy.strategy,
+        ChannelKeyRuntimeSelectionStrategy::Random
+    );
+    assert_eq!(random_policy.failure_cooldown_ms, 5_000);
+
+    assert_eq!(
+        channel_key_runtime_round_robin_cursor_key(
+            " channel-a ",
+            " * ",
+            ChannelKeyRuntimeSelectionStrategy::RoundRobin,
+        )
+        .as_deref(),
+        Some("channel-a:*")
+    );
+
+    let random_selected = select_channel_key_runtime_candidate_with_random_roll(
+        vec![
+            alpha.clone(),
+            beta.clone(),
+            candidate("cooling", 200, 1, Some(now_ms - 1_000)),
+        ],
+        "*",
+        now_ms,
+        random_policy.failure_cooldown_ms,
+        1,
+    )
+    .expect("random selection");
+    assert_eq!(random_selected.key_ref, "beta");
+
+    let explicit_key = select_channel_key_runtime_candidate_with_policy(
+        vec![
+            candidate("primary", 10, 1, Some(now_ms - 1_000)),
+            candidate("backup", 20, 1, None),
+        ],
+        ChannelKeyRuntimeSelectionInput {
+            key_ref: "primary",
+            now_ms,
+            weighted_roll: 1,
+            round_robin_offset: 0,
+            policy: random_policy,
+        },
+    )
+    .expect("explicit key selection");
+    assert_eq!(explicit_key.key_ref, "primary");
+}
+
+#[test]
 fn external_host_can_use_channel_model_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
