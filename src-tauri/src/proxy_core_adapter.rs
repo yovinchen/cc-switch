@@ -29,7 +29,6 @@ use crate::proxy::host::cc_switch::forwarder_request_source::forwarder_rectifier
 #[cfg(test)]
 mod tests {
     use crate::proxy::engine::routing::provider_router_app_error_from_provider_selection_failure;
-    use crate::proxy::host::cc_switch::forwarder_runtime_state_source::current_route_target_from_provider;
     use crate::proxy::host::cc_switch::provider_adapter_context::forwarder_provider_adapter_context_for_app;
     use crate::proxy::provider::{
         transform_claude_response_for_api_format, transform_claude_sse_for_api_format,
@@ -49,8 +48,7 @@ mod tests {
         gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
         gemini_live_settings_to_write, live_takeover_app_kinds,
         provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
-        proxy_runtime_status_stopped, CodexProviderLiveWriteIssue, CodexProviderValidationIssue,
-        ProviderSettingsValidationIssue,
+        CodexProviderLiveWriteIssue, CodexProviderValidationIssue, ProviderSettingsValidationIssue,
     };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
@@ -131,8 +129,8 @@ mod tests {
     use crate::proxy_core::api::ports::{
         codex_restored_live_settings_parts, gemini_env_json_from_map,
         gemini_env_string_map_from_settings, gemini_live_config_object_from_settings,
-        CopilotOptimizerConfig, CurrentRouteTarget, GeminiLiveConfigIssue, OptimizerConfig,
-        ProxyConfig, RectifierConfig,
+        CopilotOptimizerConfig, GeminiLiveConfigIssue, OptimizerConfig, ProxyConfig,
+        RectifierConfig,
     };
     use crate::proxy_core::api::routing::{
         apply_route_candidate_circuit_availability, current_provider_id_from_sources,
@@ -2109,128 +2107,6 @@ wire_api = "chat"
         .collect::<String>();
         assert!(gemini_output.contains("event: message_start"));
         assert!(gemini_output.contains("Gemini hi"));
-    }
-
-    #[test]
-    fn proxy_server_adapter_projects_runtime_contracts() {
-        assert_eq!(crate::proxy_core::api::logging::srv::STARTED, "SRV-001");
-        assert_eq!(crate::proxy_core::api::logging::srv::STOPPED, "SRV-002");
-        assert_eq!(crate::proxy_core::api::logging::srv::ACCEPT_ERR, "SRV-005");
-        let _shadow_store = GeminiShadowStore::default();
-        let stopped = proxy_runtime_status_stopped();
-        assert!(!stopped.running);
-        assert_eq!(stopped.port, 0);
-        assert!(stopped.active_targets.is_empty());
-        let info = crate::proxy_core::api::ports::proxy_server_info_from_parts(
-            "127.0.0.1",
-            15721,
-            "2026-06-21T00:00:00Z",
-        );
-        assert_eq!(info.address, "127.0.0.1");
-        assert_eq!(info.port, 15721);
-        assert_eq!(info.started_at, "2026-06-21T00:00:00Z");
-        let takeover = crate::proxy_core::api::ports::proxy_takeover_status_from_parts(
-            true, false, true, false, false,
-        );
-        assert!(takeover.claude);
-        assert!(!takeover.codex);
-        assert!(takeover.gemini);
-        assert!(!takeover.opencode);
-        assert!(!takeover.openclaw);
-        let app_config = |app_type: &str, enabled: bool| AppProxyConfig {
-            app_type: app_type.to_string(),
-            enabled,
-            auto_failover_enabled: true,
-            max_retries: 3,
-            streaming_first_byte_timeout: 60,
-            streaming_idle_timeout: 120,
-            non_streaming_timeout: 600,
-            circuit_failure_threshold: 4,
-            circuit_success_threshold: 2,
-            circuit_timeout_seconds: 60,
-            circuit_error_rate_threshold: 0.6,
-            circuit_min_requests: 10,
-        };
-        let takeover_from_config =
-            crate::proxy_core::api::ports::proxy_takeover_status_from_enabled_options(
-                Some(app_config("claude", true).enabled),
-                None,
-                Some(app_config("gemini", true).enabled),
-                None,
-                None,
-            );
-        assert!(takeover_from_config.claude);
-        assert!(!takeover_from_config.codex);
-        assert!(takeover_from_config.gemini);
-        assert!(!takeover_from_config.opencode);
-        assert!(!takeover_from_config.openclaw);
-
-        assert_eq!(
-            crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts("127.0.0.1", 15721),
-            Some((
-                "http://127.0.0.1:15721".to_string(),
-                "http://127.0.0.1:15721/v1".to_string()
-            ))
-        );
-        assert_eq!(
-            crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts("0.0.0.0", 15721),
-            Some((
-                "http://127.0.0.1:15721".to_string(),
-                "http://127.0.0.1:15721/v1".to_string()
-            ))
-        );
-        assert_eq!(
-            crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts("::", 15721),
-            Some((
-                "http://[::1]:15721".to_string(),
-                "http://[::1]:15721/v1".to_string()
-            ))
-        );
-        assert_eq!(
-            crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts("fd00::1", 15721),
-            Some((
-                "http://[fd00::1]:15721".to_string(),
-                "http://[fd00::1]:15721/v1".to_string()
-            ))
-        );
-        assert_eq!(
-            crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts("127.0.0.1", 0),
-            None
-        );
-
-        let target = CurrentRouteTarget {
-            app_type: "claude".to_string(),
-            provider_id: "provider-a".to_string(),
-            provider_name: "Provider A".to_string(),
-            channel_id: Some("channel-a".to_string()),
-            channel_name: Some("Channel A".to_string()),
-            interface_kind: Some("anthropic_messages".to_string()),
-            public_model: Some("sonnet-public".to_string()),
-            upstream_model: Some("upstream-sonnet".to_string()),
-            pricing_model: Some("sonnet-price".to_string()),
-        };
-        assert_eq!(
-            serde_json::to_value(target).expect("serialize target"),
-            json!({
-                "appType": "claude",
-                "providerId": "provider-a",
-                "providerName": "Provider A",
-                "channelId": "channel-a",
-                "channelName": "Channel A",
-                "interfaceKind": "anthropic_messages",
-                "publicModel": "sonnet-public",
-                "upstreamModel": "upstream-sonnet",
-                "pricingModel": "sonnet-price"
-            })
-        );
-
-        let provider_only = current_route_target_from_provider("codex", "provider-b", "Provider B");
-        assert_eq!(provider_only.app_type, "codex");
-        assert_eq!(provider_only.provider_id, "provider-b");
-        assert_eq!(provider_only.provider_name, "Provider B");
-        assert!(provider_only.channel_id.is_none());
-        assert!(provider_only.interface_kind.is_none());
-        assert!(provider_only.pricing_model.is_none());
     }
 
     #[test]

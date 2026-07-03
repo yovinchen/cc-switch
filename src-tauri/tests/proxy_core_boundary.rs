@@ -6628,9 +6628,8 @@ fn proxy_core_adapter_does_not_export_current_route_target_alias() {
         "proxy_core_adapter should not expose CurrentRouteTarget as a runtime port alias"
     );
     assert!(
-        adapter_source.contains("use crate::proxy_core::api::ports::{")
-            && adapter_source.contains("CurrentRouteTarget"),
-        "proxy_core_adapter internals should import CurrentRouteTarget directly from proxy_core ports"
+        !adapter_source.contains("CurrentRouteTarget"),
+        "proxy_core_adapter should not retain CurrentRouteTarget now that runtime fixtures live with owning host/core modules"
     );
 }
 
@@ -20115,6 +20114,12 @@ fn production_forwarder_uses_runtime_state_source_resource() {
             && runtime_source.contains("ForwarderRectifierRetryKind")
             && runtime_source.contains("pub(crate) fn current_route_target_from_provider("),
         "default ForwarderRuntimeStateSource should import runtime/event/transport contracts directly from proxy_core"
+    );
+    assert!(
+        runtime_source
+            .contains("fn current_route_target_from_provider_projects_provider_only_target()")
+            && !adapter_source.contains("fn proxy_server_adapter_projects_runtime_contracts()"),
+        "provider-only current route target fixture should live with runtime state source, not proxy_core_adapter"
     );
     assert!(
         runtime_source.contains("events.emit_core_event(request_started_event(")

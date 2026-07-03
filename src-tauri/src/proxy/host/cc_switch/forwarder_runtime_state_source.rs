@@ -744,6 +744,18 @@ mod tests {
     }
 
     #[test]
+    fn current_route_target_from_provider_projects_provider_only_target() {
+        let target = current_route_target_from_provider("codex", "provider-b", "Provider B");
+
+        assert_eq!(target.app_type, "codex");
+        assert_eq!(target.provider_id, "provider-b");
+        assert_eq!(target.provider_name, "Provider B");
+        assert!(target.channel_id.is_none());
+        assert!(target.interface_kind.is_none());
+        assert!(target.pricing_model.is_none());
+    }
+
+    #[test]
     fn forwarder_runtime_state_source_classifies_rectifier_retry_failover() {
         let source = test_runtime_source();
 
