@@ -82,6 +82,7 @@ async fn run() -> ProxyCoreResult<()> {
         .models
         .first()
         .ok_or_else(|| ProxyCoreError::Unavailable("missing custom model".to_string()))?;
+    let managed_cache_summary = managed_account_token_cache_demo()?;
     if auth_header_sets == 0 {
         return Err(ProxyCoreError::Unavailable(
             "missing auth header resolution".to_string(),
@@ -97,19 +98,105 @@ async fn run() -> ProxyCoreResult<()> {
     }
 
     println!(
-        "relay host ready: running={} route={} channel_base={} upstream={} custom_app={} custom_model={} auth_header_sets={} usage_records={} events={}",
+        "relay host ready: running={} route={} channel_base={} upstream={} custom_app={} custom_model={} managed_cache={} auth_header_sets={} usage_records={} events={}",
         status.status.running,
         selected.channel_id,
         listed.base_url,
         forwarded.outbound_model.as_deref().unwrap_or("unknown"),
         custom_catalog.app_type,
         custom_model.upstream_model,
+        managed_cache_summary,
         auth_header_sets,
         usage_count,
         event_count
     );
 
     Ok(())
+}
+
+fn managed_account_token_cache_demo() -> ProxyCoreResult<String> {
+    let now_ms = 1_771_000_000_000;
+    let copilot_key = ManagedAccountTokenCacheKey::new(
+        ManagedAccountAuthRuntime::GitHubCopilot,
+        Some("demo-copilot"),
+    );
+    let mut store = ManagedAccountTokenSnapshotStore::new();
+    let success = store.record_refresh_success(
+        copilot_key.clone(),
+        ManagedAccountTokenRefreshSuccessInput::copilot(
+            "demo-cached-copilot-token".to_string(),
+            Some("demo-copilot"),
+        ),
+        now_ms - 1_000,
+    );
+    if success.auth.strategy != ProviderAuthStrategy::GitHubCopilot {
+        return Err(ProxyCoreError::Unavailable(
+            "unexpected Copilot auth strategy".to_string(),
+        ));
+    }
+
+    let cached_snapshot = match store.resolve_refresh_failure(
+        &copilot_key,
+        now_ms,
+        ManagedAccountTokenRefreshFailureInput::new(
+            ManagedAccountTokenRefreshFailureKind::Retryable,
+            "temporary relay auth outage",
+        ),
+    ) {
+        ManagedAccountTokenRefreshFailureResolution::UseCachedToken {
+            snapshot,
+            log_message,
+        } => {
+            if !log_message.contains("ageMs=1000") {
+                return Err(ProxyCoreError::Unavailable(
+                    "missing cached token age in fallback log".to_string(),
+                ));
+            }
+            snapshot
+        }
+        ManagedAccountTokenRefreshFailureResolution::Reject { error_message, .. } => {
+            return Err(ProxyCoreError::Unavailable(format!(
+                "retryable managed-account refresh should use cache: {error_message}"
+            )));
+        }
+    };
+
+    match store.resolve_refresh_failure(
+        &copilot_key,
+        now_ms,
+        ManagedAccountTokenRefreshFailureInput::new(
+            ManagedAccountTokenRefreshFailureKind::Terminal,
+            "revoked",
+        ),
+    ) {
+        ManagedAccountTokenRefreshFailureResolution::Reject { .. } => {}
+        ManagedAccountTokenRefreshFailureResolution::UseCachedToken { .. } => {
+            return Err(ProxyCoreError::Unavailable(
+                "terminal managed-account refresh should not use cache".to_string(),
+            ));
+        }
+    }
+
+    let codex_key =
+        ManagedAccountTokenCacheKey::new(ManagedAccountAuthRuntime::CodexOAuth, Some("codex-demo"));
+    let codex_success = store.record_refresh_success(
+        codex_key,
+        ManagedAccountTokenRefreshSuccessInput::codex_oauth(
+            "demo-codex-token".to_string(),
+            Some("codex-demo".to_string()),
+        ),
+        now_ms,
+    );
+    let codex_resolution = CodexOAuthResolution::from_refresh_success(codex_success);
+    let codex_account = codex_resolution
+        .codex_oauth_account_id
+        .as_deref()
+        .ok_or_else(|| ProxyCoreError::Unavailable("missing Codex OAuth account".to_string()))?;
+
+    Ok(format!(
+        "copilot_cached={} codex_account={}",
+        cached_snapshot.auth.api_key, codex_account
+    ))
 }
 
 #[cfg(test)]

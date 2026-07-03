@@ -2725,6 +2725,22 @@ fn proxy_core_external_example_uses_public_prelude_only() {
         source.contains(required_import),
         "external relay example should enter proxy-core through public prelude import `{required_import}`"
     );
+    for marker in [
+        "managed_account_token_cache_demo",
+        "ManagedAccountAuthRuntime",
+        "ManagedAccountTokenCacheKey",
+        "ManagedAccountTokenRefreshFailureInput",
+        "ManagedAccountTokenRefreshFailureKind",
+        "ManagedAccountTokenRefreshFailureResolution",
+        "ManagedAccountTokenRefreshSuccessInput",
+        "ManagedAccountTokenSnapshotStore",
+        "CodexOAuthResolution",
+    ] {
+        assert!(
+            source.contains(marker),
+            "external relay example should demonstrate managed-account token cache contract `{marker}`"
+        );
+    }
 
     let mut violations = Vec::new();
     for (line_index, line) in source.lines().enumerate() {
