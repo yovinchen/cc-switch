@@ -3192,7 +3192,7 @@ node_modules/.bin/tsc --noEmit
 
 把 handler 内业务逻辑移到 engine。
 
-1. HTTP handler 只负责触发 transport adapter 读取 body、鉴权入口、事件流入口、本地 health/status/Claude Desktop model-list/app-list JSON 和管理 API path/query/body/state 转发；管理 API auth validation 由 `auth_adapter` 承接，协议入口的 app/tag/prefix/endpoint metadata、endpoint path/query bridge、`RequestContext` 初始化、`ProxyRequest` 构造、`ProxyEngine::handle` dispatch 与 `ProxyResult` 到 HTTP response 的宿主 bridge 由 adapter 承接；Claude/Codex/Gemini protocol handlers 已先降为 `response_adapter` 编排入口调用，`/proxy/v1/events` 的 SSE transport bridge 由 HTTP handler 拥有，providers/app-models/client-model-catalog 读查询，channel/group/current-route/route-resolve dry-run，channel CRUD/key/model/test mutation，以及 channel migration/breaker endpoints 的 typed JSON bridge 仍由 `response_adapter` 承接。
+1. HTTP handler 只负责触发 transport adapter 读取 body、鉴权入口、事件流入口、本地 health/status/Claude Desktop model-list/app-list/provider-list JSON 和管理 API path/query/body/state 转发；管理 API auth validation 由 `auth_adapter` 承接，协议入口的 app/tag/prefix/endpoint metadata、endpoint path/query bridge、`RequestContext` 初始化、`ProxyRequest` 构造、`ProxyEngine::handle` dispatch 与 `ProxyResult` 到 HTTP response 的宿主 bridge 由 adapter 承接；Claude/Codex/Gemini protocol handlers 已先降为 `response_adapter` 编排入口调用，`/proxy/v1/events` 的 SSE transport bridge 由 HTTP handler 拥有，app-models/client-model-catalog 读查询，channel/group/current-route/route-resolve dry-run，channel CRUD/key/model/test mutation，以及 channel migration/breaker endpoints 的 typed JSON bridge 仍由 `response_adapter` 承接。
 2. `ProxyEngine::handle` 负责 route 解析、forward pipeline、response pipeline。
 3. Claude/Codex/Gemini 特殊处理改成 protocol handler，挂在 engine 内部。
 
