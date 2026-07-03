@@ -39,8 +39,6 @@ use crate::proxy::provider::claude_provider_api_format;
 #[cfg(test)]
 use crate::proxy::route_attempt::ForwardAttempt;
 #[cfg(test)]
-use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
-#[cfg(test)]
 use http::{HeaderMap, Method};
 #[cfg(test)]
 use serde_json::Value;
@@ -51,17 +49,10 @@ use uuid::Uuid;
 use crate::proxy::host::cc_switch::forwarder_protocol_state_source::CcSwitchForwarderProtocolStateSource;
 
 #[cfg(test)]
-use crate::proxy::engine::forward_pipeline::{
-    ForwarderResponseFinalizationInput, ForwarderResponseSource,
-};
-#[cfg(test)]
 use crate::proxy::host::cc_switch::forwarder_request_source::{
     default_forwarder_request_source, forwarder_rectifier_error_message,
     CcSwitchForwarderRequestSource,
 };
-
-#[cfg(test)]
-use crate::proxy::host::cc_switch::forwarder_response_source::CcSwitchForwarderResponseSource;
 
 #[cfg(test)]
 mod tests {
@@ -2287,87 +2278,6 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(route_event.payload["channelId"], "channel-a");
         assert_eq!(route_event.payload["interfaceKind"], "openai_responses");
         assert_eq!(route_event.payload["pricingModel"], "sonnet-price");
-    }
-
-    #[tokio::test]
-    async fn forwarder_response_source_projects_upstream_error_response() {
-        let source = CcSwitchForwarderResponseSource;
-        let response = ProxyResponse::buffered(
-            http::StatusCode::BAD_REQUEST,
-            HeaderMap::new(),
-            Bytes::from_static(br#"{"error":"bad request"}"#),
-        );
-
-        let error = match source
-            .finalize_upstream_response(ForwarderResponseFinalizationInput {
-                response,
-                request_is_streaming: false,
-                non_streaming_timeout: std::time::Duration::from_secs(0),
-                streaming_first_byte_timeout: std::time::Duration::from_secs(0),
-            })
-            .await
-        {
-            Ok(_) => panic!("expected upstream error"),
-            Err(error) => error,
-        };
-
-        match error {
-            ProxyError::UpstreamError { status, body } => {
-                assert_eq!(status, 400);
-                assert_eq!(body.as_deref(), Some(r#"{"error":"bad request"}"#));
-            }
-            other => panic!("expected upstream error, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn forwarder_response_source_finalizes_success_and_upstream_error() {
-        let source = CcSwitchForwarderResponseSource;
-        let success = ProxyResponse::buffered(
-            http::StatusCode::OK,
-            HeaderMap::new(),
-            Bytes::from_static(b"{\"ok\":true}"),
-        );
-        let success = source
-            .finalize_upstream_response(ForwarderResponseFinalizationInput {
-                response: success,
-                request_is_streaming: false,
-                non_streaming_timeout: std::time::Duration::from_secs(0),
-                streaming_first_byte_timeout: std::time::Duration::from_secs(0),
-            })
-            .await
-            .expect("success response");
-        assert_eq!(success.status(), http::StatusCode::OK);
-        assert_eq!(
-            success.bytes().await.expect("success body"),
-            Bytes::from_static(b"{\"ok\":true}")
-        );
-
-        let failure = ProxyResponse::buffered(
-            http::StatusCode::BAD_REQUEST,
-            HeaderMap::new(),
-            Bytes::from_static(b"bad request"),
-        );
-        let error = match source
-            .finalize_upstream_response(ForwarderResponseFinalizationInput {
-                response: failure,
-                request_is_streaming: false,
-                non_streaming_timeout: std::time::Duration::from_secs(0),
-                streaming_first_byte_timeout: std::time::Duration::from_secs(0),
-            })
-            .await
-        {
-            Ok(_) => panic!("expected upstream error"),
-            Err(error) => error,
-        };
-
-        match error {
-            ProxyError::UpstreamError { status, body } => {
-                assert_eq!(status, 400);
-                assert_eq!(body.as_deref(), Some("bad request"));
-            }
-            other => panic!("expected upstream error, got {other:?}"),
-        }
     }
 
     #[test]

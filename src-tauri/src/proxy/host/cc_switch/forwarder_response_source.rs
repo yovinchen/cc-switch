@@ -210,12 +210,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upstream_error_projection_uses_core_body_policy() {
+    async fn forwarder_response_source_projects_upstream_error_response() {
         let source = CcSwitchForwarderResponseSource;
         let response = ProxyResponse::buffered(
-            StatusCode::BAD_GATEWAY,
+            StatusCode::BAD_REQUEST,
             HeaderMap::new(),
-            Bytes::from_static(b"{\"error\":\"bad_gateway\"}"),
+            Bytes::from_static(br#"{"error":"bad request"}"#),
         );
 
         let result = source
@@ -229,11 +229,61 @@ mod tests {
 
         match result {
             Err(ProxyError::UpstreamError { status, body }) => {
-                assert_eq!(status, 502);
-                assert_eq!(body.as_deref(), Some("{\"error\":\"bad_gateway\"}"));
+                assert_eq!(status, 400);
+                assert_eq!(body.as_deref(), Some(r#"{"error":"bad request"}"#));
             }
             Ok(_) => panic!("expected upstream error projection, got successful response"),
             Err(error) => panic!("expected upstream error projection, got {error:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn forwarder_response_source_finalizes_success_and_upstream_error() {
+        let source = CcSwitchForwarderResponseSource;
+        let success = ProxyResponse::buffered(
+            StatusCode::OK,
+            HeaderMap::new(),
+            Bytes::from_static(b"{\"ok\":true}"),
+        );
+        let success = source
+            .finalize_upstream_response(ForwarderResponseFinalizationInput {
+                response: success,
+                request_is_streaming: false,
+                non_streaming_timeout: std::time::Duration::ZERO,
+                streaming_first_byte_timeout: std::time::Duration::ZERO,
+            })
+            .await
+            .expect("success response");
+        assert_eq!(success.status(), StatusCode::OK);
+        assert_eq!(
+            success.bytes().await.expect("success body"),
+            Bytes::from_static(b"{\"ok\":true}")
+        );
+
+        let failure = ProxyResponse::buffered(
+            StatusCode::BAD_REQUEST,
+            HeaderMap::new(),
+            Bytes::from_static(b"bad request"),
+        );
+        let error = match source
+            .finalize_upstream_response(ForwarderResponseFinalizationInput {
+                response: failure,
+                request_is_streaming: false,
+                non_streaming_timeout: std::time::Duration::ZERO,
+                streaming_first_byte_timeout: std::time::Duration::ZERO,
+            })
+            .await
+        {
+            Ok(_) => panic!("expected upstream error"),
+            Err(error) => error,
+        };
+
+        match error {
+            ProxyError::UpstreamError { status, body } => {
+                assert_eq!(status, 400);
+                assert_eq!(body.as_deref(), Some("bad request"));
+            }
+            other => panic!("expected upstream error, got {other:?}"),
         }
     }
 

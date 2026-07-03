@@ -21996,6 +21996,19 @@ fn production_forwarder_uses_response_source_resource() {
             && !adapter_runtime_source.contains("struct CcSwitchForwarderResponseSource;"),
         "host proxy_state should use the default forwarder response source without routing it through proxy_core_adapter"
     );
+    for marker in [
+        "forwarder_response_source_projects_upstream_error_response",
+        "forwarder_response_source_finalizes_success_and_upstream_error",
+    ] {
+        assert!(
+            response_source.contains(marker) && !adapter_source.contains(marker),
+            "ForwarderResponseSource behavior fixture `{marker}` should live beside the owning host source, not proxy_core_adapter"
+        );
+    }
+    assert!(
+        !adapter_source.contains("forwarder_response_source::CcSwitchForwarderResponseSource"),
+        "proxy_core_adapter should not import the host ForwarderResponseSource implementation for migrated behavior tests"
+    );
     let response_trait_slice = function_slice(
         &source,
         "pub(crate) trait ForwarderResponseSource",
