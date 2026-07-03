@@ -14065,6 +14065,8 @@ fn settings_runtime_config_callers_use_core_dto_entrypoint() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let core_ports_path = manifest_dir.join("crates/proxy-core/src/ports.rs");
+    let core_ports = fs::read_to_string(&core_ports_path).expect("read proxy-core ports.rs");
     let caller_paths = [
         "src/commands/settings.rs",
         "src/database/dao/settings.rs",
@@ -14134,6 +14136,11 @@ fn settings_runtime_config_callers_use_core_dto_entrypoint() {
         violations.is_empty(),
         "settings runtime config callers must use proxy_core::api::ports as the DTO entrypoint:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        !adapter_source.contains("settings_config_adapter_preserves_frontend_contracts")
+            && core_ports.contains("fn settings_runtime_configs_preserve_frontend_json_contracts()"),
+        "settings runtime config frontend contract fixtures should live in proxy-core ports, not proxy_core_adapter"
     );
 }
 

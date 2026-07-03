@@ -11220,6 +11220,30 @@ GEMINI_API_KEY=sk-test123
     }
 
     #[test]
+    fn settings_runtime_configs_preserve_frontend_json_contracts() {
+        assert_eq!(
+            serde_json::to_value(RectifierConfig::default()).expect("rectifier"),
+            json!({
+                "enabled": true,
+                "requestThinkingSignature": true,
+                "requestThinkingBudget": true,
+                "requestMediaFallback": true,
+                "requestMediaHeuristic": true
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(OptimizerConfig::default()).expect("optimizer"),
+            json!({
+                "enabled": false,
+                "thinkingOptimizer": true,
+                "cacheInjection": true,
+                "cacheTtl": "1h"
+            })
+        );
+        assert_eq!(CopilotOptimizerConfig::default().warmup_model, "gpt-5-mini");
+    }
+
+    #[test]
     fn proxy_server_info_preserves_tauri_command_shape() {
         let info = proxy_server_info_from_parts("127.0.0.1", 15721, "2026-06-19T00:00:00Z");
 

@@ -720,30 +720,6 @@ mod tests {
     }
 
     #[test]
-    fn settings_config_adapter_preserves_frontend_contracts() {
-        assert_eq!(
-            serde_json::to_value(RectifierConfig::default()).expect("rectifier"),
-            json!({
-                "enabled": true,
-                "requestThinkingSignature": true,
-                "requestThinkingBudget": true,
-                "requestMediaFallback": true,
-                "requestMediaHeuristic": true
-            })
-        );
-        assert_eq!(
-            serde_json::to_value(OptimizerConfig::default()).expect("optimizer"),
-            json!({
-                "enabled": false,
-                "thinkingOptimizer": true,
-                "cacheInjection": true,
-                "cacheTtl": "1h"
-            })
-        );
-        assert_eq!(CopilotOptimizerConfig::default().warmup_model, "gpt-5-mini");
-    }
-
-    #[test]
     fn proxy_config_adapter_preserves_management_contracts() {
         use crate::proxy_core::api::auth::{
             resolve_management_auth_decision, ManagementAuthDecision,
