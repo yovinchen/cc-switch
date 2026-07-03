@@ -12729,6 +12729,18 @@ fn provider_projection_delegates_claude_transform_streaming_decision_to_core() {
         "Claude transform streaming decision must be delegated to proxy-core"
     );
     assert!(
+        projection.contains("fn claude_streaming_decision_preserves_codex_oauth_aggregation()")
+            && projection.contains("provider_claude_transform_streaming_decision(")
+            && projection.contains("Some(UpstreamSseAggregationKind::Responses)")
+            && projection.contains("Some(UpstreamSseAggregationKind::ChatCompletions)"),
+        "provider_projection tests should own Claude streaming decision provider-fact fixtures"
+    );
+    assert!(
+        !source
+            .contains("fn claude_streaming_decision_adapter_preserves_codex_oauth_aggregation()"),
+        "proxy_core_adapter should not carry Claude streaming decision provider-fact fixture"
+    );
+    assert!(
         !source.contains("pub(crate) fn codex_chat_transform_streaming_decision")
             && !source.contains("core_codex_chat_transform_streaming_decision"),
         "Codex Chat transform streaming decision should not keep a one-hop proxy_core_adapter facade"

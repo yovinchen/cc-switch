@@ -350,7 +350,9 @@ mod tests {
     use super::*;
     use crate::provider::{AuthBinding, AuthBindingSource, ProviderTestConfig, UsageScript};
     use crate::proxy_core::api::auth::claude_desktop_provider_models_are_profile_safe;
-    use crate::proxy_core::api::transport::bedrock_env_flag_from_provider_settings;
+    use crate::proxy_core::api::transport::{
+        bedrock_env_flag_from_provider_settings, UpstreamSseAggregationKind,
+    };
 
     #[test]
     fn managed_account_binding_projection_uses_core_policy() {
@@ -748,5 +750,72 @@ mod tests {
         assert!(!serialized.contains("secret-token"));
         assert!(!serialized.contains("ANTHROPIC_AUTH_TOKEN"));
         assert!(!serialized.contains("settingsConfig"));
+    }
+
+    #[test]
+    fn claude_streaming_decision_preserves_codex_oauth_aggregation() {
+        let mut codex_provider = Provider::with_id(
+            "codex-oauth".to_string(),
+            "Codex OAuth".to_string(),
+            json!({}),
+            None,
+        );
+        codex_provider.meta = Some(ProviderMeta {
+            provider_type: Some("codex_oauth".to_string()),
+            ..Default::default()
+        });
+        let mut sse_headers = HeaderMap::new();
+        sse_headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/event-stream"),
+        );
+
+        let aggregate_decision = provider_claude_transform_streaming_decision(
+            &codex_provider,
+            false,
+            &sse_headers,
+            "openai_responses",
+        );
+        assert!(!aggregate_decision.use_streaming);
+        assert!(aggregate_decision.aggregate_codex_oauth_responses_sse);
+        assert_eq!(
+            aggregate_decision.response_sse_aggregation,
+            Some(UpstreamSseAggregationKind::Responses)
+        );
+
+        let streaming_decision = provider_claude_transform_streaming_decision(
+            &codex_provider,
+            true,
+            &HeaderMap::new(),
+            "openai_responses",
+        );
+        assert!(streaming_decision.use_streaming);
+        assert!(!streaming_decision.aggregate_codex_oauth_responses_sse);
+        assert!(streaming_decision.response_sse_aggregation.is_none());
+
+        let plain_provider =
+            Provider::with_id("plain".to_string(), "Plain".to_string(), json!({}), None);
+        let upstream_sse_decision = provider_claude_transform_streaming_decision(
+            &plain_provider,
+            false,
+            &sse_headers,
+            "openai_chat",
+        );
+        assert!(upstream_sse_decision.use_streaming);
+        assert!(!upstream_sse_decision.aggregate_codex_oauth_responses_sse);
+        assert!(upstream_sse_decision.response_sse_aggregation.is_none());
+
+        let non_stream_chat_decision = provider_claude_transform_streaming_decision(
+            &plain_provider,
+            false,
+            &HeaderMap::new(),
+            "openai_chat",
+        );
+        assert!(!non_stream_chat_decision.use_streaming);
+        assert!(!non_stream_chat_decision.aggregate_codex_oauth_responses_sse);
+        assert_eq!(
+            non_stream_chat_decision.response_sse_aggregation,
+            Some(UpstreamSseAggregationKind::ChatCompletions)
+        );
     }
 }

@@ -66,7 +66,7 @@ mod tests {
     use crate::proxy::error_mapper::forward_failure_kind_from_proxy_error;
     use crate::proxy::host::cc_switch::provider_projection::{
         provider_claude_auth_key, provider_claude_base_url, provider_claude_kind,
-        provider_claude_transform_streaming_decision, provider_needs_claude_transform,
+        provider_needs_claude_transform,
     };
     use crate::proxy::provider::ProviderAdapter;
     use crate::proxy::provider::{
@@ -118,7 +118,7 @@ mod tests {
         forward_upstream_url_plan, is_socks_proxy_url, resolve_upstream_send_policy,
         serialize_upstream_request_body, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
         ForwardFailureKind, ForwardUpstreamUrlPlanInput, UpstreamRequestHeadersInput,
-        UpstreamSendPolicyInput, UpstreamSseAggregationKind, UpstreamTransportKind,
+        UpstreamSendPolicyInput, UpstreamTransportKind,
     };
     use bytes::Bytes;
     use indexmap::IndexMap;
@@ -2072,73 +2072,6 @@ wire_api = "chat"
             crate::proxy_core::api::transforms::claude_api_format_needs_transform("gemini_native")
         );
         assert!(!crate::proxy_core::api::transforms::claude_api_format_needs_transform("unknown"));
-    }
-
-    #[test]
-    fn claude_streaming_decision_adapter_preserves_codex_oauth_aggregation() {
-        let mut codex_provider = Provider::with_id(
-            "codex-oauth".to_string(),
-            "Codex OAuth".to_string(),
-            json!({}),
-            None,
-        );
-        codex_provider.meta = Some(ProviderMeta {
-            provider_type: Some("codex_oauth".to_string()),
-            ..Default::default()
-        });
-        let mut sse_headers = HeaderMap::new();
-        sse_headers.insert(
-            http::header::CONTENT_TYPE,
-            http::HeaderValue::from_static("text/event-stream"),
-        );
-
-        let aggregate_decision = provider_claude_transform_streaming_decision(
-            &codex_provider,
-            false,
-            &sse_headers,
-            "openai_responses",
-        );
-        assert!(!aggregate_decision.use_streaming);
-        assert!(aggregate_decision.aggregate_codex_oauth_responses_sse);
-        assert!(matches!(
-            aggregate_decision.response_sse_aggregation,
-            Some(UpstreamSseAggregationKind::Responses)
-        ));
-
-        let streaming_decision = provider_claude_transform_streaming_decision(
-            &codex_provider,
-            true,
-            &HeaderMap::new(),
-            "openai_responses",
-        );
-        assert!(streaming_decision.use_streaming);
-        assert!(!streaming_decision.aggregate_codex_oauth_responses_sse);
-        assert!(streaming_decision.response_sse_aggregation.is_none());
-
-        let plain_provider =
-            Provider::with_id("plain".to_string(), "Plain".to_string(), json!({}), None);
-        let upstream_sse_decision = provider_claude_transform_streaming_decision(
-            &plain_provider,
-            false,
-            &sse_headers,
-            "openai_chat",
-        );
-        assert!(upstream_sse_decision.use_streaming);
-        assert!(!upstream_sse_decision.aggregate_codex_oauth_responses_sse);
-        assert!(upstream_sse_decision.response_sse_aggregation.is_none());
-
-        let non_stream_chat_decision = provider_claude_transform_streaming_decision(
-            &plain_provider,
-            false,
-            &HeaderMap::new(),
-            "openai_chat",
-        );
-        assert!(!non_stream_chat_decision.use_streaming);
-        assert!(!non_stream_chat_decision.aggregate_codex_oauth_responses_sse);
-        assert!(matches!(
-            non_stream_chat_decision.response_sse_aggregation,
-            Some(UpstreamSseAggregationKind::ChatCompletions)
-        ));
     }
 
     #[test]
