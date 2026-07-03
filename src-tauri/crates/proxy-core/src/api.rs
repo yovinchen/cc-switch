@@ -484,10 +484,16 @@ pub mod prelude {
     };
     pub use super::routing::{ChannelQuery, ChannelSpec, DEFAULT_ROUTE_GROUP};
     pub use super::transport::{
-        resolve_auth_provider_headers, AuthProviderHeaderResolution,
+        apply_channel_response_policy, non_streaming_body_timeout_message,
+        resolve_auth_provider_headers, streaming_body_ended_before_first_chunk_message,
+        streaming_body_first_chunk_read_error_message,
+        streaming_body_first_chunk_timeout_message, upstream_error_response_projection,
+        upstream_success_response_finalization_plan, AuthProviderHeaderResolution,
+        ChannelResponsePolicyApplication, ChannelResponseStatusMapping,
         codex_provider_uses_chat_completions, codex_responses_to_chat_conversion_required,
         CodexProviderChatCompletionsFacts, CodexResponsesToChatConversionFacts, ProxyBody,
         ProxyCoreResponse, ProxyResponseBody, ProxyTransportResponse, ProxyTransportResponseBody,
+        UpstreamErrorResponseProjection, UpstreamSuccessResponseFinalizationPlan,
     };
     pub use super::transforms::{
         claude_request_transform_for_api_format,

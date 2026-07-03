@@ -1959,6 +1959,82 @@ fn external_host_can_use_channel_key_runtime_selection_contracts_from_prelude() 
 }
 
 #[test]
+fn external_host_can_use_forward_response_finalization_contracts_from_prelude() {
+    let non_streaming_timeout = std::time::Duration::from_secs(2);
+    let streaming_first_byte_timeout = std::time::Duration::from_secs(3);
+
+    assert_eq!(
+        upstream_success_response_finalization_plan(
+            false,
+            non_streaming_timeout,
+            streaming_first_byte_timeout,
+        ),
+        UpstreamSuccessResponseFinalizationPlan::BufferNonStreaming {
+            timeout: non_streaming_timeout
+        }
+    );
+    assert_eq!(
+        upstream_success_response_finalization_plan(
+            true,
+            non_streaming_timeout,
+            streaming_first_byte_timeout,
+        ),
+        UpstreamSuccessResponseFinalizationPlan::PrimeStreaming {
+            timeout: streaming_first_byte_timeout
+        }
+    );
+    assert_eq!(
+        upstream_success_response_finalization_plan(
+            true,
+            non_streaming_timeout,
+            std::time::Duration::ZERO,
+        ),
+        UpstreamSuccessResponseFinalizationPlan::Passthrough
+    );
+
+    assert!(non_streaming_body_timeout_message(non_streaming_timeout).contains("2s"));
+    assert!(
+        streaming_body_first_chunk_timeout_message(streaming_first_byte_timeout).contains("3s")
+    );
+    assert!(!streaming_body_ended_before_first_chunk_message().is_empty());
+    assert!(streaming_body_first_chunk_read_error_message("reset").contains("reset"));
+
+    let upstream_error: UpstreamErrorResponseProjection =
+        upstream_error_response_projection(StatusCode::BAD_GATEWAY, br#"{"error":"bad"}"#);
+    assert_eq!(upstream_error.status, 502);
+    assert_eq!(upstream_error.body.as_deref(), Some(r#"{"error":"bad"}"#));
+    assert!(
+        upstream_error_response_projection(StatusCode::BAD_GATEWAY, &[0xff, 0xfe])
+            .body
+            .is_none()
+    );
+
+    let mut status = StatusCode::TOO_MANY_REQUESTS;
+    let mut headers = HeaderMap::new();
+    headers.insert("x-relay-tier", HeaderValue::from_static("free"));
+    let application: ChannelResponsePolicyApplication = apply_channel_response_policy(
+        &mut status,
+        &mut headers,
+        &json!([{ "from": 429, "to": 200 }]),
+        &json!({ "headers": { "x-relay-tier": "paid" } }),
+    );
+    let mapping: ChannelResponseStatusMapping =
+        application.status_mapping.expect("status mapping");
+
+    assert_eq!(mapping.original_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(mapping.mapped_status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        headers.get("x-relay-tier"),
+        Some(&HeaderValue::from_static("paid"))
+    );
+    assert_eq!(
+        application.applied_headers,
+        Some(vec!["x-relay-tier".to_string()])
+    );
+}
+
+#[test]
 fn external_host_can_use_channel_model_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);
