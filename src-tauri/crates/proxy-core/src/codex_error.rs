@@ -1,9 +1,9 @@
 use crate::{
     domain::ProxyCoreResponse,
     error::{proxy_error_http_status_code, ProxyCoreResult, ProxyErrorStatusKind},
-    response_build::json_proxy_response,
+    response_build::{json_proxy_response, rebuilt_json_proxy_response},
 };
-use http::StatusCode;
+use http::{HeaderMap, StatusCode};
 use serde_json::{json, Value};
 
 const CODEX_ERROR_MESSAGE_LIMIT: usize = 1800;
@@ -294,6 +294,30 @@ pub fn normalize_codex_chat_error_body(body: &[u8]) -> CodexChatErrorNormalizati
             }
         }
     }
+}
+
+#[derive(Debug)]
+pub struct CodexChatErrorProxyResponse {
+    pub response: ProxyCoreResponse,
+    pub normalization: CodexChatErrorNormalization,
+}
+
+pub fn codex_chat_error_proxy_response(
+    status: StatusCode,
+    headers: HeaderMap,
+    body: &[u8],
+) -> ProxyCoreResult<CodexChatErrorProxyResponse> {
+    let normalization = normalize_codex_chat_error_body(body);
+    let response = rebuilt_json_proxy_response(
+        status,
+        headers,
+        normalization.response_error.clone(),
+    )?;
+
+    Ok(CodexChatErrorProxyResponse {
+        response,
+        normalization,
+    })
 }
 
 fn compact_error_message(message: &str, max_chars: usize) -> String {
@@ -593,6 +617,37 @@ mod tests {
         assert_eq!(normalized.response_error["error"]["code"], 2013);
         assert_eq!(normalized.non_json_body_preview, None);
         assert!(normalized.non_json_body_log_message().is_none());
+    }
+
+    #[test]
+    fn codex_chat_error_proxy_response_builds_rebuilt_json_response() {
+        let response = codex_chat_error_proxy_response(
+            StatusCode::BAD_GATEWAY,
+            HeaderMap::new(),
+            br#"{"base_resp":{"status_code":2013,"status_msg":"bad role"}}"#,
+        )
+        .expect("codex chat error proxy response");
+
+        assert!(response.normalization.non_json_body_preview.is_none());
+
+        let transport = response
+            .response
+            .into_transport_response()
+            .expect("transport response");
+        assert_eq!(transport.status, StatusCode::BAD_GATEWAY);
+        assert_eq!(
+            transport.headers.get(http::header::CONTENT_TYPE),
+            Some(&http::HeaderValue::from_static("application/json"))
+        );
+
+        let body = match transport.body {
+            crate::domain::ProxyTransportResponseBody::Bytes(body) => body,
+            _ => panic!("expected bytes body"),
+        };
+        let value: Value = serde_json::from_slice(&body).expect("json body");
+
+        assert_eq!(value["error"]["message"], "bad role");
+        assert_eq!(value["error"]["code"], 2013);
     }
 
     #[test]

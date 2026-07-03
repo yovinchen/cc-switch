@@ -2923,3 +2923,29 @@ fn external_host_can_classify_codex_proxy_errors_from_prelude() {
         CodexProxyErrorKind::ProxyError
     );
 }
+
+#[test]
+fn external_host_can_build_codex_chat_error_proxy_response_from_prelude() {
+    let response = codex_chat_error_proxy_response(
+        StatusCode::BAD_GATEWAY,
+        HeaderMap::new(),
+        br#"{"base_resp":{"status_code":2013,"status_msg":"bad role"}}"#,
+    )
+    .expect("codex chat error proxy response");
+    let transport = response
+        .response
+        .into_transport_response()
+        .expect("transport response");
+
+    assert_eq!(transport.status, StatusCode::BAD_GATEWAY);
+    assert!(response.normalization.non_json_body_log_message().is_none());
+
+    let body = match transport.body {
+        ProxyTransportResponseBody::Bytes(body) => body,
+        _ => panic!("expected bytes body"),
+    };
+    let body_text = String::from_utf8(body.to_vec()).expect("utf8 json body");
+
+    assert!(body_text.contains(r#""message":"bad role""#));
+    assert!(body_text.contains(r#""code":2013"#));
+}

@@ -51,8 +51,8 @@ use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, Routable
 use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
 use crate::proxy_core::api::routing::InterfaceKind;
 use crate::proxy_core::api::transforms::{
-    build_codex_tool_context_from_request, codex_chat_transform_streaming_decision,
-    normalize_codex_chat_error_body, ClaudeTransformStreamingDecision,
+    build_codex_tool_context_from_request, codex_chat_error_proxy_response,
+    codex_chat_transform_streaming_decision, ClaudeTransformStreamingDecision,
     CodexChatTransformStreamingDecision, CodexToolContext,
 };
 use crate::proxy_core::api::transport::{
@@ -1310,14 +1310,13 @@ pub(crate) fn codex_chat_error_response_to_axum_response(
     response_headers: HeaderMap,
     body_bytes: &[u8],
 ) -> Result<axum::response::Response, ProxyError> {
-    let normalized = normalize_codex_chat_error_body(body_bytes);
-    if let Some(message) = normalized.non_json_body_log_message() {
+    let response = codex_chat_error_proxy_response(status, response_headers, body_bytes)
+        .map_err(codex_responses_error_body_build_error_to_proxy_error)?;
+    if let Some(message) = response.normalization.non_json_body_log_message() {
         log::warn!("{message}");
     }
-    let response = rebuilt_json_proxy_response(status, response_headers, normalized.response_error)
-        .map_err(codex_responses_error_body_build_error_to_proxy_error)?;
     proxy_core_response_to_axum_response(
-        response,
+        response.response,
         AxumResponseBuildErrorContext::CodexResponsesError,
     )
 }

@@ -498,13 +498,14 @@ pub mod prelude {
     pub use super::transforms::{
         claude_request_transform_for_api_format,
         claude_response_to_anthropic_message_for_api_format,
+        codex_chat_error_proxy_response,
         codex_proxy_error_kind_from_status_kind,
         create_claude_to_anthropic_sse_stream_for_api_format,
         normalize_claude_anthropic_messages, AnthropicToolSchemaHints,
         ClaudeApiFormatRequestTransformContext, ClaudeApiFormatRequestTransformOutput,
         ClaudeApiFormatResponseTransformOutput, ClaudeApiFormatSseTransformContext,
-        ClaudePromptCacheKeySource, ClaudeResponsesPromptCacheLog, CodexProxyErrorKind,
-        GeminiShadowStore,
+        ClaudePromptCacheKeySource, ClaudeResponsesPromptCacheLog, CodexChatErrorProxyResponse,
+        CodexProxyErrorKind, GeminiShadowStore,
     };
     pub use super::usage::{TokenUsage, UsageRecord};
 }
