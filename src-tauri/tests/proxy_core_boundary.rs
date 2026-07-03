@@ -5932,14 +5932,17 @@ fn proxy_core_host_imports_provider_kind_from_core_domain() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let relative = "src/proxy_core_host.rs";
     let source = fs::read_to_string(manifest_dir.join(relative)).expect("read proxy_core_host.rs");
+    let runtime_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs"))
+            .expect("read proxy_runtime.rs");
     let adapter_import_identifiers = proxy_core_adapter_import_identifiers(&source);
     let mut violations = Vec::new();
 
-    if !source.contains("use crate::proxy_core::api::domain::{")
-        || !source.contains("ProviderKind, ProviderSpec")
+    if !runtime_source.contains("use crate::proxy_core::api::domain::{")
+        || !runtime_source.contains("ProviderKind, ProviderSpec")
     {
         violations.push(format!(
-            "{relative} should import ProviderKind directly from proxy_core::api::domain"
+            "src/proxy/host/cc_switch/proxy_runtime.rs should import ProviderKind directly from proxy_core::api::domain"
         ));
     }
 
@@ -6330,8 +6333,9 @@ fn proxy_core_adapter_does_not_export_gemini_shadow_store_alias() {
         manifest_dir.join("src/proxy/host/cc_switch/forwarder_protocol_state_source.rs"),
     )
     .expect("read forwarder_protocol_state_source.rs");
-    let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
-        .expect("read proxy_core_host.rs");
+    let proxy_runtime_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs"))
+            .expect("read proxy_runtime.rs");
 
     assert!(
         !adapter_source
@@ -6342,7 +6346,7 @@ fn proxy_core_adapter_does_not_export_gemini_shadow_store_alias() {
     for (label, source) in [
         ("provider/claude", provider_source.as_str()),
         ("forwarder_protocol_state_source", protocol_source.as_str()),
-        ("proxy_core_host", host_source.as_str()),
+        ("proxy_runtime", proxy_runtime_source.as_str()),
     ] {
         assert!(
             source.contains("use crate::proxy_core::api::transforms::GeminiShadowStore;"),
@@ -6758,11 +6762,6 @@ fn proxy_core_adapter_does_not_export_proxy_runtime_status_alias() {
             "default runtime state source should call active connection status helper `{helper}` from core ports"
         );
     }
-    assert!(
-        host_source.contains("ProxyRuntimeStatus")
-            && host_source.contains("use crate::proxy_core::api::ports::{"),
-        "proxy_core_host test harness should import ProxyRuntimeStatus directly from proxy_core ports"
-    );
     let host_adapter_import = proxy_core_adapter_import_identifiers(&host_source);
     assert!(
         !host_adapter_import
@@ -6798,11 +6797,6 @@ fn proxy_core_adapter_does_not_export_proxy_config_alias() {
     assert!(
         !adapter_source.contains("fn proxy_config_adapter_preserves_management_contracts"),
         "proxy_core_adapter should not keep the mixed ProxyConfig fixture after owner tests exist"
-    );
-    assert!(
-        host_source.contains("ProxyConfig")
-            && host_source.contains("use crate::proxy_core::api::ports::{"),
-        "proxy_core_host test harness should import ProxyConfig directly from proxy_core ports"
     );
     let host_adapter_import = proxy_core_adapter_import_identifiers(&host_source);
     assert!(
@@ -18812,6 +18806,8 @@ fn proxy_core_adapter_delegates_proxy_runtime_to_host_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
     let runtime_path = manifest_dir.join("src/proxy/host/cc_switch/proxy_runtime.rs");
     let runtime_source = fs::read_to_string(&runtime_path).expect("read proxy_runtime.rs");
 
@@ -18838,6 +18834,13 @@ fn proxy_core_adapter_delegates_proxy_runtime_to_host_module() {
         runtime_source.contains("fn app_type_conversion_preserves_known_and_custom_names()")
             && !adapter_source.contains("fn app_type_conversion_preserves_known_and_custom_names()"),
         "AppKind/AppType and ProxyRequest host-forward conversion fixture should live with proxy_runtime, not proxy_core_adapter"
+    );
+    assert!(
+        runtime_source.contains("async fn runtime_forward_pipeline_requires_matching_host_provider()")
+            && !host_harness_source.contains(
+                "async fn runtime_forward_pipeline_requires_matching_host_provider()"
+            ),
+        "runtime forward provider mismatch fixture should live with proxy_runtime, not proxy_core_host"
     );
     assert!(
         !adapter_source.contains("forward_proxy_request_with_cc_switch_runtime")
@@ -25503,17 +25506,11 @@ fn proxy_core_host_imports_test_contracts_from_core_api_directly() {
         .expect("read proxy_core_adapter.rs");
 
     assert!(
-        host_source.contains(
-            "use crate::proxy_core::api::domain::{\n    AppKind, ChannelOverrides, ModelCapabilities, ModelRoute, ProviderKind, ProviderSpec,\n    RetryPolicy, UpstreamEndpoint,\n};"
-        )
+        host_source.contains("use crate::proxy_core::api::domain::AppKind;")
             && host_source.contains(
             "use crate::proxy_core::api::management::{\n        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, RouteResolveRequest,\n    };"
         ) && host_source.contains(
-            "use crate::proxy_core::api::ports::{ProxyConfig, ProxyRuntimeStatus};"
-        ) && host_source.contains(
-            "use crate::proxy_core::api::ports::ProxyServices;"
-        ) && host_source.contains(
-            "use crate::proxy_core::api::routing::{\n    ChannelSpec, ChannelStatus, InterfaceKind, RoutePlan, RouteSelection, DEFAULT_ROUTE_GROUP,\n};"
+            "use crate::proxy_core::api::routing::InterfaceKind;"
         ) && host_source.contains(
             "use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest};"
         )
