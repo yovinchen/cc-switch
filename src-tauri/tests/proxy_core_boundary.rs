@@ -23600,6 +23600,9 @@ fn proxy_core_adapter_delegates_route_policy_source_to_host_module() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let source_path = manifest_dir.join("src/proxy/host/cc_switch/route_policy_source.rs");
     let source = fs::read_to_string(&source_path).expect("read route_policy_source.rs");
+    let host_harness_path = manifest_dir.join("src/proxy_core_host.rs");
+    let host_harness_source =
+        fs::read_to_string(&host_harness_path).expect("read proxy_core_host.rs");
     let adapter_core_ports_import = optional_function_slice(
         &adapter_source,
         "pub(crate) use crate::proxy_core::api::ports::{",
@@ -23636,6 +23639,12 @@ fn proxy_core_adapter_delegates_route_policy_source_to_host_module() {
             && !source.contains("route_policy_from_db_source(&self.db, app)")
             && !source.contains("use crate::proxy_core_adapter::"),
         "route policy source should not delegate DB route policy loading or error mapping through proxy_core_adapter"
+    );
+    assert!(
+        source.contains("async fn route_policy_source_projects_failover_queue_through_core()")
+            && !host_harness_source
+                .contains("async fn route_policy_source_projects_failover_queue_through_core()"),
+        "route policy failover queue fixture should live with CcSwitchRoutePolicySource, not proxy_core_host"
     );
     assert!(
         !adapter_core_ports_import.contains("RoutePolicySource"),

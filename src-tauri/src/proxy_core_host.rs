@@ -263,27 +263,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn route_policy_source_projects_failover_queue_through_core() {
-        let db = Arc::new(Database::memory().expect("memory db"));
-        save_claude_provider(&db);
-        db.add_to_failover_queue("claude", "anthropic-main")
-            .expect("add failover provider");
-        let services = CcSwitchProxyServices::new(db);
-
-        let policy = services
-            .route_policies()
-            .load_policy(&AppKind::Claude)
-            .await
-            .expect("load policy")
-            .expect("policy");
-
-        assert_eq!(policy.app, AppKind::Claude);
-        assert!(policy.groups.is_empty());
-        assert_eq!(policy.raw["defaultGroup"], json!(DEFAULT_ROUTE_GROUP));
-        assert_eq!(policy.raw["failoverProviderIds"], json!(["anthropic-main"]));
-    }
-
-    #[tokio::test]
     async fn auth_provider_projects_profile_ref_through_core() {
         let provider = CcSwitchAuthProvider;
         let request = proxy_request();

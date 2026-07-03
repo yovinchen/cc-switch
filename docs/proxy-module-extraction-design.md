@@ -2062,6 +2062,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1436. event sink bridge fixture 已拆回 owner：`ProxyCoreEvent` 经 `CcSwitchEventSink` 投递到 `ProxyEventBus` envelope 的覆盖已迁入 `proxy/host/cc_switch/event_sink.rs`；`proxy_core_host` 不再承载这组事件桥接 fixture。
 1437. channel health store DB/router fixture 已拆回 owner：channel attempt 落库、健康状态降级、router reset 后健康状态复位的覆盖已迁入 `proxy/host/cc_switch/channel_health_store.rs`；`proxy_core_host` 不再承载这组健康存储 fixture。
 1438. config source projection fixture 已拆回 owner：global/app/summary/runtime proxy config 的 DB/settings 到 core config contract 投影覆盖已迁入 `proxy/host/cc_switch/config_source.rs`；`proxy_core_host` 不再承载这组配置源 fixture。
+1439. route policy source fixture 已拆回 owner：failover queue 到 core `RoutePolicy` default group/raw provider ids 的覆盖已迁入 `proxy/host/cc_switch/route_policy_source.rs`；`proxy_core_host` 不再承载这组 route policy fixture。
 
 ## 背景
 
