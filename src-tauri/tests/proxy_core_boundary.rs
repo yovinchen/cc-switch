@@ -13066,11 +13066,6 @@ fn claude_provider_owns_request_format_dispatch() {
         request_slice.contains("claude_request_transform_for_api_format("),
         "Claude request api_format dispatch must be delegated to proxy-core from the provider owning module"
     );
-    let adapter_transform_import_window = function_slice(
-        &adapter_source,
-        "use crate::proxy_core::api::transforms::{",
-        "use crate::proxy_core::api::transport::{",
-    );
     assert!(
         !adapter_source.contains("pub(crate) fn provider_claude_transform_request_for_api_format"),
         "proxy_core_adapter should not expose the Claude request transform facade"
@@ -13087,7 +13082,7 @@ fn claude_provider_owns_request_format_dispatch() {
         "anthropic_request_to_gemini_request_with_shadow",
     ] {
         assert!(
-            !adapter_transform_import_window.contains(marker),
+            !adapter_source.contains(marker),
             "proxy_core_adapter should not re-export pure Claude request transform helper `{marker}`"
         );
     }
@@ -13133,6 +13128,23 @@ fn provider_projection_delegates_claude_transform_gate_to_core() {
     let claude_provider_path = manifest_dir.join("src/proxy/provider/claude.rs");
     let claude_provider =
         fs::read_to_string(&claude_provider_path).expect("read proxy/provider/claude.rs");
+    let core_claude_auth_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/claude_auth.rs"))
+            .expect("read proxy-core claude_auth.rs");
+    let core_domain_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/domain.rs"))
+            .expect("read proxy-core domain.rs");
+    let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
+        .expect("read proxy-core ports.rs");
+    let core_request_headers_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_headers.rs"))
+            .expect("read proxy-core request_headers.rs");
+    let core_request_url_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_url.rs"))
+            .expect("read proxy-core request_url.rs");
+    let core_response_transform_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/response_transform.rs"))
+            .expect("read proxy-core response_transform.rs");
     let api_format_slice = function_slice(
         &projection,
         "pub(crate) fn provider_claude_api_format",
@@ -13182,8 +13194,35 @@ fn provider_projection_delegates_claude_transform_gate_to_core() {
         "provider_projection tests should own Claude api_format and transform-gate provider-fact fixtures"
     );
     assert!(
+        projection.contains("fn claude_auth_and_base_url_projection_use_core_settings_helpers()")
+            && projection.contains("provider_claude_auth_key(&provider)")
+            && projection.contains("provider_claude_base_url(&provider)"),
+        "provider_projection tests should own Claude auth/base URL provider-fact fixtures"
+    );
+    assert!(
+        core_claude_auth_source
+            .contains("fn extracts_claude_auth_key_from_settings_by_legacy_priority")
+            && core_domain_source.contains("fn extracts_claude_base_url_from_settings")
+            && core_ports_source
+                .contains("fn provider_credential_shapes_extract_host_neutral_settings")
+            && core_request_headers_source.contains("fn builds_claude_static_auth_headers")
+            && core_request_headers_source.contains("fn builds_copilot_auth_headers_with_request_ids")
+            && core_request_url_source.contains("fn builds_claude_upstream_url_with_legacy_join_semantics")
+            && core_response_transform_source
+                .contains("fn claude_responses_prompt_cache_key_uses_copilot_user_id_session")
+            && core_response_transform_source
+                .contains("fn copilot_prompt_cache_provider_uses_legacy_host_detection_inputs")
+            && core_response_transform_source
+                .contains("fn resolve_claude_api_format_from_settings_projects_legacy_settings"),
+        "proxy-core owner modules should carry Claude auth/base-url/header/cache/api-format fixtures"
+    );
+    assert!(
         !source.contains("fn claude_api_format_adapter_projects_transform_gate()"),
         "proxy_core_adapter should not carry Claude api_format/transform-gate provider-fact fixture"
+    );
+    assert!(
+        !source.contains("fn claude_provider_adapter_projects_config_auth_url_and_cache_helpers"),
+        "proxy_core_adapter should not retain mixed Claude config/auth/url/cache fixture coverage"
     );
     assert!(
         !source.contains(

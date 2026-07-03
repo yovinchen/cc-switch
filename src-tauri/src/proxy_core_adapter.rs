@@ -1,152 +1,21 @@
 #[cfg(test)]
 use crate::provider::Provider;
-#[cfg(test)]
-use crate::proxy::provider::claude_provider_api_format;
 
 #[cfg(test)]
 mod tests {
     use crate::proxy::provider::{
         transform_claude_response_for_api_format, transform_claude_sse_for_api_format,
     };
-    use crate::proxy_core::api::domain::{extract_claude_base_url_from_settings, ProviderKind};
-    use crate::proxy_core::api::ports::claude_env_credentials_from_settings;
     use crate::proxy_core::api::transforms::{
-        is_copilot_prompt_cache_provider, resolve_claude_api_format_from_settings,
-        resolve_claude_responses_prompt_cache_key,
         should_preserve_reasoning_content_for_openai_chat, GeminiShadowStore,
     };
     use serde_json::json;
 
     use super::*;
     use crate::provider::ProviderMeta;
-    use crate::proxy::host::cc_switch::provider_projection::{
-        provider_claude_auth_key, provider_claude_base_url, provider_claude_kind,
-        provider_needs_claude_transform,
-    };
-    use crate::proxy_core::api::auth::{
-        extract_claude_auth_key_from_settings, ClaudeAuthKeySource,
-    };
     use crate::proxy_core::api::transforms::normalize_claude_anthropic_messages;
-    use crate::proxy_core::api::transport::{
-        build_claude_auth_headers, build_copilot_auth_headers, ClaudeAuthHeaderKind,
-        CopilotAuthHeadersInput,
-    };
     use bytes::Bytes;
     use std::sync::Arc;
-
-    #[test]
-    fn claude_provider_adapter_projects_config_auth_url_and_cache_helpers() {
-        let settings = json!({
-            "env": {
-                "ANTHROPIC_AUTH_TOKEN": " claude-token ",
-                "ANTHROPIC_BASE_URL": "https://api.anthropic.com/v1/"
-            }
-        });
-        assert_eq!(
-            resolve_claude_api_format_from_settings(None, Some("openai_chat"), &settings),
-            "openai_chat"
-        );
-        let auth_key =
-            extract_claude_auth_key_from_settings(&settings).expect("anthropic auth token");
-        assert_eq!(auth_key.key, "claude-token");
-        assert_eq!(auth_key.source, ClaudeAuthKeySource::AnthropicAuthToken);
-        assert_eq!(
-            extract_claude_base_url_from_settings(false, &settings).as_deref(),
-            Some("https://api.anthropic.com/v1")
-        );
-        let env_credentials =
-            claude_env_credentials_from_settings(&settings).expect("claude env credentials");
-        assert_eq!(env_credentials.api_key, Some(" claude-token "));
-        assert_eq!(
-            env_credentials.base_url,
-            Some("https://api.anthropic.com/v1/")
-        );
-        assert!(claude_env_credentials_from_settings(&json!({"env": "invalid"})).is_none());
-        let mut provider = Provider::with_id(
-            "claude".to_string(),
-            "Claude".to_string(),
-            settings.clone(),
-            None,
-        );
-        provider.meta = Some(ProviderMeta {
-            api_format: Some("openai_chat".to_string()),
-            ..Default::default()
-        });
-        assert_eq!(claude_provider_api_format(&provider), "openai_chat");
-        assert!(provider_needs_claude_transform(&provider));
-        let no_transform_provider = Provider::with_id(
-            "claude-no-transform".to_string(),
-            "Claude No Transform".to_string(),
-            json!({"env": {"ANTHROPIC_BASE_URL": "https://api.anthropic.com/v1/"}}),
-            None,
-        );
-        assert!(!provider_needs_claude_transform(&no_transform_provider));
-        let provider_auth_key = provider_claude_auth_key(&provider).expect("provider auth token");
-        assert_eq!(provider_auth_key.key, "claude-token");
-        assert_eq!(
-            provider_claude_base_url(&provider).as_deref(),
-            Some("https://api.anthropic.com/v1")
-        );
-        let mut gemini_cli_provider = Provider::with_id(
-            "claude-gemini-cli".to_string(),
-            "Claude Gemini CLI".to_string(),
-            json!({"env": {
-                "ANTHROPIC_BASE_URL": "https://generativelanguage.googleapis.com",
-                "ANTHROPIC_API_KEY": "{\"access_token\":\"ya29.valid\",\"refresh_token\":\"rt\"}"
-            }}),
-            None,
-        );
-        gemini_cli_provider.meta = Some(ProviderMeta {
-            api_format: Some("gemini_native".to_string()),
-            ..Default::default()
-        });
-        assert_eq!(
-            provider_claude_kind(&gemini_cli_provider),
-            ProviderKind::GeminiCli
-        );
-        assert_eq!(
-            crate::proxy_core::api::transport::build_claude_upstream_url(
-                "https://api.anthropic.com/v1",
-                "/v1/messages",
-            ),
-            "https://api.anthropic.com/v1/messages"
-        );
-
-        let bearer_headers =
-            build_claude_auth_headers(ClaudeAuthHeaderKind::Bearer, "claude-token", None)
-                .expect("bearer headers");
-        assert_eq!(bearer_headers[0].0.as_str(), "authorization");
-        assert_eq!(
-            bearer_headers[0].1,
-            http::HeaderValue::from_static("Bearer claude-token")
-        );
-        let copilot_headers = build_copilot_auth_headers(CopilotAuthHeadersInput {
-            api_key: "copilot-token",
-            request_id: "request-1",
-            editor_version: "vscode/1",
-            editor_plugin_version: "plugin/1",
-            integration_id: "integration-1",
-            user_agent: "copilot-test",
-            github_api_version: "2022-11-28",
-        })
-        .expect("copilot headers");
-        assert!(copilot_headers
-            .iter()
-            .any(|(name, value)| name.as_str() == "x-request-id" && value == "request-1"));
-
-        assert!(is_copilot_prompt_cache_provider(
-            Some("github_copilot"),
-            &json!({})
-        ));
-        let cache_key = resolve_claude_responses_prompt_cache_key(
-            &json!({"metadata": {"session_id": "session-1"}}),
-            None,
-            Some("fallback-session"),
-            true,
-        );
-        assert_eq!(cache_key.key.as_deref(), Some("session-1"));
-        assert_eq!(cache_key.source.as_str(), "session");
-    }
 
     #[test]
     fn claude_provider_projects_response_facades() {

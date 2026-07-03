@@ -831,6 +831,28 @@ mod tests {
     }
 
     #[test]
+    fn claude_auth_and_base_url_projection_use_core_settings_helpers() {
+        let provider = Provider::with_id(
+            "claude".to_string(),
+            "Claude".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": " claude-token ",
+                    "ANTHROPIC_BASE_URL": "https://api.anthropic.com/v1/"
+                }
+            }),
+            None,
+        );
+
+        let auth_key = provider_claude_auth_key(&provider).expect("provider auth token");
+        assert_eq!(auth_key.key, "claude-token");
+        assert_eq!(
+            provider_claude_base_url(&provider).as_deref(),
+            Some("https://api.anthropic.com/v1")
+        );
+    }
+
+    #[test]
     fn claude_streaming_decision_preserves_codex_oauth_aggregation() {
         let mut codex_provider = Provider::with_id(
             "codex-oauth".to_string(),

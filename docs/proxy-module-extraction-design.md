@@ -2053,6 +2053,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1427. proxy config/management/runtime policy 聚合 fixture 已拆回 owner：`proxy-core` 的 ports/management_auth/circuit_breaker_config/response_timeout 测试分别覆盖配置 JSON、鉴权、熔断和 timeout policy，host `proxy/host/cc_switch/proxy_runtime.rs` 覆盖 forward runtime options/config 组装；`proxy_core_adapter` 不再承载这组混合配置 fixture。
 1428. circuit/route/provider-router 聚合 fixture 已拆回 owner：circuit key/state/stat、provider selection/current-provider 和 route candidate circuit filter 由 `proxy-core` owning tests 覆盖，host `proxy/engine/routing.rs` 覆盖 provider selection error 到 `AppError` 映射，host `proxy/host/cc_switch/proxy_runtime.rs` 覆盖 current-provider DB fallback wrapper；`proxy_core_adapter` 不再承载这组路由聚合 fixture。
 1429. Codex provider chat policy/live settings/reasoning 聚合 fixture 已拆回 owner：chat-completions gate、auth header、upstream model 与 catalog policy、live settings/validation 和 reasoning profile 分别由 `proxy-core` request/ports/transform tests、host `codex_config.rs` 与 `proxy/provider/codex.rs` 覆盖；`proxy_core_adapter` 不再承载这组 Codex 聚合 fixture。
+1430. Claude provider config/auth/url/cache 聚合 fixture 已拆回 owner：Claude api_format/auth/base URL/env credentials/header/cache policy 由 `proxy-core` owning tests 覆盖，host `provider_projection.rs` 覆盖 Provider-shaped api_format、transform gate、auth key 与 base URL 投影；`proxy_core_adapter` 不再承载这组 Claude config/auth/cache fixture。
 
 ## 背景
 
