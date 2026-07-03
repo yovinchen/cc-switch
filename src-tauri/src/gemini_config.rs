@@ -517,6 +517,9 @@ KEY_WITH-DASH=value";
             "env": "invalid_string"
         });
 
-        assert!(validate_gemini_settings_basic(&settings).is_err());
+        assert!(matches!(
+            validate_gemini_settings_basic(&settings),
+            Err(AppError::Localized { key, .. }) if key == "gemini.validation.invalid_env"
+        ));
     }
 }

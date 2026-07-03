@@ -32,9 +32,7 @@ mod tests {
     use crate::proxy_core::api::ports::{
         app_proxy_config_with_enabled as proxy_app_config_with_enabled,
         claude_env_credentials_from_settings, codex_auth_object_value_from_settings,
-        codex_provider_live_write_parts_from_settings, gemini_env_map_from_settings,
-        gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
-        gemini_live_settings_to_write, provider_settings_validation_issue_spec,
+        codex_provider_live_write_parts_from_settings, provider_settings_validation_issue_spec,
         provider_settings_validation_parts_from_settings, CodexProviderLiveWriteIssue,
         CodexProviderValidationIssue, ProviderSettingsValidationIssue,
     };
@@ -62,17 +60,12 @@ mod tests {
         codex_provider_upstream_model, codex_provider_uses_chat_completions,
     };
     use crate::proxy_core::api::auth::{
-        extract_claude_auth_key_from_settings, extract_gemini_api_key_from_settings,
-    };
-    use crate::proxy_core::api::auth::{
-        extract_gemini_base_url_from_settings, ClaudeAuthKeySource, ManagementAuthError,
+        extract_claude_auth_key_from_settings, ClaudeAuthKeySource, ManagementAuthError,
     };
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::management::{ChannelRouteSource, RouteResolveRequest};
     use crate::proxy_core::api::ports::{
-        codex_restored_live_settings_parts, gemini_env_json_from_map,
-        gemini_env_string_map_from_settings, gemini_live_config_object_from_settings,
-        CopilotOptimizerConfig, GeminiLiveConfigIssue, OptimizerConfig, ProxyConfig,
+        codex_restored_live_settings_parts, CopilotOptimizerConfig, OptimizerConfig, ProxyConfig,
         RectifierConfig,
     };
     use crate::proxy_core::api::routing::{
@@ -87,7 +80,7 @@ mod tests {
     };
     use crate::proxy_core::api::transport::{
         build_claude_auth_headers, build_codex_bearer_auth_headers, build_copilot_auth_headers,
-        build_gemini_auth_headers, ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
+        ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
     };
     use bytes::Bytes;
     use indexmap::IndexMap;
@@ -833,188 +826,6 @@ wire_api = "chat"
             .expect("deepseek reasoning profile")
             .supports_effort,
             Some(true)
-        );
-    }
-
-    #[test]
-    fn gemini_provider_adapter_projects_auth_settings_and_url_helpers() {
-        let settings = json!({
-            "env": {
-                "GEMINI_API_KEY": " ya29.access-token ",
-                "GOOGLE_GEMINI_BASE_URL": "https://generativelanguage.googleapis.com/v1beta/"
-            }
-        });
-        assert_eq!(
-            extract_gemini_api_key_from_settings(&settings).as_deref(),
-            Some("ya29.access-token")
-        );
-        assert_eq!(
-            extract_gemini_base_url_from_settings(&settings).as_deref(),
-            Some("https://generativelanguage.googleapis.com/v1beta")
-        );
-        let env = gemini_env_map_from_settings(&settings).expect("gemini env map");
-        assert_eq!(
-            env.get("GEMINI_API_KEY").and_then(Value::as_str),
-            Some(" ya29.access-token ")
-        );
-        assert!(gemini_env_map_from_settings(&json!({"env": "invalid"})).is_none());
-        assert_eq!(
-            crate::proxy_core::api::ports::gemini_env_value_from_env_json(
-                &json!({"env": {"A": "B"}})
-            ),
-            json!({"A": "B"})
-        );
-        assert_eq!(
-            crate::proxy_core::api::ports::gemini_env_value_from_env_json(&json!({})),
-            json!({})
-        );
-        assert_eq!(
-            gemini_live_settings_from_env_json_and_config(
-                &json!({"env": {"GEMINI_API_KEY": "sk-test"}}),
-                json!({"mcpServers": {"server": {}}})
-            ),
-            json!({
-                "env": {"GEMINI_API_KEY": "sk-test"},
-                "config": {"mcpServers": {"server": {}}}
-            })
-        );
-        assert_eq!(
-            gemini_live_settings_from_env_json_and_config(&json!({}), json!({})),
-            json!({"env": {}, "config": {}})
-        );
-        assert_eq!(
-            gemini_live_backup_from_effective_settings(&json!({
-                "env": {"GEMINI_API_KEY": "key"},
-                "config": {"mcpServers": {"kept-out-of-env-backup": {}}}
-            })),
-            json!({"env": {"GEMINI_API_KEY": "key"}})
-        );
-        assert_eq!(
-            gemini_live_backup_from_effective_settings(&json!({
-                "config": {"mcpServers": {}}
-            })),
-            json!({"env": {}})
-        );
-        let provider = Provider::with_id(
-            "gemini".to_string(),
-            "Gemini".to_string(),
-            settings.clone(),
-            None,
-        );
-        assert_eq!(
-            extract_gemini_api_key_from_settings(&provider.settings_config).as_deref(),
-            Some("ya29.access-token")
-        );
-        assert_eq!(
-            extract_gemini_base_url_from_settings(&provider.settings_config).as_deref(),
-            Some("https://generativelanguage.googleapis.com/v1beta")
-        );
-        assert_eq!(
-            crate::proxy_core::api::ports::required_provider_base_url(
-                "Gemini",
-                extract_gemini_base_url_from_settings(&provider.settings_config)
-            )
-            .as_deref(),
-            Ok("https://generativelanguage.googleapis.com/v1beta")
-        );
-        assert_eq!(
-            crate::proxy_core::api::ports::required_provider_base_url("Gemini", None).unwrap_err(),
-            "Gemini Provider 缺少 base_url 配置"
-        );
-        let live_env = gemini_env_string_map_from_settings(&provider.settings_config);
-        assert_eq!(
-            live_env.get("GEMINI_API_KEY").map(String::as_str),
-            Some(" ya29.access-token ")
-        );
-        assert_eq!(
-            gemini_env_string_map_from_settings(&gemini_env_json_from_map(&live_env)),
-            live_env
-        );
-        crate::gemini_config::validate_gemini_settings_basic(&provider.settings_config)
-            .expect("provider Gemini settings should pass basic shape validation");
-        let invalid_env_provider = Provider::with_id(
-            "gemini-invalid-env".to_string(),
-            "Gemini Invalid Env".to_string(),
-            json!({"env": "invalid"}),
-            None,
-        );
-        assert!(matches!(
-            crate::gemini_config::validate_gemini_settings_basic(
-                &invalid_env_provider.settings_config
-            ),
-            Err(AppError::Localized { key, .. }) if key == "gemini.validation.invalid_env"
-        ));
-        crate::gemini_config::validate_gemini_settings_strict(&provider.settings_config)
-            .expect("provider Gemini settings should be valid for API key mode");
-        assert_eq!(
-            gemini_live_config_object_from_settings(&json!({"config": {"mcpServers": {}}}))
-                .expect("config object")
-                .and_then(Value::as_object)
-                .map(|obj| obj.contains_key("mcpServers")),
-            Some(true)
-        );
-        assert!(
-            gemini_live_config_object_from_settings(&json!({"config": Value::Null}))
-                .expect("null config should preserve live file")
-                .is_none()
-        );
-        assert!(matches!(
-            gemini_live_config_object_from_settings(&json!({"config": "not-object"})),
-            Err(GeminiLiveConfigIssue::InvalidType)
-        ));
-        assert_eq!(
-            gemini_live_settings_to_write(
-                Some(json!({
-                    "mcpServers": {"existing": {}},
-                    "security": {"auth": {"selectedType": "oauth-personal"}}
-                })),
-                Some(&json!({
-                    "security": {"auth": {"selectedType": "api-key"}},
-                    "ui": {"theme": "dark"}
-                })),
-            ),
-            Some(json!({
-                "mcpServers": {"existing": {}},
-                "security": {"auth": {"selectedType": "api-key"}},
-                "ui": {"theme": "dark"}
-            }))
-        );
-        assert_eq!(
-            gemini_live_settings_to_write(Some(json!({"mcpServers": {}})), None),
-            Some(json!({"mcpServers": {}}))
-        );
-        assert_eq!(
-            gemini_live_settings_to_write(None, Some(&json!({"ui": {"theme": "dark"}}))),
-            Some(json!({"ui": {"theme": "dark"}}))
-        );
-
-        let creds =
-            crate::proxy_core::api::auth::parse_gemini_oauth_credentials("ya29.access-token")
-                .expect("direct oauth token should parse");
-        assert_eq!(creds.access_token, "ya29.access-token");
-        assert!(!creds.needs_refresh());
-        assert_eq!(
-            crate::proxy_core::api::transforms::build_gemini_upstream_url(
-                "https://generativelanguage.googleapis.com/v1beta",
-                "/v1beta/models/gemini-pro:generateContent",
-            ),
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
-        );
-
-        let oauth_headers =
-            build_gemini_auth_headers("refresh-token", Some("ya29.access-token"), true)
-                .expect("oauth headers");
-        assert_eq!(oauth_headers[0].0.as_str(), "authorization");
-        assert_eq!(
-            oauth_headers[0].1,
-            http::HeaderValue::from_static("Bearer ya29.access-token")
-        );
-        let api_key_headers =
-            build_gemini_auth_headers("AIza-api-key", None, false).expect("api key headers");
-        assert_eq!(api_key_headers[0].0.as_str(), "x-goog-api-key");
-        assert_eq!(
-            api_key_headers[0].1,
-            http::HeaderValue::from_static("AIza-api-key")
         );
     }
 

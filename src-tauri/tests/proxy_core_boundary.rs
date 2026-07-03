@@ -7170,6 +7170,8 @@ fn production_gemini_provider_adapter_imports_auth_policy_directly() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider/gemini.rs");
     let source = fs::read_to_string(&path).expect("read gemini provider adapter source");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
 
     let mut violations = Vec::new();
     for required in [
@@ -7213,6 +7215,16 @@ fn production_gemini_provider_adapter_imports_auth_policy_directly() {
         violations.is_empty(),
         "Gemini provider adapter should project Provider.settings_config locally and consume pure core auth/base-url helpers directly:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        source.contains("fn test_extract_auth_api_key()")
+            && source.contains("fn test_extract_auth_oauth_access_token()")
+            && source.contains("fn test_get_auth_headers_api_key()")
+            && source.contains("fn test_get_auth_headers_oauth()")
+            && source.contains("fn test_build_url_dedup()")
+            && !adapter_source
+                .contains("fn gemini_provider_adapter_projects_auth_settings_and_url_helpers()"),
+        "Gemini provider adapter tests should own Gemini auth/header/url fixtures without proxy_core_adapter aggregation"
     );
 }
 
@@ -9797,6 +9809,8 @@ fn proxy_core_adapter_delegates_gemini_live_json_policy_to_core() {
             .expect("read services/provider/live.rs");
     let gemini_config_source = fs::read_to_string(manifest_dir.join("src/gemini_config.rs"))
         .expect("read gemini_config.rs");
+    let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
+        .expect("read proxy-core ports.rs");
     assert!(
         live_service_source.contains("use crate::proxy_core::api::ports::{")
             && live_service_source.contains("gemini_live_settings_from_env_json_and_config")
@@ -9862,6 +9876,19 @@ fn proxy_core_adapter_delegates_gemini_live_json_policy_to_core() {
         violations.is_empty(),
         "proxy_core_adapter must keep Gemini live env/config JSON shape policy in proxy-core:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        core_ports_source
+            .contains("fn gemini_live_settings_helpers_preserve_env_only_backup_contract()")
+            && core_ports_source
+                .contains("fn gemini_live_config_helpers_preserve_config_merge_contract()")
+            && core_ports_source
+                .contains("fn gemini_settings_basic_validation_rejects_invalid_shapes()")
+            && gemini_config_source.contains("fn test_validate_invalid_env_type()")
+            && gemini_config_source.contains("gemini.validation.invalid_env")
+            && !source
+                .contains("fn gemini_provider_adapter_projects_auth_settings_and_url_helpers()"),
+        "Gemini core/host owner tests should cover live JSON/config validation fixtures without adapter aggregation"
     );
 }
 
