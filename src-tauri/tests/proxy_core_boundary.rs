@@ -10879,7 +10879,8 @@ fn response_pipeline_owns_core_usage_transport_imports() {
         "proxy_core_adapter should not keep response-pipeline-only SSE usage state/filter or tool-schema extractor shims"
     );
     assert!(
-        source.contains("use crate::proxy_core::api::transport::decompress_body;")
+        (source.contains("use crate::proxy_core::api::transport::decompress_body;")
+            || source.contains("use crate::proxy_core::api::transport::{decompress_body,"))
             && source.contains("use crate::proxy_core::api::transforms::strip_sse_field;"),
         "response pipeline tests should import body decode/SSE helpers directly from proxy-core"
     );
@@ -11037,13 +11038,32 @@ fn response_pipeline_delegates_build_error_message_policy_to_core() {
         "response_pipeline must not depend on response_adapter for core-to-Axum response bridging"
     );
     assert!(
-        !adapter_source.contains("pub(crate) fn proxy_core_response_to_axum_response")
+        pipeline_source.contains("pub(crate) fn proxy_core_response_to_axum_response")
+            && pipeline_source
+                .contains("pub(crate) fn rebuilt_json_proxy_response_to_axum_response")
+            && pipeline_source
+                .contains("pub(crate) fn transformed_sse_proxy_response_to_axum_response")
+            && !adapter_source.contains("pub(crate) fn proxy_core_response_to_axum_response")
             && !adapter_source
                 .contains("pub(crate) fn rebuilt_json_proxy_response_to_axum_response")
             && !adapter_source
                 .contains("pub(crate) fn transformed_sse_proxy_response_to_axum_response")
-            && adapter_source.contains("proxy_core_response_to_axum_response"),
-        "response_adapter should import core-to-Axum response bridges from response_pipeline instead of owning them"
+            && adapter_source.contains("claude_transformed_json_response_to_axum_response")
+            && adapter_source.contains("codex_transformed_sse_response_to_axum_response"),
+        "response_adapter should call response_pipeline protocol response outlets instead of owning core-to-Axum response bridges"
+    );
+    assert!(
+        pipeline_source.contains("pub(crate) fn codex_chat_error_response_to_axum_response")
+            && pipeline_source.contains(
+                "pub(crate) async fn codex_chat_upstream_error_response_to_axum_response"
+            )
+            && pipeline_source.contains("pub(crate) fn codex_proxy_error_to_axum_response")
+            && !adapter_source.contains("pub(crate) fn codex_chat_error_response_to_axum_response")
+            && !adapter_source.contains(
+                "pub(crate) async fn codex_chat_upstream_error_response_to_axum_response"
+            )
+            && !adapter_source.contains("pub(crate) fn codex_proxy_error_to_axum_response"),
+        "Codex error Axum response bridges should live in response_pipeline, not response_adapter"
     );
 
     let mut violations = Vec::new();

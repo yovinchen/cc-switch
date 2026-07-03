@@ -7,20 +7,18 @@ use super::{
         claude_transformed_sse_stream_from_context,
         codex_auto_transformed_json_response_from_context,
         codex_auto_transformed_sse_stream_from_context,
+        codex_chat_upstream_error_response_to_axum_response, codex_proxy_error_to_axum_response,
         codex_transformed_json_response_to_axum_response,
         codex_transformed_sse_response_to_axum_response, process_response,
-        proxy_core_response_to_axum_response, read_decoded_proxy_response_body,
-        record_forward_core_error_usage, ClaudeTransformedJsonResponseContext,
-        ClaudeTransformedSseStreamContext, CodexAutoTransformedJsonResponseContext,
-        CodexAutoTransformedSseStreamContext,
+        read_decoded_proxy_response_body, record_forward_core_error_usage,
+        ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
+        CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
     },
     error::ProxyError,
     error_mapper::{
         claude_response_transform_error_to_proxy_error,
         codex_chat_to_responses_transform_error_to_proxy_error,
-        codex_proxy_error_body_build_error_to_proxy_error, codex_proxy_error_response,
-        codex_responses_error_body_build_error_to_proxy_error, management_api_error_to_proxy_error,
-        parse_claude_transform_upstream_json_or_unlabeled_sse,
+        management_api_error_to_proxy_error, parse_claude_transform_upstream_json_or_unlabeled_sse,
         parse_codex_chat_upstream_json_or_unlabeled_sse, proxy_core_error_to_proxy_error,
     },
     transport::upstream::hyper_client::ProxyResponse,
@@ -55,23 +53,21 @@ use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, Routable
 use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};
 use crate::proxy_core::api::routing::InterfaceKind;
 use crate::proxy_core::api::transforms::{
-    build_codex_tool_context_from_request, codex_chat_error_proxy_response,
-    codex_chat_transform_streaming_decision, ClaudeTransformStreamingDecision,
-    CodexChatTransformStreamingDecision, CodexToolContext,
+    build_codex_tool_context_from_request, codex_chat_transform_streaming_decision,
+    ClaudeTransformStreamingDecision, CodexChatTransformStreamingDecision, CodexToolContext,
 };
 use crate::proxy_core::api::transport::{
     endpoint_from_path_and_query, endpoint_from_path_query_stripping_prefix,
     extract_gemini_model_from_path, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, request_body_read_error_message, ProxyBody,
-    ProxyRequest, ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext, ProxyResult,
-    UpstreamSseAggregationKind,
+    ProxyRequest, ProxyResult, UpstreamSseAggregationKind,
 };
 use crate::proxy_core::api::usage::{
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::Json;
 use bytes::Bytes;
-use http::{HeaderMap, Method, StatusCode, Uri};
+use http::{HeaderMap, Method, Uri};
 use http_body_util::BodyExt;
 use serde_json::Value;
 
@@ -1170,201 +1166,4 @@ pub(crate) async fn codex_transformed_upstream_json_response_to_axum_response(
     .map_err(codex_chat_to_responses_transform_error_to_proxy_error)?;
 
     codex_transformed_json_response_to_axum_response(status, response_headers, responses_response)
-}
-
-pub(crate) fn codex_chat_error_response_to_axum_response(
-    status: StatusCode,
-    response_headers: HeaderMap,
-    body_bytes: &[u8],
-) -> Result<axum::response::Response, ProxyError> {
-    let response = codex_chat_error_proxy_response(status, response_headers, body_bytes)
-        .map_err(codex_responses_error_body_build_error_to_proxy_error)?;
-    if let Some(message) = response.normalization.non_json_body_log_message() {
-        log::warn!("{message}");
-    }
-    proxy_core_response_to_axum_response(
-        response.response,
-        AxumResponseBuildErrorContext::CodexResponsesError,
-    )
-}
-
-pub(crate) async fn codex_chat_upstream_error_response_to_axum_response(
-    response: ProxyResponse,
-    ctx: &RequestContext,
-) -> Result<axum::response::Response, ProxyError> {
-    let decoded =
-        read_decoded_proxy_response_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
-    codex_chat_error_response_to_axum_response(decoded.status, decoded.headers, &decoded.body)
-}
-
-pub(crate) fn codex_proxy_error_to_axum_response(
-    provider_name: &str,
-    request_model: &str,
-    endpoint: &str,
-    error: &ProxyError,
-) -> Result<axum::response::Response, ProxyError> {
-    let response = codex_proxy_error_response(provider_name, request_model, endpoint, error)
-        .map_err(codex_proxy_error_body_build_error_to_proxy_error)?;
-    proxy_core_response_to_axum_response(response, AxumResponseBuildErrorContext::CodexProxyError)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::proxy::engine::response_pipeline::{
-        rebuilt_json_proxy_response_to_axum_response,
-        transformed_sse_proxy_response_to_axum_response,
-    };
-    use crate::proxy_core::api::transport::{
-        ProxyCoreResponse, ProxyResponseBody,
-        ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext,
-    };
-    use http::StatusCode;
-    use serde_json::json;
-
-    #[tokio::test]
-    async fn proxy_core_response_to_axum_response_preserves_buffered_body_and_headers() {
-        let mut headers = http::HeaderMap::new();
-        headers.insert("x-test", http::HeaderValue::from_static("yes"));
-        let response = ProxyCoreResponse::with_body(
-            StatusCode::CREATED,
-            headers,
-            ProxyResponseBody::bytes(Bytes::from_static(b"ok")),
-        );
-
-        let response = proxy_core_response_to_axum_response(
-            response,
-            AxumResponseBuildErrorContext::TaggedResponse { tag: "test" },
-        )
-        .expect("bridge");
-
-        assert_eq!(response.status(), StatusCode::CREATED);
-        assert_eq!(
-            response.headers().get("x-test"),
-            Some(&http::HeaderValue::from_static("yes"))
-        );
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        assert_eq!(body, Bytes::from_static(b"ok"));
-    }
-
-    #[tokio::test]
-    async fn rebuilt_json_proxy_response_to_axum_response_rebuilds_json_headers() {
-        let mut headers = http::HeaderMap::new();
-        headers.insert(
-            http::header::CONTENT_TYPE,
-            http::HeaderValue::from_static("text/plain"),
-        );
-        headers.insert(
-            http::header::CONTENT_ENCODING,
-            http::HeaderValue::from_static("gzip"),
-        );
-
-        let response = rebuilt_json_proxy_response_to_axum_response(
-            StatusCode::OK,
-            headers,
-            json!({"ok": true}),
-            CoreResponseBuildFailureContext::ClaudeJson,
-            AxumResponseBuildErrorContext::ClaudeResponse,
-        )
-        .expect("json response");
-
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            response.headers().get(http::header::CONTENT_TYPE),
-            Some(&http::HeaderValue::from_static("application/json"))
-        );
-        assert!(!response
-            .headers()
-            .contains_key(http::header::CONTENT_ENCODING));
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        assert_eq!(body, Bytes::from_static(br#"{"ok":true}"#));
-    }
-
-    #[tokio::test]
-    async fn transformed_sse_proxy_response_to_axum_response_sets_sse_headers() {
-        let response = transformed_sse_proxy_response_to_axum_response(
-            futures::stream::once(async { Ok(Bytes::from_static(b"data: {}\n\n")) }),
-            AxumResponseBuildErrorContext::CodexSse,
-        )
-        .expect("sse response");
-
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            response.headers().get(http::header::CONTENT_TYPE),
-            Some(&http::HeaderValue::from_static("text/event-stream"))
-        );
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        assert_eq!(body, Bytes::from_static(b"data: {}\n\n"));
-    }
-
-    #[tokio::test]
-    async fn transformed_protocol_response_helpers_preserve_json_and_sse_shapes() {
-        let response = claude_transformed_json_response_to_axum_response(
-            StatusCode::OK,
-            http::HeaderMap::new(),
-            json!({"type": "message"}),
-        )
-        .expect("claude json response");
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            response.headers().get(http::header::CONTENT_TYPE),
-            Some(&http::HeaderValue::from_static("application/json"))
-        );
-
-        let response =
-            codex_transformed_sse_response_to_axum_response(futures::stream::once(async {
-                Ok(Bytes::from_static(b"data: {}\n\n"))
-            }))
-            .expect("codex sse response");
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            response.headers().get(http::header::CONTENT_TYPE),
-            Some(&http::HeaderValue::from_static("text/event-stream"))
-        );
-    }
-
-    #[tokio::test]
-    async fn codex_chat_error_response_helper_normalizes_and_bridges_error_body() {
-        let response = codex_chat_error_response_to_axum_response(
-            StatusCode::BAD_GATEWAY,
-            http::HeaderMap::new(),
-            br#"{"base_resp":{"status_code":2013,"status_msg":"bad role"}}"#,
-        )
-        .expect("codex chat error response");
-
-        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
-        assert_eq!(
-            response.headers().get(http::header::CONTENT_TYPE),
-            Some(&http::HeaderValue::from_static("application/json"))
-        );
-
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        let value: serde_json::Value = serde_json::from_slice(&body).expect("json body");
-        assert_eq!(value["error"]["message"], "bad role");
-        assert_eq!(value["error"]["code"], 2013);
-    }
-
-    #[tokio::test]
-    async fn codex_proxy_error_response_helper_maps_host_error_and_bridges_body() {
-        let response = codex_proxy_error_to_axum_response(
-            "DeepSeek",
-            "deepseek-chat",
-            "/responses",
-            &ProxyError::AuthError("bad token".to_string()),
-        )
-        .expect("codex proxy error response");
-
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assert_eq!(
-            response.headers().get(http::header::CONTENT_TYPE),
-            Some(&http::HeaderValue::from_static("application/json"))
-        );
-
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        let value: serde_json::Value = serde_json::from_slice(&body).expect("json body");
-        assert_eq!(value["error"]["code"], "cc_switch_auth_error");
-        assert_eq!(value["error"]["provider"], "DeepSeek");
-        assert_eq!(value["error"]["model"], "deepseek-chat");
-        assert_eq!(value["error"]["endpoint"], "/responses");
-    }
 }
