@@ -22,10 +22,10 @@ use crate::proxy_core::api::auth::{
     resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
     CodexOAuthResolution, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
     ManagedAccountBindingInput, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
-    ManagedAccountTokenCacheKey, ManagedAccountTokenRefreshFailureKind,
-    ManagedAccountTokenRefreshFailureResolution, ManagedAccountTokenRefreshSuccess,
-    ManagedAccountTokenRefreshSuccessInput, ManagedAccountTokenSnapshot,
-    ManagedAccountTokenSnapshotStore, ProviderAuthInfo,
+    ManagedAccountTokenCacheKey, ManagedAccountTokenRefreshFailureInput,
+    ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenRefreshFailureResolution,
+    ManagedAccountTokenRefreshSuccess, ManagedAccountTokenRefreshSuccessInput,
+    ManagedAccountTokenSnapshot, ManagedAccountTokenSnapshotStore, ProviderAuthInfo,
 };
 use crate::proxy_core::api::model_catalog::CopilotModel;
 use crate::proxy_core::api::transforms::resolve_claude_forward_api_format;
@@ -142,13 +142,12 @@ impl CcSwitchManagedAccountRuntimeSource {
     async fn resolve_token_refresh_failure(
         &self,
         key: &ManagedAccountTokenCacheKey,
-        error: &str,
-        failure_kind: ManagedAccountTokenRefreshFailureKind,
+        input: ManagedAccountTokenRefreshFailureInput,
     ) -> Result<ManagedAccountTokenSnapshot, ProxyError> {
         let resolution = {
             let now_ms = self.current_time_ms();
             let snapshots = self.token_snapshots.lock().await;
-            snapshots.resolve_refresh_failure(key, now_ms, failure_kind, error)
+            snapshots.resolve_refresh_failure(key, now_ms, input)
         };
 
         match resolution {
@@ -488,8 +487,10 @@ async fn codex_oauth_refresh_success_from_app_handle(
     }
 }
 
-fn copilot_token_failure_kind(error: &CopilotAuthError) -> ManagedAccountTokenRefreshFailureKind {
-    if matches!(
+fn copilot_token_refresh_failure_input(
+    error: &CopilotAuthError,
+) -> ManagedAccountTokenRefreshFailureInput {
+    let failure_kind = if matches!(
         error,
         CopilotAuthError::CopilotTokenFetchFailed(_)
             | CopilotAuthError::NetworkError(_)
@@ -499,13 +500,14 @@ fn copilot_token_failure_kind(error: &CopilotAuthError) -> ManagedAccountTokenRe
         ManagedAccountTokenRefreshFailureKind::Retryable
     } else {
         ManagedAccountTokenRefreshFailureKind::Terminal
-    }
+    };
+    ManagedAccountTokenRefreshFailureInput::new(failure_kind, error.to_string())
 }
 
-fn codex_oauth_token_failure_kind(
+fn codex_oauth_token_refresh_failure_input(
     error: &CodexOAuthError,
-) -> ManagedAccountTokenRefreshFailureKind {
-    if matches!(
+) -> ManagedAccountTokenRefreshFailureInput {
+    let failure_kind = if matches!(
         error,
         CodexOAuthError::TokenFetchFailed(_)
             | CodexOAuthError::NetworkError(_)
@@ -515,7 +517,8 @@ fn codex_oauth_token_failure_kind(
         ManagedAccountTokenRefreshFailureKind::Retryable
     } else {
         ManagedAccountTokenRefreshFailureKind::Terminal
-    }
+    };
+    ManagedAccountTokenRefreshFailureInput::new(failure_kind, error.to_string())
 }
 
 impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
@@ -552,9 +555,8 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                     Ok(success.auth)
                 }
                 Err(error) => {
-                    let failure_kind = copilot_token_failure_kind(&error);
-                    let error = error.to_string();
-                    self.resolve_token_refresh_failure(&cache_key, &error, failure_kind)
+                    let failure_input = copilot_token_refresh_failure_input(&error);
+                    self.resolve_token_refresh_failure(&cache_key, failure_input)
                         .await
                         .map(|snapshot| snapshot.auth)
                 }
@@ -595,9 +597,8 @@ impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
                     Ok(CodexOAuthResolution::from_refresh_success(success))
                 }
                 Err(error) => {
-                    let failure_kind = codex_oauth_token_failure_kind(&error);
-                    let error = error.to_string();
-                    self.resolve_token_refresh_failure(&cache_key, &error, failure_kind)
+                    let failure_input = codex_oauth_token_refresh_failure_input(&error);
+                    self.resolve_token_refresh_failure(&cache_key, failure_input)
                         .await
                         .map(CodexOAuthResolution::from_snapshot)
                 }
@@ -665,7 +666,7 @@ mod tests {
     }
 
     #[test]
-    fn copilot_token_failure_kind_allows_only_transient_refresh_failures() {
+    fn copilot_token_refresh_failure_input_names_retryable_failures() {
         for error in [
             CopilotAuthError::CopilotTokenFetchFailed("upstream 502".to_string()),
             CopilotAuthError::NetworkError("timeout".to_string()),
@@ -673,8 +674,12 @@ mod tests {
             CopilotAuthError::IoError("disk busy".to_string()),
         ] {
             assert_eq!(
-                copilot_token_failure_kind(&error),
+                copilot_token_refresh_failure_input(&error).failure_kind,
                 ManagedAccountTokenRefreshFailureKind::Retryable
+            );
+            assert_eq!(
+                copilot_token_refresh_failure_input(&error).error,
+                error.to_string()
             );
         }
 
@@ -689,14 +694,18 @@ mod tests {
             CopilotAuthError::InvalidDomain("example.invalid".to_string()),
         ] {
             assert_eq!(
-                copilot_token_failure_kind(&error),
+                copilot_token_refresh_failure_input(&error).failure_kind,
                 ManagedAccountTokenRefreshFailureKind::Terminal
+            );
+            assert_eq!(
+                copilot_token_refresh_failure_input(&error).error,
+                error.to_string()
             );
         }
     }
 
     #[test]
-    fn codex_oauth_token_failure_kind_allows_only_transient_refresh_failures() {
+    fn codex_oauth_token_refresh_failure_input_names_retryable_failures() {
         for error in [
             CodexOAuthError::TokenFetchFailed("upstream 502".to_string()),
             CodexOAuthError::NetworkError("timeout".to_string()),
@@ -704,8 +713,12 @@ mod tests {
             CodexOAuthError::IoError("disk busy".to_string()),
         ] {
             assert_eq!(
-                codex_oauth_token_failure_kind(&error),
+                codex_oauth_token_refresh_failure_input(&error).failure_kind,
                 ManagedAccountTokenRefreshFailureKind::Retryable
+            );
+            assert_eq!(
+                codex_oauth_token_refresh_failure_input(&error).error,
+                error.to_string()
             );
         }
 
@@ -717,8 +730,12 @@ mod tests {
             CodexOAuthError::AccountNotFound("acct".to_string()),
         ] {
             assert_eq!(
-                codex_oauth_token_failure_kind(&error),
+                codex_oauth_token_refresh_failure_input(&error).failure_kind,
                 ManagedAccountTokenRefreshFailureKind::Terminal
+            );
+            assert_eq!(
+                codex_oauth_token_refresh_failure_input(&error).error,
+                error.to_string()
             );
         }
     }
@@ -740,8 +757,10 @@ mod tests {
         let snapshot = source
             .resolve_token_refresh_failure(
                 &key,
-                "network timeout",
-                ManagedAccountTokenRefreshFailureKind::Retryable,
+                ManagedAccountTokenRefreshFailureInput::new(
+                    ManagedAccountTokenRefreshFailureKind::Retryable,
+                    "network timeout",
+                ),
             )
             .await
             .expect("recent retryable failure should use cached token");
@@ -781,16 +800,20 @@ mod tests {
         assert!(source
             .resolve_token_refresh_failure(
                 &codex_same_account,
-                "network timeout",
-                ManagedAccountTokenRefreshFailureKind::Retryable,
+                ManagedAccountTokenRefreshFailureInput::new(
+                    ManagedAccountTokenRefreshFailureKind::Retryable,
+                    "network timeout",
+                ),
             )
             .await
             .is_err());
         assert!(source
             .resolve_token_refresh_failure(
                 &copilot_other_account,
-                "network timeout",
-                ManagedAccountTokenRefreshFailureKind::Retryable,
+                ManagedAccountTokenRefreshFailureInput::new(
+                    ManagedAccountTokenRefreshFailureKind::Retryable,
+                    "network timeout",
+                ),
             )
             .await
             .is_err());
@@ -798,8 +821,10 @@ mod tests {
         let snapshot = source
             .resolve_token_refresh_failure(
                 &copilot_account,
-                "network timeout",
-                ManagedAccountTokenRefreshFailureKind::Retryable,
+                ManagedAccountTokenRefreshFailureInput::new(
+                    ManagedAccountTokenRefreshFailureKind::Retryable,
+                    "network timeout",
+                ),
             )
             .await
             .expect("matching runtime/account should use cached token");
@@ -826,8 +851,10 @@ mod tests {
         assert!(source
             .resolve_token_refresh_failure(
                 &key,
-                "network timeout",
-                ManagedAccountTokenRefreshFailureKind::Retryable,
+                ManagedAccountTokenRefreshFailureInput::new(
+                    ManagedAccountTokenRefreshFailureKind::Retryable,
+                    "network timeout",
+                ),
             )
             .await
             .is_err());
@@ -845,8 +872,10 @@ mod tests {
         assert!(source
             .resolve_token_refresh_failure(
                 &key,
-                "refresh token revoked",
-                ManagedAccountTokenRefreshFailureKind::Terminal,
+                ManagedAccountTokenRefreshFailureInput::new(
+                    ManagedAccountTokenRefreshFailureKind::Terminal,
+                    "refresh token revoked",
+                ),
             )
             .await
             .is_err());

@@ -18206,8 +18206,8 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "managed_account_app_handle_unavailable_error_message(",
         "managed_account_token_request_log_message(",
         "record_token_refresh_success(",
-        "copilot_token_failure_kind(",
-        "codex_oauth_token_failure_kind(",
+        "copilot_token_refresh_failure_input(",
+        "codex_oauth_token_refresh_failure_input(",
         "copilot_refresh_success_from_app_handle(",
         "codex_oauth_refresh_success_from_app_handle(",
         "copilot_api_endpoint_from_app_handle(",
@@ -18231,6 +18231,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && host_source.contains("ManagedAccountAdapterCopilotLiveModelForBindingInput")
             && host_source.contains("ManagedAccountAdapterClaudeApiFormatForBindingInput")
             && host_source.contains("ManagedAccountTokenCacheKey")
+            && host_source.contains("ManagedAccountTokenRefreshFailureInput")
             && host_source.contains("ManagedAccountTokenRefreshFailureKind")
             && host_source.contains("ManagedAccountTokenRefreshFailureResolution")
             && host_source.contains("ManagedAccountTokenRefreshSuccess")
@@ -18274,6 +18275,8 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
     );
     assert!(
         refresh_failure_slice.contains(".resolve_refresh_failure(")
+            && refresh_failure_slice.contains("input: ManagedAccountTokenRefreshFailureInput")
+            && refresh_failure_slice.contains(".resolve_refresh_failure(key, now_ms, input)")
             && refresh_failure_slice
                 .contains("ManagedAccountTokenRefreshFailureResolution::UseCachedToken")
             && refresh_failure_slice.contains("ManagedAccountTokenRefreshFailureResolution::Reject")
@@ -18285,6 +18288,8 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
             && !refresh_failure_slice.contains("managed_account_token_failure_fallback_log_message(")
             && refresh_failure_slice.contains("self.current_time_ms()")
             && !refresh_failure_slice.contains("chrono::Utc::now().timestamp_millis()")
+            && !refresh_failure_slice.contains("failure_kind: ManagedAccountTokenRefreshFailureKind")
+            && !refresh_failure_slice.contains("error: &str")
             && !refresh_failure_slice.contains("Some(snapshot.cached_at_ms)")
             && !refresh_failure_slice.contains("account_id: Option<&str>"),
         "host runtime source should delegate refresh-failure fallback/reject decisions and messages to core token-cache contracts"
@@ -18323,6 +18328,7 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "ManagedAccountAuthResolution",
         "ManagedAccountAuthRuntime",
         "ManagedAccountTokenCacheKey",
+        "ManagedAccountTokenRefreshFailureInput",
         "ManagedAccountTokenRefreshFailureKind",
         "ManagedAccountTokenRefreshFailureResolution",
         "ManagedAccountTokenRefreshSuccess",
@@ -18336,6 +18342,8 @@ fn production_cc_switch_host_owns_managed_account_tauri_runtime_source() {
         "copilot_api_endpoint_from_app_handle",
         "copilot_live_models_from_app_handle",
         "copilot_model_vendor_from_app_handle",
+        "copilot_token_refresh_failure_input",
+        "codex_oauth_token_refresh_failure_input",
         "copilot_refresh_success_from_app_handle",
         "codex_oauth_refresh_success_from_app_handle",
     ] {

@@ -651,6 +651,24 @@ pub enum ManagedAccountTokenRefreshFailureResolution {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedAccountTokenRefreshFailureInput {
+    pub failure_kind: ManagedAccountTokenRefreshFailureKind,
+    pub error: String,
+}
+
+impl ManagedAccountTokenRefreshFailureInput {
+    pub fn new(
+        failure_kind: ManagedAccountTokenRefreshFailureKind,
+        error: impl Into<String>,
+    ) -> Self {
+        Self {
+            failure_kind,
+            error: error.into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ManagedAccountTokenSnapshotStore {
     snapshots: HashMap<ManagedAccountTokenCacheKey, ManagedAccountTokenSnapshot>,
@@ -731,12 +749,15 @@ impl ManagedAccountTokenSnapshotStore {
         &self,
         key: &ManagedAccountTokenCacheKey,
         now_ms: i64,
-        failure_kind: ManagedAccountTokenRefreshFailureKind,
-        error: &str,
+        input: ManagedAccountTokenRefreshFailureInput,
     ) -> ManagedAccountTokenRefreshFailureResolution {
+        let ManagedAccountTokenRefreshFailureInput {
+            failure_kind,
+            error,
+        } = input;
         if let Some(fallback) = self.snapshot_for_refresh_failure(key, now_ms, failure_kind) {
             return ManagedAccountTokenRefreshFailureResolution::UseCachedToken {
-                log_message: fallback.fallback_log_message(key, error),
+                log_message: fallback.fallback_log_message(key, &error),
                 snapshot: fallback.snapshot,
             };
         }
@@ -745,9 +766,9 @@ impl ManagedAccountTokenSnapshotStore {
             log_message: managed_account_token_failure_log_message(
                 key.runtime(),
                 key.account_id(),
-                error,
+                &error,
             ),
-            error_message: managed_account_token_failure_error_message(key.runtime(), error),
+            error_message: managed_account_token_failure_error_message(key.runtime(), &error),
         }
     }
 }
@@ -1422,10 +1443,11 @@ mod tests {
         ManagedAccountAuthRuntime, ManagedAccountBindingInput, ManagedAccountBindingSource,
         ManagedAccountRuntimeSource,
         ManagedAccountTokenCacheKey, ManagedAccountTokenFailureFallbackDecision,
-        ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenRefreshFailureResolution,
-        ManagedAccountTokenRefreshSuccess, ManagedAccountTokenRefreshSuccessInput,
-        ManagedAccountTokenSnapshot, ManagedAccountTokenSnapshotStore, ProviderManagedAuthFacts,
-        CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER,
+        ManagedAccountTokenRefreshFailureInput, ManagedAccountTokenRefreshFailureKind,
+        ManagedAccountTokenRefreshFailureResolution, ManagedAccountTokenRefreshSuccess,
+        ManagedAccountTokenRefreshSuccessInput, ManagedAccountTokenSnapshot,
+        ManagedAccountTokenSnapshotStore, ProviderManagedAuthFacts, CODEX_OAUTH_AUTH_PLACEHOLDER,
+        CODEX_OAUTH_AUTH_PROVIDER,
         GITHUB_COPILOT_AUTH_PLACEHOLDER, GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
     };
     use futures::{executor::block_on, future::BoxFuture};
@@ -2510,6 +2532,20 @@ mod tests {
     }
 
     #[test]
+    fn managed_account_token_refresh_failure_input_names_runtime_facts() {
+        assert_eq!(
+            ManagedAccountTokenRefreshFailureInput::new(
+                ManagedAccountTokenRefreshFailureKind::Retryable,
+                "network timeout",
+            ),
+            ManagedAccountTokenRefreshFailureInput {
+                failure_kind: ManagedAccountTokenRefreshFailureKind::Retryable,
+                error: "network timeout".to_string(),
+            }
+        );
+    }
+
+    #[test]
     fn codex_oauth_resolution_is_structured_from_success_and_snapshot() {
         let auth = ManagedAccountAuthRuntime::CodexOAuth.provider_auth_info("token".to_string());
         let success = ManagedAccountTokenRefreshSuccess {
@@ -2549,8 +2585,10 @@ mod tests {
             store.resolve_refresh_failure(
                 &key,
                 now,
-                ManagedAccountTokenRefreshFailureKind::Retryable,
-                "network timeout",
+                ManagedAccountTokenRefreshFailureInput::new(
+                    ManagedAccountTokenRefreshFailureKind::Retryable,
+                    "network timeout",
+                ),
             ),
             ManagedAccountTokenRefreshFailureResolution::UseCachedToken {
                 snapshot: ManagedAccountTokenSnapshot::new(
@@ -2568,8 +2606,10 @@ mod tests {
             store.resolve_refresh_failure(
                 &key,
                 now,
-                ManagedAccountTokenRefreshFailureKind::Terminal,
-                "revoked",
+                ManagedAccountTokenRefreshFailureInput::new(
+                    ManagedAccountTokenRefreshFailureKind::Terminal,
+                    "revoked",
+                ),
             ),
             ManagedAccountTokenRefreshFailureResolution::Reject {
                 log_message: "[Copilot] 获取 Copilot token 失败 (account=acct-a): revoked"
