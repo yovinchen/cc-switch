@@ -76,9 +76,8 @@ mod tests {
     };
     use crate::proxy::host::cc_switch::provider_projection::{
         provider_claude_auth_key, provider_claude_base_url, provider_claude_kind,
-        provider_claude_transform_streaming_decision, provider_gemini_kind,
-        provider_github_copilot_managed_account_id, provider_is_codex_oauth,
-        provider_kind_from_app_type_and_config, provider_kind_from_provider,
+        provider_claude_transform_streaming_decision, provider_github_copilot_managed_account_id,
+        provider_is_codex_oauth, provider_kind_from_provider,
         provider_managed_account_binding_context, provider_managed_auth_classification,
         provider_needs_claude_transform, provider_spec_from_source, provider_specs_from_source,
         provider_uses_anthropic_rectifiers, proxy_provider_to_core_spec,
@@ -91,7 +90,7 @@ mod tests {
     };
     use crate::proxy_core::api::auth::{
         extract_claude_auth_key_from_settings, extract_gemini_api_key_from_settings,
-        is_gemini_oauth_key_shape, ManagedAccountBindingSource,
+        ManagedAccountBindingSource,
     };
     use crate::proxy_core::api::auth::{
         extract_gemini_base_url_from_settings, ClaudeAuthKeySource, ManagementAuthError,
@@ -99,8 +98,8 @@ mod tests {
     };
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
-        infer_claude_provider_kind, ChannelHealthPolicy, ChannelOverrides, ProviderMetadata,
-        ProviderSpec, RetryPolicy, UpstreamEndpoint,
+        ChannelHealthPolicy, ChannelOverrides, ProviderMetadata, ProviderSpec, RetryPolicy,
+        UpstreamEndpoint,
     };
     use crate::proxy_core::api::errors::{
         selected_provider_display_name_for_error, selected_provider_missing_from_source_message,
@@ -1554,182 +1553,6 @@ wire_api = "chat"
             None,
         );
         assert!(codex_adapter.extract_auth(&missing_auth).is_none());
-    }
-
-    #[test]
-    fn provider_kind_adapter_projects_inference_helpers() {
-        assert_eq!(
-            infer_claude_provider_kind("gemini_native", true, None, None, &json!({})),
-            ProviderKind::GeminiCli
-        );
-        assert_eq!(
-            infer_claude_provider_kind(
-                "anthropic",
-                false,
-                Some("github_copilot"),
-                Some("https://example.com"),
-                &json!({})
-            ),
-            ProviderKind::GitHubCopilot
-        );
-        assert!(is_gemini_oauth_key_shape(" ya29.access-token "));
-        assert!(is_gemini_oauth_key_shape(
-            r#"{"access_token":"ya29.access-token"}"#
-        ));
-        assert!(!is_gemini_oauth_key_shape("AIza-api-key"));
-        let mut gemini_cli_provider = Provider::with_id(
-            "gemini-cli".to_string(),
-            "Gemini CLI".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_AUTH_TOKEN": r#"{"access_token":"ya29.access-token"}"#,
-                    "ANTHROPIC_BASE_URL": "https://generativelanguage.googleapis.com"
-                }
-            }),
-            None,
-        );
-        gemini_cli_provider.meta = Some(ProviderMeta {
-            api_format: Some("gemini_native".to_string()),
-            ..Default::default()
-        });
-        assert_eq!(
-            provider_claude_kind(&gemini_cli_provider),
-            ProviderKind::GeminiCli
-        );
-        let mut gemini_cli_raw_provider = Provider::with_id(
-            "gemini-cli-raw".to_string(),
-            "Gemini CLI Raw".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_AUTH_TOKEN": "\nya29.raw-token-value\n",
-                    "ANTHROPIC_BASE_URL": "https://generativelanguage.googleapis.com"
-                }
-            }),
-            None,
-        );
-        gemini_cli_raw_provider.meta = Some(ProviderMeta {
-            api_format: Some("gemini_native".to_string()),
-            ..Default::default()
-        });
-        assert_eq!(
-            provider_claude_kind(&gemini_cli_raw_provider),
-            ProviderKind::GeminiCli
-        );
-        let anthropic_provider = Provider::with_id(
-            "anthropic".to_string(),
-            "Anthropic".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
-                    "ANTHROPIC_AUTH_TOKEN": "sk-ant-test"
-                }
-            }),
-            None,
-        );
-        assert_eq!(
-            provider_claude_kind(&anthropic_provider),
-            ProviderKind::Claude
-        );
-        let openrouter_provider = Provider::with_id(
-            "openrouter".to_string(),
-            "OpenRouter".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-                    "OPENROUTER_API_KEY": "sk-or-test"
-                }
-            }),
-            None,
-        );
-        assert_eq!(
-            provider_claude_kind(&openrouter_provider),
-            ProviderKind::OpenRouter
-        );
-        let claude_auth_provider = Provider::with_id(
-            "claude-auth".to_string(),
-            "Claude Auth".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_BASE_URL": "https://some-proxy.com",
-                    "ANTHROPIC_AUTH_TOKEN": "sk-test"
-                },
-                "auth_mode": "bearer_only"
-            }),
-            None,
-        );
-        assert_eq!(
-            provider_claude_kind(&claude_auth_provider),
-            ProviderKind::ClaudeAuth
-        );
-        let mut copilot_provider = Provider::with_id(
-            "copilot".to_string(),
-            "Copilot".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_AUTH_TOKEN": "copilot-token",
-                    "ANTHROPIC_BASE_URL": "https://example.com"
-                }
-            }),
-            None,
-        );
-        copilot_provider.meta = Some(ProviderMeta {
-            provider_type: Some("github_copilot".to_string()),
-            ..Default::default()
-        });
-        assert_eq!(
-            provider_claude_kind(&copilot_provider),
-            ProviderKind::GitHubCopilot
-        );
-        assert_eq!(
-            provider_kind_from_app_type_and_config(&AppType::Claude, &copilot_provider),
-            ProviderKind::GitHubCopilot
-        );
-        let copilot_url_provider = Provider::with_id(
-            "copilot-url".to_string(),
-            "Copilot URL".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_BASE_URL": "https://api.githubcopilot.com"
-                }
-            }),
-            None,
-        );
-        assert_eq!(
-            provider_claude_kind(&copilot_url_provider),
-            ProviderKind::GitHubCopilot
-        );
-        let gemini_provider = Provider::with_id(
-            "gemini-cli".to_string(),
-            "Gemini CLI".to_string(),
-            json!({
-                "env": {
-                    "GEMINI_API_KEY": r#"{"access_token":"ya29.access-token"}"#
-                }
-            }),
-            None,
-        );
-        assert_eq!(
-            provider_gemini_kind(&gemini_provider),
-            ProviderKind::GeminiCli
-        );
-        assert_eq!(
-            provider_kind_from_app_type_and_config(&AppType::Gemini, &gemini_provider),
-            ProviderKind::GeminiCli
-        );
-        let gemini_api_key_provider = Provider::with_id(
-            "gemini-api-key".to_string(),
-            "Gemini API Key".to_string(),
-            json!({
-                "env": {
-                    "GEMINI_API_KEY": "AIza-api-key"
-                }
-            }),
-            None,
-        );
-        assert_eq!(
-            provider_gemini_kind(&gemini_api_key_provider),
-            ProviderKind::Gemini
-        );
     }
 
     #[test]
