@@ -23653,6 +23653,15 @@ fn proxy_core_adapter_delegates_auth_provider_source_to_host_module() {
             && !adapter_source.contains("pub(crate) fn auth_info_from_cc_switch_route_context("),
         "proxy_core_adapter should not expose the host CC Switch auth provider source"
     );
+    for marker in [
+        "auth_adapter_projects_cc_switch_provider_config_source",
+        "auth_adapter_projects_cc_switch_route_context_source",
+    ] {
+        assert!(
+            auth_source.contains(marker) && !adapter_source.contains(marker),
+            "CC Switch auth provider fixture `{marker}` should live beside the owning host source, not proxy_core_adapter"
+        );
+    }
 }
 
 #[test]

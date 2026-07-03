@@ -153,8 +153,8 @@ mod tests {
     };
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
-        channel_spec_from_input, infer_claude_provider_kind, ChannelHealthPolicy, ChannelOverrides,
-        ChannelSpecInput, ProviderMetadata, ProviderSpec, RetryPolicy, UpstreamEndpoint,
+        infer_claude_provider_kind, ChannelHealthPolicy, ChannelOverrides, ProviderMetadata,
+        ProviderSpec, RetryPolicy, UpstreamEndpoint,
     };
     use crate::proxy_core::api::errors::{
         proxy_error_http_status_code, proxy_error_response_body,
@@ -1096,84 +1096,6 @@ mod tests {
             )
             .privacy_filter_enabled
         );
-    }
-
-    #[test]
-    fn auth_adapter_projects_cc_switch_provider_config_source() {
-        let auth_profile =
-            crate::proxy_core::api::domain::AuthProfileRef::new("provider:claude:anthropic-main");
-        let auth =
-            crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_provider_config(
-                Some(&auth_profile),
-            );
-        assert!(auth.headers.is_empty());
-        assert_eq!(
-            auth.account_ref.as_deref(),
-            Some("provider:claude:anthropic-main")
-        );
-        assert_eq!(auth.metadata["source"], json!("cc_switch_provider_config"));
-
-        let fallback =
-            crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_provider_config(
-                None,
-            );
-        assert!(fallback.account_ref.is_none());
-        assert_eq!(
-            fallback.metadata["source"],
-            json!("cc_switch_provider_config")
-        );
-    }
-
-    #[test]
-    fn auth_adapter_projects_cc_switch_route_context_source() {
-        let provider = ProviderSpec {
-            id: "provider-a".to_string(),
-            name: "Provider A".to_string(),
-            kind: ProviderKind::Claude,
-            account_ref: None,
-            metadata: ProviderMetadata::default(),
-        };
-        let channel = channel_spec_from_input(ChannelSpecInput {
-            id: "channel-a".to_string(),
-            provider_id: "provider-a".to_string(),
-            app_type: "claude".to_string(),
-            name: "Channel A".to_string(),
-            status: "enabled".to_string(),
-            base_url: "https://relay.example.com/v1".to_string(),
-            interface_kind: "anthropic_messages".to_string(),
-            auth_profile_ref: Some("provider:claude:anthropic-main".to_string()),
-            models: Vec::new(),
-            groups: Vec::new(),
-            priority: 0,
-            weight: 100,
-            retry_policy: Value::Object(Default::default()),
-            health_policy: Value::Object(Default::default()),
-            header_overrides: Value::Object(Default::default()),
-            param_overrides: Value::Object(Default::default()),
-            status_code_mapping: Value::Array(Vec::new()),
-            tags: Vec::new(),
-            metadata: Value::Object(Default::default()),
-            source_ref: None,
-            needs_review: false,
-            review_reasons: Vec::new(),
-        });
-
-        let auth =
-            crate::proxy::host::cc_switch::auth_provider::auth_info_from_cc_switch_route_context(
-                &AppKind::Claude,
-                &provider,
-                &channel,
-            );
-
-        assert!(auth.headers.is_empty());
-        assert_eq!(
-            auth.account_ref.as_deref(),
-            Some("provider:claude:anthropic-main")
-        );
-        assert_eq!(auth.metadata["source"], json!("cc_switch_provider_config"));
-        assert_eq!(auth.metadata["app"], json!("claude"));
-        assert_eq!(auth.metadata["providerId"], json!("provider-a"));
-        assert_eq!(auth.metadata["channelId"], json!("channel-a"));
     }
 
     #[test]
