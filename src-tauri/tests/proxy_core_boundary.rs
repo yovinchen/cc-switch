@@ -6392,7 +6392,6 @@ fn proxy_core_adapter_does_not_export_proxy_core_event_alias() {
         .expect("read proxy_core_adapter.rs");
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
-
     assert!(
         !adapter_source.contains(
             "pub(crate) type ProxyCoreEvent = crate::proxy_core::api::events::ProxyCoreEvent;"
@@ -6423,6 +6422,9 @@ fn proxy_core_adapter_does_not_export_response_transport_aliases() {
         .expect("read proxy_core_adapter.rs");
     let host_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
         .expect("read proxy_core_host.rs");
+    let core_domain_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/domain.rs"))
+            .expect("read proxy-core domain.rs");
 
     for alias in [
         "pub(crate) type ProxyCoreResponse = crate::proxy_core::api::transport::ProxyCoreResponse;",
@@ -6439,6 +6441,17 @@ fn proxy_core_adapter_does_not_export_response_transport_aliases() {
     assert!(
         host_source.contains("use crate::proxy_core::api::transport::{ProxyBody, ProxyRequest, ProxyResponseBody};"),
         "proxy_core_host test harness should import ProxyRequest/ProxyResponseBody directly from proxy_core transport"
+    );
+    assert!(
+        core_domain_source.contains("fn proxy_core_response_serializes_json_for_transport()")
+            && core_domain_source.contains("ProxyCoreResponse::with_body(")
+            && core_domain_source.contains("ProxyResponseBody::json(json!({\"ok\": true}))")
+            && core_domain_source.contains("ProxyTransportResponseBody::Bytes(body)"),
+        "proxy-core domain tests should own JSON response to transport body contract"
+    );
+    assert!(
+        !adapter_source.contains("fn proxy_response_adapter_projects_transport_body_contracts()"),
+        "proxy_core_adapter should not carry response transport body contract fixture"
     );
     let host_adapter_import = proxy_core_adapter_import_identifiers(&host_source);
     for adapter_symbol in ["ProxyRequest", "ProxyResponseBody"] {

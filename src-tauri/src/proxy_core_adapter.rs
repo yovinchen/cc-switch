@@ -138,8 +138,7 @@ mod tests {
         build_upstream_request_headers, forward_upstream_url_plan, is_socks_proxy_url,
         resolve_upstream_send_policy, serialize_upstream_request_body, ClaudeAuthHeaderKind,
         CopilotAuthHeadersInput, ForwardFailureKind, ForwardUpstreamUrlPlanInput,
-        ForwarderMediaPreventionFacts, ProxyCoreResponse, ProxyResponseBody,
-        ProxyTransportResponseBody, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
+        ForwarderMediaPreventionFacts, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
         UpstreamSseAggregationKind, UpstreamTransportKind,
     };
     use bytes::Bytes;
@@ -887,26 +886,6 @@ wire_api = "chat"
             .supports_effort,
             Some(true)
         );
-    }
-
-    #[test]
-    fn proxy_response_adapter_projects_transport_body_contracts() {
-        let response = ProxyCoreResponse::with_body(
-            http::StatusCode::CREATED,
-            HeaderMap::new(),
-            ProxyResponseBody::json(json!({"ok": true})),
-        );
-        let transport = response
-            .into_transport_response()
-            .expect("transport response");
-
-        assert_eq!(transport.status, http::StatusCode::CREATED);
-        match transport.body {
-            ProxyTransportResponseBody::Bytes(body) => {
-                assert_eq!(body.as_ref(), br#"{"ok":true}"#);
-            }
-            _ => panic!("expected buffered bytes transport body"),
-        }
     }
 
     #[test]
