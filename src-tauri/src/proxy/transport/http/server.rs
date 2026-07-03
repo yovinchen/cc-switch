@@ -1869,6 +1869,13 @@ mod tests {
                     "baseUrl": upstream_base_url,
                     "interfaceKind": "anthropic_messages",
                     "authProfileRef": "channel-key:primary",
+                    "headerOverrides": {
+                        "x-relay-profile": "runtime-forward-override"
+                    },
+                    "paramOverrides": {
+                        "api-version": "2026-07-04",
+                        "relayProfile": "runtime-forward"
+                    },
                     "models": [{
                         "publicModel": "runtime-public",
                         "upstreamModel": "runtime-upstream"
@@ -1959,8 +1966,14 @@ mod tests {
             .expect("capture forwarded request");
 
         assert!(
-            captured.head.starts_with("POST /v1/messages HTTP/1.1"),
+            captured.head.starts_with("POST /v1/messages?"),
             "unexpected upstream request head: {}",
+            captured.head
+        );
+        assert!(
+            captured.head.contains("api-version=2026-07-04")
+                && captured.head.contains("relayProfile=runtime-forward"),
+            "channel param overrides were not applied to upstream URL: {}",
             captured.head
         );
         assert!(
@@ -1969,6 +1982,14 @@ mod tests {
                 .to_ascii_lowercase()
                 .contains("x-api-key: sk-runtime-channel"),
             "channel-key auth header was not forwarded to upstream: {}",
+            captured.head
+        );
+        assert!(
+            captured
+                .head
+                .to_ascii_lowercase()
+                .contains("x-relay-profile: runtime-forward-override"),
+            "channel header override was not forwarded to upstream: {}",
             captured.head
         );
         assert!(
