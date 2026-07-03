@@ -17638,6 +17638,11 @@ fn live_takeover_owns_claude_takeover_provider_facts() {
     let live_takeover_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/live_takeover.rs"))
             .expect("read live_takeover.rs");
+    let ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
+        .expect("read proxy-core ports.rs");
+    let model_mapping_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/model_mapping.rs"))
+            .expect("read proxy-core model_mapping.rs");
 
     assert!(
         !source.contains("pub(crate) fn apply_claude_takeover_fields_for_provider("),
@@ -17675,6 +17680,15 @@ fn live_takeover_owns_claude_takeover_provider_facts() {
             "pub(crate) use crate::proxy_core::api::ports::apply_claude_takeover_fields_with_policy_and_models"
         ),
         "proxy_core_adapter should not keep grouped test-only Claude takeover helper re-exports"
+    );
+    assert!(
+        model_mapping_source.contains("fn claude_takeover_projects_client_model_and_display_name()")
+            && ports_source
+                .contains("fn claude_takeover_model_fields_project_role_aliases_and_display_names()")
+            && ports_source.contains("fn claude_takeover_policy_rewrites_env_tokens_and_models()")
+            && !source
+                .contains("fn claude_takeover_adapter_projects_one_m_marker_and_display_name()"),
+        "Claude takeover pure model/policy fixtures should live in proxy-core owning tests, not proxy_core_adapter"
     );
 }
 

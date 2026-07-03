@@ -48,12 +48,12 @@ mod tests {
     };
     use crate::proxy_core::api::ports::{
         app_proxy_config_with_enabled as proxy_app_config_with_enabled,
-        claude_env_credentials_from_settings, claude_takeover_model_fields_from_settings,
-        codex_auth_object_value_from_settings, codex_config_text_from_settings,
-        codex_provider_live_write_parts_from_settings, gemini_env_map_from_settings,
-        gemini_live_backup_from_effective_settings, gemini_live_settings_from_env_json_and_config,
-        gemini_live_settings_to_write, json_deep_merge, json_deep_remove, json_remove_array_items,
-        json_value_is_subset, live_takeover_app_kinds, live_token_sync_app_label,
+        claude_env_credentials_from_settings, codex_auth_object_value_from_settings,
+        codex_config_text_from_settings, codex_provider_live_write_parts_from_settings,
+        gemini_env_map_from_settings, gemini_live_backup_from_effective_settings,
+        gemini_live_settings_from_env_json_and_config, gemini_live_settings_to_write,
+        json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
+        live_takeover_app_kinds, live_token_sync_app_label,
         provider_additive_live_write_action_for_app, provider_additive_update_route_for_app,
         provider_app_has_current_provider, provider_codex_credential_values_from_parts,
         provider_credential_issue_spec, provider_initial_live_config_managed_marker,
@@ -68,9 +68,9 @@ mod tests {
         provider_takeover_live_sync_target_for_app, proxy_runtime_status_stopped,
         sanitize_claude_settings_for_live, should_skip_manual_default_live_import,
         should_skip_provider_legacy_common_config_migration,
-        should_skip_startup_default_live_import, ClaudeTakeoverAuthPolicy, CodexCredentialParts,
-        CodexProviderLiveWriteIssue, CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction,
-        ProviderAdditiveUpdateRoute, ProviderCredentialIssue, ProviderKeyChangePolicyIssue,
+        should_skip_startup_default_live_import, CodexCredentialParts, CodexProviderLiveWriteIssue,
+        CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
+        ProviderCredentialIssue, ProviderKeyChangePolicyIssue,
         ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
         ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSettingsValidationIssue,
         ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
@@ -3613,118 +3613,6 @@ wire_api = "chat"
             send_policy.streaming_header_timeout,
             Some(std::time::Duration::from_secs(1))
         );
-    }
-
-    #[test]
-    fn claude_takeover_adapter_projects_one_m_marker_and_display_name() {
-        assert_eq!(
-            crate::proxy_core::api::model_catalog::claude_takeover_client_model_for_upstream(
-                "claude-sonnet-4-6",
-                true,
-                "deepseek-v4-pro[1M]"
-            ),
-            "claude-sonnet-4-6[1M]"
-        );
-        assert_eq!(
-            crate::proxy_core::api::model_catalog::claude_takeover_client_model_for_upstream(
-                "claude-haiku-4-5",
-                false,
-                "deepseek-v4-flash[1M]"
-            ),
-            "claude-haiku-4-5"
-        );
-        assert_eq!(
-            crate::proxy_core::api::model_catalog::claude_takeover_default_display_name(
-                "deepseek-v4-ultra [1m]  "
-            ),
-            "deepseek-v4-ultra"
-        );
-
-        let provider = Provider::with_id(
-            "takeover-model-provider".to_string(),
-            "Takeover Model Provider".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4-flash",
-                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-pro[1M]",
-                    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "DeepSeek V4 Pro",
-                    "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-ultra [1m]"
-                }
-            }),
-            None,
-        );
-        let fields = claude_takeover_model_fields_from_settings(&provider.settings_config);
-
-        assert!(fields.contains(&(
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-            "claude-haiku-4-5".to_string()
-        )));
-        assert!(fields.contains(&(
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
-            "deepseek-v4-flash".to_string()
-        )));
-        assert!(fields.contains(&(
-            "ANTHROPIC_DEFAULT_SONNET_MODEL",
-            "claude-sonnet-4-6[1M]".to_string()
-        )));
-        assert!(fields.contains(&(
-            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
-            "DeepSeek V4 Pro".to_string()
-        )));
-        assert!(fields.contains(&(
-            "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            "claude-opus-4-8[1M]".to_string()
-        )));
-        assert!(fields.contains(&(
-            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
-            "deepseek-v4-ultra".to_string()
-        )));
-
-        let mut live_config = json!({
-            "env": {
-                "ANTHROPIC_BASE_URL": "https://old.example",
-                "ANTHROPIC_AUTH_TOKEN": "old-token",
-                "ANTHROPIC_MODEL": "stale-model",
-                "OPENAI_API_KEY": "old-openai",
-                "OTHER": "kept"
-            }
-        });
-        crate::proxy_core::api::ports::apply_claude_takeover_fields_with_policy_and_models(
-            &mut live_config,
-            "http://127.0.0.1:15721",
-            "PROXY_MANAGED",
-            ClaudeTakeoverAuthPolicy::ManagedAccount {
-                keep_auth_token: true,
-            },
-            vec![(
-                "ANTHROPIC_DEFAULT_SONNET_MODEL",
-                "claude-sonnet-4-6".to_string(),
-            )],
-        );
-        let env = live_config
-            .get("env")
-            .and_then(Value::as_object)
-            .expect("env");
-        assert_eq!(
-            env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
-            Some("http://127.0.0.1:15721")
-        );
-        assert!(env.get("ANTHROPIC_MODEL").is_none());
-        assert!(env.get("OPENAI_API_KEY").is_none());
-        assert_eq!(
-            env.get("ANTHROPIC_API_KEY").and_then(Value::as_str),
-            Some("PROXY_MANAGED")
-        );
-        assert_eq!(
-            env.get("ANTHROPIC_AUTH_TOKEN").and_then(Value::as_str),
-            Some("PROXY_MANAGED")
-        );
-        assert_eq!(
-            env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
-                .and_then(Value::as_str),
-            Some("claude-sonnet-4-6")
-        );
-        assert_eq!(env.get("OTHER").and_then(Value::as_str), Some("kept"));
     }
 
     #[test]
