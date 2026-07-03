@@ -8,13 +8,8 @@ use crate::proxy::engine::forward_pipeline::{
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::proxy_core_error_to_proxy_error;
 use crate::proxy::host::cc_switch::auth_provider::CcSwitchAuthProvider;
-use crate::proxy::host::cc_switch::managed_account_runtime_source::{
-    ManagedAccountAuthForBindingInput, ManagedAccountRuntimeBindingFacts,
-    ManagedAccountRuntimeSourceRef,
-};
-use crate::proxy::host::cc_switch::provider_projection::{
-    provider_managed_account_binding_context, proxy_provider_to_core_spec,
-};
+use crate::proxy::host::cc_switch::managed_account_runtime_source::ManagedAccountRuntimeSourceRef;
+use crate::proxy::host::cc_switch::provider_projection::proxy_provider_to_core_spec;
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::ports::AuthProvider;
 use crate::proxy_core::api::routing::auth_channel_spec_from_attempt;
@@ -93,28 +88,17 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
                 AuthProviderHeaderResolution::Explicit(headers) => headers,
                 AuthProviderHeaderResolution::Fallback => {
                     let auth_provider = input.attempt.auth_provider();
-                    if let Some(mut auth) = input.adapter.provider_auth_info(auth_provider) {
-                        let binding_context =
-                            provider_managed_account_binding_context(auth_provider);
-                        let managed_auth = self
-                            .managed_account_runtime_source
-                            .resolve_auth_for_binding(ManagedAccountAuthForBindingInput {
-                                binding_facts: ManagedAccountRuntimeBindingFacts::new(
-                                    binding_context.binding,
-                                    binding_context.legacy_github_copilot_account_id,
-                                ),
-                                auth,
-                            })
-                            .await?;
-                        auth = managed_auth.auth;
-                        should_send_codex_oauth_session_headers =
-                            managed_auth.should_send_codex_oauth_session_headers;
-                        codex_oauth_account_id = managed_auth.codex_oauth_account_id;
-
-                        input.adapter.provider_auth_headers(&auth)?
-                    } else {
-                        Vec::new()
-                    }
+                    let fallback = input
+                        .adapter
+                        .resolve_provider_fallback_auth_headers(
+                            auth_provider,
+                            &self.managed_account_runtime_source,
+                        )
+                        .await?;
+                    should_send_codex_oauth_session_headers =
+                        fallback.should_send_codex_oauth_session_headers;
+                    codex_oauth_account_id = fallback.codex_oauth_account_id;
+                    fallback.auth_headers
                 }
             };
 

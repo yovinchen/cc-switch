@@ -1,11 +1,17 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
+use crate::proxy::host::cc_switch::managed_account_runtime_source::{
+    ManagedAccountAuthForBindingInput, ManagedAccountRuntimeBindingFacts,
+    ManagedAccountRuntimeSourceRef,
+};
+use crate::proxy::host::cc_switch::provider_projection::provider_managed_account_binding_context;
 use crate::proxy::provider::{get_adapter, ProviderAdapter};
 use crate::proxy_core::api::auth::ProviderAuthInfo;
 use crate::proxy_core::api::transport::{
     forwarder_provider_url_facts, ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
 };
+use futures::future::BoxFuture;
 
 type ForwarderAdapterHandle = dyn ProviderAdapter;
 
@@ -28,15 +34,46 @@ impl ForwarderAdapterContext {
         &self.facts
     }
 
-    pub(crate) fn provider_auth_info(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
+    fn provider_auth_info(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
         self.adapter().extract_auth(provider)
     }
 
-    pub(crate) fn provider_auth_headers(
+    fn provider_auth_headers(
         &self,
         auth: &ProviderAuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
         self.adapter().get_auth_headers(auth)
+    }
+
+    pub(crate) fn resolve_provider_fallback_auth_headers<'a>(
+        &'a self,
+        provider: &'a Provider,
+        managed_account_runtime_source: &'a ManagedAccountRuntimeSourceRef,
+    ) -> BoxFuture<'a, Result<ProviderFallbackAuthHeaders, ProxyError>> {
+        Box::pin(async move {
+            let Some(mut auth) = self.provider_auth_info(provider) else {
+                return Ok(ProviderFallbackAuthHeaders::default());
+            };
+
+            let binding_context = provider_managed_account_binding_context(provider);
+            let managed_auth = managed_account_runtime_source
+                .resolve_auth_for_binding(ManagedAccountAuthForBindingInput {
+                    binding_facts: ManagedAccountRuntimeBindingFacts::new(
+                        binding_context.binding,
+                        binding_context.legacy_github_copilot_account_id,
+                    ),
+                    auth,
+                })
+                .await?;
+            auth = managed_auth.auth;
+
+            Ok(ProviderFallbackAuthHeaders {
+                auth_headers: self.provider_auth_headers(&auth)?,
+                should_send_codex_oauth_session_headers: managed_auth
+                    .should_send_codex_oauth_session_headers,
+                codex_oauth_account_id: managed_auth.codex_oauth_account_id,
+            })
+        })
     }
 
     pub(crate) fn provider_url_facts(
@@ -87,6 +124,13 @@ fn provider_full_url_flag(provider: &Provider) -> bool {
         .unwrap_or(false)
 }
 
+#[derive(Default)]
+pub(crate) struct ProviderFallbackAuthHeaders {
+    pub(crate) auth_headers: Vec<(http::HeaderName, http::HeaderValue)>,
+    pub(crate) should_send_codex_oauth_session_headers: bool,
+    pub(crate) codex_oauth_account_id: Option<String>,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct ForwarderAdapterFacts {
     pub(crate) adapter_name: &'static str,
@@ -107,7 +151,12 @@ impl ForwarderAdapterFacts {
 mod tests {
     use super::*;
     use crate::provider::ProviderMeta;
+    use crate::proxy::host::cc_switch::managed_account_runtime_source::{
+        managed_account_test_provider_with_binding, ManagedAccountRuntimeSourceRef,
+        StaticManagedAuthResolutionSource,
+    };
     use serde_json::json;
+    use std::sync::Arc;
 
     #[test]
     fn forwarder_adapter_context_projects_provider_url_facts() {
@@ -147,5 +196,28 @@ mod tests {
         assert!(claude_facts.is_claude_adapter);
         assert_eq!(codex_facts.adapter_name, "Codex");
         assert!(!codex_facts.is_claude_adapter);
+    }
+
+    #[tokio::test]
+    async fn forwarder_adapter_context_resolves_managed_account_fallback_headers() {
+        let adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
+        let provider = managed_account_test_provider_with_binding("codex_oauth", "codex-acct");
+        let runtime_source: ManagedAccountRuntimeSourceRef =
+            Arc::new(StaticManagedAuthResolutionSource);
+
+        let fallback = adapter
+            .resolve_provider_fallback_auth_headers(&provider, &runtime_source)
+            .await
+            .expect("fallback auth headers");
+
+        assert_eq!(
+            fallback.codex_oauth_account_id.as_deref(),
+            Some("codex-acct")
+        );
+        assert!(fallback.should_send_codex_oauth_session_headers);
+        assert!(fallback.auth_headers.iter().any(|(name, value)| {
+            name == http::header::AUTHORIZATION
+                && value == http::HeaderValue::from_static("Bearer codex-token:codex-acct")
+        }));
     }
 }

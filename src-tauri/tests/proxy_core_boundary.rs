@@ -19097,6 +19097,10 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
     let source = fs::read_to_string(&path).expect("read managed_account_runtime_source.rs");
     let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/forwarder_auth_source.rs");
     let auth_source = fs::read_to_string(&auth_source_path).expect("read forwarder_auth_source.rs");
+    let adapter_context_path =
+        manifest_dir.join("src/proxy/host/cc_switch/provider_adapter_context.rs");
+    let adapter_context =
+        fs::read_to_string(&adapter_context_path).expect("read provider_adapter_context.rs");
     let method = function_slice(
         &source,
         "fn resolve_auth_for_binding<'a>",
@@ -19116,10 +19120,15 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
         "managed-account runtime source must consume already-projected binding facts instead of reading CC Switch Provider"
     );
     assert!(
-        auth_source.contains("provider_managed_account_binding_context(auth_provider)")
-            && auth_source.contains(".resolve_auth_for_binding(ManagedAccountAuthForBindingInput {")
-            && auth_source.contains("ManagedAccountRuntimeBindingFacts::new("),
-        "ForwarderAuthSource should project CC Switch Provider metadata before calling the managed-account runtime source"
+        adapter_context.contains("fn resolve_provider_fallback_auth_headers<'a>(")
+            && adapter_context.contains("provider_managed_account_binding_context(provider)")
+            && adapter_context
+                .contains(".resolve_auth_for_binding(ManagedAccountAuthForBindingInput {")
+            && adapter_context.contains("ManagedAccountRuntimeBindingFacts::new(")
+            && auth_source.contains(".resolve_provider_fallback_auth_headers(")
+            && !auth_source.contains("provider_managed_account_binding_context(")
+            && !auth_source.contains("ManagedAccountAuthForBindingInput {"),
+        "ForwarderAdapterContext should project CC Switch Provider metadata before calling the managed-account runtime source"
     );
 
     let mut violations = Vec::new();
@@ -20107,6 +20116,10 @@ fn production_forwarder_uses_auth_source_resource() {
         .unwrap_or(&adapter_source);
     let auth_source_path = manifest_dir.join("src/proxy/host/cc_switch/forwarder_auth_source.rs");
     let auth_source = fs::read_to_string(&auth_source_path).expect("read forwarder_auth_source.rs");
+    let adapter_context_path =
+        manifest_dir.join("src/proxy/host/cc_switch/provider_adapter_context.rs");
+    let adapter_context =
+        fs::read_to_string(&adapter_context_path).expect("read provider_adapter_context.rs");
     let state_source =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/proxy_state.rs"))
             .expect("read proxy_state.rs");
@@ -20146,10 +20159,13 @@ fn production_forwarder_uses_auth_source_resource() {
         "};",
     );
     assert!(
-        auth_source.contains("use crate::proxy::host::cc_switch::provider_projection::{")
-            && auth_source.contains("provider_managed_account_binding_context")
-            && auth_source.contains("proxy_provider_to_core_spec"),
-        "default ForwarderAuthSource should import provider projection and binding projection from host provider_projection"
+        auth_source.contains(
+            "use crate::proxy::host::cc_switch::provider_projection::proxy_provider_to_core_spec;"
+        ) && !auth_source.contains("provider_managed_account_binding_context")
+            && adapter_context.contains(
+                "use crate::proxy::host::cc_switch::provider_projection::provider_managed_account_binding_context;"
+            ),
+        "default ForwarderAuthSource should keep provider spec projection while provider adapter context owns binding projection"
     );
     for marker in [
         "pub(crate) type ForwarderAuthSourceRef",
