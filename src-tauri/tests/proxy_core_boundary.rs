@@ -27320,6 +27320,36 @@ fn proxy_response_adapter_owns_core_transport_imports() {
 }
 
 #[test]
+fn proxy_core_adapter_does_not_own_codex_tool_context_or_chat_error_fixtures() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let response_transform =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/response_transform.rs"))
+            .expect("read proxy-core response_transform.rs");
+    let codex_error = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/codex_error.rs"))
+        .expect("read proxy-core codex_error.rs");
+
+    assert!(
+        response_transform
+            .contains("fn builds_codex_tool_context_from_request_tools_and_tool_search_output()")
+            && response_transform.contains("build_codex_tool_context_from_request(&json!")
+            && response_transform.contains("assert!(context.is_custom_tool_chat_name"),
+        "proxy-core response_transform tests should own Codex tool context fixtures"
+    );
+    assert!(
+        codex_error.contains("fn codex_chat_error_body_wraps_plain_text_with_preview()")
+            && codex_error.contains("normalize_codex_chat_error_body(b\"Unauthorized\")")
+            && codex_error.contains("non_json_body_log_message()"),
+        "proxy-core codex_error tests should own Codex Chat error normalization fixtures"
+    );
+    assert!(
+        !adapter_source.contains("fn codex_handler_adapter_projects_tool_context_and_chat_error()"),
+        "proxy_core_adapter should not carry Codex tool context or Chat error normalization fixtures"
+    );
+}
+
+#[test]
 fn http_handlers_import_signature_dtos_directly_from_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");

@@ -2104,27 +2104,6 @@ wire_api = "chat"
     }
 
     #[test]
-    fn codex_handler_adapter_projects_tool_context_and_chat_error() {
-        let context =
-            crate::proxy_core::api::transforms::build_codex_tool_context_from_request(&json!({
-                "tools": [
-                    {
-                        "type": "custom",
-                        "name": "apply_patch"
-                    }
-                ]
-            }));
-
-        assert_eq!(context.chat_tools().len(), 1);
-        assert!(context.is_custom_tool_chat_name("apply_patch"));
-
-        let normalized =
-            crate::proxy_core::api::transforms::normalize_codex_chat_error_body(b"Unauthorized");
-        assert!(normalized.non_json_body_log_message().is_some());
-        assert!(normalized.response_error.get("error").is_some());
-    }
-
-    #[test]
     fn claude_body_normalization_adapter_projects_stream_and_thinking_rules() {
         let mut stream_body = json!({"stream": true});
         crate::proxy_core::api::transport::inject_openai_stream_include_usage(&mut stream_body);
