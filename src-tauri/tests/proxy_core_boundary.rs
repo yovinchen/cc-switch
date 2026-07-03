@@ -19612,6 +19612,19 @@ fn production_forwarder_uses_auth_source_resource() {
             && !adapter_runtime_source.contains("struct CcSwitchForwarderAuthSource"),
         "host proxy_state should use the forwarder auth source factory without routing it through proxy_core_adapter"
     );
+    assert!(
+        auth_source.contains("struct ChannelHeaderAuthProvider")
+            && auth_source.contains("forwarder_auth_source_prepares_optional_copilot_auth_optimization")
+            && auth_source.contains("forwarder_auth_source_uses_core_auth_provider_route_context_headers")
+            && auth_source.contains("forwarder_auth_source_uses_core_codex_oauth_session_header_gate")
+            && auth_source.contains("forwarder_auth_source_uses_core_copilot_auth_override_facts")
+            && !adapter_source.contains("struct ChannelHeaderAuthProvider")
+            && !adapter_source.contains("forwarder_auth_source_prepares_optional_copilot_auth_optimization")
+            && !adapter_source.contains("forwarder_auth_source_uses_core_auth_provider_route_context_headers")
+            && !adapter_source.contains("forwarder_auth_source_uses_core_codex_oauth_session_header_gate")
+            && !adapter_source.contains("forwarder_auth_source_uses_core_copilot_auth_override_facts"),
+        "ForwarderAuthSource behavior fixtures should live beside the host auth source, not in proxy_core_adapter"
+    );
     let auth_source_forbidden_markers = [
         "forwarder_provider_auth_info(",
         "forwarder_provider_auth_headers(",
