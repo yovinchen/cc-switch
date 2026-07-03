@@ -3419,15 +3419,17 @@ fn basic_health_status_handlers_use_management_contracts() {
     );
 
     assert!(
-        health_handler.contains("proxy_health_check_to_axum_json_response(")
+        health_handler.contains("HealthCheckRequest::new()")
+            && health_handler.contains("request.response(chrono::Utc::now().to_rfc3339())")
             && status_handler.contains("dispatch_proxy_status_request_to_axum_json_response("),
-        "basic health/status HTTP handlers should delegate response assembly to response_adapter"
+        "health should own its local HTTP JSON bridge while status delegates response assembly to response_adapter"
     );
     assert!(
-        adapter_source.contains("HealthCheckRequest::new()")
+        !adapter_source.contains("HealthCheckRequest::new()")
+            && !adapter_source.contains("proxy_health_check_to_axum_json_response")
             && adapter_source.contains("ProxyStatusRequest::new()")
             && adapter_source.contains(".proxy_status_response(request)"),
-        "response_adapter must own basic health/status management contracts and ProxyEngine status call"
+        "response_adapter must not own health JSON bridge, but should own ProxyEngine status call"
     );
 
     let forbidden_markers = [
@@ -5711,12 +5713,8 @@ fn production_status_and_desktop_model_handlers_delegate_json_bridge_to_response
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let handlers = [
-        (
-            "health_check",
-            function_slice(&source, "pub async fn health_check(", "/// 获取服务状态"),
-            "proxy_health_check_to_axum_json_response(",
-        ),
+    let health_handler = function_slice(&source, "pub async fn health_check(", "/// 获取服务状态");
+    let delegated_handlers = [
         (
             "get_status",
             function_slice(
@@ -5738,7 +5736,33 @@ fn production_status_and_desktop_model_handlers_delegate_json_bridge_to_response
     ];
 
     let mut violations = Vec::new();
-    for (handler_name, handler, adapter_marker) in handlers {
+    if !(health_handler.contains("HealthCheckRequest::new()")
+        && health_handler.contains("request.response(chrono::Utc::now().to_rfc3339())"))
+    {
+        violations.push(
+            "src/proxy/transport/http/handlers.rs health_check should build the local health JSON bridge from core HealthCheckRequest"
+                .to_string(),
+        );
+    }
+    for (line_index, line) in production_lines(health_handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in [
+            "ProxyStatusRequest::new(",
+            ".proxy_engine()",
+            ".proxy_status_response(",
+            ".claude_desktop_model_list_response(",
+        ] {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/transport/http/handlers.rs health_check:{} contains status/model engine marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    for (handler_name, handler, adapter_marker) in delegated_handlers {
         if !handler.contains(adapter_marker) {
             violations.push(format!(
                 "src/proxy/transport/http/handlers.rs {handler_name} should call `{adapter_marker}`"
@@ -27710,7 +27734,6 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         "CurrentRouteResponse",
         "GroupListQuery",
         "GroupListRequest",
-        "HealthCheckRequest",
         "HealthCheckResponse",
         "ManagementAppPathRequest",
         "ProviderListResponse",

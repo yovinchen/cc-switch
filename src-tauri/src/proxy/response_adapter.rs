@@ -40,7 +40,7 @@ use crate::proxy_core::api::management::{
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
     ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
     ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse, CurrentRouteResponse,
-    GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
+    GroupListQuery, GroupListRequest,
     ManagementAppPathRequest, ProviderListResponse, ProxyChannelKeyPatchRequest,
     ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyStatusRequest, ProxyStatusResponse,
@@ -254,15 +254,6 @@ pub(crate) async fn collect_json_or_null_proxy_request(
         body: parsed.body,
         is_stream: parsed.is_stream,
     })
-}
-
-pub(crate) fn proxy_health_check_to_axum_json_response() -> (StatusCode, Json<HealthCheckResponse>)
-{
-    let request = HealthCheckRequest::new();
-    (
-        StatusCode::OK,
-        Json(request.response(chrono::Utc::now().to_rfc3339())),
-    )
 }
 
 pub(crate) async fn dispatch_proxy_status_request_to_axum_json_response(

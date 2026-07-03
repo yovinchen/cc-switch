@@ -42,7 +42,6 @@ use crate::proxy::{
         dispatch_update_proxy_channel_key_request_to_axum_json_response,
         dispatch_update_proxy_channel_request_to_axum_json_response,
         dispatch_upsert_proxy_channel_key_request_to_axum_json_response,
-        proxy_health_check_to_axum_json_response,
     },
 };
 use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
@@ -54,7 +53,8 @@ use crate::proxy_core::api::management::{
     ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeResponse,
     ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelRecord,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
-    CurrentRouteResponse, GroupListQuery, HealthCheckResponse, ProviderListResponse,
+    CurrentRouteResponse, GroupListQuery, HealthCheckRequest, HealthCheckResponse,
+    ProviderListResponse,
     ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
     ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
     ProxyStatusResponse, RouteGroupListResponse, RouteResolveRequest, RouteResolveResponse,
@@ -77,7 +77,11 @@ use std::time::Duration;
 
 /// 健康检查
 pub async fn health_check() -> (StatusCode, Json<HealthCheckResponse>) {
-    proxy_health_check_to_axum_json_response()
+    let request = HealthCheckRequest::new();
+    (
+        StatusCode::OK,
+        Json(request.response(chrono::Utc::now().to_rfc3339())),
+    )
 }
 
 /// 获取服务状态
@@ -444,6 +448,15 @@ mod tests {
     use axum::response::{sse::Sse, IntoResponse};
     use http_body_util::BodyExt;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn health_check_returns_core_healthy_contract() {
+        let (status, Json(response)) = health_check().await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(response.status, "healthy");
+        assert!(!response.timestamp.is_empty());
+    }
 
     #[test]
     fn codex_proxy_forward_error_includes_context_and_cause() {
