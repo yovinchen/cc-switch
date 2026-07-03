@@ -399,7 +399,7 @@ pub mod prelude {
         route_policy_from_failover_provider_ids,
     };
     pub use super::engine::ProxyEngine;
-    pub use super::errors::{ProxyCoreError, ProxyCoreResult};
+    pub use super::errors::{ProxyCoreError, ProxyCoreResult, ProxyErrorStatusKind};
     pub use super::events::{
         build_proxy_events_connected_payload, build_proxy_events_lagged_payload, ProxyCoreEvent,
         ProxyCoreEventType, ProxyEventEnvelope, ProxyEventSseSpec, PROXY_EVENTS_CONNECTED_EVENT,
@@ -498,11 +498,13 @@ pub mod prelude {
     pub use super::transforms::{
         claude_request_transform_for_api_format,
         claude_response_to_anthropic_message_for_api_format,
+        codex_proxy_error_kind_from_status_kind,
         create_claude_to_anthropic_sse_stream_for_api_format,
         normalize_claude_anthropic_messages, AnthropicToolSchemaHints,
         ClaudeApiFormatRequestTransformContext, ClaudeApiFormatRequestTransformOutput,
         ClaudeApiFormatResponseTransformOutput, ClaudeApiFormatSseTransformContext,
-        ClaudePromptCacheKeySource, ClaudeResponsesPromptCacheLog, GeminiShadowStore,
+        ClaudePromptCacheKeySource, ClaudeResponsesPromptCacheLog, CodexProxyErrorKind,
+        GeminiShadowStore,
     };
     pub use super::usage::{TokenUsage, UsageRecord};
 }

@@ -59,6 +59,36 @@ pub fn codex_proxy_error_code(kind: CodexProxyErrorKind) -> &'static str {
     }
 }
 
+pub fn codex_proxy_error_kind_from_status_kind(
+    status: ProxyErrorStatusKind,
+) -> CodexProxyErrorKind {
+    match status {
+        ProxyErrorStatusKind::ForwardFailed => CodexProxyErrorKind::ForwardFailed,
+        ProxyErrorStatusKind::Timeout | ProxyErrorStatusKind::StreamIdleTimeout => {
+            CodexProxyErrorKind::Timeout
+        }
+        ProxyErrorStatusKind::NoAvailableProvider => CodexProxyErrorKind::NoAvailableProvider,
+        ProxyErrorStatusKind::AllProvidersCircuitOpen => {
+            CodexProxyErrorKind::AllProvidersCircuitOpen
+        }
+        ProxyErrorStatusKind::NoProvidersConfigured => CodexProxyErrorKind::NoProvidersConfigured,
+        ProxyErrorStatusKind::MaxRetriesExceeded => CodexProxyErrorKind::MaxRetriesExceeded,
+        ProxyErrorStatusKind::ProviderUnhealthy => CodexProxyErrorKind::ProviderUnhealthy,
+        ProxyErrorStatusKind::ConfigError => CodexProxyErrorKind::ConfigError,
+        ProxyErrorStatusKind::TransformError => CodexProxyErrorKind::TransformError,
+        ProxyErrorStatusKind::InvalidRequest => CodexProxyErrorKind::InvalidRequest,
+        ProxyErrorStatusKind::AuthError => CodexProxyErrorKind::AuthError,
+        ProxyErrorStatusKind::UpstreamError(_) => CodexProxyErrorKind::UpstreamError,
+        ProxyErrorStatusKind::DatabaseError => CodexProxyErrorKind::DatabaseError,
+        ProxyErrorStatusKind::Internal => CodexProxyErrorKind::InternalError,
+        ProxyErrorStatusKind::AlreadyRunning
+        | ProxyErrorStatusKind::NotRunning
+        | ProxyErrorStatusKind::BindFailed
+        | ProxyErrorStatusKind::StopTimeout
+        | ProxyErrorStatusKind::StopFailed => CodexProxyErrorKind::ProxyError,
+    }
+}
+
 pub fn codex_proxy_error_json(ctx: CodexProxyErrorContext<'_>) -> Value {
     let parsed_upstream_body = ctx.upstream_body.map(|body| {
         serde_json::from_str::<Value>(body).unwrap_or_else(|_| Value::String(body.to_string()))
@@ -353,6 +383,90 @@ mod tests {
 
         for (kind, expected) in cases {
             assert_eq!(codex_proxy_error_code(kind), expected);
+        }
+    }
+
+    #[test]
+    fn codex_proxy_error_kind_from_status_kind_preserves_host_classification() {
+        let cases = [
+            (
+                ProxyErrorStatusKind::ForwardFailed,
+                CodexProxyErrorKind::ForwardFailed,
+            ),
+            (ProxyErrorStatusKind::Timeout, CodexProxyErrorKind::Timeout),
+            (
+                ProxyErrorStatusKind::StreamIdleTimeout,
+                CodexProxyErrorKind::Timeout,
+            ),
+            (
+                ProxyErrorStatusKind::NoAvailableProvider,
+                CodexProxyErrorKind::NoAvailableProvider,
+            ),
+            (
+                ProxyErrorStatusKind::AllProvidersCircuitOpen,
+                CodexProxyErrorKind::AllProvidersCircuitOpen,
+            ),
+            (
+                ProxyErrorStatusKind::NoProvidersConfigured,
+                CodexProxyErrorKind::NoProvidersConfigured,
+            ),
+            (
+                ProxyErrorStatusKind::MaxRetriesExceeded,
+                CodexProxyErrorKind::MaxRetriesExceeded,
+            ),
+            (
+                ProxyErrorStatusKind::ProviderUnhealthy,
+                CodexProxyErrorKind::ProviderUnhealthy,
+            ),
+            (
+                ProxyErrorStatusKind::ConfigError,
+                CodexProxyErrorKind::ConfigError,
+            ),
+            (
+                ProxyErrorStatusKind::TransformError,
+                CodexProxyErrorKind::TransformError,
+            ),
+            (
+                ProxyErrorStatusKind::InvalidRequest,
+                CodexProxyErrorKind::InvalidRequest,
+            ),
+            (ProxyErrorStatusKind::AuthError, CodexProxyErrorKind::AuthError),
+            (
+                ProxyErrorStatusKind::UpstreamError(429),
+                CodexProxyErrorKind::UpstreamError,
+            ),
+            (
+                ProxyErrorStatusKind::DatabaseError,
+                CodexProxyErrorKind::DatabaseError,
+            ),
+            (
+                ProxyErrorStatusKind::Internal,
+                CodexProxyErrorKind::InternalError,
+            ),
+            (
+                ProxyErrorStatusKind::AlreadyRunning,
+                CodexProxyErrorKind::ProxyError,
+            ),
+            (
+                ProxyErrorStatusKind::NotRunning,
+                CodexProxyErrorKind::ProxyError,
+            ),
+            (
+                ProxyErrorStatusKind::BindFailed,
+                CodexProxyErrorKind::ProxyError,
+            ),
+            (
+                ProxyErrorStatusKind::StopTimeout,
+                CodexProxyErrorKind::ProxyError,
+            ),
+            (
+                ProxyErrorStatusKind::StopFailed,
+                CodexProxyErrorKind::ProxyError,
+            ),
+        ];
+
+        for (status, expected) in cases {
+            assert_eq!(codex_proxy_error_kind_from_status_kind(status), expected);
         }
     }
 

@@ -347,7 +347,7 @@
 328. `CircuitBreakerConfig` DTO、默认值和 `AppProxyConfig` 到熔断器配置/失败阈值的投影已迁入 `proxy-core::circuit_breaker_config`；host `proxy::circuit_breaker` 只保留状态机实现，调用方直接引用 core 配置类型。
 329. provider/channel circuit breaker key、app type 解析和 app scope prefix 规则已迁入 `proxy-core::circuit_breaker_key`；`ProviderRouter` 不再手写 `app:provider` / `channel:app:channel` 字符串契约。
 330. response runtime policy 已在 `proxy-core::response_timeout` 中统一产出 failover-gated timeout 和 `max_retries`；host `RequestContext` 不再手写 failover 关闭时 retry 清零规则。
-331. Codex proxy error code 字符串契约已迁入 `proxy-core::codex_error`；`ProxyError` 到 Codex proxy error facts/kind/context 的宿主投影已收敛到 `proxy::error_mapper`，`proxy_core_adapter` 只保留兼容 re-export。
+331. Codex proxy error code 字符串契约和 `ProxyErrorStatusKind -> CodexProxyErrorKind` 分类策略已迁入 `proxy-core::codex_error`；host `proxy::error_mapper` 只负责把 `ProxyError` 投影为 status/message/upstream facts 并调用 core 分类与 response envelope builder，`proxy_core_adapter` 不再承载这类 Codex proxy error contract。
 332. `ProxySession::from_request` 中的 client format、model 和 streaming flag 派生已迁入 `proxy-core::proxy_session_request_metadata`；host session 只补 UUID、时间和 provider 运行态字段。
 333. `ProxyError` 到 HTTP status code 的状态码契约已迁入 `proxy-core::proxy_error_http_status_code`；host `proxy::error_mapper::{proxy_error_status_kind,proxy_error_status_code}` 负责 `ProxyError` 到 host-neutral status kind 的投影，`ProxyError::into_response` 只消费 mapper 状态投影与 core response body helper。
 334. channel route candidate 到 provider settings/meta 的覆盖计划已迁入 `proxy-core::channel_provider_override_plan`；host `route_attempt` 只负责把 core plan 写入 `Provider.settings_config` 和 `Provider.meta`。

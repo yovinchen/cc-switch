@@ -2907,3 +2907,19 @@ fn external_host_can_use_reset_circuit_breaker_switchback_policy_from_prelude() 
         }
     );
 }
+
+#[test]
+fn external_host_can_classify_codex_proxy_errors_from_prelude() {
+    assert_eq!(
+        codex_proxy_error_kind_from_status_kind(ProxyErrorStatusKind::Timeout),
+        CodexProxyErrorKind::Timeout
+    );
+    assert_eq!(
+        codex_proxy_error_kind_from_status_kind(ProxyErrorStatusKind::UpstreamError(429)),
+        CodexProxyErrorKind::UpstreamError
+    );
+    assert_eq!(
+        codex_proxy_error_kind_from_status_kind(ProxyErrorStatusKind::BindFailed),
+        CodexProxyErrorKind::ProxyError
+    );
+}

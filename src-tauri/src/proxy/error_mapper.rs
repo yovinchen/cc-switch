@@ -10,8 +10,9 @@ use crate::proxy_core::api::errors::{
 #[cfg(test)]
 use crate::proxy_core::api::transforms::codex_proxy_error_json as core_codex_proxy_error_json;
 use crate::proxy_core::api::transforms::{
-    codex_proxy_error_code, codex_proxy_error_response as core_codex_proxy_error_response,
-    CodexProxyErrorContext, CodexProxyErrorKind,
+    codex_proxy_error_code, codex_proxy_error_kind_from_status_kind,
+    codex_proxy_error_response as core_codex_proxy_error_response, CodexProxyErrorContext,
+    CodexProxyErrorKind,
     ProxyResponseTransformFailureContext as CoreResponseTransformFailureContext,
 };
 #[cfg(test)]
@@ -293,33 +294,9 @@ fn codex_proxy_error_facts_from_proxy_error<'a>(
     CodexProxyHostErrorFacts {
         status: proxy_error_status_kind(error),
         message,
-        kind: codex_proxy_error_kind_from_proxy_error(error),
+        kind: codex_proxy_error_kind_from_status_kind(proxy_error_status_kind(error)),
         upstream_status,
         upstream_body,
-    }
-}
-
-fn codex_proxy_error_kind_from_proxy_error(error: &ProxyError) -> CodexProxyErrorKind {
-    match error {
-        ProxyError::ForwardFailed(_) => CodexProxyErrorKind::ForwardFailed,
-        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => CodexProxyErrorKind::Timeout,
-        ProxyError::NoAvailableProvider => CodexProxyErrorKind::NoAvailableProvider,
-        ProxyError::AllProvidersCircuitOpen => CodexProxyErrorKind::AllProvidersCircuitOpen,
-        ProxyError::NoProvidersConfigured => CodexProxyErrorKind::NoProvidersConfigured,
-        ProxyError::MaxRetriesExceeded => CodexProxyErrorKind::MaxRetriesExceeded,
-        ProxyError::ProviderUnhealthy(_) => CodexProxyErrorKind::ProviderUnhealthy,
-        ProxyError::ConfigError(_) => CodexProxyErrorKind::ConfigError,
-        ProxyError::TransformError(_) => CodexProxyErrorKind::TransformError,
-        ProxyError::InvalidRequest(_) => CodexProxyErrorKind::InvalidRequest,
-        ProxyError::AuthError(_) => CodexProxyErrorKind::AuthError,
-        ProxyError::UpstreamError { .. } => CodexProxyErrorKind::UpstreamError,
-        ProxyError::DatabaseError(_) => CodexProxyErrorKind::DatabaseError,
-        ProxyError::Internal(_) => CodexProxyErrorKind::InternalError,
-        ProxyError::AlreadyRunning
-        | ProxyError::NotRunning
-        | ProxyError::BindFailed(_)
-        | ProxyError::StopTimeout
-        | ProxyError::StopFailed(_) => CodexProxyErrorKind::ProxyError,
     }
 }
 
