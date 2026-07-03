@@ -122,10 +122,7 @@ mod tests {
         RouteResolveModelInput, RouteSelection,
     };
     use crate::proxy_core::api::transforms::{
-        normalize_anthropic_tool_thinking_history, normalize_claude_anthropic_messages,
-        normalize_deepseek_thinking_disabled_strip_effort,
-        should_normalize_anthropic_tool_thinking_history, CodexProxyErrorContext,
-        CodexProxyErrorKind, ANTHROPIC_TOOL_THINKING_PLACEHOLDER,
+        normalize_claude_anthropic_messages, CodexProxyErrorContext, CodexProxyErrorKind,
     };
     use crate::proxy_core::api::transforms::{
         CodexChatReasoningOptions, CodexChatReasoningProfile,
@@ -2100,54 +2097,6 @@ wire_api = "chat"
         assert_eq!(
             ManagementAuthError::MissingBearerToken.message(),
             "Missing management bearer token"
-        );
-    }
-
-    #[test]
-    fn claude_body_normalization_adapter_projects_stream_and_thinking_rules() {
-        let mut stream_body = json!({"stream": true});
-        crate::proxy_core::api::transport::inject_openai_stream_include_usage(&mut stream_body);
-        assert_eq!(stream_body["stream_options"]["include_usage"], true);
-
-        let settings = json!({
-            "env": {
-                "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic"
-            }
-        });
-        let mut disabled_body = json!({
-            "model": "deepseek-v4-pro",
-            "thinking": {"type": "disabled"},
-            "output_config": {"effort": "high", "temperature": 0.2},
-            "reasoning_effort": "high"
-        });
-
-        assert!(normalize_deepseek_thinking_disabled_strip_effort(
-            &mut disabled_body,
-            &settings
-        ));
-        assert!(disabled_body.get("reasoning_effort").is_none());
-        assert!(disabled_body["output_config"].get("effort").is_none());
-        assert_eq!(disabled_body["output_config"]["temperature"], json!(0.2));
-
-        let mut tool_body = json!({
-            "model": "deepseek-v4-pro",
-            "messages": [{
-                "role": "assistant",
-                "content": [
-                    {"type": "tool_use", "id": "call_1", "name": "read_file", "input": {}}
-                ]
-            }]
-        });
-
-        assert!(should_normalize_anthropic_tool_thinking_history(
-            &settings,
-            &tool_body,
-            "anthropic"
-        ));
-        assert!(normalize_anthropic_tool_thinking_history(&mut tool_body));
-        assert_eq!(
-            tool_body["messages"][0]["content"][0]["thinking"],
-            ANTHROPIC_TOOL_THINKING_PLACEHOLDER
         );
     }
 

@@ -13149,6 +13149,12 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let request_body =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_body.rs"))
+            .expect("read proxy-core request_body.rs");
+    let response_transform =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/response_transform.rs"))
+            .expect("read proxy-core response_transform.rs");
     assert!(
         !source.contains("pub(crate) fn provider_claude_normalize_anthropic_messages("),
         "proxy_core_adapter should not expose Claude message normalization after request source and tests consume proxy-core directly"
@@ -13164,6 +13170,27 @@ fn proxy_core_adapter_delegates_claude_message_normalization_to_core() {
             "pub(crate) use crate::proxy_core::api::transport::inject_openai_stream_include_usage"
         ),
         "adapter should not keep a test-only OpenAI stream include_usage helper re-export"
+    );
+    assert!(
+        request_body
+            .contains("fn injects_openai_stream_include_usage_only_for_streaming_requests()")
+            && request_body
+                .contains("fn injects_openai_stream_include_usage_preserves_existing_options()"),
+        "proxy-core request_body tests should own stream include_usage fixtures"
+    );
+    assert!(
+        response_transform
+            .contains("fn normalizes_anthropic_tool_thinking_history_for_tool_use_turns()")
+            && response_transform
+                .contains("fn deepseek_thinking_disabled_strips_conflicting_effort_fields()")
+            && response_transform
+                .contains("fn deepseek_thinking_disabled_keeps_other_output_config_fields()"),
+        "proxy-core response_transform tests should own Claude thinking normalization fixtures"
+    );
+    assert!(
+        !source
+            .contains("fn claude_body_normalization_adapter_projects_stream_and_thinking_rules()"),
+        "proxy_core_adapter should not carry Claude body normalization fixture"
     );
     for marker in [
         "pub(crate) fn anthropic_tool_thinking_placeholder",
