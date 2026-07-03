@@ -2055,6 +2055,7 @@ managed-account runtime source 已彻底归并到 `proxy/host/cc_switch/managed_
 1429. Codex provider chat policy/live settings/reasoning 聚合 fixture 已拆回 owner：chat-completions gate、auth header、upstream model 与 catalog policy、live settings/validation 和 reasoning profile 分别由 `proxy-core` request/ports/transform tests、host `codex_config.rs` 与 `proxy/provider/codex.rs` 覆盖；`proxy_core_adapter` 不再承载这组 Codex 聚合 fixture。
 1430. Claude provider config/auth/url/cache 聚合 fixture 已拆回 owner：Claude api_format/auth/base URL/env credentials/header/cache policy 由 `proxy-core` owning tests 覆盖，host `provider_projection.rs` 覆盖 Provider-shaped api_format、transform gate、auth key 与 base URL 投影；`proxy_core_adapter` 不再承载这组 Claude config/auth/cache fixture。
 1431. Claude provider response/SSE wrapper fixture 已拆回 owner：非流式 OpenAI Chat/OpenAI Responses/Gemini Native wrapper 覆盖与 SSE 三格式分发覆盖已迁入 `proxy/provider/claude.rs`，底层 format dispatch 继续由 `proxy-core::response_transform` owning tests 覆盖；`proxy_core_adapter.rs` 已清空为 test-only 兼容模块，不再承载代理功能 fixture。
+1432. channel auth profile provider/ref fixture 已拆回 owner：provider auth 替换、cross-app provider ref 忽略和带空格 provider id 不误匹配已迁入 `proxy/host/cc_switch/channel_auth_profile_attempts.rs`，`proxy_core_host` 不再承载这组非 DB 行为 fixture。
 
 ## 背景
 

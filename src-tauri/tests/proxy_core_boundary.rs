@@ -18314,6 +18314,8 @@ fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
         manifest_dir.join("src/proxy/host/cc_switch/channel_auth_profile_attempts.rs");
     let attempt_source =
         fs::read_to_string(&attempt_source_path).expect("read channel_auth_profile_attempts.rs");
+    let host_harness_source = fs::read_to_string(manifest_dir.join("src/proxy_core_host.rs"))
+        .expect("read proxy_core_host.rs");
     let function = function_slice(
         &attempt_source,
         "pub(crate) fn apply_channel_auth_profile_providers_from_source",
@@ -18363,6 +18365,17 @@ fn proxy_core_adapter_delegates_channel_auth_application_plan_to_core() {
             && !source.contains("struct TestChannelKeyRuntimeSource")
             && !source.contains("fn channel_auth_profile_warning_adapter_projects_optional_ref"),
         "channel auth profile runtime test fixtures should live beside the host attempt source, not in proxy_core_adapter"
+    );
+    assert!(
+        attempt_source
+            .contains("fn channel_auth_profile_source_ignores_cross_app_and_spaced_provider_refs()")
+            && !host_harness_source
+                .contains("fn channel_provider_auth_profile_sets_auth_provider_without_changing_route_provider")
+            && !host_harness_source
+                .contains("fn channel_auth_profile_ignores_unknown_or_cross_app_provider_refs")
+            && !host_harness_source
+                .contains("fn channel_provider_auth_profile_preserves_provider_id_spacing"),
+        "channel auth profile provider/ref fixtures should live beside the owning attempt source, not proxy_core_host"
     );
     assert!(
         !function.contains("channel_auth_profile_action("),

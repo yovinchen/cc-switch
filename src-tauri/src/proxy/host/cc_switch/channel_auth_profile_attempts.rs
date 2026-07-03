@@ -323,6 +323,15 @@ mod tests {
         )
         .expect("apply provider auth profile");
         assert_eq!(provider_attempt.auth_provider().id, "provider-auth");
+        assert_eq!(provider_attempt.provider().id, "route-provider");
+        assert_eq!(
+            provider_attempt
+                .auth_provider()
+                .settings_config
+                .pointer("/env/ANTHROPIC_API_KEY")
+                .and_then(Value::as_str),
+            Some("provider-auth-key")
+        );
 
         let mut channel_key_attempt =
             attempt_with_auth_ref(&route_provider, "channel-key", "channel-key:primary");
@@ -353,6 +362,47 @@ mod tests {
                 .and_then(Value::as_str),
             Some("loaded-channel-key")
         );
+    }
+
+    #[test]
+    fn channel_auth_profile_source_ignores_cross_app_and_spaced_provider_refs() {
+        let route_provider = Provider::with_id(
+            "route-provider".to_string(),
+            "Route Provider".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "route-key" } }),
+            None,
+        );
+        let auth_provider = Provider::with_id(
+            "auth-provider".to_string(),
+            "Auth Provider".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "auth-key" } }),
+            None,
+        );
+        let mut providers = IndexMap::new();
+        providers.insert(route_provider.id.clone(), route_provider.clone());
+        providers.insert(auth_provider.id.clone(), auth_provider);
+        let runtime_source = TestChannelKeyRuntimeSource {
+            expected: None,
+            candidate: None,
+        };
+
+        for auth_profile_ref in [
+            "provider:codex:auth-provider",
+            "provider:claude: auth-provider",
+        ] {
+            let mut attempt =
+                attempt_with_auth_ref(&route_provider, "channel-auth", auth_profile_ref);
+            apply_channel_auth_profile_providers_from_source(
+                &AppType::Claude,
+                &providers,
+                std::slice::from_mut(&mut attempt),
+                &runtime_source,
+            )
+            .expect("apply ignored provider auth profile");
+
+            assert_eq!(attempt.provider().id, "route-provider");
+            assert_eq!(attempt.auth_provider().id, "route-provider");
+        }
     }
 
     #[test]
