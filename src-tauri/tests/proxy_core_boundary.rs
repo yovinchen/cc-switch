@@ -9274,6 +9274,27 @@ fn provider_services_import_live_policy_contracts_directly_from_core_ports() {
             && core_ports_source.contains("fn provider_live_sync_scope_uses_additive_app_policy()"),
         "provider live sync scope fixtures should live in proxy-core ports, not proxy_core_adapter"
     );
+    assert!(
+        !adapter_source.contains("fn provider_current_provider_scope_excludes_additive_apps()")
+            && core_ports_source
+                .contains("fn provider_app_has_current_provider_is_disabled_for_additive_apps()"),
+        "provider current-provider scope fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
+    assert!(
+        !adapter_source
+            .contains("fn provider_initial_live_config_managed_marker_only_applies_to_additive_apps()")
+            && core_ports_source
+                .contains("fn provider_initial_live_config_managed_marker_only_applies_to_additive_apps()"),
+        "provider initial live config managed marker fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
+    assert!(
+        !adapter_source
+            .contains("fn provider_legacy_common_config_migration_skips_additive_and_empty_snippets()")
+            && core_ports_source.contains(
+                "fn provider_legacy_common_config_migration_skips_additive_and_empty_snippets()"
+            ),
+        "provider legacy common-config migration fixtures should live in proxy-core ports, not proxy_core_adapter"
+    );
 
     let provider_service_source =
         fs::read_to_string(manifest_dir.join("src/services/provider/mod.rs"))

@@ -54,21 +54,18 @@ mod tests {
         gemini_live_settings_to_write, json_deep_merge, json_deep_remove, json_remove_array_items,
         json_value_is_subset, live_takeover_app_kinds, live_token_sync_app_label,
         provider_additive_live_write_action_for_app, provider_additive_update_route_for_app,
-        provider_app_has_current_provider, provider_initial_live_config_managed_marker,
         provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
         provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
         provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
         provider_settings_validation_issue_spec, provider_settings_validation_parts_from_settings,
-        provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
         provider_switch_dispatch_for_app, provider_switch_requires_takeover_lock,
         provider_switch_should_mark_live_config_managed,
         provider_takeover_live_sync_target_for_app, proxy_runtime_status_stopped,
-        sanitize_claude_settings_for_live, should_skip_provider_legacy_common_config_migration,
-        CodexProviderLiveWriteIssue, CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction,
-        ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
-        ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderOmoSwitchPair,
-        ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
-        ProviderTakeoverLiveSyncTarget,
+        sanitize_claude_settings_for_live, CodexProviderLiveWriteIssue,
+        CodexProviderValidationIssue, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
+        ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy,
+        ProviderLiveRemovalTarget, ProviderOmoSwitchPair, ProviderOmoVariant,
+        ProviderSettingsValidationIssue, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
     };
     use crate::proxy_core::api::transforms::{
         infer_codex_chat_reasoning_profile, is_copilot_prompt_cache_provider,
@@ -3608,60 +3605,6 @@ wire_api = "chat"
             send_policy.streaming_header_timeout,
             Some(std::time::Duration::from_secs(1))
         );
-    }
-
-    #[test]
-    fn provider_current_provider_scope_excludes_additive_apps() {
-        assert!(!provider_app_has_current_provider(&AppKind::from(
-            &AppType::OpenCode
-        )));
-        assert!(!provider_app_has_current_provider(&AppKind::from(
-            &AppType::OpenClaw
-        )));
-        assert!(provider_app_has_current_provider(&AppKind::from(
-            &AppType::Claude
-        )));
-        assert!(provider_app_has_current_provider(&AppKind::from(
-            &AppType::Codex
-        )));
-    }
-
-    #[test]
-    fn provider_initial_live_config_managed_marker_only_applies_to_additive_apps() {
-        assert_eq!(
-            provider_initial_live_config_managed_marker(&AppKind::from(&AppType::OpenCode), true),
-            Some(true)
-        );
-        assert_eq!(
-            provider_initial_live_config_managed_marker(&AppKind::from(&AppType::OpenClaw), false),
-            Some(false)
-        );
-        assert_eq!(
-            provider_initial_live_config_managed_marker(&AppKind::from(&AppType::Claude), true),
-            None
-        );
-    }
-
-    #[test]
-    fn provider_legacy_common_config_migration_skips_additive_and_empty_snippets() {
-        assert!(core_provider_supports_legacy_common_config_migration(
-            &AppKind::from(&AppType::Claude)
-        ));
-        assert!(!core_provider_supports_legacy_common_config_migration(
-            &AppKind::from(&AppType::OpenCode)
-        ));
-        assert!(!should_skip_provider_legacy_common_config_migration(
-            &AppKind::from(&AppType::Claude),
-            "legacy = true"
-        ));
-        assert!(should_skip_provider_legacy_common_config_migration(
-            &AppKind::from(&AppType::Claude),
-            "  \n  "
-        ));
-        assert!(should_skip_provider_legacy_common_config_migration(
-            &AppKind::from(&AppType::OpenClaw),
-            "legacy = true"
-        ));
     }
 
     #[test]
