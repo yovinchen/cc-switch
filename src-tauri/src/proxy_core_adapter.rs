@@ -132,13 +132,12 @@ mod tests {
     };
     use crate::proxy_core::api::transport::resolve_response_runtime_policy;
     use crate::proxy_core::api::transport::{
-        anthropic_beta_header_value, apply_forwarder_media_prevention_from_facts,
-        bedrock_env_flag_from_provider_settings, build_claude_auth_headers,
-        build_codex_bearer_auth_headers, build_copilot_auth_headers, build_gemini_auth_headers,
-        build_upstream_request_headers, forward_upstream_url_plan, is_socks_proxy_url,
-        resolve_upstream_send_policy, serialize_upstream_request_body, ClaudeAuthHeaderKind,
-        CopilotAuthHeadersInput, ForwardFailureKind, ForwardUpstreamUrlPlanInput,
-        ForwarderMediaPreventionFacts, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
+        anthropic_beta_header_value, bedrock_env_flag_from_provider_settings,
+        build_claude_auth_headers, build_codex_bearer_auth_headers, build_copilot_auth_headers,
+        build_gemini_auth_headers, build_upstream_request_headers, forward_upstream_url_plan,
+        is_socks_proxy_url, resolve_upstream_send_policy, serialize_upstream_request_body,
+        ClaudeAuthHeaderKind, CopilotAuthHeadersInput, ForwardFailureKind,
+        ForwardUpstreamUrlPlanInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
         UpstreamSseAggregationKind, UpstreamTransportKind,
     };
     use bytes::Bytes;
@@ -2171,39 +2170,6 @@ wire_api = "chat"
             tool_body["messages"][0]["content"][0]["thinking"],
             ANTHROPIC_TOOL_THINKING_PLACEHOLDER
         );
-    }
-
-    #[test]
-    fn media_prevention_adapter_projects_core_policy() {
-        let mut image_body = json!({
-            "model": "text-model",
-            "messages": [{
-                "role": "user",
-                "content": [
-                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
-                ]
-            }]
-        });
-        let text_only_provider = Provider::with_id(
-            "provider-c".to_string(),
-            "Provider C".to_string(),
-            json!({
-                "models": [ { "id": "text-model", "input": ["text"] } ]
-            }),
-            None,
-        );
-
-        assert_eq!(
-            apply_forwarder_media_prevention_from_facts(ForwarderMediaPreventionFacts {
-                rectifier_enabled: true,
-                request_media_fallback: true,
-                request_media_heuristic: false,
-                body: &mut image_body,
-                provider_settings: &text_only_provider.settings_config,
-            }),
-            1
-        );
-        assert_eq!(image_body["messages"][0]["content"][0]["type"], "text");
     }
 
     #[test]

@@ -19353,7 +19353,6 @@ fn production_forwarder_delegates_claude_transform_gate_to_request_source() {
     let core_transport_path = manifest_dir.join("crates/proxy-core/src/request_transport.rs");
     let core_transport_source =
         fs::read_to_string(&core_transport_path).expect("read request_transport.rs");
-
     assert!(
         core_transport_source.contains("use_claude_transform"),
         "ForwarderTransformPlan must expose the Claude transform execution gate"
@@ -21601,6 +21600,9 @@ fn production_forwarder_uses_request_source_resource() {
     let core_transport_path = manifest_dir.join("crates/proxy-core/src/request_transport.rs");
     let core_transport_source =
         fs::read_to_string(&core_transport_path).expect("read request_transport.rs");
+    let core_request_media_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_media.rs"))
+            .expect("read request_media.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -22037,6 +22039,17 @@ fn production_forwarder_uses_request_source_resource() {
     assert!(
         !adapter_transport_reexport_slice.contains("ForwardUpstreamUrlPlan"),
         "proxy_core_adapter should not re-export ForwardUpstreamUrlPlan once request source imports it directly from proxy_core::api::transport"
+    );
+    assert!(
+        core_request_media_source
+            .contains("fn forwarder_media_prevention_applies_policy_and_provider_settings()")
+            && core_request_media_source.contains("apply_forwarder_media_prevention_from_facts(")
+            && core_request_media_source.contains("ForwarderMediaPreventionFacts {"),
+        "proxy-core request_media tests should own forwarder media prevention policy fixture"
+    );
+    assert!(
+        !adapter_source.contains("fn media_prevention_adapter_projects_core_policy()"),
+        "proxy_core_adapter should not carry media prevention policy fixture"
     );
     assert!(
         request_source.contains("use crate::proxy_core::api::transforms::{")
