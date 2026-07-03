@@ -193,8 +193,7 @@ mod tests {
     };
     use crate::proxy_core::api::usage::{
         usage_selected_provider_missing_log_message, TokenUsage, TransformedResponseUsageFormat,
-        UsageRecord, UsageRecordFailureLogContext, UsageRouteContext,
-        UsageSelectedProviderMissingPhase,
+        UsageRouteContext, UsageSelectedProviderMissingPhase,
     };
     use bytes::Bytes;
     use indexmap::IndexMap;
@@ -3614,81 +3613,6 @@ wire_api = "chat"
             send_policy.streaming_header_timeout,
             Some(std::time::Duration::from_secs(1))
         );
-    }
-
-    #[test]
-    fn usage_record_adapter_builds_request_log_and_missing_pricing_signal() {
-        let record = UsageRecord {
-            request_id: Some("req-usage-1".to_string()),
-            message_id: Some("msg-usage-1".to_string()),
-            app: AppKind::Claude,
-            provider_id: "provider-a".to_string(),
-            provider_kind: Some(ProviderKind::Claude),
-            channel_id: Some("channel-a".to_string()),
-            channel_name: Some("Channel A".to_string()),
-            route_group: Some("default".to_string()),
-            request_model: "public-sonnet".to_string(),
-            outbound_model: "upstream-sonnet".to_string(),
-            response_model: Some("upstream-sonnet".to_string()),
-            pricing_model: None,
-            tokens: crate::proxy_core::api::usage::UsageTokens {
-                input_tokens: 1_000,
-                output_tokens: 500,
-                cache_read_tokens: 0,
-                cache_creation_tokens: 0,
-            },
-            latency_ms: 42,
-            first_token_ms: Some(7),
-            status_code: 200,
-            error_message: None,
-            session_id: Some("session-a".to_string()),
-            is_streaming: true,
-            metadata: json!({}),
-        };
-        assert_eq!(
-            usage_selected_provider_missing_log_message(
-                "Claude",
-                UsageSelectedProviderMissingPhase::StreamingPassthrough,
-            ),
-            "[Claude] 跳过流式 usage 收集：ProxyEngine 尚未回填 selected provider"
-        );
-        assert_eq!(
-            usage_selected_provider_missing_log_message(
-                "Claude",
-                UsageSelectedProviderMissingPhase::TransformedResponse,
-            ),
-            "[Claude] 跳过转换响应 usage 记录：ProxyEngine 尚未回填 selected provider"
-        );
-        assert_eq!(
-            usage_selected_provider_missing_log_message(
-                "Codex",
-                UsageSelectedProviderMissingPhase::TransformedStreaming,
-            ),
-            "[Codex] 跳过转换流式 usage 收集：ProxyEngine 尚未回填 selected provider"
-        );
-        assert_eq!(
-            crate::proxy_core::api::usage::usage_record_failure_warning_message(
-                UsageRecordFailureLogContext::ForwardError,
-                "db failed"
-            ),
-            "记录失败请求日志失败: db failed"
-        );
-        assert_eq!(
-            crate::proxy_core::api::usage::usage_record_failure_warning_message(
-                UsageRecordFailureLogContext::UsageRecord,
-                "db failed"
-            ),
-            "[USG-001] 记录使用量失败: db failed"
-        );
-        assert_eq!(
-            crate::proxy_core::api::usage::usage_record_debug_log_message(&record),
-            "[claude] 记录请求日志: provider=provider-a, model=upstream-sonnet, streaming=true, status=200, latency_ms=42, first_token_ms=Some(7), session=session-a, input=1000, output=500, cache_read=0, cache_creation=0"
-        );
-        assert!(crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag(Some(true)));
-        assert!(
-            !crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag(Some(false))
-        );
-        assert!(crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag(None));
     }
 
     #[test]

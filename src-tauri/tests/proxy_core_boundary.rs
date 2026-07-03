@@ -6337,6 +6337,8 @@ fn proxy_core_adapter_does_not_export_usage_contract_aliases() {
         .expect("read proxy_core_host.rs");
     let context_source = fs::read_to_string(manifest_dir.join("src/proxy/engine/context.rs"))
         .expect("read proxy/engine/context.rs");
+    let usage_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/usage.rs"))
+        .expect("read proxy-core usage.rs");
 
     for alias in [
         "pub(crate) type ModelPricing = crate::proxy_core::api::usage::ModelPricing;",
@@ -6371,6 +6373,15 @@ fn proxy_core_adapter_does_not_export_usage_contract_aliases() {
             .iter()
             .any(|identifier| identifier == "UsageRecord"),
         "proxy_core_host must not import UsageRecord through proxy_core_adapter"
+    );
+    assert!(
+        usage_source.contains("fn usage_selected_provider_missing_log_message_preserves_host_contracts()")
+            && usage_source.contains("fn usage_record_failure_warning_message_preserves_host_contracts()")
+            && usage_source.contains("fn usage_record_debug_log_message_preserves_host_contract()")
+            && usage_source.contains("fn usage_logging_enabled_from_config_flag_defaults_to_enabled()")
+            && !adapter_source
+                .contains("fn usage_record_adapter_builds_request_log_and_missing_pricing_signal()"),
+        "usage log/debug/config fixtures should live in proxy-core usage tests, not proxy_core_adapter"
     );
 }
 
