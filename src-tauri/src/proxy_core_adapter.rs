@@ -3039,63 +3039,6 @@ wire_api = "chat"
     }
 
     #[test]
-    fn codex_catalog_adapter_builds_and_simplifies_model_catalog() {
-        use crate::proxy_core::api::model_catalog::{
-            build_codex_model_catalog_from_settings, has_codex_model_catalog_specs,
-            simplify_codex_model_catalog,
-        };
-
-        let settings = json!({
-            "modelCatalog": {
-                "models": [
-                    {
-                        "model": "kimi-k2",
-                        "displayName": "Kimi K2",
-                        "contextWindow": "64000"
-                    }
-                ]
-            }
-        });
-        let template = json!({
-            "slug": "gpt-5.5",
-            "display_name": "GPT-5.5",
-            "context_window": 272000,
-            "model_messages": {"base": "template"}
-        });
-
-        assert!(has_codex_model_catalog_specs(&settings));
-        assert_eq!(DEFAULT_CODEX_MODEL_CONTEXT_WINDOW, 128_000);
-
-        let catalog = build_codex_model_catalog_from_settings(&settings, 128_000, &template)
-            .expect("catalog");
-        let models = catalog
-            .get("models")
-            .and_then(Value::as_array)
-            .expect("models");
-        assert_eq!(
-            models[0].get("slug").and_then(Value::as_str),
-            Some("kimi-k2")
-        );
-        assert_eq!(
-            models[0].get("context_window").and_then(Value::as_u64),
-            Some(64_000)
-        );
-
-        let simplified = simplify_codex_model_catalog(&catalog.to_string(), 128_000)
-            .expect("simplified catalog");
-        assert_eq!(
-            simplified["models"][0].get("model").and_then(Value::as_str),
-            Some("kimi-k2")
-        );
-        assert_eq!(
-            simplified["models"][0]
-                .get("displayName")
-                .and_then(Value::as_str),
-            Some("Kimi K2")
-        );
-    }
-
-    #[test]
     fn model_catalog_adapter_projects_provider_settings_and_client_raw() {
         let settings = json!({
             "model": " claude-sonnet-4 ",

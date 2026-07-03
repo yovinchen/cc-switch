@@ -1769,6 +1769,7 @@ mod tests {
                 ]
             }
         });
+        assert!(has_codex_model_catalog_specs(&settings));
         let catalog =
             build_codex_model_catalog_from_settings(&settings, 128_000, &template)
                 .expect("catalog");

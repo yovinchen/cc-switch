@@ -14251,6 +14251,9 @@ fn codex_config_imports_model_catalog_helpers_directly() {
     let codex_config_path = manifest_dir.join("src/codex_config.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let codex_config_source = fs::read_to_string(&codex_config_path).expect("read codex_config.rs");
+    let core_model_fetch_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/model_fetch.rs"))
+            .expect("read proxy-core model_fetch.rs");
     let model_catalog_reexport_blocks: Vec<&str> = adapter_source
         .split("pub(crate) use crate::proxy_core::api::model_catalog::{")
         .skip(1)
@@ -14295,6 +14298,14 @@ fn codex_config_imports_model_catalog_helpers_directly() {
             "proxy_core_adapter should not re-export pure model catalog helper `{marker}`"
         );
     }
+    assert!(
+        !adapter_source.contains("codex_catalog_adapter_builds_and_simplifies_model_catalog")
+            && core_model_fetch_source
+                .contains("fn codex_model_catalog_uses_provider_models_and_context()")
+            && core_model_fetch_source
+                .contains("fn simplify_codex_model_catalog_round_trips_user_input()"),
+        "Codex model catalog build/simplify fixtures should live in proxy-core model_fetch, not proxy_core_adapter"
+    );
 }
 
 #[test]
