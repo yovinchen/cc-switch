@@ -3574,6 +3574,9 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
         manifest_dir.join("src/proxy/host/cc_switch/claude_desktop_gateway_auth_source.rs");
     let auth_source =
         fs::read_to_string(&auth_source_path).expect("read claude_desktop_gateway_auth_source.rs");
+    let core_auth_path = manifest_dir.join("crates/proxy-core/src/claude_desktop_gateway_auth.rs");
+    let core_auth =
+        fs::read_to_string(&core_auth_path).expect("read proxy-core claude gateway auth source");
     assert!(
         !source.contains("CLAUDE_DESKTOP_GATEWAY_TOKEN_SETTING_KEY")
             && !source
@@ -3649,6 +3652,14 @@ fn proxy_core_adapter_delegates_claude_desktop_gateway_auth_source_to_host_modul
             "pub(crate) use crate::proxy_core::api::auth::validate_claude_desktop_gateway_bearer_header"
         ),
         "proxy_core_adapter should not re-export Claude Desktop gateway bearer validation helpers"
+    );
+    assert!(
+        !source.contains("claude_desktop_gateway_auth_adapter_projects_bearer_validation")
+            && core_auth.contains("fn gateway_bearer_header_reads_authorization_header()")
+            && core_auth.contains("validate_claude_desktop_gateway_bearer_header(")
+            && core_auth.contains("\"wrong-token\"")
+            && core_auth.contains("ClaudeDesktopGatewayAuthError::InvalidToken"),
+        "Claude Desktop gateway bearer validation fixtures should live in proxy-core auth, not proxy_core_adapter"
     );
 
     let forbidden_markers = [

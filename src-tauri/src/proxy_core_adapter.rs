@@ -144,8 +144,7 @@ mod tests {
     };
     use crate::proxy_core::api::auth::{
         claude_desktop_model_id_is_profile_safe, extract_gemini_base_url_from_settings,
-        validate_claude_desktop_gateway_bearer_header, ClaudeAuthKeySource,
-        ClaudeDesktopGatewayAuthError, ManagementAuthError, ProviderAuthInfo, ProviderAuthStrategy,
+        ClaudeAuthKeySource, ManagementAuthError, ProviderAuthInfo, ProviderAuthStrategy,
     };
     use crate::proxy_core::api::auth::{
         extract_claude_auth_key_from_settings, extract_gemini_api_key_from_settings,
@@ -685,28 +684,6 @@ mod tests {
         assert_eq!(
             missing,
             selected_provider_not_applied_message(AppType::ClaudeDesktop.as_str())
-        );
-    }
-
-    #[test]
-    fn claude_desktop_gateway_auth_adapter_projects_bearer_validation() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            http::header::AUTHORIZATION,
-            http::HeaderValue::from_static("Bearer gateway-token"),
-        );
-
-        validate_claude_desktop_gateway_bearer_header(&headers, "gateway-token")
-            .expect("valid bearer");
-
-        assert_eq!(
-            validate_claude_desktop_gateway_bearer_header(&HeaderMap::new(), "gateway-token")
-                .unwrap_err(),
-            ClaudeDesktopGatewayAuthError::MissingAuthorizationHeader
-        );
-        assert_eq!(
-            validate_claude_desktop_gateway_bearer_header(&headers, "wrong-token").unwrap_err(),
-            ClaudeDesktopGatewayAuthError::InvalidToken
         );
     }
 

@@ -1040,6 +1040,10 @@ mod tests {
                 .unwrap_err(),
             ClaudeDesktopGatewayAuthError::MissingAuthorizationHeader
         );
+        assert_eq!(
+            validate_claude_desktop_gateway_bearer_header(&headers, "wrong-token").unwrap_err(),
+            ClaudeDesktopGatewayAuthError::InvalidToken
+        );
     }
 
     #[test]
