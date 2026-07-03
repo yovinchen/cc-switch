@@ -13030,6 +13030,18 @@ fn provider_projection_delegates_claude_transform_gate_to_core() {
         "Claude transform gate should consume api_format facts from provider_projection"
     );
     assert!(
+        projection.contains("fn claude_api_format_projection_uses_core_transform_gate()")
+            && projection.contains("provider_claude_api_format(&openai_chat_provider)")
+            && projection.contains("provider_needs_claude_transform(&openai_chat_provider)")
+            && projection.contains("provider_claude_api_format(&codex_oauth_provider)")
+            && projection.contains("provider_needs_claude_transform(&codex_oauth_provider)"),
+        "provider_projection tests should own Claude api_format and transform-gate provider-fact fixtures"
+    );
+    assert!(
+        !source.contains("fn claude_api_format_adapter_projects_transform_gate()"),
+        "proxy_core_adapter should not carry Claude api_format/transform-gate provider-fact fixture"
+    );
+    assert!(
         !source.contains(
             "pub(crate) use crate::proxy_core::api::transforms::claude_api_format_needs_transform"
         ),

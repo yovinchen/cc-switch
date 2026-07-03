@@ -319,6 +319,17 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_base_url_requires_configured_base_url() {
+        let adapter = CodexAdapter::new();
+        let provider = create_provider(json!({}));
+
+        assert!(matches!(
+            adapter.extract_base_url(&provider),
+            Err(ProxyError::ConfigError(_))
+        ));
+    }
+
+    #[test]
     fn test_extract_auth_from_auth_field() {
         let adapter = CodexAdapter::new();
         let provider = create_provider(json!({

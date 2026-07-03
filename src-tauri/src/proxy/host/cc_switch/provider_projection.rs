@@ -753,6 +753,84 @@ mod tests {
     }
 
     #[test]
+    fn claude_api_format_projection_uses_core_transform_gate() {
+        let mut openai_chat_provider = Provider::with_id(
+            "claude-openai-chat".to_string(),
+            "Claude OpenAI Chat".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://api.example.com"
+                }
+            }),
+            None,
+        );
+        openai_chat_provider.meta = Some(ProviderMeta {
+            api_format: Some("openai_chat".to_string()),
+            ..Default::default()
+        });
+
+        assert_eq!(
+            provider_claude_api_format(&openai_chat_provider),
+            "openai_chat"
+        );
+        assert!(provider_needs_claude_transform(&openai_chat_provider));
+
+        let mut meta_precedence_provider = Provider::with_id(
+            "claude-meta-precedence".to_string(),
+            "Claude Meta Precedence".to_string(),
+            json!({
+                "api_format": "openai_chat",
+                "openrouter_compat_mode": true,
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://api.example.com"
+                }
+            }),
+            None,
+        );
+        meta_precedence_provider.meta = Some(ProviderMeta {
+            api_format: Some("anthropic".to_string()),
+            ..Default::default()
+        });
+
+        assert_eq!(
+            provider_claude_api_format(&meta_precedence_provider),
+            "anthropic"
+        );
+        assert!(!provider_needs_claude_transform(&meta_precedence_provider));
+
+        let mut codex_oauth_provider = Provider::with_id(
+            "codex-oauth".to_string(),
+            "Codex OAuth".to_string(),
+            json!({"api_format": "openai_chat"}),
+            None,
+        );
+        codex_oauth_provider.meta = Some(ProviderMeta {
+            provider_type: Some("codex_oauth".to_string()),
+            api_format: Some("anthropic".to_string()),
+            ..Default::default()
+        });
+
+        assert_eq!(
+            provider_claude_api_format(&codex_oauth_provider),
+            "openai_responses"
+        );
+        assert!(provider_needs_claude_transform(&codex_oauth_provider));
+
+        let unknown_format_provider = Provider::with_id(
+            "claude-unknown-format".to_string(),
+            "Claude Unknown Format".to_string(),
+            json!({"api_format": "unknown"}),
+            None,
+        );
+
+        assert_eq!(
+            provider_claude_api_format(&unknown_format_provider),
+            "anthropic"
+        );
+        assert!(!provider_needs_claude_transform(&unknown_format_provider));
+    }
+
+    #[test]
     fn claude_streaming_decision_preserves_codex_oauth_aggregation() {
         let mut codex_provider = Provider::with_id(
             "codex-oauth".to_string(),

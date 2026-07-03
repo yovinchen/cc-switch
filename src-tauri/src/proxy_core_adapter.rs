@@ -27,7 +27,6 @@ use crate::proxy::host::cc_switch::forwarder_request_source::forwarder_rectifier
 #[cfg(test)]
 mod tests {
     use crate::proxy::engine::routing::provider_router_app_error_from_provider_selection_failure;
-    use crate::proxy::host::cc_switch::provider_adapter_context::forwarder_provider_adapter_context_for_app;
     use crate::proxy::provider::{
         transform_claude_response_for_api_format, transform_claude_sse_for_api_format,
     };
@@ -1989,89 +1988,6 @@ wire_api = "chat"
             gemini_plan.url,
             "https://relay.example/custom/generate-content?alt=sse"
         );
-    }
-
-    #[test]
-    fn claude_api_format_adapter_projects_transform_gate() {
-        let mut provider =
-            Provider::with_id("claude".to_string(), "Claude".to_string(), json!({}), None);
-        provider.meta = Some(ProviderMeta {
-            api_format: Some("openai_chat".to_string()),
-            ..ProviderMeta::default()
-        });
-        let claude_adapter = crate::proxy::provider::ClaudeAdapter::new();
-        let codex_adapter = crate::proxy::provider::CodexAdapter::new();
-        assert_eq!(claude_adapter.name(), "Claude");
-        assert_eq!(codex_adapter.name(), "Codex");
-        let forwarder_claude_adapter = forwarder_provider_adapter_context_for_app(&AppType::Claude);
-        assert_eq!(forwarder_claude_adapter.facts().adapter_name, "Claude");
-        let forwarder_fallback_adapter =
-            forwarder_provider_adapter_context_for_app(&AppType::Hermes);
-        assert_eq!(forwarder_fallback_adapter.facts().adapter_name, "Codex");
-        let codex_provider = Provider::with_id(
-            "codex".to_string(),
-            "Codex".to_string(),
-            json!({"base_url": "https://relay.example/v1/"}),
-            None,
-        );
-        assert_eq!(
-            codex_adapter
-                .extract_base_url(&codex_provider)
-                .expect("codex base URL"),
-            "https://relay.example/v1"
-        );
-        let missing_base_url = codex_adapter
-            .extract_base_url(&provider)
-            .expect_err("missing codex base URL should fail");
-        assert!(matches!(
-            missing_base_url,
-            ProxyError::ConfigError(message) if message == "Codex Provider 缺少 base_url 配置"
-        ));
-        assert_eq!(claude_provider_api_format(&provider), "openai_chat");
-        assert_eq!(
-            crate::proxy_core::api::transforms::resolve_claude_forward_api_format(
-                claude_provider_api_format(&provider),
-                true,
-                Some("OpenAI")
-            ),
-            "openai_responses"
-        );
-        assert!(claude_adapter.needs_transform(&provider));
-        assert!(!codex_adapter.needs_transform(&provider));
-        let passthrough_adapter_body = json!({"model": "gpt-4.1"});
-        assert_eq!(
-            codex_adapter
-                .transform_request(passthrough_adapter_body.clone(), &provider)
-                .expect("codex passthrough transform"),
-            passthrough_adapter_body
-        );
-        let passthrough_body = json!({"model": "claude-3-5-sonnet"});
-        assert_eq!(
-            crate::proxy::provider::transform_claude_request_for_api_format(
-                passthrough_body.clone(),
-                &provider,
-                "anthropic",
-                None,
-                None
-            )
-            .expect("anthropic passthrough"),
-            passthrough_body
-        );
-        assert!(
-            !crate::proxy_core::api::transforms::claude_api_format_needs_transform("anthropic")
-        );
-        assert!(
-            crate::proxy_core::api::transforms::claude_api_format_needs_transform("openai_chat")
-        );
-        assert!(
-            crate::proxy_core::api::transforms::claude_api_format_needs_transform(
-                "openai_responses"
-            )
-        );
-        assert!(
-            crate::proxy_core::api::transforms::claude_api_format_needs_transform("gemini_native")
-        );
-        assert!(!crate::proxy_core::api::transforms::claude_api_format_needs_transform("unknown"));
     }
 
     #[test]
