@@ -2768,6 +2768,25 @@ fn proxy_core_public_prelude_smoke_uses_public_prelude_only() {
         source.contains(required_import),
         "public prelude smoke should enter proxy-core through `{required_import}`"
     );
+    for marker in [
+        "external_host_can_use_managed_account_token_cache_contracts_from_prelude",
+        "CodexOAuthResolution",
+        "ManagedAccountAuthRuntime",
+        "ManagedAccountTokenCacheKey",
+        "ManagedAccountTokenFailureFallbackDecision",
+        "ManagedAccountTokenRefreshFailureInput",
+        "ManagedAccountTokenRefreshFailureKind",
+        "ManagedAccountTokenRefreshFailureResolution",
+        "ManagedAccountTokenRefreshSuccess",
+        "ManagedAccountTokenRefreshSuccessInput",
+        "ManagedAccountTokenSnapshot",
+        "ManagedAccountTokenSnapshotStore",
+    ] {
+        assert!(
+            source.contains(marker),
+            "public prelude smoke should cover managed-account token cache contract `{marker}`"
+        );
+    }
 
     let mut violations = Vec::new();
     for (line_index, line) in source.lines().enumerate() {

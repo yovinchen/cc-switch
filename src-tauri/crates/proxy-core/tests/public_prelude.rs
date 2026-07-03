@@ -990,6 +990,96 @@ fn external_host_can_resolve_auth_provider_headers_from_prelude() {
 }
 
 #[test]
+fn external_host_can_use_managed_account_token_cache_contracts_from_prelude() {
+    let now_ms = 1_771_000_000_000;
+    let key = ManagedAccountTokenCacheKey::new(
+        ManagedAccountAuthRuntime::GitHubCopilot,
+        Some("acct-a"),
+    );
+    let mut store = ManagedAccountTokenSnapshotStore::new();
+
+    let success: ManagedAccountTokenRefreshSuccess = store.record_refresh_success(
+        key.clone(),
+        ManagedAccountTokenRefreshSuccessInput::copilot("cached-token".to_string(), Some("acct-a")),
+        now_ms - 1_500,
+    );
+    assert_eq!(success.auth.api_key, "cached-token");
+    assert_eq!(success.auth.strategy, ProviderAuthStrategy::GitHubCopilot);
+    assert!(
+        success.log_message.contains("acct-a"),
+        "success message should include selected account label"
+    );
+
+    let retryable = store.resolve_refresh_failure(
+        &key,
+        now_ms,
+        ManagedAccountTokenRefreshFailureInput::new(
+            ManagedAccountTokenRefreshFailureKind::Retryable,
+            "network timeout",
+        ),
+    );
+    match retryable {
+        ManagedAccountTokenRefreshFailureResolution::UseCachedToken {
+            snapshot,
+            log_message,
+        } => {
+            let snapshot: ManagedAccountTokenSnapshot = snapshot;
+            assert_eq!(snapshot.auth.api_key, "cached-token");
+            assert_eq!(snapshot.cached_at_ms, now_ms - 1_500);
+            assert!(log_message.contains("account=acct-a"));
+            assert!(log_message.contains("ageMs=1500"));
+        }
+        ManagedAccountTokenRefreshFailureResolution::Reject { .. } => {
+            panic!("retryable refresh failure should use recent cached token")
+        }
+    }
+
+    let terminal = store.resolve_refresh_failure(
+        &key,
+        now_ms,
+        ManagedAccountTokenRefreshFailureInput::new(
+            ManagedAccountTokenRefreshFailureKind::Terminal,
+            "revoked",
+        ),
+    );
+    match terminal {
+        ManagedAccountTokenRefreshFailureResolution::Reject {
+            log_message,
+            error_message,
+        } => {
+            assert!(log_message.contains("revoked"));
+            assert_eq!(error_message, "GitHub Copilot 认证失败: revoked");
+        }
+        ManagedAccountTokenRefreshFailureResolution::UseCachedToken { .. } => {
+            panic!("terminal refresh failure should reject instead of using cache")
+        }
+    }
+
+    let codex_key =
+        ManagedAccountTokenCacheKey::new(ManagedAccountAuthRuntime::CodexOAuth, Some("acct-b"));
+    let codex_success = store.record_refresh_success(
+        codex_key,
+        ManagedAccountTokenRefreshSuccessInput::codex_oauth(
+            "codex-token".to_string(),
+            Some("acct-b".to_string()),
+        ),
+        now_ms,
+    );
+    let codex_resolution = CodexOAuthResolution::from_refresh_success(codex_success);
+    assert_eq!(codex_resolution.auth.strategy, ProviderAuthStrategy::CodexOAuth);
+    assert_eq!(
+        codex_resolution.codex_oauth_account_id.as_deref(),
+        Some("acct-b")
+    );
+
+    let decision = ManagedAccountTokenFailureFallbackDecision {
+        should_use_cached_token: true,
+        cached_token_age_ms: Some(1_500),
+    };
+    assert_eq!(decision.cached_token_age_ms, Some(1_500));
+}
+
+#[test]
 fn external_host_can_use_gateway_model_contracts_from_prelude() {
     let services = Arc::new(ExternalRelayServices::default());
     let engine = ProxyEngine::new(services);

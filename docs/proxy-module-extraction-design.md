@@ -2738,6 +2738,8 @@ pub trait AuthProvider: Send + Sync {
 
 provider adapter 仍负责 CC Switch 默认 fallback 的 provider settings 到 header 转换，但 token 刷新和宿主账号状态读取不在 provider adapter 内完成。channel 可以指向同一个 provider 的不同 key/auth profile，必须避免把一个 channel 的 key 泄漏到另一个 channel。当前 managed-account token 短窗口回退、channel-key weighted/random/round-robin 与 key failure cooldown 都已收敛到 core policy + host source；外部中转 AuthProvider 显式 header、示例 runtime smoke、真实 HTTP listener/upstream 转发 smoke、同 provider 多 channel 失败重试 smoke 和 wildcard key cooldown smoke 已补齐；下一步应继续收紧 managed-account token cache/refresh 语义，直到 forwarder 不再需要理解 CC Switch 的 provider settings 鉴权细节。
 
+本轮继续把 managed-account token cache 的结构化 contract 暴露到 `proxy-core::api::prelude`：外部中转宿主只经 public prelude 即可构造 `ManagedAccountTokenCacheKey`、refresh success/failure input、`ManagedAccountTokenSnapshotStore` 与 fallback/reject 结果，并复用 core 的最近成功 token 回退语义，不需要导入内部模块或复制 CC Switch 默认 runtime source 的 cache 规则。
+
 本轮继续把 channel-key runtime candidate 的启用状态和确定性选择规则收进 `proxy-core::ports`：运行时候选保留 `key_value` 供认证注入，选择规则按 enabled 状态、`priority DESC`、`weight DESC`、`key_ref ASC` 收敛；DAO 只读取指定 `channel_id + key_ref` 候选并交给 adapter 投影到 core runtime candidate。后续扩展更多 key runtime 策略时，应复用同一候选选择入口，而不是让 DAO/forwarder 重新理解 key 状态和排序策略。
 
 本轮还把 channel-key lookup 的闭包形态推进为 `proxy-core::ports::ChannelKeyRuntimeSource`：`apply_channel_auth_profile_providers_from_source` 只消费 core source contract，CC Switch 默认实现 `CcSwitchChannelKeyRuntimeSource` 负责 DB 查询和 enabled candidate 选择，并返回完整 `ChannelKeyRuntimeCandidate`；认证应用循环只在最后 provider-auth 投影时读取 `key_value`，因此 `priority`、`weight`、`status`、`last_failure_at` 等运行时元数据不会在 source 边界被过早丢弃。后续外部中转宿主可以替换这个 source 来接 Vault/KMS/轮询 key 池或账号 runtime，而不需要改 auth profile 应用循环。

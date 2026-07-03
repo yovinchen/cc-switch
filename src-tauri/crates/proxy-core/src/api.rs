@@ -371,6 +371,12 @@ pub mod prelude {
     pub use serde_json::{from_str, json, Value};
 
     pub use super::auth::{
+        CodexOAuthResolution, ManagedAccountAuthError, ManagedAccountAuthResolution,
+        ManagedAccountAuthRuntime, ManagedAccountRuntimeSource, ManagedAccountTokenCacheKey,
+        ManagedAccountTokenFailureFallbackDecision, ManagedAccountTokenRefreshFailureInput,
+        ManagedAccountTokenRefreshFailureKind, ManagedAccountTokenRefreshFailureResolution,
+        ManagedAccountTokenRefreshSuccess, ManagedAccountTokenRefreshSuccessInput,
+        ManagedAccountTokenSnapshot, ManagedAccountTokenSnapshotStore,
         ClaudeDesktopModelListItem, ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
         ProviderAuthInfo, ProviderAuthStrategy,
     };
