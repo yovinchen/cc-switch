@@ -1,11 +1,30 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const FORBIDDEN_DEPENDENCIES: &[&str] = &["tauri", "rusqlite", "sqlx"];
+const FORBIDDEN_DEPENDENCIES: &[&str] = &[
+    "tauri",
+    "tauri-build",
+    "rusqlite",
+    "sqlx",
+    "diesel",
+    "sea-orm",
+];
 
 const FORBIDDEN_SOURCE_MARKERS: &[&str] = &[
+    "crate::app_config",
+    "crate :: app_config",
+    "crate::claude_desktop_config",
+    "crate :: claude_desktop_config",
+    "crate::codex_config",
+    "crate :: codex_config",
+    "crate::commands",
+    "crate :: commands",
     "crate::database",
     "crate :: database",
+    "crate::gemini_config",
+    "crate :: gemini_config",
+    "crate::provider::",
+    "crate :: provider ::",
     "crate::settings",
     "crate :: settings",
     "crate::services",
