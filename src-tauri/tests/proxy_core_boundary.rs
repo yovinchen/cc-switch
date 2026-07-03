@@ -12676,6 +12676,9 @@ fn provider_projection_delegates_claude_transform_streaming_decision_to_core() {
     let projection_path = manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
     let projection =
         fs::read_to_string(&projection_path).expect("read host provider_projection.rs");
+    let response_transform =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/response_transform.rs"))
+            .expect("read proxy-core response_transform.rs");
     let claude_decision = function_slice(
         &projection,
         "pub(crate) fn provider_claude_transform_streaming_decision",
@@ -12694,6 +12697,18 @@ fn provider_projection_delegates_claude_transform_streaming_decision_to_core() {
         !source.contains("pub(crate) fn codex_chat_transform_streaming_decision")
             && !source.contains("core_codex_chat_transform_streaming_decision"),
         "Codex Chat transform streaming decision should not keep a one-hop proxy_core_adapter facade"
+    );
+    assert!(
+        response_transform
+            .contains("fn codex_chat_transform_streaming_decision_handles_sse_and_fallback()")
+            && response_transform
+                .contains("codex_chat_transform_streaming_decision(false, &sse_headers)")
+            && response_transform.contains("Some(UpstreamSseAggregationKind::ChatCompletions)"),
+        "proxy-core response_transform tests should own Codex Chat streaming fallback fixture"
+    );
+    assert!(
+        !source.contains("fn codex_chat_streaming_decision_core_preserves_sse_fallback()"),
+        "proxy_core_adapter should not carry Codex Chat streaming decision fixture"
     );
     assert!(
         !source

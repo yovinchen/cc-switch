@@ -2407,44 +2407,6 @@ wire_api = "chat"
     }
 
     #[test]
-    fn codex_chat_streaming_decision_core_preserves_sse_fallback() {
-        let mut sse_headers = HeaderMap::new();
-        sse_headers.insert(
-            http::header::CONTENT_TYPE,
-            http::HeaderValue::from_static("text/event-stream"),
-        );
-
-        let header_streaming_decision =
-            crate::proxy_core::api::transforms::codex_chat_transform_streaming_decision(
-                false,
-                &sse_headers,
-            );
-        assert!(header_streaming_decision.use_streaming);
-        assert!(header_streaming_decision.response_sse_aggregation.is_none());
-
-        let requested_streaming_decision =
-            crate::proxy_core::api::transforms::codex_chat_transform_streaming_decision(
-                true,
-                &HeaderMap::new(),
-            );
-        assert!(requested_streaming_decision.use_streaming);
-        assert!(requested_streaming_decision
-            .response_sse_aggregation
-            .is_none());
-
-        let non_stream_decision =
-            crate::proxy_core::api::transforms::codex_chat_transform_streaming_decision(
-                false,
-                &HeaderMap::new(),
-            );
-        assert!(!non_stream_decision.use_streaming);
-        assert!(matches!(
-            non_stream_decision.response_sse_aggregation,
-            Some(UpstreamSseAggregationKind::ChatCompletions)
-        ));
-    }
-
-    #[test]
     fn upstream_request_adapter_projects_headers_and_body_serialization() {
         let mut inbound_headers = HeaderMap::new();
         inbound_headers.insert(http::header::HOST, http::HeaderValue::from_static("local"));
