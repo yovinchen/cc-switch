@@ -29,10 +29,6 @@ pub(crate) use codex::{
     codex_provider_apply_chat_upstream_model, codex_provider_chat_reasoning_options,
     codex_provider_should_convert_responses_to_chat, codex_provider_upstream_model,
 };
-#[cfg(test)]
-pub(crate) use codex::{
-    codex_provider_chat_reasoning_profile, codex_provider_uses_chat_completions,
-};
 pub use gemini::GeminiAdapter;
 
 /// 根据 AppType 获取对应的适配器

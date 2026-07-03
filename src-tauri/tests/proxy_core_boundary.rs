@@ -13246,6 +13246,22 @@ fn proxy_core_adapter_delegates_codex_responses_to_chat_gate_to_core() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let provider_path = manifest_dir.join("src/proxy/provider/codex.rs");
     let provider_source = fs::read_to_string(&provider_path).expect("read proxy/provider/codex.rs");
+    let codex_config_source =
+        fs::read_to_string(manifest_dir.join("src/codex_config.rs")).expect("read codex_config.rs");
+    let core_ports_source = fs::read_to_string(manifest_dir.join("crates/proxy-core/src/ports.rs"))
+        .expect("read proxy-core ports.rs");
+    let core_request_headers_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_headers.rs"))
+            .expect("read proxy-core request_headers.rs");
+    let core_request_body_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_body.rs"))
+            .expect("read proxy-core request_body.rs");
+    let core_request_url_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/request_url.rs"))
+            .expect("read proxy-core request_url.rs");
+    let core_response_transform_source =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/response_transform.rs"))
+            .expect("read proxy-core response_transform.rs");
     let gate_slice = function_slice(
         &provider_source,
         "fn with_codex_provider_chat_completions_facts",
@@ -13320,6 +13336,48 @@ fn proxy_core_adapter_delegates_codex_responses_to_chat_gate_to_core() {
             "proxy_core_adapter must not own Codex provider chat policy helper `{marker}`"
         );
     }
+    assert!(
+        !adapter_source
+            .contains("fn codex_provider_adapter_projects_chat_policy_headers_and_reasoning"),
+        "proxy_core_adapter should not retain the mixed Codex provider fixture"
+    );
+    assert!(
+        core_request_url_source.contains("fn resolves_codex_chat_completions_provider_priority")
+            && core_request_headers_source.contains("fn builds_codex_bearer_auth_headers")
+            && core_request_body_source
+                .contains("fn resolves_codex_upstream_model_preferring_settings_model")
+            && core_request_body_source
+                .contains("fn extracts_codex_catalog_model_ids_from_settings")
+            && core_request_body_source
+                .contains("fn applies_codex_chat_upstream_model_when_required"),
+        "proxy-core request URL/header/body modules should own pure Codex transport fixtures"
+    );
+    assert!(
+        core_ports_source.contains("fn codex_live_settings_shape_helpers_preserve_contracts")
+            && core_ports_source
+                .contains("fn provider_settings_validation_dispatches_app_contracts"),
+        "proxy-core ports.rs should own Codex live/settings validation fixture coverage"
+    );
+    assert!(
+        codex_config_source
+            .contains("fn extract_codex_api_key_prefers_auth_and_falls_back_to_config_token"),
+        "codex_config.rs should own Codex API key extraction fallback coverage"
+    );
+    assert!(
+        provider_source
+            .contains("fn test_codex_provider_uses_chat_completions_from_active_wire_api")
+            && provider_source
+                .contains("fn test_apply_codex_chat_upstream_model_uses_provider_config_model")
+            && provider_source
+                .contains("fn test_resolve_codex_chat_reasoning_infers_deepseek_effort_support")
+            && provider_source
+                .contains("fn test_resolve_codex_chat_reasoning_explicit_meta_overrides_inference")
+            && core_response_transform_source
+                .contains("fn codex_chat_reasoning_profile_normalizes_effort_as_thinking_support")
+            && core_response_transform_source
+                .contains("fn codex_chat_reasoning_profile_infers_deepseek_effort_support"),
+        "Codex provider and core response_transform owners should carry chat/reasoning fixtures"
+    );
 
     let forbidden_markers = [
         "resolve_codex_provider_uses_chat_completions(",

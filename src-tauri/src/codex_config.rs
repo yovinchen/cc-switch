@@ -1250,6 +1250,27 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn extract_codex_api_key_prefers_auth_and_falls_back_to_config_token() {
+        assert_eq!(
+            extract_codex_api_key(
+                Some(&json!({"OPENAI_API_KEY": " sk-auth "})),
+                Some(r#"experimental_bearer_token = "config-token""#),
+            )
+            .as_deref(),
+            Some("sk-auth")
+        );
+        assert_eq!(
+            extract_codex_api_key(
+                None,
+                Some(r#"experimental_bearer_token = " config-token ""#)
+            )
+            .as_deref(),
+            Some("config-token")
+        );
+        assert!(extract_codex_api_key(Some(&json!({"OPENAI_API_KEY": " "})), Some("")).is_none());
+    }
+
+    #[test]
     fn unified_session_bucket_injects_for_empty_official_config() {
         let injected = inject_codex_unified_session_bucket("").expect("inject");
         let doc: toml::Table = toml::from_str(&injected).expect("parse injected config");
