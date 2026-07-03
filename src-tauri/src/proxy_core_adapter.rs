@@ -65,7 +65,6 @@ mod tests {
         provider_claude_auth_key, provider_claude_base_url, provider_claude_kind,
         provider_needs_claude_transform,
     };
-    use crate::proxy::provider::ProviderAdapter;
     use crate::proxy::provider::{
         codex_provider_apply_chat_upstream_model, codex_provider_chat_reasoning_options,
         codex_provider_chat_reasoning_profile, codex_provider_should_convert_responses_to_chat,
@@ -76,7 +75,6 @@ mod tests {
     };
     use crate::proxy_core::api::auth::{
         extract_gemini_base_url_from_settings, ClaudeAuthKeySource, ManagementAuthError,
-        ProviderAuthInfo, ProviderAuthStrategy,
     };
     use crate::proxy_core::api::config::ResponseTimeoutConfig;
     use crate::proxy_core::api::domain::{
@@ -1485,52 +1483,6 @@ wire_api = "chat"
         .collect::<String>();
         assert!(gemini_output.contains("event: message_start"));
         assert!(gemini_output.contains("Gemini hi"));
-    }
-
-    #[test]
-    fn provider_auth_adapter_projects_strategy_contracts() {
-        let bearer =
-            ProviderAuthInfo::new("provider-token".to_string(), ProviderAuthStrategy::Bearer);
-        assert_eq!(bearer.strategy, ProviderAuthStrategy::Bearer);
-        assert_eq!(bearer.masked_key(), "prov...oken");
-        assert!(bearer.access_token.is_none());
-
-        let oauth = ProviderAuthInfo::with_access_token(
-            "refresh-token".to_string(),
-            "ya29.access-token-12345".to_string(),
-        );
-        assert_eq!(oauth.strategy, ProviderAuthStrategy::GoogleOAuth);
-        assert_eq!(oauth.masked_access_token(), Some("ya29...2345".to_string()));
-
-        let codex_adapter = crate::proxy::provider::CodexAdapter::new();
-        let codex_provider = Provider::with_id(
-            "codex".to_string(),
-            "Codex".to_string(),
-            json!({"apiKey": "sk-forwarder-auth"}),
-            None,
-        );
-        let forwarder_auth = codex_adapter
-            .extract_auth(&codex_provider)
-            .expect("codex forwarder auth info");
-        assert_eq!(forwarder_auth.api_key, "sk-forwarder-auth");
-        assert_eq!(forwarder_auth.strategy, ProviderAuthStrategy::Bearer);
-        let forwarder_auth_headers = codex_adapter
-            .get_auth_headers(&forwarder_auth)
-            .expect("codex forwarder auth headers");
-        assert_eq!(forwarder_auth_headers.len(), 1);
-        assert_eq!(forwarder_auth_headers[0].0, http::header::AUTHORIZATION);
-        assert_eq!(
-            forwarder_auth_headers[0].1.to_str().expect("header value"),
-            "Bearer sk-forwarder-auth"
-        );
-
-        let missing_auth = Provider::with_id(
-            "missing".to_string(),
-            "Missing".to_string(),
-            json!({}),
-            None,
-        );
-        assert!(codex_adapter.extract_auth(&missing_auth).is_none());
     }
 
     #[test]

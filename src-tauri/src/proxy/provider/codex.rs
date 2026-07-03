@@ -376,6 +376,26 @@ experimental_bearer_token = "sk-config-key"
     }
 
     #[test]
+    fn test_extract_auth_from_legacy_api_key_field() {
+        let adapter = CodexAdapter::new();
+        let provider = create_provider(json!({
+            "apiKey": "sk-forwarder-auth"
+        }));
+
+        let auth = adapter.extract_auth(&provider).unwrap();
+        assert_eq!(auth.api_key, "sk-forwarder-auth");
+        assert_eq!(auth.strategy, ProviderAuthStrategy::Bearer);
+    }
+
+    #[test]
+    fn test_extract_auth_returns_none_when_missing() {
+        let adapter = CodexAdapter::new();
+        let provider = create_provider(json!({}));
+
+        assert!(adapter.extract_auth(&provider).is_none());
+    }
+
+    #[test]
     fn test_build_url() {
         let adapter = CodexAdapter::new();
         let url = adapter.build_url("https://api.openai.com/v1", "/responses");

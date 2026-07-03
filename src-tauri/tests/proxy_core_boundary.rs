@@ -7253,6 +7253,11 @@ fn production_codex_provider_adapter_delegates_auth_info_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider/codex.rs");
     let source = fs::read_to_string(&path).expect("read codex provider adapter source");
+    let adapter_source = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
+    let core_provider_auth =
+        fs::read_to_string(manifest_dir.join("crates/proxy-core/src/provider_auth.rs"))
+            .expect("read provider_auth.rs");
     let extract_auth = function_slice(
         &source,
         "    fn extract_auth(&self, provider: &Provider)",
@@ -7275,8 +7280,25 @@ fn production_codex_provider_adapter_delegates_auth_info_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "Codex provider adapter must delegate auth info construction to proxy_core_adapter helpers:\n{}",
+        "Codex provider adapter must delegate auth info construction to its owning auth helper:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        core_provider_auth.contains("fn provider_auth_info_masks_key_with_shared_secret_policy()")
+            && core_provider_auth.contains("fn provider_auth_info_new_has_no_access_token()")
+            && core_provider_auth
+                .contains("fn provider_auth_info_with_access_token_selects_google_oauth()"),
+        "proxy-core provider_auth tests should own ProviderAuthInfo strategy/masking fixtures"
+    );
+    assert!(
+        source.contains("fn test_extract_auth_from_legacy_api_key_field()")
+            && source.contains("fn test_extract_auth_returns_none_when_missing()")
+            && source.contains("fn test_get_auth_headers_emits_bearer_authorization()"),
+        "Codex provider tests should own Codex auth extraction/header fixtures"
+    );
+    assert!(
+        !adapter_source.contains("fn provider_auth_adapter_projects_strategy_contracts()"),
+        "proxy_core_adapter should not carry provider auth strategy/header fixture"
     );
 }
 
