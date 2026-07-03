@@ -191,15 +191,19 @@ pub(crate) fn proxy_result_from_forward_parts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::database::Database;
+    use crate::proxy::host::cc_switch::channel_key_runtime_source::channel_key_runtime_source_from_database;
     use crate::proxy_core::api::domain::{
         AppKind, ChannelOverrides, ModelCapabilities, ModelRoute, ProviderKind, ProviderSpec,
-        RetryPolicy, UpstreamEndpoint,
+        ProxyBody, RetryPolicy, UpstreamEndpoint,
     };
+    use crate::proxy_core::api::errors::ProxyCoreError;
     use crate::proxy_core::api::routing::{
         ChannelSpec, ChannelStatus, InterfaceKind, ResolvedChannelAttempt, RouteSelection,
         DEFAULT_ROUTE_GROUP,
     };
-    use http::StatusCode;
+    use http::{Method, StatusCode};
+    use std::sync::Arc;
 
     fn provider_spec(id: &str) -> ProviderSpec {
         ProviderSpec {
@@ -264,6 +268,34 @@ mod tests {
             selections: Vec::new(),
             attempts: Vec::new(),
         }
+    }
+
+    fn proxy_request() -> ProxyRequest {
+        let mut request = ProxyRequest::new(
+            AppKind::Claude,
+            Method::POST,
+            "/v1/messages",
+            InterfaceKind::AnthropicMessages,
+            ProxyBody::Json(json!({ "model": "sonnet", "messages": [] })),
+        );
+        request.requested_model = Some("sonnet".to_string());
+        request
+    }
+
+    #[tokio::test]
+    async fn forward_pipeline_without_runtime_reports_unsupported() {
+        let pipeline: CcSwitchForwardPipeline<
+            crate::proxy::host::cc_switch::proxy_runtime::CcSwitchProxyRuntime,
+        > = CcSwitchForwardPipeline::without_runtime(channel_key_runtime_source_from_database(
+            Arc::new(Database::memory().expect("memory db")),
+        ));
+
+        let err = pipeline
+            .forward(proxy_request(), route_plan("provider-a", "channel-a"))
+            .await
+            .expect_err("plain services do not own server runtime");
+
+        assert!(matches!(err, ProxyCoreError::Unsupported(_)));
     }
 
     #[test]

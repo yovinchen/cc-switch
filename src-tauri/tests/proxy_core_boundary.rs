@@ -18696,10 +18696,14 @@ fn proxy_core_adapter_forward_pipeline_injects_channel_key_runtime_source() {
         pipeline_impl.contains("fn proxy_response_bridge_preserves_buffered_body()")
             && pipeline_impl
                 .contains("fn forward_result_bridge_projects_metadata_and_successful_channel()")
+            && pipeline_impl
+                .contains("async fn forward_pipeline_without_runtime_reports_unsupported()")
             && pipeline_impl.contains("async fn proxy_response_bridge_wraps_streamed_body()")
             && !host_harness_source.contains("fn proxy_response_bridge_preserves_buffered_body")
             && !host_harness_source
                 .contains("fn forward_result_bridge_projects_metadata_and_successful_channel")
+            && !host_harness_source
+                .contains("async fn forward_pipeline_without_runtime_reports_unsupported")
             && !host_harness_source.contains("fn proxy_response_bridge_wraps_streamed_body"),
         "forward bridge fixtures should live beside host forward_pipeline, not proxy_core_host"
     );

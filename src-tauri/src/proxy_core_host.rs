@@ -225,20 +225,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn forward_pipeline_without_runtime_reports_unsupported() {
-        let db = Arc::new(Database::memory().expect("memory db"));
-        let services = CcSwitchProxyServices::new(db);
-
-        let err = services
-            .forward_pipeline()
-            .forward(proxy_request(), route_plan("provider-a", "channel-a"))
-            .await
-            .expect_err("plain services do not own server runtime");
-
-        assert!(matches!(err, ProxyCoreError::Unsupported(_)));
-    }
-
-    #[tokio::test]
     async fn runtime_forward_pipeline_requires_matching_host_provider() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let services = CcSwitchProxyServices::with_runtime(runtime(db));
