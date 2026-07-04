@@ -5,14 +5,20 @@
 use super::context::RequestContext;
 #[cfg(test)]
 use super::response_usage::{
-    forward_error_usage_record_from_response_context, record_usage_with_proxy_services,
-    ForwardErrorUsageContext,
+    forward_error_usage_record_from_response_context,
+    non_streaming_response_usage_record_from_response_context, record_success_usage_for_test,
+    response_usage_provider_facts, transformed_response_usage_record_from_response_context,
+    ForwardErrorUsageContext, NonStreamingResponseUsageContext, TransformedResponseUsageContext,
 };
 use super::response_usage::{
-    record_forward_core_error_usage, response_usage_provider_facts,
-    response_usage_provider_facts_from_optional, spawn_usage_record_with_proxy_services,
-    spawn_usage_record_with_proxy_services_context, usage_logging_enabled_from_state,
-    ResponseUsageProviderFacts,
+    record_forward_core_error_usage, record_non_streaming_response_usage_from_context,
+    record_transformed_response_usage_from_context, response_usage_provider_facts_from_optional,
+    spawn_usage_record_with_proxy_services, spawn_usage_record_with_proxy_services_context,
+    streaming_response_usage_record_from_response_context,
+    transformed_streaming_response_usage_record_from_response_context,
+    usage_logging_enabled_from_state, NonStreamingUsageRecordContext,
+    StreamingResponseUsageContext, TransformedResponseUsageRecordContext,
+    TransformedStreamingResponseUsageContext,
 };
 use crate::provider::Provider;
 use crate::proxy::codex_chat_history::{
@@ -44,6 +50,7 @@ use crate::proxy::{
 use crate::proxy_core::api::config::StreamingTimeoutConfig;
 #[cfg(test)]
 use crate::proxy_core::api::domain::{AppKind, ProviderKind};
+#[cfg(test)]
 use crate::proxy_core::api::errors::selected_provider_not_applied_message;
 use crate::proxy_core::api::ports::ProxyServices;
 use crate::proxy_core::api::transforms::{
@@ -66,16 +73,12 @@ use crate::proxy_core::api::transport::{
 };
 #[cfg(test)]
 use crate::proxy_core::api::usage::usage_selected_provider_missing_log_message;
+#[cfg(test)]
+use crate::proxy_core::api::usage::TokenUsage;
 use crate::proxy_core::api::usage::{
-    non_streaming_response_usage_record_from_body_with_request_id_fallback,
-    streaming_response_usage_record_with_optional_outbound_model,
-    transformed_response_usage_record_with_request_id_fallback,
-    transformed_streaming_response_usage_record_with_request_id_fallback,
-    usage_record_with_route_context, NonStreamingResponseUsageRecord, StreamUsageEventFilter,
-    StreamingResponseUsageRecord, TokenUsage, TransformedResponseUsageFormat, UsageParserConfig,
-    UsageRecord, UsageRecordFailureLogContext, UsageRouteContext,
-    UsageSelectedProviderMissingPhase, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
-    GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    StreamUsageEventFilter, TransformedResponseUsageFormat, UsageParserConfig,
+    UsageRecordFailureLogContext, UsageRouteContext, UsageSelectedProviderMissingPhase,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
@@ -755,72 +758,6 @@ pub(crate) async fn codex_transformed_upstream_json_response_to_axum_response(
     codex_transformed_json_response_to_axum_response(status, response_headers, responses_response)
 }
 
-pub(crate) struct StreamingResponseUsageContext<'a> {
-    pub(crate) events: &'a [Value],
-    pub(crate) stream_parser: fn(&[Value]) -> Option<TokenUsage>,
-    pub(crate) model_extractor: fn(&[Value], &str) -> String,
-    pub(crate) provider_facts: &'a ResponseUsageProviderFacts,
-    pub(crate) request_model: &'a str,
-    pub(crate) outbound_model: Option<&'a str>,
-    pub(crate) route_context: Option<&'a UsageRouteContext>,
-    pub(crate) latency_ms: u64,
-    pub(crate) first_token_ms: Option<u64>,
-    pub(crate) status_code: u16,
-    pub(crate) session_id: &'a str,
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn streaming_response_usage_record_from_provider_facts(
-    events: &[Value],
-    stream_parser: fn(&[Value]) -> Option<TokenUsage>,
-    model_extractor: fn(&[Value], &str) -> String,
-    provider_facts: &ResponseUsageProviderFacts,
-    request_model: &str,
-    outbound_model: Option<&str>,
-    latency_ms: u64,
-    first_token_ms: Option<u64>,
-    status_code: u16,
-    session_id: Option<String>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> StreamingResponseUsageRecord {
-    streaming_response_usage_record_with_optional_outbound_model(
-        events,
-        stream_parser,
-        model_extractor,
-        &provider_facts.provider_id,
-        provider_facts.provider_kind.clone(),
-        provider_facts.app.clone(),
-        request_model,
-        outbound_model,
-        latency_ms,
-        first_token_ms,
-        status_code,
-        session_id,
-        request_id_fallback,
-    )
-}
-
-pub(crate) fn streaming_response_usage_record_from_response_context(
-    context: StreamingResponseUsageContext<'_>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> StreamingResponseUsageRecord {
-    let mut output = streaming_response_usage_record_from_provider_facts(
-        context.events,
-        context.stream_parser,
-        context.model_extractor,
-        context.provider_facts,
-        context.request_model,
-        context.outbound_model,
-        context.latency_ms,
-        context.first_token_ms,
-        context.status_code,
-        Some(context.session_id.to_string()),
-        request_id_fallback,
-    );
-    output.record = usage_record_with_route_context(output.record, context.route_context);
-    output
-}
-
 pub(crate) struct StreamingUsageCollectorContext<'a, S> {
     pub(crate) usage_logging_enabled: bool,
     pub(crate) services: Arc<S>,
@@ -903,313 +840,6 @@ where
             spawn_usage_record_with_proxy_services(services.clone(), output.record);
         },
     ))
-}
-
-pub(crate) struct NonStreamingResponseUsageContext<'a> {
-    pub(crate) body: &'a [u8],
-    pub(crate) response_parser: fn(&Value) -> Option<TokenUsage>,
-    pub(crate) provider: Option<&'a Provider>,
-    pub(crate) app_type: &'a str,
-    pub(crate) request_model: &'a str,
-    pub(crate) outbound_model: Option<&'a str>,
-    pub(crate) route_context: Option<&'a UsageRouteContext>,
-    pub(crate) latency_ms: u64,
-    pub(crate) status_code: u16,
-    pub(crate) session_id: &'a str,
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(
-    body: &[u8],
-    response_parser: fn(&Value) -> Option<TokenUsage>,
-    provider: &Provider,
-    app_type: &str,
-    request_model: &str,
-    outbound_model: Option<&str>,
-    latency_ms: u64,
-    status_code: u16,
-    session_id: Option<String>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> NonStreamingResponseUsageRecord {
-    let provider_facts = response_usage_provider_facts(provider, app_type);
-    non_streaming_response_usage_record_from_body_with_request_id_fallback(
-        body,
-        response_parser,
-        &provider_facts.provider_id,
-        provider_facts.provider_kind,
-        provider_facts.app,
-        request_model,
-        outbound_model,
-        latency_ms,
-        status_code,
-        session_id,
-        request_id_fallback,
-    )
-}
-
-pub(crate) fn non_streaming_response_usage_record_from_response_context(
-    context: NonStreamingResponseUsageContext<'_>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> Result<NonStreamingResponseUsageRecord, String> {
-    let provider = context
-        .provider
-        .ok_or_else(|| selected_provider_not_applied_message(context.app_type))?;
-    let mut output =
-        non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(
-            context.body,
-            context.response_parser,
-            provider,
-            context.app_type,
-            context.request_model,
-            context.outbound_model,
-            context.latency_ms,
-            context.status_code,
-            Some(context.session_id.to_string()),
-            request_id_fallback,
-        );
-    output.record = usage_record_with_route_context(output.record, context.route_context);
-    Ok(output)
-}
-
-pub(crate) struct NonStreamingUsageRecordContext<'a, S> {
-    pub(crate) usage_logging_enabled: bool,
-    pub(crate) services: Arc<S>,
-    pub(crate) body: &'a [u8],
-    pub(crate) parser_config: &'a UsageParserConfig,
-    pub(crate) provider: Option<&'a Provider>,
-    pub(crate) app_type: &'a str,
-    pub(crate) tag: &'static str,
-    pub(crate) request_model: &'a str,
-    pub(crate) outbound_model: Option<&'a str>,
-    pub(crate) route_context: Option<&'a UsageRouteContext>,
-    pub(crate) latency_ms: u64,
-    pub(crate) status_code: u16,
-    pub(crate) session_id: &'a str,
-}
-
-pub(crate) fn record_non_streaming_response_usage_from_context<S>(
-    context: NonStreamingUsageRecordContext<'_, S>,
-) -> Result<(), String>
-where
-    S: ProxyServices + Send + Sync + 'static,
-{
-    if !context.usage_logging_enabled {
-        log::debug!(
-            "[{}] usage logging 已关闭，跳过非流式 usage 解析",
-            context.tag
-        );
-        return Ok(());
-    }
-
-    let output = non_streaming_response_usage_record_from_response_context(
-        NonStreamingResponseUsageContext {
-            body: context.body,
-            response_parser: context.parser_config.response_parser,
-            provider: context.provider,
-            app_type: context.app_type,
-            request_model: context.request_model,
-            outbound_model: context.outbound_model,
-            route_context: context.route_context,
-            latency_ms: context.latency_ms,
-            status_code: context.status_code,
-            session_id: context.session_id,
-        },
-        || uuid::Uuid::new_v4().to_string(),
-    )?;
-
-    if let Some(event) = output.log_event(context.body.len()) {
-        log::debug!(
-            "{}",
-            event.message(context.tag, context.parser_config.app_type_str)
-        );
-    }
-
-    spawn_usage_record_with_proxy_services(context.services, output.record);
-    Ok(())
-}
-
-pub(crate) struct TransformedResponseUsageContext<'a> {
-    pub(crate) body: &'a Value,
-    pub(crate) format: TransformedResponseUsageFormat,
-    pub(crate) provider: Option<&'a Provider>,
-    pub(crate) tag: &'a str,
-    pub(crate) app_type: &'a str,
-    pub(crate) request_model: &'a str,
-    pub(crate) outbound_model: Option<&'a str>,
-    pub(crate) route_context: Option<&'a UsageRouteContext>,
-    pub(crate) latency_ms: u64,
-    pub(crate) status_code: u16,
-    pub(crate) session_id: &'a str,
-}
-
-pub(crate) struct TransformedResponseUsageRecordContext<'a, S> {
-    pub(crate) usage_logging_enabled: bool,
-    pub(crate) services: Arc<S>,
-    pub(crate) body: &'a Value,
-    pub(crate) format: TransformedResponseUsageFormat,
-    pub(crate) provider: Option<&'a Provider>,
-    pub(crate) tag: &'a str,
-    pub(crate) app_type: &'a str,
-    pub(crate) request_model: &'a str,
-    pub(crate) outbound_model: Option<&'a str>,
-    pub(crate) route_context: Option<&'a UsageRouteContext>,
-    pub(crate) latency_ms: u64,
-    pub(crate) status_code: u16,
-    pub(crate) session_id: &'a str,
-}
-
-pub(crate) fn record_transformed_response_usage_from_context<S>(
-    context: TransformedResponseUsageRecordContext<'_, S>,
-) where
-    S: ProxyServices + Send + Sync + 'static,
-{
-    if !context.usage_logging_enabled {
-        return;
-    }
-
-    let record = match transformed_response_usage_record_from_response_context(
-        TransformedResponseUsageContext {
-            body: context.body,
-            format: context.format,
-            provider: context.provider,
-            tag: context.tag,
-            app_type: context.app_type,
-            request_model: context.request_model,
-            outbound_model: context.outbound_model,
-            route_context: context.route_context,
-            latency_ms: context.latency_ms,
-            status_code: context.status_code,
-            session_id: context.session_id,
-        },
-        || uuid::Uuid::new_v4().to_string(),
-    ) {
-        Ok(Some(record)) => record,
-        Ok(None) => return,
-        Err(message) => {
-            log::warn!("{message}");
-            return;
-        }
-    };
-
-    spawn_usage_record_with_proxy_services_context(
-        context.services,
-        record,
-        UsageRecordFailureLogContext::UsageRecord,
-    );
-}
-
-pub(crate) struct TransformedStreamingResponseUsageContext<'a> {
-    pub(crate) events: &'a [Value],
-    pub(crate) format: TransformedResponseUsageFormat,
-    pub(crate) provider_facts: &'a ResponseUsageProviderFacts,
-    pub(crate) request_model: &'a str,
-    pub(crate) outbound_model: Option<&'a str>,
-    pub(crate) route_context: Option<&'a UsageRouteContext>,
-    pub(crate) latency_ms: u64,
-    pub(crate) first_token_ms: Option<u64>,
-    pub(crate) status_code: u16,
-    pub(crate) session_id: &'a str,
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn transformed_response_usage_record_from_provider_facts_with_request_id_fallback(
-    body: &Value,
-    format: TransformedResponseUsageFormat,
-    provider_facts: &ResponseUsageProviderFacts,
-    request_model: &str,
-    outbound_model: Option<&str>,
-    latency_ms: u64,
-    status_code: u16,
-    session_id: Option<String>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> Option<UsageRecord> {
-    transformed_response_usage_record_with_request_id_fallback(
-        body,
-        format,
-        &provider_facts.provider_id,
-        provider_facts.provider_kind.clone(),
-        provider_facts.app.clone(),
-        request_model,
-        outbound_model,
-        latency_ms,
-        status_code,
-        session_id,
-        request_id_fallback,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback(
-    events: &[Value],
-    format: TransformedResponseUsageFormat,
-    provider_facts: &ResponseUsageProviderFacts,
-    request_model: &str,
-    outbound_model: Option<&str>,
-    latency_ms: u64,
-    first_token_ms: Option<u64>,
-    status_code: u16,
-    session_id: Option<String>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> Option<UsageRecord> {
-    transformed_streaming_response_usage_record_with_request_id_fallback(
-        events,
-        format,
-        &provider_facts.provider_id,
-        provider_facts.provider_kind.clone(),
-        provider_facts.app.clone(),
-        request_model,
-        outbound_model,
-        latency_ms,
-        first_token_ms,
-        status_code,
-        session_id,
-        request_id_fallback,
-    )
-}
-
-pub(crate) fn transformed_response_usage_record_from_response_context(
-    context: TransformedResponseUsageContext<'_>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> Result<Option<UsageRecord>, String> {
-    let provider_facts = response_usage_provider_facts_from_optional(
-        context.provider,
-        context.app_type,
-        context.tag,
-        UsageSelectedProviderMissingPhase::TransformedResponse,
-    )?;
-    Ok(
-        transformed_response_usage_record_from_provider_facts_with_request_id_fallback(
-            context.body,
-            context.format,
-            &provider_facts,
-            context.request_model,
-            context.outbound_model,
-            context.latency_ms,
-            context.status_code,
-            Some(context.session_id.to_string()),
-            request_id_fallback,
-        )
-        .map(|record| usage_record_with_route_context(record, context.route_context)),
-    )
-}
-
-pub(crate) fn transformed_streaming_response_usage_record_from_response_context(
-    context: TransformedStreamingResponseUsageContext<'_>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> Option<UsageRecord> {
-    transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback(
-        context.events,
-        context.format,
-        context.provider_facts,
-        context.request_model,
-        context.outbound_model,
-        context.latency_ms,
-        context.first_token_ms,
-        context.status_code,
-        Some(context.session_id.to_string()),
-        request_id_fallback,
-    )
-    .map(|record| usage_record_with_route_context(record, context.route_context))
 }
 
 pub(crate) struct TransformedStreamingUsageCollectorContext<'a, S> {
@@ -1846,48 +1476,6 @@ pub(crate) fn passthrough_non_stream_proxy_response_from_context(
     Ok(passthrough_bytes_proxy_response(status, headers, body))
 }
 
-/// 内部使用量记录函数
-///
-/// `outbound_model` 是「按请求计价」模式的锚点：实际发往上游的模型
-/// （路由接管映射后的真值，无映射时等于 request_model）。该模式的语义是
-/// 「按代理发出的请求计价、不信任上游回显」，接管场景下发出的请求模型是
-/// 映射后的 Y 而非客户端别名 X，按 X 计价会用错定价表行。
-#[allow(clippy::too_many_arguments)]
-#[cfg(test)]
-async fn log_usage_internal(
-    state: &ProxyState,
-    provider_id: &str,
-    provider_kind: Option<ProviderKind>,
-    app_type: &str,
-    model: &str,
-    request_model: &str,
-    outbound_model: &str,
-    usage: TokenUsage,
-    latency_ms: u64,
-    first_token_ms: Option<u64>,
-    is_streaming: bool,
-    status_code: u16,
-    session_id: Option<String>,
-) {
-    let record = crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback(
-        provider_id,
-        provider_kind,
-        AppKind::from(app_type),
-        model,
-        request_model,
-        outbound_model,
-        usage,
-        latency_ms,
-        first_token_ms,
-        is_streaming,
-        status_code,
-        session_id,
-        || uuid::Uuid::new_v4().to_string(),
-    );
-
-    record_usage_with_proxy_services(state.proxy_core_services.as_ref(), record).await;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2510,8 +2098,8 @@ mod tests {
             message_id: None,
         };
 
-        log_usage_internal(
-            &state,
+        record_success_usage_for_test(
+            state.proxy_core_services.as_ref(),
             "provider-1",
             None,
             app_type,
@@ -2581,8 +2169,8 @@ mod tests {
 
         // 路由接管场景：客户端请求 req-model（$2/M），代理实际发出 outbound-model
         // （$4/M），上游回显 resp-model。「按请求计价」必须锚定实际发出的模型。
-        log_usage_internal(
-            &state,
+        record_success_usage_for_test(
+            state.proxy_core_services.as_ref(),
             "provider-3",
             None,
             app_type,
@@ -2662,8 +2250,8 @@ mod tests {
             message_id: None,
         };
 
-        log_usage_internal(
-            &state,
+        record_success_usage_for_test(
+            state.proxy_core_services.as_ref(),
             "provider-2",
             None,
             app_type,

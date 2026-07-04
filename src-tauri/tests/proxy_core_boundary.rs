@@ -10760,8 +10760,8 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let usage_slice = function_slice(
         &source,
-        "pub(crate) struct StreamingResponseUsageContext",
-        "pub(crate) fn create_passthrough_logged_stream",
+        "pub(crate) struct StreamingUsageCollectorContext",
+        "pub(crate) struct TransformedStreamingUsageCollectorContext",
     );
 
     assert!(
@@ -10770,40 +10770,47 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
             && usage_slice.contains("SseUsageCollector::new(")
             && usage_slice.contains("streaming_response_usage_record_from_response_context(")
             && usage_slice.contains("spawn_usage_record_with_proxy_services(")
-            && usage_slice.contains("pub(crate) struct NonStreamingUsageRecordContext")
-            && usage_slice
-                .contains("pub(crate) fn record_non_streaming_response_usage_from_context")
-            && usage_slice.contains("non_streaming_response_usage_record_from_response_context(")
             && usage_slice.contains("UsageSelectedProviderMissingPhase::StreamingPassthrough")
-            && usage_slice.contains("usage_logging_enabled_from_state(state)")
             && usage_slice.contains("context.parser_config.stream_parser")
-            && usage_slice.contains("context.parser_config.response_parser")
-            && usage_slice.contains("output.log_event(context.body.len())"),
+            && source.contains("usage_logging_enabled_from_state(state)")
+            && source.contains("record_non_streaming_response_usage_from_context(")
+            && source.contains("NonStreamingUsageRecordContext {"),
         "response pipeline should own passthrough usage runtime orchestration"
     );
     assert!(
         usage_source.contains("pub(crate) fn usage_logging_enabled_from_state(state: &ProxyState)")
-            && usage_source.contains("pub(crate) fn spawn_usage_record_with_proxy_services"),
-        "response_usage should own reusable usage logging config and sink scheduling helpers"
+            && usage_source.contains("pub(crate) fn spawn_usage_record_with_proxy_services")
+            && usage_source.contains("pub(crate) struct NonStreamingUsageRecordContext")
+            && usage_source
+                .contains("pub(crate) fn record_non_streaming_response_usage_from_context")
+            && usage_source.contains("non_streaming_response_usage_record_from_response_context(")
+            && usage_source.contains("context.parser_config.response_parser")
+            && usage_source.contains("output.log_event(context.body.len())"),
+        "response_usage should own reusable usage logging config, non-streaming record context, and sink scheduling helpers"
     );
     assert!(
-        usage_slice.contains("pub(crate) fn streaming_response_usage_record_from_provider_facts")
-            && usage_slice
+        usage_source.contains("pub(crate) fn streaming_response_usage_record_from_provider_facts")
+            && usage_source
                 .contains("streaming_response_usage_record_with_optional_outbound_model(")
-            && usage_slice
+            && usage_source
                 .contains("pub(crate) fn streaming_response_usage_record_from_response_context")
-            && usage_slice.contains(
+            && usage_source.contains(
                 "non_streaming_response_usage_record_from_provider_body_with_request_id_fallback("
             )
-            && usage_slice.contains(
+            && usage_source.contains(
                 "pub(crate) fn non_streaming_response_usage_record_from_response_context"
             )
-            && usage_slice.contains(
+            && usage_source.contains(
                 "non_streaming_response_usage_record_from_body_with_request_id_fallback("
             )
-            && usage_slice.contains("usage_record_with_route_context(")
-            && !usage_slice.contains("success_usage_record_with_request_id_fallback("),
-        "response pipeline should own bottom passthrough usage-record construction"
+            && usage_source.contains("usage_record_with_route_context(")
+            && !source
+                .contains("pub(crate) fn streaming_response_usage_record_from_provider_facts")
+            && !source.contains(
+                "pub(crate) fn non_streaming_response_usage_record_from_response_context"
+            )
+            && !source.contains("success_usage_record_with_request_id_fallback("),
+        "response_usage should own bottom passthrough usage-record construction"
     );
     assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     for marker in [
@@ -10845,10 +10852,12 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let usage_source = fs::read_to_string(manifest_dir.join("src/proxy/engine/response_usage.rs"))
+        .expect("read engine/response_usage.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let function = function_slice(
         &source,
-        "pub(crate) struct TransformedResponseUsageContext",
+        "pub(crate) struct TransformedStreamingUsageCollectorContext",
         "pub(crate) fn claude_transform_tool_schema_hints",
     );
 
@@ -10860,9 +10869,8 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
             && function
                 .contains("transformed_streaming_response_usage_record_from_response_context(")
             && function.contains("spawn_usage_record_with_proxy_services_context(")
-            && function.contains("pub(crate) struct TransformedResponseUsageRecordContext")
-            && function.contains("pub(crate) fn record_transformed_response_usage_from_context")
-            && function.contains("transformed_response_usage_record_from_response_context(")
+            && source.contains("TransformedResponseUsageRecordContext {")
+            && source.contains("record_transformed_response_usage_from_context(")
             && function.contains("usage_logging_enabled_from_state(state)")
             && function.contains("state.proxy_core_services.clone()")
             && function.contains("TransformedResponseUsageFormat::Claude")
@@ -10874,21 +10882,30 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
         "response pipeline should own transformed usage runtime orchestration"
     );
     assert!(
-        function.contains(
+        usage_source.contains("pub(crate) struct TransformedResponseUsageRecordContext")
+            && usage_source.contains("pub(crate) fn record_transformed_response_usage_from_context")
+            && usage_source.contains("transformed_response_usage_record_from_response_context(")
+            && usage_source.contains(
             "pub(crate) fn transformed_response_usage_record_from_provider_facts_with_request_id_fallback"
         )
-            && function.contains("transformed_response_usage_record_with_request_id_fallback(")
-            && function.contains(
+            && usage_source.contains("transformed_response_usage_record_with_request_id_fallback(")
+            && usage_source.contains(
                 "pub(crate) fn transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback"
             )
-            && function.contains(
+            && usage_source.contains(
                 "transformed_streaming_response_usage_record_with_request_id_fallback("
             )
-            && function.contains("pub(crate) fn transformed_response_usage_record_from_response_context")
-            && function
+            && usage_source
+                .contains("pub(crate) fn transformed_response_usage_record_from_response_context")
+            && usage_source
                 .contains("pub(crate) fn transformed_streaming_response_usage_record_from_response_context")
-            && function.contains("usage_record_with_route_context("),
-        "response pipeline should own bottom transformed usage-record construction"
+            && usage_source.contains("usage_record_with_route_context(")
+            && !source.contains(
+                "pub(crate) fn transformed_response_usage_record_from_provider_facts_with_request_id_fallback"
+            )
+            && !source
+                .contains("pub(crate) fn transformed_response_usage_record_from_response_context"),
+        "response_usage should own bottom transformed usage-record construction"
     );
     assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     assert!(
@@ -13074,7 +13091,7 @@ fn response_pipeline_owns_non_stream_passthrough_response_construction() {
     let function = function_slice(
         &source,
         "pub(crate) fn passthrough_non_stream_proxy_response_from_context",
-        "/// 内部使用量记录函数",
+        "#[cfg(test)]\nmod tests",
     );
 
     assert!(
