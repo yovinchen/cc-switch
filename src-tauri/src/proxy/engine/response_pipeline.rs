@@ -55,7 +55,8 @@ use crate::proxy_core::api::usage::{
     usage_selected_provider_missing_log_message, NonStreamingResponseUsageRecord,
     StreamUsageEventFilter, StreamingResponseUsageRecord, TokenUsage,
     TransformedResponseUsageFormat, UsageParserConfig, UsageRecord, UsageRecordFailureLogContext,
-    UsageRouteContext, UsageSelectedProviderMissingPhase,
+    UsageRouteContext, UsageSelectedProviderMissingPhase, CLAUDE_PARSER_CONFIG,
+    CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
@@ -379,6 +380,38 @@ pub async fn process_response(
     } else {
         handle_non_streaming(response, ctx, state, parser_config, connection_guard).await
     }
+}
+
+pub(crate) async fn claude_passthrough_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+) -> Result<Response, ProxyError> {
+    process_response(response, ctx, state, &CLAUDE_PARSER_CONFIG, None).await
+}
+
+pub(crate) async fn openai_chat_passthrough_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+) -> Result<Response, ProxyError> {
+    process_response(response, ctx, state, &OPENAI_PARSER_CONFIG, None).await
+}
+
+pub(crate) async fn codex_passthrough_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+) -> Result<Response, ProxyError> {
+    process_response(response, ctx, state, &CODEX_PARSER_CONFIG, None).await
+}
+
+pub(crate) async fn gemini_passthrough_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+) -> Result<Response, ProxyError> {
+    process_response(response, ctx, state, &GEMINI_PARSER_CONFIG, None).await
 }
 
 #[derive(Debug, Clone)]

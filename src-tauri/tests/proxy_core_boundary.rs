@@ -11238,6 +11238,10 @@ fn response_pipeline_owns_core_usage_transport_imports() {
             && source.contains("ProxyCoreResponse")
             && source.contains("ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext")
             && source.contains("use crate::proxy_core::api::usage::{")
+            && source.contains("CLAUDE_PARSER_CONFIG")
+            && source.contains("CODEX_PARSER_CONFIG")
+            && source.contains("GEMINI_PARSER_CONFIG")
+            && source.contains("OPENAI_PARSER_CONFIG")
             && source.contains("usage_logging_enabled_from_config_flag")
             && source.contains("usage_selected_provider_missing_log_message")
             && source.contains("StreamUsageEventFilter")
@@ -28126,8 +28130,13 @@ fn proxy_response_adapter_owns_core_transport_imports() {
             && source.contains("UpstreamSseAggregationKind")
             && source.contains("crate::proxy_core::api::transforms::{")
             && source.contains("CodexToolContext")
-            && source.contains("crate::proxy_core::api::usage::{"),
-        "response_adapter should import only dispatch/response core transport, transform, and usage contracts directly"
+            && !source.contains("crate::proxy_core::api::usage::{")
+            && !source.contains("CLAUDE_PARSER_CONFIG")
+            && !source.contains("CODEX_PARSER_CONFIG")
+            && !source.contains("GEMINI_PARSER_CONFIG")
+            && !source.contains("OPENAI_PARSER_CONFIG")
+            && !source.contains("process_response("),
+        "response_adapter should import only dispatch/response core transport and transform contracts directly"
     );
     assert!(
         request_adapter.contains("crate::proxy_core::api::domain::AppKind")

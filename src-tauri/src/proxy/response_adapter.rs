@@ -1,19 +1,22 @@
 use super::{
     engine::context::RequestContext,
     engine::response_pipeline::{
-        claude_proxy_result_to_proxy_response, claude_transformed_json_response_from_context,
+        claude_passthrough_response_to_axum_response, claude_proxy_result_to_proxy_response,
+        claude_transformed_json_response_from_context,
         claude_transformed_json_response_to_axum_response,
         claude_transformed_sse_response_to_axum_response,
         claude_transformed_sse_stream_from_context,
         codex_auto_transformed_json_response_from_context,
         codex_auto_transformed_sse_stream_from_context,
-        codex_chat_upstream_error_response_to_axum_response, codex_proxy_error_to_axum_response,
+        codex_chat_upstream_error_response_to_axum_response,
+        codex_passthrough_response_to_axum_response, codex_proxy_error_to_axum_response,
         codex_transformed_json_response_to_axum_response,
-        codex_transformed_sse_response_to_axum_response, process_response,
-        proxy_result_to_proxy_response, read_decoded_proxy_response_body,
-        record_forward_core_error_usage, ClaudeTransformedJsonResponseContext,
-        ClaudeTransformedSseStreamContext, CodexAutoTransformedJsonResponseContext,
-        CodexAutoTransformedSseStreamContext,
+        codex_transformed_sse_response_to_axum_response,
+        gemini_passthrough_response_to_axum_response,
+        openai_chat_passthrough_response_to_axum_response, proxy_result_to_proxy_response,
+        read_decoded_proxy_response_body, record_forward_core_error_usage,
+        ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
+        CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
     },
     error::ProxyError,
     error_mapper::{
@@ -42,9 +45,6 @@ use crate::proxy_core::api::transforms::{
     CodexChatTransformStreamingDecision, CodexToolContext,
 };
 use crate::proxy_core::api::transport::{ProxyRequest, ProxyResult, UpstreamSseAggregationKind};
-use crate::proxy_core::api::usage::{
-    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
-};
 use http::{HeaderMap, Uri};
 use serde_json::Value;
 
@@ -443,38 +443,6 @@ pub(crate) async fn codex_chat_to_responses_transformed_response_to_axum_respons
         streaming_decision.response_sse_aggregation,
     )
     .await
-}
-
-pub(crate) async fn claude_passthrough_response_to_axum_response(
-    response: ProxyResponse,
-    ctx: &RequestContext,
-    state: &ProxyState,
-) -> Result<axum::response::Response, ProxyError> {
-    process_response(response, ctx, state, &CLAUDE_PARSER_CONFIG, None).await
-}
-
-pub(crate) async fn openai_chat_passthrough_response_to_axum_response(
-    response: ProxyResponse,
-    ctx: &RequestContext,
-    state: &ProxyState,
-) -> Result<axum::response::Response, ProxyError> {
-    process_response(response, ctx, state, &OPENAI_PARSER_CONFIG, None).await
-}
-
-pub(crate) async fn codex_passthrough_response_to_axum_response(
-    response: ProxyResponse,
-    ctx: &RequestContext,
-    state: &ProxyState,
-) -> Result<axum::response::Response, ProxyError> {
-    process_response(response, ctx, state, &CODEX_PARSER_CONFIG, None).await
-}
-
-pub(crate) async fn gemini_passthrough_response_to_axum_response(
-    response: ProxyResponse,
-    ctx: &RequestContext,
-    state: &ProxyState,
-) -> Result<axum::response::Response, ProxyError> {
-    process_response(response, ctx, state, &GEMINI_PARSER_CONFIG, None).await
 }
 
 #[allow(clippy::too_many_arguments)]
