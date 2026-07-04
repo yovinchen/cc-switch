@@ -18,6 +18,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/engine/response_assembly.rs",
     "src/proxy/engine/response_pipeline.rs",
     "src/proxy/engine/response_stream.rs",
+    "src/proxy/engine/response_transform.rs",
     "src/proxy/engine/response_usage.rs",
     "src/proxy/error_mapper.rs",
     "src/proxy/error.rs",
@@ -10884,6 +10885,9 @@ fn response_stream_owns_transformed_streaming_usage_runtime_source() {
     let stream_source =
         fs::read_to_string(manifest_dir.join("src/proxy/engine/response_stream.rs"))
             .expect("read engine/response_stream.rs");
+    let transform_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/response_transform.rs"))
+            .expect("read engine/response_transform.rs");
     let usage_source = fs::read_to_string(manifest_dir.join("src/proxy/engine/response_usage.rs"))
         .expect("read engine/response_usage.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
@@ -10901,8 +10905,8 @@ fn response_stream_owns_transformed_streaming_usage_runtime_source() {
             && function
                 .contains("transformed_streaming_response_usage_record_from_response_context(")
             && function.contains("spawn_usage_record_with_proxy_services_context(")
-            && pipeline_source.contains("TransformedResponseUsageRecordContext {")
-            && pipeline_source.contains("record_transformed_response_usage_from_context(")
+            && transform_source.contains("TransformedResponseUsageRecordContext {")
+            && transform_source.contains("record_transformed_response_usage_from_context(")
             && function.contains("usage_logging_enabled_from_state(state)")
             && function.contains("state.proxy_core_services.clone()")
             && stream_source.contains("TransformedResponseUsageFormat::Claude")
@@ -10913,7 +10917,7 @@ fn response_stream_owns_transformed_streaming_usage_runtime_source() {
             && stream_source.contains("ctx.streaming_timeout_config()")
             && stream_source.contains("pub(crate) fn create_claude_transformed_logged_stream")
             && stream_source.contains("pub(crate) fn create_codex_auto_transformed_logged_stream"),
-        "response_stream should own transformed streaming usage runtime orchestration while response_pipeline keeps non-streaming transformed usage calls"
+        "response_stream should own transformed streaming usage runtime orchestration while response_transform keeps non-streaming transformed usage calls"
     );
     assert!(
         usage_source.contains("pub(crate) struct TransformedResponseUsageRecordContext")
@@ -10946,9 +10950,11 @@ fn response_stream_owns_transformed_streaming_usage_runtime_source() {
             && !pipeline_source
                 .contains("pub(crate) fn transformed_streaming_usage_collector_from_context")
             && !pipeline_source.contains("pub(crate) fn transformed_streaming_usage_collector(")
-            && pipeline_source.contains("create_claude_transformed_logged_stream(")
-            && pipeline_source.contains("create_codex_auto_transformed_logged_stream("),
-        "response_pipeline should call response_stream transformed helpers instead of owning transformed streaming contexts"
+            && !pipeline_source.contains("create_claude_transformed_logged_stream(")
+            && !pipeline_source.contains("create_codex_auto_transformed_logged_stream(")
+            && transform_source.contains("create_claude_transformed_logged_stream(")
+            && transform_source.contains("create_codex_auto_transformed_logged_stream("),
+        "response_transform should call response_stream transformed helpers instead of response_pipeline owning transformed streaming contexts"
     );
     assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     assert!(
@@ -11097,10 +11103,13 @@ fn response_usage_owns_forward_error_usage_and_sink_scheduling() {
 }
 
 #[test]
-fn response_pipeline_owns_transformed_sse_stream_wrappers() {
+fn response_transform_owns_transformed_sse_stream_wrappers() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
-    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let path = manifest_dir.join("src/proxy/engine/response_transform.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_transform.rs");
+    let pipeline_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/response_pipeline.rs"))
+            .expect("read engine/response_pipeline.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let protocol_adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
     let protocol_adapter_source = fs::read_to_string(&protocol_adapter_path)
@@ -11108,7 +11117,7 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
     let function = function_slice(
         &source,
         "pub(crate) fn claude_transform_tool_schema_hints",
-        "pub(crate) fn record_non_streaming_response_usage",
+        "pub(crate) fn record_transformed_response_usage",
     );
 
     assert!(
@@ -11120,7 +11129,7 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
             && function.contains("transform_codex_chat_sse_with_history(")
             && function.contains("create_claude_transformed_logged_stream(")
             && function.contains("create_codex_auto_transformed_logged_stream("),
-        "response pipeline should own transformed SSE wrapper orchestration"
+        "response_transform should own transformed SSE wrapper orchestration"
     );
     assert!(
         !function.contains("create_logged_passthrough_stream(")
@@ -11129,18 +11138,30 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
             && !function
                 .contains("transformed_streaming_response_usage_record_from_response_context(")
             && !function.contains("spawn_usage_record_with_proxy_services_context("),
-        "response pipeline should keep shared logged-stream internals and usage records delegated"
+        "response_transform should keep shared logged-stream internals and usage records delegated"
+    );
+    assert!(
+        pipeline_source.contains("claude_transformed_sse_stream_from_context(")
+            && pipeline_source.contains("ClaudeTransformedSseStreamContext {")
+            && pipeline_source.contains("codex_auto_transformed_sse_stream_from_context(")
+            && pipeline_source.contains("CodexAutoTransformedSseStreamContext {")
+            && !pipeline_source.contains("pub(crate) struct ClaudeTransformedSseStreamContext")
+            && !pipeline_source.contains("pub(crate) fn claude_transformed_sse_stream_from_context")
+            && !pipeline_source.contains("pub(crate) struct CodexAutoTransformedSseStreamContext")
+            && !pipeline_source
+                .contains("pub(crate) fn codex_auto_transformed_sse_stream_from_context"),
+        "response_pipeline should call response_transform SSE helpers instead of owning wrapper implementations"
     );
     assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     assert!(
         source.contains("use crate::proxy::codex_chat_history::{")
             && source.contains("transform_codex_chat_sse_with_history"),
-        "response pipeline should import Codex chat history SSE wrappers from the owning module"
+        "response_transform should import Codex chat history SSE wrappers from the owning module"
     );
     assert!(
         source.contains("use crate::proxy::provider::{")
             && source.contains("transform_claude_sse_for_api_format"),
-        "response pipeline should import Claude response SSE wrappers from the owning provider module"
+        "response_transform should import Claude response SSE wrappers from the owning provider module"
     );
     assert!(
         !adapter_source.contains("ClaudeTransformedSseStreamContext")
@@ -11177,19 +11198,18 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
 }
 
 #[test]
-fn response_pipeline_owns_transformed_json_response_wrappers() {
+fn response_transform_owns_transformed_json_response_wrappers() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
-    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let path = manifest_dir.join("src/proxy/engine/response_transform.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_transform.rs");
+    let pipeline_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/response_pipeline.rs"))
+            .expect("read engine/response_pipeline.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let protocol_adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
     let protocol_adapter_source = fs::read_to_string(&protocol_adapter_path)
         .expect("read proxy/transport/http/protocol_adapter.rs");
-    let function = function_slice(
-        &source,
-        "pub(crate) fn record_transformed_response_usage(",
-        "pub(crate) fn record_non_streaming_response_usage",
-    );
+    let function = source.as_str();
 
     assert!(
         function.contains("TransformedResponseUsageRecordContext {")
@@ -11203,7 +11223,7 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
             && function.contains("pub(crate) async fn codex_auto_transformed_json_response_from_context")
             && function.contains("transform_codex_chat_response_with_history(")
             && function.contains("TransformedResponseUsageFormat::CodexAuto"),
-        "response pipeline should own transformed JSON wrapper orchestration and usage runtime source"
+        "response_transform should own transformed JSON wrapper orchestration and usage runtime source"
     );
     assert!(
         !function.contains("transformed_response_usage_record_from_response_context(")
@@ -11211,18 +11231,31 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
             && !function.contains("create_logged_passthrough_stream(")
             && !function.contains("SsePassthroughStreamState::new()")
             && !function.contains("async_stream::stream!"),
-        "response pipeline should delegate transformed usage record construction and stream internals"
+        "response_transform should delegate transformed usage record construction and stream internals"
+    );
+    assert!(
+        pipeline_source.contains("claude_transformed_json_response_from_context(")
+            && pipeline_source.contains("ClaudeTransformedJsonResponseContext {")
+            && pipeline_source.contains("codex_auto_transformed_json_response_from_context(")
+            && pipeline_source.contains("CodexAutoTransformedJsonResponseContext {")
+            && !pipeline_source.contains("pub(crate) struct ClaudeTransformedJsonResponseContext")
+            && !pipeline_source
+                .contains("pub(crate) fn claude_transformed_json_response_from_context")
+            && !pipeline_source.contains("pub(crate) struct CodexAutoTransformedJsonResponseContext")
+            && !pipeline_source
+                .contains("pub(crate) async fn codex_auto_transformed_json_response_from_context"),
+        "response_pipeline should call response_transform JSON helpers instead of owning wrapper implementations"
     );
     assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
     assert!(
         source.contains("use crate::proxy::codex_chat_history::{")
             && source.contains("transform_codex_chat_response_with_history"),
-        "response pipeline should import Codex chat history JSON wrappers from the owning module"
+        "response_transform should import Codex chat history JSON wrappers from the owning module"
     );
     assert!(
         source.contains("use crate::proxy::provider::{")
             && source.contains("transform_claude_response_for_api_format"),
-        "response pipeline should import Claude response JSON wrappers from the owning provider module"
+        "response_transform should import Claude response JSON wrappers from the owning provider module"
     );
     assert!(
         !adapter_source.contains("ClaudeTransformedJsonResponseContext")
@@ -11366,6 +11399,9 @@ fn response_pipeline_owns_core_usage_transport_imports() {
     let stream_source =
         fs::read_to_string(manifest_dir.join("src/proxy/engine/response_stream.rs"))
             .expect("read engine/response_stream.rs");
+    let transform_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/response_transform.rs"))
+            .expect("read engine/response_transform.rs");
     let assembly_source =
         fs::read_to_string(manifest_dir.join("src/proxy/engine/response_assembly.rs"))
             .expect("read engine/response_assembly.rs");
@@ -11395,11 +11431,8 @@ fn response_pipeline_owns_core_usage_transport_imports() {
             && source.contains("GEMINI_PARSER_CONFIG")
             && source.contains("OPENAI_PARSER_CONFIG")
             && source.contains("usage_selected_provider_missing_log_message")
-            && source.contains("TransformedResponseUsageFormat")
             && source.contains("UsageParserConfig")
             && source.contains("use crate::proxy_core::api::transforms::{")
-            && source.contains("extract_anthropic_tool_schema_hints")
-            && source.contains("AnthropicToolSchemaHints")
             && source.contains("CodexToolContext"),
         "response_pipeline should import pure core response orchestration contracts directly"
     );
@@ -11419,6 +11452,17 @@ fn response_pipeline_owns_core_usage_transport_imports() {
             && stream_source.contains("SsePassthroughStreamState")
             && stream_source.contains("SseUsageAccumulator"),
         "response_stream should import pure core stream runtime contracts directly"
+    );
+    assert!(
+        transform_source.contains("use crate::proxy_core::api::usage::TransformedResponseUsageFormat;")
+            && transform_source.contains("use crate::proxy_core::api::transforms::{")
+            && transform_source.contains("extract_anthropic_tool_schema_hints")
+            && transform_source.contains("AnthropicToolSchemaHints")
+            && transform_source.contains("CodexToolContext")
+            && transform_source.contains("TransformedResponseUsageRecordContext")
+            && transform_source.contains("record_transformed_response_usage_from_context")
+            && transform_source.contains("usage_logging_enabled_from_state"),
+        "response_transform should import pure core transformed-response contracts and usage runtime helpers directly"
     );
     assert!(
         assembly_source.contains("use crate::proxy_core::api::transport::{")
