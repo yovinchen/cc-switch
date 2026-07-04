@@ -16,6 +16,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/engine/context.rs",
     "src/proxy/engine/forward_pipeline.rs",
     "src/proxy/engine/response_pipeline.rs",
+    "src/proxy/engine/response_usage.rs",
     "src/proxy/error_mapper.rs",
     "src/proxy/error.rs",
     "src/proxy/events.rs",
@@ -10619,18 +10620,21 @@ fn production_proxy_response_processor_legacy_module_removed_after_engine_split(
 }
 
 #[test]
-fn response_pipeline_owns_usage_provider_facts_projection() {
+fn response_usage_owns_usage_provider_facts_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
-    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let pipeline_path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let pipeline_source =
+        fs::read_to_string(&pipeline_path).expect("read engine/response_pipeline.rs");
+    let usage_path = manifest_dir.join("src/proxy/engine/response_usage.rs");
+    let usage_source = fs::read_to_string(&usage_path).expect("read engine/response_usage.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let projection_path = manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
     let projection_source =
         fs::read_to_string(&projection_path).expect("read provider_projection.rs");
     let function = function_slice(
-        &source,
+        &usage_source,
         "pub(crate) struct ResponseUsageProviderFacts",
-        "pub(crate) struct StreamingResponseUsageContext",
+        "pub(crate) fn usage_logging_enabled_from_state",
     );
 
     assert!(
@@ -10639,15 +10643,20 @@ fn response_pipeline_owns_usage_provider_facts_projection() {
             && function.contains("pub(crate) fn fallback_response_usage_provider_facts")
             && function.contains("pub(crate) fn response_usage_provider_facts_from_optional")
             && function.contains("provider_kind_from_provider(provider)")
-            && source.contains("provider_kind_from_provider")
-            && source.contains("use crate::proxy::host::cc_switch::provider_projection::{")
+            && usage_source.contains("provider_kind_from_provider")
+            && usage_source.contains("use crate::proxy::host::cc_switch::provider_projection::provider_kind_from_provider;")
             && projection_source.contains("pub(crate) fn provider_kind_from_provider(provider: &Provider)")
             && projection_source.contains("meta.provider_type.as_deref()")
             && projection_source.contains(".map(ProviderKind::from)")
             && function.contains("AppKind::from(app_type)")
             && function.contains("usage_selected_provider_missing_log_message(")
-            && source.contains("fn response_usage_helpers_project_provider_and_app_facts()"),
-        "response pipeline should own usage facts while delegating provider-kind projection to provider_projection"
+            && pipeline_source.contains("fn response_usage_helpers_project_provider_and_app_facts()"),
+        "response_usage should own usage facts while delegating provider-kind projection to provider_projection"
+    );
+    assert!(
+        !pipeline_source.contains("pub(crate) struct ResponseUsageProviderFacts")
+            && !pipeline_source.contains("pub(crate) fn fallback_response_usage_provider_facts"),
+        "response_pipeline should consume response usage facts instead of owning provider-facts projection"
     );
     for marker in FORBIDDEN_RESPONSE_PIPELINE_USAGE_RECORD_HELPER_MARKERS {
         assert!(
@@ -10746,11 +10755,13 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let usage_source = fs::read_to_string(manifest_dir.join("src/proxy/engine/response_usage.rs"))
+        .expect("read engine/response_usage.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let usage_slice = function_slice(
         &source,
         "pub(crate) struct StreamingResponseUsageContext",
-        "pub(crate) fn transformed_streaming_usage_collector",
+        "pub(crate) fn create_passthrough_logged_stream",
     );
 
     assert!(
@@ -10764,11 +10775,16 @@ fn response_pipeline_owns_passthrough_usage_runtime_source() {
                 .contains("pub(crate) fn record_non_streaming_response_usage_from_context")
             && usage_slice.contains("non_streaming_response_usage_record_from_response_context(")
             && usage_slice.contains("UsageSelectedProviderMissingPhase::StreamingPassthrough")
-            && usage_slice.contains("fn usage_logging_enabled_from_state(state: &ProxyState)")
+            && usage_slice.contains("usage_logging_enabled_from_state(state)")
             && usage_slice.contains("context.parser_config.stream_parser")
             && usage_slice.contains("context.parser_config.response_parser")
             && usage_slice.contains("output.log_event(context.body.len())"),
         "response pipeline should own passthrough usage runtime orchestration"
+    );
+    assert!(
+        usage_source.contains("pub(crate) fn usage_logging_enabled_from_state(state: &ProxyState)")
+            && usage_source.contains("pub(crate) fn spawn_usage_record_with_proxy_services"),
+        "response_usage should own reusable usage logging config and sink scheduling helpers"
     );
     assert!(
         usage_slice.contains("pub(crate) fn streaming_response_usage_record_from_provider_facts")
@@ -10903,18 +10919,20 @@ fn response_pipeline_owns_transformed_streaming_usage_runtime_source() {
 }
 
 #[test]
-fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
+fn response_usage_owns_forward_error_usage_and_sink_scheduling() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let usage_path = manifest_dir.join("src/proxy/engine/response_usage.rs");
+    let usage_source = fs::read_to_string(&usage_path).expect("read engine/response_usage.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let protocol_adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
     let protocol_adapter_source = fs::read_to_string(&protocol_adapter_path)
         .expect("read proxy/transport/http/protocol_adapter.rs");
     let adapter_import = optional_function_slice(
-        &source,
+        &usage_source,
         "use crate::proxy_core_adapter::{",
-        "};\nuse axum::response",
+        "};\nuse std::sync::Arc;",
     );
     let adapter_import_identifiers: Vec<&str> = adapter_import
         .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
@@ -10922,33 +10940,47 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
         .collect();
 
     assert!(
-        source.contains("pub(crate) async fn record_usage_with_proxy_services")
-            && source.contains("pub(crate) fn spawn_usage_record_with_proxy_services")
-            && source.contains("pub(crate) fn spawn_usage_record_with_proxy_services_context")
-            && source.contains("record_usage_with_proxy_services_context(")
-            && source.contains("tokio::spawn(async move")
-            && source.contains(".usage_sink().record_usage(record).await")
-            && source.contains("usage_record_debug_log_message(&record)")
-            && source.contains("usage_record_failure_warning_message(failure_context, error)"),
-        "response pipeline should own reusable usage sink scheduling"
+        usage_source.contains("pub(crate) async fn record_usage_with_proxy_services")
+            && usage_source.contains("pub(crate) fn spawn_usage_record_with_proxy_services")
+            && usage_source
+                .contains("pub(crate) fn spawn_usage_record_with_proxy_services_context")
+            && usage_source.contains("record_usage_with_proxy_services_context(")
+            && usage_source.contains("tokio::spawn(async move")
+            && usage_source.contains(".usage_sink().record_usage(record).await")
+            && usage_source.contains("usage_record_debug_log_message(&record)")
+            && usage_source
+                .contains("usage_record_failure_warning_message(failure_context, error)"),
+        "response_usage should own reusable usage sink scheduling"
     );
     assert!(
-        source.contains("pub(crate) fn record_forward_error_usage(")
-            && source.contains("pub(crate) fn record_forward_core_error_usage(")
-            && source.contains("error_mapper::{")
-            && source.contains("proxy_error_display_message")
-            && source.contains("proxy_error_status_code")
-            && source.contains("pub(crate) struct ForwardErrorUsageContext")
-            && source.contains("pub(crate) struct ForwardErrorUsageRecordContext")
-            && source.contains("pub(crate) fn record_forward_error_usage_from_context")
-            && source.contains(
+        usage_source.contains("pub(crate) fn record_forward_error_usage(")
+            && usage_source.contains("pub(crate) fn record_forward_core_error_usage(")
+            && usage_source.contains("error_mapper::{")
+            && usage_source.contains("proxy_error_display_message")
+            && usage_source.contains("proxy_error_status_code")
+            && usage_source.contains("pub(crate) struct ForwardErrorUsageContext")
+            && usage_source.contains("pub(crate) struct ForwardErrorUsageRecordContext")
+            && usage_source.contains("pub(crate) fn record_forward_error_usage_from_context")
+            && usage_source.contains(
                 "pub(crate) fn error_usage_record_from_provider_facts_with_request_id_fallback"
             )
-            && source.contains("pub(crate) fn forward_error_usage_record_from_response_context")
-            && source.contains("UsageRecordFailureLogContext::ForwardError")
-            && source.contains("fallback_response_usage_provider_facts(")
-            && source.contains("error_usage_record_with_request_id_fallback("),
-        "response pipeline should own forward-error usage record orchestration"
+            && usage_source
+                .contains("pub(crate) fn forward_error_usage_record_from_response_context")
+            && usage_source.contains("UsageRecordFailureLogContext::ForwardError")
+            && usage_source.contains("fallback_response_usage_provider_facts(")
+            && usage_source.contains("error_usage_record_with_request_id_fallback("),
+        "response_usage should own forward-error usage record orchestration"
+    );
+    assert!(
+        !source.contains("pub(crate) fn record_forward_error_usage(")
+            && !source.contains("pub(crate) fn record_forward_core_error_usage(")
+            && !source.contains("pub(crate) struct ForwardErrorUsageContext")
+            && !source.contains("pub(crate) struct ForwardErrorUsageRecordContext")
+            && !source.contains(
+                "pub(crate) fn error_usage_record_from_provider_facts_with_request_id_fallback"
+            )
+            && !source.contains("pub(crate) fn forward_error_usage_record_from_response_context"),
+        "response_pipeline should call response_usage instead of owning forward-error usage internals"
     );
     let mut import_violations = Vec::new();
     for marker in ["proxy_error_display_message", "proxy_error_status_code"] {
@@ -10957,13 +10989,13 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
             .any(|identifier| identifier == &marker)
         {
             import_violations.push(format!(
-                "response_pipeline still imports error projection marker `{marker}` from proxy_core_adapter"
+                "response_usage still imports error projection marker `{marker}` from proxy_core_adapter"
             ));
         }
     }
     assert!(
         import_violations.is_empty(),
-        "response_pipeline should route ProxyError display/status projection through error_mapper:\n{}",
+        "response_usage should route ProxyError display/status projection through error_mapper:\n{}",
         import_violations.join("\n")
     );
     assert_proxy_core_adapter_no_response_pipeline_reexport(&adapter_source);
@@ -10991,6 +11023,7 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
                 .contains("pub(crate) async fn dispatch_claude_proxy_request_to_proxy_response(")
             && source
                 .contains("pub(crate) async fn dispatch_codex_proxy_request_to_proxy_response(")
+            && source.contains("use super::response_usage::{")
             && source.contains("record_forward_core_error_usage")
             && !protocol_adapter_source.contains("record_forward_core_error_usage")
             && !optional_function_slice(
@@ -10999,7 +11032,7 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
                 "};\nuse axum::",
             )
             .contains("record_forward_core_error_usage"),
-        "response_pipeline should own ProxyEngine dispatch and forward-core error usage mapping"
+        "response_pipeline should own ProxyEngine dispatch while delegating forward-core error usage mapping to response_usage"
     );
 }
 
@@ -11260,6 +11293,8 @@ fn response_pipeline_owns_core_usage_transport_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let usage_source = fs::read_to_string(manifest_dir.join("src/proxy/engine/response_usage.rs"))
+        .expect("read engine/response_usage.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_import = optional_function_slice(
         &source,
@@ -11286,7 +11321,6 @@ fn response_pipeline_owns_core_usage_transport_imports() {
             && source.contains("CODEX_PARSER_CONFIG")
             && source.contains("GEMINI_PARSER_CONFIG")
             && source.contains("OPENAI_PARSER_CONFIG")
-            && source.contains("usage_logging_enabled_from_config_flag")
             && source.contains("usage_selected_provider_missing_log_message")
             && source.contains("StreamUsageEventFilter")
             && source.contains("TransformedResponseUsageFormat")
@@ -11302,6 +11336,16 @@ fn response_pipeline_owns_core_usage_transport_imports() {
             && source.contains("SsePassthroughStreamState")
             && source.contains("SseUsageAccumulator"),
         "response_pipeline should import pure core response contracts directly"
+    );
+    assert!(
+        usage_source.contains("use crate::proxy_core::api::usage::{")
+            && usage_source.contains("usage_logging_enabled_from_config_flag")
+            && usage_source.contains("usage_record_debug_log_message")
+            && usage_source.contains("usage_record_failure_warning_message")
+            && usage_source.contains("error_usage_record_with_request_id_fallback")
+            && usage_source.contains("UsageRecordFailureLogContext")
+            && usage_source.contains("UsageSelectedProviderMissingPhase"),
+        "response_usage should import pure core usage scheduling and forward-error contracts directly"
     );
 
     let mut violations = Vec::new();
@@ -11323,7 +11367,6 @@ fn response_pipeline_owns_core_usage_transport_imports() {
         "UsageRecordFailureLogContext",
         "UsageRouteContext",
         "UsageSelectedProviderMissingPhase",
-        "usage_logging_enabled_from_config_flag",
         "usage_selected_provider_missing_log_message",
         "claude_stream_usage_event_filter",
         "codex_stream_usage_event_filter",
