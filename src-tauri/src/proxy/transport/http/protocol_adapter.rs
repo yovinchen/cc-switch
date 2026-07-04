@@ -1,6 +1,11 @@
 //! Protocol-specific HTTP entry orchestration for proxied API requests.
 
-use super::{
+use super::request_body::{
+    collect_json_or_null_proxy_request, collect_json_proxy_request, endpoint_from_uri,
+};
+use crate::app_config::AppType;
+use crate::proxy::host::cc_switch::proxy_state::ProxyState;
+use crate::proxy::{
     engine::response_pipeline::{
         claude_passthrough_response_to_axum_response, claude_response_needs_transform,
         claude_transformed_response_to_axum_response, codex_chat_proxy_request_to_axum_response,
@@ -9,12 +14,7 @@ use super::{
         gemini_passthrough_response_to_axum_response,
     },
     error::ProxyError,
-    transport::http::request_body::{
-        collect_json_or_null_proxy_request, collect_json_proxy_request, endpoint_from_uri,
-    },
 };
-use crate::app_config::AppType;
-use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use http::Uri;
 
 pub(crate) async fn dispatch_gemini_request_to_axum_response(

@@ -53,7 +53,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/runtime_status_source.rs",
     "src/proxy/request_adapter.rs",
     "src/proxy/route_attempt.rs",
-    "src/proxy/protocol_adapter.rs",
+    "src/proxy/transport/http/protocol_adapter.rs",
     "src/proxy/transport/http/request_body.rs",
     "src/proxy/transport/upstream/mod.rs",
     "src/proxy/transport/upstream/reqwest_client.rs",
@@ -3354,19 +3354,28 @@ fn production_protocol_adapter_supersedes_response_adapter_module_name() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let proxy_mod_source =
         fs::read_to_string(manifest_dir.join("src/proxy/mod.rs")).expect("read proxy/mod.rs");
+    let http_mod_source = fs::read_to_string(manifest_dir.join("src/proxy/transport/http/mod.rs"))
+        .expect("read proxy/transport/http/mod.rs");
 
     assert!(
-        manifest_dir.join("src/proxy/protocol_adapter.rs").exists(),
-        "protocol_adapter should own protocol-specific HTTP request orchestration"
+        manifest_dir
+            .join("src/proxy/transport/http/protocol_adapter.rs")
+            .exists(),
+        "HTTP transport protocol_adapter should own protocol-specific HTTP request orchestration"
+    );
+    assert!(
+        !manifest_dir.join("src/proxy/protocol_adapter.rs").exists(),
+        "root protocol_adapter.rs should stay removed after HTTP transport owns protocol orchestration"
     );
     assert!(
         !manifest_dir.join("src/proxy/response_adapter.rs").exists(),
         "response_adapter.rs should stay removed after protocol orchestration no longer owns response-specific logic"
     );
     assert!(
-        proxy_mod_source.contains("mod protocol_adapter")
+        http_mod_source.contains("mod protocol_adapter")
+            && !proxy_mod_source.contains("mod protocol_adapter")
             && !proxy_mod_source.contains("mod response_adapter"),
-        "proxy module declarations should expose protocol_adapter and not restore response_adapter"
+        "HTTP transport module should expose protocol_adapter without restoring root protocol_adapter or response_adapter declarations"
     );
 }
 
@@ -3375,7 +3384,7 @@ fn basic_health_status_handlers_use_management_contracts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let adapter_path = manifest_dir.join("src/proxy/protocol_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read protocol_adapter.rs");
     let health_handler = function_slice(&source, "pub async fn health_check", "/// 获取服务状态");
     let status_handler = function_slice(
@@ -5263,7 +5272,7 @@ fn production_proxy_events_handler_owns_http_sse_orchestration() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let protocol_adapter_path = manifest_dir.join("src/proxy/protocol_adapter.rs");
+    let protocol_adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
     let protocol_adapter =
         fs::read_to_string(&protocol_adapter_path).expect("read protocol_adapter.rs");
     let handler = function_slice(
@@ -5299,7 +5308,7 @@ fn production_proxy_events_handler_owns_http_sse_orchestration() {
         for marker in FORBIDDEN_RESPONSE_ADAPTER_PROXY_EVENTS_SSE_ORCHESTRATION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/protocol_adapter.rs:{} contains SSE orchestration marker `{}`",
+                    "src/proxy/transport/http/protocol_adapter.rs:{} contains SSE orchestration marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5319,7 +5328,7 @@ fn production_management_read_handlers_keep_json_bridges_on_expected_boundary() 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let adapter_path = manifest_dir.join("src/proxy/protocol_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read protocol_adapter.rs");
     let apps_handler = function_slice(
         &source,
@@ -5378,7 +5387,7 @@ fn production_management_read_handlers_keep_json_bridges_on_expected_boundary() 
         || adapter_source.contains("AppListResponse")
     {
         violations.push(
-            "src/proxy/protocol_adapter.rs should not own the basic app-list JSON bridge"
+            "src/proxy/transport/http/protocol_adapter.rs should not own the basic app-list JSON bridge"
                 .to_string(),
         );
     }
@@ -5415,7 +5424,7 @@ fn production_management_read_handlers_keep_json_bridges_on_expected_boundary() 
         || adapter_source.contains("ProviderListResponse")
     {
         violations.push(
-            "src/proxy/protocol_adapter.rs should not own the provider-list JSON bridge"
+            "src/proxy/transport/http/protocol_adapter.rs should not own the provider-list JSON bridge"
                 .to_string(),
         );
     }
@@ -5455,7 +5464,7 @@ fn production_management_read_handlers_keep_json_bridges_on_expected_boundary() 
         || adapter_source.contains("RoutableModelList")
     {
         violations.push(
-            "src/proxy/protocol_adapter.rs should not own the app model catalog JSON bridge"
+            "src/proxy/transport/http/protocol_adapter.rs should not own the app model catalog JSON bridge"
                 .to_string(),
         );
     }
@@ -5492,7 +5501,7 @@ fn production_management_read_handlers_keep_json_bridges_on_expected_boundary() 
         || adapter_source.contains("ClientModelCatalogResponse")
     {
         violations.push(
-            "src/proxy/protocol_adapter.rs should not own the Codex client model catalog JSON bridge"
+            "src/proxy/transport/http/protocol_adapter.rs should not own the Codex client model catalog JSON bridge"
                 .to_string(),
         );
     }
@@ -5509,7 +5518,7 @@ fn production_route_inspection_handlers_keep_json_bridges_on_http_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let adapter_path = manifest_dir.join("src/proxy/protocol_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read protocol_adapter.rs");
     let handlers: [(&str, &str, &[&str], &[&str]); 5] = [
         (
@@ -5666,7 +5675,7 @@ fn production_route_inspection_handlers_keep_json_bridges_on_http_boundary() {
     ] {
         if adapter_source.contains(marker) {
             violations.push(format!(
-                "src/proxy/protocol_adapter.rs should not own route inspection marker `{marker}`"
+                "src/proxy/transport/http/protocol_adapter.rs should not own route inspection marker `{marker}`"
             ));
         }
     }
@@ -5683,7 +5692,7 @@ fn production_channel_mutation_handlers_keep_json_bridges_on_http_boundary() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let adapter_path = manifest_dir.join("src/proxy/protocol_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read protocol_adapter.rs");
     let handlers: [(&str, &str, &[&str], &[&str]); 11] = [
         (
@@ -5964,7 +5973,7 @@ fn production_channel_mutation_handlers_keep_json_bridges_on_http_boundary() {
     ] {
         if adapter_source.contains(marker) {
             violations.push(format!(
-                "src/proxy/protocol_adapter.rs should not own channel mutation marker `{marker}`"
+                "src/proxy/transport/http/protocol_adapter.rs should not own channel mutation marker `{marker}`"
             ));
         }
     }
@@ -5981,7 +5990,7 @@ fn production_migration_and_breaker_handlers_keep_json_bridges_on_http_boundary(
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let adapter_path = manifest_dir.join("src/proxy/protocol_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read protocol_adapter.rs");
     let handlers: [(&str, &str, &[&str], &[&str]); 4] = [
         (
@@ -6110,7 +6119,7 @@ fn production_migration_and_breaker_handlers_keep_json_bridges_on_http_boundary(
     ] {
         if adapter_source.contains(marker) {
             violations.push(format!(
-                "src/proxy/protocol_adapter.rs should not own migration/breaker marker `{marker}`"
+                "src/proxy/transport/http/protocol_adapter.rs should not own migration/breaker marker `{marker}`"
             ));
         }
     }
@@ -6127,7 +6136,7 @@ fn production_basic_status_and_desktop_model_handlers_own_local_json_bridges() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/transport/http/handlers.rs");
     let source = fs::read_to_string(&path).expect("read handlers.rs");
-    let adapter_path = manifest_dir.join("src/proxy/protocol_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read protocol_adapter.rs");
     let health_handler = function_slice(&source, "pub async fn health_check(", "/// 获取服务状态");
     let status_handler = function_slice(
@@ -6229,7 +6238,7 @@ fn production_basic_status_and_desktop_model_handlers_own_local_json_bridges() {
         || adapter_source.contains("ClaudeDesktopModelListResponse")
     {
         violations.push(
-            "src/proxy/protocol_adapter.rs should not own the basic Claude Desktop model-list JSON bridge"
+            "src/proxy/transport/http/protocol_adapter.rs should not own the basic Claude Desktop model-list JSON bridge"
                 .to_string(),
         );
     }
@@ -10899,9 +10908,9 @@ fn response_pipeline_owns_forward_error_usage_and_sink_scheduling() {
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
-    let protocol_adapter_path = manifest_dir.join("src/proxy/protocol_adapter.rs");
-    let protocol_adapter_source =
-        fs::read_to_string(&protocol_adapter_path).expect("read proxy/protocol_adapter.rs");
+    let protocol_adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
+    let protocol_adapter_source = fs::read_to_string(&protocol_adapter_path)
+        .expect("read proxy/transport/http/protocol_adapter.rs");
     let adapter_import = optional_function_slice(
         &source,
         "use crate::proxy_core_adapter::{",
@@ -11000,9 +11009,9 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
-    let protocol_adapter_path = manifest_dir.join("src/proxy/protocol_adapter.rs");
-    let protocol_adapter_source =
-        fs::read_to_string(&protocol_adapter_path).expect("read proxy/protocol_adapter.rs");
+    let protocol_adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
+    let protocol_adapter_source = fs::read_to_string(&protocol_adapter_path)
+        .expect("read proxy/transport/http/protocol_adapter.rs");
     let function = function_slice(
         &source,
         "pub(crate) fn claude_transform_tool_schema_hints",
@@ -11080,9 +11089,9 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
-    let protocol_adapter_path = manifest_dir.join("src/proxy/protocol_adapter.rs");
-    let protocol_adapter_source =
-        fs::read_to_string(&protocol_adapter_path).expect("read proxy/protocol_adapter.rs");
+    let protocol_adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
+    let protocol_adapter_source = fs::read_to_string(&protocol_adapter_path)
+        .expect("read proxy/transport/http/protocol_adapter.rs");
     let function = function_slice(
         &source,
         "pub(crate) fn record_transformed_response_usage(",
@@ -11166,9 +11175,9 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
-    let protocol_adapter_path = manifest_dir.join("src/proxy/protocol_adapter.rs");
-    let protocol_adapter_source =
-        fs::read_to_string(&protocol_adapter_path).expect("read proxy/protocol_adapter.rs");
+    let protocol_adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
+    let protocol_adapter_source = fs::read_to_string(&protocol_adapter_path)
+        .expect("read proxy/transport/http/protocol_adapter.rs");
     let decode_slice = function_slice(
         &source,
         "pub(crate) struct DecodedProxyResponseBody",
@@ -11494,7 +11503,7 @@ fn response_pipeline_delegates_build_error_message_policy_to_core() {
     let pipeline_path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let pipeline_source =
         fs::read_to_string(&pipeline_path).expect("read engine/response_pipeline.rs");
-    let adapter_path = manifest_dir.join("src/proxy/protocol_adapter.rs");
+    let adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read protocol_adapter.rs");
 
     assert!(
@@ -13374,8 +13383,9 @@ fn upstream_transport_owns_proxy_core_response_bridge() {
     let response_pipeline =
         fs::read_to_string(manifest_dir.join("src/proxy/engine/response_pipeline.rs"))
             .expect("read engine/response_pipeline.rs");
-    let protocol_adapter = fs::read_to_string(manifest_dir.join("src/proxy/protocol_adapter.rs"))
-        .expect("read protocol_adapter.rs");
+    let protocol_adapter =
+        fs::read_to_string(manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs"))
+            .expect("read protocol_adapter.rs");
 
     assert!(
         upstream_transport.contains("pub(crate) fn proxy_core_response_to_proxy_response(")
@@ -13414,8 +13424,9 @@ fn response_pipeline_uses_core_sse_header_decision() {
     let response_processor =
         fs::read_to_string(manifest_dir.join("src/proxy/engine/response_pipeline.rs"))
             .expect("read engine/response_pipeline.rs");
-    let protocol_adapter = fs::read_to_string(manifest_dir.join("src/proxy/protocol_adapter.rs"))
-        .expect("read protocol_adapter.rs");
+    let protocol_adapter =
+        fs::read_to_string(manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs"))
+            .expect("read protocol_adapter.rs");
     let adapter = proxy_core_adapter_source(&manifest_dir);
     let provider_projection =
         fs::read_to_string(manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs"))
@@ -25705,7 +25716,7 @@ fn production_proxy_state_imports_use_host_path() {
     let files = [
         "src/proxy/auth_adapter.rs",
         "src/proxy/engine/context.rs",
-        "src/proxy/protocol_adapter.rs",
+        "src/proxy/transport/http/protocol_adapter.rs",
         "src/proxy/transport/http/handlers.rs",
         "src/proxy/engine/response_pipeline.rs",
         "src/proxy/transport/http/server.rs",
@@ -28058,8 +28069,8 @@ fn proxy_error_mapper_uses_grouped_api_surface() {
 #[test]
 fn proxy_protocol_adapter_uses_grouped_api_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/protocol_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy/protocol_adapter.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/transport/http/protocol_adapter.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in source.lines().enumerate() {
@@ -28067,7 +28078,7 @@ fn proxy_protocol_adapter_uses_grouped_api_surface() {
         for (column, _) in code.match_indices(PROXY_CORE_MARKER) {
             if !code[column..].starts_with(PROXY_CORE_API_MARKER) {
                 violations.push(format!(
-                    "src/proxy/protocol_adapter.rs:{} contains non-api proxy-core access: {}",
+                    "src/proxy/transport/http/protocol_adapter.rs:{} contains non-api proxy-core access: {}",
                     line_index + 1,
                     code.trim()
                 ));
@@ -28077,7 +28088,7 @@ fn proxy_protocol_adapter_uses_grouped_api_surface() {
 
     assert!(
         violations.is_empty(),
-        "proxy/protocol_adapter.rs must use proxy_core::api as its integration surface:\n{}",
+        "proxy/transport/http/protocol_adapter.rs must use proxy_core::api as its integration surface:\n{}",
         violations.join("\n")
     );
 }
@@ -28085,9 +28096,9 @@ fn proxy_protocol_adapter_uses_grouped_api_surface() {
 #[test]
 fn response_pipeline_owns_codex_chat_conversion_gate_provider_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let protocol_adapter_path = manifest_dir.join("src/proxy/protocol_adapter.rs");
-    let protocol_adapter =
-        fs::read_to_string(&protocol_adapter_path).expect("read proxy/protocol_adapter.rs");
+    let protocol_adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
+    let protocol_adapter = fs::read_to_string(&protocol_adapter_path)
+        .expect("read proxy/transport/http/protocol_adapter.rs");
     let response_pipeline_path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let response_pipeline =
         fs::read_to_string(&response_pipeline_path).expect("read engine/response_pipeline.rs");
@@ -28147,8 +28158,8 @@ fn response_pipeline_owns_codex_chat_conversion_gate_provider_projection() {
 #[test]
 fn proxy_protocol_adapter_keeps_core_contract_imports_in_owning_modules() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/protocol_adapter.rs");
-    let source = fs::read_to_string(&path).expect("read proxy/protocol_adapter.rs");
+    let path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy/transport/http/protocol_adapter.rs");
     let request_adapter = fs::read_to_string(manifest_dir.join("src/proxy/request_adapter.rs"))
         .expect("read proxy/request_adapter.rs");
     let http_request_body =
@@ -28236,7 +28247,7 @@ fn proxy_protocol_adapter_keeps_core_contract_imports_in_owning_modules() {
         "request_adapter should consume grouped proxy-core APIs directly instead of proxy_core_adapter facades"
     );
     assert!(
-        source.contains("http::request_body::{")
+        source.contains("super::request_body::{")
             && source.contains("collect_json_proxy_request")
             && source.contains("collect_json_or_null_proxy_request")
             && source.contains("endpoint_from_uri")
@@ -28508,8 +28519,8 @@ fn http_handlers_import_core_contracts_directly() {
     let source = fs::read_to_string(&path).expect("read proxy/transport/http/handlers.rs");
     let protocol_adapter_import = function_slice(
         &source,
-        "protocol_adapter::{",
-        "    },\n};\nuse crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;",
+        "use super::protocol_adapter::{",
+        "};\nuse crate::proxy::host::cc_switch::proxy_state::ProxyState;",
     );
     let protocol_adapter_import_identifiers: Vec<&str> = protocol_adapter_import
         .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))

@@ -6,18 +6,17 @@
 //! - 协议请求编排由 `protocol_adapter` 承接
 //! - HTTP handler 只保留 Axum 提取、鉴权和管理 API 转发
 
+use super::protocol_adapter::{
+    dispatch_claude_desktop_messages_request_to_axum_response,
+    dispatch_claude_request_to_axum_response, dispatch_codex_chat_request_to_axum_response,
+    dispatch_codex_responses_compact_request_to_axum_response,
+    dispatch_codex_responses_request_to_axum_response, dispatch_gemini_request_to_axum_response,
+};
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
 use crate::proxy::{
     auth_adapter::{validate_claude_desktop_gateway_auth, validate_proxy_management_auth},
     error::ProxyError,
     error_mapper::{management_api_error_to_proxy_error, proxy_core_error_to_proxy_error},
-    protocol_adapter::{
-        dispatch_claude_desktop_messages_request_to_axum_response,
-        dispatch_claude_request_to_axum_response, dispatch_codex_chat_request_to_axum_response,
-        dispatch_codex_responses_compact_request_to_axum_response,
-        dispatch_codex_responses_request_to_axum_response,
-        dispatch_gemini_request_to_axum_response,
-    },
 };
 use crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
 use crate::proxy_core::api::domain::AppKind;
