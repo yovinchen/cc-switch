@@ -22,7 +22,7 @@ use crate::proxy::{
         codex_responses_error_body_build_error_to_proxy_error, proxy_core_error_to_proxy_error,
         proxy_error_display_message, proxy_error_status_code, response_build_error_to_proxy_error,
     },
-    transport::upstream::hyper_client::ProxyResponse,
+    transport::upstream::{hyper_client::ProxyResponse, proxy_core_response_to_proxy_response},
 };
 use crate::proxy_core::api::config::StreamingTimeoutConfig;
 use crate::proxy_core::api::domain::{AppKind, ProviderKind};
@@ -40,8 +40,9 @@ use crate::proxy_core::api::transport::{
     rebuilt_json_proxy_response, response_headers_indicate_sse,
     streaming_response_received_log_events, transformed_sse_proxy_response, ProxyCoreResponse,
     ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext,
-    ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext, ProxyTransportResponse,
-    ProxyTransportResponseBody, ResponseBodyDecodeLogLevel, ResponseLogEvent, ResponseLogLevel,
+    ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext, ProxyResult,
+    ProxyTransportResponse, ProxyTransportResponseBody, ResponseBodyDecodeLogLevel,
+    ResponseLogEvent, ResponseLogLevel,
 };
 use crate::proxy_core::api::usage::{
     error_usage_record_with_request_id_fallback,
@@ -79,6 +80,26 @@ pub(crate) fn emit_response_log_event(event: ResponseLogEvent) {
         ResponseLogLevel::Debug => log::debug!("{}", event.message),
         ResponseLogLevel::Warn => log::warn!("{}", event.message),
     }
+}
+
+pub(crate) fn proxy_result_to_proxy_response(
+    result: ProxyResult,
+    ctx: &mut RequestContext,
+    state: &ProxyState,
+) -> Result<ProxyResponse, ProxyError> {
+    ctx.apply_proxy_result(state.request_context_provider_source.as_ref(), &result)?;
+    proxy_core_response_to_proxy_response(result.response)
+}
+
+pub(crate) fn claude_proxy_result_to_proxy_response(
+    result: ProxyResult,
+    ctx: &mut RequestContext,
+    state: &ProxyState,
+) -> Result<(ProxyResponse, String), ProxyError> {
+    ctx.apply_proxy_result(state.request_context_provider_source.as_ref(), &result)?;
+    let api_format = ctx.claude_api_format_for_proxy_result(&result)?;
+    let response = proxy_core_response_to_proxy_response(result.response)?;
+    Ok((response, api_format))
 }
 
 pub(crate) fn decode_raw_proxy_response_body(

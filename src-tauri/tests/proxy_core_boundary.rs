@@ -13329,6 +13329,9 @@ fn upstream_transport_owns_proxy_core_response_bridge() {
     let upstream_transport =
         fs::read_to_string(manifest_dir.join("src/proxy/transport/upstream/mod.rs"))
             .expect("read transport/upstream/mod.rs");
+    let response_pipeline =
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/response_pipeline.rs"))
+            .expect("read engine/response_pipeline.rs");
     let response_adapter = fs::read_to_string(manifest_dir.join("src/proxy/response_adapter.rs"))
         .expect("read response_adapter.rs");
 
@@ -13347,10 +13350,17 @@ fn upstream_transport_owns_proxy_core_response_bridge() {
     );
     assert!(
         !response_adapter.contains("pub(crate) fn proxy_core_response_to_proxy_response(")
-            && response_adapter.contains(
-                "upstream::proxy_core_response_to_proxy_response,"
-            ),
-        "response_adapter should call the upstream transport bridge instead of owning it"
+            && response_pipeline.contains("proxy_core_response_to_proxy_response"),
+        "response_pipeline should call the upstream transport bridge instead of response_adapter owning it"
+    );
+    assert!(
+        response_pipeline.contains("pub(crate) fn proxy_result_to_proxy_response(")
+            && response_pipeline.contains("pub(crate) fn claude_proxy_result_to_proxy_response(")
+            && response_pipeline.contains(".apply_proxy_result(")
+            && response_pipeline.contains(".claude_api_format_for_proxy_result(")
+            && !response_adapter.contains(".apply_proxy_result(")
+            && !response_adapter.contains(".claude_api_format_for_proxy_result("),
+        "ProxyResult context update and host ProxyResponse bridge should live in response_pipeline"
     );
 }
 

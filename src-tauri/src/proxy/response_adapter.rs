@@ -1,7 +1,7 @@
 use super::{
     engine::context::RequestContext,
     engine::response_pipeline::{
-        claude_transformed_json_response_from_context,
+        claude_proxy_result_to_proxy_response, claude_transformed_json_response_from_context,
         claude_transformed_json_response_to_axum_response,
         claude_transformed_sse_response_to_axum_response,
         claude_transformed_sse_stream_from_context,
@@ -10,9 +10,10 @@ use super::{
         codex_chat_upstream_error_response_to_axum_response, codex_proxy_error_to_axum_response,
         codex_transformed_json_response_to_axum_response,
         codex_transformed_sse_response_to_axum_response, process_response,
-        read_decoded_proxy_response_body, record_forward_core_error_usage,
-        ClaudeTransformedJsonResponseContext, ClaudeTransformedSseStreamContext,
-        CodexAutoTransformedJsonResponseContext, CodexAutoTransformedSseStreamContext,
+        proxy_result_to_proxy_response, read_decoded_proxy_response_body,
+        record_forward_core_error_usage, ClaudeTransformedJsonResponseContext,
+        ClaudeTransformedSseStreamContext, CodexAutoTransformedJsonResponseContext,
+        CodexAutoTransformedSseStreamContext,
     },
     error::ProxyError,
     error_mapper::{
@@ -26,7 +27,6 @@ use super::{
             collect_json_or_null_proxy_request, collect_json_proxy_request, endpoint_from_uri,
         },
         upstream::hyper_client::ProxyResponse,
-        upstream::proxy_core_response_to_proxy_response,
     },
 };
 use crate::app_config::AppType;
@@ -315,26 +315,6 @@ async fn codex_responses_proxy_request_to_axum_response(
     }
 
     codex_passthrough_response_to_axum_response(response, ctx, state).await
-}
-
-fn proxy_result_to_proxy_response(
-    result: ProxyResult,
-    ctx: &mut RequestContext,
-    state: &ProxyState,
-) -> Result<ProxyResponse, ProxyError> {
-    ctx.apply_proxy_result(state.request_context_provider_source.as_ref(), &result)?;
-    proxy_core_response_to_proxy_response(result.response)
-}
-
-fn claude_proxy_result_to_proxy_response(
-    result: ProxyResult,
-    ctx: &mut RequestContext,
-    state: &ProxyState,
-) -> Result<(ProxyResponse, String), ProxyError> {
-    ctx.apply_proxy_result(state.request_context_provider_source.as_ref(), &result)?;
-    let api_format = ctx.claude_api_format_for_proxy_result(&result)?;
-    let response = proxy_core_response_to_proxy_response(result.response)?;
-    Ok((response, api_format))
 }
 
 pub(crate) fn claude_response_needs_transform(ctx: &RequestContext) -> Result<bool, ProxyError> {
