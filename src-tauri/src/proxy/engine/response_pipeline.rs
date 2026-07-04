@@ -49,7 +49,7 @@ use crate::proxy_core::api::transport::{
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
     rebuilt_json_proxy_response, response_headers_indicate_sse,
     streaming_response_received_log_events, transformed_sse_proxy_response, ProxyCoreResponse,
-    ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext,
+    ProxyRequest, ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext,
     ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext, ProxyResult,
     ProxyTransportResponse, ProxyTransportResponseBody, ResponseBodyDecodeLogLevel,
     ResponseLogEvent, ResponseLogLevel, UpstreamSseAggregationKind,
@@ -111,6 +111,126 @@ pub(crate) fn claude_proxy_result_to_proxy_response(
     let api_format = ctx.claude_api_format_for_proxy_result(&result)?;
     let response = proxy_core_response_to_proxy_response(result.response)?;
     Ok((response, api_format))
+}
+
+async fn dispatch_proxy_request(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    proxy_request: ProxyRequest,
+    is_stream: bool,
+) -> Result<ProxyResult, ProxyError> {
+    state
+        .proxy_engine()
+        .handle(proxy_request)
+        .await
+        .map_err(|error| record_forward_core_error_usage(state, ctx, is_stream, error))
+}
+
+pub(crate) async fn dispatch_proxy_request_to_proxy_response(
+    state: &ProxyState,
+    ctx: &mut RequestContext,
+    proxy_request: ProxyRequest,
+    is_stream: bool,
+) -> Result<ProxyResponse, ProxyError> {
+    let result = dispatch_proxy_request(state, ctx, proxy_request, is_stream).await?;
+    proxy_result_to_proxy_response(result, ctx, state)
+}
+
+pub(crate) async fn dispatch_claude_proxy_request_to_proxy_response(
+    state: &ProxyState,
+    ctx: &mut RequestContext,
+    proxy_request: ProxyRequest,
+    is_stream: bool,
+) -> Result<(ProxyResponse, String), ProxyError> {
+    let result = dispatch_proxy_request(state, ctx, proxy_request, is_stream).await?;
+    claude_proxy_result_to_proxy_response(result, ctx, state)
+}
+
+pub(crate) enum CodexProxyDispatchResponse {
+    ProxyResponse(ProxyResponse),
+    ErrorResponse(axum::response::Response),
+}
+
+pub(crate) async fn dispatch_codex_proxy_request_to_proxy_response(
+    state: &ProxyState,
+    ctx: &mut RequestContext,
+    proxy_request: ProxyRequest,
+    endpoint: &str,
+    is_stream: bool,
+) -> Result<CodexProxyDispatchResponse, ProxyError> {
+    let result = match dispatch_proxy_request(state, ctx, proxy_request, is_stream).await {
+        Ok(result) => result,
+        Err(error) => {
+            let response = codex_proxy_error_to_axum_response(
+                ctx.provider_name_for_error(),
+                &ctx.request_model,
+                endpoint,
+                &error,
+            )?;
+            return Ok(CodexProxyDispatchResponse::ErrorResponse(response));
+        }
+    };
+    proxy_result_to_proxy_response(result, ctx, state)
+        .map(CodexProxyDispatchResponse::ProxyResponse)
+}
+
+pub(crate) async fn codex_chat_proxy_request_to_axum_response(
+    state: &ProxyState,
+    ctx: &mut RequestContext,
+    proxy_request: ProxyRequest,
+    endpoint: &str,
+    is_stream: bool,
+) -> Result<axum::response::Response, ProxyError> {
+    let response = match dispatch_codex_proxy_request_to_proxy_response(
+        state,
+        ctx,
+        proxy_request,
+        endpoint,
+        is_stream,
+    )
+    .await?
+    {
+        CodexProxyDispatchResponse::ProxyResponse(response) => response,
+        CodexProxyDispatchResponse::ErrorResponse(response) => return Ok(response),
+    };
+
+    openai_chat_passthrough_response_to_axum_response(response, ctx, state).await
+}
+
+pub(crate) async fn codex_responses_proxy_request_to_axum_response(
+    state: &ProxyState,
+    ctx: &mut RequestContext,
+    proxy_request: ProxyRequest,
+    endpoint: &str,
+    is_stream: bool,
+    codex_tool_context: CodexToolContext,
+) -> Result<axum::response::Response, ProxyError> {
+    let response = match dispatch_codex_proxy_request_to_proxy_response(
+        state,
+        ctx,
+        proxy_request,
+        endpoint,
+        is_stream,
+    )
+    .await?
+    {
+        CodexProxyDispatchResponse::ProxyResponse(response) => response,
+        CodexProxyDispatchResponse::ErrorResponse(response) => return Ok(response),
+    };
+
+    if codex_response_needs_chat_transform(ctx, endpoint)? {
+        return codex_chat_to_responses_transformed_response_to_axum_response(
+            response,
+            ctx,
+            state,
+            is_stream,
+            None,
+            codex_tool_context,
+        )
+        .await;
+    }
+
+    codex_passthrough_response_to_axum_response(response, ctx, state).await
 }
 
 pub(crate) fn decode_raw_proxy_response_body(
