@@ -13,6 +13,7 @@ pub mod error_mapper;
 pub(crate) mod events;
 pub(crate) mod host;
 pub mod provider;
+pub(crate) mod request_adapter;
 pub(crate) mod response_adapter;
 pub(crate) mod route_attempt;
 pub(crate) mod switch_lock;

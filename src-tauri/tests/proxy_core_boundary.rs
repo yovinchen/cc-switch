@@ -51,6 +51,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/host/cc_switch/route_policy_source.rs",
     "src/proxy/host/cc_switch/route_resolver.rs",
     "src/proxy/host/cc_switch/runtime_status_source.rs",
+    "src/proxy/request_adapter.rs",
     "src/proxy/route_attempt.rs",
     "src/proxy/response_adapter.rs",
     "src/proxy/transport/http/request_body.rs",
@@ -28092,6 +28093,8 @@ fn proxy_response_adapter_owns_core_transport_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/response_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy/response_adapter.rs");
+    let request_adapter = fs::read_to_string(manifest_dir.join("src/proxy/request_adapter.rs"))
+        .expect("read proxy/request_adapter.rs");
     let http_request_body =
         fs::read_to_string(manifest_dir.join("src/proxy/transport/http/request_body.rs"))
             .expect("read proxy/transport/http/request_body.rs");
@@ -28107,23 +28110,53 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         .collect();
 
     assert!(
-        source.contains("crate::proxy_core::api::domain::AppKind")
-            && source.contains("crate::proxy_core::api::transport::{")
-            && source.contains("endpoint_from_path_and_query")
-            && source.contains("endpoint_from_path_query_stripping_prefix")
-            && source.contains("extract_gemini_model_from_path")
-            && source.contains("ProxyBody")
-            && source.contains("crate::proxy_core::api::routing::InterfaceKind")
+        source.contains("crate::proxy_core::api::transport::{")
+            && source.contains("ProxyRequest")
+            && source.contains("ProxyResult")
+            && source.contains("UpstreamSseAggregationKind")
             && source.contains("crate::proxy_core::api::transforms::{")
-            && source.contains("build_codex_tool_context_from_request")
+            && source.contains("CodexToolContext")
             && source.contains("crate::proxy_core::api::usage::{"),
-        "response_adapter should import core domain/transport/routing/transforms/usage contracts directly"
+        "response_adapter should import only dispatch/response core transport, transform, and usage contracts directly"
+    );
+    assert!(
+        request_adapter.contains("crate::proxy_core::api::domain::AppKind")
+            && request_adapter.contains("crate::proxy_core::api::routing::InterfaceKind")
+            && request_adapter.contains("crate::proxy_core::api::transport::{")
+            && request_adapter.contains("endpoint_from_path_and_query")
+            && request_adapter.contains("endpoint_from_path_query_stripping_prefix")
+            && request_adapter.contains("extract_gemini_model_from_path")
+            && request_adapter.contains("ProxyBody")
+            && request_adapter.contains("ProxyRequest")
+            && request_adapter.contains("build_codex_tool_context_from_request")
+            && request_adapter.contains("CodexResponsesProxyRequest"),
+        "request_adapter should own protocol request-context, endpoint, and ProxyRequest construction"
+    );
+    for marker in [
+        "AppKind",
+        "InterfaceKind",
+        "endpoint_from_path_and_query",
+        "endpoint_from_path_query_stripping_prefix",
+        "extract_gemini_model_from_path",
+        "ProxyBody::Json",
+        "build_codex_tool_context_from_request",
+        "struct CodexResponsesProxyRequest",
+    ] {
+        assert!(
+            !source.contains(marker),
+            "response_adapter should not own protocol request construction marker `{marker}`"
+        );
+    }
+    assert!(
+        !request_adapter.contains("proxy_core_adapter"),
+        "request_adapter should consume grouped proxy-core APIs directly instead of proxy_core_adapter facades"
     );
     assert!(
         source.contains("http::request_body::{")
             && source.contains("collect_json_proxy_request")
             && source.contains("collect_json_or_null_proxy_request")
-            && source.contains("ParsedHttpJsonProxyRequest")
+            && source.contains("endpoint_from_uri")
+            && !source.contains("ParsedHttpJsonProxyRequest")
             && !source.contains("http_body_util::BodyExt")
             && !source.contains("request_body_read_error_message")
             && !source.contains("parse_json_proxy_request_body")
