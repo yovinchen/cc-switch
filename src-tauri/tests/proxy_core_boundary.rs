@@ -15,6 +15,7 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
     "src/proxy/copilot_auth.rs",
     "src/proxy/engine/context.rs",
     "src/proxy/engine/forward_pipeline.rs",
+    "src/proxy/engine/response_assembly.rs",
     "src/proxy/engine/response_pipeline.rs",
     "src/proxy/engine/response_usage.rs",
     "src/proxy/error_mapper.rs",
@@ -11220,10 +11221,13 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
 }
 
 #[test]
-fn response_pipeline_owns_body_decode_transport_bridge() {
+fn response_assembly_owns_body_decode_transport_bridge() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
-    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let pipeline_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/response_pipeline.rs"))
+            .expect("read engine/response_pipeline.rs");
+    let path = manifest_dir.join("src/proxy/engine/response_assembly.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_assembly.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let protocol_adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
     let protocol_adapter_source = fs::read_to_string(&protocol_adapter_path)
@@ -11240,7 +11244,7 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
         for marker in FORBIDDEN_RESPONSE_PROCESSOR_BODY_DECODE_PROJECTION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/engine/response_pipeline.rs:{} contains body decode projection marker `{}`",
+                    "src/proxy/engine/response_assembly.rs:{} contains body decode projection marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11261,7 +11265,7 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
             && decode_slice.contains("non_streaming_body_timeout_message(")
             && decode_slice.contains("decode_response_body(")
             && decode_slice.contains("ResponseBodyDecodeLogLevel::"),
-        "response pipeline should own the non-streaming transport body read/decode bridge"
+        "response_assembly should own the non-streaming transport body read/decode bridge"
     );
     assert!(
         !adapter_source.contains("read_decoded_proxy_response_body")
@@ -11279,6 +11283,13 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
                 .contains("codex_responses_proxy_request_to_axum_response"),
         "protocol_adapter should call high-level transformed response outlets instead of body decode bridge helpers"
     );
+    assert!(
+        pipeline_source.contains("use super::response_assembly::{")
+            && pipeline_source.contains("read_decoded_proxy_response_body")
+            && !pipeline_source.contains("pub(crate) struct DecodedProxyResponseBody")
+            && !pipeline_source.contains("pub(crate) fn decode_raw_proxy_response_body"),
+        "response_pipeline should consume response_assembly body decode helpers instead of owning them"
+    );
     let direct_core_refs: Vec<String> = production_lines(&source)
         .filter_map(|(line_index, line)| {
             let code = line.split("//").next().unwrap_or_default();
@@ -11292,7 +11303,7 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
                 && !code.contains("crate::proxy_core::api::transforms"))
             .then(|| {
                 format!(
-                    "src/proxy/engine/response_pipeline.rs:{} contains non-response proxy-core marker",
+                    "src/proxy/engine/response_assembly.rs:{} contains non-response proxy-core marker",
                     line_index + 1
                 )
             })
@@ -11300,7 +11311,7 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
         .collect();
     assert!(
         direct_core_refs.is_empty(),
-        "response pipeline direct proxy-core access should stay limited to response-facing core config/domain/error/ports/transport/transforms/usage APIs:\n{}",
+        "response_assembly direct proxy-core access should stay limited to response-facing core transport/transforms APIs:\n{}",
         direct_core_refs.join("\n")
     );
 }
@@ -11310,6 +11321,9 @@ fn response_pipeline_owns_core_usage_transport_imports() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let assembly_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/response_assembly.rs"))
+            .expect("read engine/response_assembly.rs");
     let usage_source = fs::read_to_string(manifest_dir.join("src/proxy/engine/response_usage.rs"))
         .expect("read engine/response_usage.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
@@ -11330,7 +11344,6 @@ fn response_pipeline_owns_core_usage_transport_imports() {
             && source.contains("use crate::proxy_core::api::transport::{")
             && source.contains("passthrough_bytes_proxy_response")
             && source.contains("passthrough_stream_proxy_response")
-            && source.contains("response_headers_indicate_sse")
             && source.contains("ProxyCoreResponse")
             && source.contains("ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext")
             && source.contains("use crate::proxy_core::api::usage::{")
@@ -11353,6 +11366,29 @@ fn response_pipeline_owns_core_usage_transport_imports() {
             && source.contains("SsePassthroughStreamState")
             && source.contains("SseUsageAccumulator"),
         "response_pipeline should import pure core response contracts directly"
+    );
+    assert!(
+        assembly_source.contains("use crate::proxy_core::api::transport::{")
+            && assembly_source.contains("decode_response_body")
+            && assembly_source.contains("non_streaming_body_timeout_message")
+            && assembly_source.contains("non_streaming_response_body_log_event")
+            && assembly_source.contains("non_streaming_response_received_log_event")
+            && assembly_source.contains("rebuilt_json_proxy_response")
+            && assembly_source.contains("response_headers_indicate_sse")
+            && assembly_source.contains("streaming_response_received_log_events")
+            && assembly_source.contains("transformed_sse_proxy_response")
+            && assembly_source.contains("ProxyCoreResponse")
+            && assembly_source
+                .contains("ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext")
+            && assembly_source
+                .contains("ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext")
+            && assembly_source.contains("ProxyTransportResponse")
+            && assembly_source.contains("ProxyTransportResponseBody")
+            && assembly_source.contains("ResponseBodyDecodeLogLevel")
+            && assembly_source.contains("ResponseLogEvent")
+            && assembly_source.contains("ResponseLogLevel")
+            && assembly_source.contains("codex_chat_error_proxy_response"),
+        "response_assembly should import pure core response/decode/build contracts directly"
     );
     assert!(
         usage_source.contains("use crate::proxy_core::api::usage::{")
@@ -11432,10 +11468,10 @@ fn response_pipeline_owns_core_usage_transport_imports() {
 }
 
 #[test]
-fn response_pipeline_keeps_response_log_projection_text_in_core() {
+fn response_assembly_keeps_response_log_projection_text_in_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
-    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let path = manifest_dir.join("src/proxy/engine/response_assembly.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_assembly.rs");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
@@ -11446,7 +11482,7 @@ fn response_pipeline_keeps_response_log_projection_text_in_core() {
         for marker in markers {
             if code.contains(*marker) {
                 violations.push(format!(
-                    "src/proxy/engine/response_pipeline.rs:{} contains response log projection marker `{}`",
+                    "src/proxy/engine/response_assembly.rs:{} contains response log projection marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11456,16 +11492,16 @@ fn response_pipeline_keeps_response_log_projection_text_in_core() {
 
     assert!(
         violations.is_empty(),
-        "response pipeline must keep response log projection text in proxy-core event specs:\n{}",
+        "response_assembly must keep response log projection text in proxy-core event specs:\n{}",
         violations.join("\n")
     );
 }
 
 #[test]
-fn response_pipeline_delegates_response_log_projection_to_core() {
+fn response_assembly_delegates_response_log_projection_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
-    let source = fs::read_to_string(&path).expect("read engine/response_pipeline.rs");
+    let path = manifest_dir.join("src/proxy/engine/response_assembly.rs");
+    let source = fs::read_to_string(&path).expect("read engine/response_assembly.rs");
     let function = function_slice(
         &source,
         "pub(crate) fn decode_raw_proxy_response_body",
@@ -11477,13 +11513,13 @@ fn response_pipeline_delegates_response_log_projection_to_core() {
             && function.contains("streaming_response_received_log_events(")
             && function.contains("non_streaming_response_body_log_event(")
             && function.contains("emit_response_log_event("),
-        "response pipeline must consume response log event specs from proxy-core"
+        "response_assembly must consume response log event specs from proxy-core"
     );
 
     for marker in FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_PROJECTION_MARKERS {
         assert!(
             !function.contains(marker),
-            "response pipeline must not locally format response log projection marker `{marker}`"
+            "response_assembly must not locally format response log projection marker `{marker}`"
         );
     }
 }
@@ -11519,11 +11555,18 @@ fn response_pipeline_uses_core_axum_build_context_policy() {
     let response_pipeline_source =
         fs::read_to_string(manifest_dir.join("src/proxy/engine/response_pipeline.rs"))
             .expect("read engine/response_pipeline.rs");
+    let response_assembly_source =
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/response_assembly.rs"))
+            .expect("read engine/response_assembly.rs");
     let files = [
         ("src/proxy/transport/http/handlers.rs", "read handlers.rs"),
         (
             "src/proxy/engine/response_pipeline.rs",
             "read engine/response_pipeline.rs",
+        ),
+        (
+            "src/proxy/engine/response_assembly.rs",
+            "read engine/response_assembly.rs",
         ),
     ];
 
@@ -11547,8 +11590,10 @@ fn response_pipeline_uses_core_axum_build_context_policy() {
 
     assert!(
         response_pipeline_source
+            .contains("ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext")
+            && response_assembly_source
             .contains("ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext"),
-        "response_pipeline should import Axum response build context from proxy_core::api::transport"
+        "response_pipeline and response_assembly should import Axum response build context from proxy_core::api::transport"
     );
     assert!(
         violations.is_empty(),
@@ -11558,17 +11603,20 @@ fn response_pipeline_uses_core_axum_build_context_policy() {
 }
 
 #[test]
-fn response_pipeline_delegates_build_error_message_policy_to_core() {
+fn response_assembly_delegates_build_error_message_policy_to_core() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pipeline_path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
     let pipeline_source =
         fs::read_to_string(&pipeline_path).expect("read engine/response_pipeline.rs");
+    let assembly_path = manifest_dir.join("src/proxy/engine/response_assembly.rs");
+    let assembly_source =
+        fs::read_to_string(&assembly_path).expect("read engine/response_assembly.rs");
     let adapter_path = manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read protocol_adapter.rs");
 
     assert!(
-        pipeline_source.contains(".internal_error_prefix()"),
-        "response_pipeline should use proxy-core response build error message prefixes"
+        assembly_source.contains(".internal_error_prefix()"),
+        "response_assembly should use proxy-core response build error message prefixes"
     );
     assert!(
         !production_lines(&pipeline_source).any(|(_, line)| line.contains("protocol_adapter::")
@@ -11576,11 +11624,13 @@ fn response_pipeline_delegates_build_error_message_policy_to_core() {
         "response_pipeline must not depend on protocol_adapter for core-to-Axum response bridging"
     );
     assert!(
-        pipeline_source.contains("pub(crate) fn proxy_core_response_to_axum_response")
-            && pipeline_source
+        assembly_source.contains("pub(crate) fn proxy_core_response_to_axum_response")
+            && assembly_source
                 .contains("pub(crate) fn rebuilt_json_proxy_response_to_axum_response")
-            && pipeline_source
+            && assembly_source
                 .contains("pub(crate) fn transformed_sse_proxy_response_to_axum_response")
+            && pipeline_source.contains("use super::response_assembly::{")
+            && pipeline_source.contains("proxy_core_response_to_axum_response")
             && !adapter_source.contains("pub(crate) fn proxy_core_response_to_axum_response")
             && !adapter_source
                 .contains("pub(crate) fn rebuilt_json_proxy_response_to_axum_response")
@@ -11594,11 +11644,13 @@ fn response_pipeline_delegates_build_error_message_policy_to_core() {
         "protocol_adapter should call high-level response_pipeline outlets instead of owning or importing core-to-Axum response bridges"
     );
     assert!(
-        pipeline_source.contains("pub(crate) fn codex_chat_error_response_to_axum_response")
-            && pipeline_source.contains(
+        assembly_source.contains("pub(crate) fn codex_chat_error_response_to_axum_response")
+            && assembly_source.contains(
                 "pub(crate) async fn codex_chat_upstream_error_response_to_axum_response"
             )
-            && pipeline_source.contains("pub(crate) fn codex_proxy_error_to_axum_response")
+            && assembly_source.contains("pub(crate) fn codex_proxy_error_to_axum_response")
+            && pipeline_source.contains("codex_chat_upstream_error_response_to_axum_response")
+            && pipeline_source.contains("codex_proxy_error_to_axum_response")
             && !adapter_source.contains("pub(crate) fn codex_chat_error_response_to_axum_response")
             && !adapter_source.contains(
                 "pub(crate) async fn codex_chat_upstream_error_response_to_axum_response"
@@ -11608,12 +11660,12 @@ fn response_pipeline_delegates_build_error_message_policy_to_core() {
     );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(&pipeline_source) {
+    for (line_index, line) in production_lines(&assembly_source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_RESPONSE_ADAPTER_BUILD_ERROR_MESSAGE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/engine/response_pipeline.rs:{} contains response build error message marker `{}`",
+                    "src/proxy/engine/response_assembly.rs:{} contains response build error message marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -11623,7 +11675,7 @@ fn response_pipeline_delegates_build_error_message_policy_to_core() {
 
     assert!(
         violations.is_empty(),
-        "response_pipeline must delegate response build error message policy to proxy-core:\n{}",
+        "response_assembly must delegate response build error message policy to proxy-core:\n{}",
         violations.join("\n")
     );
 }
@@ -13476,7 +13528,7 @@ fn upstream_transport_owns_proxy_core_response_bridge() {
 }
 
 #[test]
-fn response_pipeline_uses_core_sse_header_decision() {
+fn response_assembly_uses_core_sse_header_decision() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let hyper_client =
         fs::read_to_string(manifest_dir.join("src/proxy/transport/upstream/hyper_client.rs"))
@@ -13484,6 +13536,9 @@ fn response_pipeline_uses_core_sse_header_decision() {
     let response_processor =
         fs::read_to_string(manifest_dir.join("src/proxy/engine/response_pipeline.rs"))
             .expect("read engine/response_pipeline.rs");
+    let response_assembly =
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/response_assembly.rs"))
+            .expect("read engine/response_assembly.rs");
     let protocol_adapter =
         fs::read_to_string(manifest_dir.join("src/proxy/transport/http/protocol_adapter.rs"))
             .expect("read protocol_adapter.rs");
@@ -13497,8 +13552,9 @@ fn response_pipeline_uses_core_sse_header_decision() {
         "SSE response detection should stay in proxy-core response header helpers, not on the host ProxyResponse type"
     );
     assert!(
-        response_processor.contains("response_headers_indicate_sse(response.headers())"),
-        "response_processor should delegate SSE detection to proxy-core"
+        response_assembly.contains("response_headers_indicate_sse(response.headers())")
+            && response_processor.contains("is_sse_response(&response)"),
+        "response_assembly should delegate SSE detection to proxy-core and response_pipeline should consume it"
     );
     assert!(
         !adapter.contains("pub(crate) fn provider_claude_transform_streaming_decision")
