@@ -1,3 +1,5 @@
+//! Protocol-specific HTTP entry orchestration for proxied API requests.
+
 use super::{
     engine::response_pipeline::{
         claude_passthrough_response_to_axum_response, claude_response_needs_transform,
