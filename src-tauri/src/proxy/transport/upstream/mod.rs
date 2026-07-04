@@ -6,8 +6,8 @@ use crate::proxy::error::ProxyError;
 use crate::proxy::transport::upstream::hyper_client::ProxyResponse;
 use crate::proxy_core::api::transport::{
     invalid_upstream_url_error_message, is_socks_proxy_url, resolve_upstream_send_policy,
-    ProxyCoreResponse, ProxyTransportResponse, ProxyTransportResponseBody,
-    UpstreamSendPolicyInput, UpstreamTransportKind,
+    ProxyCoreResponse, ProxyTransportResponse, ProxyTransportResponseBody, UpstreamSendPolicyInput,
+    UpstreamTransportKind,
 };
 use bytes::Bytes;
 

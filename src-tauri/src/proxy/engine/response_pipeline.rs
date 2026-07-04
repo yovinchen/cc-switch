@@ -8,7 +8,11 @@ use crate::proxy::codex_chat_history::{
     transform_codex_chat_response_with_history, transform_codex_chat_sse_with_history,
 };
 use crate::proxy::engine::forward_pipeline::ActiveConnectionGuard;
-use crate::proxy::host::cc_switch::provider_projection::provider_kind_from_provider;
+use crate::proxy::host::cc_switch::provider_projection::{
+    provider_claude_transform_streaming_decision,
+    provider_codex_responses_to_chat_conversion_required, provider_kind_from_provider,
+    provider_needs_claude_transform,
+};
 #[cfg(test)]
 use crate::proxy::host::cc_switch::provider_router_sources::provider_router_from_database;
 use crate::proxy::host::cc_switch::proxy_state::ProxyState;
@@ -18,8 +22,12 @@ use crate::proxy::provider::{
 use crate::proxy::{
     error::ProxyError,
     error_mapper::{
+        claude_response_transform_error_to_proxy_error,
+        codex_chat_to_responses_transform_error_to_proxy_error,
         codex_proxy_error_body_build_error_to_proxy_error, codex_proxy_error_response,
-        codex_responses_error_body_build_error_to_proxy_error, proxy_core_error_to_proxy_error,
+        codex_responses_error_body_build_error_to_proxy_error,
+        parse_claude_transform_upstream_json_or_unlabeled_sse,
+        parse_codex_chat_upstream_json_or_unlabeled_sse, proxy_core_error_to_proxy_error,
         proxy_error_display_message, proxy_error_status_code, response_build_error_to_proxy_error,
     },
     transport::upstream::{hyper_client::ProxyResponse, proxy_core_response_to_proxy_response},
@@ -30,8 +38,10 @@ use crate::proxy_core::api::errors::{selected_provider_not_applied_message, Prox
 use crate::proxy_core::api::ports::ProxyServices;
 use crate::proxy_core::api::transforms::{
     claude_stream_usage_event_filter, codex_chat_error_proxy_response,
-    codex_stream_usage_event_filter, extract_anthropic_tool_schema_hints, AnthropicToolSchemaHints,
-    CodexToolContext, SsePassthroughStreamState, SseUsageAccumulator,
+    codex_chat_transform_streaming_decision, codex_stream_usage_event_filter,
+    extract_anthropic_tool_schema_hints, AnthropicToolSchemaHints,
+    ClaudeTransformStreamingDecision, CodexChatTransformStreamingDecision, CodexToolContext,
+    SsePassthroughStreamState, SseUsageAccumulator,
 };
 use crate::proxy_core::api::transport::{
     decode_response_body, non_streaming_body_timeout_message,
@@ -42,7 +52,7 @@ use crate::proxy_core::api::transport::{
     ProxyResponseBuildErrorContext as AxumResponseBuildErrorContext,
     ProxyResponseBuildFailureContext as CoreResponseBuildFailureContext, ProxyResult,
     ProxyTransportResponse, ProxyTransportResponseBody, ResponseBodyDecodeLogLevel,
-    ResponseLogEvent, ResponseLogLevel,
+    ResponseLogEvent, ResponseLogLevel, UpstreamSseAggregationKind,
 };
 use crate::proxy_core::api::usage::{
     error_usage_record_with_request_id_fallback,
@@ -412,6 +422,208 @@ pub(crate) async fn gemini_passthrough_response_to_axum_response(
     state: &ProxyState,
 ) -> Result<Response, ProxyError> {
     process_response(response, ctx, state, &GEMINI_PARSER_CONFIG, None).await
+}
+
+pub(crate) fn claude_response_needs_transform(ctx: &RequestContext) -> Result<bool, ProxyError> {
+    Ok(provider_needs_claude_transform(ctx.provider()?))
+}
+
+pub(crate) fn codex_response_needs_chat_transform(
+    ctx: &RequestContext,
+    endpoint: &str,
+) -> Result<bool, ProxyError> {
+    Ok(provider_codex_responses_to_chat_conversion_required(
+        ctx.provider()?,
+        endpoint,
+    ))
+}
+
+pub(crate) fn claude_transform_streaming_decision_for_response(
+    provider: &Provider,
+    requested_streaming: bool,
+    response_headers: &HeaderMap,
+    api_format: &str,
+) -> ClaudeTransformStreamingDecision {
+    provider_claude_transform_streaming_decision(
+        provider,
+        requested_streaming,
+        response_headers,
+        api_format,
+    )
+}
+
+pub(crate) fn codex_chat_transform_streaming_decision_for_response(
+    requested_streaming: bool,
+    response_headers: &HeaderMap,
+) -> CodexChatTransformStreamingDecision {
+    codex_chat_transform_streaming_decision(requested_streaming, response_headers)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn claude_transformed_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+    original_body: &Value,
+    is_stream: bool,
+    api_format: &str,
+    connection_guard: Option<ActiveConnectionGuard>,
+) -> Result<axum::response::Response, ProxyError> {
+    let status = response.status();
+    let provider = ctx.provider()?;
+    let streaming_decision = claude_transform_streaming_decision_for_response(
+        provider,
+        is_stream,
+        response.headers(),
+        api_format,
+    );
+    if streaming_decision.use_streaming {
+        let stream = response.bytes_stream();
+        let logged_stream = claude_transformed_sse_stream_from_context(
+            stream,
+            ClaudeTransformedSseStreamContext {
+                state,
+                ctx,
+                provider,
+                api_format,
+                original_body,
+                status_code: status.as_u16(),
+                connection_guard,
+            },
+        );
+
+        return claude_transformed_sse_response_to_axum_response(logged_stream);
+    }
+
+    claude_transformed_upstream_json_response_to_axum_response(
+        response,
+        ctx,
+        state,
+        provider,
+        api_format,
+        original_body,
+        streaming_decision.response_sse_aggregation,
+        streaming_decision.aggregate_codex_oauth_responses_sse,
+    )
+    .await
+}
+
+pub(crate) async fn codex_chat_to_responses_transformed_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+    is_stream: bool,
+    connection_guard: Option<ActiveConnectionGuard>,
+    tool_context: CodexToolContext,
+) -> Result<axum::response::Response, ProxyError> {
+    let status = response.status();
+
+    if !status.is_success() {
+        return codex_chat_upstream_error_response_to_axum_response(response, ctx).await;
+    }
+
+    let streaming_decision =
+        codex_chat_transform_streaming_decision_for_response(is_stream, response.headers());
+
+    if streaming_decision.use_streaming {
+        let stream = response.bytes_stream();
+        let logged_stream = codex_auto_transformed_sse_stream_from_context(
+            stream,
+            CodexAutoTransformedSseStreamContext {
+                state,
+                ctx,
+                tool_context,
+                status_code: status.as_u16(),
+                connection_guard,
+            },
+        );
+
+        return codex_transformed_sse_response_to_axum_response(logged_stream);
+    }
+
+    let _connection_guard = connection_guard;
+    codex_transformed_upstream_json_response_to_axum_response(
+        response,
+        ctx,
+        state,
+        &tool_context,
+        streaming_decision.response_sse_aggregation,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn claude_transformed_upstream_json_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+    provider: &Provider,
+    api_format: &str,
+    original_body: &Value,
+    response_sse_aggregation: Option<UpstreamSseAggregationKind>,
+    aggregate_codex_oauth_responses_sse: bool,
+) -> Result<axum::response::Response, ProxyError> {
+    let decoded =
+        read_decoded_proxy_response_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
+    let response_headers = decoded.headers;
+    let status = decoded.status;
+    let body_bytes = decoded.body;
+
+    let upstream_response = parse_claude_transform_upstream_json_or_unlabeled_sse(
+        body_bytes.as_ref(),
+        &response_headers,
+        response_sse_aggregation,
+        api_format,
+        aggregate_codex_oauth_responses_sse,
+    )?;
+
+    let anthropic_response = claude_transformed_json_response_from_context(
+        &upstream_response,
+        ClaudeTransformedJsonResponseContext {
+            state,
+            ctx,
+            provider,
+            api_format,
+            original_body,
+            status_code: status.as_u16(),
+        },
+    )
+    .map_err(claude_response_transform_error_to_proxy_error)?;
+
+    claude_transformed_json_response_to_axum_response(status, response_headers, anthropic_response)
+}
+
+pub(crate) async fn codex_transformed_upstream_json_response_to_axum_response(
+    response: ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+    tool_context: &CodexToolContext,
+    response_sse_aggregation: Option<UpstreamSseAggregationKind>,
+) -> Result<axum::response::Response, ProxyError> {
+    let decoded =
+        read_decoded_proxy_response_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
+    let response_headers = decoded.headers;
+    let status = decoded.status;
+    let body_bytes = decoded.body;
+
+    let chat_response = parse_codex_chat_upstream_json_or_unlabeled_sse(
+        body_bytes.as_ref(),
+        &response_headers,
+        response_sse_aggregation,
+    )?;
+    let responses_response = codex_auto_transformed_json_response_from_context(
+        &chat_response,
+        CodexAutoTransformedJsonResponseContext {
+            state,
+            ctx,
+            tool_context,
+            status_code: status.as_u16(),
+        },
+    )
+    .await
+    .map_err(codex_chat_to_responses_transform_error_to_proxy_error)?;
+
+    codex_transformed_json_response_to_axum_response(status, response_headers, responses_response)
 }
 
 #[derive(Debug, Clone)]

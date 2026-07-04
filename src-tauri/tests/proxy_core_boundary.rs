@@ -10609,9 +10609,8 @@ fn response_pipeline_owns_usage_provider_facts_projection() {
             && function.contains("pub(crate) fn fallback_response_usage_provider_facts")
             && function.contains("pub(crate) fn response_usage_provider_facts_from_optional")
             && function.contains("provider_kind_from_provider(provider)")
-            && source.contains(
-                "use crate::proxy::host::cc_switch::provider_projection::provider_kind_from_provider;"
-            )
+            && source.contains("provider_kind_from_provider")
+            && source.contains("use crate::proxy::host::cc_switch::provider_projection::{")
             && projection_source.contains("pub(crate) fn provider_kind_from_provider(provider: &Provider)")
             && projection_source.contains("meta.provider_type.as_deref()")
             && projection_source.contains(".map(ProviderKind::from)")
@@ -11031,17 +11030,20 @@ fn response_pipeline_owns_transformed_sse_stream_wrappers() {
     );
     assert!(
         response_adapter_source.contains("engine::response_pipeline::{")
-            && response_adapter_source.contains("ClaudeTransformedSseStreamContext")
-            && response_adapter_source.contains("claude_transformed_sse_stream_from_context")
-            && response_adapter_source.contains("CodexAutoTransformedSseStreamContext")
-            && response_adapter_source.contains("codex_auto_transformed_sse_stream_from_context")
+            && response_adapter_source.contains("claude_transformed_response_to_axum_response")
+            && response_adapter_source
+                .contains("codex_chat_to_responses_transformed_response_to_axum_response")
+            && !response_adapter_source.contains("ClaudeTransformedSseStreamContext")
+            && !response_adapter_source.contains("claude_transformed_sse_stream_from_context")
+            && !response_adapter_source.contains("CodexAutoTransformedSseStreamContext")
+            && !response_adapter_source.contains("codex_auto_transformed_sse_stream_from_context")
             && !optional_function_slice(
                 &response_adapter_source,
                 "use crate::proxy_core_adapter::{",
                 "};\nuse axum::",
             )
             .contains("TransformedSseStreamContext"),
-        "response_adapter should import transformed SSE wrappers directly from response_pipeline"
+        "response_adapter should call high-level transformed response outlets from response_pipeline"
     );
 }
 
@@ -11113,10 +11115,13 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
     );
     assert!(
         response_adapter_source.contains("engine::response_pipeline::{")
-            && response_adapter_source.contains("ClaudeTransformedJsonResponseContext")
-            && response_adapter_source.contains("claude_transformed_json_response_from_context")
-            && response_adapter_source.contains("CodexAutoTransformedJsonResponseContext")
+            && response_adapter_source.contains("claude_transformed_response_to_axum_response")
             && response_adapter_source
+                .contains("codex_chat_to_responses_transformed_response_to_axum_response")
+            && !response_adapter_source.contains("ClaudeTransformedJsonResponseContext")
+            && !response_adapter_source.contains("claude_transformed_json_response_from_context")
+            && !response_adapter_source.contains("CodexAutoTransformedJsonResponseContext")
+            && !response_adapter_source
                 .contains("codex_auto_transformed_json_response_from_context")
             && !optional_function_slice(
                 &response_adapter_source,
@@ -11124,7 +11129,7 @@ fn response_pipeline_owns_transformed_json_response_wrappers() {
                 "};\nuse axum::",
             )
             .contains("TransformedJsonResponseContext"),
-        "response_adapter should import transformed JSON wrappers directly from response_pipeline"
+        "response_adapter should call high-level transformed response outlets from response_pipeline"
     );
 }
 
@@ -11182,8 +11187,11 @@ fn response_pipeline_owns_body_decode_transport_bridge() {
     );
     assert!(
         response_adapter_source.contains("engine::response_pipeline::{")
-            && response_adapter_source.contains("read_decoded_proxy_response_body"),
-        "response_adapter should import response body decode bridge helpers directly from response_pipeline"
+            && !response_adapter_source.contains("read_decoded_proxy_response_body")
+            && response_adapter_source.contains("claude_transformed_response_to_axum_response")
+            && response_adapter_source
+                .contains("codex_chat_to_responses_transformed_response_to_axum_response"),
+        "response_adapter should call high-level transformed response outlets instead of body decode bridge helpers"
     );
     let direct_core_refs: Vec<String> = production_lines(&source)
         .filter_map(|(line_index, line)| {
@@ -11482,9 +11490,12 @@ fn response_pipeline_delegates_build_error_message_policy_to_core() {
                 .contains("pub(crate) fn rebuilt_json_proxy_response_to_axum_response")
             && !adapter_source
                 .contains("pub(crate) fn transformed_sse_proxy_response_to_axum_response")
-            && adapter_source.contains("claude_transformed_json_response_to_axum_response")
-            && adapter_source.contains("codex_transformed_sse_response_to_axum_response"),
-        "response_adapter should call response_pipeline protocol response outlets instead of owning core-to-Axum response bridges"
+            && adapter_source.contains("claude_transformed_response_to_axum_response")
+            && adapter_source
+                .contains("codex_chat_to_responses_transformed_response_to_axum_response")
+            && !adapter_source.contains("claude_transformed_json_response_to_axum_response")
+            && !adapter_source.contains("codex_transformed_sse_response_to_axum_response"),
+        "response_adapter should call high-level response_pipeline outlets instead of owning or importing core-to-Axum response bridges"
     );
     assert!(
         pipeline_source.contains("pub(crate) fn codex_chat_error_response_to_axum_response")
@@ -13191,7 +13202,7 @@ fn handlers_delegate_transform_streaming_decision_calls_to_response_adapter() {
 
     assert!(
         violations.is_empty(),
-        "protocol handlers must call transform streaming decisions through response_adapter helpers:\n{}",
+        "protocol handlers must delegate transform streaming decisions out of HTTP handlers:\n{}",
         violations.join("\n")
     );
 }
@@ -13347,9 +13358,8 @@ fn upstream_transport_owns_proxy_core_response_bridge() {
     );
     assert!(
         upstream_transport.contains("async fn proxy_core_response_bridge_preserves_stream_body()")
-            && !response_adapter.contains(
-                "async fn proxy_core_response_bridge_preserves_stream_body()"
-            ),
+            && !response_adapter
+                .contains("async fn proxy_core_response_bridge_preserves_stream_body()"),
         "ProxyResponse stream-body bridge fixture should live beside upstream transport"
     );
     assert!(
@@ -13396,10 +13406,11 @@ fn response_pipeline_uses_core_sse_header_decision() {
         !adapter.contains("pub(crate) fn provider_claude_transform_streaming_decision")
             && provider_projection.contains("claude_transform_streaming_decision(")
             && !adapter.contains("core_codex_chat_transform_streaming_decision(")
-            && response_adapter.contains(
+            && response_processor.contains(
                 "codex_chat_transform_streaming_decision(requested_streaming, response_headers)"
-            ),
-        "provider-aware Claude decision should live in provider_projection; pure Codex Chat decision should be called from response_adapter/core"
+            )
+            && !response_adapter.contains("codex_chat_transform_streaming_decision("),
+        "provider-aware Claude decision should live in provider_projection; pure Codex Chat decision should be called from response_pipeline/core"
     );
 }
 
@@ -28045,11 +28056,14 @@ fn proxy_response_adapter_uses_grouped_api_surface() {
 }
 
 #[test]
-fn response_adapter_delegates_codex_chat_conversion_gate_to_provider_projection() {
+fn response_pipeline_owns_codex_chat_conversion_gate_provider_projection() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let response_adapter_path = manifest_dir.join("src/proxy/response_adapter.rs");
     let response_adapter =
         fs::read_to_string(&response_adapter_path).expect("read proxy/response_adapter.rs");
+    let response_pipeline_path = manifest_dir.join("src/proxy/engine/response_pipeline.rs");
+    let response_pipeline =
+        fs::read_to_string(&response_pipeline_path).expect("read engine/response_pipeline.rs");
     let provider_projection_path =
         manifest_dir.join("src/proxy/host/cc_switch/provider_projection.rs");
     let provider_projection =
@@ -28057,7 +28071,7 @@ fn response_adapter_delegates_codex_chat_conversion_gate_to_provider_projection(
     let proxy_core_adapter = proxy_core_adapter_source(&manifest_dir);
 
     let response_gate_slice = function_slice(
-        &response_adapter,
+        &response_pipeline,
         "pub(crate) fn codex_response_needs_chat_transform",
         "pub(crate) fn claude_transform_streaming_decision_for_response",
     );
@@ -28073,12 +28087,13 @@ fn response_adapter_delegates_codex_chat_conversion_gate_to_provider_projection(
         "response_adapter must not import the Codex provider adapter's Provider-shaped response conversion helper"
     );
     assert!(
-        response_adapter.contains("provider_codex_responses_to_chat_conversion_required"),
-        "response_adapter should consume Codex Provider response facts from provider_projection"
+        !response_adapter.contains("provider_codex_responses_to_chat_conversion_required")
+            && response_pipeline.contains("provider_codex_responses_to_chat_conversion_required"),
+        "response_pipeline should consume Codex Provider response facts from provider_projection"
     );
     assert!(
         response_gate_slice.contains("provider_codex_responses_to_chat_conversion_required("),
-        "Codex response branch gate should delegate to host provider_projection"
+        "Codex response branch gate should delegate to host provider_projection from response_pipeline"
     );
     assert!(
         !response_gate_slice.contains("codex_provider_should_convert_responses_to_chat("),
@@ -28112,6 +28127,9 @@ fn proxy_response_adapter_owns_core_transport_imports() {
     let http_request_body =
         fs::read_to_string(manifest_dir.join("src/proxy/transport/http/request_body.rs"))
             .expect("read proxy/transport/http/request_body.rs");
+    let response_pipeline =
+        fs::read_to_string(manifest_dir.join("src/proxy/engine/response_pipeline.rs"))
+            .expect("read engine/response_pipeline.rs");
     let adapter_source = proxy_core_adapter_source(&manifest_dir);
     let adapter_import = optional_function_slice(
         &source,
@@ -28127,16 +28145,30 @@ fn proxy_response_adapter_owns_core_transport_imports() {
         source.contains("crate::proxy_core::api::transport::{")
             && source.contains("ProxyRequest")
             && source.contains("ProxyResult")
-            && source.contains("UpstreamSseAggregationKind")
-            && source.contains("crate::proxy_core::api::transforms::{")
+            && source.contains("crate::proxy_core::api::transforms::CodexToolContext")
             && source.contains("CodexToolContext")
+            && !source.contains("UpstreamSseAggregationKind")
             && !source.contains("crate::proxy_core::api::usage::{")
             && !source.contains("CLAUDE_PARSER_CONFIG")
             && !source.contains("CODEX_PARSER_CONFIG")
             && !source.contains("GEMINI_PARSER_CONFIG")
             && !source.contains("OPENAI_PARSER_CONFIG")
-            && !source.contains("process_response("),
-        "response_adapter should import only dispatch/response core transport and transform contracts directly"
+            && !source.contains("process_response(")
+            && !source.contains("provider_projection::{")
+            && !source.contains("provider_codex_responses_to_chat_conversion_required")
+            && !source.contains("provider_needs_claude_transform")
+            && !source.contains("provider_claude_transform_streaming_decision")
+            && !source.contains("codex_chat_transform_streaming_decision("),
+        "response_adapter should import only dispatch request/result contracts and Codex tool context directly"
+    );
+    assert!(
+        response_pipeline.contains("provider_projection::{")
+            && response_pipeline.contains("provider_codex_responses_to_chat_conversion_required")
+            && response_pipeline.contains("provider_needs_claude_transform")
+            && response_pipeline.contains("provider_claude_transform_streaming_decision")
+            && response_pipeline.contains("codex_chat_transform_streaming_decision(")
+            && response_pipeline.contains("UpstreamSseAggregationKind"),
+        "response_pipeline should own provider-backed transform gates, streaming decisions, and SSE aggregation facts"
     );
     assert!(
         request_adapter.contains("crate::proxy_core::api::domain::AppKind")
