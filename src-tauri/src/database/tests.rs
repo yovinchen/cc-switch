@@ -385,6 +385,56 @@ fn schema_migration_v4_adds_pricing_model_columns() {
     );
 }
 
+/// 复现并锁定升级崩溃：旧库的 proxy_request_logs 没有 channel_id 列时，
+/// create_tables_on_conn（在 apply_schema_migrations 之前运行）必须先补列再建
+/// idx_request_logs_channel，而不是直接 CREATE INDEX 触发
+/// "no such column: channel_id"。
+#[test]
+fn create_tables_on_pre_channel_request_logs_adds_column_and_index() {
+    let conn = Connection::open_in_memory().expect("open memory db");
+    // 复刻真实旧版本遗留的日志表：已有 session_id/status_code/app_type/created_at
+    // （随表初建），但还没有 channel 归因列——这正是用户升级时崩溃的表形状。
+    conn.execute_batch(
+        r#"
+        CREATE TABLE proxy_request_logs (
+            request_id TEXT PRIMARY KEY,
+            provider_id TEXT NOT NULL,
+            app_type TEXT NOT NULL,
+            model TEXT NOT NULL,
+            session_id TEXT,
+            status_code INTEGER NOT NULL,
+            latency_ms INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .expect("seed pre-channel request logs");
+
+    assert!(
+        !Database::has_column(&conn, "proxy_request_logs", "channel_id").expect("has_column"),
+        "precondition: legacy table must not have channel_id"
+    );
+
+    // 修复前，这一步会因 idx_request_logs_channel 引用不存在的 channel_id 而崩溃。
+    Database::create_tables_on_conn(&conn)
+        .expect("create tables must not crash on legacy log table");
+
+    assert!(
+        Database::has_column(&conn, "proxy_request_logs", "channel_id").expect("has_column"),
+        "create_tables should backfill channel_id column"
+    );
+
+    let index_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master \
+             WHERE type='index' AND name='idx_request_logs_channel'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("query index");
+    assert_eq!(index_count, 1, "idx_request_logs_channel should be created");
+}
+
 #[test]
 fn migration_v10_to_v11_rebuilds_rollups_with_request_model_dimension() {
     let conn = Connection::open_in_memory().expect("open memory db");

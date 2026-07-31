@@ -203,8 +203,11 @@ impl Database {
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_request_logs_provider ON proxy_request_logs(provider_id, app_type)", [])
             .map_err(|e| AppError::Database(e.to_string()))?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_request_logs_channel ON proxy_request_logs(app_type, channel_id, created_at)", [])
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        // channel_id/channel_name/route_group 是 v12+ 迁移期新增列。已存在的旧库在
+        // `CREATE TABLE IF NOT EXISTS` 时是 no-op，不会带上这些列，而 create_tables 在
+        // apply_schema_migrations 之前运行，因此这里必须先补列再建索引，避免
+        // "no such column: channel_id" 崩溃（迁移里同名 helper 幂等）。
+        Self::add_request_log_channel_columns_if_missing(conn)?;
         conn.execute("CREATE INDEX IF NOT EXISTS idx_request_logs_created_at ON proxy_request_logs(created_at)", [])
             .map_err(|e| AppError::Database(e.to_string()))?;
         conn.execute(
