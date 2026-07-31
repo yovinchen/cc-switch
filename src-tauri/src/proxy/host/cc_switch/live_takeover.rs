@@ -14,6 +14,11 @@ use crate::proxy::transport::http::server::ProxyServer;
 use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};
 use crate::proxy_core::api::domain::AppKind;
 use crate::proxy_core::api::events::proxy_official_warning_event;
+use crate::proxy_core::api::management::{
+    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest,
+    RouteResolveRequest as ChannelRouteResolveRequest,
+};
 use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled, apply_codex_takeover_auth_placeholder_if_present,
     apply_gemini_takeover_env_fields, codex_auth_has_oauth_login_material,
@@ -2601,6 +2606,189 @@ impl ProxyService {
                 .await);
         }
         Ok(None)
+    }
+
+    // ==================== Channel 中转站管理 ====================
+
+    /// 在一个 `ProxyState` 上执行 channel 管理闭包。
+    ///
+    /// 优先复用运行中服务器的共享 `ProxyState`（携带熔断器、router 运行态），未运行时
+    /// 从数据库临时构造一个等价的 `ProxyState`，保证 channel CRUD/迁移/dry-run 在代理
+    /// 未启动时同样可用。channel 数据本身是数据库持久化的，与服务器进程无关。
+    async fn with_management_state<F, T>(&self, f: F) -> Result<T, String>
+    where
+        F: for<'a> FnOnce(
+            &'a crate::proxy::host::cc_switch::channel_management::ChannelManagement<'a>,
+        ) -> futures::future::BoxFuture<'a, Result<T, String>>,
+    {
+        use crate::proxy::host::cc_switch::channel_management::ChannelManagement;
+        use crate::proxy::host::cc_switch::proxy_state::proxy_state_from_runtime_sources;
+
+        if let Some(server) = self.server.read().await.as_ref() {
+            let management = ChannelManagement::new(server.proxy_state());
+            return f(&management).await;
+        }
+
+        let config = proxy_config_from_host_db(&self.db).await?;
+        let app_handle = self.app_handle.read().await.clone();
+        let state = proxy_state_from_runtime_sources(config, self.db.clone(), app_handle);
+        let management = ChannelManagement::new(&state);
+        f(&management).await
+    }
+
+    pub async fn list_all_channels(
+        &self,
+        app_type: Option<String>,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.list_all_channels(app_type)))
+            .await
+    }
+
+    pub async fn create_channel(
+        &self,
+        request: ProxyChannelWriteRequest,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.create_channel(request)))
+            .await
+    }
+
+    pub async fn get_channel(&self, channel_id: String) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.get_channel(channel_id)))
+            .await
+    }
+
+    pub async fn update_channel(
+        &self,
+        channel_id: String,
+        request: ProxyChannelPatchRequest,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.update_channel(channel_id, request)))
+            .await
+    }
+
+    pub async fn delete_channel(&self, channel_id: String) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.delete_channel(channel_id)))
+            .await
+    }
+
+    pub async fn list_channel_models(
+        &self,
+        channel_id: String,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.list_channel_models(channel_id)))
+            .await
+    }
+
+    pub async fn replace_channel_models(
+        &self,
+        channel_id: String,
+        request: ProxyChannelModelsReplaceRequest,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.replace_channel_models(channel_id, request)))
+            .await
+    }
+
+    pub async fn list_channel_keys(&self, channel_id: String) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.list_channel_keys(channel_id)))
+            .await
+    }
+
+    pub async fn upsert_channel_key(
+        &self,
+        channel_id: String,
+        key_ref: String,
+        request: ProxyChannelKeyWriteRequest,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.upsert_channel_key(channel_id, key_ref, request)))
+            .await
+    }
+
+    pub async fn update_channel_key(
+        &self,
+        channel_id: String,
+        key_ref: String,
+        request: ProxyChannelKeyPatchRequest,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.update_channel_key(channel_id, key_ref, request)))
+            .await
+    }
+
+    pub async fn delete_channel_key(
+        &self,
+        channel_id: String,
+        key_ref: String,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.delete_channel_key(channel_id, key_ref)))
+            .await
+    }
+
+    pub async fn test_channel(
+        &self,
+        channel_id: String,
+        request: ProxyChannelTestRequest,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.test_channel(channel_id, request)))
+            .await
+    }
+
+    pub async fn list_app_channels(
+        &self,
+        app_type: String,
+        requested_model: Option<String>,
+        interface_kind: Option<String>,
+        route_group: Option<String>,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| {
+            Box::pin(m.list_app_channels(app_type, requested_model, interface_kind, route_group))
+        })
+        .await
+    }
+
+    pub async fn current_route(&self, app_type: String) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.current_route(app_type)))
+            .await
+    }
+
+    pub async fn list_groups(&self, app_type: Option<String>) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.list_groups(app_type)))
+            .await
+    }
+
+    pub async fn migration_preview(&self, app_type: String) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.migration_preview(app_type)))
+            .await
+    }
+
+    pub async fn migration_materialize(
+        &self,
+        app_type: String,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.migration_materialize(app_type)))
+            .await
+    }
+
+    pub async fn resolve_route(
+        &self,
+        request: ChannelRouteResolveRequest,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.resolve_route(request)))
+            .await
+    }
+
+    pub async fn channel_breaker_stats(
+        &self,
+        channel_id: String,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.channel_breaker_stats(channel_id)))
+            .await
+    }
+
+    pub async fn reset_channel_breaker(
+        &self,
+        channel_id: String,
+    ) -> Result<serde_json::Value, String> {
+        self.with_management_state(|m| Box::pin(m.reset_channel_breaker(channel_id)))
+            .await
     }
 }
 

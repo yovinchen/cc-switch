@@ -413,6 +413,12 @@ impl ProxyServer {
         }
     }
 
+    /// 暴露运行中的 `ProxyState`，供管理 API（channel CRUD、路由 dry-run、熔断统计）
+    /// 直接复用共享的 router/熔断器运行态。
+    pub(crate) fn proxy_state(&self) -> &ProxyState {
+        &self.state
+    }
+
     #[cfg(test)]
     pub fn new(
         config: ProxyConfig,

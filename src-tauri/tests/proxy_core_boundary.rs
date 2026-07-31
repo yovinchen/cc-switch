@@ -2380,6 +2380,7 @@ fn is_allowed_live_takeover_runtime_core_import(relative: &str, code: &str) -> b
             code.trim(),
             "use crate::proxy_core::api::config::{CircuitBreakerConfig, CircuitBreakerStats};"
                 | "use crate::proxy_core::api::events::proxy_official_warning_event;"
+                | "use crate::proxy_core::api::management::{"
                 | "use crate::proxy_core::api::ports::proxy_config_with_live_takeover_active;"
                 | "use crate::proxy_core::api::ports::{"
         )
@@ -2452,6 +2453,20 @@ fn is_allowed_http_handlers_core_contract_import(relative: &str, code: &str) -> 
                 | "use crate::proxy_core::api::model_catalog::{ClientModelCatalogResponse, RoutableModelList};"
                 | "use crate::proxy_core::api::ports::{CurrentRouteTarget, ProxyRuntimeStatus};"
         )
+}
+
+/// 中转站管理 host 层：借用 `ProxyState`，把 channel 管理请求 DTO 交给 `ProxyEngine`，
+/// 与 HTTP handlers 消费同一套 `proxy_core::api::management` 契约。
+fn is_allowed_channel_management_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/proxy/host/cc_switch/channel_management.rs"
+        && code.trim() == "use crate::proxy_core::api::management::{"
+}
+
+/// 中转站 Tauri 命令层：请求体直接复用 `proxy_core::api::management` 的 camelCase 请求
+/// DTO，与 HTTP 管理 API 契约一致。
+fn is_allowed_channel_command_core_import(relative: &str, code: &str) -> bool {
+    relative == "src/commands/proxy_channel.rs"
+        && code.trim() == "use crate::proxy_core::api::management::{"
 }
 
 #[test]
@@ -2536,6 +2551,8 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
                     && !is_allowed_codex_chat_history_transform_core_import(&relative, code)
                     && !is_allowed_gemini_shadow_transform_core_import(&relative, code)
                     && !is_allowed_http_handlers_core_contract_import(&relative, code)
+                    && !is_allowed_channel_management_core_import(&relative, code)
+                    && !is_allowed_channel_command_core_import(&relative, code)
                 {
                     violations.push(format!(
                         "{}:{} contains direct proxy-core marker `{}`",
