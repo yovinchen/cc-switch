@@ -1504,6 +1504,11 @@ pub fn channel_matches_query(channel: &ChannelSpec, query: &ChannelQuery<'_>) ->
         }
     }
     if let Some(model) = query.model {
+        // 空模型列表的 channel 是透传通道（legacy provider 投影、通配 channel），
+        // 客户端模型原样转发，不能因“未显式声明该模型”而被过滤掉。
+        if channel.models.is_empty() {
+            return true;
+        }
         return channel
             .models
             .iter()
@@ -1563,7 +1568,9 @@ fn build_route_plan_inner(
                 .cloned(),
             None => channel.models.first().cloned(),
         };
-        if requested_model.is_some() && model_route.is_none() {
+        // 只有当 channel 显式声明了模型、但没有一个匹配请求模型时才淘汰；
+        // 空模型列表是透传通道，保留并原样转发客户端模型。
+        if requested_model.is_some() && model_route.is_none() && !channel.models.is_empty() {
             continue;
         }
 
@@ -2571,6 +2578,65 @@ mod tests {
                 .map(|attempt| attempt.channel_id.as_str())
                 .collect::<Vec<_>>(),
             vec!["beta", "alpha", "lower-priority"]
+        );
+    }
+
+    #[test]
+    fn build_route_plan_selects_empty_models_channel_as_passthrough() {
+        // legacy provider 投影出的 channel 没有显式模型路由（例如当前 provider 仅配了
+        // base_url + key，模型放在 settings.model 而非 env）。请求任意具体模型时，该
+        // 透传通道必须被选中并原样转发，而不是因“未声明该模型”被淘汰导致 503。
+        let mut channel = test_channel(ChannelStatus::Enabled);
+        channel.models = Vec::new();
+        let providers = vec![test_provider("p1")];
+        let channels = vec![channel];
+        let mut proxy_request = ProxyRequest::new(
+            AppKind::Claude,
+            Method::POST,
+            "/v1/messages",
+            InterfaceKind::AnthropicMessages,
+            ProxyBody::Empty,
+        );
+        proxy_request.requested_model = Some("claude-opus-4-8".to_string());
+
+        let plan = build_route_plan_with_weighted_roll(
+            RouteRequest {
+                request: &proxy_request,
+                providers: &providers,
+                channels: &channels,
+                policy: None,
+            },
+            0,
+        )
+        .expect("passthrough route plan");
+
+        assert_eq!(plan.selection.channel.id, "ch_1");
+        // 透传通道不改写模型：没有 upstream model 覆盖。
+        assert!(plan.selection.model_route.is_none());
+    }
+
+    #[test]
+    fn channel_matches_query_treats_empty_models_as_passthrough() {
+        let mut channel = test_channel(ChannelStatus::Enabled);
+        channel.models = Vec::new();
+        let query = ChannelQuery {
+            app: &AppKind::Claude,
+            provider_id: None,
+            model: Some("claude-opus-4-8"),
+            group: None,
+            include_disabled: false,
+            allow_legacy_projection: true,
+        };
+        assert!(
+            channel_matches_query(&channel, &query),
+            "empty-models channel should match any requested model"
+        );
+
+        // 显式声明了模型却不匹配时，仍应过滤掉。
+        let declared = test_channel(ChannelStatus::Enabled);
+        assert!(
+            !channel_matches_query(&declared, &query),
+            "channel with declared models must still filter unmatched model"
         );
     }
 

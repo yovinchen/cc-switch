@@ -382,7 +382,9 @@ pub fn resolve_channel_route(
             None => channel.models.first(),
         };
 
-        if requested_model.is_some() && matched_model.is_none() {
+        // 空模型列表是透传通道（legacy provider 投影/通配 channel），原样转发客户端
+        // 模型；只有 channel 显式声明了模型却没有匹配项时才算 model_unavailable。
+        if requested_model.is_some() && matched_model.is_none() && !channel.models.is_empty() {
             reasons.push(format!(
                 "model_unavailable:{}",
                 requested_model.as_deref().unwrap_or_default()
@@ -975,6 +977,34 @@ mod tests {
             .reasons
             .iter()
             .any(|reason| reason == "interface_mismatch:openai_responses->gemini_native"));
+    }
+
+    #[test]
+    fn empty_model_channel_is_passthrough_candidate_for_any_requested_model() {
+        // Legacy-projected provider channels have no inferred model routes. A
+        // model-specific request must still match them (passthrough), not be
+        // rejected as model_unavailable.
+        let mut passthrough = channel("passthrough", "anthropic_messages", "unused", 100);
+        passthrough.models = Vec::new();
+
+        let response = resolve_channel_route(
+            RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: Some("claude-opus-4-8".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: Some(DEFAULT_ROUTE_GROUP.to_string()),
+            },
+            vec![passthrough],
+            ChannelRouteSource::LegacyProjection,
+        )
+        .expect("resolve route");
+
+        assert_eq!(response.rejected.len(), 0);
+        assert_eq!(response.candidates.len(), 1);
+        assert_eq!(response.candidates[0].channel_id, "passthrough");
+        // No model route means the client's model forwards unchanged.
+        assert_eq!(response.candidates[0].public_model, None);
+        assert_eq!(response.candidates[0].upstream_model, None);
     }
 
     #[test]
