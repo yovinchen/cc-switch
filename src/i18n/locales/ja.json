@@ -2863,5 +2863,151 @@
     "expiredHint": "{{tool}}コマンドを実行してログインを更新してください",
     "queryFailed": "クエリに失敗しました",
     "refresh": "更新"
+  },
+  "channel": {
+    "title": "中継チャンネル",
+    "description": "ルーティング可能な中継アドレス（チャンネル）を管理します。各チャンネルは上流URL・インターフェース・モデルマッピング・重み・優先度・キー・ヘルスポリシーを個別に設定できます。",
+    "empty": "チャンネルがありません。下の「レガシー移行」から生成するか、手動で追加してください。",
+    "loading": "読み込み中…",
+    "loadError": "チャンネルの読み込みに失敗しました",
+    "sourceLegacy": "レガシー投影",
+    "sourceMaterialized": "実体化済み",
+    "needsReview": "要確認",
+    "columns": {
+      "name": "Name",
+      "provider": "Provider",
+      "baseUrl": "Upstream URL",
+      "interface": "Interface",
+      "models": "Models",
+      "priority": "Priority",
+      "weight": "Weight",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "manualDisabled": "Manually disabled"
+    },
+    "actions": {
+      "add": "チャンネルを追加",
+      "edit": "Edit",
+      "delete": "Delete",
+      "test": "Test",
+      "manageModels": "Models",
+      "manageKeys": "Keys",
+      "resetBreaker": "Reset breaker",
+      "refresh": "Refresh"
+    },
+    "filter": {
+      "allApps": "All apps",
+      "app": "App"
+    },
+    "form": {
+      "createTitle": "Add channel",
+      "editTitle": "Edit channel",
+      "name": "Name",
+      "namePlaceholder": "e.g. primary-chat",
+      "provider": "Provider",
+      "providerPlaceholder": "Select owning provider",
+      "appType": "App type",
+      "baseUrl": "Upstream URL",
+      "baseUrlPlaceholder": "https://relay.example.com/v1",
+      "interfaceKind": "Interface protocol",
+      "groups": "Route groups",
+      "groupsPlaceholder": "Comma-separated, e.g. default,paid",
+      "priority": "Priority",
+      "priorityHint": "Higher wins",
+      "weight": "Weight",
+      "weightHint": "Splits traffic within same priority",
+      "status": "Status",
+      "authProfileRef": "Auth profile ref",
+      "advanced": "Advanced",
+      "headerOverrides": "Header overrides (JSON)",
+      "paramOverrides": "Param overrides (JSON)",
+      "statusCodeMapping": "Status code mapping (JSON)",
+      "healthPolicy": "Health policy (JSON)",
+      "retryPolicy": "Retry policy (JSON)",
+      "save": "Save",
+      "cancel": "Cancel",
+      "invalidJson": "Invalid JSON: {{field}}",
+      "required": "{{field}} is required",
+      "close": "閉じる"
+    },
+    "models": {
+      "title": "モデルマッピング",
+      "empty": "No model mapping (passthrough: client model forwarded as-is).",
+      "publicModel": "Public model",
+      "upstreamModel": "Upstream model",
+      "pricingModel": "Pricing model",
+      "addRow": "Add mapping",
+      "removeRow": "Remove",
+      "save": "Save model mapping",
+      "saved": "Model mapping saved"
+    },
+    "keys": {
+      "title": "キー管理 · {{name}}",
+      "empty": "No keys. Multiple keys are selected by weight/round-robin.",
+      "keyRef": "Key ref",
+      "keyValue": "Key value",
+      "keyValuePlaceholder": "Enter API key (not echoed after save)",
+      "status": "Status",
+      "priority": "Priority",
+      "weight": "Weight",
+      "lastFailure": "Last failure",
+      "add": "Add key",
+      "save": "Save",
+      "delete": "Delete",
+      "neverFailed": "None",
+      "keyRefPlaceholder": "キー参照名（例: default）",
+      "keyRefRequired": "キー参照は必須です",
+      "added": "キーを保存しました",
+      "deleted": "キーを削除しました",
+      "keyValueRequired": "キー値は必須です"
+    },
+    "test": {
+      "title": "接続テスト",
+      "running": "Testing…",
+      "success": "Reachable",
+      "failed": "Unreachable",
+      "latency": "{{ms}} ms",
+      "modelAvailable": "Model available",
+      "modelUnavailable": "Model unavailable",
+      "httpStatus": "HTTP {{status}}"
+    },
+    "migration": {
+      "title": "レガシー移行",
+      "description": "Project existing providers and backup endpoints into channels. Preview the diff, then materialize.",
+      "preview": "Preview",
+      "materialize": "Materialize to channels",
+      "previewSummary": "Preview: {{count}} channels, {{duplicate}} duplicates, {{review}} need review",
+      "materializeSuccess": "Wrote {{channels}} channels, {{models}} model mappings",
+      "empty": "No legacy config to migrate."
+    },
+    "route": {
+      "title": "ルート・ドライラン",
+      "description": "Simulate routing by app + model + interface + group; see matched candidates and rejection reasons.",
+      "requestedModel": "Requested model",
+      "interfaceKind": "Interface",
+      "routeGroup": "Group",
+      "resolve": "Resolve route",
+      "candidates": "Candidates ({{count}})",
+      "rejected": "Rejected ({{count}})",
+      "noCandidates": "No candidates matched.",
+      "source": "Route source",
+      "currentRoute": "Current route"
+    },
+    "groups": {
+      "title": "Route groups",
+      "channelCount": "{{count}} channels"
+    },
+    "toast": {
+      "created": "Channel created",
+      "updated": "Channel updated",
+      "deleted": "Channel deleted",
+      "breakerReset": "Breaker reset",
+      "error": "Operation failed"
+    },
+    "deleteConfirm": "Delete channel \"{{name}}\"? This cannot be undone."
   }
 }

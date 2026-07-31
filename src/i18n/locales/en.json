@@ -2863,5 +2863,151 @@
     "expiredHint": "Run the {{tool}} command to refresh your login",
     "queryFailed": "Query failed",
     "refresh": "Refresh"
+  },
+  "channel": {
+    "title": "Relay Channels",
+    "description": "Manage routable relay addresses (channels). Each channel independently configures upstream URL, interface protocol, model mapping, weight, priority, keys and health policy.",
+    "empty": "No channels yet. Generate them from \"Legacy migration\" below, or add one manually.",
+    "loading": "Loading…",
+    "loadError": "Failed to load channels",
+    "sourceLegacy": "Legacy projection",
+    "sourceMaterialized": "Materialized",
+    "needsReview": "Needs review",
+    "columns": {
+      "name": "Name",
+      "provider": "Provider",
+      "baseUrl": "Upstream URL",
+      "interface": "Interface",
+      "models": "Models",
+      "priority": "Priority",
+      "weight": "Weight",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "manualDisabled": "Manually disabled"
+    },
+    "actions": {
+      "add": "Add channel",
+      "edit": "Edit",
+      "delete": "Delete",
+      "test": "Test",
+      "manageModels": "Models",
+      "manageKeys": "Keys",
+      "resetBreaker": "Reset breaker",
+      "refresh": "Refresh"
+    },
+    "filter": {
+      "allApps": "All apps",
+      "app": "App"
+    },
+    "form": {
+      "createTitle": "Add channel",
+      "editTitle": "Edit channel",
+      "name": "Name",
+      "namePlaceholder": "e.g. primary-chat",
+      "provider": "Provider",
+      "providerPlaceholder": "Select owning provider",
+      "appType": "App type",
+      "baseUrl": "Upstream URL",
+      "baseUrlPlaceholder": "https://relay.example.com/v1",
+      "interfaceKind": "Interface protocol",
+      "groups": "Route groups",
+      "groupsPlaceholder": "Comma-separated, e.g. default,paid",
+      "priority": "Priority",
+      "priorityHint": "Higher wins",
+      "weight": "Weight",
+      "weightHint": "Splits traffic within same priority",
+      "status": "Status",
+      "authProfileRef": "Auth profile ref",
+      "advanced": "Advanced",
+      "headerOverrides": "Header overrides (JSON)",
+      "paramOverrides": "Param overrides (JSON)",
+      "statusCodeMapping": "Status code mapping (JSON)",
+      "healthPolicy": "Health policy (JSON)",
+      "retryPolicy": "Retry policy (JSON)",
+      "save": "Save",
+      "cancel": "Cancel",
+      "invalidJson": "Invalid JSON: {{field}}",
+      "required": "{{field}} is required",
+      "close": "Close"
+    },
+    "models": {
+      "title": "Model mapping",
+      "empty": "No model mapping (passthrough: client model forwarded as-is).",
+      "publicModel": "Public model",
+      "upstreamModel": "Upstream model",
+      "pricingModel": "Pricing model",
+      "addRow": "Add mapping",
+      "removeRow": "Remove",
+      "save": "Save model mapping",
+      "saved": "Model mapping saved"
+    },
+    "keys": {
+      "title": "Key management · {{name}}",
+      "empty": "No keys. Multiple keys are selected by weight/round-robin.",
+      "keyRef": "Key ref",
+      "keyValue": "Key value",
+      "keyValuePlaceholder": "Enter API key (not echoed after save)",
+      "status": "Status",
+      "priority": "Priority",
+      "weight": "Weight",
+      "lastFailure": "Last failure",
+      "add": "Add key",
+      "save": "Save",
+      "delete": "Delete",
+      "neverFailed": "None",
+      "keyRefPlaceholder": "Key ref name, e.g. default",
+      "keyRefRequired": "Key ref is required",
+      "added": "Key saved",
+      "deleted": "Key deleted",
+      "keyValueRequired": "Key value is required"
+    },
+    "test": {
+      "title": "Connectivity test",
+      "running": "Testing…",
+      "success": "Reachable",
+      "failed": "Unreachable",
+      "latency": "{{ms}} ms",
+      "modelAvailable": "Model available",
+      "modelUnavailable": "Model unavailable",
+      "httpStatus": "HTTP {{status}}"
+    },
+    "migration": {
+      "title": "Legacy migration",
+      "description": "Project existing providers and backup endpoints into channels. Preview the diff, then materialize.",
+      "preview": "Preview",
+      "materialize": "Materialize to channels",
+      "previewSummary": "Preview: {{count}} channels, {{duplicate}} duplicates, {{review}} need review",
+      "materializeSuccess": "Wrote {{channels}} channels, {{models}} model mappings",
+      "empty": "No legacy config to migrate."
+    },
+    "route": {
+      "title": "Route dry-run",
+      "description": "Simulate routing by app + model + interface + group; see matched candidates and rejection reasons.",
+      "requestedModel": "Requested model",
+      "interfaceKind": "Interface",
+      "routeGroup": "Group",
+      "resolve": "Resolve route",
+      "candidates": "Candidates ({{count}})",
+      "rejected": "Rejected ({{count}})",
+      "noCandidates": "No candidates matched.",
+      "source": "Route source",
+      "currentRoute": "Current route"
+    },
+    "groups": {
+      "title": "Route groups",
+      "channelCount": "{{count}} channels"
+    },
+    "toast": {
+      "created": "Channel created",
+      "updated": "Channel updated",
+      "deleted": "Channel deleted",
+      "breakerReset": "Breaker reset",
+      "error": "Operation failed"
+    },
+    "deleteConfirm": "Delete channel \"{{name}}\"? This cannot be undone."
   }
 }

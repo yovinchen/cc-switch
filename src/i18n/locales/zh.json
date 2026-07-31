@@ -2863,5 +2863,151 @@
     "expiredHint": "请运行 {{tool}} 命令刷新登录",
     "queryFailed": "查询失败",
     "refresh": "刷新"
+  },
+  "channel": {
+    "title": "中转站",
+    "description": "管理可路由的中转地址（channel）：每个地址可独立配置上游地址、接口协议、模型映射、权重、优先级、密钥和健康策略。",
+    "empty": "暂无中转站，可从下方“旧配置迁移”生成，或手动新增。",
+    "loading": "加载中…",
+    "loadError": "加载中转站失败",
+    "sourceLegacy": "旧配置投影",
+    "sourceMaterialized": "已物化",
+    "needsReview": "需人工确认",
+    "columns": {
+      "name": "名称",
+      "provider": "供应商",
+      "baseUrl": "上游地址",
+      "interface": "接口",
+      "models": "模型",
+      "priority": "优先级",
+      "weight": "权重",
+      "status": "状态",
+      "actions": "操作"
+    },
+    "status": {
+      "enabled": "启用",
+      "disabled": "禁用",
+      "manualDisabled": "手动禁用"
+    },
+    "actions": {
+      "add": "新增中转站",
+      "edit": "编辑",
+      "delete": "删除",
+      "test": "测试",
+      "manageModels": "模型映射",
+      "manageKeys": "密钥",
+      "resetBreaker": "重置熔断",
+      "refresh": "刷新"
+    },
+    "filter": {
+      "allApps": "全部应用",
+      "app": "应用"
+    },
+    "form": {
+      "createTitle": "新增中转站",
+      "editTitle": "编辑中转站",
+      "name": "名称",
+      "namePlaceholder": "例如：primary-chat",
+      "provider": "供应商",
+      "providerPlaceholder": "选择所属供应商",
+      "appType": "应用类型",
+      "baseUrl": "上游地址",
+      "baseUrlPlaceholder": "https://relay.example.com/v1",
+      "interfaceKind": "接口协议",
+      "groups": "路由分组",
+      "groupsPlaceholder": "用逗号分隔，如 default,paid",
+      "priority": "优先级",
+      "priorityHint": "数值越大越优先",
+      "weight": "权重",
+      "weightHint": "同优先级时按权重分流",
+      "status": "状态",
+      "authProfileRef": "认证 Profile 引用",
+      "advanced": "高级设置",
+      "headerOverrides": "请求头覆盖 (JSON)",
+      "paramOverrides": "参数覆盖 (JSON)",
+      "statusCodeMapping": "状态码映射 (JSON)",
+      "healthPolicy": "健康策略 (JSON)",
+      "retryPolicy": "重试策略 (JSON)",
+      "save": "保存",
+      "cancel": "取消",
+      "invalidJson": "JSON 格式不正确：{{field}}",
+      "required": "{{field}} 不能为空",
+      "close": "关闭"
+    },
+    "models": {
+      "title": "模型映射",
+      "empty": "该中转站未配置模型映射（透传：客户端模型原样转发）。",
+      "publicModel": "对外模型",
+      "upstreamModel": "上游模型",
+      "pricingModel": "计价模型",
+      "addRow": "新增映射",
+      "removeRow": "删除",
+      "save": "保存模型映射",
+      "saved": "模型映射已保存"
+    },
+    "keys": {
+      "title": "密钥管理 · {{name}}",
+      "empty": "暂无密钥。多密钥时按权重/轮询选择。",
+      "keyRef": "密钥引用",
+      "keyValue": "密钥值",
+      "keyValuePlaceholder": "输入 API Key（保存后不再回显）",
+      "status": "状态",
+      "priority": "优先级",
+      "weight": "权重",
+      "lastFailure": "最近失败",
+      "add": "新增密钥",
+      "save": "保存",
+      "delete": "删除",
+      "neverFailed": "无",
+      "keyRefPlaceholder": "密钥引用名，如 default",
+      "keyRefRequired": "密钥引用不能为空",
+      "added": "密钥已保存",
+      "deleted": "密钥已删除",
+      "keyValueRequired": "密钥值不能为空"
+    },
+    "test": {
+      "title": "连通性测试",
+      "running": "测试中…",
+      "success": "连通成功",
+      "failed": "连通失败",
+      "latency": "延迟 {{ms}} ms",
+      "modelAvailable": "模型可用",
+      "modelUnavailable": "模型不可用",
+      "httpStatus": "HTTP {{status}}"
+    },
+    "migration": {
+      "title": "旧配置迁移",
+      "description": "把现有供应商与备用地址投影为中转站。先预览差异，确认后再物化写入。",
+      "preview": "预览",
+      "materialize": "物化到中转站表",
+      "previewSummary": "预览：{{count}} 个中转站，重复 {{duplicate}}，需确认 {{review}}",
+      "materializeSuccess": "已写入 {{channels}} 个中转站、{{models}} 条模型映射",
+      "empty": "没有可迁移的旧配置。"
+    },
+    "route": {
+      "title": "路由预演 (dry-run)",
+      "description": "按 应用 + 模型 + 接口 + 分组 模拟路由，查看命中的候选与淘汰原因。",
+      "requestedModel": "请求模型",
+      "interfaceKind": "接口",
+      "routeGroup": "分组",
+      "resolve": "预演路由",
+      "candidates": "命中候选 ({{count}})",
+      "rejected": "淘汰 ({{count}})",
+      "noCandidates": "没有命中任何候选。",
+      "source": "路由来源",
+      "currentRoute": "当前路由"
+    },
+    "groups": {
+      "title": "路由分组",
+      "channelCount": "{{count}} 个中转站"
+    },
+    "toast": {
+      "created": "中转站已创建",
+      "updated": "中转站已更新",
+      "deleted": "中转站已删除",
+      "breakerReset": "熔断已重置",
+      "error": "操作失败"
+    },
+    "deleteConfirm": "确定删除中转站「{{name}}」？此操作不可撤销。"
   }
 }
