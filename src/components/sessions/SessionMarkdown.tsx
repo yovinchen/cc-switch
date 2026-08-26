@@ -46,8 +46,17 @@ const parseMarkdown = (content: string) => {
   return lastParse.tree;
 };
 
+// `[docs](<https://example.com/page>)` 是合法 Markdown，但 lezer 的 URL 节点
+// 文本带着尖括号，需要先剥掉再做协议校验。
+const stripAngleBrackets = (value: string) => {
+  const trimmed = value.trim();
+  return trimmed.length > 1 && trimmed.startsWith("<") && trimmed.endsWith(">")
+    ? trimmed.slice(1, -1).trim()
+    : trimmed;
+};
+
 const safeExternalUrl = (value: string) => {
-  const url = value.trim();
+  const url = stripAngleBrackets(value);
   if (/^(https?:|mailto:)/i.test(url)) return url;
   if (/^www\./i.test(url)) return `https://${url}`;
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(url)) return `mailto:${url}`;
@@ -55,7 +64,7 @@ const safeExternalUrl = (value: string) => {
 };
 
 const safeRemoteImageUrl = (value: string) => {
-  const candidate = value.trim();
+  const candidate = stripAngleBrackets(value);
   const normalized = /^www\./i.test(candidate)
     ? `https://${candidate}`
     : candidate;
@@ -113,14 +122,27 @@ const collectLinkReferences = (root: MarkdownNode, source: string) => {
   return references;
 };
 
+interface UnclosedFence {
+  fence: string;
+  // 围栏起始行的行前缀（引用标记与缩进）。补闭合时必须原样带上：
+  // 无前缀的顶层围栏会先结束容器、再开启一个只含省略号的新代码块。
+  prefix: string;
+}
+
 const findUnclosedFence = (
   node: MarkdownNode,
   source: string,
-): string | null => {
+): UnclosedFence | null => {
   if (node.name === "FencedCode" && node.to === source.length) {
     const marks = childNodes(node).filter((child) => child.name === "CodeMark");
     if (marks.length === 1) {
-      return source.slice(marks[0].from, marks[0].to);
+      const lineStart = source.lastIndexOf("\n", marks[0].from - 1) + 1;
+      // 列表标记只允许出现在列表项首行，闭合行上换成等宽空格保持缩进，
+      // 否则会另起一个列表项。
+      const prefix = source
+        .slice(lineStart, marks[0].from)
+        .replace(/[^>\s]/g, " ");
+      return { fence: source.slice(marks[0].from, marks[0].to), prefix };
     }
   }
 
@@ -138,9 +160,11 @@ export const createCollapsedMarkdownPreview = (
 ) => {
   const preview = content.slice(0, maxLength);
   const tree = parseMarkdown(preview);
-  const unclosedFence = findUnclosedFence(tree.topNode, preview);
+  const unclosed = findUnclosedFence(tree.topNode, preview);
 
-  return unclosedFence ? `${preview}\n${unclosedFence}\n\n…` : `${preview}…`;
+  return unclosed
+    ? `${preview}\n${unclosed.prefix}${unclosed.fence}\n\n…`
+    : `${preview}…`;
 };
 
 // 与 renderNode 一样不产生可见文本的节点（TableDelimiter、链接引用定义、
@@ -151,12 +175,47 @@ const HIDDEN_TEXT_NODES = new Set([
   "TableDelimiter",
 ]);
 
+const decodeEntityText = (raw: string) => {
+  const element = document.createElement("textarea");
+  element.innerHTML = raw;
+  return element.value;
+};
+
+// 行内代码渲染前的规范化：换行折成空格，成对的首尾空格去掉。
+const getInlineCodeText = (node: MarkdownNode, source: string) => {
+  const marks = childNodes(node).filter((child) => child.name === "CodeMark");
+  const firstMark = marks[0];
+  const lastMark = marks[marks.length - 1];
+  const code = (
+    firstMark && lastMark
+      ? source.slice(firstMark.to, lastMark.from)
+      : source.slice(node.from, node.to)
+  ).replace(/\n/g, " ");
+
+  return code.startsWith(" ") && code.endsWith(" ") && code.trim()
+    ? code.slice(1, -1)
+    : code;
+};
+
+// 收集渲染后真正可见的文本。对渲染时会做变换的节点（实体、转义、行内
+// 代码）必须 push 变换后的结果而不是源码切片，否则命中判定会和高亮结果
+// 脱节：判定说“可高亮”、渲染时却匹配不上，两头落空。
 const collectVisibleTextPieces = (
   node: MarkdownNode,
   source: string,
   pieces: string[],
   skippedNodes = MARKER_NODES,
 ) => {
+  // 表格 cell 之间的 `|` 分隔符渲染时不输出，只收 cell 自身。
+  if (node.name === "TableHeader" || node.name === "TableRow") {
+    for (const child of childNodes(node)) {
+      if (child.name === "TableCell") {
+        collectVisibleTextPieces(child, source, pieces);
+      }
+    }
+    return;
+  }
+
   let cursor = node.from;
 
   for (const child of childNodes(node)) {
@@ -170,6 +229,12 @@ const collectVisibleTextPieces = (
         pieces.push(/^!\[([^\]]*)\]/.exec(raw)?.[1] ?? "");
       } else if (child.name === "Link") {
         collectVisibleTextPieces(child, source, pieces, LINK_METADATA_NODES);
+      } else if (child.name === "Entity") {
+        pieces.push(decodeEntityText(source.slice(child.from, child.to)));
+      } else if (child.name === "Escape") {
+        pieces.push(source.slice(child.from + 1, child.to));
+      } else if (child.name === "InlineCode") {
+        pieces.push(getInlineCodeText(child, source));
       } else {
         collectVisibleTextPieces(child, source, pieces);
       }
@@ -180,6 +245,16 @@ const collectVisibleTextPieces = (
   if (cursor < node.to) {
     pieces.push(source.slice(cursor, node.to));
   }
+};
+
+const getVisibleText = (
+  node: MarkdownNode,
+  source: string,
+  skippedNodes = MARKER_NODES,
+) => {
+  const pieces: string[] = [];
+  collectVisibleTextPieces(node, source, pieces, skippedNodes);
+  return pieces.join("");
 };
 
 // 判断搜索词是否会出现在某个连续渲染文本片段中。highlightText 只能高亮
@@ -263,24 +338,27 @@ const renderInlineCode = (
   node: MarkdownNode,
   source: string,
   searchQuery?: string,
-) => {
-  const marks = childNodes(node).filter((child) => child.name === "CodeMark");
-  const firstMark = marks[0];
-  const lastMark = marks[marks.length - 1];
-  let code =
-    firstMark && lastMark
-      ? source.slice(firstMark.to, lastMark.from)
-      : source.slice(node.from, node.to);
-  code = code.replace(/\n/g, " ");
-  if (code.startsWith(" ") && code.endsWith(" ") && code.trim()) {
-    code = code.slice(1, -1);
-  }
+) => (
+  <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]">
+    {renderText(getInlineCodeText(node, source), searchQuery)}
+  </code>
+);
 
-  return (
-    <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]">
-      {renderText(code, searchQuery)}
-    </code>
+// 引用式链接/图片的三种形态：full（`[docs][ref]`，有 LinkLabel）、
+// collapsed（`[docs][]`，LinkLabel 为空）、shortcut（`[docs]`，没有
+// LinkLabel）。后两种按规范用可见文本（图片则用 alt）当引用标签。
+const resolveReferenceTarget = (
+  node: MarkdownNode,
+  source: string,
+  linkReferences: LinkReferences,
+  fallbackLabel: string,
+) => {
+  const labelNode = node.getChild("LinkLabel");
+  const label = normalizeReferenceLabel(
+    labelNode ? source.slice(labelNode.from, labelNode.to) : "",
   );
+  const key = label || normalizeReferenceLabel(fallbackLabel);
+  return key ? (linkReferences.get(key) ?? null) : null;
 };
 
 const renderLink = (
@@ -290,16 +368,14 @@ const renderLink = (
   linkReferences: LinkReferences = EMPTY_LINK_REFERENCES,
 ) => {
   const urlNode = node.getChild("URL");
-  const referenceLabelNode = node.getChild("LinkLabel");
   const href = urlNode
     ? safeExternalUrl(source.slice(urlNode.from, urlNode.to))
-    : referenceLabelNode
-      ? linkReferences.get(
-          normalizeReferenceLabel(
-            source.slice(referenceLabelNode.from, referenceLabelNode.to),
-          ),
-        )
-      : null;
+    : resolveReferenceTarget(
+        node,
+        source,
+        linkReferences,
+        getVisibleText(node, source, LINK_METADATA_NODES),
+      );
   const label =
     node.name === "Autolink" && urlNode
       ? renderText(source.slice(urlNode.from, urlNode.to), searchQuery)
@@ -374,13 +450,16 @@ const renderImage = (
   node: MarkdownNode,
   source: string,
   searchQuery?: string,
+  linkReferences: LinkReferences = EMPTY_LINK_REFERENCES,
 ) => {
   const raw = source.slice(node.from, node.to);
   const alt = /^!\[([^\]]*)\]/.exec(raw)?.[1] ?? "";
   const urlNode = node.getChild("URL");
-  const src = urlNode
-    ? safeRemoteImageUrl(source.slice(urlNode.from, urlNode.to))
-    : null;
+  // 引用表里的目标已过 safeExternalUrl，图片还要再过一遍图片协议白名单。
+  const target = urlNode
+    ? source.slice(urlNode.from, urlNode.to)
+    : resolveReferenceTarget(node, source, linkReferences, alt);
+  const src = target ? safeRemoteImageUrl(target) : null;
 
   if (!src) return renderText(alt, searchQuery);
 
@@ -560,16 +639,16 @@ const renderNode = (
       );
     }
     case "Image":
-      return renderImage(node, source, searchQuery);
+      return renderImage(node, source, searchQuery, linkReferences);
     case "HardBreak":
       return <br />;
     case "Escape":
       return renderText(source.slice(node.from + 1, node.to), searchQuery);
-    case "Entity": {
-      const element = document.createElement("textarea");
-      element.innerHTML = source.slice(node.from, node.to);
-      return renderText(element.value, searchQuery);
-    }
+    case "Entity":
+      return renderText(
+        decodeEntityText(source.slice(node.from, node.to)),
+        searchQuery,
+      );
     default:
       if (MARKER_NODES.has(node.name)) return null;
       return <>{children()}</>;

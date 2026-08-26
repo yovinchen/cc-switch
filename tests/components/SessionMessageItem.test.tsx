@@ -199,7 +199,10 @@ describe("SessionMessageItem", () => {
   });
 
   it("shows search context when the match only exists in a hidden link URL", () => {
-    renderMessage("See [docs](https://hidden-domain.example/page).", "hidden-domain");
+    renderMessage(
+      "See [docs](https://hidden-domain.example/page).",
+      "hidden-domain",
+    );
 
     expect(screen.getByText("hidden-domain").tagName).toBe("MARK");
     expect(screen.getByText("原文中的匹配")).toBeInTheDocument();
@@ -227,6 +230,111 @@ describe("SessionMessageItem", () => {
     expect(codeBlock).not.toBeNull();
     expect(codeBlock).not.toHaveTextContent("…");
     expect(container).toHaveTextContent("…");
+  });
+
+  it("keeps a truncated fence inside a blockquote from spawning an extra code block", () => {
+    const { container } = renderMessage(
+      ["> ```ts", `> const value = "${"x".repeat(3200)}";`, "> ```"].join("\n"),
+    );
+    const codeBlocks = container.querySelectorAll("pre");
+
+    expect(codeBlocks).toHaveLength(1);
+    expect(codeBlocks[0]).not.toHaveTextContent("…");
+    expect(container).toHaveTextContent("…");
+  });
+
+  it("keeps a truncated fence inside a list from spawning an extra code block", () => {
+    const { container } = renderMessage(
+      [
+        "- item",
+        "",
+        "  ```ts",
+        `  const value = "${"x".repeat(3200)}";`,
+        "  ```",
+      ].join("\n"),
+    );
+    const codeBlocks = container.querySelectorAll("pre");
+
+    expect(codeBlocks).toHaveLength(1);
+    expect(codeBlocks[0]).not.toHaveTextContent("…");
+    expect(container).toHaveTextContent("…");
+  });
+
+  it("shows search context when the match only exists in an HTML entity source", () => {
+    renderMessage("A &amp; B", "amp");
+
+    expect(screen.getByText("amp").tagName).toBe("MARK");
+    expect(screen.getByText("原文中的匹配")).toBeInTheDocument();
+  });
+
+  it("shows search context when the match only exists in an escape sequence", () => {
+    renderMessage("A \\* B", "\\*");
+
+    expect(screen.getByText("\\*").tagName).toBe("MARK");
+    expect(screen.getByText("原文中的匹配")).toBeInTheDocument();
+  });
+
+  // 表格行里 cell 之间的分隔符与空白渲染时不输出，只有 cell 内容可见。
+  it("shows search context when the match only exists between table cells", () => {
+    renderMessage(["| a | b |", "| --- | --- |", "| 1 | 2 |"].join("\n"), " ");
+
+    expect(screen.getByText("原文中的匹配")).toBeInTheDocument();
+  });
+
+  it("shows search context when the match only exists in unnormalized inline code", () => {
+    const { container } = renderMessage(
+      "Run ` cargo test ` now.",
+      " cargo test ",
+    );
+
+    expect(container.querySelector("code")?.textContent).toBe("cargo test");
+    expect(screen.getByText("原文中的匹配")).toBeInTheDocument();
+  });
+
+  it("resolves collapsed and shortcut reference links", () => {
+    renderMessage(
+      [
+        "[docs][] and [guide]",
+        "",
+        "[docs]: https://example.com/docs",
+        "[guide]: https://example.com/guide",
+      ].join("\n"),
+    );
+
+    expect(screen.getByRole("link", { name: "docs" })).toHaveAttribute(
+      "href",
+      "https://example.com/docs",
+    );
+    expect(screen.getByRole("link", { name: "guide" })).toHaveAttribute(
+      "href",
+      "https://example.com/guide",
+    );
+  });
+
+  it("resolves reference-style images through their definitions", () => {
+    renderMessage(
+      ["![diagram][asset]", "", "[asset]: https://example.com/a.png"].join(
+        "\n",
+      ),
+    );
+
+    expect(
+      screen.getByRole("button", { name: /加载远程图片: diagram/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("accepts link and image targets wrapped in angle brackets", () => {
+    renderMessage(
+      "[docs](<https://example.com/page>)\n\n![diagram](<https://example.com/a.png>)",
+    );
+
+    expect(screen.getByRole("link", { name: "docs" })).toHaveAttribute(
+      "href",
+      "https://example.com/page",
+    );
+    expect(
+      screen.getByRole("button", { name: /加载远程图片: diagram/ }),
+    ).toBeInTheDocument();
   });
 
   it("does not reparse Markdown when only search highlighting changes", () => {
