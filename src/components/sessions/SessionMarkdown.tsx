@@ -99,6 +99,24 @@ const normalizeReferenceLabel = (value: string) => {
   return label.trim().replace(/\s+/g, " ").toLowerCase();
 };
 
+const getLinkLabelSource = (node: MarkdownNode, source: string) => {
+  const marks = childNodes(node).filter((child) => child.name === "LinkMark");
+  return marks.length >= 2 ? source.slice(marks[0].to, marks[1].from) : "";
+};
+
+const getReferenceLabel = (node: MarkdownNode, source: string) => {
+  const labelNode = node.getChild("LinkLabel");
+  const explicitLabel = labelNode
+    ? normalizeReferenceLabel(source.slice(labelNode.from, labelNode.to))
+    : "";
+
+  // Collapsed and shortcut references use their source label, not the rendered
+  // text. Formatting markers are part of the CommonMark reference key.
+  return (
+    explicitLabel || normalizeReferenceLabel(getLinkLabelSource(node, source))
+  );
+};
+
 const collectLinkReferences = (root: MarkdownNode, source: string) => {
   const references = new Map<string, string>();
 
@@ -124,8 +142,8 @@ const collectLinkReferences = (root: MarkdownNode, source: string) => {
 
 interface UnclosedFence {
   fence: string;
-  // 围栏起始行的行前缀（引用标记与缩进）。补闭合时必须原样带上：
-  // 无前缀的顶层围栏会先结束容器、再开启一个只含省略号的新代码块。
+  // 围栏起始行的容器前缀。闭合行保留引用标记与等宽缩进；无前缀的
+  // 顶层围栏会先结束容器、再开启一个只含省略号的新代码块。
   prefix: string;
 }
 
@@ -225,8 +243,7 @@ const collectVisibleTextPieces = (
 
     if (!skippedNodes.has(child.name) && !HIDDEN_TEXT_NODES.has(child.name)) {
       if (child.name === "Image") {
-        const raw = source.slice(child.from, child.to);
-        pieces.push(/^!\[([^\]]*)\]/.exec(raw)?.[1] ?? "");
+        pieces.push(getLinkLabelSource(child, source));
       } else if (child.name === "Link") {
         collectVisibleTextPieces(child, source, pieces, LINK_METADATA_NODES);
       } else if (child.name === "Entity") {
@@ -245,16 +262,6 @@ const collectVisibleTextPieces = (
   if (cursor < node.to) {
     pieces.push(source.slice(cursor, node.to));
   }
-};
-
-const getVisibleText = (
-  node: MarkdownNode,
-  source: string,
-  skippedNodes = MARKER_NODES,
-) => {
-  const pieces: string[] = [];
-  collectVisibleTextPieces(node, source, pieces, skippedNodes);
-  return pieces.join("");
 };
 
 // 判断搜索词是否会出现在某个连续渲染文本片段中。highlightText 只能高亮
@@ -344,23 +351,6 @@ const renderInlineCode = (
   </code>
 );
 
-// 引用式链接/图片的三种形态：full（`[docs][ref]`，有 LinkLabel）、
-// collapsed（`[docs][]`，LinkLabel 为空）、shortcut（`[docs]`，没有
-// LinkLabel）。后两种按规范用可见文本（图片则用 alt）当引用标签。
-const resolveReferenceTarget = (
-  node: MarkdownNode,
-  source: string,
-  linkReferences: LinkReferences,
-  fallbackLabel: string,
-) => {
-  const labelNode = node.getChild("LinkLabel");
-  const label = normalizeReferenceLabel(
-    labelNode ? source.slice(labelNode.from, labelNode.to) : "",
-  );
-  const key = label || normalizeReferenceLabel(fallbackLabel);
-  return key ? (linkReferences.get(key) ?? null) : null;
-};
-
 const renderLink = (
   node: MarkdownNode,
   source: string,
@@ -370,12 +360,7 @@ const renderLink = (
   const urlNode = node.getChild("URL");
   const href = urlNode
     ? safeExternalUrl(source.slice(urlNode.from, urlNode.to))
-    : resolveReferenceTarget(
-        node,
-        source,
-        linkReferences,
-        getVisibleText(node, source, LINK_METADATA_NODES),
-      );
+    : linkReferences.get(getReferenceLabel(node, source));
   const label =
     node.name === "Autolink" && urlNode
       ? renderText(source.slice(urlNode.from, urlNode.to), searchQuery)
@@ -452,13 +437,12 @@ const renderImage = (
   searchQuery?: string,
   linkReferences: LinkReferences = EMPTY_LINK_REFERENCES,
 ) => {
-  const raw = source.slice(node.from, node.to);
-  const alt = /^!\[([^\]]*)\]/.exec(raw)?.[1] ?? "";
+  const alt = getLinkLabelSource(node, source);
   const urlNode = node.getChild("URL");
   // 引用表里的目标已过 safeExternalUrl，图片还要再过一遍图片协议白名单。
   const target = urlNode
     ? source.slice(urlNode.from, urlNode.to)
-    : resolveReferenceTarget(node, source, linkReferences, alt);
+    : linkReferences.get(getReferenceLabel(node, source));
   const src = target ? safeRemoteImageUrl(target) : null;
 
   if (!src) return renderText(alt, searchQuery);

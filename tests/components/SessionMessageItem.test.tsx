@@ -83,6 +83,16 @@ describe("SessionMessageItem", () => {
     expect(container).not.toHaveTextContent("[reference]:");
   });
 
+  it("resolves shortcut references using their source label", () => {
+    renderMessage(
+      "[**formatted docs**]\n\n[**formatted docs**]: https://example.com/formatted",
+    );
+
+    expect(
+      screen.getByRole("link", { name: "formatted docs" }),
+    ).toHaveAttribute("href", "https://example.com/formatted");
+  });
+
   it("removes subscript and superscript delimiter markers", () => {
     const { container } = renderMessage("H~2~O and x^2^");
 
@@ -260,6 +270,20 @@ describe("SessionMessageItem", () => {
     expect(container).toHaveTextContent("…");
   });
 
+  it("keeps a truncated fence inside a quoted list item", () => {
+    const { container } = renderMessage(
+      [
+        "> - ```ts",
+        `>   const value = "${"x".repeat(3200)}";`,
+        ">   ```",
+      ].join("\n"),
+    );
+
+    expect(container.querySelectorAll("pre")).toHaveLength(1);
+    expect(container.querySelector("pre")).not.toHaveTextContent("…");
+    expect(container).toHaveTextContent("…");
+  });
+
   it("shows search context when the match only exists in an HTML entity source", () => {
     renderMessage("A &amp; B", "amp");
 
@@ -311,19 +335,24 @@ describe("SessionMessageItem", () => {
     );
   });
 
-  it("resolves reference-style images through their definitions", () => {
+  it("resolves reference-style images through their definitions", async () => {
+    const user = userEvent.setup();
     renderMessage(
       ["![diagram][asset]", "", "[asset]: https://example.com/a.png"].join(
         "\n",
       ),
     );
 
-    expect(
-      screen.getByRole("button", { name: /加载远程图片: diagram/ }),
-    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /diagram/ }));
+
+    expect(screen.getByRole("img", { name: "diagram" })).toHaveAttribute(
+      "src",
+      "https://example.com/a.png",
+    );
   });
 
-  it("accepts link and image targets wrapped in angle brackets", () => {
+  it("accepts link and image targets wrapped in angle brackets", async () => {
+    const user = userEvent.setup();
     renderMessage(
       "[docs](<https://example.com/page>)\n\n![diagram](<https://example.com/a.png>)",
     );
@@ -332,9 +361,11 @@ describe("SessionMessageItem", () => {
       "href",
       "https://example.com/page",
     );
-    expect(
-      screen.getByRole("button", { name: /加载远程图片: diagram/ }),
-    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /diagram/ }));
+    expect(screen.getByRole("img", { name: "diagram" })).toHaveAttribute(
+      "src",
+      "https://example.com/a.png",
+    );
   });
 
   it("does not reparse Markdown when only search highlighting changes", () => {
