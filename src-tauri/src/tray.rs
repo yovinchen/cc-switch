@@ -962,6 +962,15 @@ fn update_tray_usage_labels(app: &tauri::AppHandle) {
 pub fn refresh_tray_menu(app: &tauri::AppHandle) {
     use crate::store::AppState;
 
+    // 轻量模式切换后同步左键行为，即使菜单重建失败也不保留旧模式的策略。
+    // Linux 不支持此设置，会保留系统托盘菜单的原有行为。
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        if let Err(e) = tray.set_show_menu_on_left_click(crate::lightweight::is_lightweight_mode())
+        {
+            log::error!("更新托盘左键菜单行为失败: {e}");
+        }
+    }
+
     if let Some(state) = app.try_state::<AppState>() {
         if let Ok(new_menu) = create_tray_menu(app, state.inner()) {
             if let Some(tray) = app.tray_by_id(TRAY_ID) {
