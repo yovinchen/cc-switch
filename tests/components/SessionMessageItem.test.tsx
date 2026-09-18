@@ -272,11 +272,9 @@ describe("SessionMessageItem", () => {
 
   it("keeps a truncated fence inside a quoted list item", () => {
     const { container } = renderMessage(
-      [
-        "> - ```ts",
-        `>   const value = "${"x".repeat(3200)}";`,
-        ">   ```",
-      ].join("\n"),
+      ["> - ```ts", `>   const value = "${"x".repeat(3200)}";`, ">   ```"].join(
+        "\n",
+      ),
     );
 
     expect(container.querySelectorAll("pre")).toHaveLength(1);
@@ -366,6 +364,77 @@ describe("SessionMessageItem", () => {
       "src",
       "https://example.com/a.png",
     );
+  });
+
+  // lezer 对任何 `[...]` 都产出 Link 节点；未定义引用时必须按 CommonMark
+  // 原样输出，否则 `[0]`、工具调用摘要 `[Tool: shell]` 会丢掉方括号。
+  it("keeps unresolved bracket text literal", () => {
+    const { container } = renderMessage(
+      "index [0] and arr[1] and [Tool: shell] and [TODO]",
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(container).toHaveTextContent(
+      "index [0] and arr[1] and [Tool: shell] and [TODO]",
+    );
+  });
+
+  it("keeps unresolved reference links and images literal but renders inner formatting", () => {
+    const { container } = renderMessage(
+      "[docs][missing] and ![diagram][missing] and [**bold**]",
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryByRole("button", { name: /加载远程图片/ })).toBeNull();
+    expect(container).toHaveTextContent(
+      "[docs][missing] and ![diagram][missing] and [bold]",
+    );
+    expect(screen.getByText("bold").tagName).toBe("STRONG");
+  });
+
+  it("keeps links and images with unsupported targets literal", () => {
+    const { container } = renderMessage(
+      [
+        "[config.rs](src/config.rs) and ![shot](./shot.png)",
+        "[unsafe](javascript:alert(1)) and <ftp://example.com/file>",
+      ].join("\n"),
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryByRole("button", { name: /加载远程图片/ })).toBeNull();
+    expect(container).toHaveTextContent("[config.rs](src/config.rs)");
+    expect(container).toHaveTextContent("![shot](./shot.png)");
+    expect(container).toHaveTextContent("[unsafe](javascript:alert(1))");
+    expect(container).toHaveTextContent("<ftp://example.com/file>");
+  });
+
+  it("highlights matches inside literal link targets without a snippet", () => {
+    renderMessage("See [config.rs](src/config.rs).", "src/config");
+
+    expect(screen.getByText("src/config").tagName).toBe("MARK");
+    expect(screen.queryByText("原文中的匹配")).toBeNull();
+  });
+
+  it("excludes the link title and its surrounding whitespace from the label", () => {
+    const { container } = renderMessage(
+      '[docs](https://example.com "Documentation") next',
+    );
+    const link = screen.getByRole("link", { name: "docs" });
+
+    expect(link.textContent).toBe("docs");
+    expect(link).toHaveAttribute("href", "https://example.com");
+    expect(container).toHaveTextContent("docs next");
+    expect(container).not.toHaveTextContent("Documentation");
+  });
+
+  it("shows search context when the match only exists in a link title", () => {
+    renderMessage(
+      '[docs](https://example.com "Documentation")',
+      "Documentation",
+    );
+
+    expect(screen.getByText("Documentation").tagName).toBe("MARK");
+    expect(screen.getByText("原文中的匹配")).toBeInTheDocument();
   });
 
   it("does not reparse Markdown when only search highlighting changes", () => {

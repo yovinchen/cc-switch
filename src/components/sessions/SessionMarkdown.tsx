@@ -25,12 +25,32 @@ const MARKER_NODES = new Set([
   "TaskMarker",
 ]);
 
-const LINK_METADATA_NODES = new Set([
-  ...MARKER_NODES,
+// 无法解析的链接/图片按 CommonMark 原样输出：这些节点渲染成字面文本，
+// 其余行内标记（如粗体分界）照常隐藏。
+const LINK_SYNTAX_NODES: ReadonlySet<string> = new Set([
+  "LinkMark",
   "LinkLabel",
   "LinkTitle",
   "URL",
 ]);
+const LITERAL_LINK_SKIPPED_NODES: ReadonlySet<string> = new Set(
+  [...MARKER_NODES].filter((name) => name !== "LinkMark"),
+);
+const NO_NODES: ReadonlySet<string> = new Set();
+
+interface TraversalOptions {
+  skippedNodes?: ReadonlySet<string>;
+  // 按源码原样输出的节点。
+  literalNodes?: ReadonlySet<string>;
+  // 只遍历该区间内的子节点（用于只取链接的可见文本）。
+  from?: number;
+  to?: number;
+}
+
+const LITERAL_LINK_OPTIONS: TraversalOptions = {
+  skippedNodes: LITERAL_LINK_SKIPPED_NODES,
+  literalNodes: LINK_SYNTAX_NODES,
+};
 
 // 折叠预览、可见匹配检测与渲染会在同一次渲染流程中连续解析同一段内容，
 // 缓存最近一次解析结果即可覆盖这种访问模式。
@@ -90,6 +110,9 @@ const childNodes = (node: MarkdownNode) => {
   return children;
 };
 
+const childNodesWithin = (node: MarkdownNode, from: number, to: number) =>
+  childNodes(node).filter((child) => child.from >= from && child.to <= to);
+
 type LinkReferences = ReadonlyMap<string, string>;
 const EMPTY_LINK_REFERENCES: LinkReferences = new Map();
 
@@ -99,9 +122,16 @@ const normalizeReferenceLabel = (value: string) => {
   return label.trim().replace(/\s+/g, " ").toLowerCase();
 };
 
-const getLinkLabelSource = (node: MarkdownNode, source: string) => {
+// 链接可见文本的区间：前两个 LinkMark 之间。URL、title 以及它们之间的
+// 空白都在区间之外，不能混进 label。
+const getLinkLabelRange = (node: MarkdownNode) => {
   const marks = childNodes(node).filter((child) => child.name === "LinkMark");
-  return marks.length >= 2 ? source.slice(marks[0].to, marks[1].from) : "";
+  return marks.length >= 2 ? { from: marks[0].to, to: marks[1].from } : null;
+};
+
+const getLinkLabelSource = (node: MarkdownNode, source: string) => {
+  const range = getLinkLabelRange(node);
+  return range ? source.slice(range.from, range.to) : "";
 };
 
 const getReferenceLabel = (node: MarkdownNode, source: string) => {
@@ -138,6 +168,30 @@ const collectLinkReferences = (root: MarkdownNode, source: string) => {
 
   visit(root);
   return references;
+};
+
+const resolveLinkHref = (
+  node: MarkdownNode,
+  source: string,
+  linkReferences: LinkReferences,
+) => {
+  const urlNode = node.getChild("URL");
+  return urlNode
+    ? safeExternalUrl(source.slice(urlNode.from, urlNode.to))
+    : (linkReferences.get(getReferenceLabel(node, source)) ?? null);
+};
+
+// 引用表里的目标已过 safeExternalUrl，图片还要再过一遍图片协议白名单。
+const resolveImageSrc = (
+  node: MarkdownNode,
+  source: string,
+  linkReferences: LinkReferences,
+) => {
+  const urlNode = node.getChild("URL");
+  const target = urlNode
+    ? source.slice(urlNode.from, urlNode.to)
+    : linkReferences.get(getReferenceLabel(node, source));
+  return target ? safeRemoteImageUrl(target) : null;
 };
 
 interface UnclosedFence {
@@ -222,30 +276,60 @@ const collectVisibleTextPieces = (
   node: MarkdownNode,
   source: string,
   pieces: string[],
-  skippedNodes = MARKER_NODES,
+  linkReferences: LinkReferences,
+  {
+    skippedNodes = MARKER_NODES,
+    literalNodes = NO_NODES,
+    from = node.from,
+    to = node.to,
+  }: TraversalOptions = {},
 ) => {
   // 表格 cell 之间的 `|` 分隔符渲染时不输出，只收 cell 自身。
   if (node.name === "TableHeader" || node.name === "TableRow") {
     for (const child of childNodes(node)) {
       if (child.name === "TableCell") {
-        collectVisibleTextPieces(child, source, pieces);
+        collectVisibleTextPieces(child, source, pieces, linkReferences);
       }
     }
     return;
   }
 
-  let cursor = node.from;
+  let cursor = from;
 
-  for (const child of childNodes(node)) {
+  for (const child of childNodesWithin(node, from, to)) {
     if (child.from > cursor) {
       pieces.push(source.slice(cursor, child.from));
     }
 
-    if (!skippedNodes.has(child.name) && !HIDDEN_TEXT_NODES.has(child.name)) {
+    if (literalNodes.has(child.name)) {
+      pieces.push(source.slice(child.from, child.to));
+    } else if (
+      !skippedNodes.has(child.name) &&
+      !HIDDEN_TEXT_NODES.has(child.name)
+    ) {
       if (child.name === "Image") {
-        pieces.push(getLinkLabelSource(child, source));
-      } else if (child.name === "Link") {
-        collectVisibleTextPieces(child, source, pieces, LINK_METADATA_NODES);
+        if (resolveImageSrc(child, source, linkReferences)) {
+          pieces.push(getLinkLabelSource(child, source));
+        } else {
+          collectVisibleTextPieces(
+            child,
+            source,
+            pieces,
+            linkReferences,
+            LITERAL_LINK_OPTIONS,
+          );
+        }
+      } else if (child.name === "Link" || child.name === "Autolink") {
+        const range = getLinkLabelRange(child);
+        collectVisibleTextPieces(
+          child,
+          source,
+          pieces,
+          linkReferences,
+          range && resolveLinkHref(child, source, linkReferences)
+            ? range
+            : LITERAL_LINK_OPTIONS,
+        );
       } else if (child.name === "Entity") {
         pieces.push(decodeEntityText(source.slice(child.from, child.to)));
       } else if (child.name === "Escape") {
@@ -253,14 +337,14 @@ const collectVisibleTextPieces = (
       } else if (child.name === "InlineCode") {
         pieces.push(getInlineCodeText(child, source));
       } else {
-        collectVisibleTextPieces(child, source, pieces);
+        collectVisibleTextPieces(child, source, pieces, linkReferences);
       }
     }
     cursor = child.to;
   }
 
-  if (cursor < node.to) {
-    pieces.push(source.slice(cursor, node.to));
+  if (cursor < to) {
+    pieces.push(source.slice(cursor, to));
   }
 };
 
@@ -273,7 +357,13 @@ export const hasHighlightableMarkdownMatch = (
 ) => {
   if (!query) return false;
   const pieces: string[] = [];
-  collectVisibleTextPieces(parseMarkdown(content).topNode, content, pieces);
+  const root = parseMarkdown(content).topNode;
+  collectVisibleTextPieces(
+    root,
+    content,
+    pieces,
+    collectLinkReferences(root, content),
+  );
   const normalized = query.toLowerCase();
   return pieces.some((piece) => piece.toLowerCase().includes(normalized));
 };
@@ -283,12 +373,17 @@ const renderChildren = (
   source: string,
   searchQuery?: string,
   linkReferences: LinkReferences = EMPTY_LINK_REFERENCES,
-  skippedNodes = MARKER_NODES,
+  {
+    skippedNodes = MARKER_NODES,
+    literalNodes = NO_NODES,
+    from = node.from,
+    to = node.to,
+  }: TraversalOptions = {},
 ): ReactNode[] => {
   const result: ReactNode[] = [];
-  let cursor = node.from;
+  let cursor = from;
 
-  childNodes(node).forEach((child, index) => {
+  childNodesWithin(node, from, to).forEach((child, index) => {
     if (child.from > cursor) {
       result.push(
         <Fragment key={`text-${cursor}`}>
@@ -297,7 +392,13 @@ const renderChildren = (
       );
     }
 
-    if (!skippedNodes.has(child.name)) {
+    if (literalNodes.has(child.name)) {
+      result.push(
+        <Fragment key={`literal-${child.from}`}>
+          {renderText(source.slice(child.from, child.to), searchQuery)}
+        </Fragment>,
+      );
+    } else if (!skippedNodes.has(child.name)) {
       result.push(
         <Fragment key={`${child.name}-${child.from}-${index}`}>
           {renderNode(child, source, searchQuery, linkReferences)}
@@ -307,10 +408,10 @@ const renderChildren = (
     cursor = child.to;
   });
 
-  if (cursor < node.to) {
+  if (cursor < to) {
     result.push(
       <Fragment key={`text-${cursor}`}>
-        {renderText(source.slice(cursor, node.to), searchQuery)}
+        {renderText(source.slice(cursor, to), searchQuery)}
       </Fragment>,
     );
   }
@@ -357,22 +458,30 @@ const renderLink = (
   searchQuery?: string,
   linkReferences: LinkReferences = EMPTY_LINK_REFERENCES,
 ) => {
-  const urlNode = node.getChild("URL");
-  const href = urlNode
-    ? safeExternalUrl(source.slice(urlNode.from, urlNode.to))
-    : linkReferences.get(getReferenceLabel(node, source));
-  const label =
-    node.name === "Autolink" && urlNode
-      ? renderText(source.slice(urlNode.from, urlNode.to), searchQuery)
-      : renderChildren(
+  const href = resolveLinkHref(node, source, linkReferences);
+  const range = getLinkLabelRange(node);
+
+  // 解析不出目标（引用未定义、相对路径、非白名单协议）时按 CommonMark
+  // 原样输出，方括号和目标一起保留；lezer 对任何 `[...]` 都会产出 Link 节点，
+  // 不这样处理的话 `[0]`、`[Tool: shell]` 这类普通文本会丢掉方括号。
+  if (!href || !range) {
+    return (
+      <>
+        {renderChildren(
           node,
           source,
           searchQuery,
           linkReferences,
-          LINK_METADATA_NODES,
-        );
+          LITERAL_LINK_OPTIONS,
+        )}
+      </>
+    );
+  }
 
-  if (!href) return <>{label}</>;
+  const label =
+    node.name === "Autolink"
+      ? renderText(source.slice(range.from, range.to), searchQuery)
+      : renderChildren(node, source, searchQuery, linkReferences, range);
 
   return (
     <a
@@ -437,17 +546,29 @@ const renderImage = (
   searchQuery?: string,
   linkReferences: LinkReferences = EMPTY_LINK_REFERENCES,
 ) => {
-  const alt = getLinkLabelSource(node, source);
-  const urlNode = node.getChild("URL");
-  // 引用表里的目标已过 safeExternalUrl，图片还要再过一遍图片协议白名单。
-  const target = urlNode
-    ? source.slice(urlNode.from, urlNode.to)
-    : linkReferences.get(getReferenceLabel(node, source));
-  const src = target ? safeRemoteImageUrl(target) : null;
+  const src = resolveImageSrc(node, source, linkReferences);
 
-  if (!src) return renderText(alt, searchQuery);
+  if (!src) {
+    return (
+      <>
+        {renderChildren(
+          node,
+          source,
+          searchQuery,
+          linkReferences,
+          LITERAL_LINK_OPTIONS,
+        )}
+      </>
+    );
+  }
 
-  return <RemoteImage src={src} alt={alt} searchQuery={searchQuery} />;
+  return (
+    <RemoteImage
+      src={src}
+      alt={getLinkLabelSource(node, source)}
+      searchQuery={searchQuery}
+    />
+  );
 };
 
 const renderTable = (
